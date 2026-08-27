@@ -68,6 +68,7 @@ import { notificationTelemetrySnapshotSchema } from "../../../../src/services/no
 import { NOTIFICATION_QUEUE_STATES } from "../../../../src/internal/workerQueues";
 import { workerFleetSnapshotSchema } from "../../../../src/services/workerHeartbeatRegistry";
 import { buildWorkerDiagnosticsSnapshot } from "../../../../src/worker/diagnostics/snapshot";
+import { serializePrivacySafeArtifact } from "../../../../src/services/supportPackage/privacy";
 
 function unavailableQueue() {
   return {
@@ -158,8 +159,38 @@ describe("notification runtime support collectors", () => {
       },
       walletSyncExecution: {
         version: 1,
-        observation: "unavailable",
+        observation: "observed",
         scope: "sampled_worker",
+        processEpochAge: "1h-24h",
+        countersResetAge: "<1m",
+        active: {
+          total: "1",
+          byStage: {
+            candidate_fetch: "0",
+            parent_fetch: "0",
+            timestamp_fetch: "0",
+            classification: "1",
+            persistence: "0",
+          },
+          oldestProgressAge: "1m-15m",
+        },
+        counters: {
+          started: "2-5",
+          stageTransitions: "6-20",
+          completed: "1",
+          failed: "1",
+          timedOut: "0",
+          aborted: "0",
+          budgetExpired: "1",
+          lockLost: "0",
+          stalePruned: "0",
+        },
+        redisLockAgreement: {
+          agreement: "observed",
+          registryWithOwnedLock: "1",
+          registryMissingOwnedLock: "0",
+          registryOwnershipMismatch: "0",
+        },
       },
     }, 2);
     mockWorker.mockResolvedValue({ status: "observed", value: snapshot });
@@ -171,12 +202,17 @@ describe("notification runtime support collectors", () => {
       value: {
         walletSyncExecution: {
           version: 1,
-          observation: "unavailable",
+          observation: "observed",
           scope: "sampled_worker",
+          redisLockAgreement: {
+            agreement: "observed",
+            registryOwnershipMismatch: "0",
+          },
         },
       },
     });
     expect(notificationWorkerSchema.safeParse(result).success).toBe(true);
+    expect(() => serializePrivacySafeArtifact(result)).not.toThrow();
     expect(JSON.stringify(result)).not.toMatch(/walletId|jobId|lockKey|token/i);
     expect(collectorDefinitions.get("notificationWorker")).toMatchObject({
       authoritativeFor: expect.arrayContaining(["wallet_sync_execution"]),

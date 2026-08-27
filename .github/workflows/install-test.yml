@@ -964,6 +964,7 @@ jobs:
           UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
           UPGRADE_EXTENDED_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref }}
           UPGRADE_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
+          IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -991,9 +992,15 @@ jobs:
           run_upgrade() {
             local source_ref="$1"
             local port_offset="$2"
+            local verify_force_rebuild="$3"
             local source_label
             local port_env
+            local -a upgrade_args=(--mode core --fixture baseline --verbose)
             source_label="$(upgrade_sanitize_label "$source_ref")"
+
+            if [ "$verify_force_rebuild" = "true" ]; then
+              upgrade_args+=(--verify-force-rebuild)
+            fi
 
             export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${source_label}-baseline"
             export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
@@ -1017,7 +1024,7 @@ jobs:
             if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
                  scripts/ci/with-runner-lock.sh e2e \
                  scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" \
-                 ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture baseline --verbose; then
+                 ./tests/install/e2e/upgrade-install.test.sh "${upgrade_args[@]}"; then
               status=0
             else
               status="$?"
@@ -1035,10 +1042,21 @@ jobs:
 
           IFS=',' read -ra selected_refs <<< "$UPGRADE_BASELINE_REFS"
           port_offset=15
+          force_rebuild_selected=false
           for source_ref in "${selected_refs[@]}"; do
-            run_upgrade "$source_ref" "$port_offset"
+            verify_force_rebuild=false
+            if upgrade_should_verify_force_rebuild \
+                "$IS_RELEASE" "$source_ref" "$force_rebuild_selected"; then
+              verify_force_rebuild=true
+              force_rebuild_selected=true
+            fi
+            run_upgrade "$source_ref" "$port_offset" "$verify_force_rebuild"
             port_offset=$((port_offset + 3))
           done
+          if [ "$IS_RELEASE" = "true" ] && [ "$force_rebuild_selected" != "true" ]; then
+            echo "::error::Release baseline selection did not schedule the required latest-stable force rebuild"
+            exit 1
+          fi
 
       - name: Post-upgrade DIND diagnostics
         if: always()

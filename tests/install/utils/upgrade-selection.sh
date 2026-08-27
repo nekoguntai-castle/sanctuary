@@ -9,6 +9,16 @@ upgrade_default_baseline_refs() {
     printf '%s\n' 'latest-stable,n-2'
 }
 
+upgrade_should_verify_force_rebuild() {
+    local is_release="$1"
+    local source_ref="$2"
+    local already_selected="$3"
+
+    [ "$is_release" = "true" ] \
+        && [ "$source_ref" = "latest-stable" ] \
+        && [ "$already_selected" != "true" ]
+}
+
 upgrade_active_extended_fixture_records() {
     cat <<'EOF'
 browser-origin-ip 21

@@ -221,7 +221,7 @@ describe('worker diagnostics', () => {
         agreement: 'observed' as const,
         registryWithOwnedLock: '1' as const,
         registryMissingOwnedLock: '0' as const,
-        registryTokenMismatch: '0' as const,
+        registryOwnershipMismatch: '0' as const,
       },
     };
     const snapshot = buildWorkerDiagnosticsSnapshot({

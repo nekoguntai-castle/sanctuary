@@ -53,7 +53,7 @@ const WalletSyncExecutionAgreementSchema = z.discriminatedUnion('agreement', [
     agreement: z.literal('observed'),
     registryWithOwnedLock: CountBucketSchema,
     registryMissingOwnedLock: CountBucketSchema,
-    registryTokenMismatch: CountBucketSchema,
+    registryOwnershipMismatch: CountBucketSchema,
   }).strict(),
   z.object({ agreement: z.literal('unavailable') }).strict(),
 ]);

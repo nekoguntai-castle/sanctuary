@@ -347,7 +347,10 @@ detect_enabled_stacks() {
 configure_enabled_stacks() {
     configure_compose_files "$HAS_MONITORING" "$HAS_TOR"
     MCP_PROFILE=""
-    [ "$HAS_MCP" = "yes" ] && MCP_PROFILE="--profile mcp"
+    if [ "$HAS_MCP" = "yes" ]; then
+        MCP_PROFILE="--profile mcp"
+    fi
+    return 0
 }
 
 ensure_grafana_migration_image() {

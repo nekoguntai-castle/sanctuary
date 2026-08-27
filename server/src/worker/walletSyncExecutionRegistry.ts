@@ -233,7 +233,7 @@ export class WalletSyncExecutionRegistry {
         agreement: 'observed',
         registryWithOwnedLock: bucketCount(matching),
         registryMissingOwnedLock: bucketCount(missing),
-        registryTokenMismatch: bucketCount(mismatch),
+        registryOwnershipMismatch: bucketCount(mismatch),
       };
     } catch {
       return { agreement: 'unavailable' };

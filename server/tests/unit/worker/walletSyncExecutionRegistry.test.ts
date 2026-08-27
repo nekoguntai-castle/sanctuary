@@ -160,7 +160,7 @@ describe('wallet sync execution registry', () => {
         agreement: 'observed',
         registryWithOwnedLock: '1',
         registryMissingOwnedLock: '1',
-        registryTokenMismatch: '1',
+        registryOwnershipMismatch: '1',
       },
       counters: { lockLost: '2-5' },
     });

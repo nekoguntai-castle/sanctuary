@@ -963,10 +963,27 @@ assert_contains_in_order "$IT" \
 
 assert_contains_in_order "$IT" \
   "install-test upgrade-baseline composition" \
+  'upgrade_args=(--mode core --fixture baseline --verbose)' \
   "run-with-log.sh" \
   "scripts/ci/with-runner-lock.sh e2e" \
   "scripts/ci/time-command.sh" \
-  "upgrade-install.test.sh --mode core"
+  'upgrade-install.test.sh "${upgrade_args[@]}"'
+
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test force rebuild is gated by the release classifier" \
+  'upgrade_should_verify_force_rebuild'
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test force rebuild uses the release output" \
+  'IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}'
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test passes the force rebuild flag through one args array" \
+  'upgrade_args+=(--verify-force-rebuild)'
+assert_occurrence_count "$IT" \
+  "install-test exposes one force rebuild opt-in" \
+  '--verify-force-rebuild' 1
+assert_occurrence_count "$IT" \
+  "install-test selects the release force rebuild once" \
+  'upgrade_should_verify_force_rebuild' 1
 
 for install_job in fresh-install-test install-stack-smoke container-health-test auth-flow-test; do
   assert_named_job_step_contains "$IT" "$install_job" "Cleanup" \

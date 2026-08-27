@@ -209,7 +209,7 @@ Source inspection identified one execution problem and two visibility problems:
   registry entry, retain its lock token/key only in worker memory and compare the
   current Redis value without exporting either. Emit fixed counts
   `registryWithOwnedLock`, `registryMissingOwnedLock`, and
-  `registryTokenMismatch`, or `agreement='unavailable'` on Redis read failure.
+  `registryOwnershipMismatch`, or `agreement='unavailable'` on Redis read failure.
   Never emit or infer `lockWithoutRegistry` from a fleet/global Redis scan. Never
   admit the legacy `walletLogs` collector or raw identifiers/errors, lock keys,
   tokens, wallet IDs, or job IDs.

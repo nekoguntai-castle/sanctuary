@@ -37,6 +37,10 @@ describe('support package privacy boundary', () => {
     expect(() => serializeShareablePackage(poisoned)).toThrow();
   });
 
+  it('accepts the reviewed worker lock-agreement counter name', () => {
+    expect(() => serializePrivacySafeArtifact({ registryOwnershipMismatch: 'zero' })).not.toThrow();
+  });
+
   it('enforces the final byte budget', () => {
     const oversized = { ...emptyPackage, serverVersion: 'v'.repeat(MAX_SUPPORT_PACKAGE_BYTES) };
     expect(() => serializeShareablePackage(oversized)).toThrow();

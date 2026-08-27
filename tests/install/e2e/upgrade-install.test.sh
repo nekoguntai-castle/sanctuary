@@ -48,11 +48,12 @@ VERBOSE=false
 UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF:-}"
 UPGRADE_TEST_MODE="${SANCTUARY_UPGRADE_TEST_MODE:-full}"
 UPGRADE_FIXTURE="${SANCTUARY_UPGRADE_FIXTURE:-baseline}"
+VERIFY_FORCE_REBUILD=false
 
 usage() {
     cat <<EOF
 Usage:
-  $0 [--keep-containers] [--source-ref REF|latest-stable|n-1|n-2] [--mode core|full] [--fixture FIXTURE[,FIXTURE...]]
+  $0 [--keep-containers] [--source-ref REF|latest-stable|n-1|n-2] [--mode core|full] [--fixture FIXTURE[,FIXTURE...]] [--verify-force-rebuild]
 
 EOF
     upgrade_fixture_usage
@@ -102,6 +103,10 @@ while [[ $# -gt 0 ]]; do
             UPGRADE_TEST_MODE="full"
             shift
             ;;
+        --verify-force-rebuild)
+            VERIFY_FORCE_REBUILD=true
+            shift
+            ;;
         --help|-h)
             usage
             exit 0
@@ -122,6 +127,11 @@ case "$UPGRADE_TEST_MODE" in
         exit 1
         ;;
 esac
+
+if [ "$VERIFY_FORCE_REBUILD" = "true" ] && [ "$UPGRADE_TEST_MODE" != "core" ]; then
+    log_error "--verify-force-rebuild is valid only with --mode core"
+    exit 1
+fi
 
 if ! validate_upgrade_fixture "$UPGRADE_FIXTURE"; then
     usage
@@ -1933,11 +1943,17 @@ test_force_rebuild_upgrade() {
     local exit_code=$?
     set -e
 
+    if [ "$VERIFY_FORCE_REBUILD" = "true" ]; then
+        mkdir -p "$UPGRADE_ARTIFACT_DIR"
+        redact_text "$rebuild_output" > "$UPGRADE_ARTIFACT_DIR/force-rebuild.log"
+    fi
+
     if [ "$VERBOSE" = "true" ]; then
         redact_text "$rebuild_output"
     fi
 
     if [ $exit_code -ne 0 ]; then
+        write_force_rebuild_result "failed" "start_exit_$exit_code"
         log_error "start.sh --rebuild failed"
         log_error "Output: $(redact_text "$rebuild_output")"
         return 1
@@ -1945,12 +1961,18 @@ test_force_rebuild_upgrade() {
 
     # Wait for all containers
     if ! wait_for_all_containers_healthy 300; then
+        write_force_rebuild_result "failed" "unhealthy_services"
         log_error "Force rebuild failed"
         return 1
     fi
 
     # Wait for migration to complete
     if ! wait_for_migration_complete 180; then
+        if [ "$VERIFY_FORCE_REBUILD" = "true" ]; then
+            write_force_rebuild_result "failed" "migration_incomplete"
+            log_error "Migration did not complete after release-critical force rebuild"
+            return 1
+        fi
         log_warning "Migration may not have completed cleanly after rebuild"
         # Don't fail - migration might be idempotent
     fi
@@ -1959,12 +1981,23 @@ test_force_rebuild_upgrade() {
     sleep 5
 
     if ! login_as_upgrade_user; then
+        write_force_rebuild_result "failed" "login_failed"
         log_error "Login failed after force rebuild"
         return 1
     fi
 
     log_success "Force rebuild upgrade successful"
     return 0
+}
+
+write_force_rebuild_result() {
+    local status="$1"
+    local detail="$2"
+
+    [ "$VERIFY_FORCE_REBUILD" = "true" ] || return 0
+    mkdir -p "$UPGRADE_ARTIFACT_DIR"
+    printf 'status=%s\ndetail=%s\n' "$status" "$detail" \
+        > "$UPGRADE_ARTIFACT_DIR/force-rebuild-result.txt"
 }
 
 # ============================================
@@ -2022,6 +2055,47 @@ test_volume_data_persistence() {
     return 1
 }
 
+test_verify_mcp_disabled_after_rebuild() {
+    log_info "Verifying MCP remains disabled after the release-critical rebuild..."
+
+    load_runtime_env || return 1
+    if [ "${ENABLE_MCP:-no}" = "yes" ]; then
+        log_error "Release-critical baseline unexpectedly persisted ENABLE_MCP=yes"
+        return 1
+    fi
+
+    local running_mcp
+    running_mcp="$(docker ps \
+        --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" \
+        --filter "label=com.docker.compose.service=mcp" \
+        --filter "status=running" -q)"
+    if [ -n "$running_mcp" ]; then
+        log_error "MCP is running after an MCP-disabled release-critical rebuild"
+        return 1
+    fi
+
+    log_success "MCP remained disabled after the release-critical rebuild"
+    return 0
+}
+
+test_release_force_rebuild_gate() {
+    test_force_rebuild_upgrade || return 1
+
+    if ! test_verify_mcp_disabled_after_rebuild; then
+        write_force_rebuild_result "failed" "mcp_enabled"
+        return 1
+    fi
+    if ! test_volume_data_persistence; then
+        write_force_rebuild_result "failed" "data_not_persisted"
+        return 1
+    fi
+
+    write_force_rebuild_result \
+        "passed" \
+        "healthy_migrated_authenticated_mcp_disabled_data_persisted"
+    return 0
+}
+
 # ============================================
 # Main Test Runner
 # ============================================
@@ -2064,8 +2138,11 @@ main() {
     run_test "Post-Upgrade User-Visible Smoke" test_post_upgrade_user_visible_smoke
     run_test "Verify Notification Delivery Diagnostics" test_verify_notification_delivery_diagnostics
     run_extended_upgrade_scenarios
+    if [ "$VERIFY_FORCE_REBUILD" = "true" ]; then
+        run_test "Release-Critical Force Rebuild Gate" test_release_force_rebuild_gate
+    fi
 
-    if [ $TESTS_FAILED -gt 0 ]; then
+    if [ $TESTS_FAILED -gt 0 ] || [ "$VERIFY_FORCE_REBUILD" = "true" ]; then
         collect_upgrade_artifacts \
             "$UPGRADE_ARTIFACT_DIR" \
             "$PROJECT_ROOT" \

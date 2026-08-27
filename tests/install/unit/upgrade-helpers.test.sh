@@ -557,6 +557,46 @@ test_upgrade_selection_rejects_invalid_values() {
   return "$failures"
 }
 
+test_release_force_rebuild_selection_is_exact() {
+  upgrade_should_verify_force_rebuild true latest-stable false \
+    || return 1
+
+  if upgrade_should_verify_force_rebuild false latest-stable false; then
+    echo -e "${RED}ASSERTION FAILED:${NC} pull request/main/manual paths must not schedule a force rebuild"
+    return 1
+  fi
+  if upgrade_should_verify_force_rebuild true n-2 false; then
+    echo -e "${RED}ASSERTION FAILED:${NC} n-2 must not schedule a force rebuild"
+    return 1
+  fi
+  if upgrade_should_verify_force_rebuild true latest-stable true; then
+    echo -e "${RED}ASSERTION FAILED:${NC} only the first latest-stable selector may rebuild"
+    return 1
+  fi
+}
+
+test_upgrade_harness_force_rebuild_contract() {
+  local contents
+  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_contains "$contents" '--verify-force-rebuild)' \
+    "upgrade harness should parse the release rebuild flag" || return 1
+  assert_contains "$contents" '[ "$UPGRADE_TEST_MODE" != "core" ]' \
+    "release rebuild flag should be core-mode only" || return 1
+  assert_contains "$contents" 'run_test "Release-Critical Force Rebuild Gate" test_release_force_rebuild_gate' \
+    "core release verification should execute the real rebuild" || return 1
+  assert_contains "$contents" 'if ! test_volume_data_persistence; then' \
+    "core release verification should prove post-rebuild persistence" || return 1
+  assert_contains "$contents" 'test_verify_mcp_disabled_after_rebuild' \
+    "release rebuild should positively prove MCP remains disabled" || return 1
+  assert_contains "$contents" 'write_force_rebuild_result "failed" "migration_incomplete"' \
+    "release rebuild migration failure should be blocking and recorded" || return 1
+  assert_contains "$contents" 'healthy_migrated_authenticated_mcp_disabled_data_persisted' \
+    "release rebuild success artifact should cover the complete gate" || return 1
+  assert_contains "$contents" '[ $TESTS_FAILED -gt 0 ] || [ "$VERIFY_FORCE_REBUILD" = "true" ]' \
+    "successful release rebuilds should retain artifacts" || return 1
+}
+
 test_upgrade_selection_labels_are_sanitized() {
   local failures=0
 
@@ -1866,6 +1906,8 @@ main() {
   run_test "optional profiles is in release coverage" test_optional_profiles_is_in_release_coverage
   run_test "active extended fixture selection contract" test_active_extended_fixture_selection_contract
   run_test "upgrade selection rejects invalid values" test_upgrade_selection_rejects_invalid_values
+  run_test "release force rebuild selection is exact" test_release_force_rebuild_selection_is_exact
+  run_test "upgrade harness force rebuild contract" test_upgrade_harness_force_rebuild_contract
   run_test "upgrade selection labels are sanitized" test_upgrade_selection_labels_are_sanitized
   run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
