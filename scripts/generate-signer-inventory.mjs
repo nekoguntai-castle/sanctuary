@@ -124,6 +124,7 @@ export const REQUIRED_FUNDS_EXECUTION_POINTS = Object.freeze([
   ['server/src/services/bitcoin/electrum/electrumClient.ts', 'broadcastTransaction', 'broadcast', 'callable', 1],
   ['server/src/services/bitcoin/electrum/methods.ts', 'broadcastTransaction', 'broadcast', 'callable', 1],
   ['server/src/services/bitcoin/electrum/publicApi.ts', 'broadcastTransaction', 'broadcast', 'callable', 1],
+  ['server/src/services/bitcoin/pooledNodeClient.ts', 'broadcastTransaction', 'broadcast', 'callable', 1],
   ['server/src/services/bitcoin/psbtBuilder/multisigFinalization.ts', 'finalizeMultisigInput', 'finalize', 'callable', 1],
   ['server/src/services/bitcoin/signingIntent/artifactValidation.ts', 'finalizeInput', 'finalize', 'operation', 1],
   ['server/src/services/bitcoin/signingIntent/artifactValidation.ts', 'finalizePsbt', 'finalize', 'callable', 1],

@@ -2,10 +2,14 @@ import { expect, it, vi } from 'vitest';
 import {
   createPool,
   makeConn,
+  verifyNodeClientNetwork,
   type ElectrumPoolTestContext,
 } from './electrumPoolConnectionsTestHarness';
 import { recordHealthCheckResult } from '../../../../../src/services/bitcoin/electrumPool/healthChecker';
-import { handleConnectionError } from '../../../../../src/services/bitcoin/electrumPool/connectionManager';
+import {
+  handleConnectionError,
+  reconnectConnection,
+} from '../../../../../src/services/bitcoin/electrumPool/connectionManager';
 import { ElectrumClient } from '../../../../../src/services/bitcoin/electrum';
 import type { PooledConnection } from '../../../../../src/services/bitcoin/electrumPool';
 
@@ -52,6 +56,34 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
 
       expect((context.pool as any).connections.has(regular.id)).toBe(false);
       expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('wakes a queued acquisition after replacing a closed active connection', async () => {
+      context.pool = createPool({
+        enabled: true,
+        minConnections: 2,
+        maxConnections: 2,
+      });
+      (context.pool as any).isInitialized = true;
+      const failed = makeConn({ id: 'failed-active', state: 'active' });
+      const busy = makeConn({ id: 'still-active', state: 'active' });
+      const replacement = makeConn({ id: 'replacement-idle', state: 'idle' });
+      (context.pool as any).connections.set(failed.id, failed);
+      (context.pool as any).connections.set(busy.id, busy);
+      vi.spyOn(context.pool as any, 'getEffectiveMinConnections').mockReturnValue(2);
+      vi.spyOn(context.pool as any, 'createConnection').mockImplementation(async () => {
+        (context.pool as any).connections.set(replacement.id, replacement);
+        return replacement;
+      });
+
+      const queued = (context.pool as any).acquireInternal();
+      expect((context.pool as any).waitingQueue).toHaveLength(1);
+      await (context.pool as any).handleConnectionError(failed);
+      const handle = await queued;
+
+      expect(handle.client).toBe(replacement.client);
+      expect((context.pool as any).waitingQueue).toHaveLength(0);
+      handle.release();
     });
 
     it('module handleConnectionError reconnects dedicated connections and creates default replacements', async () => {
@@ -131,7 +163,83 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
       await (context.pool as any).reconnectConnection(conn);
 
       expect(conn.state).toBe('idle');
+      expect(verifyNodeClientNetwork).toHaveBeenCalledWith(conn.client, 'mainnet');
       expect(subscriptionListener).toHaveBeenCalledWith(conn.client);
+    });
+
+    it('rejects a wrong-network physical connection after reconnect', async () => {
+      context.pool = createPool({ maxReconnectAttempts: 1 });
+      const conn = makeConn({
+        id: 'reconnect-wrong-network',
+        isDedicated: true,
+        state: 'active',
+        client: {
+          connect: vi.fn().mockResolvedValue(undefined),
+          getServerVersion: vi.fn().mockResolvedValue({ server: 'wrong', protocol: '1.4' }),
+          disconnect: vi.fn(() => { throw new Error('disconnect failed'); }),
+          isConnected: vi.fn().mockReturnValue(true),
+        },
+      });
+      (context.pool as any).connections.set(conn.id, conn);
+      verifyNodeClientNetwork.mockRejectedValueOnce(new Error('chain identity mismatch'));
+
+      await (context.pool as any).reconnectConnection(conn);
+
+      expect(conn.state).toBe('closed');
+      expect((context.pool as any).connections.has(conn.id)).toBe(false);
+    });
+
+    it('stops reconnecting before socket work when recovery is cancelled', async () => {
+      context.pool = createPool({ maxReconnectAttempts: 1 });
+      const conn = makeConn({
+        id: 'cancelled-reconnect',
+        state: 'active',
+      }) as unknown as PooledConnection;
+      const connections = new Map([[conn.id, conn]]);
+
+      await reconnectConnection(
+        conn,
+        (context.pool as any).config,
+        connections,
+        { value: null },
+        vi.fn(),
+        'mainnet',
+        () => true,
+      );
+
+      expect(conn.state).toBe('closed');
+      expect(connections.size).toBe(0);
+      expect(conn.client.connect).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect a dedicated reconnect after shutdown', async () => {
+      context.pool = createPool({ maxReconnectAttempts: 1 });
+      const subscriptionListener = vi.fn();
+      context.pool.on('subscriptionReconnected', subscriptionListener);
+      let finishConnect!: () => void;
+      const conn = makeConn({
+        id: 'reconnect-during-shutdown',
+        isDedicated: true,
+        state: 'active',
+        client: {
+          connect: vi.fn(() => new Promise<void>(resolve => {
+            finishConnect = resolve;
+          })),
+          getServerVersion: vi.fn().mockResolvedValue({ server: 'ok', protocol: '1.4' }),
+          disconnect: vi.fn(),
+          isConnected: vi.fn().mockReturnValue(true),
+        },
+      });
+      (context.pool as any).connections.set(conn.id, conn);
+
+      const reconnect = (context.pool as any).reconnectConnection(conn);
+      const shutdown = context.pool.shutdown();
+      finishConnect();
+      await Promise.all([reconnect, shutdown]);
+
+      expect(conn.state).toBe('closed');
+      expect((context.pool as any).connections.has(conn.id)).toBe(false);
+      expect(subscriptionListener).not.toHaveBeenCalled();
     });
 
     it('reconnectConnection success path for non-dedicated connection does not emit subscription event', async () => {
@@ -176,6 +284,63 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
           protocol: 'tcp',
         })
       );
+      expect(verifyNodeClientNetwork).toHaveBeenCalledWith(
+        expect.anything(),
+        'mainnet',
+      );
+    });
+
+    it('rejects a wrong-network physical connection before it enters the pool', async () => {
+      context.pool = createPool();
+      verifyNodeClientNetwork.mockRejectedValueOnce(new Error('chain identity mismatch'));
+
+      await expect((context.pool as any).createConnection({
+        id: 'wrong-network',
+        label: 'Wrong Network',
+        host: 'wrong.example.com',
+        port: 50002,
+        useSsl: true,
+        priority: 0,
+        enabled: true,
+      })).rejects.toThrow('chain identity mismatch');
+
+      expect((context.pool as any).connections.size).toBe(0);
+      const constructed = vi.mocked(ElectrumClient).mock.results.at(-1)?.value;
+      expect(constructed.disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('disconnects a physical socket when protocol negotiation fails', async () => {
+      context.pool = createPool();
+      const disconnect = vi.fn();
+      vi.mocked(ElectrumClient).mockImplementationOnce(function(this: any) {
+        this.connect = vi.fn().mockResolvedValue(undefined);
+        this.disconnect = disconnect;
+        this.getServerVersion = vi.fn().mockRejectedValue(new Error('protocol stalled'));
+        this.isConnected = vi.fn().mockReturnValue(true);
+        this.on = vi.fn();
+      } as any);
+
+      await expect((context.pool as any).createConnection()).rejects.toThrow(
+        'protocol stalled',
+      );
+
+      expect(disconnect).toHaveBeenCalledOnce();
+      expect((context.pool as any).connections.size).toBe(0);
+    });
+
+    it('contains asynchronous connection-loss handler failures', async () => {
+      context.pool = createPool();
+      const recovery = vi.spyOn(context.pool as any, 'handleConnectionError')
+        .mockRejectedValue(new Error('recovery failed'));
+      const conn = await (context.pool as any).createConnection();
+      const constructed = conn.client as any;
+      const closeListener = constructed.on.mock.calls
+        .find(([event]: [string]) => event === 'close')?.[1];
+
+      closeListener();
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(recovery).toHaveBeenCalledWith(conn);
     });
 
     it('findIdleConnection ignores disconnected idle connections', () => {
@@ -359,6 +524,29 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
       expect(errorHandler).toBeDefined();
 
       errorHandler!(new Error('synthetic connection error'));
+      expect(handleSpy).toHaveBeenCalledWith(conn);
+    });
+
+    it('createConnection close event immediately removes a dead borrowed connection', async () => {
+      context.pool = createPool();
+      const handleSpy = vi.spyOn(context.pool as any, 'handleConnectionError')
+        .mockResolvedValue(undefined);
+      const conn = await (context.pool as any).createConnection({
+        id: 'close-server',
+        label: 'Close Server',
+        host: 'close.example.com',
+        port: 50002,
+        useSsl: true,
+        priority: 0,
+        enabled: true,
+      });
+      const onCalls = (conn.client.on as any).mock.calls as Array<
+        [string, (...args: any[]) => void]
+      >;
+      const closeHandler = onCalls.find(([eventName]) => eventName === 'close')?.[1];
+
+      expect(closeHandler).toBeDefined();
+      closeHandler!();
       expect(handleSpy).toHaveBeenCalledWith(conn);
     });
 

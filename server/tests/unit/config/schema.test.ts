@@ -96,7 +96,7 @@ function buildValidConfig() {
       confirmationUpdateIntervalMs: 120000,
       staleThresholdMs: 600000,
       staleBatchSize: 50,
-      maxConcurrentSyncs: 5,
+      maxConcurrentSyncs: 2,
       syncStaggerDelayMs: 2000,
       startupCatchUpBatchSize: 100,
       startupCatchUpDelayMs: 5000,

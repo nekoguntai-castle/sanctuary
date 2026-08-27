@@ -22,6 +22,7 @@ import {
   normalizeElectrumCapabilityProfile,
   type ElectrumCapabilityProfile,
 } from './electrum/capabilities';
+import { PooledNodeClient } from './pooledNodeClient';
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
@@ -102,6 +103,8 @@ let activeClient: NodeClientInterface | null = null;
 
 // Per-network client cache
 const networkClients = new Map<NetworkType, NodeClientInterface>();
+const networkResetPromises = new Map<NetworkType, Promise<void>>();
+let allNetworksResetPromise: Promise<void> | null = null;
 
 function disconnectQuietly(client: Pick<NodeClientInterface, 'disconnect'>, context: string): void {
   try {
@@ -186,23 +189,22 @@ export async function getNodeClient(
   log.debug(`Getting client for ${network}, mode: ${networkConfig.mode}`);
 
   let client: NodeClientInterface;
+  let identityVerified = false;
 
   if (networkConfig.mode === 'pool') {
-    // Pool mode - use dedicated subscription connection from the pool
-    // This connection is long-lived and doesn't need to be released
+    // Pool mode uses a stable request facade over short-lived pool borrows.
     try {
       const pool = await awaitSharedConnection(
         getElectrumPoolForNetwork(network),
         options?.signal,
       );
 
-      // Use getSubscriptionConnection() for long-lived cached clients
-      // This returns a dedicated connection that stays active for the pool's lifetime
-      // Do NOT use pool.acquire() here - that requires release() which we can't do with caching
-      client = await awaitSharedConnection(
-        pool.getSubscriptionConnection(),
-        options?.signal,
-      );
+      // Cache a stable facade, not a physical socket. Every ordinary request
+      // borrows and releases a pool connection; the dedicated subscription
+      // connection remains isolated for the worker's live event stream.
+      client = new PooledNodeClient(pool, network);
+      await verifyNodeClientNetwork(client, network, options);
+      identityVerified = true;
       log.info(`Using Electrum connection pool for ${network}`);
     } catch (error) {
       options?.signal?.throwIfAborted();
@@ -231,12 +233,14 @@ export async function getNodeClient(
     log.info(`Using Electrum singleton for ${network} at ${host}:${port}`);
   }
 
-  try {
-    await verifyNodeClientNetwork(client, network, options);
-  } catch (error) {
-    options?.signal?.throwIfAborted();
-    disconnectQuietly(client, `Rejected ${network} client`);
-    throw error;
+  if (!identityVerified) {
+    try {
+      await verifyNodeClientNetwork(client, network, options);
+    } catch (error) {
+      options?.signal?.throwIfAborted();
+      disconnectQuietly(client, `Rejected ${network} client`);
+      throw error;
+    }
   }
 
   // Cache the client
@@ -264,30 +268,41 @@ export async function getActiveNodeConfig(): Promise<NodeConfig> {
  * Reset the active client (for reconnection or config change)
  * @param network Optional network to reset. If not specified, resets all networks.
  */
-export async function resetNodeClient(network?: NetworkType): Promise<void> {
-  if (network) {
-    // Reset specific network
-    const client = networkClients.get(network);
-    if (client) {
-      client.disconnect();
-      networkClients.delete(network);
-    }
-    await resetElectrumPoolForNetwork(network);
+async function resetOneNetwork(network: NetworkType): Promise<void> {
+  const client = networkClients.get(network);
+  if (client) {
+    client.disconnect();
+    networkClients.delete(network);
+  }
+  await resetElectrumPoolForNetwork(network);
 
-    // Reset legacy active client if it was the mainnet client
-    if (network === 'mainnet' && activeClient === client) {
-      activeClient = null;
-      activeConfig = null;
-    }
+  if (network === 'mainnet' && activeClient === client) {
+    activeClient = null;
+    activeConfig = null;
+  }
 
-    log.debug(`Client reset for ${network}`);
-  } else {
-    // Reset all networks
-    for (const [net, client] of networkClients) {
-      client.disconnect();
-      await resetElectrumPoolForNetwork(net);
-    }
-    networkClients.clear();
+  log.debug(`Client reset for ${network}`);
+}
+
+function resetNodeClientForNetwork(network: NetworkType): Promise<void> {
+  const existing = networkResetPromises.get(network);
+  if (existing) return existing;
+
+  const reset = resetOneNetwork(network).finally(() => {
+    networkResetPromises.delete(network);
+  });
+  networkResetPromises.set(network, reset);
+  return reset;
+}
+
+function resetAllNodeClients(): Promise<void> {
+  if (allNetworksResetPromise) return allNetworksResetPromise;
+
+  const reset = (async () => {
+    await Promise.all(networkResetPromises.values());
+    await Promise.all(
+      [...networkClients.keys()].map(net => resetNodeClientForNetwork(net)),
+    );
 
     activeClient = null;
     activeConfig = null;
@@ -295,7 +310,23 @@ export async function resetNodeClient(network?: NetworkType): Promise<void> {
     await resetElectrumPool();
 
     log.debug('All clients reset');
+  })().finally(() => {
+    allNetworksResetPromise = null;
+  });
+  allNetworksResetPromise = reset;
+  return reset;
+}
+
+export async function resetNodeClient(network?: NetworkType): Promise<void> {
+  if (!network) {
+    await resetAllNodeClients();
+    return;
   }
+  if (allNetworksResetPromise) {
+    await allNetworksResetPromise;
+    return;
+  }
+  await resetNodeClientForNetwork(network);
 }
 
 /**
@@ -323,13 +354,17 @@ export async function getElectrumClientIfActive(
 
   // Fall back to singleton client (or use singleton when pool disabled)
   const networkClient = networkClients.get(network);
-  if (networkClient) {
+  if (networkClient && !(networkClient instanceof PooledNodeClient)) {
     return networkClient as ElectrumClient;
   }
 
   // Preserve legacy mainnet fallback for callers that still rely on activeClient.
   /* v8 ignore next -- legacy fallback is unreachable through public reset APIs because mainnet cache and activeClient are now mutated together. */
-  if (network === 'mainnet' && activeClient) {
+  if (
+    network === 'mainnet'
+    && activeClient
+    && !(activeClient instanceof PooledNodeClient)
+  ) {
     return activeClient as ElectrumClient;
   }
 

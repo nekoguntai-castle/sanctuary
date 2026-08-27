@@ -149,7 +149,13 @@ describe("nodeClient service", () => {
     isConnected: vi.fn(),
     getBlockHeight: vi.fn(),
   };
+  const poolRequestClient = {
+    ...poolSubscriptionClient,
+    getBlockHeight: vi.fn(),
+  };
+  const poolRelease = vi.fn();
   const poolFacade = {
+    acquire: vi.fn(),
     getSubscriptionConnection: vi.fn(),
     isPoolInitialized: vi.fn(),
   };
@@ -167,6 +173,12 @@ describe("nodeClient service", () => {
     testnetSingleton.isConnected.mockReturnValue(true);
 
     poolSubscriptionClient.isConnected.mockReturnValue(true);
+    poolRequestClient.isConnected.mockReturnValue(true);
+    poolRequestClient.getBlockHeight.mockResolvedValue(850000);
+    poolFacade.acquire.mockResolvedValue({
+      client: poolRequestClient,
+      release: poolRelease,
+    });
     poolFacade.getSubscriptionConnection.mockResolvedValue(
       poolSubscriptionClient,
     );
@@ -204,6 +216,8 @@ describe("nodeClient service", () => {
     mainnetSingleton,
     testnetSingleton,
     poolSubscriptionClient,
+    poolRequestClient,
+    poolRelease,
     poolFacade,
     getNodeClient,
     getActiveNodeConfig,

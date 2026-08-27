@@ -42,6 +42,20 @@ export const registerWorkerJobQueueCoreContracts = (
       expect(queue.isHealthy()).toBe(true);
     });
 
+    it("applies a queue-specific concurrency without amplifying every queue", async () => {
+      const boundedQueue = new WorkerJobQueue({
+        concurrency: 5,
+        concurrencyByQueue: { sync: 2 },
+        queues: ["sync", "notifications"],
+      });
+
+      await boundedQueue.initialize();
+
+      expect(createdWorkers).toHaveLength(2);
+      expect(createdWorkers[0].options?.concurrency).toBe(2);
+      expect(createdWorkers[1].options?.concurrency).toBe(5);
+    });
+
     it("keeps consumers stopped until explicitly started when autorun is disabled", async () => {
       const gatedQueue = new WorkerJobQueue({
         concurrency: 1,

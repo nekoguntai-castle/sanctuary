@@ -30,10 +30,16 @@ describe('signing intent ingress registry', () => {
   it('only the opaque artifact network boundary invokes the node broadcast method', () => {
     const callers = productionSources()
       .filter(file => file.text.includes('client.broadcastTransaction('))
-      .map(file => file.path);
-    expect(callers).toEqual(['src/services/bitcoin/blockchain/networkOperations.ts']);
+      .map(file => file.path)
+      .sort();
+    expect(callers).toEqual([
+      'src/services/bitcoin/blockchain/networkOperations.ts',
+      'src/services/bitcoin/pooledNodeClient.ts',
+    ]);
     expect(source('src/services/bitcoin/blockchain/networkOperations.ts'))
       .toContain('artifact: ValidatedBroadcastArtifact');
+    expect(source('src/services/bitcoin/pooledNodeClient.ts'))
+      .toContain('this.withClient(undefined, client => client.broadcastTransaction(rawTx))');
   });
 
   it('restricts authenticated raw broadcast replay to the validated boundary and reconciler', () => {

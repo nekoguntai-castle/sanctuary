@@ -8,11 +8,13 @@
 import { ElectrumClient } from '../electrum';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
+import { verifyNodeClientNetwork } from '../networkIdentity';
 import type {
   PooledConnection,
   ServerConfig,
   ServerState,
   ElectrumPoolConfig,
+  NetworkType,
   ProxyConfig,
 } from './types';
 
@@ -34,6 +36,7 @@ export async function createConnection(
   proxyConfig: ProxyConfig | null,
   targetServer: ServerConfig | null,
   onError: (conn: PooledConnection) => void,
+  expectedNetwork?: NetworkType,
 ): Promise<PooledConnection> {
   const id = `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -58,10 +61,17 @@ export async function createConnection(
   const serverLabel = targetServer?.label || 'default';
   log.debug(`Creating connection ${id} to ${serverLabel}...`);
 
-  await client.connect();
-
-  // Negotiate protocol version
-  await client.getServerVersion();
+  try {
+    await client.connect();
+    // Negotiate protocol version before admitting the socket to the pool.
+    await client.getServerVersion();
+    if (expectedNetwork) {
+      await verifyNodeClientNetwork(client, expectedNetwork);
+    }
+  } catch (error) {
+    client.disconnect();
+    throw error;
+  }
 
   const conn: PooledConnection = {
     id,
@@ -79,10 +89,20 @@ export async function createConnection(
   };
 
   // Set up error handling
-  client.on('error', (error) => {
-    log.error(`Connection ${id} error (${conn.serverLabel})`, { error: getErrorMessage(error) });
-    onError(conn);
-  });
+  const notifyConnectionLoss = (error?: unknown): void => {
+    if (error !== undefined) {
+      log.error(`Connection ${id} error (${conn.serverLabel})`, {
+        error: getErrorMessage(error),
+      });
+    }
+    void Promise.resolve(onError(conn)).catch((handlerError) => {
+      log.error(`Connection ${id} recovery failed (${conn.serverLabel})`, {
+        error: getErrorMessage(handlerError),
+      });
+    });
+  };
+  client.on('error', notifyConnectionLoss);
+  client.on('close', notifyConnectionLoss);
 
   connections.set(id, conn);
   log.debug(`Created connection ${id} to ${conn.serverLabel} (${conn.serverHost}:${conn.serverPort})`);
@@ -105,10 +125,17 @@ export async function reconnectConnection(
   connections: Map<string, PooledConnection>,
   subscriptionConnectionId: { value: string | null },
   emitSubscriptionReconnected: (client: ElectrumClient) => void,
+  expectedNetwork?: NetworkType,
+  shouldAbort?: () => boolean,
 ): Promise<void> {
   conn.state = 'reconnecting';
 
   for (let attempt = 1; attempt <= config.maxReconnectAttempts; attempt++) {
+    if (shouldAbort?.()) {
+      conn.state = 'closed';
+      connections.delete(conn.id);
+      return;
+    }
     try {
       log.info(
         `Reconnecting ${conn.id} (attempt ${attempt}/${config.maxReconnectAttempts})`
@@ -124,6 +151,15 @@ export async function reconnectConnection(
       // Reconnect
       await conn.client.connect();
       await conn.client.getServerVersion();
+      if (expectedNetwork) {
+        await verifyNodeClientNetwork(conn.client, expectedNetwork);
+      }
+      if (shouldAbort?.()) {
+        conn.client.disconnect();
+        conn.state = 'closed';
+        connections.delete(conn.id);
+        return;
+      }
 
       conn.state = 'idle';
       conn.lastHealthCheck = new Date();
@@ -136,6 +172,13 @@ export async function reconnectConnection(
 
       return;
     } catch (error) {
+      await Promise.resolve()
+        .then(() => conn.client.disconnect())
+        .catch((disconnectError) => {
+          log.debug('Disconnect failed after reconnect error (non-critical)', {
+            error: String(disconnectError),
+          });
+        });
       log.warn(`Reconnect attempt ${attempt} failed for ${conn.id}`, {
         error: getErrorMessage(error),
       });
@@ -355,7 +398,7 @@ export async function handleConnectionError(
           createConnection(connections, config, proxyConfig, targetServer, onError));
       /* v8 ignore stop */
 
-      connect(server).catch((err) => {
+      await connect(server).catch((err) => {
         log.error('Failed to create replacement connection', { error: getErrorMessage(err) });
       });
     }

@@ -40,7 +40,10 @@ export function activateConnection(
   electrumPoolAcquisitionsTotal.inc({ network });
   electrumPoolAcquisitionDuration.observe({ network }, acquisitionTime / 1000);
 
+  let released = false;
   const release = () => {
+    if (released) return;
+    released = true;
     if (conn.state === 'active' && !conn.isDedicated) {
       conn.state = 'idle';
       conn.lastUsedAt = new Date();

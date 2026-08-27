@@ -20,9 +20,9 @@ const log = createLogger('ELECTRUM_POOL:SUB');
  */
 export interface SubscriptionDeps {
   findIdleConnection(): PooledConnection | null;
-  createConnection(): Promise<PooledConnection>;
+  createConnection(allowOverCapacity?: boolean): Promise<PooledConnection>;
   reconnectConnection(conn: PooledConnection): Promise<void>;
-  getEffectiveMaxConnections(): number;
+  hasAvailableCapacity(): boolean;
 }
 
 /**
@@ -64,14 +64,14 @@ export async function getSubscriptionConnection(
 
   // Create or designate a subscription connection
   let conn = deps.findIdleConnection();
-  if (!conn && connections.size < deps.getEffectiveMaxConnections()) {
+  if (!conn && deps.hasAvailableCapacity()) {
     conn = await deps.createConnection();
   }
 
   if (!conn) {
     // All connections are active, create one even if over limit for subscriptions
     log.warn('Creating extra connection for subscriptions (pool at capacity)');
-    conn = await deps.createConnection();
+    conn = await deps.createConnection(true);
   }
 
   conn.isDedicated = true;

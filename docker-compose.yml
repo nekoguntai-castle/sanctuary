@@ -346,6 +346,7 @@ services:
       # Worker-specific settings
       WORKER_HEALTH_PORT: 3002
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-2}
       # The bundled deployment has one worker slot. A stable default makes its
       # capability heartbeat authoritative; multi-replica operators must assign
       # a distinct stable value to each independently defined worker service.

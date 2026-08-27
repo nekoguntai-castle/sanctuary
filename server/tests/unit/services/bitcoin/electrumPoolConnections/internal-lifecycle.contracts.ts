@@ -5,6 +5,7 @@ import {
   type ElectrumPoolTestContext,
 } from './electrumPoolConnectionsTestHarness';
 import prisma from '../../../../../src/models/prisma';
+import { ElectrumClient } from '../../../../../src/services/bitcoin/electrum';
 import { updateServerHealthInDb } from '../../../../../src/services/bitcoin/electrumPool/healthChecker';
 
 const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
@@ -22,6 +23,57 @@ export function registerElectrumPoolInternalLifecycleTests(context: ElectrumPool
       (context.pool as any).initializePromise = Promise.resolve();
       await context.pool!.initialize();
       expect(doInitSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect initialization timers after shutdown', async () => {
+      context.pool = createPool({
+        enabled: true,
+        minConnections: 1,
+        maxConnections: 1,
+      });
+      let finishConnect!: () => void;
+      vi.mocked(ElectrumClient).mockImplementationOnce(function(this: any) {
+        this.connect = vi.fn(() => new Promise<void>(resolve => {
+          finishConnect = resolve;
+        }));
+        this.disconnect = vi.fn();
+        this.getServerVersion = vi.fn().mockResolvedValue({ server: 'test', protocol: '1.4' });
+        this.isConnected = vi.fn().mockReturnValue(true);
+        this.on = vi.fn();
+      } as any);
+
+      const initialization = context.pool.initialize();
+      const shutdown = context.pool.shutdown();
+      finishConnect();
+      await Promise.all([initialization, shutdown]);
+
+      expect((context.pool as any).isInitialized).toBe(false);
+      expect((context.pool as any).healthCheckInterval).toBeNull();
+      expect((context.pool as any).idleCheckInterval).toBeNull();
+      expect((context.pool as any).keepaliveInterval).toBeNull();
+      expect((context.pool as any).connections.size).toBe(0);
+    });
+
+    it('contains a single-mode initialization failure observed during shutdown', async () => {
+      context.pool = createPool({ enabled: false });
+      let failConnect!: () => void;
+      vi.mocked(ElectrumClient).mockImplementationOnce(function(this: any) {
+        this.connect = vi.fn(() => new Promise<void>((_resolve, reject) => {
+          failConnect = () => reject(new Error('connect failed during shutdown'));
+        }));
+        this.disconnect = vi.fn();
+        this.isConnected = vi.fn().mockReturnValue(false);
+        this.on = vi.fn();
+      } as any);
+
+      const initialization = context.pool.initialize();
+      const observedInitialization = initialization.catch(error => error);
+      const shutdown = context.pool.shutdown();
+      failConnect();
+
+      await expect(observedInitialization).resolves.toBeInstanceOf(Error);
+      await expect(shutdown).resolves.toBeUndefined();
+      expect((context.pool as any).isInitialized).toBe(false);
     });
 
     it('emits circuit state change when repeated acquisition failures open the breaker', async () => {
@@ -430,6 +482,142 @@ export function registerElectrumPoolInternalLifecycleTests(context: ElectrumPool
 
       handle.release();
       expect(created.state).toBe('idle');
+    });
+
+    it('reserves in-flight connection capacity and makes stale releases idempotent', async () => {
+      context.pool = createPool({
+        enabled: true,
+        minConnections: 0,
+        maxConnections: 1,
+      });
+      (context.pool as any).isInitialized = true;
+      const created = makeConn({ id: 'reserved-on-demand', state: 'idle' });
+      let finishCreation!: () => void;
+      const createSpy = vi.spyOn(context.pool as any, 'createConnection')
+        .mockImplementation(() => new Promise(resolve => {
+          finishCreation = () => {
+            (context.pool as any).connections.set(created.id, created);
+            resolve(created);
+          };
+        }));
+
+      const firstPending = (context.pool as any).acquireInternal();
+      const secondPending = (context.pool as any).acquireInternal();
+
+      expect(createSpy).toHaveBeenCalledOnce();
+      expect((context.pool as any).waitingQueue).toHaveLength(1);
+      finishCreation();
+      const first = await firstPending;
+      first.release();
+      const second = await secondPending;
+      expect(created.state).toBe('active');
+
+      first.release();
+      expect(created.state).toBe('active');
+      second.release();
+      expect(created.state).toBe('idle');
+    });
+
+    it('cleans up a connection that finishes after pool shutdown', async () => {
+      context.pool = createPool({
+        enabled: true,
+        minConnections: 0,
+        maxConnections: 1,
+      });
+      (context.pool as any).isInitialized = true;
+      let finishConnect!: () => void;
+      const disconnect = vi.fn();
+      vi.mocked(ElectrumClient).mockImplementationOnce(function(this: any) {
+        this.connect = vi.fn(() => new Promise<void>(resolve => {
+          finishConnect = resolve;
+        }));
+        this.disconnect = disconnect;
+        this.getServerVersion = vi.fn().mockResolvedValue({ server: 'test', protocol: '1.4' });
+        this.isConnected = vi.fn().mockReturnValue(true);
+        this.on = vi.fn();
+      } as any);
+
+      const pending = (context.pool as any).acquireInternal();
+      const rejection = expect(pending).rejects.toThrow(
+        'Pool shut down while creating connection',
+      );
+      await context.pool.shutdown();
+      finishConnect();
+
+      await rejection;
+      expect(disconnect).toHaveBeenCalledOnce();
+      expect((context.pool as any).connections.size).toBe(0);
+    });
+
+    it('shares capacity reservations between background creation and acquisition', async () => {
+      context.pool = createPool({
+        enabled: true,
+        minConnections: 0,
+        maxConnections: 1,
+        acquisitionTimeoutMs: 10,
+      });
+      (context.pool as any).isInitialized = true;
+      let finishConnect!: () => void;
+      vi.mocked(ElectrumClient).mockImplementationOnce(function(this: any) {
+        this.connect = vi.fn(() => new Promise<void>(resolve => {
+          finishConnect = resolve;
+        }));
+        this.disconnect = vi.fn();
+        this.getServerVersion = vi.fn().mockResolvedValue({ server: 'test', protocol: '1.4' });
+        this.isConnected = vi.fn().mockReturnValue(true);
+        this.on = vi.fn();
+      } as any);
+
+      const backgroundCreate = (context.pool as any).createConnection();
+      const rejectedCreate = (context.pool as any).createConnection();
+      const queuedAcquire = (context.pool as any).acquireInternal({ timeoutMs: 10 });
+      const backgroundRejection = expect(backgroundCreate).rejects.toThrow(
+        'Pool shut down while creating connection',
+      );
+      const queuedRejection = expect(queuedAcquire).rejects.toThrow(
+        'Pool is shutting down',
+      );
+      await expect(rejectedCreate).rejects.toThrow(
+        'Pool connection capacity is reserved',
+      );
+
+      expect(vi.mocked(ElectrumClient)).toHaveBeenCalledOnce();
+      expect((context.pool as any).waitingQueue).toHaveLength(1);
+      await context.pool.shutdown();
+      finishConnect();
+
+      await backgroundRejection;
+      await queuedRejection;
+    });
+
+    it('rejects direct connection creation after shutdown begins', async () => {
+      context.pool = createPool();
+      await context.pool.shutdown();
+
+      await expect((context.pool as any).createConnection()).rejects.toThrow(
+        'Pool is shutting down',
+      );
+    });
+
+    it('keeps queued requests bounded when loss-capacity restoration fails', async () => {
+      context.pool = createPool({ enabled: true, minConnections: 0, maxConnections: 1 });
+      (context.pool as any).isInitialized = true;
+      const reject = vi.fn();
+      (context.pool as any).waitingQueue.push({
+        resolve: vi.fn(),
+        reject,
+        timeoutId: createTimeoutHandle(),
+        startTime: Date.now(),
+      });
+      vi.spyOn(context.pool as any, 'findIdleConnection').mockReturnValue(null);
+      vi.spyOn(context.pool as any, 'createConnection')
+        .mockRejectedValue(new Error('replacement unavailable'));
+
+      await (context.pool as any).wakeWaitingRequestsAfterConnectionLoss();
+
+      expect((context.pool as any).waitingQueue).toHaveLength(1);
+      await context.pool.shutdown();
+      expect(reject).toHaveBeenCalledOnce();
     });
 
     it('acquireInternal throws when waiting queue is full', async () => {

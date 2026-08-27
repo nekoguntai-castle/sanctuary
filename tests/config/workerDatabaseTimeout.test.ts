@@ -25,4 +25,12 @@ describe('worker database timeout contract', () => {
     );
     expect(worker).not.toContain('WORKER_REPLICA_ID: ${WORKER_REPLICA_ID:-}');
   });
+
+  it('forwards the bounded wallet-sync concurrency setting to the worker', () => {
+    const worker = workerServiceBlock();
+
+    expect(worker).toContain(
+      'SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-2}',
+    );
+  });
 });

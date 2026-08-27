@@ -204,6 +204,7 @@ export class WorkerJobQueue {
     this.config = {
       prefix: config.prefix ?? "sanctuary:worker",
       concurrency: config.concurrency,
+      concurrencyByQueue: config.concurrencyByQueue,
       autorun: config.autorun ?? true,
       queues: config.queues,
       defaultJobOptions: config.defaultJobOptions ?? {
@@ -253,6 +254,7 @@ export class WorkerJobQueue {
     log.info("Worker job queue initialized", {
       queues: this.config.queues,
       concurrency: this.config.concurrency,
+      concurrencyByQueue: this.config.concurrencyByQueue,
       autorun: this.config.autorun!,
       prefix: this.config.prefix,
     });
@@ -323,7 +325,9 @@ export class WorkerJobQueue {
       connection: this.connection,
       prefix: this.config.prefix,
       defaultJobOptions: this.config.defaultJobOptions,
-      concurrency: this.config.concurrency,
+      concurrency:
+        this.config.concurrencyByQueue?.[queueName]
+        ?? this.config.concurrency,
       autorun: this.config.autorun!,
       processJob: (name, job) => this.processJob(name, job),
       onRecurringCompleted: (job) =>

@@ -382,6 +382,9 @@ async function startWorker(): Promise<void> {
 
   jobQueue = new WorkerJobQueue({
     concurrency: workerConcurrency,
+    concurrencyByQueue: {
+      sync: config.sync.maxConcurrentSyncs,
+    },
     queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
     autorun: false,
   });

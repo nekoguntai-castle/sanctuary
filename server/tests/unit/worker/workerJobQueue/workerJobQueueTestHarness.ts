@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 // Define mock objects that will be shared
 export const createdWorkers: Array<{
   processFn?: (job: any) => Promise<any>;
-  options?: { autorun?: boolean };
+  options?: { autorun?: boolean; concurrency?: number };
   run: ReturnType<typeof vi.fn>;
 }> = [];
 const hoistedMocks = vi.hoisted(() => ({
@@ -67,7 +67,7 @@ vi.mock('bullmq', () => {
 
   class MockWorker {
     processFn?: (job: any) => Promise<any>;
-    options?: { autorun?: boolean };
+    options?: { autorun?: boolean; concurrency?: number };
     private running: boolean;
     run = vi.fn(async () => {
       this.running = true;
@@ -75,7 +75,7 @@ vi.mock('bullmq', () => {
     constructor(
       _queueName?: string,
       processor?: (job: any) => Promise<any>,
-      options?: { autorun?: boolean },
+      options?: { autorun?: boolean; concurrency?: number },
     ) {
       this.processFn = processor;
       this.options = options;

@@ -15,6 +15,7 @@ import {
   withWalletSyncMutationLock,
 } from "../../../src/repositories/syncIntentRepository";
 import { transactionRepository } from "../../../src/repositories/transactionRepository";
+import { cleanupTestData } from "./setup";
 
 const describeWithDatabase = process.env.DATABASE_URL
   ? describe
@@ -39,6 +40,10 @@ const PAGING_WALLET_IDS = [
 const WALLET_FENCE_TOKEN = "10000000-0000-4000-8000-000000000001";
 
 describeWithDatabase("network header reconciliation lifecycle", () => {
+  beforeEach(async () => {
+    await cleanupTestData();
+  });
+
   afterEach(async () => {
     await prisma.networkHeaderReconciliationHeader.deleteMany({
       where: { network: NETWORK },

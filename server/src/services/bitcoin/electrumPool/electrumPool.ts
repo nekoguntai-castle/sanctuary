@@ -79,8 +79,10 @@ export class ElectrumPool extends EventEmitter {
   private isShuttingDown = false;
   private isInitialized = false;
   private subscriptionConnectionId: { value: string | null } = { value: null };
+  private subscriptionConnectionPromise: Promise<import('../electrum').ElectrumClient> | null = null;
   // Lock to prevent concurrent initialization
   private initializePromise: Promise<void> | null = null;
+  private pendingAcquisitionConnections = 0;
 
   // Network identifier (for metrics)
   private network: NetworkType = 'mainnet';
@@ -341,6 +343,10 @@ export class ElectrumPool extends EventEmitter {
 
     await Promise.all(initPromises);
 
+    if (this.isShuttingDown) {
+      return;
+    }
+
     // Start health check interval
     this.healthCheckInterval = setInterval(
       () => this.performHealthChecks(),
@@ -369,7 +375,7 @@ export class ElectrumPool extends EventEmitter {
   async shutdown(): Promise<void> {
     log.info('Shutting down Electrum pool...');
     this.isShuttingDown = true;
-    this.initializePromise = null;
+    const initialization = this.initializePromise;
 
     // Clear intervals
     if (this.healthCheckInterval) {
@@ -403,6 +409,17 @@ export class ElectrumPool extends EventEmitter {
     }
     this.connections.clear();
     this.subscriptionConnectionId.value = null;
+    this.isInitialized = false;
+
+    if (initialization) {
+      await initialization.catch((error) => {
+        log.debug('Pool initialization stopped during shutdown', {
+          error: getErrorMessage(error),
+        });
+      });
+    }
+    this.initializePromise = null;
+    this.connections.clear();
     this.isInitialized = false;
 
     log.info('Electrum pool shut down');
@@ -455,13 +472,20 @@ export class ElectrumPool extends EventEmitter {
     }
 
     // Try to create a new connection if under limit
-    if (this.connections.size < this.getEffectiveMaxConnections()) {
+    if (
+      this.connections.size + this.pendingAcquisitionConnections
+      < this.getEffectiveMaxConnections()
+    ) {
+      this.pendingAcquisitionConnections++;
       try {
-        const newConn = await this.createConnection();
+        const newConn = await this.createConnection(undefined, false, true);
         return this.activateConnection(newConn, options.purpose, startTime);
       } catch (error) {
         log.warn('Failed to create new connection', { error: getErrorMessage(error) });
+        if (this.isShuttingDown) throw error;
         // Fall through to queue
+      } finally {
+        this.pendingAcquisitionConnections--;
       }
     }
 
@@ -497,18 +521,30 @@ export class ElectrumPool extends EventEmitter {
     if (!this.isInitialized) {
       await this.initialize();
     }
+    if (this.subscriptionConnectionPromise) {
+      return this.subscriptionConnectionPromise;
+    }
 
-    return getSubscriptionConn(
+    const acquisition = getSubscriptionConn(
       this.connections,
       this.subscriptionConnectionId,
       this.config,
       {
         findIdleConnection: () => this.findIdleConnection(),
-        createConnection: () => this.createConnection(),
+        createConnection: (allowOverCapacity) =>
+          this.createConnection(undefined, allowOverCapacity),
         reconnectConnection: (conn) => this.reconnectConnection(conn),
-        getEffectiveMaxConnections: () => this.getEffectiveMaxConnections(),
+        hasAvailableCapacity: () =>
+          this.connections.size + this.pendingAcquisitionConnections
+            < this.getEffectiveMaxConnections(),
       },
     );
+    this.subscriptionConnectionPromise = acquisition;
+    try {
+      return await acquisition;
+    } finally {
+      this.subscriptionConnectionPromise = null;
+    }
   }
 
   /**
@@ -599,15 +635,47 @@ export class ElectrumPool extends EventEmitter {
   /**
    * Create a new connection to a specific server or auto-select
    */
-  private async createConnection(server?: ServerConfig): Promise<PooledConnection> {
+  private async createConnection(
+    server?: ServerConfig,
+    allowOverCapacity = false,
+    reservationHeld = false,
+  ): Promise<PooledConnection> {
+    if (this.isShuttingDown) {
+      throw new Error('Pool is shutting down');
+    }
+    if (
+      !allowOverCapacity
+      && !reservationHeld
+      && this.connections.size + this.pendingAcquisitionConnections
+        >= this.getEffectiveMaxConnections()
+    ) {
+      throw new Error('Pool connection capacity is reserved');
+    }
+
+    if (!reservationHeld) this.pendingAcquisitionConnections++;
     const targetServer = server || this.selectServer();
-    return createConnection(
-      this.connections,
-      this.config,
-      this.proxyConfig,
-      targetServer,
-      (conn) => this.handleConnectionError(conn),
-    );
+    try {
+      const conn = await createConnection(
+        this.connections,
+        this.config,
+        this.proxyConfig,
+        targetServer,
+        (created) => this.handleConnectionError(created),
+        this.network,
+      );
+      if (this.isShuttingDown) {
+        conn.state = 'closed';
+        try {
+          conn.client.disconnect();
+        } finally {
+          this.connections.delete(conn.id);
+        }
+        throw new Error('Pool shut down while creating connection');
+      }
+      return conn;
+    } finally {
+      if (!reservationHeld) this.pendingAcquisitionConnections--;
+    }
   }
 
   /**
@@ -753,6 +821,23 @@ export class ElectrumPool extends EventEmitter {
       () => this.selectServer(),
       (server) => this.createConnection(server ?? undefined),
     );
+    await this.wakeWaitingRequestsAfterConnectionLoss();
+  }
+
+  private async wakeWaitingRequestsAfterConnectionLoss(): Promise<void> {
+    if (this.isShuttingDown || this.waitingQueue.length === 0) return;
+    if (
+      !this.findIdleConnection()
+      && this.connections.size + this.pendingAcquisitionConnections
+        < this.getEffectiveMaxConnections()
+    ) {
+      await this.createConnection().catch((error) => {
+        log.warn('Failed to restore capacity for queued pool requests', {
+          error: getErrorMessage(error),
+        });
+      });
+    }
+    this.processWaitingQueue();
   }
 
   /**
@@ -772,6 +857,8 @@ export class ElectrumPool extends EventEmitter {
       this.connections,
       this.subscriptionConnectionId,
       (client) => this.emit('subscriptionReconnected', client),
+      this.network,
+      () => this.isShuttingDown,
     );
   }
 

@@ -71,6 +71,20 @@ export function registerNodeClientActiveConfigTests(
     expect(active).toBe(mainnetSingleton);
   });
 
+  it("never returns the cached request facade as a subscription client", async () => {
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
+      buildNodeConfig({ poolEnabled: true }),
+    );
+    await getNodeClient("mainnet");
+    poolFacade.getSubscriptionConnection.mockRejectedValueOnce(
+      new Error("dedicated connection unavailable"),
+    );
+
+    const active = await getElectrumClientIfActive();
+
+    expect(active).toBeNull();
+  });
+
   it("returns requested network singleton client when active", async () => {
     mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
       buildNodeConfig({
@@ -239,7 +253,7 @@ export function registerNodeClientActiveConfigTests(
 
     const client = await getNodeClient("mainnet");
 
-    expect(client).toBe(poolSubscriptionClient);
+    expect(client).not.toBe(poolSubscriptionClient);
     expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledWith("mainnet");
   });
 

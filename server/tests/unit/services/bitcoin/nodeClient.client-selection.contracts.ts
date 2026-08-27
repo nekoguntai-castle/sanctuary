@@ -11,18 +11,25 @@ export function registerNodeClientSelectionTests(
     mockPrismaClient,
     mocks,
     poolFacade,
+    poolRelease,
+    poolRequestClient,
     poolSubscriptionClient,
     resetNodeClient,
     testnetSingleton,
   } = context;
 
-  it("uses pool mode for mainnet and reuses cached connected client", async () => {
+  it("uses a cached pool facade while borrowing an isolated request connection", async () => {
     const first = await getNodeClient("mainnet");
     const second = await getNodeClient("mainnet");
 
-    expect(first).toBe(poolSubscriptionClient);
     expect(second).toBe(first);
     expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledTimes(1);
+    expect(poolFacade.getSubscriptionConnection).not.toHaveBeenCalled();
+
+    await expect(first.getBlockHeight()).resolves.toBe(850000);
+    expect(poolFacade.acquire).toHaveBeenCalledWith({ purpose: "node-request" });
+    expect(poolRequestClient.getBlockHeight).toHaveBeenCalledOnce();
+    expect(poolRelease).toHaveBeenCalledOnce();
   });
 
   it("disconnects uncached clients that fail network identity verification", async () => {
@@ -71,6 +78,20 @@ export function registerNodeClientSelectionTests(
     expect(client).toBe(mainnetSingleton);
     expect(mainnetSingleton.connect).toHaveBeenCalledTimes(1);
     expect(mocks.getElectrumClientForNetwork).toHaveBeenCalledWith("mainnet");
+  });
+
+  it("falls back to singleton client when the initialized pool cannot lend a connection", async () => {
+    poolFacade.acquire.mockRejectedValueOnce(new Error("pool has no usable connections"));
+    mocks.verifyNodeClientNetwork.mockImplementationOnce(async (client: any) => {
+      await client.getBlockHeight();
+    });
+    mainnetSingleton.isConnected.mockReturnValue(false);
+
+    const client = await getNodeClient("mainnet");
+
+    expect(client).toBe(mainnetSingleton);
+    expect(poolFacade.acquire).toHaveBeenCalledOnce();
+    expect(mainnetSingleton.connect).toHaveBeenCalledOnce();
   });
 
   it("does not fall back to a singleton after pool acquisition is cancelled", async () => {
@@ -186,7 +207,7 @@ export function registerNodeClientSelectionTests(
     });
 
     const callerB = getNodeClient("mainnet");
-    await expect(callerB).resolves.toBe(poolSubscriptionClient);
+    await expect(callerB).resolves.not.toBe(poolSubscriptionClient);
     controller.abort(abortReason);
 
     await expect(callerA).rejects.toBe(abortReason);
@@ -324,7 +345,7 @@ export function registerNodeClientSelectionTests(
     const mainnetClient = await getNodeClient("mainnet");
     const testnet3Client = await getNodeClient("testnet3");
 
-    expect(mainnetClient).toBe(poolSubscriptionClient);
+    expect(mainnetClient).not.toBe(poolSubscriptionClient);
     expect(testnet3Client).toBe(testnetSingleton);
     expect(testnetSingleton.connect).toHaveBeenCalledTimes(1);
   });
@@ -334,7 +355,7 @@ export function registerNodeClientSelectionTests(
     mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(buildNodeConfig());
 
     const unknownClient = await getNodeClient("unknownnet" as any);
-    expect(unknownClient).toBe(poolSubscriptionClient);
+    expect(unknownClient).not.toBe(poolSubscriptionClient);
     expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledWith("unknownnet");
   });
 
@@ -371,10 +392,8 @@ export function registerNodeClientSelectionTests(
     );
 
     const client = await getNodeClient("signet");
-    expect(client).toBe(signetPoolClient);
-    expect(
-      (signetPool.getSubscriptionConnection as any).mock.calls.length,
-    ).toBe(1);
+    expect(client).not.toBe(signetPoolClient);
+    expect(signetPool.getSubscriptionConnection).not.toHaveBeenCalled();
   });
 
   it("supports testnet4 pool mode and defaulted null per-network values", async () => {
@@ -410,10 +429,8 @@ export function registerNodeClientSelectionTests(
     );
 
     const client = await getNodeClient("testnet4");
-    expect(client).toBe(testnet4PoolClient);
-    expect(
-      (testnet4Pool.getSubscriptionConnection as any).mock.calls.length,
-    ).toBe(1);
+    expect(client).not.toBe(testnet4PoolClient);
+    expect(testnet4Pool.getSubscriptionConnection).not.toHaveBeenCalled();
   });
 
   it("uses signet singleton defaults when signet mode is null", async () => {
@@ -454,31 +471,81 @@ export function registerNodeClientSelectionTests(
     );
 
     const client = await getNodeClient("mainnet");
-    expect(client).toBe(poolSubscriptionClient);
+    expect(client).not.toBe(poolSubscriptionClient);
   });
 
   it("resets a single network client and reconnects on next request", async () => {
-    const disconnectCallsBefore =
-      poolSubscriptionClient.disconnect.mock.calls.length;
     await getNodeClient("mainnet");
     await resetNodeClient("mainnet");
     await getNodeClient("mainnet");
 
-    expect(poolSubscriptionClient.disconnect.mock.calls.length).toBe(
-      disconnectCallsBefore + 1,
-    );
+    expect(poolSubscriptionClient.disconnect).not.toHaveBeenCalled();
     expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledWith("mainnet");
     expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledTimes(2);
   });
 
   it("resetNodeClient handles uncached network clients without disconnecting", async () => {
-    const disconnectCallsBefore =
-      poolSubscriptionClient.disconnect.mock.calls.length;
     await resetNodeClient("signet");
 
-    expect(poolSubscriptionClient.disconnect.mock.calls.length).toBe(
-      disconnectCallsBefore,
-    );
+    expect(poolSubscriptionClient.disconnect).not.toHaveBeenCalled();
     expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledWith("signet");
+  });
+
+  it("coalesces concurrent resets of the same failed network connection", async () => {
+    await getNodeClient("mainnet");
+    mocks.resetElectrumPoolForNetwork.mockClear();
+    poolSubscriptionClient.disconnect.mockClear();
+    let finishReset!: () => void;
+    mocks.resetElectrumPoolForNetwork.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishReset = resolve; }),
+    );
+
+    const first = resetNodeClient("mainnet");
+    const second = resetNodeClient("mainnet");
+
+    expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledOnce();
+    expect(poolSubscriptionClient.disconnect).not.toHaveBeenCalled();
+
+    finishReset();
+    await Promise.all([first, second]);
+    expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledOnce();
+  });
+
+  it("coalesces a global reset that starts during a network reset", async () => {
+    await getNodeClient("mainnet");
+    mocks.resetElectrumPoolForNetwork.mockClear();
+    let finishReset!: () => void;
+    mocks.resetElectrumPoolForNetwork.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishReset = resolve; }),
+    );
+
+    const networkReset = resetNodeClient("mainnet");
+    const globalReset = resetNodeClient();
+    const overlappingNetworkReset = resetNodeClient("mainnet");
+
+    expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledOnce();
+    finishReset();
+    await Promise.all([networkReset, globalReset, overlappingNetworkReset]);
+    expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledOnce();
+  });
+
+  it("coalesces a network reset that starts during a global reset", async () => {
+    await getNodeClient("mainnet");
+    mocks.resetElectrumPoolForNetwork.mockClear();
+    let finishReset!: () => void;
+    mocks.resetElectrumPoolForNetwork.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishReset = resolve; }),
+    );
+
+    const globalReset = resetNodeClient();
+    const overlappingGlobalReset = resetNodeClient();
+    const networkReset = resetNodeClient("mainnet");
+    await vi.waitFor(() => {
+      expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledOnce();
+    });
+    finishReset();
+
+    await Promise.all([globalReset, overlappingGlobalReset, networkReset]);
+    expect(mocks.resetElectrumPoolForNetwork).toHaveBeenCalledOnce();
   });
 }

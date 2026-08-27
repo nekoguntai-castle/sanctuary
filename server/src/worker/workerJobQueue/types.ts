@@ -8,6 +8,8 @@ import type { JobExecutionContext, JobLockOptions } from '../../jobs/types';
 export interface WorkerJobQueueConfig {
   /** Worker concurrency per queue (default: 3) */
   concurrency: number;
+  /** Optional queue-specific limits; unspecified queues use `concurrency`. */
+  concurrencyByQueue?: Readonly<Record<string, number>>;
   /** Queue names to create */
   queues: string[];
   /** Redis key prefix (default: 'sanctuary:worker') */

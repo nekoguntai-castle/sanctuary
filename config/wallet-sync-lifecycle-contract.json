@@ -969,6 +969,10 @@
             "role": "canonical_node_client_contract"
           },
           {
+            "file": "server/src/services/bitcoin/pooledNodeClient.ts",
+            "role": "ordinary_rpc_facade_subscription_rejection"
+          },
+          {
             "file": "server/src/worker/electrumManager/addressSubscriptions.ts",
             "role": "sole_worker_owned_subscription_fallback"
           }
@@ -992,6 +996,10 @@
           {
             "file": "server/src/services/bitcoin/nodeClient.ts",
             "role": "canonical_node_client_contract"
+          },
+          {
+            "file": "server/src/services/bitcoin/pooledNodeClient.ts",
+            "role": "ordinary_rpc_facade_subscription_rejection"
           },
           {
             "file": "server/src/worker/electrumManager/addressSubscriptions.ts",

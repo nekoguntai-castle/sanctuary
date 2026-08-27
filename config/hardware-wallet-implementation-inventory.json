@@ -222,6 +222,13 @@
       "count": 1
     },
     {
+      "source": "server/src/services/bitcoin/pooledNodeClient.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
       "source": "server/src/services/bitcoin/psbtBuilder/multisigFinalization.ts",
       "name": "finalizeMultisigInput",
       "capability": "finalize",
@@ -3061,6 +3068,22 @@
       "identity": "server/src/services/bitcoin/electrum/publicApi.ts:broadcastTransaction:callable:1",
       "vendor": "generic",
       "source": "server/src/services/bitcoin/electrum/publicApi.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/pooledNodeClient.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/pooledNodeClient.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/pooledNodeClient.ts",
       "capabilities": [
         "broadcast"
       ],

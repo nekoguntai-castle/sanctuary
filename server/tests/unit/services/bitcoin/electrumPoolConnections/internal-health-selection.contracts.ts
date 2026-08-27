@@ -350,6 +350,32 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       expect((context.pool as any).subscriptionConnectionId.value).toBe(created.id);
     });
 
+    it('coalesces concurrent subscription connection acquisition', async () => {
+      context.pool = createPool({ enabled: true, minConnections: 0, maxConnections: 1 });
+      (context.pool as any).isInitialized = true;
+      vi.spyOn(context.pool as any, 'findIdleConnection').mockReturnValue(null);
+      const created = makeConn({ id: 'single-concurrent-subscription', state: 'idle' });
+      let finishCreation!: () => void;
+      const createSpy = vi.spyOn(context.pool as any, 'createConnection')
+        .mockImplementation(() => new Promise(resolve => {
+          finishCreation = () => {
+            (context.pool as any).connections.set(created.id, created);
+            resolve(created);
+          };
+        }));
+
+      const first = context.pool.getSubscriptionConnection();
+      const second = context.pool.getSubscriptionConnection();
+      expect(createSpy).toHaveBeenCalledOnce();
+      finishCreation();
+
+      const [firstClient, secondClient] = await Promise.all([first, second]);
+      expect(firstClient).toBe(created.client);
+      expect(secondClient).toBe(created.client);
+      expect([...((context.pool as any).connections.values())]
+        .filter((conn: any) => conn.isDedicated)).toHaveLength(1);
+    });
+
     it('single-mode handle withClient returns callback result', async () => {
       context.pool = createPool({ enabled: false });
       (context.pool as any).isInitialized = true;

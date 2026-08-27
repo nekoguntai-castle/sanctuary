@@ -4,6 +4,9 @@ const { sharedNodeConfigFindFirst, sharedElectrumServerUpdate } = vi.hoisted(() 
   sharedNodeConfigFindFirst: vi.fn().mockResolvedValue(null),
   sharedElectrumServerUpdate: vi.fn().mockResolvedValue({}),
 }));
+const { verifyNodeClientNetwork } = vi.hoisted(() => ({
+  verifyNodeClientNetwork: vi.fn().mockResolvedValue(undefined),
+}));
 /**
  * ElectrumPool Unit Tests
  *
@@ -45,6 +48,10 @@ vi.mock('../../../../src/services/bitcoin/electrum', () => {
   });
   return { ElectrumClient: MockElectrumClient };
 });
+
+vi.mock('../../../../src/services/bitcoin/networkIdentity', () => ({
+  verifyNodeClientNetwork,
+}));
 
 // Mock Prisma
 vi.mock('../../../../src/models/prisma', () => ({

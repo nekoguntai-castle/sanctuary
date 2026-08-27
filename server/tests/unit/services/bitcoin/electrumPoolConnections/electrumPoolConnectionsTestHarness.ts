@@ -15,10 +15,19 @@ import {
 const electrumPoolConnectionMocks = vi.hoisted(() => ({
   sharedNodeConfigFindFirst: vi.fn().mockResolvedValue(null),
   sharedElectrumServerUpdate: vi.fn().mockResolvedValue({}),
+  verifyNodeClientNetwork: vi.fn().mockResolvedValue(undefined),
 }));
-const { sharedNodeConfigFindFirst, sharedElectrumServerUpdate } = electrumPoolConnectionMocks;
+const {
+  sharedNodeConfigFindFirst,
+  sharedElectrumServerUpdate,
+  verifyNodeClientNetwork,
+} = electrumPoolConnectionMocks;
 
-export { sharedNodeConfigFindFirst, sharedElectrumServerUpdate };
+export { sharedNodeConfigFindFirst, sharedElectrumServerUpdate, verifyNodeClientNetwork };
+
+vi.mock('../../../../../src/services/bitcoin/networkIdentity', () => ({
+  verifyNodeClientNetwork: electrumPoolConnectionMocks.verifyNodeClientNetwork,
+}));
 
 // Mock the ElectrumClient as a class
 vi.mock('../../../../../src/services/bitcoin/electrum', () => {

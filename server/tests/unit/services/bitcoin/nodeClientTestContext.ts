@@ -17,6 +17,8 @@ export type NodeClientTestContext = {
   mainnetSingleton: any;
   testnetSingleton: any;
   poolSubscriptionClient: any;
+  poolRequestClient: any;
+  poolRelease: any;
   poolFacade: any;
   getNodeClient: typeof getNodeClient;
   getActiveNodeConfig: typeof getActiveNodeConfig;
