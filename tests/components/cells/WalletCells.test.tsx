@@ -38,6 +38,30 @@ const baseWallet: WalletWithPending = {
 };
 
 describe('WalletCells', () => {
+  it('uses the shared lifecycle-clock reading for an expired table lease', () => {
+    const expiresAt = Date.parse('2026-08-27T04:30:01.000Z');
+    const wallet = {
+      ...baseWallet,
+      syncInProgress: true,
+      lastSyncStatus: null,
+      requestedIncrementalSyncGeneration: 1,
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+      syncExecutionOwner: 'worker' as const,
+      incrementalSyncClaimedAt: '2026-08-27T04:30:00.000Z',
+      incrementalSyncLeaseExpiresAt: '2026-08-27T04:30:01.000Z',
+    };
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    }, expiresAt + 1);
+
+    render(<renderers.sync item={wallet} column={baseColumn} />);
+
+    expect(screen.getByRole('button', { name: 'Sync status: Attention' })).toBeInTheDocument();
+  });
+
   it('renders name cell with icon and script type', () => {
     const renderers = createWalletCellRenderers({
       format: (sats) => `${sats} sats`,

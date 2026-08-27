@@ -9,6 +9,10 @@ import {
   successPresentation,
   terminalPresentation,
 } from './walletSyncSettledStates';
+import {
+  classifyWalletSyncLifecycle,
+  type WalletSyncLifecycleClassification,
+} from './walletSyncLifecycle';
 
 /**
  * One reading of a wallet's sync state, shared by every surface that shows it.
@@ -33,12 +37,12 @@ export { STALE_SYNC_THRESHOLD_MS } from './walletSyncSettledStates';
 
 function resyncingPresentation(
   wallet: WalletSyncSubject,
+  running: boolean,
 ): WalletSyncPresentation {
   // `resyncRepository` sets `syncInProgress: true` in the same update, so an
   // in-flight resync would otherwise read as a plain "Syncing" and a resync
   // stranded by a reaper would read as "Never synced" — for a wallet whose
   // history was just deleted. Both deserve their own wording.
-  const running = wallet.syncInProgress === true;
   const reason =
     wallet.lastSyncError ||
     (running
@@ -72,7 +76,7 @@ function retryingPresentation(
     reason,
     description: reason,
     icon: RefreshCw,
-    spinning: true,
+    spinning: false,
   };
 }
 
@@ -115,6 +119,25 @@ function actionRequiredPresentation(wallet: WalletSyncSubject): WalletSyncPresen
   };
 }
 
+function attentionPresentation(
+  wallet: WalletSyncSubject,
+  lifecycle: WalletSyncLifecycleClassification,
+): WalletSyncPresentation {
+  const description = wallet.lastSyncError || (
+    lifecycle.attentionReason === 'lease_evidence_expired'
+      ? 'Sync needs attention because its public lease evidence expired.'
+      : 'Sync needs attention because its public execution evidence is incomplete or inconsistent.'
+  );
+  return {
+    tone: 'failed',
+    label: 'Attention',
+    reason: description,
+    description,
+    icon: AlertTriangle,
+    spinning: false,
+  };
+}
+
 export function isSyncGenerationPending(
   requested: number | undefined,
   processed: number | undefined,
@@ -139,6 +162,38 @@ const TERMINAL_PRESENTATIONS: Record<
   },
 };
 
+function hasPublicLifecycleEvidence(wallet: WalletSyncSubject): boolean {
+  return [
+    wallet.syncExecutionOwner,
+    wallet.syncNextRetryAt,
+    wallet.syncStartedAt,
+    wallet.syncStateVersion,
+    wallet.requestedIncrementalSyncGeneration,
+    wallet.claimedIncrementalSyncGeneration,
+    wallet.processedIncrementalSyncGeneration,
+    wallet.incrementalSyncClaimedAt,
+    wallet.incrementalSyncLeaseExpiresAt,
+    wallet.syncActionRequiredAt,
+    wallet.requestedFullResyncGeneration,
+    wallet.preparedFullResyncGeneration,
+    wallet.processedFullResyncGeneration,
+  ].some(value => value !== null && value !== undefined);
+}
+
+function legacyActivePresentation(
+  wallet: WalletSyncSubject,
+  syncRetryInfo: WalletSyncRetryDetail | null,
+): WalletSyncPresentation | null {
+  if (hasPublicLifecycleEvidence(wallet)) return null;
+  if (wallet.lastSyncStatus === 'resyncing') {
+    return resyncingPresentation(wallet, wallet.syncInProgress === true);
+  }
+  if (syncRetryInfo || wallet.lastSyncStatus === 'retrying') {
+    return retryingPresentation(wallet, syncRetryInfo);
+  }
+  return wallet.syncInProgress ? syncingPresentation() : null;
+}
+
 /**
  * Describe a wallet's sync state.
  *
@@ -153,27 +208,25 @@ export function getWalletSyncPresentation(
   syncRetryInfo: WalletSyncRetryDetail | null = null,
   now: number = Date.now(),
 ): WalletSyncPresentation {
+  const legacyPresentation = legacyActivePresentation(wallet, syncRetryInfo);
+  if (legacyPresentation) return legacyPresentation;
+  const effectiveWallet = syncRetryInfo
+    ? { ...wallet, lastSyncStatus: 'retrying' }
+    : wallet;
+  const lifecycle = classifyWalletSyncLifecycle(effectiveWallet, now);
   const status = wallet.lastSyncStatus;
 
-  if (wallet.syncActionRequiredAt) return actionRequiredPresentation(wallet);
-  if (status === 'resyncing') return resyncingPresentation(wallet);
-  if (syncRetryInfo) {
-    return retryingPresentation(wallet, syncRetryInfo);
-  }
-  if (wallet.syncInProgress) {
-    return status === 'retrying'
-      ? retryingPresentation(wallet, null)
+  if (lifecycle.state === 'action_required') return actionRequiredPresentation(wallet);
+  if (lifecycle.state === 'running') {
+    return lifecycle.fullResyncPending || status === 'resyncing'
+      ? resyncingPresentation(wallet, true)
       : syncingPresentation();
   }
-  if (isSyncGenerationPending(
-    wallet.requestedFullResyncGeneration,
-    wallet.processedFullResyncGeneration,
-  )) return pendingPresentation(true);
-  if (isSyncGenerationPending(
-    wallet.requestedIncrementalSyncGeneration,
-    wallet.processedIncrementalSyncGeneration,
-  )) return pendingPresentation(false);
-  if (status === 'retrying') return retryingPresentation(wallet, null);
+  if (lifecycle.state === 'retrying') return retryingPresentation(wallet, syncRetryInfo);
+  if (lifecycle.state === 'pending') {
+    return pendingPresentation(lifecycle.fullResyncPending);
+  }
+  if (lifecycle.state === 'attention') return attentionPresentation(wallet, lifecycle);
   if (status === 'success') return successPresentation(wallet, now);
   if (!status) return idlePresentation(wallet);
 

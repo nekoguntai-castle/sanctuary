@@ -14,12 +14,17 @@ export type { WalletWithPending } from './WalletCells/types';
 /**
  * Create wallet cell renderers with injected dependencies
  */
-export function createWalletCellRenderers(currency: CurrencyFormatter): CellRenderers<WalletWithPending> {
+export function createWalletCellRenderers(
+  currency: CurrencyFormatter,
+  syncNow?: number,
+): CellRenderers<WalletWithPending> {
   return {
     name: NameCell,
     type: TypeCell,
     devices: DevicesCell,
-    sync: SyncCell,
+    sync: (props: CellRendererProps<WalletWithPending>) => (
+      <SyncCell {...props} syncNow={syncNow} />
+    ),
     pending: PendingCell,
     balance: ({ item }: CellRendererProps<WalletWithPending>) => (
       <BalanceCell wallet={item} currency={currency} />

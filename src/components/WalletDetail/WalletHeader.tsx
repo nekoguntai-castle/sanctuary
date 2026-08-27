@@ -16,6 +16,7 @@ import { WalletBadges } from "./WalletHeaderBadges";
 import { canEditWallet } from "../../utils/walletCapabilities";
 import { isSyncGenerationPending } from "../../utils/walletSyncPresentation";
 import { Card } from '../ui/Card';
+import type { WalletSyncControls } from '../../utils/walletSyncLifecycle';
 
 export interface WalletAgentLinkBadge {
   agentId: string;
@@ -29,6 +30,7 @@ interface WalletHeaderProps {
   wallet: Wallet;
   agentLinks?: WalletAgentLinkBadge[];
   syncing: boolean;
+  syncControls: WalletSyncControls;
   syncRetryInfo: SyncRetryInfo | null;
   onReceive: () => void;
   onSend: () => void;
@@ -72,9 +74,11 @@ function hasDurableSyncWork(wallet: Wallet): boolean {
 function SyncFailureBanner({
   wallet,
   onSync,
+  disabled,
 }: {
   wallet: Wallet;
   onSync: () => void;
+  disabled: boolean;
 }) {
   const reason = hasSyncFailureBanner(wallet) ? wallet.lastSyncError : null;
   if (!reason) {
@@ -122,7 +126,7 @@ function SyncFailureBanner({
             {reason}
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={onSync}>
+        <Button variant="secondary" size="sm" onClick={onSync} disabled={disabled}>
           <RefreshCw className="w-3 h-3 mr-1" /> Sync Now
         </Button>
       </div>
@@ -134,6 +138,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
   wallet,
   agentLinks = [],
   syncing,
+  syncControls,
   syncRetryInfo,
   onReceive,
   onSend,
@@ -187,7 +192,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
               variant="ghost"
               size="sm"
               onClick={onSync}
-              disabled={syncing}
+              disabled={syncControls.syncDisabled}
               title="Sync wallet"
             >
               <RefreshCw
@@ -198,7 +203,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
               variant="ghost"
               size="sm"
               onClick={onFullResync}
-              disabled={syncing}
+              disabled={syncControls.fullResyncDisabled}
               title="Full resync (clears and re-syncs all transactions)"
             >
               <RotateCcw
@@ -219,7 +224,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
     </Card>
 
     {/* Initial Sync Banner - shown for newly imported wallets */}
-    {!wallet.lastSyncedAt && (syncing || wallet.syncInProgress) && (
+    {!wallet.lastSyncedAt && syncing && (
       <div className="surface-elevated rounded-xl p-4 shadow-sm border border-primary-200 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/30 animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="flex-shrink-0">
@@ -238,7 +243,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
       </div>
     )}
 
-    <SyncFailureBanner wallet={wallet} onSync={onSync} />
+    <SyncFailureBanner wallet={wallet} onSync={onSync} disabled={syncControls.syncDisabled} />
 
     {/* Never Synced Banner - shown when sync hasn't started.
         `retrying` no longer suppresses it: a wallet that has never synced and
@@ -266,7 +271,12 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
                 "Sync" to fetch your transaction history and balance.
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={onSync}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onSync}
+              disabled={syncControls.syncDisabled}
+            >
               <RefreshCw className="w-3 h-3 mr-1" /> Sync Now
             </Button>
           </div>

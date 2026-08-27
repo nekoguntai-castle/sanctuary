@@ -80,6 +80,15 @@ describe('mapApiWalletToDashboardWallet', () => {
       syncNextRetryAt: '2026-08-20T12:01:00.000Z',
       syncStartedAt: null,
       syncStateVersion: 17,
+      requestedIncrementalSyncGeneration: 0,
+      claimedIncrementalSyncGeneration: 0,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: null,
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 3,
+      preparedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
     } as unknown as Wallet);
 
     expect(mapped.lastSyncError).toBe('connect ECONNREFUSED 127.0.0.1:50002');
@@ -91,6 +100,15 @@ describe('mapApiWalletToDashboardWallet', () => {
       syncNextRetryAt: '2026-08-20T12:01:00.000Z',
       syncStartedAt: null,
       syncStateVersion: 17,
+      requestedIncrementalSyncGeneration: 0,
+      claimedIncrementalSyncGeneration: 0,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: null,
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 3,
+      preparedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
     });
   });
 });

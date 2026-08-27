@@ -7,7 +7,12 @@ describe('LogTab branch coverage', () => {
     logs: [],
     isPaused: false,
     isLoading: false,
-    syncing: false,
+    syncLifecycle: { state: 'settled', incrementalPending: false, fullResyncPending: false } as const,
+    syncControls: {
+      requestSubmitting: false, executionRunning: false, requestPending: false,
+      incrementalPending: false, fullResyncPending: false, actionRequired: false,
+      syncDisabled: false, fullResyncDisabled: false,
+    },
     onTogglePause: vi.fn(),
     onClearLogs: vi.fn(),
     onSync: vi.fn(),
@@ -32,7 +37,15 @@ describe('LogTab branch coverage', () => {
       { id: '6', level: 'info', module: 'ELECTRUM', message: 'info electrum', timestamp: Date.now() },
     ] as any;
 
-    const props = buildProps({ logs, isPaused: true, syncing: true });
+    const props = buildProps({
+      logs,
+      isPaused: true,
+      syncControls: {
+        requestSubmitting: true, executionRunning: false, requestPending: false,
+        incrementalPending: false, fullResyncPending: false, actionRequired: false,
+        syncDisabled: true, fullResyncDisabled: true,
+      },
+    });
     render(<LogTab {...props} />);
 
     const syncButton = screen.getByRole('button', { name: 'Sync' });

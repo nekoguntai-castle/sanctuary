@@ -31,7 +31,6 @@ describe('useWalletWebSocket', () => {
 
   const setWallet = vi.fn();
   const setTransactions = vi.fn();
-  const setSyncing = vi.fn();
   const setSyncRetryInfo = vi.fn();
   const fetchData = vi.fn();
 
@@ -42,7 +41,6 @@ describe('useWalletWebSocket', () => {
         wallet,
         setWallet,
         setTransactions,
-        setSyncing,
         setSyncRetryInfo,
         fetchData,
       })
@@ -248,7 +246,6 @@ describe('useWalletWebSocket', () => {
     expect(updatedWallet.lastSyncStatus).toBe('idle');
     expect(updatedWallet.lastSyncedAt).toBe('2026-02-01T00:00:00.000Z');
     expect(setSyncRetryInfo).not.toHaveBeenCalled();
-    expect(setSyncing).not.toHaveBeenCalled();
   });
 
   it('returns null from sync wallet updater when previous wallet is null', () => {
@@ -263,7 +260,7 @@ describe('useWalletWebSocket', () => {
     expect(updater(null)).toBeNull();
   });
 
-  it('clears syncing and refreshes on successful sync completion', () => {
+  it('refreshes on successful sync completion', () => {
     handlers.onSync({
       inProgress: false,
       status: 'success',
@@ -272,18 +269,16 @@ describe('useWalletWebSocket', () => {
     });
 
     expect(setSyncRetryInfo).toHaveBeenCalledWith(null);
-    expect(setSyncing).toHaveBeenCalledWith(false);
     expect(fetchData).toHaveBeenCalledWith(true);
   });
 
-  it('clears syncing without refreshing when sync fails', () => {
+  it('clears retry detail without refreshing when sync fails', () => {
     handlers.onSync({
       inProgress: false,
       status: 'failed',
     });
 
     expect(setSyncRetryInfo).toHaveBeenCalledWith(null);
-    expect(setSyncing).toHaveBeenCalledWith(false);
     expect(fetchData).not.toHaveBeenCalled();
   });
 
@@ -347,7 +342,6 @@ describe('useWalletWebSocket', () => {
 
     expect(setWallet).not.toHaveBeenCalled();
     expect(setSyncRetryInfo).not.toHaveBeenCalled();
-    expect(setSyncing).not.toHaveBeenCalled();
     expect(fetchData).not.toHaveBeenCalled();
   });
 
@@ -385,7 +379,6 @@ describe('useWalletWebSocket', () => {
         wallet: { id: 'wallet-1', name: 'Primary Wallet', balance: 10_000 } as any,
         setWallet,
         setTransactions,
-        setSyncing,
         setSyncRetryInfo,
         fetchData,
       })
@@ -404,7 +397,6 @@ describe('useWalletWebSocket', () => {
         wallet: { id: walletId, name: walletId, balance: 10_000 } as any,
         setWallet,
         setTransactions,
-        setSyncing,
         setSyncRetryInfo,
         fetchData,
       }),
@@ -422,7 +414,6 @@ describe('useWalletWebSocket', () => {
 
     expect(setWallet).not.toHaveBeenCalled();
     expect(addNotification).not.toHaveBeenCalled();
-    expect(setSyncing).not.toHaveBeenCalled();
     expect(fetchData).not.toHaveBeenCalled();
   });
 });

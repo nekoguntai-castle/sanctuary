@@ -86,6 +86,15 @@ export function mapApiWalletToDashboardWallet(wallet: Wallet): Wallet {
     syncNextRetryAt: wallet.syncNextRetryAt,
     syncStartedAt: wallet.syncStartedAt,
     syncStateVersion: wallet.syncStateVersion,
+    requestedIncrementalSyncGeneration: wallet.requestedIncrementalSyncGeneration,
+    claimedIncrementalSyncGeneration: wallet.claimedIncrementalSyncGeneration,
+    processedIncrementalSyncGeneration: wallet.processedIncrementalSyncGeneration,
+    incrementalSyncClaimedAt: wallet.incrementalSyncClaimedAt,
+    incrementalSyncLeaseExpiresAt: wallet.incrementalSyncLeaseExpiresAt,
+    syncActionRequiredAt: wallet.syncActionRequiredAt,
+    requestedFullResyncGeneration: wallet.requestedFullResyncGeneration,
+    preparedFullResyncGeneration: wallet.preparedFullResyncGeneration,
+    processedFullResyncGeneration: wallet.processedFullResyncGeneration,
   };
 }
 

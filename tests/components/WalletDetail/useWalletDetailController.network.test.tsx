@@ -11,6 +11,7 @@ const controllerState = vi.hoisted(() => ({
   routeId: 'wallet-1' as string | undefined,
   user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
   fetchData: vi.fn(),
+  refreshData: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -120,6 +121,7 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletData', () => ({
     walletShareInfo: null,
     setWalletShareInfo: vi.fn(),
     fetchData: controllerState.fetchData,
+    refreshData: controllerState.refreshData,
   }),
 }));
 

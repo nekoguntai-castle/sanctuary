@@ -10,6 +10,10 @@ import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient, WebSocketEvent } from '../../services/websocket';
 import { getWalletLogs } from '../../api/sync';
 import { createLogger } from '../../utils/logger';
+import {
+  mergeWalletLogEntries,
+  normalizeWalletLogMaxEntries,
+} from './walletLogMerge';
 
 const log = createLogger('useWebSocket');
 
@@ -32,57 +36,96 @@ export const useWalletLogs = (
     enabled?: boolean;
   } = {}
 ) => {
-  const { maxEntries = 500, enabled = true } = options;
+  const { enabled = true } = options;
+  const maxEntries = normalizeWalletLogMaxEntries(options.maxEntries);
   const [logs, setLogs] = useState<WalletLogEntry[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const logsRef = useRef<WalletLogEntry[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const pausedRef = useRef(false);
+  const maxEntriesRef = useRef(maxEntries);
+  const sessionRef = useRef({ walletId, epoch: 0 });
+  const clearEpochRef = useRef(0);
 
-  // Keep ref in sync with state for use in callbacks
+  maxEntriesRef.current = maxEntries;
+
+  const commitLogs = useCallback((incoming: readonly WalletLogEntry[]) => {
+    const next = mergeWalletLogEntries(
+      logsRef.current,
+      incoming,
+      maxEntriesRef.current,
+    );
+    logsRef.current = next;
+    seenIdsRef.current = new Set(next.map(entry => entry.id));
+    setLogs(next);
+  }, []);
+
+  // Reset wallet-owned state even when live subscriptions are disabled.
   useEffect(() => {
-    logsRef.current = logs;
-  }, [logs]);
+    if (sessionRef.current.walletId === walletId) return;
+    sessionRef.current = { walletId, epoch: sessionRef.current.epoch + 1 };
+    clearEpochRef.current += 1;
+    logsRef.current = [];
+    seenIdsRef.current.clear();
+    setLogs([]);
+    setIsLoading(false);
+  }, [walletId]);
+
+  useEffect(() => {
+    commitLogs([]);
+  }, [commitLogs, maxEntries]);
 
   const clearLogs = useCallback(() => {
+    clearEpochRef.current += 1;
     setLogs([]);
+    setIsLoading(false);
     logsRef.current = [];
     seenIdsRef.current.clear();
   }, []);
 
   const togglePause = useCallback(() => {
-    setIsPaused(prev => !prev);
+    setIsPaused(prev => {
+      const next = !prev;
+      pausedRef.current = next;
+      return next;
+    });
   }, []);
 
   // Fetch historical logs when enabled
   useEffect(() => {
-    if (!walletId || !enabled) return;
+    if (!walletId || !enabled) {
+      setIsLoading(false);
+      return;
+    }
 
     let cancelled = false;
+    const sessionEpoch = sessionRef.current.epoch;
+    const clearEpoch = clearEpochRef.current;
+    const isCurrentRequest = () => !cancelled
+      && sessionRef.current.walletId === walletId
+      && sessionRef.current.epoch === sessionEpoch
+      && clearEpochRef.current === clearEpoch;
     setIsLoading(true);
 
     getWalletLogs(walletId)
       .then(historicalLogs => {
-        if (cancelled) return;
-
-        // Initialize with historical logs
-        setLogs(historicalLogs);
-
-        // Track seen IDs to avoid duplicates with real-time updates
-        seenIdsRef.current = new Set(historicalLogs.map(log => log.id));
+        if (!isCurrentRequest()) return;
+        commitLogs(historicalLogs);
       })
       .catch(err => {
+        if (!isCurrentRequest()) return;
         // Silently fail - logs are optional
         log.warn('Failed to fetch historical logs', { error: err });
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (isCurrentRequest()) setIsLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [walletId, enabled]);
+  }, [walletId, enabled, commitLogs]);
 
   // Subscribe to real-time log events
   useEffect(() => {
@@ -102,27 +145,13 @@ export const useWalletLogs = (
       if (eventChannel !== channel) return;
 
       // Don't add if paused
-      if (isPaused) return;
+      if (pausedRef.current) return;
 
       const entry = event.data as WalletLogEntry;
 
       // Skip if we've already seen this entry (from historical fetch)
       if (seenIdsRef.current.has(entry.id)) return;
-      seenIdsRef.current.add(entry.id);
-
-      setLogs(prev => {
-        const newLogs = [...prev, entry];
-        // Keep only last maxEntries
-        if (newLogs.length > maxEntries) {
-          // Also clean up seenIds for removed entries
-          const removedLogs = newLogs.slice(0, newLogs.length - maxEntries);
-          for (const removed of removedLogs) {
-            seenIdsRef.current.delete(removed.id);
-          }
-          return newLogs.slice(-maxEntries);
-        }
-        return newLogs;
-      });
+      commitLogs([entry]);
     };
 
     websocketClient.on('log', handleLog);
@@ -131,12 +160,13 @@ export const useWalletLogs = (
       websocketClient.unsubscribe(channel);
       websocketClient.off('log', handleLog);
     };
-  }, [walletId, enabled, maxEntries, isPaused]);
+  }, [walletId, enabled, commitLogs]);
 
+  const currentSession = sessionRef.current.walletId === walletId;
   return {
-    logs,
+    logs: currentSession ? logs : [],
     isPaused,
-    isLoading,
+    isLoading: currentSession ? isLoading : false,
     clearLogs,
     togglePause,
   };

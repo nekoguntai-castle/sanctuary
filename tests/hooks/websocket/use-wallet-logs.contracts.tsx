@@ -50,6 +50,32 @@ const emitWalletLogEvent = (event: unknown): void => {
   });
 };
 
+const walletLogEvent = (
+  walletId: string,
+  id: string,
+  timestamp = '2025-01-01T00:00:00Z',
+) => ({
+  event: 'log',
+  channel: `wallet:${walletId}:log`,
+  data: {
+    id,
+    timestamp,
+    level: 'info' as const,
+    module: 'sync',
+    message: id,
+  },
+});
+
+const deferredLogs = () => {
+  let resolve!: (value: any[]) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<any[]>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 const registerWalletLogSubscriptionTests = (): void => {
     it('should subscribe to wallet log channel when enabled', async () => {
       await renderWalletLogs('wallet-123', { enabled: true });
@@ -264,6 +290,8 @@ const registerWalletLogStateTests = (): void => {
       });
 
       expect(result.current.isPaused).toBe(false);
+      expect(mockSubscribe).toHaveBeenCalledTimes(1);
+      expect(mockUnsubscribe).not.toHaveBeenCalled();
     });
 
     it('should not add logs when paused', async () => {
@@ -300,6 +328,130 @@ const registerWalletLogStateTests = (): void => {
 };
 
 const registerWalletLogHistoryTests = (): void => {
+    it('retains a live entry when later empty history resolves', async () => {
+      const history = deferredLogs();
+      mockGetWalletLogs.mockReturnValueOnce(history.promise);
+      const { result } = renderHook(() => useWalletLogs('wallet-live-first'));
+
+      emitWalletLogEvent(walletLogEvent('wallet-live-first', 'live'));
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['live']);
+
+      await act(async () => {
+        history.resolve([]);
+        await history.promise;
+      });
+
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['live']);
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it('merges overlapping history without replacing the live duplicate', async () => {
+      const history = deferredLogs();
+      mockGetWalletLogs.mockReturnValueOnce(history.promise);
+      const { result } = renderHook(() => useWalletLogs('wallet-overlap'));
+      const live = walletLogEvent(
+        'wallet-overlap',
+        'shared',
+        '2025-01-01T00:02:00Z',
+      );
+      emitWalletLogEvent(live);
+
+      await act(async () => {
+        history.resolve([
+          walletLogEvent('wallet-overlap', 'history', '2025-01-01T00:01:00Z').data,
+          { ...live.data, message: 'stale history duplicate' },
+        ]);
+        await history.promise;
+      });
+
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['history', 'shared']);
+      expect(result.current.logs[1].message).toBe('shared');
+    });
+
+    it('does not let pending history undo a clear', async () => {
+      const history = deferredLogs();
+      mockGetWalletLogs.mockReturnValueOnce(history.promise);
+      const { result } = renderHook(() => useWalletLogs('wallet-cleared'));
+
+      act(() => result.current.clearLogs());
+      await act(async () => {
+        history.resolve([walletLogEvent('wallet-cleared', 'late').data]);
+        await history.promise;
+      });
+
+      expect(result.current.logs).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it('resets wallet-owned state on an identity change while disabled', async () => {
+      const renderedLogIds: string[][] = [];
+      const { result, rerender } = renderHook(
+        ({ walletId, enabled }) => {
+          const value = useWalletLogs(walletId, { enabled });
+          renderedLogIds.push(value.logs.map(entry => entry.id));
+          return value;
+        },
+        { initialProps: { walletId: 'wallet-a', enabled: true } },
+      );
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      emitWalletLogEvent(walletLogEvent('wallet-a', 'wallet-a-log'));
+      expect(result.current.logs).toHaveLength(1);
+
+      const renderCountBeforeSwitch = renderedLogIds.length;
+      rerender({ walletId: 'wallet-b', enabled: false });
+
+      expect(result.current.logs).toEqual([]);
+      expect(renderedLogIds.slice(renderCountBeforeSwitch)).not.toContainEqual(['wallet-a-log']);
+      expect(mockGetWalletLogs).toHaveBeenCalledTimes(1);
+      expect(mockSubscribe).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores rejection from an earlier wallet session', async () => {
+      const staleHistory = deferredLogs();
+      mockGetWalletLogs
+        .mockReturnValueOnce(staleHistory.promise)
+        .mockResolvedValueOnce([walletLogEvent('wallet-b', 'wallet-b-log').data]);
+      const { result, rerender } = renderHook(
+        ({ walletId }) => useWalletLogs(walletId),
+        { initialProps: { walletId: 'wallet-a' } },
+      );
+
+      rerender({ walletId: 'wallet-b' });
+      await waitFor(() => {
+        expect(result.current.logs.map(entry => entry.id)).toEqual(['wallet-b-log']);
+      });
+      await act(async () => {
+        staleHistory.reject(new Error('late wallet-a failure'));
+        await staleHistory.promise.catch(() => undefined);
+      });
+
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['wallet-b-log']);
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it('ignores successful history from an earlier enabled wallet session', async () => {
+      const staleHistory = deferredLogs();
+      mockGetWalletLogs
+        .mockReturnValueOnce(staleHistory.promise)
+        .mockResolvedValueOnce([walletLogEvent('wallet-b', 'wallet-b-log').data]);
+      const { result, rerender } = renderHook(
+        ({ walletId }) => useWalletLogs(walletId),
+        { initialProps: { walletId: 'wallet-a' } },
+      );
+
+      rerender({ walletId: 'wallet-b' });
+      await waitFor(() => {
+        expect(result.current.logs.map(entry => entry.id)).toEqual(['wallet-b-log']);
+      });
+      await act(async () => {
+        staleHistory.resolve([walletLogEvent('wallet-a', 'stale-wallet-a-log').data]);
+        await staleHistory.promise;
+      });
+
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['wallet-b-log']);
+      expect(result.current.isLoading).toBe(false);
+    });
+
     it('should skip history state updates when request resolves after unmount', async () => {
       let resolveLogs!: (value: any[]) => void;
       const pendingLogs = new Promise<any[]>((resolve) => {
@@ -340,6 +492,40 @@ const registerWalletLogHistoryTests = (): void => {
     });
 };
 
+const registerWalletLogCapTests = (): void => {
+    it.each([
+      ['negative', -1, 500],
+      ['fraction', 2.9, 2],
+      ['NaN', Number.NaN, 500],
+      ['Infinity', Number.POSITIVE_INFINITY, 500],
+      ['zero', 0, 0],
+      ['one', 1, 1],
+      ['over 500', 501, 500],
+    ])('applies the normalized %s cap to list and seen ids', async (_label, cap, expected) => {
+      const { result } = await renderWalletLogs('wallet-cap', { maxEntries: cap });
+      const count = expected >= 500 ? 501 : 4;
+      for (let index = 0; index < count; index += 1) {
+        emitWalletLogEvent(walletLogEvent(
+          'wallet-cap',
+          `log-${index}`,
+          new Date(Date.UTC(2025, 0, 1, 0, 0, index)).toISOString(),
+        ));
+      }
+
+      expect(result.current.logs).toHaveLength(expected);
+    });
+
+    it('allows an id evicted by the cap to be accepted again', async () => {
+      const { result } = await renderWalletLogs('wallet-seen-cap', { maxEntries: 1 });
+      emitWalletLogEvent(walletLogEvent('wallet-seen-cap', 'first', '2025-01-01T00:00:00Z'));
+      emitWalletLogEvent(walletLogEvent('wallet-seen-cap', 'second', '2025-01-01T00:01:00Z'));
+      emitWalletLogEvent(walletLogEvent('wallet-seen-cap', 'first', '2025-01-01T00:02:00Z'));
+
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['first']);
+      expect(result.current.logs[0].timestamp).toBe('2025-01-01T00:02:00Z');
+    });
+};
+
 export function registerUseWalletLogsTests(): void {
   describe('useWalletLogs', () => {
     beforeEach(resetUseWalletLogsHarness);
@@ -348,5 +534,6 @@ export function registerUseWalletLogsTests(): void {
     registerWalletLogEventTests();
     registerWalletLogStateTests();
     registerWalletLogHistoryTests();
+    registerWalletLogCapTests();
   });
 }

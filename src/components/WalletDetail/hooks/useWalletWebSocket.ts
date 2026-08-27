@@ -20,7 +20,6 @@ interface UseWalletWebSocketOptions {
   wallet: Wallet | null;
   setWallet: React.Dispatch<React.SetStateAction<Wallet | null>>;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
-  setSyncing: (syncing: boolean) => void;
   setSyncRetryInfo: (info: SyncRetryInfo | null) => void;
   fetchData: (silent?: boolean) => void;
 }
@@ -31,7 +30,6 @@ export function useWalletWebSocket({
   wallet,
   setWallet,
   setTransactions,
-  setSyncing,
   setSyncRetryInfo,
   fetchData,
 }: UseWalletWebSocketOptions) {
@@ -149,11 +147,6 @@ export function useWalletWebSocket({
       } else if (data.status === 'success' || data.status === 'failed') {
         // Clear retry info on success or final failure
         setSyncRetryInfo(null);
-      }
-
-      // If sync completed, clear local syncing state (don't wait for HTTP response)
-      if (data.inProgress === false) {
-        setSyncing(false);
       }
 
       // If sync completed successfully, refresh data

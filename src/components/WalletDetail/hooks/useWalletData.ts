@@ -302,10 +302,10 @@ export function useWalletData({
     }
   }, [addAppNotification, addrList, removeNotificationsByType, txList, utxoList]);
 
-  const fetchData = useCallback(async (isRefresh = false) => {
+  const fetchDataWithResult = useCallback(async (isRefresh = false) => {
     const request = ownership.beginFetch(routeKey);
     const ownsRequest = () => ownership.isFetchOwner(request);
-    if (!id || !user || !ownsRequest()) return;
+    if (!id || !user || !ownsRequest()) return false;
     const replacements = {
       addresses: addrList.beginReplacement(),
       transactions: txList.beginReplacement(),
@@ -326,19 +326,19 @@ export function useWalletData({
       apiWallet = await fetchWalletCore(id);
     } catch (err) {
       log.error('Failed to fetch wallet', { error: err });
-      if (!ownsRequest()) return;
+      if (!ownsRequest()) return false;
       failReplacements();
       if (err instanceof ApiError) {
-        if (err.status === 404) { navigate('/wallets'); return; }
+        if (err.status === 404) { navigate('/wallets'); return false; }
         setError(err.message);
       } else {
         setError('Failed to load wallet');
       }
       setLoading(false);
-      return;
+      return false;
     }
 
-    if (!ownsRequest()) return;
+    if (!ownsRequest()) return false;
     const formattedWallet = formatWalletFromApi(apiWallet, user.id);
     setWallet(current => mergeWalletHttpSyncState(current, formattedWallet));
     setLoading(false);
@@ -349,18 +349,19 @@ export function useWalletData({
       utxo: UTXO_PAGE_SIZE,
       address: ADDRESS_PAGE_SIZE,
     });
-    if (!ownsRequest()) return;
+    if (!ownsRequest()) return false;
 
     applyAuxiliaryData(aux, id, replacements);
 
     // 3. Groups & share info (sequential, after main parallel batch)
     const fetchedGroups = await loadGroups(user);
-    if (!ownsRequest()) return;
+    if (!ownsRequest()) return false;
     setGroups(fetchedGroups);
 
     const shareInfo = await loadWalletShareInfo(id);
-    if (!ownsRequest()) return;
+    if (!ownsRequest()) return false;
     setWalletShareInfo(shareInfo);
+    return true;
   }, [
     applyAuxiliaryData,
     id,
@@ -369,6 +370,13 @@ export function useWalletData({
     routeKey,
     user,
   ]);
+  const fetchData = useCallback(async (isRefresh = false) => {
+    await fetchDataWithResult(isRefresh);
+  }, [fetchDataWithResult]);
+  const refreshData = useCallback(
+    () => fetchDataWithResult(true),
+    [fetchDataWithResult],
+  );
 
   useEffect(() => {
     void fetchData();
@@ -454,5 +462,6 @@ export function useWalletData({
 
     // Refresh
     fetchData,
+    refreshData,
   };
 }

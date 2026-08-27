@@ -81,6 +81,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
           isExpanded={expanded.wallets}
           onToggle={() => toggleSection('wallets')}
           getWalletCount={getWalletCount}
+          scopeKey={selectedNetwork}
         />
         <SidebarDeviceSection
           show={isNavItemVisible(devicesNavItem, capabilities)}

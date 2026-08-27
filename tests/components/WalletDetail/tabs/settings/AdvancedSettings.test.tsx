@@ -26,6 +26,17 @@ const defaultProps = {
   onShowExport: vi.fn(),
 };
 
+const idleSyncControls = {
+  requestSubmitting: false,
+  executionRunning: false,
+  requestPending: false,
+  incrementalPending: false,
+  fullResyncPending: false,
+  actionRequired: false,
+  syncDisabled: false,
+  fullResyncDisabled: false,
+};
+
 const renderComponent = (overrides: Partial<typeof defaultProps> = {}) =>
   render(<AdvancedSettings {...defaultProps} {...overrides} />);
 
@@ -73,6 +84,26 @@ describe('AdvancedSettings', () => {
     const syncingButtons = screen.getAllByRole('button', { name: 'Syncing...' });
     expect(syncingButtons).toHaveLength(2);
     syncingButtons.forEach(btn => expect(btn).toBeDisabled());
+  });
+
+  it('uses independent production control state for submission and execution', () => {
+    const { rerender } = renderComponent({
+      syncControls: { ...idleSyncControls, requestSubmitting: true, syncDisabled: true },
+    } as never);
+    expect(screen.getAllByRole('button', { name: 'Syncing...' })).toHaveLength(2);
+
+    rerender(
+      <AdvancedSettings
+        {...defaultProps}
+        syncControls={{
+          ...idleSyncControls,
+          executionRunning: true,
+          syncDisabled: true,
+          fullResyncDisabled: true,
+        }}
+      />,
+    );
+    expect(screen.getAllByRole('button', { name: 'Syncing...' })).toHaveLength(2);
   });
 
   it('calls onSync when Sync button is clicked', () => {

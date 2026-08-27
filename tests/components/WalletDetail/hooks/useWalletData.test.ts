@@ -1212,6 +1212,25 @@ describe('useWalletData', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it('reports whether a status refresh completed its critical wallet fetch', async () => {
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    vi.mocked(walletsApi.getWallet).mockRejectedValueOnce(new Error('refresh failed'));
+    let failedRefresh = true;
+    await act(async () => {
+      failedRefresh = await result.current.refreshData();
+    });
+    expect(failedRefresh).toBe(false);
+
+    vi.mocked(walletsApi.getWallet).mockResolvedValueOnce(baseWallet as never);
+    let successfulRefresh = false;
+    await act(async () => {
+      successfulRefresh = await result.current.refreshData();
+    });
+    expect(successfulRefresh).toBe(true);
+  });
+
   it('handles non-critical fetch failures, non-admin groups path, and visibility refresh', async () => {
     const nonAdminUser = { id: 'user-2', isAdmin: false } as any;
     vi.mocked(walletsApi.getWallet).mockResolvedValueOnce({

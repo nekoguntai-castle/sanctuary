@@ -5,6 +5,7 @@ import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useUser } from '../../contexts/UserContext';
 import { useBitcoinStatus } from '../../hooks/queries/useBitcoin';
 import { useWalletLabels } from '../../hooks/queries/useWalletLabels';
+import { useWalletSyncLifecycleClock } from '../../hooks/useWalletSyncLifecycleClock';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useWalletLogs } from '../../hooks/websocket';
@@ -24,6 +25,11 @@ import { useWalletMutations } from './hooks/useWalletMutations';
 import { useWalletSharing } from './hooks/useWalletSharing';
 import { useWalletSync } from './hooks/useWalletSync';
 import { useWalletWebSocket } from './hooks/useWalletWebSocket';
+import {
+  classifyWalletSyncLifecycle,
+  deriveWalletSyncControls,
+  projectAcceptedWalletSyncIntent,
+} from '../../utils/walletSyncLifecycle';
 import type { AccessSubTab, AddressSubTab, SettingsSubTab } from './types';
 
 interface WalletDetailLocationState {
@@ -74,9 +80,13 @@ export const useWalletDetailController = () => {
     explorerUrl,
     groups,
     walletShareInfo, setWalletShareInfo,
-    fetchData,
+    fetchData, refreshData,
   } = useWalletData({ id, user });
   const walletUserRole = wallet?.userRole || 'viewer';
+  const refreshSyncStatus = async () => {
+    const refreshed = await refreshData();
+    if (!refreshed) throw new Error('Wallet status refresh did not complete');
+  };
 
   useEffect(() => {
     if (!wallet) return;
@@ -90,14 +100,32 @@ export const useWalletDetailController = () => {
   }, [selectedNetwork, setSelectedNetwork, wallet]);
 
   const {
-    syncing, setSyncing,
+    requestSubmitting,
+    acceptedIntent,
     syncRetryInfo, setSyncRetryInfo,
     handleSync, handleFullResync,
   } = useWalletSync({
     walletId: id,
     ownershipKey,
-    onDataRefresh: () => fetchData(true),
+    onDataRefresh: refreshSyncStatus,
+    syncState: wallet,
   });
+  const syncSubjects = useMemo(() => wallet ? [wallet] : [], [wallet]);
+  const syncNow = useWalletSyncLifecycleClock(syncSubjects, ownershipKey);
+  const authoritativeSyncLifecycle = classifyWalletSyncLifecycle(wallet ?? {}, syncNow);
+  const syncPresentationWallet = wallet
+    ? projectAcceptedWalletSyncIntent(
+      wallet,
+      acceptedIntent ?? undefined,
+      authoritativeSyncLifecycle.state === 'running',
+    )
+    : null;
+  const syncLifecycle = classifyWalletSyncLifecycle(syncPresentationWallet ?? {}, syncNow);
+  const syncControls = deriveWalletSyncControls(wallet ?? {}, authoritativeSyncLifecycle, {
+    requestSubmitting,
+    acceptedIntent: acceptedIntent ?? undefined,
+  });
+  const syncing = syncControls.requestSubmitting || syncControls.executionRunning;
 
   const {
     filters: txFilters,
@@ -166,7 +194,7 @@ export const useWalletDetailController = () => {
     devices,
     walletShareInfo,
     groups,
-    onDataRefresh: () => fetchData(true),
+    onDataRefresh: async () => { await fetchData(true); },
     setWalletShareInfo,
     setWallet,
   });
@@ -240,7 +268,6 @@ export const useWalletDetailController = () => {
     wallet,
     setWallet,
     setTransactions,
-    setSyncing,
     setSyncRetryInfo,
     fetchData,
   });
@@ -326,6 +353,10 @@ export const useWalletDetailController = () => {
     fetchData,
     walletUserRole,
     syncing,
+    syncNow,
+    syncLifecycle,
+    syncControls,
+    syncPresentationWallet,
     syncRetryInfo,
     handleSync,
     handleFullResync,

@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { SyncExecutionOwner } from '@sanctuary/shared/constants/sync';
 
 /**
  * Shared shape for one reading of a wallet's sync state.
@@ -20,10 +21,18 @@ export interface WalletSyncSubject {
   lastSyncError?: string | null;
   lastSyncedAt?: string | null;
   syncInProgress?: boolean;
+  syncExecutionOwner?: SyncExecutionOwner | null;
+  syncNextRetryAt?: string | null;
+  syncStartedAt?: string | null;
+  syncStateVersion?: number;
   requestedIncrementalSyncGeneration?: number;
+  claimedIncrementalSyncGeneration?: number;
   processedIncrementalSyncGeneration?: number;
+  incrementalSyncClaimedAt?: string | null;
+  incrementalSyncLeaseExpiresAt?: string | null;
   syncActionRequiredAt?: string | null;
   requestedFullResyncGeneration?: number;
+  preparedFullResyncGeneration?: number;
   processedFullResyncGeneration?: number;
 }
 

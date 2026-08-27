@@ -1,7 +1,7 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import { act,fireEvent,render,screen } from '@testing-library/react';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { SidebarContent } from '../../../src/components/Layout/SidebarContent';
 import { hasRequiredCapabilities } from '../../../src/app/capabilities';
 
@@ -27,13 +27,15 @@ vi.mock('../../../src/components/Layout/NavItem', () => ({
 }));
 
 vi.mock('../../../src/components/Layout/SubNavItem', () => ({
-  SubNavItem: ({ label, to, activeColorClass, badgeCount, icon }: any) => (
+  SubNavItem: ({ label, to, activeColorClass, badgeCount, icon, statusDot, statusDotTitle }: any) => (
     <div
       data-testid="subnav-item"
       data-label={label}
       data-to={to}
       data-active={activeColorClass || ''}
       data-badge={badgeCount ?? 0}
+      data-status={statusDot}
+      data-status-title={statusDotTitle}
     >
       {label}
       {icon}
@@ -89,8 +91,39 @@ function renderSidebarContent(ui: React.ReactElement) {
 }
 
 describe('SidebarContent branch coverage', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.mocked(hasRequiredCapabilities).mockImplementation(defaultHasRequiredCapabilities);
+  });
+
+  it('updates sidebar sync status when a lease expires without network activity', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2026-08-27T04:30:00.000Z');
+    vi.setSystemTime(now);
+    renderSidebarContent(
+      <SidebarContent {...buildProps({
+        wallets: [{
+          id: 'wallet-lease',
+          name: 'Lease Wallet',
+          type: 'single_sig',
+          syncInProgress: true,
+          requestedIncrementalSyncGeneration: 1,
+          claimedIncrementalSyncGeneration: 1,
+          processedIncrementalSyncGeneration: 0,
+          syncExecutionOwner: 'worker',
+          incrementalSyncClaimedAt: new Date(now.getTime() - 1_000).toISOString(),
+          incrementalSyncLeaseExpiresAt: new Date(now.getTime() + 1_000).toISOString(),
+        } as any],
+      })} />,
+    );
+    const item = screen.getAllByTestId('subnav-item')
+      .find((candidate) => candidate.getAttribute('data-label') === 'Lease Wallet')!;
+    expect(item).toHaveAttribute('data-status', 'syncing');
+
+    await act(async () => vi.advanceTimersByTime(1_001));
+
+    expect(item).toHaveAttribute('data-status', 'error');
+    expect(item.getAttribute('data-status-title')?.toLowerCase()).toContain('lease evidence expired');
   });
 
   it('falls back to ? when username is missing', () => {

@@ -11,12 +11,19 @@ import { LogContent } from './LogTab/LogContent';
 import { LogControls } from './LogTab/LogControls';
 import { LogStatusBar } from './LogTab/LogStatusBar';
 import type { LogLevelFilter } from './LogTab/types';
+import type {
+  WalletSyncControls,
+  WalletSyncLifecycleClassification,
+} from '../../utils/walletSyncLifecycle';
+import { findLastSyncProgressCheckpoint } from './LogTab/logPresentation';
+import { LogAttemptStatus } from './LogTab/LogAttemptStatus';
 
 interface LogTabProps {
   logs: WalletLogEntry[];
   isPaused: boolean;
   isLoading: boolean;
-  syncing: boolean;
+  syncLifecycle: WalletSyncLifecycleClassification;
+  syncControls: WalletSyncControls;
   onTogglePause: () => void;
   onClearLogs: () => void;
   onSync: () => void;
@@ -27,7 +34,8 @@ export const LogTab: React.FC<LogTabProps> = ({
   logs,
   isPaused,
   isLoading,
-  syncing,
+  syncLifecycle,
+  syncControls,
   onTogglePause,
   onClearLogs,
   onSync,
@@ -44,6 +52,7 @@ export const LogTab: React.FC<LogTabProps> = ({
   }, [logs, autoScroll]);
 
   const filteredLogs = filterLogsByLevel(logs, logLevelFilter);
+  const checkpoint = findLastSyncProgressCheckpoint(logs);
 
   const handleScroll: React.UIEventHandler<HTMLDivElement> = (event) => {
     const element = event.currentTarget;
@@ -60,7 +69,7 @@ export const LogTab: React.FC<LogTabProps> = ({
         filteredLogsCount={filteredLogs.length}
         filter={logLevelFilter}
         isPaused={isPaused}
-        syncing={syncing}
+        syncControls={syncControls}
         onFilterChange={setLogLevelFilter}
         onTogglePause={onTogglePause}
         onClearLogs={onClearLogs}
@@ -69,6 +78,7 @@ export const LogTab: React.FC<LogTabProps> = ({
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
       />
+      <LogAttemptStatus checkpoint={checkpoint} lifecycle={syncLifecycle} controls={syncControls} />
       <LogContent
         ref={logContainerRef}
         isLoading={isLoading}

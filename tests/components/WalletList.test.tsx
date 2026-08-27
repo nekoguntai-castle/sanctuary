@@ -2,10 +2,10 @@
  * Tests for WalletList component
  */
 
-import { render,screen,waitFor } from '@testing-library/react';
+import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletList } from '../../src/components/WalletList';
 import * as CurrencyContext from '../../src/contexts/CurrencyContext';
 import * as UserContext from '../../src/contexts/UserContext';
@@ -95,6 +95,7 @@ vi.mock('../../src/components/Amount', () => ({
 }));
 
 describe('WalletList', () => {
+  afterEach(() => vi.useRealTimers());
   const mockWallets = [
     {
       id: 'wallet-1',
@@ -230,6 +231,34 @@ describe('WalletList', () => {
   });
 
   describe('wallet list rendering', () => {
+    it('updates grid sync status when a lease expires without network activity', async () => {
+      vi.useFakeTimers();
+      const now = new Date('2026-08-27T04:30:00.000Z');
+      vi.setSystemTime(now);
+      vi.mocked(useWalletsHook.useWallets).mockReturnValue({
+        data: [{
+          ...mockWallets[0],
+          syncInProgress: true,
+          lastSyncStatus: null,
+          requestedIncrementalSyncGeneration: 1,
+          claimedIncrementalSyncGeneration: 1,
+          processedIncrementalSyncGeneration: 0,
+          syncExecutionOwner: 'worker',
+          incrementalSyncClaimedAt: new Date(now.getTime() - 1_000).toISOString(),
+          incrementalSyncLeaseExpiresAt: new Date(now.getTime() + 1_000).toISOString(),
+        }],
+        isLoading: false,
+        error: null,
+      } as any);
+
+      renderWalletList();
+      expect(screen.getByTitle('Syncing')).toBeInTheDocument();
+
+      await act(async () => vi.advanceTimersByTime(1_001));
+
+      expect(screen.getByRole('button', { name: 'Sync status: Attention' })).toBeInTheDocument();
+    });
+
     it('renders wallet cards', async () => {
       renderWalletList();
 

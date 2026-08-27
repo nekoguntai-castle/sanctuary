@@ -24,6 +24,17 @@ const baseWallet = {
   syncInProgress: false,
 } as any;
 
+const idleSyncControls = {
+  requestSubmitting: false,
+  executionRunning: false,
+  requestPending: false,
+  incrementalPending: false,
+  fullResyncPending: false,
+  actionRequired: false,
+  syncDisabled: false,
+  fullResyncDisabled: false,
+};
+
 const renderHeader = (
   walletOverrides: Record<string, unknown> = {},
   propOverrides: Record<string, unknown> = {},
@@ -40,6 +51,7 @@ const renderHeader = (
     <WalletHeader
       wallet={{ ...baseWallet, ...walletOverrides }}
       syncing={false}
+      syncControls={idleSyncControls}
       syncRetryInfo={null}
       {...handlers}
       {...propOverrides}
@@ -86,6 +98,8 @@ describe("WalletHeader", () => {
         userRole: "signer",
         isShared: true,
         lastSyncStatus: "retrying",
+        requestedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
       },
       {
         syncRetryInfo: {
@@ -141,6 +155,8 @@ describe("WalletHeader", () => {
       lastSyncStatus: "retrying",
       lastSyncError: "connect ECONNREFUSED 127.0.0.1:50002",
       network: "testnet3",
+      requestedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
     });
 
     expect(screen.getByText("Testnet3")).toHaveClass("dark:text-testnet-300");
@@ -166,14 +182,15 @@ describe("WalletHeader", () => {
     expect(handlers.onSync).toHaveBeenCalledTimes(1);
   });
 
-  it("does not call a wallet mid-resync 'not synced'", () => {
+  it("flags resync execution markers without a public lease as attention", () => {
     renderHeader({
       lastSyncStatus: "resyncing",
       lastSyncedAt: null,
       syncInProgress: false,
+      syncStateVersion: 1,
     });
 
-    expect(screen.getByText("Resyncing")).toBeInTheDocument();
+    expect(screen.getByText("Attention")).toBeInTheDocument();
     expect(screen.queryByText("Not Synced")).not.toBeInTheDocument();
     expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });
@@ -205,7 +222,24 @@ describe("WalletHeader", () => {
   });
 
   it("shows syncing badge and disables sync controls while syncing", () => {
-    renderHeader({}, { syncing: true });
+    const now = Date.now();
+    renderHeader({
+      syncInProgress: true,
+      syncExecutionOwner: 'worker',
+      requestedIncrementalSyncGeneration: 1,
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncClaimedAt: new Date(now - 1_000).toISOString(),
+      incrementalSyncLeaseExpiresAt: new Date(now + 60_000).toISOString(),
+    }, {
+      syncing: true,
+      syncControls: {
+        ...idleSyncControls,
+        executionRunning: true,
+        syncDisabled: true,
+        fullResyncDisabled: true,
+      },
+    });
 
     expect(screen.getByText("Syncing")).toBeInTheDocument();
     expect(screen.getByTitle("Sync wallet")).toBeDisabled();
@@ -256,6 +290,7 @@ describe("WalletHeader", () => {
           lastSyncedAt: "2026-02-01T00:00:00.000Z",
         }}
         syncing={false}
+        syncControls={idleSyncControls}
         syncRetryInfo={null}
         onReceive={vi.fn()}
         onSend={vi.fn()}
@@ -319,10 +354,38 @@ describe("WalletHeader", () => {
   });
 
   it("shows initial sync banner for first sync attempts", () => {
-    renderHeader({ lastSyncedAt: null, syncInProgress: true });
+    renderHeader({ lastSyncedAt: null, syncInProgress: true }, { syncing: true });
 
     expect(screen.getByText("Initial sync in progress")).toBeInTheDocument();
     expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
+  });
+
+  it("does not animate expired raw execution evidence", () => {
+    renderHeader({
+      lastSyncedAt: null,
+      syncInProgress: true,
+      syncStateVersion: 2,
+    });
+
+    expect(screen.queryByText("Initial sync in progress")).not.toBeInTheDocument();
+  });
+
+  it("disables every sync-now CTA while an accepted request is pending", () => {
+    const pendingControls = {
+      ...idleSyncControls,
+      requestPending: true,
+      incrementalPending: true,
+      syncDisabled: true,
+    };
+    const failure = renderHeader({
+      lastSyncStatus: "failed",
+      lastSyncError: "temporary failure",
+    }, { syncControls: pendingControls });
+    expect(screen.getByRole("button", { name: /Sync Now/i })).toBeDisabled();
+    failure.unmount();
+
+    renderHeader({}, { syncControls: pendingControls });
+    expect(screen.getByRole("button", { name: /Sync Now/i })).toBeDisabled();
   });
 
   it("shows never-synced banner and triggers sync now action", () => {

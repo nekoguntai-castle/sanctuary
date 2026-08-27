@@ -141,6 +141,17 @@ export const registerWalletDetailWrapperStateContracts = () => {
       expect(mocks.fetchData).toHaveBeenCalledWith(true);
     });
 
+    it('rejects the sync refresh contract when the critical wallet refresh did not complete', async () => {
+      mocks.walletDataState = createWalletData({
+        refreshData: async () => false,
+      });
+      render(<WalletDetail />);
+
+      await expect(mocks.walletSyncHookArgs.onDataRefresh()).rejects.toThrow(
+        'Wallet status refresh did not complete',
+      );
+    });
+
     it('loads admin wallet-agent badges and clears them on failure', async () => {
       mocks.user = { id: 'admin-1', username: 'admin', isAdmin: true };
       mocks.getWalletAgents.mockResolvedValueOnce([

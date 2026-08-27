@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import { useInvalidateAllWallets } from '../../hooks/queries/useWallets';
+import { useWalletSyncLifecycleClock } from '../../hooks/useWalletSyncLifecycleClock';
 import { createWalletCellRenderers } from '../cells/WalletCells';
 import { WalletListContent } from './WalletListContent';
 import { WalletListEmptyState } from './WalletListEmptyState';
@@ -20,9 +21,10 @@ export const WalletList: React.FC = () => {
     sortBy: preferences.sortBy,
     sortOrder: preferences.sortOrder,
   });
+  const syncNow = useWalletSyncLifecycleClock(walletData.filteredWallets, selectedNetwork);
   const cellRenderers = useMemo(
-    () => createWalletCellRenderers({ format, formatFiat, showFiat }),
-    [format, formatFiat, showFiat]
+    () => createWalletCellRenderers({ format, formatFiat, showFiat }, syncNow),
+    [format, formatFiat, showFiat, syncNow]
   );
 
   if (walletData.loading) {
@@ -63,6 +65,7 @@ export const WalletList: React.FC = () => {
       onCreate={() => navigate('/wallets/create')}
       onImport={() => navigate('/wallets/import')}
       cellRenderers={cellRenderers}
+      syncNow={syncNow}
     />
   );
 };

@@ -3,11 +3,18 @@ import { describe,expect,it,vi } from 'vitest';
 import { LogTab } from '../../../src/components/WalletDetail/LogTab';
 
 describe('LogTab', () => {
+  const syncLifecycle = { state: 'settled', incrementalPending: false, fullResyncPending: false } as const;
+  const syncControls = {
+    requestSubmitting: false, executionRunning: false, requestPending: false,
+    incrementalPending: false, fullResyncPending: false, actionRequired: false,
+    syncDisabled: false, fullResyncDisabled: false,
+  };
   const baseProps = {
     logs: [],
     isPaused: false,
     isLoading: false,
-    syncing: false,
+    syncLifecycle,
+    syncControls,
     onTogglePause: vi.fn(),
     onClearLogs: vi.fn(),
     onSync: vi.fn(),

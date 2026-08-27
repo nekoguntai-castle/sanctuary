@@ -13,10 +13,13 @@ import { Button } from '../../../ui/Button';
 import { isMultisigType, getQuorumM, getQuorumN } from '../../../../types';
 import type { Wallet } from '../../../../types';
 import { WalletRemediationPanel } from './WalletRemediationPanel';
+import type { WalletSyncControls } from '../../../../utils/walletSyncLifecycle';
 
 interface AdvancedSettingsProps {
   wallet: Wallet;
-  syncing: boolean;
+  syncControls?: WalletSyncControls;
+  /** Legacy test/caller fallback; production supplies syncControls. */
+  syncing?: boolean;
   onSync: () => void;
   onFullResync: () => void;
   onRemediationApplied?: () => Promise<void> | void;
@@ -26,9 +29,21 @@ interface AdvancedSettingsProps {
   onShowExport: () => void;
 }
 
+function syncActionLabel(
+  controls: WalletSyncControls | undefined,
+  syncing: boolean,
+  idleLabel: string,
+): string {
+  const active = controls
+    ? controls.requestSubmitting || controls.executionRunning
+    : syncing;
+  return active ? 'Syncing...' : idleLabel;
+}
+
 export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
   wallet,
-  syncing,
+  syncControls,
+  syncing = false,
   onSync,
   onFullResync,
   onRemediationApplied,
@@ -103,9 +118,9 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
             variant="secondary"
             size="sm"
             onClick={onSync}
-            disabled={syncing}
+            disabled={syncControls?.syncDisabled ?? syncing}
           >
-            {syncing ? 'Syncing...' : 'Sync'}
+            {syncActionLabel(syncControls, syncing, 'Sync')}
           </Button>
         </div>
         <div className="border-t border-sanctuary-200 dark:border-sanctuary-700 pt-3">
@@ -118,9 +133,9 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
               variant="secondary"
               size="sm"
               onClick={onFullResync}
-              disabled={syncing}
+              disabled={syncControls?.fullResyncDisabled ?? syncing}
             >
-              {syncing ? 'Syncing...' : 'Resync'}
+              {syncActionLabel(syncControls, syncing, 'Resync')}
             </Button>
           </div>
         </div>

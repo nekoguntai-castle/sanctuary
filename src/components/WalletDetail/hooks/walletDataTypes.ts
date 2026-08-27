@@ -98,4 +98,5 @@ export interface UseWalletDataReturn {
 
   // Refresh
   fetchData: (isRefresh?: boolean) => Promise<void>;
+  refreshData: () => Promise<boolean>;
 }

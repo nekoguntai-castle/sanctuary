@@ -55,6 +55,7 @@ vi.mock('lucide-react', () => ({
   Check: () => <span data-testid="check-icon" />,
   AlertTriangle: () => <span data-testid="alert-icon" />,
   Clock: () => <span data-testid="clock-icon" />,
+  Clock3: () => <span data-testid="clock3-icon" />,
   Plus: () => <span data-testid="plus-icon" />,
   Cpu: () => <span data-testid="cpu-icon" />,
   Loader2: () => <span data-testid="loader-icon" />,
@@ -80,8 +81,16 @@ describe('WalletSummary', () => {
 
   it('renders wallet rows, sync states, and navigates on row click', async () => {
     const user = userEvent.setup();
+    const now = Date.now();
     const wallets = [
-      { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 1000, syncInProgress: true },
+      {
+        id: 'w1', name: 'Alpha', type: 'single_sig', balance: 1000,
+        syncInProgress: true, syncExecutionOwner: 'worker',
+        requestedIncrementalSyncGeneration: 1, claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncClaimedAt: new Date(now - 60_000).toISOString(),
+        incrementalSyncLeaseExpiresAt: new Date(now + 300_000).toISOString(),
+      },
       { id: 'w2', name: 'Beta', type: 'multi_sig', balance: 2000, lastSyncStatus: 'success', lastSyncedAt: new Date(Date.now() - 60_000).toISOString() },
       { id: 'w3', name: 'Gamma', type: 'single_sig', balance: 3000, lastSyncStatus: 'failed', lastSyncError: 'connect ECONNREFUSED 127.0.0.1:50002' },
       { id: 'w4', name: 'Delta', type: 'single_sig', balance: 4000, lastSyncedAt: new Date('2026-01-01T00:00:00Z').toISOString() },
@@ -137,6 +146,8 @@ describe('WalletSummary', () => {
             lastSyncStatus: 'retrying',
             lastSyncError: 'electrum handshake timed out',
             lastSyncedAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+            requestedIncrementalSyncGeneration: 1,
+            processedIncrementalSyncGeneration: 0,
           },
         ] as any}
         totalBalance={1000}
@@ -153,7 +164,7 @@ describe('WalletSummary', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not describe a wallet mid-resync as never synced', () => {
+  it('does not describe a pending full resync as never synced', () => {
     renderWalletSummary(
       <WalletSummary
         selectedNetwork="mainnet"
@@ -163,9 +174,11 @@ describe('WalletSummary', () => {
             name: 'Resync',
             type: 'single_sig',
             balance: 1000,
-            lastSyncStatus: 'resyncing',
             lastSyncedAt: null,
             syncInProgress: false,
+            requestedFullResyncGeneration: 1,
+            preparedFullResyncGeneration: 0,
+            processedFullResyncGeneration: 0,
           },
         ] as any}
         totalBalance={1000}
@@ -173,7 +186,44 @@ describe('WalletSummary', () => {
     );
 
     expect(screen.queryByText('Never synced')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/full resync/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/full-resync/i).length).toBeGreaterThan(0);
+  });
+
+  it('summarises active public leases separately from pending intents', () => {
+    const now = Date.now();
+    const running = Array.from({ length: 2 }, (_, index) => ({
+      id: `running-${index}`,
+      name: `Running ${index}`,
+      type: 'single_sig',
+      balance: 0,
+      syncInProgress: true,
+      syncExecutionOwner: 'worker',
+      requestedIncrementalSyncGeneration: 1,
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncClaimedAt: new Date(now - 1_000).toISOString(),
+      incrementalSyncLeaseExpiresAt: new Date(now + 60_000).toISOString(),
+    }));
+    const pending = Array.from({ length: 10 }, (_, index) => ({
+      id: `pending-${index}`,
+      name: `Pending ${index}`,
+      type: 'single_sig',
+      balance: 0,
+      requestedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+    }));
+
+    renderWalletSummary(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={[...running, ...pending] as any}
+        totalBalance={0}
+      />,
+    );
+
+    expect(screen.getByTestId('dashboard-wallet-sync-summary')).toHaveTextContent(
+      '12 wallets · 2 syncing · 10 pending',
+    );
   });
 
   it('uses zero-percent distribution fallback and success title fallback when totals/sync timestamp are missing', () => {

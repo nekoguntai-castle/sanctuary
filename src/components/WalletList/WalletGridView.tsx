@@ -10,6 +10,7 @@ interface WalletGridViewProps {
   wallets: Wallet[];
   pendingByWallet: Record<string, PendingData>;
   sparklineData?: Record<string, WalletSparklineResult>;
+  syncNow?: number;
 }
 
 /**
@@ -20,6 +21,7 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
   wallets,
   pendingByWallet,
   sparklineData = {},
+  syncNow,
 }) => {
   const navigate = useNavigate();
   const { format, formatFiat, showFiat } = useCurrency();
@@ -36,6 +38,7 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
           formatFiat={formatFiat}
           showFiat={showFiat}
           onOpen={() => navigate(`/wallets/${wallet.id}`)}
+          syncNow={syncNow}
         />
       ))}
     </div>

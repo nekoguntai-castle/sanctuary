@@ -1,13 +1,14 @@
 import React from 'react';
 import { Pause, Play, RefreshCw, RotateCcw, ScrollText } from 'lucide-react';
 import type { LogLevelFilter } from './types';
+import type { WalletSyncControls } from '../../../utils/walletSyncLifecycle';
 
 interface LogControlsProps {
   logsCount: number;
   filteredLogsCount: number;
   filter: LogLevelFilter;
   isPaused: boolean;
-  syncing: boolean;
+  syncControls: WalletSyncControls;
   onFilterChange: (filter: LogLevelFilter) => void;
   onTogglePause: () => void;
   onClearLogs: () => void;
@@ -22,7 +23,7 @@ export const LogControls: React.FC<LogControlsProps> = ({
   filteredLogsCount,
   filter,
   isPaused,
-  syncing,
+  syncControls,
   onFilterChange,
   onTogglePause,
   onClearLogs,
@@ -42,16 +43,16 @@ export const LogControls: React.FC<LogControlsProps> = ({
     <div className="flex items-center space-x-2">
       <button
         onClick={onSync}
-        disabled={syncing}
+        disabled={syncControls.syncDisabled}
         className="px-2.5 py-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/30 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
         title="Sync wallet with blockchain"
       >
-        <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+        <RefreshCw className={`w-3 h-3 ${syncControls.requestSubmitting || syncControls.executionRunning ? 'animate-spin' : ''}`} />
         <span>Sync</span>
       </button>
       <button
         onClick={onFullResync}
-        disabled={syncing}
+        disabled={syncControls.fullResyncDisabled}
         className="px-2.5 py-1 text-xs font-medium text-warning-600 hover:bg-warning-100 dark:hover:bg-warning-900/30 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
         title="Clear all transactions and re-sync from blockchain"
       >

@@ -164,7 +164,7 @@ describe('WalletGridView', () => {
             deviceCount: 2,
             isShared: false,
             lastSyncStatus: 'resyncing',
-            syncInProgress: false,
+            syncInProgress: true,
           } as any,
           {
             id: 'stale',

@@ -1,4 +1,65 @@
 import type { DisplayLogEntry } from './types';
+import {
+  SyncProgressDetailsSchema,
+  type SyncProgressDetails,
+  type SyncProgressStage,
+} from '@sanctuary/shared/schemas/syncProgress';
+import { parseStrictIsoInstant } from '../../../utils/isoInstant';
+
+const STAGE_LABELS: Record<SyncProgressStage, string> = {
+  candidate_fetch: 'Fetching transaction candidates',
+  parent_fetch: 'Fetching parent transactions',
+  timestamp_fetch: 'Fetching transaction timestamps',
+  classification: 'Classifying transactions',
+  persistence: 'Saving transactions',
+};
+
+const EVENT_LABELS: Record<SyncProgressDetails['event'], string> = {
+  stage_started: 'Started',
+  fallback: 'Using fallback',
+  batch_completed: 'Batch completed',
+  timeout: 'Timed out',
+  aborted: 'Stopped',
+};
+
+export function parseSyncProgressDetails(details: unknown): SyncProgressDetails | null {
+  const parsed = SyncProgressDetailsSchema.safeParse(details);
+  return parsed.success ? parsed.data : null;
+}
+
+export function formatSyncProgressDetails(details: SyncProgressDetails): string {
+  const progress = details.completed === undefined
+    ? ''
+    : ` · ${details.completed}/${details.total} ${details.unit.replace('_', ' ')}`;
+  return `${STAGE_LABELS[details.stage]} · ${EVENT_LABELS[details.event]} · batch ${details.batch}/${details.batchCount}${progress}`;
+}
+
+export function findLastSyncProgressDetails(
+  entries: readonly DisplayLogEntry[],
+): SyncProgressDetails | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const parsed = parseSyncProgressDetails(entries[index]?.details);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+export interface SyncProgressCheckpoint {
+  details: SyncProgressDetails;
+  timestamp: number;
+}
+
+export function findLastSyncProgressCheckpoint(
+  entries: readonly DisplayLogEntry[],
+): SyncProgressCheckpoint | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    const details = parseSyncProgressDetails(entry?.details);
+    const timestamp = entry ? parseStrictIsoInstant(entry.timestamp) : null;
+    if (details && timestamp !== null) return { details, timestamp };
+  }
+  return null;
+}
 
 export function getLogRowToneClass(level: string): string {
   if (level === 'error') {
@@ -56,6 +117,9 @@ export function formatLogDetails(entry: DisplayLogEntry): string {
   if (!entry.details) {
     return '';
   }
+
+  const progress = parseSyncProgressDetails(entry.details);
+  if (progress) return formatSyncProgressDetails(progress);
 
   return Object.entries(entry.details)
     .filter(([key]) => key !== 'viaTor')

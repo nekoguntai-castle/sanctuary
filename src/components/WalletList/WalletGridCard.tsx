@@ -16,6 +16,7 @@ export function WalletGridCard({
   formatFiat,
   showFiat,
   onOpen,
+  syncNow,
 }: {
   wallet: Wallet;
   pendingData?: PendingData;
@@ -24,6 +25,7 @@ export function WalletGridCard({
   formatFiat: WalletFiatFormatter;
   showFiat: boolean;
   onOpen: () => void;
+  syncNow?: number;
 }) {
   const styles = walletGridCardStyles(wallet.type === WalletType.MULTI_SIG);
 
@@ -48,7 +50,7 @@ export function WalletGridCard({
         isMultisig={styles.isMultisig}
         result={sparkline}
       />
-      <WalletMetadata wallet={wallet} />
+      <WalletMetadata wallet={wallet} syncNow={syncNow} />
     </div>
   );
 }

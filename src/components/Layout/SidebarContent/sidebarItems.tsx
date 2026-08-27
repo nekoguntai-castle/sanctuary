@@ -27,16 +27,19 @@ const SYNC_TONE_DOTS: Record<WalletSyncTone, NonNullable<SubNavItemProps['status
   unknown: 'error',
 };
 
-export const getWalletSyncStatus = (wallet: ApiWallet): SubNavItemProps['statusDot'] =>
-  SYNC_TONE_DOTS[getWalletSyncPresentation(wallet).tone];
+export const getWalletSyncStatus = (
+  wallet: ApiWallet,
+  syncNow?: number,
+): SubNavItemProps['statusDot'] =>
+  SYNC_TONE_DOTS[getWalletSyncPresentation(wallet, null, syncNow).tone];
 
 /**
  * Title for the sync dot. It used to echo the enum word the dot had already
  * collapsed everything into ("pending"), which told the reader nothing they
  * could act on.
  */
-export const getWalletSyncTitle = (wallet: ApiWallet): string =>
-  getWalletSyncPresentation(wallet).description;
+export const getWalletSyncTitle = (wallet: ApiWallet, syncNow?: number): string =>
+  getWalletSyncPresentation(wallet, null, syncNow).description;
 
 const getWalletType = (wallet: ApiWallet) =>
   isMultisigType(wallet.type) ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG;

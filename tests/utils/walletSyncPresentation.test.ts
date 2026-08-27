@@ -8,8 +8,33 @@ import {
 const NOW = Date.parse('2026-08-19T12:00:00.000Z');
 const FRESH = new Date(NOW - 60_000).toISOString();
 const ANCIENT = new Date(NOW - STALE_SYNC_THRESHOLD_MS - 1).toISOString();
+const PENDING = {
+  requestedIncrementalSyncGeneration: 2,
+  claimedIncrementalSyncGeneration: 1,
+  processedIncrementalSyncGeneration: 1,
+};
+const ACTIVE = {
+  ...PENDING,
+  syncInProgress: true,
+  syncExecutionOwner: 'worker' as const,
+  claimedIncrementalSyncGeneration: 2,
+  incrementalSyncClaimedAt: '2026-08-19T11:59:00.000Z',
+  incrementalSyncLeaseExpiresAt: '2026-08-19T12:01:00.000Z',
+};
 
 describe('getWalletSyncPresentation', () => {
+  it('preserves legacy active status when lifecycle evidence is entirely absent', () => {
+    expect(getWalletSyncPresentation({ syncInProgress: true }, null, NOW))
+      .toMatchObject({ label: 'Syncing', spinning: true });
+    expect(getWalletSyncPresentation({
+      lastSyncStatus: 'resyncing',
+      syncInProgress: false,
+    }, null, NOW)).toMatchObject({ label: 'Resyncing', spinning: false });
+    expect(getWalletSyncPresentation({
+      lastSyncStatus: 'retrying',
+    }, null, NOW)).toMatchObject({ label: 'Retrying', spinning: false });
+  });
+
   it('requires both generations and a positive durable drift', () => {
     expect(isSyncGenerationPending(undefined, undefined)).toBe(false);
     expect(isSyncGenerationPending(1, undefined)).toBe(false);
@@ -84,7 +109,7 @@ describe('getWalletSyncPresentation', () => {
 
   it('does not fabricate an attempt count when no live retry metadata exists', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: 'retrying', lastSyncError: 'electrum timeout' },
+      { ...PENDING, lastSyncStatus: 'retrying', lastSyncError: 'electrum timeout' },
       null,
       NOW,
     );
@@ -96,19 +121,19 @@ describe('getWalletSyncPresentation', () => {
 
   it('names the attempt when live retry metadata is present', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: 'retrying' },
+      { ...PENDING, lastSyncStatus: 'retrying' },
       { retryCount: 2, maxRetries: 5, error: 'temporary error' },
       NOW,
     );
 
     expect(presentation.label).toBe('Retrying 2/5');
     expect(presentation.reason).toBe('temporary error');
-    expect(presentation.spinning).toBe(true);
+    expect(presentation.spinning).toBe(false);
   });
 
   it('treats live retry metadata as retrying even when the persisted status disagrees', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: null },
+      { ...PENDING, lastSyncStatus: null },
       { retryCount: 1, maxRetries: 3 },
       NOW,
     );
@@ -119,7 +144,13 @@ describe('getWalletSyncPresentation', () => {
 
   it('describes an in-flight full resync distinctly from an ordinary sync', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: 'resyncing', syncInProgress: true },
+      {
+        ...ACTIVE,
+        lastSyncStatus: 'resyncing',
+        requestedFullResyncGeneration: 2,
+        preparedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 1,
+      },
       null,
       NOW,
     );
@@ -130,16 +161,32 @@ describe('getWalletSyncPresentation', () => {
     expect(presentation.reason).toContain('being rebuilt');
   });
 
-  it('flags a resync that is no longer running as stranded, never as "never synced"', () => {
+  it('flags a resync without active lease evidence as attention, never as "never synced"', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: 'resyncing', syncInProgress: false, lastSyncedAt: null },
+      {
+        lastSyncStatus: 'resyncing',
+        syncInProgress: false,
+        syncStateVersion: 1,
+        lastSyncedAt: null,
+      },
       null,
       NOW,
     );
 
-    expect(presentation.tone).toBe('resyncing');
+    expect(presentation.tone).toBe('failed');
+    expect(presentation.label).toBe('Attention');
     expect(presentation.spinning).toBe(false);
-    expect(presentation.reason).toContain('no longer running');
+    expect(presentation.reason).toContain('execution evidence');
+  });
+
+  it('explains attention caused specifically by an expired public lease', () => {
+    const presentation = getWalletSyncPresentation({
+      ...ACTIVE,
+      incrementalSyncLeaseExpiresAt: '2026-08-19T12:00:00.000Z',
+    }, null, NOW);
+
+    expect(presentation.label).toBe('Attention');
+    expect(presentation.description).toContain('lease evidence expired');
   });
 
   it('prefers a persisted resync error over the generic wording', () => {
@@ -153,7 +200,7 @@ describe('getWalletSyncPresentation', () => {
   });
 
   it('reports an active sync', () => {
-    const presentation = getWalletSyncPresentation({ syncInProgress: true }, null, NOW);
+    const presentation = getWalletSyncPresentation(ACTIVE, null, NOW);
 
     expect(presentation.tone).toBe('syncing');
     expect(presentation.label).toBe('Syncing');
@@ -161,16 +208,16 @@ describe('getWalletSyncPresentation', () => {
     expect(presentation.description).toBe('Syncing in progress…');
   });
 
-  it('keeps an active persisted retry visible when live retry metadata is unavailable', () => {
+  it('keeps a durable persisted retry visible without implying active execution', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: 'retrying', syncInProgress: true },
+      { ...PENDING, lastSyncStatus: 'retrying', syncInProgress: false },
       null,
       NOW,
     );
 
     expect(presentation.tone).toBe('retrying');
     expect(presentation.label).toBe('Retrying');
-    expect(presentation.spinning).toBe(true);
+    expect(presentation.spinning).toBe(false);
   });
 
   it('renders durable incremental and full-resync requests while no worker is active', () => {
@@ -186,14 +233,14 @@ describe('getWalletSyncPresentation', () => {
     }, null, NOW)).toMatchObject({ label: 'Resync pending', spinning: false });
   });
 
-  it('renders an explicit reopened request as pending ahead of stale retry history', () => {
+  it('keeps durable retry status static while its intent remains pending', () => {
     expect(getWalletSyncPresentation({
       lastSyncStatus: 'retrying',
       syncInProgress: false,
       requestedIncrementalSyncGeneration: 2,
       processedIncrementalSyncGeneration: 1,
     }, null, NOW)).toMatchObject({
-      label: 'Sync pending',
+      label: 'Retrying',
       spinning: false,
     });
   });

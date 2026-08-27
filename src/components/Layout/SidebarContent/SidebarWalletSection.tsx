@@ -4,6 +4,7 @@ import type { Wallet as ApiWallet } from '../../../api/wallets';
 import { EmptyState } from '../../ui/EmptyState';
 import { NavItem } from '../NavItem';
 import { SubNavItem } from '../SubNavItem';
+import { useWalletSyncLifecycleClock } from '../../../hooks/useWalletSyncLifecycleClock';
 import {
   getSortedWallets,
   getWalletActiveColor,
@@ -19,11 +20,13 @@ interface SidebarWalletSectionProps {
   isExpanded: boolean;
   onToggle: () => void;
   getWalletCount: (walletId: string) => number;
+  scopeKey: string;
 }
 
-const WalletSubNavList: React.FC<Pick<SidebarWalletSectionProps, 'wallets' | 'getWalletCount'>> = ({
+const WalletSubNavList: React.FC<Pick<SidebarWalletSectionProps, 'wallets' | 'getWalletCount'> & { syncNow: number }> = ({
   wallets,
   getWalletCount,
+  syncNow,
 }) => (
   <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden md:hidden lg:block">
     {wallets.length === 0 && (
@@ -43,8 +46,8 @@ const WalletSubNavList: React.FC<Pick<SidebarWalletSectionProps, 'wallets' | 'ge
         activeColorClass={getWalletActiveColor(wallet)}
         badgeCount={getWalletCount(wallet.id)}
         badgeSeverity="warning"
-        statusDot={getWalletSyncStatus(wallet)}
-        statusDotTitle={getWalletSyncTitle(wallet)}
+        statusDot={getWalletSyncStatus(wallet, syncNow)}
+        statusDotTitle={getWalletSyncTitle(wallet, syncNow)}
       />
     ))}
   </div>
@@ -57,7 +60,9 @@ export const SidebarWalletSection: React.FC<SidebarWalletSectionProps> = ({
   isExpanded,
   onToggle,
   getWalletCount,
+  scopeKey,
 }) => {
+  const syncNow = useWalletSyncLifecycleClock(wallets, scopeKey);
   if (!show) return null;
 
   return (
@@ -77,7 +82,7 @@ export const SidebarWalletSection: React.FC<SidebarWalletSectionProps> = ({
           onToggle={onToggle}
         />
         {isExpanded && (
-          <WalletSubNavList wallets={wallets} getWalletCount={getWalletCount} />
+          <WalletSubNavList wallets={wallets} getWalletCount={getWalletCount} syncNow={syncNow} />
         )}
       </div>
     </>

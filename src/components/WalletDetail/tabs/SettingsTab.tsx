@@ -11,6 +11,7 @@ import { WalletWebhooks } from '../WalletWebhooks';
 import { SettingsSubTabs, GeneralSettings, DevicesSettings, AdvancedSettings } from './settings';
 import type { Wallet, Device } from '../../../types';
 import type { SettingsSubTab } from '../types';
+import type { WalletSyncControls } from '../../../utils/walletSyncLifecycle';
 
 interface SettingsTabProps {
   settingsSubTab: SettingsSubTab;
@@ -23,7 +24,9 @@ interface SettingsTabProps {
   onSetEditedName: (name: string) => void;
   onUpdateWallet: (data: { name: string }) => void;
   onLabelsChange: () => void;
-  syncing: boolean;
+  syncControls?: WalletSyncControls;
+  /** Legacy test/caller fallback; production supplies syncControls. */
+  syncing?: boolean;
   onSync: () => void;
   onFullResync: () => void;
   onRemediationApplied?: () => Promise<void> | void;
@@ -44,6 +47,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onSetEditedName,
   onUpdateWallet,
   onLabelsChange,
+  syncControls,
   syncing,
   onSync,
   onFullResync,
@@ -86,6 +90,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     {settingsSubTab === 'advanced' && (
       <AdvancedSettings
         wallet={wallet}
+        syncControls={syncControls}
         syncing={syncing}
         onSync={onSync}
         onFullResync={onFullResync}

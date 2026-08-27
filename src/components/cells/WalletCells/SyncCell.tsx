@@ -47,8 +47,8 @@ const TONE_LABELS: Partial<Record<WalletSyncTone, string>> = {
   never: 'Pending',
 };
 
-function SyncStatusIndicator({ wallet }: { wallet: WalletWithPending }) {
-  const presentation = getWalletSyncPresentation(wallet);
+function SyncStatusIndicator({ wallet, syncNow }: { wallet: WalletWithPending; syncNow?: number }) {
+  const presentation = getWalletSyncPresentation(wallet, null, syncNow);
   const Icon = TONE_ICONS[presentation.tone];
   const label = TONE_LABELS[presentation.tone] ?? presentation.label;
 
@@ -70,6 +70,6 @@ function SyncStatusIndicator({ wallet }: { wallet: WalletWithPending }) {
   );
 }
 
-export function SyncCell({ item: wallet }: WalletCellProps) {
-  return <SyncStatusIndicator wallet={wallet} />;
+export function SyncCell({ item: wallet, syncNow }: WalletCellProps & { syncNow?: number }) {
+  return <SyncStatusIndicator wallet={wallet} syncNow={syncNow} />;
 }

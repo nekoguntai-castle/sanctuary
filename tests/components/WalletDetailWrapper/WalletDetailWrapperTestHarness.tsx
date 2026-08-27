@@ -400,6 +400,10 @@ export function createWalletData(overrides: Partial<any> = {}) {
     walletShareInfo: { users: [], group: null },
     setWalletShareInfo: vi.fn(),
     fetchData: mocks.fetchData,
+    refreshData: async () => {
+      await mocks.fetchData(true);
+      return true;
+    },
     ...overrides,
   };
 }

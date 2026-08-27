@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWalletSync } from "../../../../src/components/WalletDetail/hooks/useWalletSync";
 import { useErrorHandler } from "../../../../src/hooks/useErrorHandler";
@@ -171,6 +171,73 @@ describe("useWalletSync", () => {
     expect(onDataRefresh).toHaveBeenCalled();
   });
 
+  it("keeps a successful sync admission pending when status refresh fails", async () => {
+    onDataRefresh.mockRejectedValueOnce(new Error("refresh failed"));
+    const { result } = renderHook(() => useWalletSync({
+      walletId: "wallet-1",
+      onDataRefresh,
+    }));
+
+    await act(async () => result.current.handleSync());
+
+    expect(result.current.acceptedIntent).toEqual({ kind: "incremental", generation: 1 });
+    expect(handleError).not.toHaveBeenCalled();
+    expect(showWarning).toHaveBeenCalledWith(
+      "The sync request was accepted, but its latest status could not be refreshed yet.",
+      "Sync Status Not Refreshed",
+    );
+  });
+
+  it("clears only an accepted incremental watermark acknowledged by a current snapshot", async () => {
+    const { result, rerender } = renderHook(
+      ({ requested }) => useWalletSync({
+        walletId: "wallet-1",
+        onDataRefresh,
+        syncState: {
+          requestedIncrementalSyncGeneration: requested,
+          processedIncrementalSyncGeneration: 0,
+        },
+      }),
+      { initialProps: { requested: 0 } },
+    );
+
+    await act(async () => result.current.handleSync());
+    expect(result.current.acceptedIntent?.generation).toBe(1);
+    rerender({ requested: 0 });
+    expect(result.current.acceptedIntent?.generation).toBe(1);
+    rerender({ requested: 1 });
+    expect(result.current.acceptedIntent).toBeNull();
+  });
+
+  it("retains an equal-generation reopen until state-version evidence advances", async () => {
+    vi.mocked(syncApi.syncWallet).mockResolvedValue({
+      success: true,
+      status: "merged",
+      generation: 4,
+      wakeup: "enqueued",
+      message: "Action-required sync reopened",
+    });
+    const { result, rerender } = renderHook(
+      ({ stateVersion }) => useWalletSync({
+        walletId: "wallet-1",
+        onDataRefresh,
+        syncState: {
+          syncStateVersion: stateVersion,
+          requestedIncrementalSyncGeneration: 4,
+          processedIncrementalSyncGeneration: 3,
+        },
+      }),
+      { initialProps: { stateVersion: 7 } },
+    );
+
+    await act(async () => result.current.handleSync());
+    expect(result.current.acceptedIntent).toEqual({ kind: "incremental", generation: 4 });
+    rerender({ stateVersion: 7 });
+    expect(result.current.acceptedIntent).not.toBeNull();
+    rerender({ stateVersion: 8 });
+    expect(result.current.acceptedIntent).toBeNull();
+  });
+
   it("aborts full resync when user cancels confirmation", async () => {
     (
       globalThis as typeof globalThis & { confirm: (msg?: string) => boolean }
@@ -194,6 +261,7 @@ describe("useWalletSync", () => {
     vi.mocked(syncApi.resyncWallet).mockResolvedValue({
       message: "queued",
       status: "accepted",
+      generation: 1,
     } as never);
 
     const { result } = renderHook(() =>
@@ -218,6 +286,7 @@ describe("useWalletSync", () => {
     vi.mocked(syncApi.resyncWallet).mockResolvedValue({
       message: "Full resync already queued for this wallet",
       status: "deduplicated",
+      generation: 1,
     } as never);
 
     const { result } = renderHook(() =>
@@ -264,6 +333,79 @@ describe("useWalletSync", () => {
       "Resync Request Saved",
     );
   });
+
+  it("keeps a successful full-resync admission pending when status refresh fails", async () => {
+    vi.mocked(syncApi.resyncWallet).mockResolvedValue({
+      success: true,
+      message: "queued",
+      status: "accepted",
+      walletId: "wallet-1",
+      generation: 7,
+      incrementalGeneration: 3,
+      wakeup: "enqueued",
+    });
+    onDataRefresh.mockRejectedValueOnce(new Error("refresh failed"));
+    const { result } = renderHook(() => useWalletSync({
+      walletId: "wallet-1",
+      onDataRefresh,
+    }));
+
+    await act(async () => result.current.handleFullResync());
+
+    expect(result.current.acceptedIntent).toEqual({ kind: "full_resync", generation: 7 });
+    expect(handleError).not.toHaveBeenCalled();
+    expect(showWarning).toHaveBeenCalledWith(
+      "The full-resync request was accepted, but its latest status could not be refreshed yet.",
+      "Sync Status Not Refreshed",
+    );
+  });
+
+  it.each(["incremental", "full_resync"] as const)(
+    "suppresses a late %s refresh warning after route ownership changes",
+    async (kind) => {
+      if (kind === "full_resync") {
+        vi.mocked(syncApi.resyncWallet).mockResolvedValue({
+          success: true,
+          message: "queued",
+          status: "accepted",
+          walletId: "wallet-1",
+          generation: 2,
+          incrementalGeneration: 1,
+          wakeup: "enqueued",
+        });
+      }
+      let rejectRefresh!: (reason: unknown) => void;
+      const onRefresh = vi.fn(() => new Promise<void>((_resolve, reject) => {
+        rejectRefresh = reject;
+      }));
+      const { result, rerender } = renderHook(
+        ({ walletId }) => useWalletSync({
+          walletId,
+          ownershipKey: walletId,
+          onDataRefresh: onRefresh,
+        }),
+        { initialProps: { walletId: "wallet-1" } },
+      );
+      let operation!: Promise<void>;
+      act(() => {
+        operation = kind === "full_resync"
+          ? result.current.handleFullResync()
+          : result.current.handleSync();
+      });
+      await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+
+      rerender({ walletId: "wallet-2" });
+      await act(async () => {
+        rejectRefresh(new Error("late refresh failure"));
+        await operation;
+      });
+
+      expect(showWarning).not.toHaveBeenCalledWith(
+        expect.any(String),
+        "Sync Status Not Refreshed",
+      );
+    },
+  );
 
   it("handles full resync failures through error handler", async () => {
     vi.mocked(syncApi.resyncWallet).mockRejectedValue(

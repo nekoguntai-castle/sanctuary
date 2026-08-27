@@ -26,9 +26,10 @@ export const WalletDetailLoadedView: React.FC<WalletDetailLoadedViewProps> = ({
 }) => (
   <div className="space-y-6 animate-fade-in">
     <WalletHeader
-      wallet={wallet}
+      wallet={controller.syncPresentationWallet ?? wallet}
       agentLinks={controller.walletAgentLinks}
       syncing={controller.syncing}
+      syncControls={controller.syncControls}
       syncRetryInfo={controller.syncRetryInfo}
       onReceive={controller.modalState.openReceive}
       onSend={() => controller.navigate(`/wallets/${controller.id}/send`)}
@@ -185,7 +186,8 @@ function buildLogTabProps({
     logs: controller.logs,
     isPaused: controller.isPaused,
     isLoading: controller.logsLoading,
-    syncing: controller.syncing,
+    syncLifecycle: controller.syncLifecycle,
+    syncControls: controller.syncControls,
     onTogglePause: controller.togglePause,
     onClearLogs: controller.clearLogs,
     onSync: controller.handleSync,
@@ -236,10 +238,10 @@ function buildSettingsTabProps({
     onSetEditedName: controller.setEditedName,
     onUpdateWallet: controller.handleUpdateWallet,
     onLabelsChange: controller.handleLabelsChange,
-    syncing: controller.syncing,
+    syncControls: controller.syncControls,
     onSync: controller.handleSync,
     onFullResync: controller.handleFullResync,
-    onRemediationApplied: () => controller.fetchData(true),
+    onRemediationApplied: async () => { await controller.fetchData(true); },
     showDangerZone: controller.showDangerZone,
     onSetShowDangerZone: controller.setShowDangerZone,
     onShowDelete: controller.modalState.openDelete,

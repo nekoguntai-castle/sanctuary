@@ -36,6 +36,7 @@ export function WalletListContent({
   onCreate,
   onImport,
   cellRenderers,
+  syncNow,
 }: {
   selectedNetwork: TabNetwork;
   filteredWallets: Wallet[];
@@ -60,6 +61,7 @@ export function WalletListContent({
   onCreate: () => void;
   onImport: () => void;
   cellRenderers: Record<string, React.FC<CellRendererProps<WalletWithPending>>>;
+  syncNow: number;
 }) {
   const navigate = useNavigate();
 
@@ -96,6 +98,7 @@ export function WalletListContent({
           wallets={sortedWallets}
           pendingByWallet={pendingByWallet}
           sparklineData={sparklineData}
+          syncNow={syncNow}
         />
       )}
 

@@ -4,7 +4,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { getWalletSyncPresentation } from '../../utils/walletSyncPresentation';
 import type { Wallet } from '../../api/wallets';
 
-export function WalletMetadata({ wallet }: { wallet: Wallet }) {
+export function WalletMetadata({ wallet, syncNow }: { wallet: Wallet; syncNow?: number }) {
   const deviceCount = wallet.deviceCount ?? 0;
 
   return (
@@ -20,13 +20,13 @@ export function WalletMetadata({ wallet }: { wallet: Wallet }) {
           </>
         )}
       </div>
-      <SyncStatusIcon wallet={wallet} />
+      <SyncStatusIcon wallet={wallet} syncNow={syncNow} />
     </div>
   );
 }
 
-function SyncStatusIcon({ wallet }: { wallet: Wallet }) {
-  const presentation = getWalletSyncPresentation(wallet);
+function SyncStatusIcon({ wallet, syncNow }: { wallet: Wallet; syncNow?: number }) {
+  const presentation = getWalletSyncPresentation(wallet, null, syncNow);
 
   // States with something to explain get a focusable tooltip carrying the real
   // reason; the healthy ones keep the cheap native title. A grid card is icon

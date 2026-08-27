@@ -47,6 +47,7 @@ const controller = new Proxy({
   addresses: [],
   groups: [],
   walletAgentLinks: [],
+  syncPresentationWallet: null,
   selectedUtxos: new Set(),
   pendingFreezeIds: new Set(),
   txFilters: {},
