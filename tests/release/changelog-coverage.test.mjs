@@ -39,9 +39,32 @@ function releaseHeadings() {
     .map(match => ({ version: match[1], date: match[2] }));
 }
 
-test('changelog covers every post-v0.8.43 stable tag exactly once in order', () => {
+function expectedChangelogVersions(tags, packageVersionValue) {
+  const taggedVersions = tags.map(({ tag }) => tag.slice(1));
+  const packageVersion = parseVersion(packageVersionValue);
+  assert(packageVersion, 'package version must be stable semver');
+  if (taggedVersions.includes(packageVersionValue)) return taggedVersions;
+  assert(
+    tags.length === 0 || compareVersions(packageVersion, tags[0].version) > 0,
+    'an untagged prepared package version must be newer than every stable tag',
+  );
+  return [packageVersionValue, ...taggedVersions];
+}
+
+function assertPreparedHeadingDate(headings, tags, packageVersionValue) {
+  if (tags.some(({ tag }) => tag === `v${packageVersionValue}`)) return;
+  const date = headings.find(({ version }) => version === packageVersionValue)?.date ?? '';
+  assert.match(date, /^\d{4}-\d{2}-\d{2}$/, 'the prepared release heading must be dated');
+  assert.equal(
+    new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10),
+    date,
+    'the prepared release heading date must be a real calendar date',
+  );
+}
+
+test('changelog covers every post-v0.8.43 stable tag and the prepared version in order', () => {
   const tags = stableTagsAfterBaseline();
-  const expectedVersions = tags.map(({ tag }) => tag.slice(1));
+  const expectedVersions = expectedChangelogVersions(tags, rootPackage.version);
   const headings = releaseHeadings();
   const covered = headings.filter(({ version }) => {
     const parsed = parseVersion(version);
@@ -50,6 +73,7 @@ test('changelog covers every post-v0.8.43 stable tag exactly once in order', () 
 
   assert.equal(headings[0]?.version, 'Unreleased');
   assert.deepEqual(covered.map(({ version }) => version), expectedVersions);
+  assertPreparedHeadingDate(covered, tags, rootPackage.version);
   assert.equal(new Set(covered.map(({ version }) => version)).size, covered.length);
   assert.equal(expectedVersions.includes('0.8.51'), false, 'v0.8.51 was never a stable tag');
 
@@ -71,6 +95,27 @@ test('changelog covers every post-v0.8.43 stable tag exactly once in order', () 
       `${tag} must have a comparison link`,
     );
   }
+});
+
+test('an untagged next release is permitted but stale untagged versions fail closed', () => {
+  const tags = [
+    { tag: 'v0.8.68', version: [0, 8, 68] },
+    { tag: 'v0.8.67', version: [0, 8, 67] },
+  ];
+  assert.deepEqual(expectedChangelogVersions(tags, '0.8.69'), ['0.8.69', '0.8.68', '0.8.67']);
+  assert.throws(
+    () => expectedChangelogVersions(tags, '0.8.66'),
+    /untagged prepared package version must be newer/,
+  );
+  assertPreparedHeadingDate([{ version: '0.8.69', date: '2026-08-27' }], tags, '0.8.69');
+  assert.throws(
+    () => assertPreparedHeadingDate([{ version: '0.8.69' }], tags, '0.8.69'),
+    /prepared release heading must be dated/,
+  );
+  assert.throws(
+    () => assertPreparedHeadingDate([{ version: '0.8.69', date: '2026-02-30' }], tags, '0.8.69'),
+    /real calendar date/,
+  );
 });
 
 test('current package version is represented by a stable changelog heading', () => {
