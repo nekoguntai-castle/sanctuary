@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.8.69] - 2026-08-27
+
+### Added
+
 - Whole-pipeline wallet-sync phase progress, active-stage age metrics, and
   request-negotiated worker diagnostics v2 while preserving diagnostics v1.
 - Wallet-sync execution panels and alerts, live stage timing in the Log tab, and
@@ -549,7 +557,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.68...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.69...HEAD
+[0.8.69]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.68...v0.8.69
 [0.8.68]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.67...v0.8.68
 [0.8.67]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.66...v0.8.67
 [0.8.66]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.65...v0.8.66
