@@ -146,21 +146,60 @@ function validateBundle(options, bundlePath, commit) {
       throw new Error('release offline bundle must contain the full core, monitoring, and Tor profiles');
     }
     const inventory = JSON.parse(readFileSync(path.join(stageDir, 'image-inventory.json'), 'utf8'));
+    const targetInventory = readFileSync(path.join(stageDir, 'image-inventory.tsv'), 'utf8').trimEnd().split('\n');
     const expectedArchitecture = options.platform.split('/')[1];
     const expectedImages = capture('bash', ['-c', 'source "$1"; offline_all_release_images', '_', path.join(options.repoRoot, 'scripts/offline/bundle-common.sh')]).split('\n').filter(Boolean).sort();
     const inventoryImages = Array.isArray(inventory.images) ? inventory.images.map((image) => image.image).sort() : [];
     if (inventory.platform !== options.platform || JSON.stringify(inventoryImages) !== JSON.stringify(expectedImages)
       || inventory.images.some((image) => image.os !== 'linux' || image.architecture !== expectedArchitecture
         || !/^sha256:[a-f0-9]{64}$/.test(image.id ?? '')
-        || (!image.image.startsWith('sanctuary-') && (!Array.isArray(image.repoDigests) || image.repoDigests.length === 0)))) {
+        || image.archiveRef !== archiveRefFor(image.image)
+        || (image.image.includes('@sha256:')
+          && (!Array.isArray(image.repoDigests) || !image.repoDigests.includes(repoDigestFor(image.image)))))) {
       throw new Error('offline bundle image inventory does not match the release platform');
     }
-    for (const image of inventory.images) requireFile(imageTarPath(stageDir, image.image));
+    const expectedTargetRows = inventory.images.map(image => [
+      image.image,
+      image.archiveRef,
+      image.id,
+      image.os,
+      image.architecture,
+      image.image.includes('@sha256:') ? repoDigestFor(image.image) : '-',
+    ].join('\t'));
+    const expectedTargetInventory = [
+      'SANCTUARY_IMAGE_INVENTORY_SCHEMA=1',
+      `SANCTUARY_IMAGE_INVENTORY_PLATFORM=${options.platform}`,
+      ...expectedTargetRows,
+    ];
+    if (JSON.stringify(targetInventory) !== JSON.stringify(expectedTargetInventory)) {
+      throw new Error('target-readable offline image inventory does not match signed image metadata');
+    }
+    for (const image of inventory.images) {
+      const tarPath = imageTarPath(stageDir, image.image);
+      requireFile(tarPath);
+      const archiveManifest = JSON.parse(run('tar', ['-xOf', tarPath, 'manifest.json']));
+      const restoredTags = archiveManifest.flatMap(entry => entry.RepoTags ?? []);
+      if (restoredTags.length !== 1 || restoredTags[0] !== image.archiveRef) {
+        throw new Error(`offline image archive does not restore ${image.archiveRef}`);
+      }
+    }
     const bundledCommit = peelBundledCommit(stageDir, options.tag);
     if (bundledCommit !== commit) throw new Error('offline bundle git ref does not match the release commit');
   } finally {
     rmSync(stageDir, { recursive: true, force: true });
   }
+}
+
+function archiveRefFor(image) {
+  return image.includes('@sha256:') ? image.slice(0, image.indexOf('@sha256:')) : image;
+}
+
+function repoDigestFor(image) {
+  const [archiveRef, digest] = image.split('@');
+  const slash = archiveRef.lastIndexOf('/');
+  const colon = archiveRef.lastIndexOf(':');
+  const repository = colon > slash ? archiveRef.slice(0, colon) : archiveRef;
+  return `${repository}@${digest}`;
 }
 
 function imageTarPath(stageDir, image) {

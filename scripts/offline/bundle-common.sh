@@ -79,6 +79,49 @@ offline_image_file_name() {
   offline_sanitize_component "$1"
 }
 
+# Registry digests are the connected acquisition/provenance identity, but a
+# Docker archive only restores named tags. Keep both identities explicit so an
+# offline host never depends on a registry-created RepoDigest alias.
+offline_archive_image_ref() {
+  local image="$1"
+  local archive_ref digest final_component
+
+  case "$image" in
+    *@sha256:*)
+      archive_ref="${image%@sha256:*}"
+      digest="${image##*@sha256:}"
+      [[ "$digest" =~ ^[a-f0-9]{64}$ ]] \
+        || offline_fail "invalid digest-qualified image reference: $image"
+      final_component="${archive_ref##*/}"
+      [ -n "$archive_ref" ] && [[ "$final_component" == *:* ]] \
+        || offline_fail "digest-qualified image must include a runtime tag: $image"
+      printf '%s\n' "$archive_ref"
+      ;;
+    *@*)
+      offline_fail "unsupported image reference: $image"
+      ;;
+    *)
+      printf '%s\n' "$image"
+      ;;
+  esac
+}
+
+offline_repo_digest_ref() {
+  local image="$1"
+  local archive_ref digest repository final_component
+
+  archive_ref="$(offline_archive_image_ref "$image")"
+  [[ "$image" == *@sha256:* ]] \
+    || offline_fail "image reference is not digest-qualified: $image"
+  digest="${image##*@sha256:}"
+  repository="$archive_ref"
+  final_component="${repository##*/}"
+  if [[ "$final_component" == *:* ]]; then
+    repository="${repository%:*}"
+  fi
+  printf '%s@sha256:%s\n' "$repository" "$digest"
+}
+
 offline_all_release_images() {
   printf '%s\n' "${CORE_IMAGES[@]}" "${MONITORING_IMAGES[@]}" "${TOR_IMAGES[@]}"
 }

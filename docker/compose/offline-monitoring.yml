@@ -1,0 +1,23 @@
+# Apply only after monitoring.yml. Keeping this separate prevents disabled
+# optional services from being materialized by an offline core install.
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    pull_policy: never
+  loki:
+    image: grafana/loki:2.9.0
+    pull_policy: never
+  promtail:
+    image: grafana/promtail:3.5.0
+    pull_policy: never
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    pull_policy: never
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    pull_policy: never
+  grafana-password-migration:
+    pull_policy: never
+  grafana:
+    image: grafana/grafana:10.4.19-security-01
+    pull_policy: never

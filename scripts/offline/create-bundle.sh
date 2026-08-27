@@ -223,13 +223,25 @@ pull_external_images() {
 
 save_images() {
   local stage_dir="$1"
-  local image file_name bucket
+  local image archive_ref image_id archive_id file_name bucket image_tar
 
   mkdir -p "$stage_dir/images/core" "$stage_dir/images/monitoring" "$stage_dir/images/tor"
 
   while IFS= read -r image; do
     [ -n "$image" ] || continue
     docker image inspect "$image" >/dev/null 2>&1 || offline_fail "image not available locally: $image"
+    archive_ref="$(offline_archive_image_ref "$image")"
+
+    if [ "$archive_ref" != "$image" ]; then
+      docker image tag "$image" "$archive_ref" \
+        || offline_fail "could not name bundled image $image as $archive_ref"
+    fi
+    image_id="$(docker image inspect --format '{{.Id}}' "$image")" \
+      || offline_fail "could not resolve bundled image ID: $image"
+    archive_id="$(docker image inspect --format '{{.Id}}' "$archive_ref")" \
+      || offline_fail "could not resolve archive image ID: $archive_ref"
+    [ "$archive_id" = "$image_id" ] \
+      || offline_fail "archive image ref does not match immutable source: $image"
 
     bucket="core"
     case "$image" in
@@ -245,15 +257,21 @@ save_images() {
     esac
 
     file_name="$(offline_image_file_name "$image").tar"
-    offline_log "Saving $image..."
-    docker save -o "$stage_dir/images/$bucket/$file_name" "$image"
+    image_tar="$stage_dir/images/$bucket/$file_name"
+    offline_log "Saving $image as $archive_ref..."
+    docker save -o "$image_tar" "$archive_ref"
+    tar -xOf "$image_tar" manifest.json \
+      | jq -e --arg archive_ref "$archive_ref" \
+        '[.[].RepoTags[]?] == [$archive_ref]' >/dev/null \
+      || offline_fail "saved image archive does not restore exactly $archive_ref: $image"
   done < <(bundle_images)
 }
 
 write_image_inventory() {
   local stage_dir="$1"
-  local expected_arch image inspection actual_platform
+  local expected_arch image archive_ref inspection archive_inspection actual_platform expected_repo_digest repo_digest source_identity archive_identity
   local inventory_lines="$CREATE_TMP_ROOT/image-inventory.jsonl"
+  local inventory_tsv="$stage_dir/image-inventory.tsv"
 
   case "$PLATFORM" in
     linux/amd64) expected_arch="amd64" ;;
@@ -262,22 +280,42 @@ write_image_inventory() {
   esac
 
   : > "$inventory_lines"
+  printf 'SANCTUARY_IMAGE_INVENTORY_SCHEMA=1\nSANCTUARY_IMAGE_INVENTORY_PLATFORM=%s\n' \
+    "$PLATFORM" > "$inventory_tsv"
   while IFS= read -r image; do
     [ -n "$image" ] || continue
     inspection="$(docker image inspect "$image")" \
       || offline_fail "could not inspect bundled image: $image"
+    archive_ref="$(offline_archive_image_ref "$image")"
+    archive_inspection="$(docker image inspect "$archive_ref")" \
+      || offline_fail "could not inspect named archive image: $archive_ref"
     actual_platform="$(printf '%s' "$inspection" | jq -r '.[0] | "\(.Os)/\(.Architecture)"')"
     [ "$actual_platform" = "linux/$expected_arch" ] \
       || offline_fail "bundled image $image has platform $actual_platform, expected $PLATFORM"
 
-    if [[ "$image" != sanctuary-* ]] \
-      && ! printf '%s' "$inspection" | jq -e '.[0].RepoDigests | type == "array" and length > 0' >/dev/null; then
-      offline_fail "external bundled image lacks immutable RepoDigests: $image"
+    source_identity="$(printf '%s' "$inspection" | jq -r '.[0] | [.Id, .Os, .Architecture] | @tsv')"
+    archive_identity="$(printf '%s' "$archive_inspection" | jq -r '.[0] | [.Id, .Os, .Architecture] | @tsv')"
+    [ "$source_identity" = "$archive_identity" ] \
+      || offline_fail "named archive image does not match immutable source: $image"
+
+    repo_digest="-"
+    if [[ "$image" == *@sha256:* ]]; then
+      expected_repo_digest="$(offline_repo_digest_ref "$image")"
+      if ! printf '%s' "$inspection" | jq -e --arg digest "$expected_repo_digest" \
+        '.[0].RepoDigests | type == "array" and index($digest) != null' >/dev/null; then
+        offline_fail "external bundled image is not bound to its immutable digest: $image"
+      fi
+      repo_digest="$expected_repo_digest"
     fi
 
-    printf '%s' "$inspection" | jq -c --arg image "$image" \
-      '.[0] | {image: $image, id: .Id, os: .Os, architecture: .Architecture, repoDigests: (.RepoDigests // [])}' \
+    printf '%s' "$inspection" | jq -c --arg image "$image" --arg archive_ref "$archive_ref" \
+      '.[0] | {image: $image, archiveRef: $archive_ref, id: .Id, os: .Os, architecture: .Architecture, repoDigests: (.RepoDigests // [])}' \
       >> "$inventory_lines"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$image" "$archive_ref" \
+      "$(printf '%s' "$inspection" | jq -r '.[0].Id')" \
+      "$(printf '%s' "$inspection" | jq -r '.[0].Os')" \
+      "$(printf '%s' "$inspection" | jq -r '.[0].Architecture')" "$repo_digest" \
+      >> "$inventory_tsv"
   done < <(bundle_images)
 
   jq -s --arg platform "$PLATFORM" \
@@ -514,20 +552,19 @@ EOF
 Tag: \`$TAG\`
 Platform: \`$PLATFORM\`
 
-Preferred upgrade path from an installed checkout:
+After verifying the adjacent detached archive signature with a separately
+trusted public key, extract the bundle and use its version-matched installer:
 
 \`\`\`bash
-./install.sh --offline-bundle /path/to/$(basename "$OUTPUT")
-\`\`\`
-
-For a freshly extracted bundle, first verify the adjacent detached archive
-signature with a separately trusted public key. Only then run:
-
-\`\`\`bash
+mkdir sanctuary-offline-$TAG
+tar -xzf /path/to/$(basename "$OUTPUT") -C sanctuary-offline-$TAG
+cd sanctuary-offline-$TAG
 ./install-offline.sh --public-key /secure/path/sanctuary-offline-release-public.pem
 \`\`\`
 
-The copy under \`keys/\` is for operator inspection only.
+Always use the installer carried by the target bundle, including for upgrades;
+an older installed checkout may not understand a newer bundle format. The copy
+under \`keys/\` is for operator inspection only.
 EOF
 }
 

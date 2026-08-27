@@ -100,6 +100,7 @@ prepare_bundle() {
   offline_verify_signature_and_checksums "$STAGE_DIR" "$PUBLIC_KEY" "$ALLOW_UNSIGNED_DEV"
   offline_load_manifest "$STAGE_DIR"
   offline_verify_platform "${SANCTUARY_PLATFORM:?SANCTUARY_PLATFORM missing from manifest}"
+  validate_image_inventory
 
   offline_log "Offline bundle verified and staged at: $STAGE_DIR"
 }
@@ -142,10 +143,79 @@ bundle_includes_profile() {
   esac
 }
 
+bundle_expected_images() {
+  printf '%s\n' "${CORE_IMAGES[@]}"
+  if bundle_includes_profile monitoring; then
+    printf '%s\n' "${MONITORING_IMAGES[@]}"
+  fi
+  if bundle_includes_profile tor; then
+    printf '%s\n' "${TOR_IMAGES[@]}"
+  fi
+  return 0
+}
+
+validate_image_inventory() {
+  local inventory="$STAGE_DIR/image-inventory.tsv"
+  local expected actual image archive_ref expected_digest image_tar image_tar_count expected_count
+  local row row_count row_image row_archive_ref row_id row_os row_arch row_digest row_extra archive_manifest
+
+  [ -s "$inventory" ] || offline_fail "bundle is missing image-inventory.tsv"
+  [ "$(sed -n '1p' "$inventory")" = "SANCTUARY_IMAGE_INVENTORY_SCHEMA=1" ] \
+    && [ "$(sed -n '2p' "$inventory")" = "SANCTUARY_IMAGE_INVENTORY_PLATFORM=$SANCTUARY_PLATFORM" ] \
+    || offline_fail "offline bundle image inventory header is invalid"
+  awk -F '\t' 'NR > 2 && NF != 6 { exit 1 } END { if (NR <= 2) exit 1 }' "$inventory" \
+    || offline_fail "offline bundle image inventory rows are invalid"
+
+  expected="$(bundle_expected_images | LC_ALL=C sort)"
+  actual="$(tail -n +3 "$inventory" | cut -f1 | LC_ALL=C sort)"
+  [ "$actual" = "$expected" ] \
+    || offline_fail "offline bundle image inventory does not match its declared profiles"
+  [ "$(tail -n +3 "$inventory" | cut -f1 | LC_ALL=C sort -u | wc -l)" \
+    -eq "$(tail -n +3 "$inventory" | wc -l)" ] \
+    || offline_fail "offline bundle image inventory contains duplicate images"
+
+  expected_count="$(printf '%s\n' "$expected" | sed '/^$/d' | wc -l)"
+  image_tar_count="$(find "$STAGE_DIR/images" -type f -name '*.tar' | wc -l)"
+  [ "$image_tar_count" -eq "$expected_count" ] \
+    || offline_fail "offline bundle image archive count does not match inventory"
+
+  while IFS= read -r image; do
+    [ -n "$image" ] || continue
+    archive_ref="$(offline_archive_image_ref "$image")"
+    row="$(awk -F '\t' -v image="$image" '$1 == image { print }' "$inventory")"
+    row_count="$(awk -F '\t' -v image="$image" '$1 == image { count++ } END { print count + 0 }' "$inventory")"
+    [ "$row_count" -eq 1 ] || offline_fail "offline bundle image inventory entry is invalid: $image"
+    IFS=$'\t' read -r row_image row_archive_ref row_id row_os row_arch row_digest row_extra <<< "$row"
+    [ -z "${row_extra:-}" ] && [ "$row_image" = "$image" ] && [ "$row_archive_ref" = "$archive_ref" ] \
+      && [[ "$row_id" =~ ^sha256:[a-f0-9]{64}$ ]] \
+      && [ "$row_os/$row_arch" = "$SANCTUARY_PLATFORM" ] \
+      || offline_fail "offline bundle image inventory entry is invalid: $image"
+
+    if [[ "$image" == *@sha256:* ]]; then
+      expected_digest="$(offline_repo_digest_ref "$image")"
+      [ "$row_digest" = "$expected_digest" ] \
+        || offline_fail "offline bundle image inventory lacks immutable digest: $image"
+    else
+      [ "$row_digest" = "-" ] \
+        || offline_fail "offline bundle local image inventory is invalid: $image"
+    fi
+
+    image_tar="$(find "$STAGE_DIR/images" -type f -name "$(offline_image_file_name "$image").tar")"
+    [ "$(printf '%s\n' "$image_tar" | sed '/^$/d' | wc -l)" -eq 1 ] \
+      || offline_fail "offline bundle image archive is missing or duplicated: $image"
+    archive_manifest="$(tar -xOf "$image_tar" manifest.json | tr -d '[:space:]')" \
+      || offline_fail "offline image archive manifest is unreadable: $image"
+    grep -Fq "\"RepoTags\":[\"$archive_ref\"]" <<< "$archive_manifest" \
+      && [ "$(grep -o '"RepoTags":' <<< "$archive_manifest" | wc -l)" -eq 1 ] \
+      || offline_fail "offline image archive does not restore exactly $archive_ref: $image"
+  done < <(bundle_expected_images)
+}
+
 images_present() {
-  local image
+  local image archive_ref
   for image in "$@"; do
-    docker image inspect "$image" >/dev/null 2>&1 || return 1
+    archive_ref="$(offline_archive_image_ref "$image")"
+    docker image inspect "$archive_ref" >/dev/null 2>&1 || return 1
   done
 }
 
@@ -177,35 +247,22 @@ load_bundle_images() {
   done < <(find "$STAGE_DIR/images" -type f -name '*.tar' | LC_ALL=C sort)
 }
 
-verify_required_images() {
-  local image missing=false
+verify_loaded_images() {
+  local inventory="$STAGE_DIR/image-inventory.tsv"
+  local image archive_ref expected_id expected_os expected_arch inspection actual_id actual_os actual_arch
 
-  for image in "${CORE_IMAGES[@]}"; do
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
-      echo "Missing required image: $image" >&2
-      missing=true
-    fi
-  done
-
-  if bundle_includes_profile "monitoring"; then
-    for image in "${MONITORING_IMAGES[@]}"; do
-      if ! docker image inspect "$image" >/dev/null 2>&1; then
-        echo "Missing monitoring image: $image" >&2
-        missing=true
-      fi
-    done
-  fi
-
-  if bundle_includes_profile "tor"; then
-    for image in "${TOR_IMAGES[@]}"; do
-      if ! docker image inspect "$image" >/dev/null 2>&1; then
-        echo "Missing Tor image: $image" >&2
-        missing=true
-      fi
-    done
-  fi
-
-  [ "$missing" = "false" ] || offline_fail "offline bundle image validation failed"
+  while IFS= read -r image; do
+    [ -n "$image" ] || continue
+    archive_ref="$(offline_archive_image_ref "$image")"
+    inspection="$(docker image inspect --format '{{.Id}} {{.Os}} {{.Architecture}}' "$archive_ref")" \
+      || offline_fail "loaded offline image is missing: $archive_ref"
+    IFS=$'\t' read -r _ _ expected_id expected_os expected_arch _ <<< \
+      "$(awk -F '\t' -v image="$image" '$1 == image { print }' "$inventory")"
+    read -r actual_id actual_os actual_arch <<< "$inspection"
+    [ "$actual_id" = "$expected_id" ] && [ "$actual_os" = "$expected_os" ] \
+      && [ "$actual_arch" = "$expected_arch" ] \
+      || offline_fail "loaded offline image does not match signed inventory: $archive_ref"
+  done < <(bundle_expected_images)
 }
 
 checkout_bundle_source() {
@@ -241,13 +298,14 @@ verify_staged_bundle() {
   offline_verify_signature_and_checksums "$STAGE_DIR" "$PUBLIC_KEY" "$ALLOW_UNSIGNED_DEV"
   offline_load_manifest "$STAGE_DIR"
   offline_verify_platform "${SANCTUARY_PLATFORM:?SANCTUARY_PLATFORM missing from manifest}"
+  validate_image_inventory
 }
 
 apply_prepared_bundle() {
   verify_staged_bundle
   validate_profile_coverage
   load_bundle_images
-  verify_required_images
+  verify_loaded_images
   checkout_bundle_source
 }
 

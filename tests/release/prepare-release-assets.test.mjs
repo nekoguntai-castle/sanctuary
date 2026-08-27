@@ -45,16 +45,44 @@ try {
   const expectedImages = spawnSync('bash', ['-c', 'source "$1"; offline_all_release_images', '_', path.join(repo, 'scripts/offline/bundle-common.sh')], { encoding: 'utf8' }).stdout.trim().split('\n');
   const imageInventory = expectedImages.map((image) => ({
     image,
+    archiveRef: image.includes('@sha256:') ? image.slice(0, image.indexOf('@sha256:')) : image,
     id: `sha256:${'b'.repeat(64)}`,
     os: 'linux',
     architecture: 'amd64',
-    repoDigests: image.startsWith('sanctuary-') ? [] : [`example.invalid/image@sha256:${'c'.repeat(64)}`],
+    repoDigests: image.includes('@sha256:') ? [repoDigestFor(image)] : [],
   }));
+  function repoDigestFor(image) {
+    const [archiveRef, digest] = image.split('@');
+    const slash = archiveRef.lastIndexOf('/');
+    const colon = archiveRef.lastIndexOf(':');
+    const repository = colon > slash ? archiveRef.slice(0, colon) : archiveRef;
+    return `${repository}@${digest}`;
+  }
+  writeFileSync(path.join(bundleStage, 'image-inventory.tsv'), [
+    'SANCTUARY_IMAGE_INVENTORY_SCHEMA=1',
+    'SANCTUARY_IMAGE_INVENTORY_PLATFORM=linux/amd64',
+    ...imageInventory.map(image => [
+      image.image,
+      image.archiveRef,
+      image.id,
+      image.os,
+      image.architecture,
+      image.image.includes('@sha256:') ? repoDigestFor(image.image) : '-',
+    ].join('\t')),
+    '',
+  ].join('\n'));
+  const imageArchiveStage = path.join(root, 'image-archive-stage');
+  mkdirSync(imageArchiveStage);
+  const writeImageArchive = (target, archiveRef) => {
+    writeFileSync(path.join(imageArchiveStage, 'manifest.json'), `${JSON.stringify([{ Config: 'config.json', RepoTags: archiveRef === null ? null : [archiveRef], Layers: [] }])}\n`);
+    run('tar', ['-cf', target, '-C', imageArchiveStage, 'manifest.json']);
+  };
   for (const image of expectedImages) {
     const bucket = image.startsWith('sanctuary-grafana-migration:') || /^(jaegertracing|grafana|prom)\//.test(image)
       ? 'monitoring'
       : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
-    writeFileSync(path.join(bundleStage, 'images', bucket, `${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`), `image ${image}\n`);
+    const archiveRef = image.includes('@sha256:') ? image.slice(0, image.indexOf('@sha256:')) : image;
+    writeImageArchive(path.join(bundleStage, 'images', bucket, `${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`), archiveRef);
   }
   writeFileSync(path.join(bundleStage, 'image-inventory.json'), `${JSON.stringify({ schema: 1, platform: 'linux/amd64', images: imageInventory })}\n`);
   run('git', ['-C', repo, 'bundle', 'create', path.join(bundleStage, 'repo/sanctuary.git.bundle'), 'refs/tags/v1.2.3-rc.1']);
@@ -64,7 +92,7 @@ try {
       : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
     return `images/${bucket}/${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`;
   });
-  const checksumFiles = ['payload.txt', 'manifest.env', 'manifest.json', 'image-inventory.json', 'repo/sanctuary.git.bundle', ...imageFiles];
+  const checksumFiles = ['payload.txt', 'manifest.env', 'manifest.json', 'image-inventory.json', 'image-inventory.tsv', 'repo/sanctuary.git.bundle', ...imageFiles];
   writeFileSync(path.join(bundleStage, 'checksums.sha256'), `${checksumFiles.map((name) => {
     const sha = spawnSync('sha256sum', [path.join(bundleStage, name)], { encoding: 'utf8' }).stdout.split(' ')[0];
     return `${sha}  ${name}`;
@@ -88,6 +116,23 @@ try {
   assert.equal(manifest.artifacts.find((item) => item.type === 'offline-bundle').platform, 'linux/amd64');
   assert.equal(manifest.artifacts.some((item) => item.type === 'container-image'), false);
   assert.match(readFileSync(path.join(output, `${path.basename(result.bundlePath)}.spdx.json`), 'utf8'), /SPDX-2.3/);
+
+  const malformedImage = expectedImages.find(image => image.includes('@sha256:'));
+  const malformedImagePath = path.join(bundleStage, imageFiles[expectedImages.indexOf(malformedImage)]);
+  writeImageArchive(malformedImagePath, null);
+  writeFileSync(path.join(bundleStage, 'checksums.sha256'), `${checksumFiles.map((name) => {
+    const sha = spawnSync('sha256sum', [path.join(bundleStage, name)], { encoding: 'utf8' }).stdout.split(' ')[0];
+    return `${sha}  ${name}`;
+  }).join('\n')}\n`);
+  run('openssl', ['dgst', '-sha256', '-sign', privateKeyPath, '-out', path.join(bundleStage, 'checksums.sha256.sig'), path.join(bundleStage, 'checksums.sha256')]);
+  run('tar', ['-czf', bundle, '-C', bundleStage, '.']);
+  run('openssl', ['dgst', '-sha256', '-sign', privateKeyPath, '-out', `${bundle}.sig`, bundle]);
+  assert.throws(() => prepareReleaseAssets({
+    tag: 'v1.2.3-rc.1', outputDir: path.join(root, 'unnamed-image'), signingKey: privateKeyPath,
+    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle,
+  }), /offline image archive does not restore/);
+
+  writeImageArchive(malformedImagePath, imageInventory[expectedImages.indexOf(malformedImage)].archiveRef);
   writeFileSync(path.join(bundleStage, 'manifest.json'), `${JSON.stringify({ schema: 1, version: '9.9.9', gitTag: 'v9.9.9', gitCommit: commit, platform: 'linux/amd64', flavor: 'full', includedProfiles: 'core,monitoring,tor' })}\n`);
   writeFileSync(path.join(bundleStage, 'checksums.sha256'), `${checksumFiles.map((name) => {
     const sha = spawnSync('sha256sum', [path.join(bundleStage, name)], { encoding: 'utf8' }).stdout.split(' ')[0];

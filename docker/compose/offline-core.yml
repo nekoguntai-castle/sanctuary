@@ -1,0 +1,26 @@
+# Offline runtime image identities. Registry digests remain canonical in the
+# connected Compose file; signed bundles restore tag-only Docker archive refs.
+services:
+  redis:
+    image: redis:7-alpine
+    pull_policy: never
+  postgres:
+    image: postgres:16-alpine
+    pull_policy: never
+  backend:
+    pull_policy: never
+  worker:
+    pull_policy: never
+  mcp:
+    pull_policy: never
+  migrate:
+    pull_policy: never
+  frontend:
+    pull_policy: never
+  gateway:
+    pull_policy: never
+  llm-egress-proxy:
+    pull_policy: never
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    pull_policy: never

@@ -307,8 +307,17 @@ configure_compose_files() {
     local include_tor="${2:-no}"
 
     COMPOSE_FILE_ARGS=(--project-directory "$SCRIPT_DIR" -f "$SCRIPT_DIR/docker-compose.yml")
-    [ "$include_monitoring" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/monitoring.yml")
-    [ "$include_tor" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/tor.yml")
+    [ "$IS_OFFLINE_INSTALL" = true ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/offline-core.yml")
+    if [ "$include_monitoring" = "yes" ]; then
+        COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/monitoring.yml")
+        [ "$IS_OFFLINE_INSTALL" = true ] \
+            && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/offline-monitoring.yml")
+    fi
+    if [ "$include_tor" = "yes" ]; then
+        COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/tor.yml")
+        [ "$IS_OFFLINE_INSTALL" = true ] \
+            && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/offline-tor.yml")
+    fi
     return 0
 }
 

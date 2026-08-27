@@ -896,11 +896,12 @@ pull_external_runtime_images() {
 
 validate_offline_images() {
     local missing=false
-    local image
+    local image archive_ref
 
     while IFS= read -r image; do
-        if ! docker image inspect "$image" >/dev/null 2>&1; then
-            echo -e "${RED}Missing offline image:${NC} $image"
+        archive_ref="${image%@*}"
+        if ! docker image inspect "$archive_ref" >/dev/null 2>&1; then
+            echo -e "${RED}Missing offline image:${NC} $archive_ref"
             missing=true
         fi
     done < <(required_runtime_images)
@@ -1047,8 +1048,17 @@ start_services() {
     # Build compose file arguments with an explicit project root so relative
     # paths inside nested overlays retain their repository-root meaning.
     COMPOSE_FILE_ARGS=(--project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
-    [ "$OPT_ENABLE_MONITORING" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/monitoring.yml")
-    [ "$OPT_ENABLE_TOR" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/tor.yml")
+    [ "$OPT_OFFLINE" = true ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/offline-core.yml")
+    if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
+        COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/monitoring.yml")
+        [ "$OPT_OFFLINE" = true ] \
+            && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/offline-monitoring.yml")
+    fi
+    if [ "$OPT_ENABLE_TOR" = "yes" ]; then
+        COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/tor.yml")
+        [ "$OPT_OFFLINE" = true ] \
+            && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/offline-tor.yml")
+    fi
     [ "$OPT_ENABLE_MCP" = "yes" ] && COMPOSE_FILE_ARGS+=(--profile mcp)
 
     if [ "$OPT_OFFLINE" = true ]; then

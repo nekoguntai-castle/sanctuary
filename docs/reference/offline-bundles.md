@@ -33,31 +33,26 @@ monitoring and Tor profile images, including Sanctuary's packaged Grafana
 credential-migration image. This lets an existing optional-profile
 installation upgrade from one artifact.
 
-On the installation machine:
+On the installation machine, after the detached signature check above, extract
+the archive and run the installer carried by that exact bundle:
 
 ```bash
-cd ~/sanctuary
-./install.sh --offline-bundle /path/to/sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz
+mkdir sanctuary-offline-vX.Y.Z
+tar -xzf /path/to/sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz \
+  -C sanctuary-offline-vX.Y.Z
+cd sanctuary-offline-vX.Y.Z
+./install-offline.sh \
+  --public-key /secure/path/sanctuary-offline-release-public.pem
 ```
 
-If the installed checkout does not already include the pinned offline-release
-public key, pass it explicitly:
-
-```bash
-./install.sh \
-  --offline-bundle /path/to/sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz \
-  --offline-public-key /secure/path/sanctuary-offline-release-public.pem
-```
-
-The offline path verifies the bundle signature and checksums, offers to create
-a local pre-upgrade backup, loads images with `docker load`, checks out the
-bundled release tag from a git bundle, then starts Sanctuary without network
-pulls or Docker builds.
-
-After the outer archive signature has been verified, the bundle bootstrap
-script, `install-offline.sh`, includes the same backup prompt for machines whose
-installed checkout predates offline bundle support. Never execute this script
-from an archive whose detached signature has not been verified first.
+Always use the version-matched `install-offline.sh` from the target bundle,
+including for upgrades. An older installed checkout's `./install.sh
+--offline-bundle` helper may not understand a newer bundle format. The bundled
+installer verifies the signed internal checksums, offers to create a local
+pre-upgrade backup, loads images with `docker load`, checks out the bundled
+release tag from a git bundle, then starts Sanctuary without network pulls or
+Docker builds. Never execute it from an archive whose detached signature has
+not been verified first.
 
 ## Release Manifest Verification
 

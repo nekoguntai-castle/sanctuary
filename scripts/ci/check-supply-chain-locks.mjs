@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 const IMAGE_TOKEN = /[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*(?::[A-Za-z0-9._-]+)?@sha256:[a-f0-9]{64}|[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*:[A-Za-z0-9._-]+/g;
 const IGNORED_DIRS = new Set(['.git', '.tmp', 'coverage', 'dist', 'node_modules', 'playwright-report', 'reports', 'tasks', 'test-results']);
+const OFFLINE_RUNTIME_OVERLAYS = new Set([
+  'docker/compose/offline-core.yml',
+  'docker/compose/offline-monitoring.yml',
+  'docker/compose/offline-tor.yml',
+]);
 
 function readJson(root, relativePath) {
   return JSON.parse(readFileSync(path.join(root, relativePath), 'utf8'));
@@ -103,8 +108,14 @@ export function inspectContainerLocks(root) {
       continue;
     }
     seen.add(reference);
-    if (!digest) errors.push(`${use.file}:${use.line} external image is not digest-pinned: ${reference}`);
-    else if (digest !== expected) errors.push(`${use.file}:${use.line} image digest drift for ${reference}: expected ${expected}, got ${digest}`);
+    // Docker archives restore named tags, not registry RepoDigest aliases. These
+    // exact offline-only overlays may use the tag from a locked reference after
+    // the signed bundle verifier binds that tag to its expected image ID.
+    if (!digest && !OFFLINE_RUNTIME_OVERLAYS.has(use.file)) {
+      errors.push(`${use.file}:${use.line} external image is not digest-pinned: ${reference}`);
+    } else if (digest && digest !== expected) {
+      errors.push(`${use.file}:${use.line} image digest drift for ${reference}: expected ${expected}, got ${digest}`);
+    }
   }
 
   for (const reference of locked.keys()) {

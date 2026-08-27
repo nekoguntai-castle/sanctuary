@@ -78,6 +78,19 @@ test('rejects unpinned, unknown, and digest-drifted images', () => {
   });
 });
 
+test('permits only locked tag aliases in exact offline runtime overlays', () => {
+  withFixture((root) => {
+    write(root, 'docker/compose/offline-core.yml', 'services:\n  proof:\n    image: example.invalid/proof:1.0.0\n');
+    assert.deepEqual(inspectSupplyChainLocks(root), []);
+
+    write(root, 'docker/compose/offline-core.yml', 'services:\n  proof:\n    image: unknown.invalid/proof:1.0.0\n');
+    assert.match(inspectSupplyChainLocks(root).join('\n'), /absent from the lock/);
+
+    write(root, 'docker/compose/not-offline.yml', 'services:\n  proof:\n    image: example.invalid/proof:1.0.0\n');
+    assert.match(inspectSupplyChainLocks(root).join('\n'), /not digest-pinned/);
+  });
+});
+
 test('rejects version ranges, integrity drift, and undeclared package boundaries', () => {
   withFixture((root) => {
     write(root, 'package.json', { dependencies: { 'bitcoinjs-lib': '^7.0.1' } });

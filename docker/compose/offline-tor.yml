@@ -1,0 +1,8 @@
+# Apply only after tor.yml so a core-only offline install cannot create Tor
+# services merely because their image policy is overridden.
+services:
+  tor-ingress:
+    pull_policy: never
+  tor:
+    image: dperson/torproxy:latest
+    pull_policy: never
