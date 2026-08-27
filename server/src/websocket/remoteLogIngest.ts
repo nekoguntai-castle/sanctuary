@@ -21,6 +21,11 @@ function isWalletLogEntry(value: unknown): value is WalletLogEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Record<string, unknown>;
   return typeof entry.id === 'string' &&
+    (entry.sequence === undefined || (
+      typeof entry.sequence === 'number' &&
+      Number.isSafeInteger(entry.sequence) &&
+      entry.sequence >= 0
+    )) &&
     typeof entry.timestamp === 'string' &&
     typeof entry.module === 'string' &&
     typeof entry.message === 'string' &&
@@ -34,10 +39,18 @@ function isWalletLogEntry(value: unknown): value is WalletLogEntry {
  * Non-log events and malformed payloads are ignored - the event still reaches
  * subscribed clients through the normal broadcast path.
  */
-export function ingestRemoteWalletLog(event: WebSocketEvent): void {
-  if (event.type !== 'log') return;
-  if (!event.walletId) return;
-  if (!isWalletLogEntry(event.data)) return;
+export function ingestRemoteWalletLog(event: WebSocketEvent): WebSocketEvent {
+  if (event.type !== 'log') return event;
+  if (!event.walletId) return event;
+  if (!isWalletLogEntry(event.data)) return event;
 
-  walletLogBuffer.add(event.walletId, event.data);
+  const normalized = {
+    ...event,
+    data: {
+      ...event.data,
+      sequence: walletLogBuffer.nextSequence(event.walletId),
+    },
+  };
+  walletLogBuffer.add(event.walletId, normalized.data);
+  return normalized;
 }

@@ -19,6 +19,7 @@ const log = createLogger('WALLET_LOG:SVC');
 class WalletLogBuffer {
   private buffers: Map<string, WalletLogEntry[]> = new Map();
   private lastActivity: Map<string, number> = new Map();
+  private sequences: Map<string, number> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -46,6 +47,13 @@ class WalletLogBuffer {
     this.lastActivity.set(walletId, Date.now());
   }
 
+  /** Allocate ordering evidence that reveals activity for this wallet only. */
+  nextSequence(walletId: string): number {
+    const sequence = (this.sequences.get(walletId) ?? 0) + 1;
+    this.sequences.set(walletId, sequence);
+    return sequence;
+  }
+
   /**
    * Get all log entries for a wallet
    * Returns a copy of the array to prevent external modification
@@ -61,6 +69,7 @@ class WalletLogBuffer {
   clear(walletId: string): void {
     this.buffers.delete(walletId);
     this.lastActivity.delete(walletId);
+    this.sequences.delete(walletId);
   }
 
   /**
@@ -130,6 +139,7 @@ class WalletLogBuffer {
       if (lastActive < cutoff) {
         this.buffers.delete(walletId);
         this.lastActivity.delete(walletId);
+        this.sequences.delete(walletId);
         cleanedCount++;
       }
     }

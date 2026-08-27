@@ -15,6 +15,7 @@ describe('LogTab', () => {
     isLoading: false,
     syncLifecycle,
     syncControls,
+    syncNow: Date.now(),
     onTogglePause: vi.fn(),
     onClearLogs: vi.fn(),
     onSync: vi.fn(),

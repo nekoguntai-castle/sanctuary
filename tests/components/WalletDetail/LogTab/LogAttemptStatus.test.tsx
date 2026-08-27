@@ -21,6 +21,17 @@ const checkpoint = {
   },
 } as const;
 
+const startedCheckpoint = {
+  ...checkpoint,
+  details: {
+    ...checkpoint.details,
+    event: 'stage_started',
+    elapsedMs: 30_000,
+    completed: undefined,
+    total: undefined,
+  },
+} as const;
+
 const settled: WalletSyncLifecycleClassification = {
   state: 'settled',
   incrementalPending: false,
@@ -49,6 +60,7 @@ describe('LogAttemptStatus', () => {
           leaseClaimedAt: Date.parse('2026-08-26T12:00:00.000Z'),
         }}
         controls={controls()}
+        now={Date.parse('2026-08-26T12:00:35.000Z')}
       />,
     );
 
@@ -59,7 +71,7 @@ describe('LogAttemptStatus', () => {
 
   it('labels retained progress as prior when another request is pending', () => {
     render(
-      <LogAttemptStatus checkpoint={checkpoint} lifecycle={settled} controls={controls(true)} />,
+      <LogAttemptStatus checkpoint={checkpoint} lifecycle={settled} controls={controls(true)} now={0} />,
     );
 
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -77,6 +89,7 @@ describe('LogAttemptStatus', () => {
           leaseClaimedAt: Date.parse('2026-08-26T12:01:00.000Z'),
         }}
         controls={controls()}
+        now={0}
       />,
     );
 
@@ -96,6 +109,7 @@ describe('LogAttemptStatus', () => {
           attentionReason: 'lease_evidence_expired',
         }}
         controls={controls(true)}
+        now={0}
       />,
     );
 
@@ -106,7 +120,7 @@ describe('LogAttemptStatus', () => {
 
   it('renders a prior checkpoint for a settled attempt', () => {
     render(
-      <LogAttemptStatus checkpoint={checkpoint} lifecycle={settled} controls={controls()} />,
+      <LogAttemptStatus checkpoint={checkpoint} lifecycle={settled} controls={controls()} now={0} />,
     );
 
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -116,7 +130,7 @@ describe('LogAttemptStatus', () => {
 
   it('renders nothing without a checkpoint or exceptional lifecycle evidence', () => {
     const { container } = render(
-      <LogAttemptStatus checkpoint={null} lifecycle={settled} controls={controls()} />,
+      <LogAttemptStatus checkpoint={null} lifecycle={settled} controls={controls()} now={0} />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -124,7 +138,7 @@ describe('LogAttemptStatus', () => {
 
   it('reports pending and expired states without inventing a prior checkpoint', () => {
     const { rerender } = render(
-      <LogAttemptStatus checkpoint={null} lifecycle={settled} controls={controls(true)} />,
+      <LogAttemptStatus checkpoint={null} lifecycle={settled} controls={controls(true)} now={0} />,
     );
     expect(screen.getByRole('status')).toHaveTextContent('Attempt stopped; sync request pending.');
     expect(screen.getByRole('status')).not.toHaveTextContent('prior attempt');
@@ -138,9 +152,97 @@ describe('LogAttemptStatus', () => {
           attentionReason: 'lease_evidence_expired',
         }}
         controls={controls()}
+        now={0}
       />,
     );
     expect(screen.getByRole('status')).toHaveTextContent('Lease evidence expired.');
     expect(screen.getByRole('status')).not.toHaveTextContent('prior attempt');
   });
+
+  it('advances a current stage from the lifecycle clock without another log', () => {
+    const lifecycle = {
+      ...settled,
+      state: 'running',
+      leaseClaimedAt: Date.parse('2026-08-26T12:00:00.000Z'),
+    } as const;
+    const { rerender } = render(
+      <LogAttemptStatus
+        checkpoint={startedCheckpoint}
+        lifecycle={lifecycle}
+        controls={controls()}
+        now={Date.parse('2026-08-26T12:00:30.000Z')}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('30s in stage · batch 1/4');
+
+    rerender(
+      <LogAttemptStatus
+        checkpoint={startedCheckpoint}
+        lifecycle={lifecycle}
+        controls={controls()}
+        now={Date.parse('2026-08-26T12:01:00.000Z')}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('1m 0s in stage · batch 1/4');
+  });
+
+  it.each([
+    ['fallback', 'Using fallback'],
+    ['batch_completed', 'Batch completed'],
+    ['timeout', 'Timed out'],
+    ['aborted', 'Stopped'],
+  ] as const)(
+    'keeps candidate %s terminal evidence fixed while the lease remains current',
+    (event, label) => {
+      const progress = event === 'batch_completed'
+        ? { ...checkpoint.details, elapsedMs: 59_000 }
+        : {
+            ...checkpoint.details,
+            event,
+            elapsedMs: 59_000,
+            completed: undefined,
+            total: undefined,
+          };
+      render(
+        <LogAttemptStatus
+          checkpoint={{ ...checkpoint, details: progress }}
+          lifecycle={{
+            ...settled,
+            state: 'running',
+            leaseClaimedAt: Date.parse('2026-08-26T12:00:00.000Z'),
+          }}
+          controls={controls()}
+          now={Date.parse('2026-08-26T13:00:00.000Z')}
+        />,
+      );
+      expect(screen.getByRole('status')).toHaveTextContent(`59s in stage · ${label}`);
+    },
+  );
+
+  it.each(['stage_completed', 'stage_failed', 'stage_aborted'] as const)(
+    'keeps phase %s terminal evidence fixed',
+    (event) => {
+      render(
+        <LogAttemptStatus
+          checkpoint={{
+            timestamp: checkpoint.timestamp,
+            details: {
+              kind: 'sync_phase_progress',
+              event,
+              stage: 'address_history',
+              elapsedMs: 59_000,
+            },
+          }}
+          lifecycle={{
+            ...settled,
+            state: 'running',
+            leaseClaimedAt: Date.parse('2026-08-26T12:00:00.000Z'),
+          }}
+          controls={controls()}
+          now={Date.parse('2026-08-26T13:00:00.000Z')}
+        />,
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('59s in stage');
+    },
+  );
 });

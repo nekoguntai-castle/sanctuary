@@ -1,17 +1,29 @@
 import type { DisplayLogEntry } from './types';
 import {
+  SYNC_PROGRESS_MAX_ELAPSED_MS,
+  SyncPhaseProgressDetailsSchema,
   SyncProgressDetailsSchema,
+  type SyncExecutionStage,
+  type SyncPhaseProgressDetails,
   type SyncProgressDetails,
-  type SyncProgressStage,
 } from '@sanctuary/shared/schemas/syncProgress';
 import { parseStrictIsoInstant } from '../../../utils/isoInstant';
 
-const STAGE_LABELS: Record<SyncProgressStage, string> = {
+const STAGE_LABELS: Record<SyncExecutionStage, string> = {
+  preflight: 'Preparing wallet sync',
+  initial_network: 'Checking network status',
+  address_history: 'Fetching address history',
+  transaction_reconciliation: 'Reconciling transactions',
   candidate_fetch: 'Fetching transaction candidates',
   parent_fetch: 'Fetching parent transactions',
   timestamp_fetch: 'Fetching transaction timestamps',
   classification: 'Classifying transactions',
   persistence: 'Saving transactions',
+  utxo_reconciliation: 'Reconciling UTXOs',
+  address_maintenance: 'Maintaining wallet addresses',
+  missing_field_repair: 'Repairing transaction details',
+  subscription_enrollment: 'Enrolling address subscriptions',
+  finalization: 'Finalizing wallet sync',
 };
 
 const EVENT_LABELS: Record<SyncProgressDetails['event'], string> = {
@@ -22,16 +34,59 @@ const EVENT_LABELS: Record<SyncProgressDetails['event'], string> = {
   aborted: 'Stopped',
 };
 
+const PHASE_EVENT_LABELS: Record<SyncPhaseProgressDetails['event'], string> = {
+  stage_started: 'Started',
+  stage_completed: 'Completed',
+  stage_failed: 'Failed',
+  stage_aborted: 'Stopped',
+};
+
+export type SyncProgressPresentationDetails = SyncProgressDetails | SyncPhaseProgressDetails;
+
 export function parseSyncProgressDetails(details: unknown): SyncProgressDetails | null {
   const parsed = SyncProgressDetailsSchema.safeParse(details);
   return parsed.success ? parsed.data : null;
 }
 
+export function parseSyncProgressPresentationDetails(
+  details: unknown,
+): SyncProgressPresentationDetails | null {
+  const candidate = SyncProgressDetailsSchema.safeParse(details);
+  if (candidate.success) return candidate.data;
+  const phase = SyncPhaseProgressDetailsSchema.safeParse(details);
+  return phase.success ? phase.data : null;
+}
+
+export function getSyncStageLabel(stage: SyncExecutionStage): string {
+  return STAGE_LABELS[stage];
+}
+
+function formatKnownWork(details: SyncProgressPresentationDetails): string {
+  if (details.kind === 'sync_progress') {
+    const items = details.completed === undefined
+      ? ''
+      : ` · ${details.completed}/${details.total} ${details.unit.replace('_', ' ')}`;
+    return ` · batch ${details.batch}/${details.batchCount}${items}`;
+  }
+  return details.workItems
+    ? ` · ${details.workItems.completed}/${details.workItems.total} ${details.workItems.unit}`
+    : '';
+}
+
+function getEventLabel(details: SyncProgressPresentationDetails): string {
+  return details.kind === 'sync_progress'
+    ? EVENT_LABELS[details.event]
+    : PHASE_EVENT_LABELS[details.event];
+}
+
 export function formatSyncProgressDetails(details: SyncProgressDetails): string {
-  const progress = details.completed === undefined
-    ? ''
-    : ` · ${details.completed}/${details.total} ${details.unit.replace('_', ' ')}`;
-  return `${STAGE_LABELS[details.stage]} · ${EVENT_LABELS[details.event]} · batch ${details.batch}/${details.batchCount}${progress}`;
+  return formatSyncProgressPresentationDetails(details);
+}
+
+export function formatSyncProgressPresentationDetails(
+  details: SyncProgressPresentationDetails,
+): string {
+  return `${STAGE_LABELS[details.stage]} · ${getEventLabel(details)}${formatKnownWork(details)}`;
 }
 
 export function findLastSyncProgressDetails(
@@ -45,7 +100,7 @@ export function findLastSyncProgressDetails(
 }
 
 export interface SyncProgressCheckpoint {
-  details: SyncProgressDetails;
+  details: SyncProgressPresentationDetails;
   timestamp: number;
 }
 
@@ -54,11 +109,47 @@ export function findLastSyncProgressCheckpoint(
 ): SyncProgressCheckpoint | null {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    const details = parseSyncProgressDetails(entry?.details);
+    const details = parseSyncProgressPresentationDetails(entry?.details);
     const timestamp = entry ? parseStrictIsoInstant(entry.timestamp) : null;
     if (details && timestamp !== null) return { details, timestamp };
   }
   return null;
+}
+
+export function isActiveSyncProgressCheckpoint(checkpoint: SyncProgressCheckpoint): boolean {
+  return checkpoint.details.event === 'stage_started';
+}
+
+export function formatSyncStageDuration(elapsedMs: number): string {
+  const seconds = Math.floor(Math.min(
+    SYNC_PROGRESS_MAX_ELAPSED_MS,
+    Math.max(0, Number.isFinite(elapsedMs) ? elapsedMs : 0),
+  ) / 1_000);
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const remainder = seconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${remainder}s`;
+  if (minutes > 0) return `${minutes}m ${remainder}s`;
+  return `${remainder}s`;
+}
+
+export function getSyncCheckpointElapsedMs(
+  checkpoint: SyncProgressCheckpoint,
+  now: number,
+): number {
+  if (!isActiveSyncProgressCheckpoint(checkpoint)) return checkpoint.details.elapsedMs;
+  const stageStartedAt = checkpoint.timestamp - checkpoint.details.elapsedMs;
+  if (!Number.isFinite(now) || !Number.isFinite(stageStartedAt)) return 0;
+  return Math.min(SYNC_PROGRESS_MAX_ELAPSED_MS, Math.max(0, now - stageStartedAt));
+}
+
+export function formatCurrentSyncCheckpoint(
+  checkpoint: SyncProgressCheckpoint,
+  now: number,
+): string {
+  const { details } = checkpoint;
+  const event = isActiveSyncProgressCheckpoint(checkpoint) ? '' : ` · ${getEventLabel(details)}`;
+  return `${getSyncStageLabel(details.stage)} · ${formatSyncStageDuration(getSyncCheckpointElapsedMs(checkpoint, now))} in stage${event}${formatKnownWork(details)}`;
 }
 
 export function getLogRowToneClass(level: string): string {
@@ -118,8 +209,8 @@ export function formatLogDetails(entry: DisplayLogEntry): string {
     return '';
   }
 
-  const progress = parseSyncProgressDetails(entry.details);
-  if (progress) return formatSyncProgressDetails(progress);
+  const progress = parseSyncProgressPresentationDetails(entry.details);
+  if (progress) return formatSyncProgressPresentationDetails(progress);
 
   return Object.entries(entry.details)
     .filter(([key]) => key !== 'viaTor')

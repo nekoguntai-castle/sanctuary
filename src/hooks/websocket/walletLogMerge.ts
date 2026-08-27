@@ -2,6 +2,7 @@ import { parseStrictIsoInstant } from '../../utils/isoInstant';
 
 export interface MergeableWalletLogEntry {
   id: string;
+  sequence?: number;
   timestamp: string;
 }
 
@@ -27,6 +28,9 @@ function compareWalletLogs<T extends MergeableWalletLogEntry>(left: T, right: T)
   if (leftTime === null) return rightTime === null ? 0 : 1;
   if (rightTime === null) return -1;
   if (leftTime !== rightTime) return leftTime - rightTime;
+  if (left.sequence !== undefined && right.sequence !== undefined && left.sequence !== right.sequence) {
+    return left.sequence - right.sequence;
+  }
   return left.id.localeCompare(right.id);
 }
 

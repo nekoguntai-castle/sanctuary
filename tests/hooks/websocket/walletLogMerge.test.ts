@@ -54,4 +54,13 @@ describe('walletLogMerge', () => {
     )).toEqual([live, entry('new', '2026-08-26T11:00:00Z')]);
     expect(mergeWalletLogEntries([live], [], 0)).toEqual([]);
   });
+
+  it('uses producer sequence instead of random ids for equal timestamps', () => {
+    const timestamp = '2026-08-26T10:00:00.000Z';
+    expect(mergeWalletLogEntries(
+      [{ ...entry('z-terminal', timestamp), sequence: 41 }],
+      [{ ...entry('a-next-stage', timestamp), sequence: 42 }],
+      500,
+    ).map(item => item.id)).toEqual(['z-terminal', 'a-next-stage']);
+  });
 });

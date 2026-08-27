@@ -22,6 +22,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface WalletLogEntry {
   id: string;
+  sequence?: number;
   timestamp: string;
   level: LogLevel;
   module: string;

@@ -25,6 +25,7 @@ describe('ingestRemoteWalletLog', () => {
   it('buffers a well-formed remote log entry', () => {
     ingestRemoteWalletLog(logEvent({
       id: 'entry-1',
+      sequence: 42,
       timestamp: '2026-08-19T00:00:00.000Z',
       level: 'warn',
       module: 'SYNC',
@@ -33,8 +34,31 @@ describe('ingestRemoteWalletLog', () => {
     }));
 
     expect(walletLogBuffer.get(WALLET_ID)).toEqual([
-      expect.objectContaining({ id: 'entry-1', level: 'warn', message: 'Sync failed' }),
+      expect.objectContaining({ id: 'entry-1', sequence: 1, level: 'warn', message: 'Sync failed' }),
     ]);
+  });
+
+  it('normalizes mixed-version events into API-local causal order', () => {
+    const timestamp = '2026-08-19T00:00:00.000Z';
+    const legacy = logEvent({
+      id: 'z-terminal',
+      timestamp,
+      level: 'info',
+      module: 'SYNC',
+      message: 'Stage completed',
+    });
+    const current = logEvent({
+      id: 'a-next-stage',
+      sequence: 900,
+      timestamp,
+      level: 'info',
+      module: 'SYNC',
+      message: 'Next stage started',
+    });
+
+    expect(ingestRemoteWalletLog(legacy).data).toMatchObject({ sequence: 1 });
+    expect(ingestRemoteWalletLog(current).data).toMatchObject({ sequence: 2 });
+    expect(walletLogBuffer.get(WALLET_ID).map(entry => entry.sequence)).toEqual([1, 2]);
   });
 
   it('ignores events that are not log events', () => {
@@ -62,6 +86,8 @@ describe('ingestRemoteWalletLog', () => {
     ['a non-object payload', 'not-an-entry'],
     ['a null payload', null],
     ['a missing id', { timestamp: '2026-08-19T00:00:00.000Z', level: 'info', module: 'SYNC', message: 'x' }],
+    ['a negative sequence', { id: 'e', sequence: -1, timestamp: 't', level: 'info', module: 'SYNC', message: 'x' }],
+    ['a fractional sequence', { id: 'e', sequence: 1.5, timestamp: 't', level: 'info', module: 'SYNC', message: 'x' }],
     ['a missing timestamp', { id: 'e', level: 'info', module: 'SYNC', message: 'x' }],
     ['a missing module', { id: 'e', timestamp: 't', level: 'info', message: 'x' }],
     ['a missing message', { id: 'e', timestamp: 't', level: 'info', module: 'SYNC' }],

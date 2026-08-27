@@ -116,7 +116,10 @@ export class NotificationService {
    * Broadcast wallet log entry for real-time sync logging
    * Also stores the entry in the log buffer for later retrieval
    */
-  public broadcastWalletLog(walletId: string, entry: Omit<WalletLogEntry, 'id' | 'timestamp'>) {
+  public broadcastWalletLog(
+    walletId: string,
+    entry: Omit<WalletLogEntry, 'id' | 'sequence' | 'timestamp'>,
+  ) {
     broadcastWalletLog(walletId, entry);
   }
 }

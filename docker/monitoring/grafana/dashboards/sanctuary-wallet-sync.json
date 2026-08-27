@@ -208,7 +208,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(rate(sanctuary_wallet_syncs_total{status=\"success\"}[1h])) / sum(rate(sanctuary_wallet_syncs_total[1h]))",
+          "expr": "sum(rate(sanctuary_wallet_syncs_total{status=\"success\"}[1h])) / clamp_min(sum(rate(sanctuary_wallet_syncs_total[1h])), 1e-9)",
           "refId": "A"
         }
       ],
@@ -592,7 +592,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "expr": "sum(rate(sanctuary_wallet_syncs_total{status=\"success\"}[5m])) / sum(rate(sanctuary_wallet_syncs_total[5m]))",
+          "expr": "sum(rate(sanctuary_wallet_syncs_total{status=\"success\"}[5m])) / clamp_min(sum(rate(sanctuary_wallet_syncs_total[5m])), 1e-9)",
           "legendFormat": "Success Rate",
           "refId": "A"
         }
@@ -910,6 +910,157 @@
         }
       ],
       "title": "Transaction Broadcasts (Hourly)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 17,
+      "panels": [],
+      "title": "Wallet Sync Execution",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 18,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "sum(sanctuary_wallet_sync_active_stage) by (stage, mode, network)",
+          "legendFormat": "{{stage}} · {{mode}} · {{network}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Attempts by Stage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "id": 19,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "max(sanctuary_wallet_sync_active_stage_oldest_seconds) by (stage, mode, network)",
+          "legendFormat": "{{stage}} · {{mode}} · {{network}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest Active Stage Age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 45 },
+      "id": 20,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(sanctuary_wallet_sync_stage_duration_seconds_bucket{outcome=\"completed\"}[5m])) by (le, stage))",
+          "legendFormat": "P50 · {{stage}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(sanctuary_wallet_sync_stage_duration_seconds_bucket{outcome=\"completed\"}[5m])) by (le, stage))",
+          "legendFormat": "P95 · {{stage}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Completed Stage Duration P50 / P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 53 },
+      "id": 21,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_candidates_total[15m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Candidate Evidence Fetched / Rejected",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 53 },
+      "id": 22,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_fallback_total[15m])) by (stage, mode, network)",
+          "legendFormat": "fallback · {{stage}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_budget_expiry_total[15m])) by (stage, mode, network)",
+          "legendFormat": "budget expired · {{stage}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Fallback and Budget Expiry",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 53 },
+      "id": 23,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_terminal_total[15m])) by (outcome)",
+          "legendFormat": "terminal · {{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_abort_grace_exhausted_total[15m]))",
+          "legendFormat": "abort grace exhausted",
+          "refId": "B"
+        }
+      ],
+      "title": "Timeout, Abort, and Abort Grace",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 61 },
+      "id": 24,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_lock_loss_total[15m])) by (scope, loss)",
+          "legendFormat": "{{scope}} · {{loss}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Lock Ownership Loss",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 61 },
+      "id": 25,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "expr": "sum(increase(sanctuary_wallet_sync_cleanup_total[15m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Cleanup Outcomes",
       "type": "timeseries"
     }
   ],

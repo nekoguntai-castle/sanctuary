@@ -24,6 +24,7 @@ interface LogTabProps {
   isLoading: boolean;
   syncLifecycle: WalletSyncLifecycleClassification;
   syncControls: WalletSyncControls;
+  syncNow: number;
   onTogglePause: () => void;
   onClearLogs: () => void;
   onSync: () => void;
@@ -36,6 +37,7 @@ export const LogTab: React.FC<LogTabProps> = ({
   isLoading,
   syncLifecycle,
   syncControls,
+  syncNow,
   onTogglePause,
   onClearLogs,
   onSync,
@@ -78,7 +80,12 @@ export const LogTab: React.FC<LogTabProps> = ({
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
       />
-      <LogAttemptStatus checkpoint={checkpoint} lifecycle={syncLifecycle} controls={syncControls} />
+      <LogAttemptStatus
+        checkpoint={checkpoint}
+        lifecycle={syncLifecycle}
+        controls={syncControls}
+        now={syncNow}
+      />
       <LogContent
         ref={logContainerRef}
         isLoading={isLoading}

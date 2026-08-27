@@ -42,6 +42,9 @@ ruler:
 limits_config:
   # Retention period for logs
   retention_period: 168h  # 7 days
+  # Leave a small ingestion tolerance around Promtail's retention-boundary
+  # filter so clock and request latency cannot reject an otherwise valid batch.
+  reject_old_samples_max_age: 169h
 
   # Query limits
   max_query_series: 5000

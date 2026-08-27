@@ -6,6 +6,7 @@ import { WalletDetailLoadedView } from '../../../src/components/WalletDetail/Wal
 const captured = vi.hoisted(() => ({
   transactionsTabProps: null as null | { ownershipKey: string; walletId: string },
   settingsTabProps: null as null | { onRemediationApplied: () => void },
+  logTabProps: null as null | { syncNow: number },
   onSend: null as null | (() => void),
 }));
 
@@ -25,9 +26,11 @@ vi.mock('../../../src/components/WalletDetail/WalletDetailTabContent', () => ({
   WalletDetailTabContent: (props: {
     transactionsTabProps: { ownershipKey: string; walletId: string };
     settingsTabProps: { onRemediationApplied: () => void };
+    logTabProps: { syncNow: number };
   }) => {
     captured.transactionsTabProps = props.transactionsTabProps;
     captured.settingsTabProps = props.settingsTabProps;
+    captured.logTabProps = props.logTabProps;
     return null;
   },
 }));
@@ -51,6 +54,7 @@ const controller = new Proxy({
   selectedUtxos: new Set(),
   pendingFreezeIds: new Set(),
   txFilters: {},
+  syncNow: 123_456,
 }, {
   get: (target, property) => property in target
     ? target[property as keyof typeof target]
@@ -76,6 +80,7 @@ describe('WalletDetailLoadedView AI ownership', () => {
       walletId: 'wallet-route',
       ownershipKey: 'wallet-route:user-7:signet',
     });
+    expect(captured.logTabProps).toMatchObject({ syncNow: 123_456 });
     captured.settingsTabProps?.onRemediationApplied();
     expect(controller.fetchData).toHaveBeenCalledWith(true);
     captured.onSend?.();

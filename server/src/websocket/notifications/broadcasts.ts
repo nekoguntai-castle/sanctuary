@@ -163,9 +163,13 @@ export function broadcastSyncStatus(walletId: string, status: SyncStatusUpdate):
  * Broadcast wallet log entry for real-time sync logging
  * Also stores the entry in the log buffer for later retrieval
  */
-export function broadcastWalletLog(walletId: string, entry: Omit<WalletLogEntry, 'id' | 'timestamp'>): void {
+export function broadcastWalletLog(
+  walletId: string,
+  entry: Omit<WalletLogEntry, 'id' | 'sequence' | 'timestamp'>,
+): void {
   const logEntry: WalletLogEntry = {
     id: crypto.randomUUID(),
+    sequence: walletLogBuffer.nextSequence(walletId),
     timestamp: new Date().toISOString(),
     ...entry,
   };

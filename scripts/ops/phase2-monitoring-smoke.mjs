@@ -4,14 +4,18 @@ import { execFileSync, spawnSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadRuntimeEnvironment } from './runtime-environment.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '../..');
+loadRuntimeEnvironment(repoRoot);
 const outputDir = process.env.PHASE2_MONITORING_OUTPUT_DIR || path.join(repoRoot, 'docs/plans');
 const startedAt = new Date();
 const timestamp = startedAt.toISOString().replace(/[:.]/g, '-');
 const timeoutMs = Number(process.env.PHASE2_MONITORING_TIMEOUT_MS || '90000');
 const retryMs = Number(process.env.PHASE2_MONITORING_RETRY_MS || '2000');
+const walletSyncDashboardUid = 'sanctuary-wallet-sync';
+const walletSyncAlertGroup = 'sanctuary.wallet-sync-execution';
 
 function envPort(name, fallback) {
   return process.env[name] || fallback;
@@ -80,6 +84,26 @@ const checks = [
     },
   },
   {
+    service: 'grafana',
+    name: 'wallet sync dashboard provisioned',
+    url: `${endpoints.grafana}/api/dashboards/uid/${walletSyncDashboardUid}`,
+    requestOptions: () => ({
+      headers: {
+        Authorization: `Basic ${Buffer.from(`admin:${process.env.GRAFANA_PASSWORD || ''}`).toString('base64')}`,
+      },
+    }),
+    validate: (body) => {
+      const parsed = JSON.parse(body);
+      if (parsed?.dashboard?.uid !== walletSyncDashboardUid) {
+        throw new Error(`dashboard uid=${parsed?.dashboard?.uid || 'missing'}`);
+      }
+      if (!Array.isArray(parsed.dashboard.panels) || parsed.dashboard.panels.length === 0) {
+        throw new Error('wallet sync dashboard has no provisioned panels');
+      }
+      return `uid=${walletSyncDashboardUid} panels=${parsed.dashboard.panels.length}`;
+    },
+  },
+  {
     service: 'prometheus',
     name: 'health',
     url: `${endpoints.prometheus}/-/healthy`,
@@ -95,8 +119,11 @@ const checks = [
       if (parsed.status !== 'success' || !Array.isArray(groups) || groups.length === 0) {
         throw new Error('no Prometheus rule groups loaded');
       }
+      if (!groups.some((group) => group?.name === walletSyncAlertGroup)) {
+        throw new Error(`missing Prometheus rule group ${walletSyncAlertGroup}`);
+      }
       const names = groups.map((group) => group.name).filter(Boolean).join(', ');
-      return `${groups.length} rule groups: ${names}`;
+      return `${groups.length} rule groups including ${walletSyncAlertGroup}: ${names}`;
     },
   },
   {
@@ -140,7 +167,10 @@ async function probe(check) {
   const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
-    const response = await fetch(check.url, { signal: controller.signal });
+    const response = await fetch(check.url, {
+      ...check.requestOptions?.(),
+      signal: controller.signal,
+    });
     const body = await response.text();
 
     if (!response.ok) {
@@ -385,7 +415,7 @@ function buildMarkdown(report) {
     '',
     '## Notes',
     '',
-    '- This smoke verifies the local monitoring stack endpoints, Prometheus rule loading, Alertmanager status, Jaeger API reachability, Loki readiness, and Compose loopback host bindings.',
+    `- This smoke verifies the local monitoring stack endpoints, the ${walletSyncDashboardUid} Grafana dashboard, the ${walletSyncAlertGroup} Prometheus rule group, Alertmanager status, Jaeger API reachability, Loki readiness, and Compose loopback host bindings.`,
     '- Container health and recent Promtail logs are checked to catch image-level healthcheck drift and Docker API compatibility errors.',
     '- Prometheus target health for backend and worker is intentionally not a pass/fail criterion here because this proof can run against the monitoring stack without requiring the full application stack.',
     '- Alertmanager notification delivery remains pending until production receiver channels are chosen.'

@@ -74,10 +74,10 @@ export const initializeWebSocketServer = (): SanctauryWebSocketServer => {
     // Worker-run syncs write their log entries into the worker's own in-memory
     // buffer, which GET /sync/logs/:walletId cannot read. Mirror remote entries
     // into this process's buffer so the wallet Log tab stops coming back empty.
-    ingestRemoteWalletLog(event);
+    const normalizedEvent = ingestRemoteWalletLog(event);
 
     // wsServer is assigned immediately before this handler is registered.
-    void wsServer!.localBroadcast(event).catch((error) => {
+    void wsServer!.localBroadcast(normalizedEvent).catch((error) => {
       log.error('Failed to apply remote WebSocket broadcast', { error: String(error) });
     });
   });

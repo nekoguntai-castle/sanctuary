@@ -188,6 +188,7 @@ function buildLogTabProps({
     isLoading: controller.logsLoading,
     syncLifecycle: controller.syncLifecycle,
     syncControls: controller.syncControls,
+    syncNow: controller.syncNow,
     onTogglePause: controller.togglePause,
     onClearLogs: controller.clearLogs,
     onSync: controller.handleSync,

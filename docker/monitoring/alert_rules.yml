@@ -49,7 +49,7 @@ groups:
       - alert: WalletSyncFailures
         expr: |
           sum(rate(sanctuary_wallet_syncs_total{status="failure"}[10m]))
-          / sum(rate(sanctuary_wallet_syncs_total[10m])) > 0.10
+          / clamp_min(sum(rate(sanctuary_wallet_syncs_total[10m])), 1e-9) > 0.10
         for: 5m
         labels:
           severity: warning
@@ -129,6 +129,63 @@ groups:
         annotations:
           summary: "Sync service running in-process fallback mode"
           description: "Worker appears unhealthy — API server is handling polling directly. Check worker health."
+
+  # Remote-heavy stages have a five-minute budget plus 30 seconds of grace.
+  # Every other stage is bounded by the 30-minute attempt maximum plus the same grace.
+  - name: sanctuary.wallet-sync-execution
+    interval: 30s
+    rules:
+      - alert: WalletSyncActiveStageOverBudget
+        expr: |
+          max by (stage, mode, network) (
+            sanctuary_wallet_sync_active_stage_oldest_seconds{
+              stage=~"initial_network|address_history|candidate_fetch|parent_fetch|timestamp_fetch"
+            }
+          ) > 330
+          or
+          max by (stage, mode, network) (
+            sanctuary_wallet_sync_active_stage_oldest_seconds{
+              stage!~"initial_network|address_history|candidate_fetch|parent_fetch|timestamp_fetch"
+            }
+          ) > 1830
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wallet sync stage exceeded its execution budget"
+          description: "Stage {{ $labels.stage }} has remained active for {{ $value | humanizeDuration }}."
+
+      - alert: WalletSyncAbortGraceExhausted
+        expr: increase(sanctuary_wallet_sync_abort_grace_exhausted_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Wallet sync did not settle during abort grace"
+          description: "At least one wallet sync remained unsettled after cancellation grace."
+
+      - alert: WalletSyncLockOwnershipLost
+        expr: sum by (scope, loss) (increase(sanctuary_wallet_sync_lock_loss_total[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Wallet sync lock ownership was lost"
+          description: "A {{ $labels.scope }} lock reported {{ $labels.loss }}."
+
+      - alert: WalletSyncCleanupError
+        expr: increase(sanctuary_wallet_sync_cleanup_total{outcome="error"}[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wallet sync cleanup failed"
+          description: "Stale wallet reconciliation reported a cleanup error."
+
+      # Conservative until canary evidence supports a tighter timeout threshold.
+      - alert: WalletSyncRepeatedTimeouts
+        expr: sum(increase(sanctuary_wallet_sync_terminal_total{outcome="timeout"}[15m])) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated wallet sync timeouts"
+          description: "At least three wallet sync attempts timed out within 15 minutes."
 
   - name: sanctuary.websocket
     interval: 30s

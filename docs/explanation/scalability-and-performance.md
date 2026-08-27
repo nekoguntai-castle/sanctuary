@@ -37,11 +37,39 @@ Use these existing metrics and dashboards during every scale/performance run:
 | --- | --- | --- |
 | HTTP API | `sanctuary_http_request_duration_seconds`, `sanctuary_http_requests_total`, API Performance dashboard | Proves route-level p50/p95/p99 and 5xx behavior. |
 | Database | `sanctuary_db_query_duration_seconds`, `sanctuary_db_pool_latency_ms`, Infrastructure dashboard | Shows whether backend replicas are saturating Postgres. |
-| Wallet sync | `sanctuary_wallet_sync_duration_seconds`, `sanctuary_wallet_syncs_total`, Wallet Sync dashboard | Proves sync throughput and failure rate. |
+| Wallet sync | `sanctuary_wallet_sync_duration_seconds`, `sanctuary_wallet_syncs_total`, Wallet Sync dashboard | Proves overall sync throughput and failure rate. |
+| Wallet-sync execution | `sanctuary_wallet_sync_active_stage`, `sanctuary_wallet_sync_active_stage_oldest_seconds`, `sanctuary_wallet_sync_stage_duration_seconds`, and the wallet-sync execution counters | Shows where current attempts are spending time and preserves bounded terminal, fallback, timeout, lock-loss, and cleanup evidence. |
 | Worker queue | `sanctuary_job_queue_depth`, `sanctuary_job_processing_duration_seconds`, Worker dashboard | Shows queue backlog, processing latency, and worker saturation. |
 | WebSocket | `sanctuary_websocket_connections`, `sanctuary_websocket_messages_total`, `sanctuary_websocket_rate_limit_hits_total` | Proves fanout capacity and abusive-client behavior. |
 | Electrum | `sanctuary_electrum_server_healthy`, `sanctuary_electrum_pool_acquisition_duration_seconds`, Electrum Pool dashboard | Separates app bottlenecks from Electrum degradation. |
 | Cache | `sanctuary_cache_operations_total`, Cache Efficiency dashboard | Shows whether cache behavior shifts under load and whether DB pressure is expected. |
+
+### Wallet-sync execution evidence
+
+The Wallet Sync dashboard separates live stage state from completed evidence. The
+active-stage gauge and oldest-stage age show work currently observed by a worker.
+The stage-duration histogram records completed, failed, budget-expired, and aborted
+stage outcomes. Low-cardinality counters record candidates fetched or rejected,
+fallbacks, budget expiries, timeout and abort outcomes, abort-grace exhaustion,
+distributed lock loss, and reconciliation cleanup outcomes. These series use only
+bounded stage, mode, network, outcome, scope, and loss labels; they do not identify
+wallets, jobs, leases, or endpoints.
+
+The slow-stage alert matrix is deliberately conservative. `initial_network`,
+`address_history`, `candidate_fetch`, `parent_fetch`, and `timestamp_fetch` use the
+five-minute remote-work budget plus 30 seconds of grace. Every other stage uses the
+30-minute maximum-attempt boundary plus 30 seconds of grace. A repeated-timeout
+alert means at least three timeout outcomes in 15 minutes. Abort-grace exhaustion,
+lock ownership loss, and cleanup errors alert directly; fallback and budget-expiry
+evidence remains visible on the dashboard even when its alert threshold is not met.
+
+Active-stage metrics are process-local sampled gauges, not a durable attempt
+ledger. A worker restart clears its in-memory active observations, a Prometheus
+scrape can miss a short stage, and a multi-worker view must aggregate across worker
+targets. Use `sum` for active counts and `max` for oldest age across replicas. Use
+the terminal counters and stage-duration histogram for historical trends, and use
+the database generation, lease, retry, and action-required state when deciding
+whether a particular wallet is still owned or needs remediation.
 
 ## Initial Performance Gates
 

@@ -20,6 +20,7 @@ describe('walletLogBuffer', () => {
     vi.clearAllMocks();
     (walletLogBuffer as any).buffers.clear();
     (walletLogBuffer as any).lastActivity.clear();
+    (walletLogBuffer as any).sequences.clear();
   });
 
   afterEach(() => {
@@ -35,6 +36,15 @@ describe('walletLogBuffer', () => {
     expect(walletLogBuffer.get('wallet-2')).toHaveLength(1);
     expect(walletLogBuffer.getCount('wallet-1')).toBe(2);
     expect(walletLogBuffer.getCount('missing')).toBe(0);
+  });
+
+  it('allocates isolated ordering sequences per wallet and resets them on clear', () => {
+    expect(walletLogBuffer.nextSequence('wallet-1')).toBe(1);
+    expect(walletLogBuffer.nextSequence('wallet-1')).toBe(2);
+    expect(walletLogBuffer.nextSequence('wallet-2')).toBe(1);
+
+    walletLogBuffer.clear('wallet-1');
+    expect(walletLogBuffer.nextSequence('wallet-1')).toBe(1);
   });
 
   it('returns a copy so external mutation cannot alter internal buffer', () => {
@@ -95,12 +105,16 @@ describe('walletLogBuffer', () => {
   it('cleans up inactive wallet buffers', () => {
     walletLogBuffer.add('active', { level: 'info', message: 'recent' } as any);
     walletLogBuffer.add('stale', { level: 'info', message: 'old' } as any);
+    walletLogBuffer.nextSequence('active');
+    walletLogBuffer.nextSequence('stale');
 
     (walletLogBuffer as any).lastActivity.set('stale', Date.now() - WALLET_LOG_INACTIVE_CLEANUP_MS - 1000);
     (walletLogBuffer as any).cleanup();
 
     expect(walletLogBuffer.get('active')).toHaveLength(1);
     expect(walletLogBuffer.get('stale')).toEqual([]);
+    expect(walletLogBuffer.nextSequence('active')).toBe(2);
+    expect(walletLogBuffer.nextSequence('stale')).toBe(1);
   });
 
   it('runs cleanup when interval callback fires', () => {

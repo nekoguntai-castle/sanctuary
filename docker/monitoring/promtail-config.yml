@@ -56,6 +56,13 @@ scrape_configs:
       # Parse JSON logs from Docker
       - docker: {}
 
+      # A new positions volume can make Docker discovery replay the retained
+      # json-file history. Drop entries outside Loki's seven-day retention
+      # window before they can cause an otherwise-current push batch to fail.
+      - drop:
+          older_than: 168h
+          drop_counter_reason: outside_loki_retention
+
       # Keep a stable non-empty Loki label even when log lines do not match
       # Sanctuary's structured application log format.
       - static_labels:

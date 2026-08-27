@@ -13,6 +13,7 @@ describe('LogTab branch coverage', () => {
       incrementalPending: false, fullResyncPending: false, actionRequired: false,
       syncDisabled: false, fullResyncDisabled: false,
     },
+    syncNow: Date.now(),
     onTogglePause: vi.fn(),
     onClearLogs: vi.fn(),
     onSync: vi.fn(),

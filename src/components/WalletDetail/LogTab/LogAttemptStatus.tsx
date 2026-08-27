@@ -2,17 +2,22 @@ import type {
   WalletSyncControls,
   WalletSyncLifecycleClassification,
 } from '../../../utils/walletSyncLifecycle';
-import { formatSyncProgressDetails } from './logPresentation';
+import {
+  formatCurrentSyncCheckpoint,
+  formatSyncProgressPresentationDetails,
+} from './logPresentation';
 import type { SyncProgressCheckpoint } from './logPresentation';
 
 export function LogAttemptStatus({
   checkpoint,
   lifecycle,
   controls,
+  now,
 }: {
   checkpoint: SyncProgressCheckpoint | null;
   lifecycle: WalletSyncLifecycleClassification;
   controls: WalletSyncControls;
+  now: number;
 }) {
   const currentCheckpoint = lifecycle.state === 'running'
     && lifecycle.leaseClaimedAt !== undefined
@@ -21,7 +26,7 @@ export function LogAttemptStatus({
   if (currentCheckpoint) {
     return (
       <div className="px-4 py-2 border-b border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-950/20 text-xs text-primary-700 dark:text-primary-300" role="status">
-        Current attempt: {formatSyncProgressDetails(checkpoint.details)}
+        Current attempt: {formatCurrentSyncCheckpoint(checkpoint, now)}
       </div>
     );
   }
@@ -42,7 +47,7 @@ export function LogAttemptStatus({
   if (!checkpoint) return null;
   return (
     <div className="px-4 py-2 border-b border-sanctuary-200 dark:border-sanctuary-800 surface-muted text-xs text-sanctuary-500" role="status">
-      Last checkpoint is from a prior attempt: {formatSyncProgressDetails(checkpoint.details)}
+      Last checkpoint is from a prior attempt: {formatSyncProgressPresentationDetails(checkpoint.details)}
     </div>
   );
 }

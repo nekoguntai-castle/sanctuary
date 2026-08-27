@@ -43,6 +43,7 @@ vi.mock('../../../src/websocket/server', () => ({
 vi.mock('../../../src/services/walletLogBuffer', () => ({
   walletLogBuffer: {
     add: vi.fn(),
+    nextSequence: vi.fn(),
   },
 }));
 
@@ -70,6 +71,11 @@ describe('NotificationService', () => {
     mockLogger.info.mockImplementation(() => undefined);
     mockLogger.warn.mockImplementation(() => undefined);
     mockLogger.error.mockImplementation(() => undefined);
+    let walletLogSequence = 0;
+    vi.mocked(walletLogBuffer.nextSequence).mockImplementation(() => {
+      walletLogSequence += 1;
+      return walletLogSequence;
+    });
     mockIsGatewayConnected.mockReturnValue(false);
     service = new NotificationService();
   });
@@ -441,6 +447,24 @@ describe('NotificationService', () => {
           }),
         })
       );
+    });
+
+    it('assigns a causal sequence across equal-millisecond log entries', () => {
+      service.broadcastWalletLog('wallet-123', {
+        level: 'info',
+        module: 'sync',
+        message: 'First',
+      });
+      service.broadcastWalletLog('wallet-123', {
+        level: 'info',
+        module: 'sync',
+        message: 'Second',
+      });
+
+      const first = vi.mocked(walletLogBuffer.add).mock.calls[0]?.[1];
+      const second = vi.mocked(walletLogBuffer.add).mock.calls[1]?.[1];
+      expect(first?.sequence).toEqual(expect.any(Number));
+      expect(second?.sequence).toBe((first?.sequence ?? 0) + 1);
     });
 
     it('should store log in buffer', () => {
