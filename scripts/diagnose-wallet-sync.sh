@@ -88,6 +88,11 @@ section_psql() {
 # client, and container logs. UUIDs receive stable per-report references.
 pseudonymize_report() {
   awk '
+    function repeat_ere(atom, count, result, i) {
+      result = ""
+      for (i = 0; i < count; i++) result = result atom
+      return result
+    }
     function wallet_ref(raw) {
       if (!(raw in wallet_refs)) {
         wallet_count++
@@ -95,10 +100,23 @@ pseudonymize_report() {
       }
       return wallet_refs[raw]
     }
+    BEGIN {
+      hex = "[[:xdigit:]]"
+      uuid_pattern = repeat_ere(hex, 8) "-" repeat_ere(hex, 4) "-[1-5]" repeat_ere(hex, 3) "-[89abAB]" repeat_ere(hex, 3) "-" repeat_ere(hex, 12)
+      hash_pattern = repeat_ere(hex, 64)
+      bech32_character = "[023456789acdefghjklmnpqrstuvwxyz]"
+      bech32_pattern = "(bc1|tb1|bcrt1)" repeat_ere(bech32_character, 10) bech32_character "*"
+      base58_character = "[1-9A-HJ-NP-Za-km-z]"
+      base58_pattern = "[13mn2]" repeat_ere(base58_character, 25) base58_character "*"
+      ipv4_octet = "[0-9][0-9]?[0-9]?"
+      ipv4_pattern = ipv4_octet "\\." ipv4_octet "\\." ipv4_octet "\\." ipv4_octet
+      onion_pattern = "[a-zA-Z0-9.-]+\\.onion(:[0-9][0-9]*)?"
+      hostname_pattern = "[[:alnum:]][[:alnum:]-]*(\\.[[:alnum:]-]+)*\\.[[:alpha:]][[:alpha:]][[:alpha:]]*"
+    }
     {
       line = $0
       gsub(/"(jobId|leaseToken|token|secret|password|credential)"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"sensitive_identity\":\"<redacted>\"", line)
-      while (match(line, /[[:xdigit:]]{8}-[[:xdigit:]]{4}-[1-5][[:xdigit:]]{3}-[89abAB][[:xdigit:]]{3}-[[:xdigit:]]{12}/)) {
+      while (match(line, uuid_pattern)) {
         raw = substr(line, RSTART, RLENGTH)
         line = substr(line, 1, RSTART - 1) wallet_ref(tolower(raw)) substr(line, RSTART + RLENGTH)
       }
@@ -107,13 +125,13 @@ pseudonymize_report() {
       gsub(/jobId[=:][^[:space:],}]*/, "jobId=<redacted_job>", line)
       gsub(/lock:[^[:space:]]+/, "lock:<redacted_lock>", line)
       gsub(/lease(Token)?[=:][^[:space:],}]*/, "lease=<redacted_lease>", line)
-      gsub(/[[:xdigit:]]{64}/, "<redacted_hash>", line)
-      gsub(/(bc1|tb1|bcrt1)[023456789acdefghjklmnpqrstuvwxyz]{10,}/, "<redacted_address>", line)
-      gsub(/[13mn2][1-9A-HJ-NP-Za-km-z]{25,}/, "<redacted_address>", line)
+      gsub(hash_pattern, "<redacted_hash>", line)
+      gsub(bech32_pattern, "<redacted_address>", line)
+      gsub(base58_pattern, "<redacted_address>", line)
       gsub(/https?:\/\/[^[:space:]|",;]+/, "<redacted_endpoint>", line)
-      gsub(/[a-zA-Z0-9.-]+\.onion(:[0-9]+)?/, "<redacted_endpoint>", line)
-      gsub(/([0-9]{1,3}\.){3}[0-9]{1,3}/, "<redacted_endpoint>", line)
-      gsub(/[[:alnum:]][[:alnum:]-]*(\.[[:alnum:]-]+)*\.[[:alpha:]]{2,63}/, "<redacted_endpoint>", line)
+      gsub(onion_pattern, "<redacted_endpoint>", line)
+      gsub(ipv4_pattern, "<redacted_endpoint>", line)
+      gsub(hostname_pattern, "<redacted_endpoint>", line)
       gsub(/"(error|message|name|hostname|endpoint)"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"redacted_detail\":\"<redacted>\"", line)
       gsub(/(secret|password|token|credential)[=:][^[:space:]|",;]+/, "secret=<redacted>", line)
       print line

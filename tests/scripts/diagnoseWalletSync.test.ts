@@ -178,13 +178,16 @@ describe('diagnose-wallet-sync.sh privacy and worker snapshot', () => {
   const walletId = '123e4567-e89b-42d3-a456-426614174000';
   const otherWalletId = '123e4567-e89b-42d3-a456-426614174001';
   const rawJob = 'opaque-private-job-123';
+  const bech32Address = 'bc1q23456789acdef';
+  const base58Address = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
+  const onionEndpoint = 'hiddenserviceexample.onion:9050';
 
   beforeEach(() => {
     installDockerStub([
       'sql="$(cat)"',
       'case "$*" in',
       '  *psql*)',
-      `    echo "${walletId} https://private.example ${'a'.repeat(64)}"`,
+      `    echo "${walletId} https://private.example ${'a'.repeat(64)} ${bech32Address} ${base58Address} ${onionEndpoint}"`,
       `    echo "${otherWalletId}"`,
       '    ;;',
       '  *workerDiagnosticsCli.js*)',
@@ -229,8 +232,28 @@ describe('diagnose-wallet-sync.sh privacy and worker snapshot', () => {
     expect(output).toContain('event=stage_started');
     expect(output).toContain('event=timeout');
     expect(output).not.toContain('a'.repeat(64));
+    expect(output).not.toMatch(new RegExp(`${bech32Address}|${base58Address}|${onionEndpoint}`));
     expect(output).toContain('<redacted_endpoint>');
     expect(output).toContain('<redacted_hash>');
+    expect(output).toContain('<redacted_address>');
+  });
+
+  it('preserves the privacy boundary when awk interval expressions are unavailable', () => {
+    installCommandStub('awk', 'exec /usr/bin/awk -W traditional "$@"');
+
+    const { status, output } = runScript();
+
+    expect(status).toBe(0);
+    expect(output).toContain('wallet_ref_001');
+    expect(output).toContain('wallet_ref_002');
+    expect(output).not.toMatch(new RegExp(`${walletId}|${otherWalletId}`));
+    expect(output).not.toContain('private.example');
+    expect(output).not.toContain('10.0.0.2');
+    expect(output).not.toContain('a'.repeat(64));
+    expect(output).not.toMatch(new RegExp(`${bech32Address}|${base58Address}|${onionEndpoint}`));
+    expect(output).toContain('<redacted_endpoint>');
+    expect(output).toContain('<redacted_hash>');
+    expect(output).toContain('<redacted_address>');
   });
 
   it('exposes raw identities only under the exact opt-in and marks both report edges', () => {
