@@ -32,6 +32,7 @@ import { createLogger } from '../../utils/logger';
 import type { JobExecutionContext } from './types';
 import { resyncRepository } from '../../repositories';
 import type { IncrementalSyncLifecycleState } from '../../repositories/types';
+import { WalletSyncAttemptTelemetry } from '../walletSyncAttemptTelemetry';
 
 const log = createLogger('JOB:SYNC:INCREMENTAL');
 
@@ -189,6 +190,8 @@ export async function executeCanonicalIncrementalSync(
     claimResult.state,
   ));
 
+  let attemptTelemetry: WalletSyncAttemptTelemetry | undefined;
+  let cancellationOutcome: 'timedOut' | 'aborted' | undefined;
   try {
     // An unrecognised persisted network is a permanent property of the row:
     // retrying cannot repair it. Raise it as a typed permanent failure so the
@@ -204,6 +207,15 @@ export async function executeCanonicalIncrementalSync(
       );
     }
 
+    attemptTelemetry = new WalletSyncAttemptTelemetry({
+      executionId: fence.leaseToken,
+      ownedLock: {
+        key: execution.acquiredLock.key,
+        token: execution.acquiredLock.token,
+      },
+      mode: data.fullResync === true ? 'full_resync' : 'incremental',
+      network: resolvedNetwork,
+    });
     const maxSyncDurationMs = getConfig().sync.maxSyncDurationMs;
     const result = await runSyncAttemptWithTimeout(
       async (signal, deadlineAt) => {
@@ -217,7 +229,14 @@ export async function executeCanonicalIncrementalSync(
             fence,
           );
         }
-        const syncResult = await syncWallet(data.walletId, 0, signal, fence, deadlineAt);
+        const syncResult = await syncWallet(
+          data.walletId,
+          0,
+          signal,
+          fence,
+          deadlineAt,
+          attemptTelemetry,
+        );
         await populateMissingTransactionFields(
           data.walletId,
           signal,
@@ -236,6 +255,17 @@ export async function executeCanonicalIncrementalSync(
       maxSyncDurationMs,
       SYNC_ABORT_GRACE_MS,
       execution.signal,
+      {
+        timeout: () => {
+          cancellationOutcome = 'timedOut';
+          attemptTelemetry?.recordAttemptTimeout();
+        },
+        aborted: () => {
+          cancellationOutcome = 'aborted';
+          attemptTelemetry?.recordAttemptAbort();
+        },
+        abortGraceExhausted: () => attemptTelemetry?.recordAbortGraceExhaustion(),
+      },
     );
     execution.throwIfAborted();
 
@@ -254,6 +284,7 @@ export async function executeCanonicalIncrementalSync(
       'succeeded',
       completionState,
     ));
+    attemptTelemetry.finish('completed');
     if (completionState.requestedIncrementalSyncGeneration
       > completionState.processedIncrementalSyncGeneration) {
       await syncIntentAdmission.wake(
@@ -270,6 +301,7 @@ export async function executeCanonicalIncrementalSync(
       utxosUpdated: result.utxos,
     };
   } catch (error) {
+    attemptTelemetry?.finish(cancellationOutcome ?? 'failed');
     if (error instanceof LostIncrementalSyncFenceError) throw error;
     const releasedAt = new Date();
     const errorMessage = getErrorMessage(error, 'Unknown error');

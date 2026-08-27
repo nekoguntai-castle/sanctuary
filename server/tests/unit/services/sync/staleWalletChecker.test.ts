@@ -33,6 +33,7 @@ import {
   clearStuckSyncIfAuthorized,
   resetStuckSyncs,
 } from '../../../../src/services/sync/staleWalletChecker';
+import { metricsService } from '../../../../src/observability/metrics';
 
 const clearedState = {
   syncInProgress: false,
@@ -50,6 +51,7 @@ const clearedState = {
 describe('staleWalletChecker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    metricsService.reset();
     mockWithLock.mockImplementation(async (_key, _ttl, callback) => ({
       success: true,
       result: await callback(),
@@ -62,6 +64,9 @@ describe('staleWalletChecker', () => {
       mockReset.mockResolvedValue(3);
       await resetStuckSyncs();
       expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Reset 3 stuck sync flags'));
+      await expect(metricsService.getMetrics()).resolves.toContain(
+        'sanctuary_wallet_sync_cleanup_total{outcome="flag_cleared"} 3',
+      );
     });
 
     it('stays quiet when no flags were cleared', async () => {
@@ -76,6 +81,9 @@ describe('staleWalletChecker', () => {
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to reset stuck sync flags'),
         expect.any(Object),
+      );
+      await expect(metricsService.getMetrics()).resolves.toContain(
+        'sanctuary_wallet_sync_cleanup_total{outcome="error"} 1',
       );
     });
   });
@@ -123,6 +131,9 @@ describe('staleWalletChecker', () => {
           transition: 'cleared',
           state: clearedState,
         });
+        await expect(metricsService.getMetrics()).resolves.toContain(
+          'sanctuary_wallet_sync_cleanup_total{outcome="flag_cleared"} 1',
+        );
       },
     );
 
@@ -140,9 +151,12 @@ describe('staleWalletChecker', () => {
       });
     });
 
-    it.each([{ success: false }, { success: true, result: null }])(
-      'does not publish without an authoritative clear: $success',
-      async result => {
+    it.each([
+      [{ success: false }, 'lock_present_deferred'],
+      [{ success: true, result: null }, 'no_change'],
+    ] as const)(
+      'does not publish without an authoritative clear: $1',
+      async (result, outcome) => {
         mockWithLock.mockResolvedValueOnce(result);
         await expect(clearStuckSyncIfAuthorized({
           id: 'candidate',
@@ -151,6 +165,9 @@ describe('staleWalletChecker', () => {
           syncStateVersion: 1,
         }, new Set())).resolves.toBe(false);
         expect(mockPublish).not.toHaveBeenCalled();
+        await expect(metricsService.getMetrics()).resolves.toContain(
+          `sanctuary_wallet_sync_cleanup_total{outcome="${outcome}"} 1`,
+        );
       },
     );
 
@@ -164,6 +181,23 @@ describe('staleWalletChecker', () => {
       }, new Set())).resolves.toBe(false);
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockLogger.warn).toHaveBeenCalled();
+    });
+
+    it('counts the durable clear once when lifecycle publication fails afterward', async () => {
+      mockPublish.mockRejectedValueOnce(new Error('publisher unavailable'));
+
+      await expect(clearStuckSyncIfAuthorized({
+        id: 'candidate',
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        syncStateVersion: 1,
+      }, new Set())).resolves.toBe(false);
+
+      const metrics = await metricsService.getMetrics();
+      expect(metrics).toContain(
+        'sanctuary_wallet_sync_cleanup_total{outcome="flag_cleared"} 1',
+      );
+      expect(metrics).not.toContain('sanctuary_wallet_sync_cleanup_total{outcome="error"}');
     });
   });
 });

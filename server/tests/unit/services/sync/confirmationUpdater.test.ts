@@ -583,6 +583,8 @@ describe('confirmationUpdater', () => {
       await vi.advanceTimersByTimeAsync(100);
       expect(mockExtendLock).toHaveBeenCalledOnce();
       expect(mockReleaseLock).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(mockExtendLock).toHaveBeenCalledOnce();
 
       settleWrite([]);
       await expect(refresh).resolves.toMatchObject({

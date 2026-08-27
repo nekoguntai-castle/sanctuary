@@ -10,6 +10,7 @@ import {
   WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
   WorkerDiagnosticsRequestSchema,
   WorkerDiagnosticsResponseSchema,
+  type WorkerDiagnosticsRequest,
   type WorkerDiagnosticsResponse,
 } from '../../internal/workerDiagnostics/protocol';
 import { BoundedReplayGuard } from './replayGuard';
@@ -20,7 +21,9 @@ export interface WorkerDiagnosticsHandlerOptions {
   maxBodyBytes: number;
   maxConcurrentRequests: number;
   authWindowMs: number;
-  getSnapshot: () => Promise<WorkerDiagnosticsResponse> | WorkerDiagnosticsResponse;
+  getSnapshot: (
+    request: WorkerDiagnosticsRequest,
+  ) => Promise<WorkerDiagnosticsResponse> | WorkerDiagnosticsResponse;
 }
 
 export interface WorkerDiagnosticsRequestHandler {
@@ -95,13 +98,16 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
   }
 }
 
-function hasSupportedRequest(body: string, res: http.ServerResponse): boolean {
+function parseSupportedRequest(
+  body: string,
+  res: http.ServerResponse,
+): WorkerDiagnosticsRequest | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
     writeJson(res, 400, { error: 'invalid_request' });
-    return false;
+    return undefined;
   }
   const version = typeof parsed === 'object' && parsed !== null
     ? (parsed as { protocolVersion?: unknown }).protocolVersion
@@ -111,13 +117,14 @@ function hasSupportedRequest(body: string, res: http.ServerResponse): boolean {
       error: 'unsupported_protocol',
       supportedVersions: [WORKER_DIAGNOSTICS_PROTOCOL_VERSION],
     });
-    return false;
+    return undefined;
   }
-  if (!WorkerDiagnosticsRequestSchema.safeParse(parsed).success) {
+  const result = WorkerDiagnosticsRequestSchema.safeParse(parsed);
+  if (!result.success) {
     writeJson(res, 400, { error: 'invalid_request' });
-    return false;
+    return undefined;
   }
-  return true;
+  return result.data;
 }
 
 async function readAuthenticatedBody(
@@ -189,9 +196,14 @@ export function createWorkerDiagnosticsRequestHandler(
       activeRequests += 1;
       try {
         const body = await readAuthenticatedBody(req, res, options, replayGuard);
-        if (body === undefined || !hasSupportedRequest(body, res)) return;
+        if (body === undefined) return;
+        const request = parseSupportedRequest(body, res);
+        if (!request) return;
         try {
-          const snapshot = await withTimeout(Promise.resolve(options.getSnapshot()), options.timeoutMs);
+          const snapshot = await withTimeout(
+            Promise.resolve(options.getSnapshot(request)),
+            options.timeoutMs,
+          );
           writeJson(res, 200, WorkerDiagnosticsResponseSchema.parse(snapshot));
         } catch {
           writeJson(res, 503, { error: 'diagnostics_unavailable' });

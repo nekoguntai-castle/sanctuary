@@ -14,6 +14,7 @@ import { registerProcessTransactionLabelsDedupeEdgeTests } from './phasesProcess
 import { registerProcessTransactionNotificationsRbfTests } from './phasesProcessTransactions/notifications-rbf.contracts';
 import { registerProcessTransactionStoreIoEdgeTests } from './phasesProcessTransactions/store-io-edge.contracts';
 import { registerProcessTransactionStoreIoPrimaryTests } from './phasesProcessTransactions/store-io-primary.contracts';
+import { registerProcessTransactionProgressTimestampTests } from './phasesProcessTransactions/progress-timestamps.contracts';
 
 describe('Sync Phases', () => {
   beforeEach(() => {
@@ -39,5 +40,6 @@ describe('Sync Phases', () => {
     registerProcessTransactionStoreIoPrimaryTests(walletId);
     registerProcessTransactionStoreIoEdgeTests(walletId);
     registerProcessTransactionLabelsDedupeEdgeTests(walletId);
+    registerProcessTransactionProgressTimestampTests(walletId);
   });
 });

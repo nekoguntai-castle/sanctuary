@@ -94,6 +94,29 @@ describe('worker diagnostics client', () => {
     });
   });
 
+  it('retries without the optional observation for a strict legacy worker', async () => {
+    const legacyRejectionBody = new ReadableStream({
+      cancel: () => {
+        throw new Error('private cancellation failure');
+      },
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(legacyRejectionBody, { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot)));
+
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'observed',
+      value: snapshot,
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string)).toEqual({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body as string)).toEqual({
+      protocolVersion: 1,
+    });
+  });
+
   it('rejects an invalid success payload as unsupported', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ protocolVersion: 2 })));
     await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({

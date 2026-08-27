@@ -185,6 +185,66 @@ describe('worker diagnostics', () => {
       lastFailureAge: 'never',
       lastFailureClass: 'none',
     });
+    expect(snapshot.walletSyncExecution).toBeUndefined();
+  });
+
+  it('carries a strict versioned sampled wallet-sync execution observation', () => {
+    const walletSyncExecution = {
+      version: 1 as const,
+      observation: 'observed' as const,
+      scope: 'sampled_worker' as const,
+      processEpochAge: '1h-24h' as const,
+      countersResetAge: '<1m' as const,
+      active: {
+        total: '1' as const,
+        byStage: {
+          candidate_fetch: '0' as const,
+          parent_fetch: '0' as const,
+          timestamp_fetch: '0' as const,
+          classification: '1' as const,
+          persistence: '0' as const,
+        },
+        oldestProgressAge: '1m-15m' as const,
+      },
+      counters: {
+        started: '2-5' as const,
+        stageTransitions: '6-20' as const,
+        completed: '1' as const,
+        failed: '1' as const,
+        timedOut: '0' as const,
+        aborted: '0' as const,
+        budgetExpired: '1' as const,
+        lockLost: '0' as const,
+        stalePruned: '0' as const,
+      },
+      redisLockAgreement: {
+        agreement: 'observed' as const,
+        registryWithOwnedLock: '1' as const,
+        registryMissingOwnedLock: '0' as const,
+        registryTokenMismatch: '0' as const,
+      },
+    };
+    const snapshot = buildWorkerDiagnosticsSnapshot({
+      workerStartedAt: 1,
+      concurrency: 1,
+      redisConnected: true,
+      notificationConsumerRunning: true,
+      transactionHandlerRegistered: true,
+      electrum: {
+        managerRunning: false,
+        connected: false,
+        subscriptionOwner: false,
+        subscribedAddresses: 0,
+      },
+      walletSyncExecution,
+    }, 2);
+
+    expect(snapshot.walletSyncExecution).toEqual(walletSyncExecution);
+    expect(WorkerDiagnosticsResponseSchema.safeParse(snapshot).success).toBe(true);
+    expect(WorkerDiagnosticsResponseSchema.safeParse({
+      ...snapshot,
+      walletSyncExecution: { ...walletSyncExecution, walletId: 'private' },
+    }).success).toBe(false);
   });
 
   it('degrades readiness and normalizes invalid worker start time and unknown database state', () => {

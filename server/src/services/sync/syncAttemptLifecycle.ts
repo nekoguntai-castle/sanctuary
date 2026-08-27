@@ -12,6 +12,10 @@ import { withTimeout } from '../../utils/async';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import { classifyWalletSyncFailure } from './failureClassification';
+import {
+  isSyncAttemptTimeoutError,
+  SyncAttemptTimeoutError,
+} from './syncAttemptErrors';
 
 const log = createLogger('SYNC:ATTEMPT_LIFECYCLE');
 
@@ -21,6 +25,12 @@ const log = createLogger('SYNC:ATTEMPT_LIFECYCLE');
  * not hold the lock — and therefore the wallet — forever.
  */
 export const SYNC_ABORT_GRACE_MS = 30_000;
+
+export interface SyncAttemptLifecycleObserver {
+  timeout(): void;
+  aborted(): void;
+  abortGraceExhausted(): void;
+}
 
 /** Backoff between persistence attempts; its length plus one is the attempt count. */
 const PERSISTENCE_RETRY_BACKOFF_MS = [250, 1_000, 3_000] as const;
@@ -166,6 +176,7 @@ export async function runSyncAttemptWithTimeout<T>(
   timeoutMs: number,
   abortGraceMs: number,
   parentSignal?: AbortSignal,
+  observer?: SyncAttemptLifecycleObserver,
 ): Promise<T> {
   const controller = new AbortController();
   let notifyAborted!: (reason: unknown) => void;
@@ -173,18 +184,23 @@ export async function runSyncAttemptWithTimeout<T>(
     notifyAborted = resolve;
   });
   const abort = (reason: unknown): void => {
-    if (controller.signal.aborted) return;
     controller.abort(reason);
     notifyAborted(abortReason(controller.signal));
   };
-  const onParentAbort = (): void => abort(abortReason(parentSignal!));
+  const onParentAbort = (): void => {
+    if (controller.signal.aborted) return;
+    abort(abortReason(parentSignal!));
+  };
 
   if (parentSignal?.aborted) onParentAbort();
   else parentSignal?.addEventListener('abort', onParentAbort, { once: true });
 
   const deadlineAt = Date.now() + timeoutMs;
-  const timeoutError = new Error(`Sync attempt timed out after ${timeoutMs}ms`);
-  const timeoutHandle = setTimeout(() => abort(timeoutError), timeoutMs);
+  const timeoutError = new SyncAttemptTimeoutError(timeoutMs);
+  const timeoutHandle = setTimeout(() => {
+    if (controller.signal.aborted) return;
+    abort(timeoutError);
+  }, timeoutMs);
   timeoutHandle?.unref?.();
   const execution = Promise.resolve().then(() => execute(controller.signal, deadlineAt));
 
@@ -205,7 +221,13 @@ export async function runSyncAttemptWithTimeout<T>(
         abortGraceMs,
         `Sync attempt did not stop within ${abortGraceMs}ms of cancellation`,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof Error
+        && error.message === `Sync attempt did not stop within ${abortGraceMs}ms of cancellation`) {
+        observer?.abortGraceExhausted();
+      }
+      if (isSyncAttemptTimeoutError(first.reason)) observer?.timeout();
+      else observer?.aborted();
       throw first.reason;
     }
   } finally {

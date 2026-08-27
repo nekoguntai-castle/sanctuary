@@ -75,12 +75,14 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 
 import prisma from '../../../../src/models/prisma';
 import { createCheckStaleWalletsJob } from '../../../../src/worker/jobs/syncJobs';
+import { metricsService } from '../../../../src/observability/metrics';
 
 const checkStaleWalletsJob = createCheckStaleWalletsJob();
 
 describe('checkStaleWalletsJob', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    metricsService.reset();
     mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     let stateVersion = 0;
     staleJobPrismaMocks.walletUpdate.mockImplementation(async (args: any) => ({
@@ -318,6 +320,9 @@ describe('checkStaleWalletsJob', () => {
         syncExecutionOwner: null,
       }),
     });
+    await expect(metricsService.getMetrics()).resolves.toContain(
+      'sanctuary_wallet_sync_cleanup_total{outcome="flag_cleared"} 2',
+    );
   });
 
   it('should leave the flag set while the wallet sync lock is still held', async () => {
@@ -339,6 +344,9 @@ describe('checkStaleWalletsJob', () => {
 
     expect(mockIsLocked).toHaveBeenCalledWith('sync:wallet:wallet-resyncing');
     expect(prisma.wallet.update).not.toHaveBeenCalled();
+    await expect(metricsService.getMetrics()).resolves.toContain(
+      'sanctuary_wallet_sync_cleanup_total{outcome="lock_present_deferred"} 1',
+    );
   });
 
   it('should leave the flag set when the lock authority cannot be probed', async () => {
@@ -359,6 +367,47 @@ describe('checkStaleWalletsJob', () => {
     await checkStaleWalletsJob.handler(mockJob);
 
     expect(prisma.wallet.update).not.toHaveBeenCalled();
+    await expect(metricsService.getMetrics()).resolves.toContain(
+      'sanctuary_wallet_sync_cleanup_total{outcome="error"} 1',
+    );
+  });
+
+  it('records a fenced no-change decision without reporting a clear', async () => {
+    staleJobPrismaMocks.walletFindMany
+      .mockResolvedValueOnce([{
+        id: 'wallet-fence-moved',
+        name: 'Moved',
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date('2026-04-08T05:07:00Z'),
+        syncStateVersion: 4,
+      }])
+      .mockResolvedValueOnce([]);
+    staleJobPrismaMocks.resetIntent.mockResolvedValueOnce(null);
+
+    await checkStaleWalletsJob.handler({
+      id: 'job-fence-moved',
+      data: {},
+      attemptsMade: 0,
+      opts: { attempts: 2 },
+    } as unknown as Job);
+
+    expect(staleJobPrismaMocks.publishLifecycle).not.toHaveBeenCalled();
+    await expect(metricsService.getMetrics()).resolves.toContain(
+      'sanctuary_wallet_sync_cleanup_total{outcome="no_change"} 1',
+    );
+  });
+
+  it('does not count an empty reconciliation scan as a cleanup decision', async () => {
+    staleJobPrismaMocks.walletFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    await checkStaleWalletsJob.handler({
+      id: 'job-empty-reconciliation',
+      data: {},
+      attemptsMade: 0,
+      opts: { attempts: 2 },
+    } as unknown as Job);
+
+    expect(await metricsService.getMetrics()).not.toContain('sanctuary_wallet_sync_cleanup_total{');
   });
 
   it('should query stuck wallets using maxSyncDurationMs cutoff', async () => {

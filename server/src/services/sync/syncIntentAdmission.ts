@@ -35,6 +35,7 @@ import {
   syncLifecyclePublisher,
   type SyncLifecyclePublisher,
 } from './syncLifecyclePublisher';
+import { recordWalletSyncCleanupOutcome } from '../../observability/metrics/walletSyncMetrics';
 
 export interface IncrementalSyncWakeup {
   walletId: string;
@@ -395,8 +396,10 @@ export function createSyncIntentAdmission(
         generation,
         jobId: incrementalSyncWakeupJobId(state.id, generation),
       });
-      if (accepted) enqueued += 1;
-      else unavailable += 1;
+      if (accepted) {
+        enqueued += 1;
+        recordWalletSyncCleanupOutcome('intent_requeued');
+      } else unavailable += 1;
       scanned += 1;
       nextCursor = state.id;
     }
@@ -463,8 +466,10 @@ export function createSyncIntentAdmission(
             generation: claim.generation,
             jobId: incrementalSyncWakeupJobId(claim.walletId, claim.generation),
           });
-          if (accepted) enqueued += 1;
-          else unavailable += 1;
+          if (accepted) {
+            enqueued += 1;
+            recordWalletSyncCleanupOutcome('intent_requeued');
+          } else unavailable += 1;
         }
       } catch {
         unavailable += 1;

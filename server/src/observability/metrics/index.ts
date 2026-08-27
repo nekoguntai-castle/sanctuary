@@ -66,6 +66,35 @@ export {
   notificationJobResultsTotal,
 } from './infrastructureMetrics';
 
+// Wallet sync execution and lock-health metrics
+export {
+  WALLET_SYNC_METRIC_STAGES,
+  WALLET_SYNC_METRIC_MODES,
+  WALLET_SYNC_METRIC_NETWORKS,
+  WALLET_SYNC_STAGE_OUTCOMES,
+  WALLET_SYNC_CANDIDATE_OUTCOMES,
+  WALLET_SYNC_TERMINAL_OUTCOMES,
+  WALLET_SYNC_LOCK_SCOPES,
+  WALLET_SYNC_LOCK_LOSSES,
+  WALLET_SYNC_CLEANUP_OUTCOMES,
+  enterWalletSyncStage,
+  recordWalletSyncFallback,
+  recordWalletSyncBudgetExpiry,
+  recordWalletSyncCandidateOutcome,
+  recordWalletSyncTerminalOutcome,
+  recordWalletSyncAbortGraceExhaustion,
+  classifyDistributedLockScope,
+  recordWalletSyncLockLoss,
+  recordWalletSyncCleanupOutcome,
+  type EnterWalletSyncStageOptions,
+  type WalletSyncStageOutcome,
+  type WalletSyncCandidateOutcome,
+  type WalletSyncTerminalOutcome,
+  type WalletSyncLockScope,
+  type WalletSyncLockLoss,
+  type WalletSyncCleanupOutcome,
+} from './walletSyncMetrics';
+
 // Electrum pool metrics
 export {
   electrumPoolConnections,

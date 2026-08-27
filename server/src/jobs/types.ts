@@ -16,7 +16,8 @@ export interface JobExecutionContext {
   signal: AbortSignal;
   throwIfAborted: () => void;
   /** Present only while this processor still owns the handler's distributed lock. */
-  readonly acquiredLock?: Readonly<{ key: string }>;
+  /** Ownership token is worker-internal and must never be logged or persisted. */
+  readonly acquiredLock?: Readonly<{ key: string; token: string }>;
 }
 
 /** What the processor can tell a handler after giving up on lock contention. */

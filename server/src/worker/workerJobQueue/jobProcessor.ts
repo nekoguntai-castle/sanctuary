@@ -232,7 +232,7 @@ export async function processJobWithLock(
   let state: OwnershipState = 'owned';
   let refreshTimer: NodeJS.Timeout | null = null;
   let refreshInFlight: Promise<void> | null = null;
-  const acquiredLockProof = Object.freeze({ key: lockKey });
+  const acquiredLockProof = Object.freeze({ key: lockKey, token: lock.token });
   const execution = createExecutionContext(
     controller,
     () => state === 'owned' && lock !== null ? acquiredLockProof : undefined,

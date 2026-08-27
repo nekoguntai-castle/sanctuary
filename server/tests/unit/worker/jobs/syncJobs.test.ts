@@ -128,6 +128,7 @@ import {
   syncWalletJob as failClosedSyncWalletJob,
 } from '../../../../src/worker/jobs/syncJobs';
 import { resyncRepository } from '../../../../src/repositories';
+import { WalletSyncAttemptTelemetry } from '../../../../src/worker/walletSyncAttemptTelemetry';
 
 const syncWalletJob = createSyncWalletJob({
   enrollWalletSubscriptions: mockEnrollWalletSubscriptions,
@@ -524,6 +525,7 @@ describe('Sync Jobs', () => {
         expect.any(AbortSignal),
         { walletId: 'wallet-intent', generation: 1, leaseToken: 'rotated-token' },
         expect.any(Number),
+        expect.anything(),
       );
     });
 
@@ -741,6 +743,7 @@ describe('Sync Jobs', () => {
         expect(assertChainReachable).toHaveBeenCalledBefore(reset);
         expect(syncWallet).toHaveBeenCalledWith(
           'wallet-intent', 0, expect.any(AbortSignal), fence, expect.any(Number),
+          expect.anything(),
         );
         expect(populateMissingTransactionFields).toHaveBeenCalledWith(
           'wallet-intent', expect.any(AbortSignal), undefined, fence, false,
@@ -857,6 +860,85 @@ describe('Sync Jobs', () => {
         }
       },
     );
+
+    it('records the canonical timeout callback before releasing the fenced attempt', async () => {
+      vi.useFakeTimers();
+      const timeoutSpy = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'recordAttemptTimeout');
+      const graceSpy = vi.spyOn(
+        WalletSyncAttemptTelemetry.prototype,
+        'recordAbortGraceExhaustion',
+      );
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-timeout' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.releaseForRetry.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ syncInProgress: false, lastSyncStatus: 'retrying' }),
+      });
+      vi.mocked(syncWallet).mockImplementationOnce(async () => (
+        new Promise(() => undefined)
+      ) as never);
+
+      const pending = syncWalletJob.handler(canonicalJob(), acquiredExecution());
+      const rejection = pending.catch(error => error);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(150_000);
+
+      await expect(rejection).resolves.toMatchObject({
+        message: 'Sync attempt timed out after 120000ms',
+      });
+      expect(timeoutSpy).toHaveBeenCalledOnce();
+      expect(graceSpy).toHaveBeenCalledOnce();
+      expect(syncIntentMocks.releaseForRetry).toHaveBeenCalledWith(
+        'wallet-intent',
+        expect.objectContaining({ leaseToken: 'lease-timeout' }),
+        expect.objectContaining({ errorMessage: 'Sync attempt timed out after 120000ms' }),
+      );
+      vi.useRealTimers();
+    });
+
+    it('records canonical parent abort before releasing the fenced attempt', async () => {
+      const abortSpy = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'recordAttemptAbort');
+      const controller = new AbortController();
+      const reason = new Error('worker shutting down');
+      let notifyStarted!: () => void;
+      const started = new Promise<void>(resolve => { notifyStarted = resolve; });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-abort' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.releaseForRetry.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ syncInProgress: false, lastSyncStatus: 'retrying' }),
+      });
+      vi.mocked(syncWallet).mockImplementationOnce(async (_walletId, _depth, signal) => {
+        notifyStarted();
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }) as never;
+      });
+      const execution = {
+        signal: controller.signal,
+        throwIfAborted: () => controller.signal.throwIfAborted(),
+        acquiredLock: { key: 'sync:wallet:wallet-intent', token: 'a'.repeat(32) },
+      };
+
+      const pending = syncWalletJob.handler(canonicalJob(), execution);
+      const rejection = pending.catch(error => error);
+      await started;
+      controller.abort(reason);
+
+      await expect(rejection).resolves.toBe(reason);
+      expect(abortSpy).toHaveBeenCalledOnce();
+      expect(syncIntentMocks.releaseForRetry).toHaveBeenCalledWith(
+        'wallet-intent',
+        expect.objectContaining({ leaseToken: 'lease-abort' }),
+        expect.objectContaining({ errorMessage: 'worker shutting down' }),
+      );
+    });
 
     it('uses the canonical retry budget when BullMQ omits job attempt options', async () => {
       syncIntentMocks.claimFresh.mockResolvedValueOnce({

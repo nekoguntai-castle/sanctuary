@@ -1,4 +1,7 @@
-import type { WorkerDiagnosticsResponse } from '../../internal/workerDiagnostics/protocol';
+import type {
+  WalletSyncExecutionDiagnostics,
+  WorkerDiagnosticsResponse,
+} from '../../internal/workerDiagnostics/protocol';
 import { bucketAge, bucketCount } from '../../internal/workerDiagnostics/buckets';
 
 export { bucketAge, bucketCount } from '../../internal/workerDiagnostics/buckets';
@@ -15,6 +18,7 @@ export interface WorkerDiagnosticsSource {
     circuit: 'closed' | 'open';
     droppedEvents: 'zero' | 'one' | 'two_to_five' | 'six_to_twenty' | 'over_twenty';
   } | { observation: 'unavailable' };
+  walletSyncExecution?: WalletSyncExecutionDiagnostics;
   electrum: {
     managerRunning: boolean;
     connected: boolean;
@@ -92,5 +96,8 @@ export function buildWorkerDiagnosticsSnapshot(
         },
     notificationTelemetryWriter:
       source.notificationTelemetryWriter ?? { observation: 'unavailable' },
+    ...(source.walletSyncExecution === undefined
+      ? {}
+      : { walletSyncExecution: source.walletSyncExecution }),
   };
 }

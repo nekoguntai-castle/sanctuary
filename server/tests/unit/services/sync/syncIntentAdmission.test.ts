@@ -30,6 +30,7 @@ import {
   syncIntentAdmission,
 } from '../../../../src/services/sync/syncIntentAdmission';
 import type { WalletSyncActivationState } from '../../../../src/services/sync/walletSyncActivationGate';
+import { metricsService } from '../../../../src/observability/metrics';
 
 const NOW = new Date('2026-08-22T07:00:00.000Z');
 const ACTIVE = {
@@ -128,6 +129,7 @@ describe('syncIntentAdmission', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    metricsService.reset();
     inspectActivation.mockResolvedValue(ACTIVE);
     isExecutionLockHeld.mockResolvedValue(false);
     processMocks.inspectActivation.mockResolvedValue(ACTIVE);
@@ -625,6 +627,9 @@ describe('syncIntentAdmission', () => {
       walletId: 'wallet-2',
       generation: 7,
     }));
+    await expect(metricsService.getMetrics()).resolves.toContain(
+      'sanctuary_wallet_sync_cleanup_total{outcome="intent_requeued"} 1',
+    );
   });
 
   it.each([
@@ -769,6 +774,9 @@ describe('syncIntentAdmission', () => {
     ))).toBe(true);
     expect(JSON.stringify(enqueueWakeup.mock.calls)).not.toContain(TOKEN_A);
     expect(JSON.stringify(enqueueWakeup.mock.calls)).not.toContain(TOKEN_B);
+    await expect(metricsService.getMetrics()).resolves.toContain(
+      'sanctuary_wallet_sync_cleanup_total{outcome="intent_requeued"} 1',
+    );
   });
 
   it('wires the process adapter through the activation and execution-lock authorities', async () => {

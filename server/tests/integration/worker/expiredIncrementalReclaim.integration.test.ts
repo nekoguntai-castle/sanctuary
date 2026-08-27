@@ -389,7 +389,7 @@ describeWithRedis('expired incremental reclaim authority chain', () => {
     const execution: JobExecutionContext = {
       signal: controller.signal,
       throwIfAborted: () => controller.signal.throwIfAborted(),
-      acquiredLock: { key: lock.key },
+      acquiredLock: { key: lock.key, token: lock.token },
     };
     const running = executeCanonicalIncrementalSync(
       job,

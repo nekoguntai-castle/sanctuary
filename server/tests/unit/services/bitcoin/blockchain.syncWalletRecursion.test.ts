@@ -169,6 +169,42 @@ describe('Blockchain syncWallet recursion', () => {
     );
   });
 
+  it('passes attempt telemetry through the immutable runtime', async () => {
+    const controller = new AbortController();
+    const telemetry = {
+      observeProgress: vi.fn(),
+      recordCandidates: vi.fn(),
+    };
+    mockExecuteSyncPipeline.mockResolvedValueOnce({
+      addresses: 1,
+      transactions: 2,
+      utxos: 3,
+      stats: { newAddressesGenerated: 0 },
+    });
+
+    await syncWallet(
+      'wallet-telemetry',
+      0,
+      controller.signal,
+      undefined,
+      123_456,
+      telemetry,
+    );
+
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledWith(
+      'wallet-telemetry',
+      [],
+      {
+        signal: controller.signal,
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: 123_456,
+          telemetry,
+        },
+      },
+    );
+  });
+
   it('passes the immutable mutation fence into the sync pipeline', async () => {
     const walletId = 'wallet-fenced';
     const mutationFence = {

@@ -8,7 +8,6 @@
 
 import { createLogger } from '../../../../../utils/logger';
 import { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } from '../../../../../constants/transactionClassification';
-import { getBlockTimestamp } from '../../../utils/blockHeight';
 import type {
   RawTransaction,
   SyncContext,
@@ -19,6 +18,7 @@ import type {
 } from '../../types';
 import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
 import type { NodeRequestOptions } from '../../../nodeClient';
+import { resolveTransactionBlockTime } from './timestampPrefetch';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -79,6 +79,7 @@ export async function classifyTransactions(
   ctx: SyncContext,
   batchTxidSet: Set<string>,
   options?: NodeRequestOptions,
+  blockTimestamps?: ReadonlyMap<number, Date | null>,
 ): Promise<TransactionCreateData[]> {
   const transactionsToCreate: TransactionCreateData[] = [];
   const classifiedTxids = new Set<string>();
@@ -96,6 +97,7 @@ export async function classifyTransactions(
         addressRecord.id,
         item,
         options,
+        blockTimestamps,
       );
 
       if (transaction) {
@@ -149,6 +151,7 @@ const classifyHistoryItem = async (
   addressId: string,
   item: TxHistoryEntry,
   options?: NodeRequestOptions,
+  blockTimestamps?: ReadonlyMap<number, Date | null>,
 ): Promise<TransactionCreateData | null> => {
   if (!batchTxidSet.has(item.tx_hash)) {
     return null;
@@ -173,7 +176,13 @@ const classifyHistoryItem = async (
     fee,
     inputClassification,
     isReceived: outputs.some((out) => outputMatchesAddress(out, addressStr)),
-    blockTime: await getTransactionBlockTime(txDetails, item.height, ctx.network, options),
+    blockTime: await resolveTransactionBlockTime(
+      txDetails,
+      item.height,
+      ctx.network,
+      options,
+      blockTimestamps,
+    ),
   });
 };
 
@@ -473,22 +482,6 @@ const createIncompleteWalletInputTransaction = (
 
 const getConfirmations = (height: number, currentBlockHeight: number): number =>
   height > 0 ? Math.max(0, currentBlockHeight - height + 1) : 0;
-
-const getTransactionBlockTime = async (
-  txDetails: RawTransaction,
-  height: number,
-  network: SyncContext['network'],
-  options?: NodeRequestOptions,
-): Promise<Date | null> => {
-  if (txDetails.time) {
-    return new Date(txDetails.time * 1000);
-  }
-
-  if (height <= 0) return null;
-  return options
-    ? getBlockTimestamp(height, network, options)
-    : getBlockTimestamp(height, network);
-};
 
 const getScriptAddress = (
   scriptPubKey?: InputScriptPubKey | TransactionOutput['scriptPubKey']

@@ -79,19 +79,24 @@ export async function requestWorkerDiagnostics(
   const maxResponseBytes = options?.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   if (!url || !secret) return { status: 'unavailable' };
 
-  const body = JSON.stringify({ protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION });
   const parsedUrl = new URL(url);
-  const auth = signDiagnosticsRequest(
-    secret,
-    'POST',
-    parsedUrl.pathname,
-    body,
-    options?.nowMs,
-    options?.nonce,
-  );
-
-  try {
-    const response = await (options?.fetchImpl ?? fetch)(url, {
+  const enhancedBody = JSON.stringify({
+    protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
+    walletSyncExecution: true,
+  });
+  const legacyBody = JSON.stringify({
+    protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
+  });
+  const send = (body: string, nonce?: string): Promise<Response> => {
+    const auth = signDiagnosticsRequest(
+      secret,
+      'POST',
+      parsedUrl.pathname,
+      body,
+      options?.nowMs,
+      nonce,
+    );
+    return (options?.fetchImpl ?? fetch)(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -104,6 +109,14 @@ export async function requestWorkerDiagnostics(
       signal: AbortSignal.timeout(timeoutMs),
       redirect: 'error',
     });
+  };
+
+  try {
+    let response = await send(enhancedBody, options?.nonce);
+    if (response.status === 400) {
+      await response.body?.cancel().catch(() => undefined);
+      response = await send(legacyBody);
+    }
     if (response.status === 404 || response.status === 426) {
       return { status: 'unsupported' };
     }

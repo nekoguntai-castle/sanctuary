@@ -66,7 +66,11 @@ import {
 import { shutdownNotificationDeadLetterAggregateWriter } from './services/notifications/deadLetterAggregates';
 import { getTelegramTransportDiagnostics } from './services/telegram/api';
 import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
-import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/protocol';
+import type {
+  WorkerDiagnosticsRequest,
+  WorkerDiagnosticsResponse,
+} from './internal/workerDiagnostics/protocol';
+import { collectWalletSyncExecutionDiagnostics } from './worker/walletSyncExecutionRegistry';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
 import {
@@ -158,6 +162,7 @@ async function startUiEventBridge(): Promise<void> {
 
 function getWorkerDiagnosticsSnapshot(
   workerConcurrency: number,
+  walletSyncExecution?: WorkerDiagnosticsResponse['walletSyncExecution'],
 ): WorkerDiagnosticsResponse {
   const electrumMetrics = electrumManager?.getHealthMetrics();
   const telegramHealth = circuitBreakerRegistry.get('telegram')?.getHealth();
@@ -168,6 +173,7 @@ function getWorkerDiagnosticsSnapshot(
     redisConnected: isRedisConnected(),
     databaseConnected: getLastDatabaseHealth() ?? undefined,
     notificationTelemetryWriter: getNotificationTelemetryLocalHealth(),
+    walletSyncExecution,
     notificationConsumerRunning:
       jobQueue?.isQueueWorkerRunning('notifications') ?? false,
     transactionHandlerRegistered:
@@ -189,6 +195,18 @@ function getWorkerDiagnosticsSnapshot(
         }
       : undefined,
   });
+}
+
+async function getDirectWorkerDiagnosticsSnapshot(
+  workerConcurrency: number,
+  includeWalletSyncExecution = false,
+): Promise<WorkerDiagnosticsResponse> {
+  return getWorkerDiagnosticsSnapshot(
+    workerConcurrency,
+    includeWalletSyncExecution
+      ? await collectWalletSyncExecutionDiagnostics()
+      : undefined,
+  );
 }
 
 function activeSubscriptionCheckpointRuntime(): SubscriptionCheckpointRuntime {
@@ -452,7 +470,11 @@ async function startWorker(): Promise<void> {
       maxBodyBytes: config.worker.diagnosticsMaxBodyBytes ?? 1024,
       maxConcurrentRequests: config.worker.diagnosticsMaxConcurrentRequests ?? 2,
       authWindowMs: config.worker.diagnosticsAuthWindowMs ?? 60_000,
-      getSnapshot: () => getWorkerDiagnosticsSnapshot(workerConcurrency),
+      getSnapshot: (request: WorkerDiagnosticsRequest) =>
+        getDirectWorkerDiagnosticsSnapshot(
+          workerConcurrency,
+          request?.walletSyncExecution === true,
+        ),
     },
     healthProvider: {
       getHealth: async () => {

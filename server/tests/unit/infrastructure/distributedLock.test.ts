@@ -10,6 +10,7 @@ import {
   acquireLock,
   releaseLock,
   extendLock,
+  renewLock,
   withLock,
   isLocked,
   initializeDistributedLock,
@@ -205,6 +206,16 @@ describe('DistributedLock', () => {
 
       const extended = await extendLock(lock!, 5000);
       expect(extended).toBeNull();
+    });
+
+    it('returns a typed ownership mismatch for a stale local token', async () => {
+      const lock = await acquireLock('test:extend:typed', 5000);
+      expect(lock).not.toBeNull();
+
+      await expect(renewLock({ ...lock!, token: 'wrong-token' }, 5000)).resolves.toEqual({
+        status: 'lost',
+        loss: 'ownership_mismatch',
+      });
     });
   });
 

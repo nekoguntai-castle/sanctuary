@@ -53,6 +53,6 @@ export function acquiredExecution(
   return {
     signal: controller.signal,
     throwIfAborted: () => controller.signal.throwIfAborted(),
-    acquiredLock: { key: `sync:wallet:${walletId}` },
+    acquiredLock: { key: `sync:wallet:${walletId}`, token: 'a'.repeat(32) },
   };
 }

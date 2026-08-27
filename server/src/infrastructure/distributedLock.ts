@@ -46,6 +46,11 @@ import {
   resetLockAuthority,
 } from './lockAuthority';
 import type { LockAuthorityMode } from './lockAuthority';
+import {
+  classifyDistributedLockScope,
+  recordWalletSyncLockLoss,
+  type WalletSyncLockLoss,
+} from '../observability/metrics/walletSyncMetrics';
 
 export {
   LockAuthorityUnavailableError,
@@ -86,6 +91,10 @@ export interface LockOptions {
   /** Retry interval when waiting for lock */
   retryIntervalMs?: number;
 }
+
+export type LockRenewalResult =
+  | { status: 'extended'; lock: DistributedLock }
+  | { status: 'lost'; loss: WalletSyncLockLoss };
 
 function requireRedisAuthority(operation: string) {
   const redis = getRedisClient();
@@ -454,24 +463,23 @@ export function pendingUnconfirmedLockCount(): number {
   return unconfirmedReleases.size;
 }
 
-/**
- * Extend lock TTL (for long-running operations)
- *
- * @param lock - Lock object from acquireLock
- * @param ttlMs - New TTL in milliseconds
- * @returns Updated lock object if extended, null if lock was lost
- */
-export async function extendLock(
+function lostRenewal(lock: DistributedLock, loss: WalletSyncLockLoss): LockRenewalResult {
+  recordWalletSyncLockLoss(classifyDistributedLockScope(lock.key), loss);
+  return { status: 'lost', loss };
+}
+
+/** Renew a lock and preserve whether renewal failed or ownership mismatched. */
+export async function renewLock(
   lock: DistributedLock,
   ttlMs: number
-): Promise<DistributedLock | null> {
+): Promise<LockRenewalResult> {
   const newExpiresAt = Date.now() + ttlMs;
 
   if (!lock.isLocal) {
     const redis = getRedisClient();
     if (!redis || !isRedisConnected()) {
       log.warn('Redis lock extension failed: authority unavailable', { key: lock.key });
-      return null;
+      return lostRenewal(lock, 'renewal_lost');
     }
     try {
       // Lua script to atomically check ownership and extend
@@ -493,14 +501,14 @@ export async function extendLock(
 
       if (result === 1) {
         log.debug(`Extended Redis lock: ${lock.key} by ${ttlMs}ms`);
-        return { ...lock, expiresAt: newExpiresAt };
+        return { status: 'extended', lock: { ...lock, expiresAt: newExpiresAt } };
       }
 
       log.warn(`Failed to extend lock (lost ownership): ${lock.key}`);
-      return null;
+      return lostRenewal(lock, 'ownership_mismatch');
     } catch (error) {
       log.warn(`Redis lock extension failed`, { key: lock.key, error: getErrorMessage(error) });
-      return null;
+      return lostRenewal(lock, 'renewal_lost');
     }
   }
 
@@ -509,10 +517,22 @@ export async function extendLock(
   if (existing && existing.token === lock.token) {
     existing.expiresAt = newExpiresAt;
     log.debug(`Extended local lock: ${lock.key} by ${ttlMs}ms`);
-    return { ...lock, expiresAt: newExpiresAt };
+    return { status: 'extended', lock: { ...lock, expiresAt: newExpiresAt } };
   }
 
-  return null;
+  return lostRenewal(lock, 'ownership_mismatch');
+}
+
+/**
+ * Compatibility wrapper for callers that only need the renewed token or null.
+ * New ownership-transition code should use `renewLock` so it retains loss class.
+ */
+export async function extendLock(
+  lock: DistributedLock,
+  ttlMs: number,
+): Promise<DistributedLock | null> {
+  const result = await renewLock(lock, ttlMs);
+  return result.status === 'extended' ? result.lock : null;
 }
 
 /**

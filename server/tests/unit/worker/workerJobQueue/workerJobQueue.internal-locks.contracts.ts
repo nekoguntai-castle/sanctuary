@@ -55,13 +55,15 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       )).resolves.toEqual({ proof: undefined, hasProofProperty: false });
     });
 
-    it('exposes only the exact acquired key while lock ownership is live', async () => {
+    it('exposes only the exact acquired proof while lock ownership is live', async () => {
       let capturedExecution: JobExecutionContext | undefined;
       const handler = vi.fn(async (_job, execution) => {
         capturedExecution = execution;
-        expect(execution?.acquiredLock).toEqual({ key: 'lock:proof' });
+        expect(execution?.acquiredLock).toEqual({
+          key: 'lock:proof',
+          token: 'token',
+        });
         expect(Object.isFrozen(execution?.acquiredLock)).toBe(true);
-        expect(execution?.acquiredLock).not.toHaveProperty('token');
         return { ok: true };
       });
 

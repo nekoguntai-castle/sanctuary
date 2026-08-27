@@ -76,6 +76,7 @@ import {
   type CanonicalIncrementalSyncData,
 } from './canonicalIncrementalSync';
 import { syncIntentAdmission } from '../../services/sync/syncIntentAdmission';
+import { recordWalletSyncCleanupOutcome } from '../../observability/metrics/walletSyncMetrics';
 
 const log = createLogger('JOB:SYNC');
 
@@ -322,16 +323,25 @@ async function resetStuckSyncFlags(maxSyncDurationMs: number): Promise<void> {
         }),
       );
     } catch (error) {
+      recordWalletSyncCleanupOutcome('error');
       log.warn(`Could not acquire stale-sync authority for wallet ${wallet.id}`, {
         error: getErrorMessage(error),
       });
       continue;
     }
-    if (!reset.success || reset.result === null) {
+    if (!reset.success) {
+      recordWalletSyncCleanupOutcome('lock_present_deferred');
       /* v8 ignore next -- fallback id is defensive logging metadata */
       log.debug(`Sync still running for wallet ${wallet.name || wallet.id}, leaving flag set`);
       continue;
     }
+    if (reset.result === null) {
+      recordWalletSyncCleanupOutcome('no_change');
+      /* v8 ignore next -- fallback id is defensive logging metadata */
+      log.debug(`Sync still running for wallet ${wallet.name || wallet.id}, leaving flag set`);
+      continue;
+    }
+    recordWalletSyncCleanupOutcome('flag_cleared');
     await syncLifecyclePublisher.publish({
       walletId: wallet.id,
       transition: 'cleared',

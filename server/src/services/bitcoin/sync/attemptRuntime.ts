@@ -1,9 +1,18 @@
+import type { SyncProgressDetails } from '@sanctuary/shared/schemas/syncProgress';
+
 export const SYNC_REMOTE_STAGE_BUDGET_MS = 5 * 60_000;
 export const SYNC_REMOTE_FALLBACK_CONCURRENCY = 4;
+
+export interface SyncAttemptTelemetry {
+  observeProgress(details: SyncProgressDetails): void;
+  recordCandidates(fetched: number, rejected: number): void;
+}
 
 export interface SyncAttemptRuntime {
   signal: AbortSignal;
   deadlineAt: number;
+  /** Opaque worker-owned telemetry; sync services never inspect its identity. */
+  telemetry?: SyncAttemptTelemetry;
 }
 
 export interface SyncStageRuntime extends SyncAttemptRuntime {

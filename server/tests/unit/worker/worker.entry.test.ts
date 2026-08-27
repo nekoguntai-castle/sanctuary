@@ -207,6 +207,7 @@ const mocks = vi.hoisted(() => {
     getElectrumCallbacks: () => electrumCallbacks,
     getHealthProvider: () => healthProvider,
     getDiagnosticsProvider: () => diagnosticsProvider,
+    collectWalletSyncExecutionDiagnostics: vi.fn().mockResolvedValue(undefined),
     startCaptureParticipant: vi.fn(),
     stopCaptureParticipant: vi.fn(),
     syncIntentRequest: vi.fn(),
@@ -318,6 +319,11 @@ vi.mock('../../../src/worker/jobs', () => ({
   registerWorkerJobs: mocks.registerWorkerJobs,
 }));
 
+vi.mock('../../../src/worker/walletSyncExecutionRegistry', () => ({
+  collectWalletSyncExecutionDiagnostics:
+    mocks.collectWalletSyncExecutionDiagnostics,
+}));
+
 vi.mock('../../../src/observability/metrics/registry', () => ({
   metricsService: { initialize: vi.fn() },
   registry: { metrics: vi.fn().mockResolvedValue(''), contentType: 'text/plain' },
@@ -330,6 +336,18 @@ vi.mock('../../../src/observability/metrics/infrastructureMetrics', () => ({
 
 vi.mock('../../../src/observability/metrics/helpers', () => ({
   updateJobQueueMetrics: vi.fn(),
+}));
+
+vi.mock('../../../src/observability/metrics/walletSyncMetrics', () => ({
+  classifyDistributedLockScope: vi.fn(() => 'other'),
+  recordWalletSyncLockLoss: vi.fn(),
+  enterWalletSyncStage: vi.fn(() => vi.fn()),
+  recordWalletSyncFallback: vi.fn(),
+  recordWalletSyncBudgetExpiry: vi.fn(),
+  recordWalletSyncCandidateOutcome: vi.fn(),
+  recordWalletSyncTerminalOutcome: vi.fn(),
+  recordWalletSyncAbortGraceExhaustion: vi.fn(),
+  recordWalletSyncCleanupOutcome: vi.fn(),
 }));
 
 // The worker publishes its WebSocket events onto the Redis bridge. The real
@@ -1714,7 +1732,7 @@ describe('worker entrypoint', () => {
 
     const diagnosticsProvider = mocks.getDiagnosticsProvider();
     expect(diagnosticsProvider).toBeDefined();
-    expect(diagnosticsProvider?.()).toEqual(
+    await expect(diagnosticsProvider?.()).resolves.toEqual(
       expect.objectContaining({
         protocolVersion: 1,
         notificationPipeline: {

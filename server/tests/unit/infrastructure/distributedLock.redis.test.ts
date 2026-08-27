@@ -29,9 +29,11 @@ import {
   isLocked,
   LockAuthorityUnavailableError,
   releaseLock,
+  renewLock,
   shutdownDistributedLock,
   type DistributedLock,
 } from '../../../src/infrastructure/distributedLock';
+import { metricsService } from '../../../src/observability/metrics';
 
 describe('distributedLock Redis behavior', () => {
   // An unconfirmed release retains its token in a module-level map and arms a
@@ -45,6 +47,7 @@ describe('distributedLock Redis behavior', () => {
     vi.clearAllMocks();
     shutdownDistributedLock();
     initializeDistributedLock('redis-required');
+    metricsService.reset();
 
     mockGetRedisClient.mockReturnValue({
       set: mockSet,
@@ -173,6 +176,51 @@ describe('distributedLock Redis behavior', () => {
 
     mockEval.mockRejectedValueOnce(new Error('extend failed'));
     await expect(extendLock(lock, 9000)).resolves.toBeNull();
+  });
+
+  it('returns typed renewal loss and records the fixed ownership-mismatch scope once', async () => {
+    const lock: DistributedLock = {
+      key: 'sync:wallet:private-wallet-id',
+      token: 'private-token',
+      expiresAt: Date.now() + 1000,
+      isLocal: false,
+    };
+    mockEval.mockResolvedValueOnce(0);
+
+    await expect(renewLock(lock, 9000)).resolves.toEqual({
+      status: 'lost',
+      loss: 'ownership_mismatch',
+    });
+
+    const metrics = await metricsService.getMetrics();
+    expect(metrics).toContain(
+      'sanctuary_wallet_sync_lock_loss_total{scope="wallet_sync",loss="ownership_mismatch"} 1',
+    );
+    expect(metrics).not.toContain('private-wallet-id');
+    expect(metrics).not.toContain('private-token');
+  });
+
+  it.each([
+    ['authority unavailable', null, false],
+    ['renewal command error', { set: mockSet, eval: mockEval, exists: mockExists }, true],
+  ])('classifies %s as a typed renewal loss', async (_label, client, connected) => {
+    mockGetRedisClient.mockReturnValue(client);
+    mockIsRedisConnected.mockReturnValue(connected);
+    if (client) mockEval.mockRejectedValueOnce(new Error('redis secret error'));
+
+    await expect(renewLock({
+      key: 'maintenance:cleanup-audit-log',
+      token: 'private-token',
+      expiresAt: Date.now() + 1000,
+      isLocal: false,
+    }, 9000)).resolves.toEqual({ status: 'lost', loss: 'renewal_lost' });
+
+    const metrics = await metricsService.getMetrics();
+    expect(metrics).toContain(
+      'sanctuary_wallet_sync_lock_loss_total{scope="worker_maintenance",loss="renewal_lost"} 1',
+    );
+    expect(metrics).not.toContain('redis secret error');
+    expect(metrics).not.toContain('private-token');
   });
 
   it.each([

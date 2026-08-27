@@ -21,6 +21,7 @@ import { runWalletSyncMutation } from '../sync/mutationBoundary';
 import {
   createSyncStageRuntime,
   type SyncAttemptRuntime,
+  type SyncAttemptTelemetry,
 } from '../sync/attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
@@ -65,10 +66,11 @@ export async function syncWallet(
   signal?: AbortSignal,
   mutationFence?: WalletSyncMutationFence,
   attemptDeadlineAt = Number.POSITIVE_INFINITY,
+  telemetry?: SyncAttemptTelemetry,
 ): Promise<SyncWalletResult> {
   signal?.throwIfAborted();
   const attemptRuntime: SyncAttemptRuntime | undefined = signal
-    ? { signal, deadlineAt: attemptDeadlineAt }
+    ? { signal, deadlineAt: attemptDeadlineAt, ...(telemetry ? { telemetry } : {}) }
     : undefined;
   const result = await executeSyncPipeline(walletId, defaultSyncPhases, {
     ...(signal ? { signal } : {}),
@@ -98,6 +100,7 @@ export async function syncWallet(
       mutationFence,
       attemptRuntime,
       attemptDeadlineAt,
+      telemetry,
     });
     if (recursiveResult) {
       return {
@@ -123,6 +126,7 @@ type RecursiveScanInput = {
   mutationFence?: WalletSyncMutationFence;
   attemptRuntime?: SyncAttemptRuntime;
   attemptDeadlineAt: number;
+  telemetry?: SyncAttemptTelemetry;
 };
 
 const scanGeneratedAddresses = async (
@@ -160,6 +164,7 @@ const scanGeneratedAddresses = async (
       input.signal,
       input.mutationFence,
       input.attemptDeadlineAt,
+      input.telemetry,
     );
   } catch (error) {
     input.signal?.throwIfAborted();

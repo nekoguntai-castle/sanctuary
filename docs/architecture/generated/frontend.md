@@ -44,6 +44,7 @@ n_shared_schemas_draftRequests_ts["draftRequests.ts"]
 n_shared_schemas_mobileApiRequests_ts["mobileApiRequests.ts"]
 n_shared_schemas_priceResponses_ts["priceResponses.ts"]
 n_shared_schemas_psbtSigningContext_ts["psbtSigningContext.ts"]
+n_shared_schemas_syncProgress_ts["syncProgress.ts"]
 n_shared_schemas_transactionResponses_ts["transactionResponses.ts"]
 n_shared_schemas_walletResponses_ts["walletResponses.ts"]
 end

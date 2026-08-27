@@ -15,6 +15,10 @@ import {
   startSyncAttempt,
   type SyncAttemptWriter,
 } from '../../../../src/services/sync/syncAttemptLifecycle';
+import {
+  isSyncAttemptTimeoutError,
+  SyncAttemptTimeoutError,
+} from '../../../../src/services/sync/syncAttemptErrors';
 
 const persistedState: IncrementalSyncLifecycleState = {
   id: 'wallet-1',
@@ -411,6 +415,11 @@ describe('runSyncAttemptWithTimeout', () => {
   it('aborts a timed-out attempt and preserves the timeout reason', async () => {
     vi.useFakeTimers();
     let receivedReason: unknown;
+    const observer = {
+      timeout: vi.fn(),
+      aborted: vi.fn(),
+      abortGraceExhausted: vi.fn(),
+    };
     const pending = runSyncAttemptWithTimeout(
       (signal) =>
         new Promise((_resolve, reject) => {
@@ -421,6 +430,8 @@ describe('runSyncAttemptWithTimeout', () => {
         }),
       1_000,
       100,
+      undefined,
+      observer,
     );
     const rejection = pending.then(
       () => undefined,
@@ -433,11 +444,19 @@ describe('runSyncAttemptWithTimeout', () => {
     expect(receivedReason).toMatchObject({
       message: 'Sync attempt timed out after 1000ms',
     });
+    expect(observer.timeout).toHaveBeenCalledOnce();
+    expect(observer.aborted).not.toHaveBeenCalled();
+    expect(observer.abortGraceExhausted).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('accepts a cooperative completion during the abort grace window', async () => {
     vi.useFakeTimers();
+    const observer = {
+      timeout: vi.fn(),
+      aborted: vi.fn(),
+      abortGraceExhausted: vi.fn(),
+    };
     const pending = runSyncAttemptWithTimeout(
       (signal) =>
         new Promise((resolve) => {
@@ -445,17 +464,26 @@ describe('runSyncAttemptWithTimeout', () => {
         }),
       1_000,
       100,
+      undefined,
+      observer,
     );
 
     await vi.advanceTimersByTimeAsync(1_000);
 
     await expect(pending).resolves.toBe('settled safely');
+    expect(observer.timeout).not.toHaveBeenCalled();
+    expect(observer.aborted).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('bounds the unwind of an attempt that hangs after abort', async () => {
     vi.useFakeTimers();
     let receivedReason: unknown;
+    const observer = {
+      timeout: vi.fn(),
+      aborted: vi.fn(),
+      abortGraceExhausted: vi.fn(),
+    };
     const pending = runSyncAttemptWithTimeout(
       (signal) => {
         signal.addEventListener('abort', () => {
@@ -465,6 +493,8 @@ describe('runSyncAttemptWithTimeout', () => {
       },
       1_000,
       250,
+      undefined,
+      observer,
     );
     const rejection = pending.then(
       () => undefined,
@@ -477,6 +507,8 @@ describe('runSyncAttemptWithTimeout', () => {
     expect(receivedReason).toMatchObject({
       message: 'Sync attempt timed out after 1000ms',
     });
+    expect(observer.timeout).toHaveBeenCalledOnce();
+    expect(observer.abortGraceExhausted).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -484,6 +516,11 @@ describe('runSyncAttemptWithTimeout', () => {
     vi.useFakeTimers();
     const parent = new AbortController();
     const reason = new Error('queue is shutting down');
+    const observer = {
+      timeout: vi.fn(),
+      aborted: vi.fn(),
+      abortGraceExhausted: vi.fn(),
+    };
     const pending = runSyncAttemptWithTimeout(
       (signal) =>
         new Promise((_resolve, reject) => {
@@ -492,6 +529,7 @@ describe('runSyncAttemptWithTimeout', () => {
       1_000,
       100,
       parent.signal,
+      observer,
     );
     const rejection = pending.then(
       () => undefined,
@@ -502,7 +540,83 @@ describe('runSyncAttemptWithTimeout', () => {
     await vi.runAllTimersAsync();
 
     expect(await rejection).toBe(reason);
+    expect(observer.aborted).toHaveBeenCalledOnce();
+    expect(observer.timeout).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('publishes timeout only after cancellation becomes terminal', async () => {
+    vi.useFakeTimers();
+    const parentSignal = {
+      aborted: false,
+      reason: new Error('parent cancellation did not win'),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as AbortSignal;
+    const observer = {
+      timeout: vi.fn(),
+      aborted: vi.fn(),
+      abortGraceExhausted: vi.fn(),
+    };
+    const pending = runSyncAttemptWithTimeout(
+      signal => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }),
+      100,
+      50,
+      parentSignal,
+      observer,
+    );
+    const rejection = pending.catch(error => error);
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(rejection).resolves.toBeInstanceOf(SyncAttemptTimeoutError);
+    expect(observer.timeout).toHaveBeenCalledOnce();
+    expect(observer.aborted).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('ignores duplicate delivery from the same parent cancellation listener', async () => {
+    vi.useFakeTimers();
+    const reason = new Error('one parent cancellation');
+    let parentListener!: () => void;
+    const parentSignal = {
+      aborted: false,
+      reason,
+      addEventListener: vi.fn((_event, listener) => { parentListener = listener as () => void; }),
+      removeEventListener: vi.fn(),
+    } as unknown as AbortSignal;
+    const observer = {
+      timeout: vi.fn(),
+      aborted: vi.fn(),
+      abortGraceExhausted: vi.fn(),
+    };
+    const pending = runSyncAttemptWithTimeout(
+      async signal => {
+        signal.throwIfAborted();
+        return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+      },
+      1_000,
+      100,
+      parentSignal,
+      observer,
+    );
+    const rejection = pending.catch(error => error);
+
+    parentListener();
+    parentListener();
+
+    await expect(rejection).resolves.toBe(reason);
+    expect(observer.aborted).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('recognizes only the typed attempt timeout error', () => {
+    expect(isSyncAttemptTimeoutError(new SyncAttemptTimeoutError(100))).toBe(true);
+    expect(isSyncAttemptTimeoutError(new Error('Sync attempt timed out after 100ms'))).toBe(false);
   });
 
   it('handles a parent signal that was already aborted without a reason', async () => {

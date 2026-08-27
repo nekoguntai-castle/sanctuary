@@ -13,6 +13,7 @@ import { withLock } from '../../infrastructure';
 import { syncLifecyclePublisher } from './syncLifecyclePublisher';
 import { syncIntentAdmission } from './syncIntentAdmission';
 import { getSyncLockKey, getSyncLockTtlMs } from '../../jobs/syncJobContract';
+import { recordWalletSyncCleanupOutcome } from '../../observability/metrics/walletSyncMetrics';
 
 const log = createLogger('SYNC:STALE');
 
@@ -48,6 +49,7 @@ export async function clearStuckSyncIfAuthorized(
     if (!isExpired) return false;
   }
 
+  let cleanupCompleted = false;
   try {
     const result = await withLock(
       getSyncLockKey({ walletId: wallet.id }),
@@ -58,7 +60,16 @@ export async function clearStuckSyncIfAuthorized(
         syncStartedAt: wallet.syncStartedAt as Date | null,
       }),
     );
-    if (!result.success || result.result === null) return false;
+    if (!result.success) {
+      recordWalletSyncCleanupOutcome('lock_present_deferred');
+      return false;
+    }
+    if (result.result === null) {
+      recordWalletSyncCleanupOutcome('no_change');
+      return false;
+    }
+    recordWalletSyncCleanupOutcome('flag_cleared');
+    cleanupCompleted = true;
     await syncLifecyclePublisher.publish({
       walletId: wallet.id,
       transition: 'cleared',
@@ -66,6 +77,7 @@ export async function clearStuckSyncIfAuthorized(
     });
     return true;
   } catch (error) {
+    if (!cleanupCompleted) recordWalletSyncCleanupOutcome('error');
     log.warn(`[SYNC] Could not acquire stale-sync authority for wallet ${wallet.id}`, {
       error: getErrorMessage(error),
     });
@@ -81,10 +93,12 @@ export async function resetStuckSyncs(): Promise<void> {
   try {
     const count = await walletRepository.resetAllStuckSyncFlags();
     if (count > 0) {
+      recordWalletSyncCleanupOutcome('flag_cleared', count);
       const result = { count };
       log.info(`[SYNC] Reset ${result.count} stuck sync flags from previous session`);
     }
   } catch (error) {
+    recordWalletSyncCleanupOutcome('error');
     log.error('[SYNC] Failed to reset stuck sync flags', { error: getErrorMessage(error) });
   }
 }

@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { collectorMap, mockQueue, mockWorker, mockFleet, mockTelemetryRead } =
+const { collectorMap, collectorDefinitions, mockQueue, mockWorker, mockFleet, mockTelemetryRead } =
   vi.hoisted(() => ({
     collectorMap: new Map<string, () => Promise<unknown>>(),
+    collectorDefinitions: new Map<string, Record<string, unknown>>(),
     mockQueue: vi.fn(),
     mockWorker: vi.fn(),
     mockFleet: vi.fn(),
@@ -12,8 +13,11 @@ const { collectorMap, mockQueue, mockWorker, mockFleet, mockTelemetryRead } =
 vi.mock("../../../../src/services/supportPackage/collectors/registry", () => ({
   registerShareableCollector: (
     name: string,
-    definition: { collect: () => Promise<unknown> },
-  ) => collectorMap.set(name, definition.collect),
+    definition: { collect: () => Promise<unknown> } & Record<string, unknown>,
+  ) => {
+    collectorMap.set(name, definition.collect);
+    collectorDefinitions.set(name, definition);
+  },
 }));
 vi.mock("../../../../src/infrastructure/workerQueueReader", () => ({
   readNotificationQueue: (...args: unknown[]) => mockQueue(...args),
@@ -63,6 +67,7 @@ import {
 import { notificationTelemetrySnapshotSchema } from "../../../../src/services/notifications/telemetryReader";
 import { NOTIFICATION_QUEUE_STATES } from "../../../../src/internal/workerQueues";
 import { workerFleetSnapshotSchema } from "../../../../src/services/workerHeartbeatRegistry";
+import { buildWorkerDiagnosticsSnapshot } from "../../../../src/worker/diagnostics/snapshot";
 
 function unavailableQueue() {
   return {
@@ -136,6 +141,52 @@ describe("notification runtime support collectors", () => {
     const result = await collectorMap.get("notificationWorker")?.();
     expect(result).toEqual({ status: "unsupported" });
     expect(notificationWorkerSchema.safeParse(result).success).toBe(true);
+  });
+
+  it("carries strict sampled execution diagnostics without making them fleet-authoritative", async () => {
+    const snapshot = buildWorkerDiagnosticsSnapshot({
+      workerStartedAt: 1,
+      concurrency: 1,
+      redisConnected: true,
+      notificationConsumerRunning: true,
+      transactionHandlerRegistered: true,
+      electrum: {
+        managerRunning: false,
+        connected: false,
+        subscriptionOwner: false,
+        subscribedAddresses: 0,
+      },
+      walletSyncExecution: {
+        version: 1,
+        observation: "unavailable",
+        scope: "sampled_worker",
+      },
+    }, 2);
+    mockWorker.mockResolvedValue({ status: "observed", value: snapshot });
+
+    const result = await collectorMap.get("notificationWorker")?.();
+
+    expect(result).toMatchObject({
+      status: "observed",
+      value: {
+        walletSyncExecution: {
+          version: 1,
+          observation: "unavailable",
+          scope: "sampled_worker",
+        },
+      },
+    });
+    expect(notificationWorkerSchema.safeParse(result).success).toBe(true);
+    expect(JSON.stringify(result)).not.toMatch(/walletId|jobId|lockKey|token/i);
+    expect(collectorDefinitions.get("notificationWorker")).toMatchObject({
+      authoritativeFor: expect.arrayContaining(["wallet_sync_execution"]),
+      notAuthoritativeFor: expect.arrayContaining([
+        "wallet_sync_state",
+        "wallet_incremental_sync_intent",
+        "wallet_full_resync_intent",
+        "wallet_sync_lease_row",
+      ]),
+    });
   });
 
   it("exports only aggregate fleet capability and fails partial coverage closed", async () => {

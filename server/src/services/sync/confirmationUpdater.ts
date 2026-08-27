@@ -170,20 +170,27 @@ function startConfirmationLockLease(
   let stopped = false;
   let extensionInFlight = false;
   const renewalIntervalMs = Math.max(100, Math.floor(ttlMs / 3));
-  const timer = setInterval(() => {
+  let timer: NodeJS.Timeout;
+  const stopForLostRenewal = (reason: unknown): void => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(timer);
+    controller.abort(reason);
+  };
+  timer = setInterval(() => {
     if (extensionInFlight || stopped) return;
     extensionInFlight = true;
     void extendLock(currentLock, ttlMs)
       .then((extended) => {
         if (stopped) return;
         if (!extended) {
-          controller.abort(new Error('confirmation refresh lost its wallet sync lock'));
+          stopForLostRenewal(new Error('confirmation refresh lost its wallet sync lock'));
           return;
         }
         currentLock = extended;
       })
       .catch((error) => {
-        if (!stopped) controller.abort(error);
+        stopForLostRenewal(error);
       })
       .finally(() => {
         extensionInFlight = false;

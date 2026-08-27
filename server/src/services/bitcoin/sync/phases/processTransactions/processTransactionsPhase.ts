@@ -32,6 +32,9 @@ import {
   createSyncStageRuntime,
   isSyncStageBudgetError,
 } from '../../attemptRuntime';
+import { createCandidateBatchProgress } from './progress';
+import { prefetchTransactionBlockTimestamps } from './timestampPrefetch';
+import { isSyncAttemptTimeoutError } from '../../../../sync/syncAttemptErrors';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -82,6 +85,12 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
   // Process transactions in batches
   for (let batchIndex = 0; batchIndex < newTxids.length; batchIndex += TX_BATCH_SIZE) {
     const batchTxids = newTxids.slice(batchIndex, batchIndex + TX_BATCH_SIZE);
+    const batch = Math.floor(batchIndex / TX_BATCH_SIZE) + 1;
+    const batchCount = Math.ceil(newTxids.length / TX_BATCH_SIZE);
+    const batchEnd = Math.min(batchIndex + TX_BATCH_SIZE, newTxids.length);
+    const progress = createCandidateBatchProgress(
+      walletId, batch, batchCount, Date.now, ctx.attemptRuntime?.telemetry,
+    );
     const classificationRepairTxids = batchTxids.filter(
       txid => ctx.classificationRepairTxids.has(txid),
     );
@@ -98,11 +107,10 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
       await transactionRepository.markIoRepairAttempts(walletId, ioRepairTxids, tx);
     });
 
-    walletLog(
-      walletId,
-      'info',
-      'SYNC',
-      `Fetching transactions ${batchIndex + 1}-${Math.min(batchIndex + TX_BATCH_SIZE, newTxids.length)} of ${newTxids.length}...`,
+    progress.start(
+      'candidate_fetch',
+      'transactions',
+      `Fetching transactions ${batchIndex + 1}-${batchEnd} of ${newTxids.length}...`,
     );
 
     const stage = ctx.attemptRuntime
@@ -114,15 +122,22 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     let batchTxidSet: Set<string>;
     let transactionsToCreate: TransactionCreateData[];
     try {
-      ({ batchTxidSet, transactionsToCreate } = await resolveCandidateBatch(
-        ctx,
-        batchTxids,
-        requestOptions,
-      ));
+      try {
+        ({ batchTxidSet, transactionsToCreate } = await resolveCandidateBatch(
+          ctx,
+          batchTxids,
+          requestOptions,
+          progress,
+        ));
+      } catch (error) {
+        emitCandidateTerminalProgress(progress, error, requestOptions?.signal);
+        throw error;
+      }
     } finally {
       stage?.dispose();
     }
 
+    progress.start('persistence', 'transactions', `Saving transaction batch ${batch} of ${batchCount}...`);
     if (transactionsToCreate.length > 0) {
       const persisted = await runWalletSyncMutation(
         ctx,
@@ -161,6 +176,7 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
         ),
       );
     }
+    progress.complete(batchEnd, newTxids.length);
 
     // Small delay between batches
     if (batchIndex + TX_BATCH_SIZE < newTxids.length) {
@@ -207,27 +223,42 @@ const resolveCandidateBatch = async (
   ctx: SyncContext,
   batchTxids: string[],
   options: NodeRequestOptions | undefined,
+  progress: ReturnType<typeof createCandidateBatchProgress>,
 ): Promise<{
   batchTxidSet: Set<string>;
   transactionsToCreate: TransactionCreateData[];
 }> => {
+  const rejectedBefore = ctx.rejectedEvidenceCount;
   try {
     await fetchAuthenticatedTransactions(ctx, batchTxids, options);
     const batchTxidSet = availableBatchTransactionIds(batchTxids, ctx.txDetailsCache);
     options?.signal?.throwIfAborted();
+    progress.start('parent_fetch', 'transactions', 'Resolving previous transactions for this batch...');
     await prefetchPreviousTransactions(ctx, batchTxidSet, options);
-    return {
+    progress.start('timestamp_fetch', 'block_heights', 'Resolving block timestamps for this batch...');
+    const blockTimestamps = await prefetchTransactionBlockTimestamps(ctx, batchTxidSet, options);
+    progress.start('classification', 'transactions', 'Classifying transactions in this batch...');
+    const transactionsToCreate = await classifyTransactions(
+      ctx,
       batchTxidSet,
-      transactionsToCreate: await classifyTransactions(ctx, batchTxidSet, options),
-    };
+      options,
+      blockTimestamps,
+    );
+    progress.candidates(batchTxidSet.size, ctx.rejectedEvidenceCount - rejectedBefore);
+    return { batchTxidSet, transactionsToCreate };
   } catch (error) {
-    if (!isCandidateBudgetExpiry(error, options)) throw error;
     const batchTxidSet = availableBatchTransactionIds(batchTxids, ctx.txDetailsCache);
+    progress.candidates(batchTxidSet.size, ctx.rejectedEvidenceCount - rejectedBefore);
+    if (!isCandidateBudgetExpiry(error, options)) throw error;
+    progress.fallback('Remote batch budget expired; continuing with locally complete transactions.');
+    progress.start('classification', 'transactions', 'Classifying locally complete transactions...');
     return {
       batchTxidSet,
       transactionsToCreate: await classifyTransactions(
         ctx,
         locallyClassifiableTransactionIds(ctx, batchTxidSet),
+        undefined,
+        new Map(),
       ),
     };
   }
@@ -238,6 +269,22 @@ const isCandidateBudgetExpiry = (
   options: NodeRequestOptions | undefined,
 ): boolean => isSyncStageBudgetError(error)
   || isSyncStageBudgetError(options?.signal?.reason);
+
+const emitCandidateTerminalProgress = (
+  progress: ReturnType<typeof createCandidateBatchProgress>,
+  error: unknown,
+  signal: AbortSignal | undefined,
+): void => {
+  if (!signal?.aborted || isSyncStageBudgetError(error) || isSyncStageBudgetError(signal.reason)) {
+    return;
+  }
+  const reason = signal.reason;
+  const timeout = isSyncAttemptTimeoutError(reason);
+  progress.terminal(
+    timeout ? 'timeout' : 'aborted',
+    timeout ? 'Transaction batch timed out.' : 'Transaction batch cancelled.',
+  );
+};
 
 /**
  * Batch prefetch previous transactions for inputs to avoid N+1 queries
