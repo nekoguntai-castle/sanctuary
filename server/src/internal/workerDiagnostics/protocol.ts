@@ -1,13 +1,32 @@
 import { z } from 'zod';
-import { SYNC_PROGRESS_STAGES } from '@sanctuary/shared/schemas/syncProgress';
+import { SYNC_EXECUTION_STAGES } from '@sanctuary/shared/schemas/syncProgress';
 
 export const WORKER_DIAGNOSTICS_PATH = '/internal/diagnostics/v1/snapshot';
 export const WORKER_DIAGNOSTICS_PROTOCOL_VERSION = 1 as const;
 
+// Frozen wire-v1 inventory. Do not derive this from the expanded execution
+// stages: strict rolling-update consumers require these exact five keys.
+export const WALLET_SYNC_EXECUTION_V1_STAGES = [
+  'candidate_fetch',
+  'parent_fetch',
+  'timestamp_fetch',
+  'classification',
+  'persistence',
+] as const;
+
 export const WorkerDiagnosticsRequestSchema = z.object({
   protocolVersion: z.literal(WORKER_DIAGNOSTICS_PROTOCOL_VERSION),
   walletSyncExecution: z.literal(true).optional(),
-}).strict();
+  walletSyncExecutionVersion: z.literal(2).optional(),
+}).strict().superRefine((request, ctx) => {
+  if (request.walletSyncExecutionVersion !== undefined && request.walletSyncExecution !== true) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['walletSyncExecutionVersion'],
+      message: 'walletSyncExecutionVersion requires walletSyncExecution',
+    });
+  }
+});
 
 const CountBucketSchema = z.enum(['0', '1', '2-5', '6-20', '21-100', '101+']);
 const AgeBucketSchema = z.enum([
@@ -58,31 +77,50 @@ const WalletSyncExecutionAgreementSchema = z.discriminatedUnion('agreement', [
   z.object({ agreement: z.literal('unavailable') }).strict(),
 ]);
 
-export const WalletSyncExecutionDiagnosticsSchema = z.discriminatedUnion('observation', [
+function walletSyncExecutionDiagnosticsSchema<
+  const Version extends 1 | 2,
+  const Stage extends string,
+>(version: Version, stages: readonly Stage[]) {
+  const byStage = z.object(Object.fromEntries(
+    stages.map(stage => [stage, CountBucketSchema]),
+  ) as Record<Stage, typeof CountBucketSchema>).strict();
+  return z.discriminatedUnion('observation', [
   z.object({
-    version: z.literal(1),
+    version: z.literal(version),
     observation: z.literal('observed'),
     scope: z.literal('sampled_worker'),
     processEpochAge: AgeBucketSchema.exclude(['never']),
     countersResetAge: AgeBucketSchema.exclude(['never']),
     active: z.object({
       total: CountBucketSchema,
-      byStage: z.object(Object.fromEntries(
-        SYNC_PROGRESS_STAGES.map(stage => [stage, CountBucketSchema]),
-      ) as Record<(typeof SYNC_PROGRESS_STAGES)[number], typeof CountBucketSchema>).strict(),
+      byStage,
       oldestProgressAge: AgeBucketSchema,
     }).strict(),
     counters: WalletSyncExecutionCountersSchema,
     redisLockAgreement: WalletSyncExecutionAgreementSchema,
   }).strict(),
   z.object({
-    version: z.literal(1),
+    version: z.literal(version),
     observation: z.literal('unavailable'),
     scope: z.literal('sampled_worker'),
   }).strict(),
+  ]);
+}
+
+export const WalletSyncExecutionDiagnosticsV1Schema = walletSyncExecutionDiagnosticsSchema(
+  1,
+  WALLET_SYNC_EXECUTION_V1_STAGES,
+);
+export const WalletSyncExecutionDiagnosticsV2Schema = walletSyncExecutionDiagnosticsSchema(
+  2,
+  SYNC_EXECUTION_STAGES,
+);
+export const WalletSyncExecutionDiagnosticsSchema = z.union([
+  WalletSyncExecutionDiagnosticsV1Schema,
+  WalletSyncExecutionDiagnosticsV2Schema,
 ]);
 
-export const WorkerDiagnosticsResponseSchema = z.object({
+const WorkerDiagnosticsBaseResponseSchema = z.object({
   protocolVersion: z.literal(WORKER_DIAGNOSTICS_PROTOCOL_VERSION),
   sampledAt: z.string().datetime(),
   worker: z.object({
@@ -118,18 +156,30 @@ export const WorkerDiagnosticsResponseSchema = z.object({
     }).strict(),
     z.object({ observation: z.literal('unavailable') }).strict(),
   ]),
+}).strict();
+
+export const WorkerDiagnosticsBareResponseSchema = WorkerDiagnosticsBaseResponseSchema;
+export const WorkerDiagnosticsResponseV1Schema = WorkerDiagnosticsBaseResponseSchema.extend({
+  walletSyncExecution: WalletSyncExecutionDiagnosticsV1Schema,
+}).strict();
+export const WorkerDiagnosticsResponseV2Schema = WorkerDiagnosticsBaseResponseSchema.extend({
+  walletSyncExecution: WalletSyncExecutionDiagnosticsV2Schema,
+}).strict();
+export const WorkerDiagnosticsResponseSchema = WorkerDiagnosticsBaseResponseSchema.extend({
   // Emitted only when the authenticated request opts in. This keeps responses
-  // parseable by strict protocol-v1 consumers during rolling deployment.
+  // parseable by strict transport-v1 consumers during rolling deployment.
   walletSyncExecution: WalletSyncExecutionDiagnosticsSchema.optional(),
 }).strict();
 
 export type WorkerDiagnosticsRequest = z.infer<typeof WorkerDiagnosticsRequestSchema>;
 export type WorkerDiagnosticsResponse = z.infer<typeof WorkerDiagnosticsResponseSchema>;
+export type WorkerDiagnosticsBareResponse = z.infer<typeof WorkerDiagnosticsBareResponseSchema>;
 export type CountBucket = z.infer<typeof CountBucketSchema>;
 export type AgeBucket = z.infer<typeof AgeBucketSchema>;
 export type WalletSyncExecutionDiagnostics = z.infer<
   typeof WalletSyncExecutionDiagnosticsSchema
 >;
+export type WalletSyncExecutionDiagnosticsVersion = WalletSyncExecutionDiagnostics['version'];
 export type ObservedWalletSyncExecutionDiagnostics = Extract<
   WalletSyncExecutionDiagnostics,
   { observation: 'observed' }

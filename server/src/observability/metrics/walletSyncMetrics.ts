@@ -2,13 +2,13 @@
 
 import { Counter, Gauge, Histogram } from 'prom-client';
 import {
-  SYNC_PROGRESS_STAGES,
-  type SyncProgressStage,
+  SYNC_EXECUTION_STAGES,
+  type SyncExecutionStage,
 } from '@sanctuary/shared/schemas/syncProgress';
 import { BITCOIN_NETWORKS, type NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { registry } from './registry';
 
-export const WALLET_SYNC_METRIC_STAGES = [...SYNC_PROGRESS_STAGES, 'other'] as const;
+export const WALLET_SYNC_METRIC_STAGES = [...SYNC_EXECUTION_STAGES, 'other'] as const;
 export const WALLET_SYNC_METRIC_MODES = ['incremental', 'full_resync', 'other'] as const;
 export const WALLET_SYNC_METRIC_NETWORKS = [...BITCOIN_NETWORKS, 'other'] as const;
 export const WALLET_SYNC_STAGE_OUTCOMES = [
@@ -48,7 +48,7 @@ const stageDuration = new Histogram({
   name: 'sanctuary_wallet_sync_stage_duration_seconds',
   help: 'Wallet sync stage duration by fixed execution dimensions',
   labelNames: ['stage', 'mode', 'network', 'outcome'],
-  buckets: [0.1, 0.5, 1, 5, 10, 30, 60, 120, 300],
+  buckets: [0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 330, 600, 900, 1800, 1830],
   registers: [registry],
 });
 
@@ -57,6 +57,47 @@ const activeStage = new Gauge({
   help: 'Active wallet sync executions by fixed stage dimensions',
   labelNames: ['stage', 'mode', 'network'],
   registers: [registry],
+});
+
+interface ActiveStageRecord {
+  labels: { stage: MetricStage; mode: MetricMode; network: MetricNetwork };
+  startedAtMs: number;
+  now: () => number;
+}
+
+const activeStageRecords = new Map<symbol, ActiveStageRecord>();
+const seenActiveStageDimensions = new Map<string, ActiveStageRecord['labels']>();
+
+function dimensionKey(labels: ActiveStageRecord['labels']): string {
+  return `${labels.stage}\0${labels.mode}\0${labels.network}`;
+}
+
+const activeStageOldest = new Gauge({
+  name: 'sanctuary_wallet_sync_active_stage_oldest_seconds',
+  help: 'Age of the oldest active wallet sync execution by fixed stage dimensions',
+  labelNames: ['stage', 'mode', 'network'],
+  registers: [registry],
+  collect() {
+    this.reset();
+    const oldestByDimension = new Map<string, {
+      labels: ActiveStageRecord['labels'];
+      ageSeconds: number;
+    }>();
+    for (const [key, labels] of seenActiveStageDimensions) {
+      oldestByDimension.set(key, { labels, ageSeconds: 0 });
+    }
+    for (const record of activeStageRecords.values()) {
+      const key = dimensionKey(record.labels);
+      const ageSeconds = elapsedSeconds(record.startedAtMs, record.now);
+      const current = oldestByDimension.get(key);
+      if (!current || ageSeconds > current.ageSeconds) {
+        oldestByDimension.set(key, { labels: record.labels, ageSeconds });
+      }
+    }
+    for (const { labels, ageSeconds } of oldestByDimension.values()) {
+      this.set(labels, ageSeconds);
+    }
+  },
 });
 
 const fallbackTotal = new Counter({
@@ -123,7 +164,7 @@ function includes<T extends string>(domain: readonly T[], value: unknown): value
 }
 
 function normalizeStage(value: unknown): MetricStage {
-  return includes<SyncProgressStage>(SYNC_PROGRESS_STAGES, value) ? value : 'other';
+  return includes<SyncExecutionStage>(SYNC_EXECUTION_STAGES, value) ? value : 'other';
 }
 
 function normalizeMode(value: unknown): MetricMode {
@@ -158,18 +199,29 @@ function elapsedSeconds(startedAtMs: number, now: () => number): number {
  */
 export function enterWalletSyncStage(options: EnterWalletSyncStageOptions): (
   outcome: WalletSyncStageOutcome,
+  finishedAtMs?: number,
 ) => void {
   const labels = normalizeDimensions(options);
-  const startedAtMs = options.startedAtMs ?? Date.now();
   const now = options.now ?? Date.now;
+  const initialNow = now();
+  const startedAtMs = Number.isFinite(options.startedAtMs)
+    ? options.startedAtMs as number
+    : Number.isFinite(initialNow) ? initialNow : 0;
+  const handle = Symbol('wallet-sync-stage');
   let finished = false;
+  activeStageRecords.set(handle, { labels, startedAtMs, now });
+  seenActiveStageDimensions.set(dimensionKey(labels), labels);
   activeStage.inc(labels);
-  return (outcome): void => {
+  return (outcome, finishedAtMs): void => {
     if (finished) return;
     finished = true;
+    activeStageRecords.delete(handle);
     activeStage.dec(labels);
     const safeOutcome = includes(WALLET_SYNC_STAGE_OUTCOMES, outcome) ? outcome : 'failed';
-    stageDuration.observe({ ...labels, outcome: safeOutcome }, elapsedSeconds(startedAtMs, now));
+    stageDuration.observe(
+      { ...labels, outcome: safeOutcome },
+      elapsedSeconds(startedAtMs, () => finishedAtMs ?? now()),
+    );
   };
 }
 

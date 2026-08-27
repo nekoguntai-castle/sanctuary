@@ -442,6 +442,14 @@ describeWithRedis('expired incremental reclaim authority chain', () => {
       claimedFence,
       false,
       expect.any(Number),
+      expect.objectContaining({
+        beginStage: expect.any(Function),
+        finishStage: expect.any(Function),
+      }),
+      expect.objectContaining({
+        begin: expect.any(Function),
+        finish: expect.any(Function),
+      }),
     );
     const completed = await prisma.wallet.findUniqueOrThrow({ where: { id: expired.walletId } });
     expect(completed).toMatchObject({

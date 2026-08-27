@@ -270,7 +270,54 @@ Combined with `server/src/repositories/resyncRepository.ts:58-67` (which commits
 
 ## 2. How to confirm on the remote box
 
-All commands are READ-ONLY. Run them in this order.
+All commands are READ-ONLY. The supported first step is now:
+
+```bash
+./scripts/diagnose-wallet-sync.sh > sync-diagnosis.txt 2>&1
+```
+
+The report is pseudonymous and shareable by default. Each wallet UUID is
+replaced with a stable `wallet_ref_NNN` for that report, while names, raw errors,
+transaction identifiers, endpoints, lease tokens, and raw Redis job/lock
+identities are removed. Raw on-box evidence is available only through
+`SANCTUARY_DIAGNOSE_INCLUDE_IDENTIFIERS=1`; that output is marked
+`NON-SHAREABLE` at both ends and must not be attached to an issue or support
+request.
+
+The first table distinguishes two durable intent pipelines:
+
+- Incremental `requested / claimed / processed` means work is pending, leased,
+  or durably completed. `requested > processed` is pending work;
+  `claimed > processed` plus an active lease is owned work; an expired or
+  incoherent lease needs recovery evidence rather than another request.
+- Full-resync `requested / prepared / processed` separates request acceptance,
+  the destructive preparation boundary, and completed rebuilding. A request
+  ahead of preparation has not reset history; preparation ahead of processing
+  means the reset ran but rebuilding did not finish.
+- `owner` and `attempt_age` describe the current execution attempt.
+  `claim_age`, `lease_expires_at`, and `lease_remaining` describe incremental
+  ownership. Retry and action-required timestamps explain why pending intent is
+  deliberately deferred or requires an operator action.
+
+The sampled-worker section is authenticated and aggregate-only. New clients ask
+for wallet execution snapshot v2, then fall back sequentially to v1 execution
+and bare transport v1 during rolling updates. A bare response proves that the
+worker diagnostics transport is reachable, but the execution snapshot remains
+`unsupported`; timeout and unavailable are different classifications. Any of
+those non-observed classifications makes the report `INCOMPLETE`—never read one
+as proof that no sync is active.
+
+Worker snapshot state is live evidence from one sampled worker. Database rows,
+Redis TTLs, and filtered logs are durable or trailing evidence and can outlive
+an attempt. Conversely, a deferred stage already appearing in the v2 active
+stage record proves current work even before its remote call resolves. Compare
+the sources; do not promote stale persisted state or a decaying API-path lock to
+proof of a currently executing worker stage.
+
+The historical SQL below remains useful for understanding the original
+incident, but it exposes identifiers and predates incremental claims and v2
+worker stages. Prefer the supported script for current evidence. Run the legacy
+queries only on-box and in this order.
 
 ### 2.0 Generation drift — run this first
 

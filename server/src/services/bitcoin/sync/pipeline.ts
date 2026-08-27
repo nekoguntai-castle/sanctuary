@@ -17,7 +17,11 @@ import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddre
 import { hasCanonicalPolicyIdentity } from '../../wallet/canonicalPolicy';
 
 import { createSyncContext } from "./context";
-import { createSyncStageRuntime, type SyncAttemptRuntime } from './attemptRuntime';
+import {
+  createSyncStageRuntime,
+  isSyncStageBudgetError,
+  type SyncAttemptRuntime,
+} from './attemptRuntime';
 import type {
   SyncContext,
   SyncPhase,
@@ -26,6 +30,7 @@ import type {
   BitcoinNetwork,
   SyncPipelineError,
 } from "./types";
+import type { SyncExecutionStage } from '@sanctuary/shared/schemas/syncProgress';
 
 const log = createLogger("BITCOIN:SVC_SYNC_PIPELINE");
 
@@ -66,10 +71,13 @@ export async function executeSyncPipeline(
       : undefined);
   attemptRuntime?.signal.throwIfAborted();
   const startTime = Date.now();
+  const phaseProgress = attemptRuntime?.phaseProgress;
+  phaseProgress?.begin('initial_network');
 
   // Load wallet
   const wallet = await walletRepository.findById(walletId);
   if (!wallet) {
+    phaseProgress?.finish('stage_failed', 'Wallet sync initialization failed.');
     throw new Error(`Wallet ${walletId} not found`);
   }
 
@@ -100,6 +108,19 @@ export async function executeSyncPipeline(
     currentBlockHeight = requestOptions
       ? await getBlockHeight(network, requestOptions)
       : await getBlockHeight(network);
+  } catch (error) {
+    if (
+      isSyncStageBudgetError(error)
+      || isSyncStageBudgetError(initialStage?.signal.reason)
+    ) {
+      phaseProgress?.budgetExpired('Initial wallet network check exceeded its remote budget.');
+    } else {
+      phaseProgress?.finish(
+        attemptRuntime?.signal.aborted ? 'stage_aborted' : 'stage_failed',
+        'Initial wallet network check failed.',
+      );
+    }
+    throw error;
   } finally {
     initialStage?.dispose();
   }
@@ -122,6 +143,7 @@ export async function executeSyncPipeline(
 
   if (addresses.length === 0 && !wallet.descriptor) {
     walletLog(walletId, "info", "BLOCKCHAIN", "No addresses to scan");
+    phaseProgress?.finish();
     return {
       addresses: 0,
       transactions: 0,
@@ -193,6 +215,15 @@ export async function executeSyncPipeline(
   // Execute phases in sequence
   for (const phase of phasesToExecute) {
     attemptRuntime?.signal.throwIfAborted();
+    if (phase.executionStage) {
+      phaseProgress?.begin(
+        phase.executionStage,
+        undefined,
+        phase.executionStage === 'address_history'
+          ? { completed: 0, total: ctx.addresses.length, unit: 'addresses' }
+          : undefined,
+      );
+    }
     const phaseStart = Date.now();
     log.debug(`[SYNC] Starting phase: ${phase.name}`);
 
@@ -209,6 +240,13 @@ export async function executeSyncPipeline(
         options.onPhaseComplete(phase.name, ctx);
       }
     } catch (error) {
+      if (isSyncStageBudgetError(error)) {
+        phaseProgress?.budgetExpired();
+      } else {
+        phaseProgress?.finish(
+          attemptRuntime?.signal.aborted ? 'stage_aborted' : 'stage_failed',
+        );
+      }
       const pipelineError: SyncPipelineError = {
         name: "SyncPipelineError",
         message: `Sync pipeline failed at phase "${phase.name}": ${getErrorMessage(error)}`,
@@ -219,6 +257,8 @@ export async function executeSyncPipeline(
       throw pipelineError;
     }
   }
+
+  phaseProgress?.finish();
 
   // Calculate final results
   const elapsed = Date.now() - startTime;
@@ -252,6 +292,7 @@ export async function executeSyncPipeline(
 export function createPhase(
   name: string,
   execute: (ctx: SyncContext) => Promise<SyncContext>,
+  executionStage?: SyncExecutionStage,
 ): SyncPhase {
-  return { name, execute };
+  return { name, execute, ...(executionStage ? { executionStage } : {}) };
 }

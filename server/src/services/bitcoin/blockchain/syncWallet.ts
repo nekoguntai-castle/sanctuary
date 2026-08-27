@@ -20,9 +20,11 @@ import type { WalletSyncMutationFence } from '../../../repositories/types';
 import { runWalletSyncMutation } from '../sync/mutationBoundary';
 import {
   createSyncStageRuntime,
+  isSyncStageBudgetError,
   type SyncAttemptRuntime,
   type SyncAttemptTelemetry,
 } from '../sync/attemptRuntime';
+import type { SyncPhaseProgress } from '../sync/phaseProgress';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
 
@@ -67,10 +69,16 @@ export async function syncWallet(
   mutationFence?: WalletSyncMutationFence,
   attemptDeadlineAt = Number.POSITIVE_INFINITY,
   telemetry?: SyncAttemptTelemetry,
+  phaseProgress?: SyncPhaseProgress,
 ): Promise<SyncWalletResult> {
   signal?.throwIfAborted();
   const attemptRuntime: SyncAttemptRuntime | undefined = signal
-    ? { signal, deadlineAt: attemptDeadlineAt, ...(telemetry ? { telemetry } : {}) }
+    ? {
+        signal,
+        deadlineAt: attemptDeadlineAt,
+        ...(telemetry ? { telemetry } : {}),
+        ...(phaseProgress ? { phaseProgress } : {}),
+      }
     : undefined;
   const result = await executeSyncPipeline(walletId, defaultSyncPhases, {
     ...(signal ? { signal } : {}),
@@ -140,6 +148,12 @@ const scanGeneratedAddresses = async (
     ? createSyncStageRuntime(input.attemptRuntime, 'gap_limit_recursive_history')
     : undefined;
   const options = stage ? { signal: stage.signal, deadlineAt: stage.deadlineAt } : undefined;
+  const phaseProgress = input.attemptRuntime?.phaseProgress;
+  phaseProgress?.begin('address_history', 'Scanning newly generated address history.', {
+    completed: 0,
+    total: input.generatedCount,
+    unit: 'addresses',
+  });
   try {
     const client = options ? await getNodeClient(network, options) : await getNodeClient(network);
     const addresses = await addressRepository.findRecentUnused(
@@ -165,13 +179,32 @@ const scanGeneratedAddresses = async (
       input.mutationFence,
       input.attemptDeadlineAt,
       input.telemetry,
+      input.attemptRuntime?.phaseProgress,
     );
   } catch (error) {
+    if (
+      isSyncStageBudgetError(error)
+      || isSyncStageBudgetError(stage?.signal.reason)
+    ) {
+      phaseProgress?.budgetExpired(
+        'Generated-address history scan exceeded its remote budget.',
+      );
+      phaseProgress?.begin(
+        'address_history',
+        'Completing generated-address history fallback.',
+      );
+    } else {
+      phaseProgress?.finish(
+        input.signal?.aborted ? 'stage_aborted' : 'stage_failed',
+        'Generated-address history scan did not complete.',
+      );
+    }
     input.signal?.throwIfAborted();
     if (error instanceof OwnershipRepairPersistenceError) throw error;
     log.warn(`[BLOCKCHAIN] Failed to scan new addresses: ${error}`);
     return undefined;
   } finally {
+    phaseProgress?.finish();
     stage?.dispose();
   }
 };

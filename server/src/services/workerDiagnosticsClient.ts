@@ -7,12 +7,21 @@ import {
 } from '../internal/workerDiagnostics/auth';
 import {
   WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
-  WorkerDiagnosticsResponseSchema,
-  type WorkerDiagnosticsResponse,
+  WorkerDiagnosticsBareResponseSchema,
+  WorkerDiagnosticsResponseV1Schema,
+  WorkerDiagnosticsResponseV2Schema,
+  type WalletSyncExecutionDiagnostics,
+  type WorkerDiagnosticsBareResponse,
 } from '../internal/workerDiagnostics/protocol';
 
 export type WorkerDiagnosticsObservation =
-  | { status: 'observed'; value: WorkerDiagnosticsResponse }
+  | {
+      status: 'observed';
+      value: WorkerDiagnosticsBareResponse;
+      walletSyncExecution:
+        | { status: 'observed'; value: WalletSyncExecutionDiagnostics }
+        | { status: 'unsupported' };
+    }
   | { status: 'unsupported' | 'unavailable' | 'timeout' };
 
 export interface WorkerDiagnosticsClientOptions {
@@ -80,13 +89,19 @@ export async function requestWorkerDiagnostics(
   if (!url || !secret) return { status: 'unavailable' };
 
   const parsedUrl = new URL(url);
-  const enhancedBody = JSON.stringify({
+  const v2Body = JSON.stringify({
+    protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
+    walletSyncExecution: true,
+    walletSyncExecutionVersion: 2,
+  });
+  const v1ExecutionBody = JSON.stringify({
     protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
     walletSyncExecution: true,
   });
-  const legacyBody = JSON.stringify({
+  const bareBody = JSON.stringify({
     protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
   });
+  const signal = AbortSignal.timeout(timeoutMs);
   const send = (body: string, nonce?: string): Promise<Response> => {
     const auth = signDiagnosticsRequest(
       secret,
@@ -106,28 +121,46 @@ export async function requestWorkerDiagnostics(
         [DIAGNOSTICS_SIGNATURE_HEADER]: auth.signature,
       },
       body,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
       redirect: 'error',
     });
   };
 
   try {
-    let response = await send(enhancedBody, options?.nonce);
-    if (response.status === 400) {
-      await response.body?.cancel().catch(() => undefined);
-      response = await send(legacyBody);
-    }
-    if (response.status === 404 || response.status === 426) {
-      return { status: 'unsupported' };
-    }
-    if (!response.ok) return { status: 'unavailable' };
+    const attempts = [v2Body, v1ExecutionBody, bareBody] as const;
+    for (let index = 0; index < attempts.length; index++) {
+      const response = await send(attempts[index], index === 0 ? options?.nonce : undefined);
+      if (response.status === 400 && index < attempts.length - 1) {
+        await response.body?.cancel().catch(() => undefined);
+        continue;
+      }
+      if (response.status === 404 || response.status === 426) {
+        return { status: 'unsupported' };
+      }
+      if (!response.ok) return { status: 'unavailable' };
 
-    const parsed = WorkerDiagnosticsResponseSchema.safeParse(
-      await readBoundedJson(response, maxResponseBytes),
-    );
-    return parsed.success
-      ? { status: 'observed', value: parsed.data }
-      : { status: 'unsupported' };
+      const body = await readBoundedJson(response, maxResponseBytes);
+      if (index === 2) {
+        const parsed = WorkerDiagnosticsBareResponseSchema.safeParse(body);
+        if (!parsed.success) return { status: 'unsupported' };
+        return {
+          status: 'observed',
+          value: parsed.data,
+          walletSyncExecution: { status: 'unsupported' },
+        };
+      }
+      const parsed = index === 0
+        ? WorkerDiagnosticsResponseV2Schema.safeParse(body)
+        : WorkerDiagnosticsResponseV1Schema.safeParse(body);
+      if (!parsed.success) return { status: 'unsupported' };
+      const { walletSyncExecution, ...transport } = parsed.data;
+      return {
+        status: 'observed',
+        value: transport,
+        walletSyncExecution: { status: 'observed', value: walletSyncExecution },
+      };
+    }
+    return { status: 'unsupported' };
   } catch (error) {
     return { status: isAbortError(error) ? 'timeout' : 'unavailable' };
   }

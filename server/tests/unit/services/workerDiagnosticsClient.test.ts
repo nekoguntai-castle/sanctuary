@@ -30,6 +30,34 @@ const snapshot = {
   notificationTelemetryWriter: { observation: 'unavailable' },
 };
 
+const executionBase = {
+  observation: 'observed' as const,
+  scope: 'sampled_worker' as const,
+  processEpochAge: '<1m' as const,
+  countersResetAge: '<1m' as const,
+  active: { total: '1' as const, oldestProgressAge: '<1m' as const },
+  counters: {
+    started: '1' as const, stageTransitions: '0' as const, completed: '0' as const,
+    failed: '0' as const, timedOut: '0' as const, aborted: '0' as const,
+    budgetExpired: '0' as const, lockLost: '0' as const, stalePruned: '0' as const,
+  },
+  redisLockAgreement: { agreement: 'unavailable' as const },
+};
+const v1Stages = {
+  candidate_fetch: '0', parent_fetch: '0', timestamp_fetch: '0',
+  classification: '0', persistence: '0',
+} as const;
+const v2Stages = {
+  preflight: '1', initial_network: '0', address_history: '0',
+  transaction_reconciliation: '0', ...v1Stages, utxo_reconciliation: '0',
+  address_maintenance: '0', missing_field_repair: '0', subscription_enrollment: '0',
+  finalization: '0',
+} as const;
+const executionV1 = { ...executionBase, version: 1 as const, active: { ...executionBase.active, byStage: v1Stages } };
+const executionV2 = { ...executionBase, version: 2 as const, active: { ...executionBase.active, byStage: v2Stages } };
+const snapshotV1 = { ...snapshot, walletSyncExecution: executionV1 };
+const snapshotV2 = { ...snapshot, walletSyncExecution: executionV2 };
+
 describe('worker diagnostics client', () => {
   const options = {
     url: 'http://worker:3002/internal/diagnostics/v1/snapshot',
@@ -40,13 +68,14 @@ describe('worker diagnostics client', () => {
   };
 
   it('signs the request and returns a validated observation', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(snapshot), {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(snapshotV2), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }));
     await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
       status: 'observed',
       value: snapshot,
+      walletSyncExecution: { status: 'observed', value: executionV2 },
     });
     expect(fetchImpl).toHaveBeenCalledWith(options.url, expect.objectContaining({
       method: 'POST',
@@ -66,12 +95,13 @@ describe('worker diagnostics client', () => {
       },
     });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(snapshot)),
+      new Response(JSON.stringify(snapshotV2)),
     );
 
     await expect(requestWorkerDiagnostics()).resolves.toEqual({
       status: 'observed',
       value: snapshot,
+      walletSyncExecution: { status: 'observed', value: executionV2 },
     });
     expect(fetchSpy).toHaveBeenCalledWith(options.url, expect.objectContaining({
       signal: expect.any(AbortSignal),
@@ -94,7 +124,7 @@ describe('worker diagnostics client', () => {
     });
   });
 
-  it('retries without the optional observation for a strict legacy worker', async () => {
+  it('falls back from v2 to the current v1 execution request on one 400', async () => {
     const legacyRejectionBody = new ReadableStream({
       cancel: () => {
         throw new Error('private cancellation failure');
@@ -102,18 +132,55 @@ describe('worker diagnostics client', () => {
     });
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(legacyRejectionBody, { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshotV1)));
+
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'observed',
+      value: snapshot,
+      walletSyncExecution: { status: 'observed', value: executionV1 },
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string)).toEqual({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+      walletSyncExecutionVersion: 2,
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body as string)).toEqual({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+    });
+  });
+
+  it('falls back through v1 execution to bare transport and classifies execution unsupported', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(snapshot)));
 
     await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
       status: 'observed',
       value: snapshot,
+      walletSyncExecution: { status: 'unsupported' },
     });
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string)).toEqual({
+    expect(JSON.parse(fetchImpl.mock.calls[2][1].body as string)).toEqual({
       protocolVersion: 1,
-      walletSyncExecution: true,
     });
-    expect(JSON.parse(fetchImpl.mock.calls[1][1].body as string)).toEqual({
-      protocolVersion: 1,
+    expect(new Set(fetchImpl.mock.calls.map(([, init]) => init.signal)).size).toBe(1);
+    expect(new Set(fetchImpl.mock.calls.map(([, init]) => (
+      init.headers as Record<string, string>
+    )['x-sanctuary-nonce'])).size).toBe(3);
+  });
+
+  it('strictly rejects an invalid bare fallback response', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ...snapshot,
+        privateDetail: 'must-not-accept',
+      })));
+
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'unsupported',
     });
   });
 
@@ -122,6 +189,20 @@ describe('worker diagnostics client', () => {
     await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
       status: 'unsupported',
     });
+  });
+
+  it.each([
+    ['v1 payload for a v2 request', snapshotV1],
+    ['extra execution keys', {
+      ...snapshotV2,
+      walletSyncExecution: { ...executionV2, walletId: 'private-wallet' },
+    }],
+  ])('strictly rejects %s without leaking payload data', async (_label, payload) => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload)));
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'unsupported',
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it('maps an unsuccessful non-protocol response to unavailable', async () => {

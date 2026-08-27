@@ -57,6 +57,18 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
       await fetchAddressUtxos(ctx, stage, requestOptions, settledAddresses);
     } catch (error) {
       if (!isSyncStageBudgetError(requestOptions?.signal.reason)) throw error;
+      ctx.attemptRuntime?.phaseProgress?.budgetExpired(
+        'UTXO fetch exceeded its remote budget; retaining only authenticated evidence.',
+      );
+      ctx.attemptRuntime?.phaseProgress?.begin(
+        'utxo_reconciliation',
+        'Continuing UTXO reconciliation with authenticated evidence.',
+        {
+          completed: settledAddresses.size,
+          total: addresses.length,
+          unit: 'addresses',
+        },
+      );
       for (const { address } of addresses) {
         if (settledAddresses.has(address)) continue;
         recordFailClosed(ctx, 'fetch_budget_exhausted');

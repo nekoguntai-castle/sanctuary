@@ -5,6 +5,10 @@ import {
   SYNC_PROGRESS_MAX_ELAPSED_MS,
   SYNC_PROGRESS_STAGES,
   SYNC_PROGRESS_UNITS,
+  SYNC_EXECUTION_STAGES,
+  SYNC_PHASE_PROGRESS_EVENTS,
+  SYNC_PHASE_PROGRESS_UNITS,
+  SyncPhaseProgressDetailsSchema,
   SyncProgressDetailsSchema,
 } from "@sanctuary/shared/schemas/syncProgress";
 
@@ -76,5 +80,48 @@ describe("SyncProgressDetailsSchema frontend contract", () => {
     ["non-finite value", { ...valid, elapsedMs: Number.POSITIVE_INFINITY }],
   ])("rejects %s", (_label, candidate) => {
     expect(SyncProgressDetailsSchema.safeParse(candidate).success).toBe(false);
+  });
+});
+
+describe("SyncPhaseProgressDetailsSchema frontend contract", () => {
+  const phase = {
+    kind: "sync_phase_progress",
+    event: "stage_started",
+    stage: "preflight",
+    elapsedMs: 0,
+  } as const;
+
+  it("accepts every fixed stage, event, and truthful work-item unit", () => {
+    for (const stage of SYNC_EXECUTION_STAGES) {
+      expect(SyncPhaseProgressDetailsSchema.safeParse({ ...phase, stage }).success).toBe(true);
+    }
+    for (const event of SYNC_PHASE_PROGRESS_EVENTS) {
+      expect(SyncPhaseProgressDetailsSchema.safeParse({ ...phase, event }).success).toBe(true);
+    }
+    for (const unit of SYNC_PHASE_PROGRESS_UNITS) {
+      expect(SyncPhaseProgressDetailsSchema.safeParse({
+        ...phase,
+        workItems: { completed: 0, total: 1, unit },
+      }).success).toBe(true);
+    }
+  });
+
+  it.each([
+    ["unknown key", { ...phase, overallPercent: 10 }],
+    ["unknown stage", { ...phase, stage: "wallet-private" }],
+    ["unknown event", { ...phase, event: "fallback" }],
+    ["negative elapsed", { ...phase, elapsedMs: -1 }],
+    ["unbounded elapsed", { ...phase, elapsedMs: SYNC_PROGRESS_MAX_ELAPSED_MS + 1 }],
+    ["partial work items", { ...phase, workItems: { completed: 0, total: 1 } }],
+    ["completed beyond total", {
+      ...phase,
+      workItems: { completed: 2, total: 1, unit: "addresses" },
+    }],
+    ["private work-item key", {
+      ...phase,
+      workItems: { completed: 0, total: 1, unit: "addresses", walletId: "private" },
+    }],
+  ])("rejects %s", (_label, candidate) => {
+    expect(SyncPhaseProgressDetailsSchema.safeParse(candidate).success).toBe(false);
   });
 });

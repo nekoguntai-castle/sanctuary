@@ -53,7 +53,11 @@ import {
   DIAGNOSTICS_TIMESTAMP_HEADER,
   signDiagnosticsRequest,
 } from '../../../src/internal/workerDiagnostics/auth';
-import { WORKER_DIAGNOSTICS_PATH } from '../../../src/internal/workerDiagnostics/protocol';
+import {
+  WALLET_SYNC_EXECUTION_V1_STAGES,
+  WORKER_DIAGNOSTICS_PATH,
+} from '../../../src/internal/workerDiagnostics/protocol';
+import { SYNC_EXECUTION_STAGES } from '@sanctuary/shared/schemas/syncProgress';
 
 const makeRes = () => {
   const res: any = {};
@@ -94,6 +98,34 @@ const diagnosticsSnapshot = {
   },
   notificationTelemetryWriter: { observation: 'unavailable' as const },
 };
+
+const executionSnapshot = (version: 1 | 2) => ({
+  version,
+  observation: 'observed' as const,
+  scope: 'sampled_worker' as const,
+  processEpochAge: '<1m' as const,
+  countersResetAge: '<1m' as const,
+  active: {
+    total: '0' as const,
+    byStage: Object.fromEntries(
+      (version === 2 ? SYNC_EXECUTION_STAGES : WALLET_SYNC_EXECUTION_V1_STAGES)
+        .map(stage => [stage, '0' as const]),
+    ),
+    oldestProgressAge: 'never' as const,
+  },
+  counters: {
+    started: '0' as const,
+    stageTransitions: '0' as const,
+    completed: '0' as const,
+    failed: '0' as const,
+    timedOut: '0' as const,
+    aborted: '0' as const,
+    budgetExpired: '0' as const,
+    lockLost: '0' as const,
+    stalePruned: '0' as const,
+  },
+  redisLockAgreement: { agreement: 'unavailable' as const },
+});
 
 async function dispatchDiagnostics(
   body: string,
@@ -406,6 +438,44 @@ describe('Worker Health Server', () => {
     expect(JSON.parse(replay.body)).toEqual({ error: 'unauthorized' });
   });
 
+  it('serializes the response schema matching v1 and negotiated v2 requests', async () => {
+    const secret = 'v'.repeat(32);
+    startHealthServer({
+      port: 3019,
+      healthProvider: {
+        getHealth: async () => ({ redis: true, electrum: true, jobQueue: true }),
+      },
+      diagnostics: {
+        secret,
+        timeoutMs: 1000,
+        maxBodyBytes: 256,
+        maxConcurrentRequests: 1,
+        authWindowMs: 60_000,
+        getSnapshot: (request) => ({
+          ...diagnosticsSnapshot,
+          walletSyncExecution: executionSnapshot(
+            request.walletSyncExecutionVersion === 2 ? 2 : 1,
+          ),
+        }) as never,
+      },
+    });
+
+    const v1 = await dispatchDiagnostics(JSON.stringify({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+    }), secret, '1'.repeat(32));
+    const v2 = await dispatchDiagnostics(JSON.stringify({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+      walletSyncExecutionVersion: 2,
+    }), secret, '2'.repeat(32));
+
+    expect(v1.statusCode).toBe(200);
+    expect(JSON.parse(v1.body).walletSyncExecution.version).toBe(1);
+    expect(v2.statusCode).toBe(200);
+    expect(JSON.parse(v2.body).walletSyncExecution.version).toBe(2);
+  });
+
   it('reports diagnostics as unavailable when the handler is not configured', async () => {
     startHealthServer({
       port: 3019,
@@ -523,6 +593,9 @@ describe('Worker Health Server', () => {
   it.each([
     ['malformed JSON', '{', 400, 'invalid_request'],
     ['unexpected fields', JSON.stringify({ protocolVersion: 1, private: 'value' }), 400, 'invalid_request'],
+    ['v2 selector without execution opt-in', JSON.stringify({
+      protocolVersion: 1, walletSyncExecutionVersion: 2,
+    }), 400, 'invalid_request'],
     ['primitive JSON', '1', 426, 'unsupported_protocol'],
   ])('rejects %s after authentication', async (_label, body, status, error) => {
     const secret = 's'.repeat(32);

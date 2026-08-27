@@ -129,6 +129,7 @@ import {
 } from '../../../../src/worker/jobs/syncJobs';
 import { resyncRepository } from '../../../../src/repositories';
 import { WalletSyncAttemptTelemetry } from '../../../../src/worker/walletSyncAttemptTelemetry';
+import { getConfig } from '../../../../src/config';
 
 const syncWalletJob = createSyncWalletJob({
   enrollWalletSubscriptions: mockEnrollWalletSubscriptions,
@@ -402,6 +403,8 @@ describe('Sync Jobs', () => {
     // for retry instead would let bounded recovery re-wake a wallet that can
     // never succeed, and it would never surface to an operator.
     it('fails a wake-up closed when the persisted network is unrecognised', async () => {
+      const beginStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'beginStage');
+      const finishStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'finishStage');
       syncJobPrismaMocks.walletFindUnique.mockResolvedValue({ network: 'bogus-network' });
       syncIntentMocks.claimFresh.mockResolvedValueOnce({
         status: 'claimed',
@@ -435,6 +438,8 @@ describe('Sync Jobs', () => {
         expect.objectContaining({ walletId: 'wallet-intent', transition: 'failed' }),
       );
       expect(syncWallet).not.toHaveBeenCalled();
+      expect(beginStage).toHaveBeenCalledWith('preflight', expect.any(Number));
+      expect(finishStage).toHaveBeenCalledWith('preflight', 'failed', expect.any(Number));
     });
 
     // Mirrors the generic catch's lost-fence branch: if the terminal release
@@ -525,6 +530,7 @@ describe('Sync Jobs', () => {
         expect.any(AbortSignal),
         { walletId: 'wallet-intent', generation: 1, leaseToken: 'rotated-token' },
         expect.any(Number),
+        expect.anything(),
         expect.anything(),
       );
     });
@@ -654,7 +660,132 @@ describe('Sync Jobs', () => {
       expect(enrollWalletSubscriptions).toHaveBeenCalledBefore(syncIntentMocks.complete);
     });
 
+    it('registers canonical work at preflight and orders every outer phase', async () => {
+      const beginStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'beginStage');
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-stage-order' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.complete.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ processedIncrementalSyncGeneration: 1 }),
+        trailingGenerationPending: false,
+      });
+
+      await syncWalletJob.handler(canonicalJob(), acquiredExecution());
+
+      expect(beginStage.mock.calls.map(([stage]) => stage)).toEqual([
+        'preflight',
+        'missing_field_repair',
+        'subscription_enrollment',
+        'finalization',
+      ]);
+      expect(beginStage).toHaveBeenCalledBefore(vi.mocked(syncWallet));
+    });
+
+    it('accepts the supported legacy testnet alias before starting telemetry', async () => {
+      syncJobPrismaMocks.walletFindUnique.mockResolvedValue({ network: 'testnet' });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-legacy-testnet' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.complete.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ processedIncrementalSyncGeneration: 1 }),
+        trailingGenerationPending: false,
+      });
+
+      await expect(syncWalletJob.handler(canonicalJob(), acquiredExecution()))
+        .resolves.toMatchObject({ success: true });
+      expect(syncWallet).toHaveBeenCalledOnce();
+    });
+
+    it('marks an early full-resync network failure after preflight registration', async () => {
+      const beginStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'beginStage');
+      const finishStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'finishStage');
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-network-failure' },
+        state: canonicalIntentState({ requestedFullResyncGeneration: 4 }),
+      });
+      syncIntentMocks.releaseForRetry.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ syncInProgress: false, lastSyncStatus: 'retrying' }),
+      });
+      vi.mocked(assertChainReachable).mockRejectedValueOnce(new Error('network unavailable'));
+      const job = canonicalJob();
+      job.data = { ...job.data, fullResync: true, fullResyncGeneration: 4 };
+
+      await expect(syncWalletJob.handler(job, acquiredExecution()))
+        .rejects.toThrow('network unavailable');
+
+      expect(beginStage.mock.calls.map(([stage]) => stage)).toEqual([
+        'preflight',
+        'initial_network',
+      ]);
+      expect(finishStage).toHaveBeenLastCalledWith(
+        'initial_network',
+        'failed',
+        expect.any(Number),
+      );
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('bounds full-resync reachability with the remote-stage budget', async () => {
+      vi.useFakeTimers();
+      const finishStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'finishStage');
+      vi.mocked(getConfig).mockReturnValueOnce({
+        sync: {
+          staleThresholdMs: 600_000,
+          staleBatchSize: 75,
+          maxConcurrentSyncs: 5,
+          maxSyncDurationMs: 600_000,
+          syncStaggerDelayMs: 2_000,
+        },
+        bitcoin: { network: 'mainnet' },
+      } as ReturnType<typeof getConfig>);
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-network-budget' },
+        state: canonicalIntentState({ requestedFullResyncGeneration: 4 }),
+      });
+      syncIntentMocks.releaseForRetry.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ syncInProgress: false, lastSyncStatus: 'retrying' }),
+      });
+      vi.mocked(assertChainReachable).mockImplementationOnce(async (_network, options) => (
+        new Promise((_resolve, reject) => {
+          const signal = options?.signal;
+          if (!signal) throw new Error('expected bounded request signal');
+          signal.addEventListener(
+            'abort',
+            () => reject(signal.reason),
+            { once: true },
+          );
+        })
+      ));
+      const job = canonicalJob();
+      job.data = { ...job.data, fullResync: true, fullResyncGeneration: 4 };
+
+      const rejection = syncWalletJob.handler(job, acquiredExecution()).catch(error => error);
+      await vi.advanceTimersByTimeAsync(300_000);
+
+      await expect(rejection).resolves.toMatchObject({
+        name: 'SyncRemoteStageBudgetError',
+      });
+      expect(finishStage).toHaveBeenCalledWith(
+        'initial_network',
+        'budget_expired',
+        expect.any(Number),
+      );
+      expect(syncWallet).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
     it('fenced-releases the claim when checkpoint enrollment remains incomplete', async () => {
+      const finishStage = vi.spyOn(WalletSyncAttemptTelemetry.prototype, 'finishStage');
       const enrollWalletSubscriptions = vi.fn()
         .mockRejectedValue(new Error('checkpoint enrollment incomplete'));
       const handler = createSyncWalletJob({ enrollWalletSubscriptions });
@@ -677,6 +808,9 @@ describe('Sync Jobs', () => {
         { walletId: 'wallet-intent', generation: 1, leaseToken: 'lease-token' },
         expect.objectContaining({ errorMessage: 'checkpoint enrollment incomplete' }),
       );
+      expect(finishStage.mock.calls.filter(
+        ([stage, outcome]) => stage === 'subscription_enrollment' && outcome === 'failed',
+      )).toHaveLength(1);
     });
 
     it('fails closed when the metadata-only export reaches canonical enrollment', async () => {
@@ -744,10 +878,11 @@ describe('Sync Jobs', () => {
         expect(syncWallet).toHaveBeenCalledWith(
           'wallet-intent', 0, expect.any(AbortSignal), fence, expect.any(Number),
           expect.anything(),
+          expect.anything(),
         );
         expect(populateMissingTransactionFields).toHaveBeenCalledWith(
           'wallet-intent', expect.any(AbortSignal), undefined, fence, false,
-          expect.any(Number),
+          expect.any(Number), expect.anything(), expect.anything(),
         );
         expect(complete).toHaveBeenCalledWith(
           'wallet-intent',

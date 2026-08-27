@@ -55,9 +55,13 @@ import {
   createSyncContext,
   createTestContext,
   createSyncStats,
+  defaultSyncPhases,
+  quickSyncPhases,
   type SyncContext,
   type SyncPhase,
 } from "../../../../../src/services/bitcoin/sync";
+import { createSyncPhaseProgress } from '../../../../../src/services/bitcoin/sync/phaseProgress';
+import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
 import { getNodeClient } from "../../../../../src/services/bitcoin/nodeClient";
 import { walletLog } from "../../../../../src/websocket/notifications";
 
@@ -122,6 +126,33 @@ describe("Sync Pipeline", () => {
     });
   });
 
+  describe('execution stage mapping', () => {
+    const expected = {
+      rbfCleanup: 'transaction_reconciliation',
+      fetchHistories: 'address_history',
+      checkExisting: 'transaction_reconciliation',
+      processTransactions: 'transaction_reconciliation',
+      fetchUtxos: 'utxo_reconciliation',
+      reconcileUtxos: 'utxo_reconciliation',
+      insertUtxos: 'utxo_reconciliation',
+      updateAddresses: 'address_maintenance',
+      receiveEvidenceGate: 'address_maintenance',
+      gapLimit: 'address_maintenance',
+      fixConsolidations: 'address_maintenance',
+    } as const;
+
+    it.each([
+      ['default', defaultSyncPhases],
+      ['quick', quickSyncPhases],
+    ] as const)('maps every %s pipeline phase to a closed execution stage', (_name, phases) => {
+      expect(Object.fromEntries(phases.map(phase => [phase.name, phase.executionStage])))
+        .toEqual(Object.fromEntries(
+          Object.entries(expected).filter(([name]) => phases.some(phase => phase.name === name)),
+        ));
+      expect(phases.every(phase => phase.executionStage !== undefined)).toBe(true);
+    });
+  });
+
   describe("executeSyncPipeline", () => {
     const walletId = "test-wallet-id";
 
@@ -164,17 +195,30 @@ describe("Sync Pipeline", () => {
         finishPhase = resolve;
       });
       const secondPhase = vi.fn(async (ctx: SyncContext) => ctx);
+      const telemetry = {
+        beginStage: vi.fn(() => true),
+        finishStage: vi.fn(() => true),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
       const phases: SyncPhase[] = [
         createPhase("in-flight-phase", async (ctx) => {
           phaseStarted();
           await finishPhasePromise;
           return ctx;
-        }),
+        }, 'address_history'),
         createPhase("must-not-run", secondPhase),
       ];
 
       const execution = executeSyncPipeline(walletId, phases, {
         signal: controller.signal,
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: Number.POSITIVE_INFINITY,
+          telemetry,
+          phaseProgress,
+        },
       });
       await phaseStartedPromise;
       controller.abort(new Error("sync cancelled mid-phase"));
@@ -186,6 +230,18 @@ describe("Sync Pipeline", () => {
         cause: expect.objectContaining({ message: "sync cancelled mid-phase" }),
       });
       expect(secondPhase).not.toHaveBeenCalled();
+      expect(telemetry.finishStage).toHaveBeenCalledWith(
+        'address_history',
+        'aborted',
+        expect.any(Number),
+      );
+      expect(vi.mocked(walletLog).mock.calls.map(call => call[4])).toContainEqual(
+        expect.objectContaining({
+          kind: 'sync_phase_progress',
+          event: 'stage_aborted',
+          stage: 'address_history',
+        }),
+      );
     });
 
     it("should execute all phases in order", async () => {
@@ -209,6 +265,88 @@ describe("Sync Pipeline", () => {
       await executeSyncPipeline(walletId, phases);
 
       expect(executionOrder).toEqual(["phase1", "phase2", "phase3"]);
+    });
+
+    it('emits only genuine grouped stage transitions in execution order', async () => {
+      const stageOrder: string[] = [];
+      const telemetry = {
+        beginStage: vi.fn((stage: string) => {
+          stageOrder.push(`start:${stage}`);
+          return true;
+        }),
+        finishStage: vi.fn((stage: string) => {
+          stageOrder.push(`finish:${stage}`);
+          return true;
+        }),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const controller = new AbortController();
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry as never);
+      const pass = async (ctx: SyncContext) => ctx;
+
+      await executeSyncPipeline(walletId, [
+        createPhase('setup', pass, 'transaction_reconciliation'),
+        createPhase('tail', pass, 'transaction_reconciliation'),
+        createPhase('history', pass, 'address_history'),
+      ], {
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: Number.POSITIVE_INFINITY,
+          telemetry: telemetry as never,
+          phaseProgress,
+        },
+      });
+
+      expect(stageOrder).toEqual([
+        'start:initial_network',
+        'finish:initial_network',
+        'start:transaction_reconciliation',
+        'finish:transaction_reconciliation',
+        'start:address_history',
+        'finish:address_history',
+      ]);
+    });
+
+    it('marks address history active before awaiting the phase body', async () => {
+      let settle!: () => void;
+      const deferred = new Promise<void>(resolve => { settle = resolve; });
+      const telemetry = {
+        beginStage: vi.fn(() => true),
+        finishStage: vi.fn(() => true),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const controller = new AbortController();
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+      const pending = executeSyncPipeline(walletId, [
+        createPhase('deferredHistory', async (ctx) => {
+          await deferred;
+          return ctx;
+        }, 'address_history'),
+      ], {
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: Number.POSITIVE_INFINITY,
+          telemetry,
+          phaseProgress,
+        },
+      });
+
+      await vi.waitFor(() => expect(telemetry.beginStage)
+        .toHaveBeenCalledWith('address_history', expect.any(Number)));
+      expect(telemetry.finishStage).not.toHaveBeenCalledWith(
+        'address_history',
+        expect.anything(),
+        expect.anything(),
+      );
+      settle();
+      await pending;
+      expect(telemetry.finishStage).toHaveBeenCalledWith(
+        'address_history',
+        'completed',
+        expect.any(Number),
+      );
     });
 
     it("should pass context between phases", async () => {
@@ -281,6 +419,147 @@ describe("Sync Pipeline", () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
 
       await expect(executeSyncPipeline("nonexistent", [])).rejects.toThrow();
+    });
+
+    it.each([
+      { budget: false, outcome: 'failed' as const },
+      { budget: true, outcome: 'budget_expired' as const },
+    ])('closes an initial-network $outcome with telemetry', async ({ budget, outcome }) => {
+      const controller = new AbortController();
+      const telemetry = {
+        beginStage: vi.fn(() => true),
+        finishStage: vi.fn(() => true),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+      if (budget) {
+        getBlockHeightMock.mockImplementationOnce(async (_network, options) => {
+          options?.signal?.throwIfAborted();
+          return 800000;
+        });
+      } else {
+        getBlockHeightMock.mockRejectedValueOnce(new Error('initial network unavailable'));
+      }
+
+      await expect(executeSyncPipeline(walletId, [], {
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: budget ? Date.now() - 1 : Number.POSITIVE_INFINITY,
+          telemetry,
+          phaseProgress,
+        },
+      })).rejects.toThrow();
+
+      expect(telemetry.finishStage).toHaveBeenCalledWith(
+        'initial_network',
+        outcome,
+        expect.any(Number),
+      );
+    });
+
+    it('records a cancelled initial-network check as an aborted stage', async () => {
+      const controller = new AbortController();
+      const telemetry = {
+        beginStage: vi.fn(() => true),
+        finishStage: vi.fn(() => true),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+      getBlockHeightMock.mockImplementationOnce(async () => {
+        controller.abort(new Error('operator cancelled sync'));
+        throw controller.signal.reason;
+      });
+
+      await expect(executeSyncPipeline(walletId, [], {
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: Number.POSITIVE_INFINITY,
+          telemetry,
+          phaseProgress,
+        },
+      })).rejects.toThrow('operator cancelled sync');
+
+      expect(telemetry.finishStage).toHaveBeenCalledWith(
+        'initial_network',
+        'aborted',
+        expect.any(Number),
+      );
+    });
+
+    it('records an ordinary phase exception as a failed stage', async () => {
+      const controller = new AbortController();
+      const telemetry = {
+        beginStage: vi.fn(() => true),
+        finishStage: vi.fn(() => true),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+
+      await expect(executeSyncPipeline(walletId, [
+        createPhase('failingHistory', async () => {
+          throw new Error('history failed');
+        }, 'address_history'),
+      ], {
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: Number.POSITIVE_INFINITY,
+          telemetry,
+          phaseProgress,
+        },
+      })).rejects.toThrow('history failed');
+
+      expect(telemetry.finishStage).toHaveBeenCalledWith(
+        'address_history',
+        'failed',
+        expect.any(Number),
+      );
+    });
+
+    it.each([
+      {
+        label: 'budget exhaustion',
+        error: new SyncRemoteStageBudgetError('address_history'),
+        outcome: 'budget_expired' as const,
+        abort: false,
+      },
+      {
+        label: 'operator cancellation',
+        error: new Error('operator cancelled phase'),
+        outcome: 'aborted' as const,
+        abort: true,
+      },
+    ])('records phase $label as an $outcome stage', async ({ error, outcome, abort }) => {
+      const controller = new AbortController();
+      const telemetry = {
+        beginStage: vi.fn(() => true),
+        finishStage: vi.fn(() => true),
+        observeProgress: vi.fn(),
+        recordCandidates: vi.fn(),
+      };
+      const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+
+      await expect(executeSyncPipeline(walletId, [
+        createPhase('interruptedHistory', async () => {
+          if (abort) controller.abort(error);
+          throw error;
+        }, 'address_history'),
+      ], {
+        attemptRuntime: {
+          signal: controller.signal,
+          deadlineAt: Number.POSITIVE_INFINITY,
+          telemetry,
+          phaseProgress,
+        },
+      })).rejects.toMatchObject({ cause: error });
+
+      expect(telemetry.finishStage).toHaveBeenCalledWith(
+        'address_history',
+        outcome,
+        expect.any(Number),
+      );
     });
 
     it("should default to mainnet when wallet network is missing", async () => {

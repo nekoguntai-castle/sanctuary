@@ -44,6 +44,53 @@ describe('wallet sync metrics', () => {
     expect(metrics).not.toContain('outcome="failed"');
   });
 
+  it('reports the oldest concurrent active stage and reveals the next oldest on close', async () => {
+    let now = 10_000;
+    const finishOldest = enterWalletSyncStage({
+      stage: 'address_history', mode: 'incremental', network: 'mainnet',
+      startedAtMs: 1_000, now: () => now,
+    });
+    const finishNewer = enterWalletSyncStage({
+      stage: 'address_history', mode: 'incremental', network: 'mainnet',
+      startedAtMs: 4_000, now: () => now,
+    });
+
+    let metrics = await metricsService.getMetrics();
+    expect(metrics).toContain(
+      'sanctuary_wallet_sync_active_stage_oldest_seconds{stage="address_history",mode="incremental",network="mainnet"} 9',
+    );
+    now = 12_000;
+    finishOldest('completed');
+    metrics = await metricsService.getMetrics();
+    expect(metrics).toContain(
+      'sanctuary_wallet_sync_active_stage_oldest_seconds{stage="address_history",mode="incremental",network="mainnet"} 8',
+    );
+    finishOldest('failed');
+    finishNewer('completed');
+    metrics = await metricsService.getMetrics();
+    expect(metrics).toContain(
+      'sanctuary_wallet_sync_active_stage_oldest_seconds{stage="address_history",mode="incremental",network="mainnet"} 0',
+    );
+  });
+
+  it('clamps active-stage clock rollback and exposes long-duration boundaries', async () => {
+    const finish = enterWalletSyncStage({
+      stage: 'preflight', mode: 'incremental', network: 'mainnet',
+      startedAtMs: 2_000, now: () => 1_000,
+    });
+    let metrics = await metricsService.getMetrics();
+    expect(metrics).toContain(
+      'sanctuary_wallet_sync_active_stage_oldest_seconds{stage="preflight",mode="incremental",network="mainnet"} 0',
+    );
+    finish('aborted', 1_000);
+    metrics = await metricsService.getMetrics();
+    for (const boundary of ['330', '1800', '1830']) {
+      expect(metrics).toContain(
+        `sanctuary_wallet_sync_stage_duration_seconds_bucket{le="${boundary}",stage="preflight",mode="incremental",network="mainnet",outcome="aborted"}`,
+      );
+    }
+  });
+
   it('enumerates the complete fixed stage series inventory', async () => {
     for (const stage of WALLET_SYNC_METRIC_STAGES) {
       for (const mode of WALLET_SYNC_METRIC_MODES) {

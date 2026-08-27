@@ -1,9 +1,21 @@
-import type { SyncProgressDetails } from '@sanctuary/shared/schemas/syncProgress';
+import type {
+  SyncExecutionStage,
+  SyncProgressDetails,
+} from '@sanctuary/shared/schemas/syncProgress';
+import type { SyncPhaseProgress } from './phaseProgress';
 
 export const SYNC_REMOTE_STAGE_BUDGET_MS = 5 * 60_000;
 export const SYNC_REMOTE_FALLBACK_CONCURRENCY = 4;
 
+export type SyncStageOutcome = 'completed' | 'failed' | 'budget_expired' | 'aborted';
+
 export interface SyncAttemptTelemetry {
+  beginStage(stage: SyncExecutionStage, startedAtMs?: number): boolean;
+  finishStage(
+    stage: SyncExecutionStage,
+    outcome: SyncStageOutcome,
+    finishedAtMs?: number,
+  ): boolean;
   observeProgress(details: SyncProgressDetails): void;
   recordCandidates(fetched: number, rejected: number): void;
 }
@@ -13,6 +25,8 @@ export interface SyncAttemptRuntime {
   deadlineAt: number;
   /** Opaque worker-owned telemetry; sync services never inspect its identity. */
   telemetry?: SyncAttemptTelemetry;
+  /** Shared stage-log coordinator for this exact recursive attempt. */
+  phaseProgress?: SyncPhaseProgress;
 }
 
 export interface SyncStageRuntime extends SyncAttemptRuntime {

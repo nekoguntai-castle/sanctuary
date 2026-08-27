@@ -18,6 +18,33 @@ export const SYNC_PROGRESS_EVENTS = [
 
 export const SYNC_PROGRESS_UNITS = ["transactions", "block_heights"] as const;
 
+export const SYNC_EXECUTION_STAGES = [
+  "preflight",
+  "initial_network",
+  "address_history",
+  "transaction_reconciliation",
+  ...SYNC_PROGRESS_STAGES,
+  "utxo_reconciliation",
+  "address_maintenance",
+  "missing_field_repair",
+  "subscription_enrollment",
+  "finalization",
+] as const;
+
+export const SYNC_PHASE_PROGRESS_EVENTS = [
+  "stage_started",
+  "stage_completed",
+  "stage_failed",
+  "stage_aborted",
+] as const;
+
+export const SYNC_PHASE_PROGRESS_UNITS = [
+  "addresses",
+  "transactions",
+  "utxos",
+  "subscriptions",
+] as const;
+
 export const SYNC_PROGRESS_MAX_COUNT = 1_000_000;
 export const SYNC_PROGRESS_MAX_ELAPSED_MS = 24 * 60 * 60 * 1_000;
 
@@ -75,6 +102,34 @@ export const SyncProgressDetailsSchema = z
     }
   });
 
+const SyncPhaseWorkItemsSchema = z.object({
+  completed: boundedCount,
+  total: boundedCount,
+  unit: z.enum(SYNC_PHASE_PROGRESS_UNITS),
+}).strict().superRefine((workItems, ctx) => {
+  if (workItems.completed > workItems.total) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["completed"],
+      message: "completed must not exceed total",
+    });
+  }
+});
+
+export const SyncPhaseProgressDetailsSchema = z.object({
+  kind: z.literal("sync_phase_progress"),
+  event: z.enum(SYNC_PHASE_PROGRESS_EVENTS),
+  stage: z.enum(SYNC_EXECUTION_STAGES),
+  elapsedMs: nonNegativeInteger.max(SYNC_PROGRESS_MAX_ELAPSED_MS),
+  workItems: SyncPhaseWorkItemsSchema.optional(),
+}).strict();
+
 export type SyncProgressDetails = z.infer<typeof SyncProgressDetailsSchema>;
 export type SyncProgressStage = SyncProgressDetails["stage"];
 export type SyncProgressUnit = SyncProgressDetails["unit"];
+export type SyncExecutionStage = (typeof SYNC_EXECUTION_STAGES)[number];
+export type SyncPhaseProgressDetails = z.infer<typeof SyncPhaseProgressDetailsSchema>;
+export type SyncPhaseProgressEvent = SyncPhaseProgressDetails["event"];
+export type SyncPhaseProgressUnit = NonNullable<
+  SyncPhaseProgressDetails["workItems"]
+>["unit"];

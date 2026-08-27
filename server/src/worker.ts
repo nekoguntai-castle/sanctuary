@@ -69,6 +69,7 @@ import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
 import type {
   WorkerDiagnosticsRequest,
   WorkerDiagnosticsResponse,
+  WalletSyncExecutionDiagnosticsVersion,
 } from './internal/workerDiagnostics/protocol';
 import { collectWalletSyncExecutionDiagnostics } from './worker/walletSyncExecutionRegistry';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
@@ -199,13 +200,13 @@ function getWorkerDiagnosticsSnapshot(
 
 async function getDirectWorkerDiagnosticsSnapshot(
   workerConcurrency: number,
-  includeWalletSyncExecution = false,
+  walletSyncExecutionVersion?: WalletSyncExecutionDiagnosticsVersion,
 ): Promise<WorkerDiagnosticsResponse> {
   return getWorkerDiagnosticsSnapshot(
     workerConcurrency,
-    includeWalletSyncExecution
-      ? await collectWalletSyncExecutionDiagnostics()
-      : undefined,
+    walletSyncExecutionVersion === undefined
+      ? undefined
+      : await collectWalletSyncExecutionDiagnostics(walletSyncExecutionVersion),
   );
 }
 
@@ -473,7 +474,9 @@ async function startWorker(): Promise<void> {
       getSnapshot: (request: WorkerDiagnosticsRequest) =>
         getDirectWorkerDiagnosticsSnapshot(
           workerConcurrency,
-          request?.walletSyncExecution === true,
+          request?.walletSyncExecution === true
+            ? request?.walletSyncExecutionVersion ?? 1
+            : undefined,
         ),
     },
     healthProvider: {

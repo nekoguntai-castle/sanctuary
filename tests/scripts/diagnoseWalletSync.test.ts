@@ -23,7 +23,7 @@
  * These tests execute the real script against a stubbed `docker` on PATH.
  */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -45,13 +45,21 @@ function installDockerStub(body: string): void {
   chmodSync(stub, 0o755);
 }
 
-function runScript(): { status: number; output: string } {
+function installCommandStub(name: string, body: string): void {
+  const stub = join(workdir, name);
+  writeFileSync(stub, `#!/usr/bin/env bash\n${body}\n`);
+  chmodSync(stub, 0o755);
+}
+
+function runScript(environment: Record<string, string> = {}): { status: number; output: string } {
   try {
     const output = execFileSync('bash', [SCRIPT], {
       env: {
         ...process.env,
         PATH: `${workdir}:${process.env.PATH ?? ''}`,
         SANCTUARY_DIAGNOSE_LOCK_SETTLE_SECONDS: '0',
+        SANCTUARY_DIAGNOSE_SKIP_ENV: '1',
+        ...environment,
       },
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -159,8 +167,178 @@ describe('diagnose-wallet-sync.sh when redis is reachable', () => {
 
   it('reports every lock, not just the first the scan returned', () => {
     const { output } = runScript();
-    expect(output).toContain('lock:sync:wallet:aaaaaaaa');
-    expect(output).toContain('lock:sync:wallet:bbbbbbbb');
-    expect(output).toContain('lock:sync:wallet:cccccccc');
+    expect(output.match(/lock:<redacted_lock>/g)).toHaveLength(3);
+    expect(output).not.toContain('lock:sync:wallet:aaaaaaaa');
+    expect(output).not.toContain('lock:sync:wallet:bbbbbbbb');
+    expect(output).not.toContain('lock:sync:wallet:cccccccc');
+  });
+});
+
+describe('diagnose-wallet-sync.sh privacy and worker snapshot', () => {
+  const walletId = '123e4567-e89b-42d3-a456-426614174000';
+  const otherWalletId = '123e4567-e89b-42d3-a456-426614174001';
+  const rawJob = 'opaque-private-job-123';
+
+  beforeEach(() => {
+    installDockerStub([
+      'sql="$(cat)"',
+      'case "$*" in',
+      '  *psql*)',
+      `    echo "${walletId} https://private.example ${'a'.repeat(64)}"`,
+      `    echo "${otherWalletId}"`,
+      '    ;;',
+      '  *workerDiagnosticsCli.js*)',
+      '    echo \"{\\\"schemaVersion\\\":1,\\\"status\\\":\\\"observed\\\",\\\"walletSyncExecution\\\":{\\\"version\\\":2,\\\"observation\\\":\\\"observed\\\"}}\"',
+      '    ;;',
+      '  *"--scan"*"de:"*)',
+      `    echo "sanctuary:worker:sync:de:full-resync:${walletId}"`,
+      '    ;;',
+      '  *"--scan"*"lock"*)',
+      `    echo "lock:sync:wallet:${walletId}"`,
+      '    ;;',
+      '  *" GET "*)',
+      `    echo "${rawJob}"`,
+      '    ;;',
+      '  *" PTTL "*) echo 1500000 ;;',
+      '  *logs*)',
+      `    echo 'worker | {"event":"stage_started","walletId":"${walletId}","message":"private-wallet https://private.example"}'`,
+      `    echo 'lookup internal-host.example on 10.0.0.2 for ${walletId}'`,
+      `    echo 'timeout contacting NASBOX descriptor-secret for ${walletId}'`,
+      '    ;;',
+      '  *) echo 0 ;;',
+      'esac',
+      'exit 0',
+    ].join('\n'));
+  });
+
+  it('uses stable per-report wallet references and removes other sensitive identities', () => {
+    const { status, output } = runScript();
+
+    expect(status).toBe(0);
+    expect(output).toContain('wallet_ref_001');
+    expect(output.match(/wallet_ref_001/g)?.length).toBeGreaterThan(1);
+    expect(output).toContain('wallet_ref_002');
+    expect(output).not.toMatch(new RegExp(`${walletId}|${otherWalletId}`));
+    expect(output).not.toContain(rawJob);
+    expect(output).not.toContain('private-wallet');
+    expect(output).not.toContain('private.example');
+    expect(output).not.toContain('internal-host.example');
+    expect(output).not.toContain('10.0.0.2');
+    expect(output).not.toContain('NASBOX');
+    expect(output).not.toContain('descriptor-secret');
+    expect(output).toContain('event=stage_started');
+    expect(output).toContain('event=timeout');
+    expect(output).not.toContain('a'.repeat(64));
+    expect(output).toContain('<redacted_endpoint>');
+    expect(output).toContain('<redacted_hash>');
+  });
+
+  it('exposes raw identities only under the exact opt-in and marks both report edges', () => {
+    const { output } = runScript({ SANCTUARY_DIAGNOSE_INCLUDE_IDENTIFIERS: '1' });
+
+    expect(output).toContain(walletId);
+    expect(output).toContain(rawJob);
+    expect(output.match(/NON-SHAREABLE: RAW IDENTIFIERS INCLUDED/g)).toHaveLength(2);
+  });
+
+  it('does not enable raw mode for truthy-looking values other than one', () => {
+    const { output } = runScript({ SANCTUARY_DIAGNOSE_INCLUDE_IDENTIFIERS: 'true' });
+    expect(output).not.toContain(walletId);
+    expect(output).not.toContain('NON-SHAREABLE');
+  });
+
+  it('queries all generation, lease, retry, and action-required fields', () => {
+    const source = readFileSync(SCRIPT, 'utf8');
+    expect(source).toContain('"requestedIncrementalSyncGeneration"');
+    expect(source).toContain('"claimedIncrementalSyncGeneration"');
+    expect(source).toContain('"processedIncrementalSyncGeneration"');
+    expect(source).toContain('"preparedFullResyncGeneration"');
+    expect(source).toContain('"incrementalSyncLeaseExpiresAt"');
+    expect(source).toContain('"syncRetryCount"');
+    expect(source).toContain('"syncActionRequiredAt"');
+  });
+});
+
+describe.each([
+  { label: 'unsupported', exit: 2 },
+  { label: 'timeout', exit: 3 },
+  { label: 'unavailable', exit: 4 },
+])('diagnostics CLI $label classification', ({ label, exit }) => {
+  beforeEach(() => {
+    installDockerStub([
+      'cat >/dev/null 2>&1 || true',
+      'case "$*" in',
+      `  *workerDiagnosticsCli.js*) echo '{"schemaVersion":1,"status":"${label}"}'; exit ${exit} ;;`,
+      '  *logs*) exit 0 ;;',
+      '  *"--scan"*) exit 0 ;;',
+      '  *redis-cli*) echo 0; exit 0 ;;',
+      '  *) exit 0 ;;',
+      'esac',
+    ].join('\n'));
+  });
+
+  it('is explicit and makes the report incomplete', () => {
+    const { status, output } = runScript();
+    expect(status).not.toBe(0);
+    expect(output).toContain(`"status":"${label}"`);
+    expect(output).toContain('UNREACHABLE — could not query: F');
+    expect(output).toContain('INCOMPLETE');
+  });
+});
+
+describe('diagnostic report boundary failures', () => {
+  it('fails closed when per-key Redis evidence cannot be read', () => {
+    installDockerStub([
+      'cat >/dev/null 2>&1 || true',
+      'case "$*" in',
+      '  *psql*) exit 0 ;;',
+      '  *workerDiagnosticsCli.js*) echo \'{"schemaVersion":1,"status":"observed","walletSyncExecution":{}}\'; exit 0 ;;',
+      '  *"--scan"*"de:"*) echo "private-dedup-key"; exit 0 ;;',
+      '  *"--scan"*"lock"*) echo "private-lock-key"; exit 0 ;;',
+      '  *" TTL "*) echo "redis TTL failure on NASBOX" >&2; exit 7 ;;',
+      '  *" PTTL "*) echo "redis PTTL failure on NASBOX" >&2; exit 8 ;;',
+      '  *logs*) exit 0 ;;',
+      '  *redis-cli*) echo 0; exit 0 ;;',
+      '  *) exit 0 ;;',
+      'esac',
+    ].join('\n'));
+
+    const { status, output } = runScript();
+    expect(status).not.toBe(0);
+    expect(output).toContain('UNREACHABLE — could not query: H:dedup-detail');
+    expect(output).toContain('UNREACHABLE — could not query: I:lock-detail');
+    expect(output).not.toMatch(/redis (TTL|PTTL) failure|NASBOX/);
+    expect(output).not.toContain('-> decaying');
+    expect(output).not.toContain('Done — every section queried successfully.');
+  });
+
+  it('fails closed when the pseudonymizer cannot run', () => {
+    installDockerStub('cat >/dev/null 2>&1 || true; exit 0');
+    installCommandStub('awk', 'exit 9');
+
+    const { status, output } = runScript();
+    expect(status).not.toBe(0);
+    expect(output).toContain('pseudonymization boundary failed');
+    expect(output).not.toContain('Done — every section queried successfully.');
+  });
+
+  it('marks a missing backend diagnostics command as unreachable', () => {
+    installDockerStub([
+      'cat >/dev/null 2>&1 || true',
+      'case "$*" in',
+      '  *workerDiagnosticsCli.js*) echo "dial tcp [fd00::5]:50002 on NASBOX: descriptor-secret" >&2; exit 1 ;;',
+      '  *logs*) exit 0 ;;',
+      '  *"--scan"*) exit 0 ;;',
+      '  *redis-cli*) echo 0; exit 0 ;;',
+      '  *) exit 0 ;;',
+      'esac',
+    ].join('\n'));
+
+    const { status, output } = runScript();
+    expect(status).not.toBe(0);
+    expect(output).toContain('UNREACHABLE — could not query: F');
+    expect(output).toContain('INCOMPLETE');
+    expect(output).toContain('command error detail redacted');
+    expect(output).not.toMatch(/fd00::5|NASBOX|descriptor-secret/);
   });
 });

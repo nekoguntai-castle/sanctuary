@@ -90,6 +90,7 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     const batchEnd = Math.min(batchIndex + TX_BATCH_SIZE, newTxids.length);
     const progress = createCandidateBatchProgress(
       walletId, batch, batchCount, Date.now, ctx.attemptRuntime?.telemetry,
+      ctx.attemptRuntime?.phaseProgress,
     );
     const classificationRepairTxids = batchTxids.filter(
       txid => ctx.classificationRepairTxids.has(txid),

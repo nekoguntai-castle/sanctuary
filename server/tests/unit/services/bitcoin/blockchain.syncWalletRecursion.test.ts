@@ -27,6 +27,7 @@ vi.mock('../../../../src/websocket/notifications', () => ({
 import { syncWallet } from '../../../../src/services/bitcoin/blockchain';
 import { getNodeClient } from '../../../../src/services/bitcoin/nodeClient';
 import { walletLog } from '../../../../src/websocket/notifications';
+import { createSyncPhaseProgress } from '../../../../src/services/bitcoin/sync/phaseProgress';
 
 describe('Blockchain syncWallet recursion', () => {
   beforeEach(() => {
@@ -38,6 +39,14 @@ describe('Blockchain syncWallet recursion', () => {
   it('recursively syncs when new generated addresses contain transaction history', async () => {
     const walletId = 'wallet-recursive';
     const scanAddress = 'tb1qk2n44m4g4d8f67mz5fdtg6v9pfh2j08rj9j3xg';
+    const controller = new AbortController();
+    const telemetry = {
+      beginStage: vi.fn((_stage: string, _startedAt?: number) => true),
+      finishStage: vi.fn((_stage: string, _outcome: string, _finishedAt?: number) => true),
+      observeProgress: vi.fn(),
+      recordCandidates: vi.fn(),
+    };
+    const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
 
     mockExecuteSyncPipeline
       .mockResolvedValueOnce({
@@ -64,10 +73,32 @@ describe('Blockchain syncWallet recursion', () => {
       new Map([[scanAddress, [{ tx_hash: 'a'.repeat(64), height: 100 }]]])
     );
 
-    const result = await syncWallet(walletId);
+    const result = await syncWallet(
+      walletId,
+      0,
+      controller.signal,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      telemetry,
+      phaseProgress,
+    );
 
     expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(2);
     expect(mockElectrumClient.subscribeAddressBatch).not.toHaveBeenCalled();
+    expect(telemetry.beginStage).toHaveBeenCalledWith('address_history', expect.any(Number));
+    expect(telemetry.finishStage).toHaveBeenCalledWith(
+      'address_history',
+      'completed',
+      expect.any(Number),
+    );
+    expect(mockExecuteSyncPipeline).toHaveBeenNthCalledWith(
+      2,
+      walletId,
+      [],
+      expect.objectContaining({
+        attemptRuntime: expect.objectContaining({ phaseProgress }),
+      }),
+    );
     const ownershipRepair = mockPrismaClient.$executeRaw.mock.calls
       .map(([statement]) => statement as { strings: string[]; values: unknown[] })
       .find(statement => statement.strings.join('').includes(
@@ -116,6 +147,146 @@ describe('Blockchain syncWallet recursion', () => {
       'Failed to persist ownership repair targets'
     );
     expect(mockExecuteSyncPipeline).toHaveBeenCalledOnce();
+  });
+
+  it('records and closes a recursive address-history budget fallback', async () => {
+    const walletId = 'wallet-recursive-budget';
+    const scanAddress = 'tb1qrecursivebudget';
+    const controller = new AbortController();
+    const telemetry = {
+      beginStage: vi.fn((_stage: string, _startedAt?: number) => true),
+      finishStage: vi.fn((_stage: string, _outcome: string, _finishedAt?: number) => true),
+      observeProgress: vi.fn(),
+      recordCandidates: vi.fn(),
+    };
+    const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+    mockExecuteSyncPipeline.mockResolvedValueOnce({
+      addresses: 1,
+      transactions: 0,
+      utxos: 0,
+      stats: { newAddressesGenerated: 1 },
+    });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-budget', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockImplementationOnce(
+      async (_addresses, options) => {
+        options?.signal?.throwIfAborted();
+        return new Map();
+      },
+    );
+
+    await expect(syncWallet(
+      walletId,
+      0,
+      controller.signal,
+      undefined,
+      Date.now() - 1,
+      telemetry,
+      phaseProgress,
+    )).resolves.toEqual({ addresses: 1, transactions: 0, utxos: 0 });
+
+    expect(telemetry.finishStage.mock.calls).toEqual(expect.arrayContaining([
+      ['address_history', 'budget_expired', expect.any(Number)],
+      ['address_history', 'completed', expect.any(Number)],
+    ]));
+    expect(telemetry.beginStage.mock.calls.filter(
+      ([stage]) => stage === 'address_history',
+    )).toHaveLength(2);
+  });
+
+  it('records a cancelled recursive address-history scan as aborted', async () => {
+    const walletId = 'wallet-recursive-cancelled';
+    const scanAddress = 'tb1qrecursivecancelled';
+    const controller = new AbortController();
+    const telemetry = {
+      beginStage: vi.fn((_stage: string, _startedAt?: number) => true),
+      finishStage: vi.fn((_stage: string, _outcome: string, _finishedAt?: number) => true),
+      observeProgress: vi.fn(),
+      recordCandidates: vi.fn(),
+    };
+    const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+    mockExecuteSyncPipeline.mockResolvedValueOnce({
+      addresses: 1,
+      transactions: 0,
+      utxos: 0,
+      stats: { newAddressesGenerated: 1 },
+    });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-cancelled', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockImplementationOnce(async () => {
+      controller.abort(new Error('operator cancelled recursive scan'));
+      throw controller.signal.reason;
+    });
+
+    await expect(syncWallet(
+      walletId,
+      0,
+      controller.signal,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      telemetry,
+      phaseProgress,
+    )).rejects.toThrow('operator cancelled recursive scan');
+
+    expect(telemetry.finishStage).toHaveBeenCalledWith(
+      'address_history',
+      'aborted',
+      expect.any(Number),
+    );
+  });
+
+  it('records an ordinary recursive address-history scan failure as failed', async () => {
+    const walletId = 'wallet-recursive-failed';
+    const controller = new AbortController();
+    const telemetry = {
+      beginStage: vi.fn((_stage: string, _startedAt?: number) => true),
+      finishStage: vi.fn((_stage: string, _outcome: string, _finishedAt?: number) => true),
+      observeProgress: vi.fn(),
+      recordCandidates: vi.fn(),
+    };
+    const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+    mockExecuteSyncPipeline.mockResolvedValueOnce({
+      addresses: 1,
+      transactions: 0,
+      utxos: 0,
+      stats: { newAddressesGenerated: 1 },
+    });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-failed', address: 'tb1qrecursivefailed', used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockRejectedValueOnce(
+      new Error('recursive address scan unavailable'),
+    );
+
+    await expect(syncWallet(
+      walletId,
+      0,
+      controller.signal,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      telemetry,
+      phaseProgress,
+    )).resolves.toEqual({ addresses: 1, transactions: 0, utxos: 0 });
+
+    expect(telemetry.finishStage).toHaveBeenCalledWith(
+      'address_history',
+      'failed',
+      expect.any(Number),
+    );
   });
 
   it('propagates the cancellation signal into a recursive gap-limit sync', async () => {
@@ -172,6 +343,8 @@ describe('Blockchain syncWallet recursion', () => {
   it('passes attempt telemetry through the immutable runtime', async () => {
     const controller = new AbortController();
     const telemetry = {
+      beginStage: vi.fn(() => true),
+      finishStage: vi.fn(() => true),
       observeProgress: vi.fn(),
       recordCandidates: vi.fn(),
     };

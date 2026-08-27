@@ -15,6 +15,10 @@ import {
   syncWallet,
 } from '../../services/bitcoin/blockchain';
 import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
+import {
+  createSyncStageRuntime,
+  isSyncStageBudgetError,
+} from '../../services/bitcoin/sync/attemptRuntime';
 import { resolvePersistedBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
 import {
@@ -33,6 +37,7 @@ import type { JobExecutionContext } from './types';
 import { resyncRepository } from '../../repositories';
 import type { IncrementalSyncLifecycleState } from '../../repositories/types';
 import { WalletSyncAttemptTelemetry } from '../walletSyncAttemptTelemetry';
+import { createSyncPhaseProgress, type SyncPhaseProgress } from '../../services/bitcoin/sync/phaseProgress';
 
 const log = createLogger('JOB:SYNC:INCREMENTAL');
 
@@ -59,6 +64,34 @@ class LostIncrementalSyncFenceError extends Error {
   constructor(walletId: string, generation: number) {
     super(`Incremental sync fence was lost for wallet ${walletId} generation ${generation}`);
     this.name = 'LostIncrementalSyncFenceError';
+  }
+}
+
+async function assertFullResyncChainReachable(
+  network: BitcoinNetwork,
+  signal: AbortSignal,
+  deadlineAt: number,
+  phaseProgress: SyncPhaseProgress,
+): Promise<void> {
+  const stage = createSyncStageRuntime(
+    { signal, deadlineAt, phaseProgress },
+    'full_resync_initial_network',
+  );
+  try {
+    await assertChainReachable(network, {
+      signal: stage.signal,
+      deadlineAt: stage.deadlineAt,
+    });
+  } catch (error) {
+    if (
+      isSyncStageBudgetError(error)
+      || isSyncStageBudgetError(stage.signal.reason)
+    ) {
+      phaseProgress.budgetExpired('Full-resync network check exceeded its remote budget.');
+    }
+    throw error;
+  } finally {
+    stage.dispose();
   }
 }
 
@@ -191,8 +224,21 @@ export async function executeCanonicalIncrementalSync(
   ));
 
   let attemptTelemetry: WalletSyncAttemptTelemetry | undefined;
+  let phaseProgress: SyncPhaseProgress | undefined;
   let cancellationOutcome: 'timedOut' | 'aborted' | undefined;
   try {
+    attemptTelemetry = new WalletSyncAttemptTelemetry({
+      executionId: fence.leaseToken,
+      ownedLock: {
+        key: execution.acquiredLock.key,
+        token: execution.acquiredLock.token,
+      },
+      mode: data.fullResync === true ? 'full_resync' : 'incremental',
+      network: walletNetwork === 'testnet' ? 'testnet3' : walletNetwork,
+    });
+    phaseProgress = createSyncPhaseProgress(data.walletId, attemptTelemetry);
+    phaseProgress.begin('preflight');
+
     // An unrecognised persisted network is a permanent property of the row:
     // retrying cannot repair it. Raise it as a typed permanent failure so the
     // catch below releases straight to action_required through the single
@@ -207,21 +253,17 @@ export async function executeCanonicalIncrementalSync(
       );
     }
 
-    attemptTelemetry = new WalletSyncAttemptTelemetry({
-      executionId: fence.leaseToken,
-      ownedLock: {
-        key: execution.acquiredLock.key,
-        token: execution.acquiredLock.token,
-      },
-      mode: data.fullResync === true ? 'full_resync' : 'incremental',
-      network: resolvedNetwork,
-    });
     const maxSyncDurationMs = getConfig().sync.maxSyncDurationMs;
     const result = await runSyncAttemptWithTimeout(
       async (signal, deadlineAt) => {
-        const requestOptions = { signal, deadlineAt };
         if (data.fullResync === true) {
-          await assertChainReachable(resolvedNetwork, requestOptions);
+          phaseProgress?.begin('initial_network');
+          await assertFullResyncChainReachable(
+            resolvedNetwork,
+            signal,
+            deadlineAt,
+            phaseProgress!,
+          );
           signal.throwIfAborted();
           await resyncRepository.resetWalletForFullResync(
             data.walletId,
@@ -236,7 +278,9 @@ export async function executeCanonicalIncrementalSync(
           fence,
           deadlineAt,
           attemptTelemetry,
+          phaseProgress,
         );
+        phaseProgress?.begin('missing_field_repair');
         await populateMissingTransactionFields(
           data.walletId,
           signal,
@@ -244,7 +288,10 @@ export async function executeCanonicalIncrementalSync(
           fence,
           false,
           deadlineAt,
+          attemptTelemetry,
+          phaseProgress,
         );
+        phaseProgress?.begin('subscription_enrollment');
         await dependencies.enrollWalletSubscriptions(
           data.walletId,
           walletNetwork,
@@ -267,6 +314,7 @@ export async function executeCanonicalIncrementalSync(
         abortGraceExhausted: () => attemptTelemetry?.recordAbortGraceExhaustion(),
       },
     );
+    phaseProgress.begin('finalization');
     execution.throwIfAborted();
 
     const network = resolvedNetwork;
@@ -284,7 +332,6 @@ export async function executeCanonicalIncrementalSync(
       'succeeded',
       completionState,
     ));
-    attemptTelemetry.finish('completed');
     if (completionState.requestedIncrementalSyncGeneration
       > completionState.processedIncrementalSyncGeneration) {
       await syncIntentAdmission.wake(
@@ -292,6 +339,8 @@ export async function executeCanonicalIncrementalSync(
         completionState.requestedIncrementalSyncGeneration,
       );
     }
+    phaseProgress.finish();
+    attemptTelemetry.finish('completed');
 
     return {
       version: SYNC_JOB_CONTRACT_VERSION,
@@ -301,6 +350,15 @@ export async function executeCanonicalIncrementalSync(
       utxosUpdated: result.utxos,
     };
   } catch (error) {
+    if (isSyncStageBudgetError(error)) {
+      phaseProgress?.budgetExpired();
+    } else {
+      phaseProgress?.finish(
+        cancellationOutcome === 'aborted' || cancellationOutcome === 'timedOut'
+          ? 'stage_aborted'
+          : 'stage_failed',
+      );
+    }
     attemptTelemetry?.finish(cancellationOutcome ?? 'failed');
     if (error instanceof LostIncrementalSyncFenceError) throw error;
     const releasedAt = new Date();

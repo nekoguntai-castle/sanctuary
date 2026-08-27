@@ -1,5 +1,8 @@
 import { expect, it, vi } from "vitest";
-import type { SyncProgressDetails } from "@sanctuary/shared/schemas/syncProgress";
+import type {
+  SyncPhaseProgressDetails,
+  SyncProgressDetails,
+} from "@sanctuary/shared/schemas/syncProgress";
 import "./processTransactionsTestHarness";
 import {
   mockElectrumClient,
@@ -20,6 +23,7 @@ import {
 import { createCandidateBatchProgress } from "../../../../../../src/services/bitcoin/sync/phases/processTransactions/progress";
 import { fetchAuthenticatedTransactions } from "../../../../../../src/services/bitcoin/sync/evidenceAuthentication";
 import { SyncAttemptTimeoutError } from "../../../../../../src/services/sync/syncAttemptErrors";
+import { createSyncPhaseProgress } from "../../../../../../src/services/bitcoin/sync/phaseProgress";
 
 const detailsFromLogs = (): SyncProgressDetails[] =>
   vi
@@ -28,6 +32,11 @@ const detailsFromLogs = (): SyncProgressDetails[] =>
     .filter(
       (details) => details?.kind === "sync_progress",
     ) as SyncProgressDetails[];
+
+const phaseDetailsFromLogs = (): SyncPhaseProgressDetails[] =>
+  vi.mocked(walletLog).mock.calls
+    .map((call) => call[4])
+    .filter((details) => details?.kind === 'sync_phase_progress') as SyncPhaseProgressDetails[];
 
 export function registerProcessTransactionProgressTimestampTests(
   walletId: string,
@@ -45,6 +54,46 @@ export function registerProcessTransactionProgressTimestampTests(
     expect(detailsFromLogs()).toEqual([
       expect.objectContaining({ batch: 1, batchCount: 1, elapsedMs: 0 }),
     ]);
+  });
+
+  it('suspends and resumes transaction reconciliation around a candidate batch', () => {
+    const telemetry = {
+      beginStage: vi.fn(() => true),
+      finishStage: vi.fn(() => true),
+      observeProgress: vi.fn(),
+      recordCandidates: vi.fn(),
+    };
+    const phaseProgress = {
+      begin: vi.fn(() => true),
+      finish: vi.fn(() => true),
+      budgetExpired: vi.fn(() => true),
+      activeStage: vi.fn(() => 'transaction_reconciliation' as const),
+    };
+    const progress = createCandidateBatchProgress(
+      walletId,
+      1,
+      1,
+      () => 100,
+      telemetry,
+      phaseProgress,
+    );
+
+    progress.start('candidate_fetch', 'transactions', 'Fetching candidate.');
+    progress.complete(1, 1);
+
+    expect(phaseProgress.begin).toHaveBeenNthCalledWith(
+      1,
+      'candidate_fetch',
+      'Fetching candidate.',
+    );
+    expect(phaseProgress.finish).toHaveBeenCalledWith(
+      'stage_completed',
+      'Transaction candidate stage completed.',
+    );
+    expect(phaseProgress.begin).toHaveBeenCalledWith(
+      'transaction_reconciliation',
+      'Continuing transaction reconciliation.',
+    );
   });
 
   it("retains direct timestamp lookup compatibility when no prefetched map is supplied", async () => {
@@ -454,9 +503,13 @@ export function registerProcessTransactionProgressTimestampTests(
     const txid = "progress_fallback".padEnd(64, "a");
     const walletAddress = "tb1q_progress_fallback";
     const telemetry = {
+      beginStage: vi.fn(() => true),
+      finishStage: vi.fn(() => true),
       observeProgress: vi.fn(),
       recordCandidates: vi.fn(),
     };
+    const phaseProgress = createSyncPhaseProgress(walletId, telemetry);
+    phaseProgress.begin('transaction_reconciliation');
     const ctx = createTestContext({
       walletId,
       client: mockElectrumClient as any,
@@ -488,6 +541,7 @@ export function registerProcessTransactionProgressTimestampTests(
         signal: new AbortController().signal,
         deadlineAt: Date.now(),
         telemetry,
+        phaseProgress,
       },
     });
 
@@ -504,6 +558,16 @@ export function registerProcessTransactionProgressTimestampTests(
     ]);
     expect(telemetry.recordCandidates).toHaveBeenCalledOnce();
     expect(telemetry.recordCandidates).toHaveBeenCalledWith(1, 0);
+    expect(phaseDetailsFromLogs()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: 'stage_failed',
+        stage: 'candidate_fetch',
+      }),
+      expect.objectContaining({
+        event: 'stage_started',
+        stage: 'transaction_reconciliation',
+      }),
+    ]));
     expect(getBlockTimestamp).not.toHaveBeenCalled();
   });
 

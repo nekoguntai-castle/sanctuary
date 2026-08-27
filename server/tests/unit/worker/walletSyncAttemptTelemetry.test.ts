@@ -70,10 +70,15 @@ describe('WalletSyncAttemptTelemetry', () => {
     telemetry.finish('completed');
 
     expect(registry.start).toHaveBeenCalledTimes(1);
-    expect(registry.transition).toHaveBeenCalledWith('execution-1', 'parent_fetch');
-    expect(metric.finishStage).toHaveBeenNthCalledWith(1, 'completed');
-    expect(metric.finishStage).toHaveBeenNthCalledWith(2, 'completed');
-    expect(metric.finishStage).toHaveBeenNthCalledWith(3, 'completed');
+    expect(registry.transition).toHaveBeenNthCalledWith(
+      1, 'execution-1', 'parent_fetch', expect.any(Number),
+    );
+    expect(registry.transition).toHaveBeenNthCalledWith(
+      2, 'execution-1', 'persistence', expect.any(Number),
+    );
+    expect(metric.finishStage).toHaveBeenNthCalledWith(1, 'completed', expect.any(Number));
+    expect(metric.finishStage).toHaveBeenNthCalledWith(2, 'completed', expect.any(Number));
+    expect(metric.finishStage).toHaveBeenNthCalledWith(3, 'completed', expect.any(Number));
     expect(registry.finish).toHaveBeenCalledWith('execution-1', 'completed');
   });
 
@@ -97,10 +102,33 @@ describe('WalletSyncAttemptTelemetry', () => {
     };
     expect(metric.fallback).toHaveBeenCalledWith(dimensions);
     expect(metric.budget).toHaveBeenCalledWith(dimensions);
-    expect(metric.finishStage).toHaveBeenCalledWith('budget_expired');
+    expect(metric.finishStage).toHaveBeenCalledWith('budget_expired', expect.any(Number));
     expect(metric.candidates).toHaveBeenCalledWith('fetched', 20);
     expect(metric.candidates).toHaveBeenCalledWith('rejected', 5);
     expect(metric.grace).toHaveBeenCalledOnce();
+  });
+
+  it('records a non-candidate budget expiry once through finishStage', () => {
+    const telemetry = new WalletSyncAttemptTelemetry({
+      executionId: 'execution-address-budget',
+      ownedLock: { key: 'sync:wallet:wallet-address-budget', token: 'f'.repeat(32) },
+      mode: 'incremental',
+      network: 'testnet3',
+    });
+    telemetry.beginStage('address_history', 1_000);
+
+    expect(telemetry.finishStage('address_history', 'budget_expired', 301_000)).toBe(true);
+    expect(telemetry.finishStage('address_history', 'budget_expired', 302_000)).toBe(false);
+    expect(metric.budget).toHaveBeenCalledOnce();
+    expect(metric.budget).toHaveBeenCalledWith({
+      stage: 'address_history',
+      mode: 'incremental',
+      network: 'testnet3',
+    });
+    expect(registry.recordBudgetExpiry).toHaveBeenCalledOnce();
+    expect(registry.recordBudgetExpiry).toHaveBeenCalledWith('execution-address-budget');
+    expect(metric.finishStage).toHaveBeenCalledOnce();
+    expect(metric.finishStage).toHaveBeenCalledWith('budget_expired', 301_000);
   });
 
   it('records a terminal outcome once while retaining activity until cleanup', () => {
@@ -119,7 +147,7 @@ describe('WalletSyncAttemptTelemetry', () => {
     telemetry.finish('timedOut');
     expect(metric.terminal).toHaveBeenCalledOnce();
     expect(metric.terminal).toHaveBeenCalledWith('timeout');
-    expect(metric.finishStage).toHaveBeenCalledWith('aborted');
+    expect(metric.finishStage).toHaveBeenCalledWith('aborted', expect.any(Number));
     expect(registry.finish).toHaveBeenCalledWith('execution-3', 'timedOut');
   });
 
@@ -138,7 +166,48 @@ describe('WalletSyncAttemptTelemetry', () => {
 
     expect(metric.terminal).toHaveBeenCalledOnce();
     expect(metric.terminal).toHaveBeenCalledWith('aborted');
-    expect(metric.finishStage).toHaveBeenCalledWith('aborted');
+    expect(metric.finishStage).toHaveBeenCalledWith('aborted', expect.any(Number));
     expect(registry.finish).toHaveBeenCalledWith('execution-aborted', 'aborted');
+  });
+
+  it('registers preflight immediately and keeps duplicate transitions idempotent', () => {
+    const telemetry = new WalletSyncAttemptTelemetry({
+      executionId: 'execution-preflight',
+      ownedLock: { key: 'sync:wallet:wallet-preflight', token: 'e'.repeat(32) },
+      mode: 'incremental',
+      network: 'mainnet',
+    });
+
+    expect(telemetry.beginStage('preflight', 1_000)).toBe(true);
+    expect(telemetry.beginStage('preflight', 9_000)).toBe(false);
+    expect(registry.start).toHaveBeenCalledWith(expect.objectContaining({
+      executionId: 'execution-preflight', stage: 'preflight', atMs: 1_000,
+    }));
+    expect(registry.transition).not.toHaveBeenCalled();
+    expect(metric.enterStage).toHaveBeenCalledOnce();
+
+    expect(telemetry.finishStage('address_history', 'completed', 10_000)).toBe(false);
+    expect(telemetry.finishStage('preflight', 'completed', 10_000)).toBe(true);
+    expect(telemetry.finishStage('preflight', 'failed', 11_000)).toBe(false);
+    expect(metric.finishStage).toHaveBeenCalledOnce();
+    expect(metric.finishStage).toHaveBeenCalledWith('completed', 10_000);
+  });
+
+  it('keeps terminal cleanup idempotent when registry admission is unavailable', () => {
+    registry.start.mockReturnValueOnce(false);
+    const telemetry = new WalletSyncAttemptTelemetry({
+      executionId: 'execution-unregistered',
+      ownedLock: { key: 'sync:wallet:wallet-unregistered', token: '9'.repeat(32) },
+      mode: 'incremental',
+      network: 'mainnet',
+    });
+    telemetry.beginStage('preflight');
+
+    telemetry.finish('failed');
+    telemetry.finish('completed');
+
+    expect(metric.finishStage).toHaveBeenCalledOnce();
+    expect(metric.finishStage).toHaveBeenCalledWith('failed', expect.any(Number));
+    expect(registry.finish).not.toHaveBeenCalled();
   });
 });

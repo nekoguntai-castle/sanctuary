@@ -10,6 +10,7 @@ import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { RbfStatus } from '@sanctuary/shared/constants/transactions';
 import type { WalletSyncMutationFence } from '../../../repositories/types';
 import type { SyncAttemptRuntime } from './attemptRuntime';
+import type { SyncExecutionStage } from '@sanctuary/shared/schemas/syncProgress';
 
 // ============================================
 // Core Types
@@ -212,6 +213,8 @@ export interface UTXOCreateData {
 export type SyncPhase = {
   name: string;
   execute: (ctx: SyncContext) => Promise<SyncContext>;
+  /** Closed execution stage used only by canonical attempt progress. */
+  executionStage?: SyncExecutionStage;
 };
 
 /** Pipeline options */

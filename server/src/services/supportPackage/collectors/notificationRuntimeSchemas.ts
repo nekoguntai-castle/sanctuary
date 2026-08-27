@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { NOTIFICATION_QUEUE_STATES } from "../../../internal/workerQueues";
-import { WorkerDiagnosticsResponseSchema } from "../../../internal/workerDiagnostics/protocol";
+import {
+  WalletSyncExecutionDiagnosticsSchema,
+  WorkerDiagnosticsBareResponseSchema,
+} from "../../../internal/workerDiagnostics/protocol";
 
 const observed = <T extends z.ZodType>(value: T) =>
   z
@@ -104,7 +107,11 @@ export const notificationWorkerSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("observed"),
-      value: WorkerDiagnosticsResponseSchema,
+      value: WorkerDiagnosticsBareResponseSchema,
+      walletSyncExecution: z.union([
+        observed(WalletSyncExecutionDiagnosticsSchema),
+        z.object({ status: z.literal("unsupported") }).strict(),
+      ]),
     })
     .strict(),
   unavailableObservation,

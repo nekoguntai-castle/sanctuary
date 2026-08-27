@@ -193,14 +193,20 @@ describe("notification runtime support collectors", () => {
         },
       },
     }, 2);
-    mockWorker.mockResolvedValue({ status: "observed", value: snapshot });
+    const { walletSyncExecution, ...transport } = snapshot;
+    mockWorker.mockResolvedValue({
+      status: "observed",
+      value: transport,
+      walletSyncExecution: { status: "observed", value: walletSyncExecution },
+    });
 
     const result = await collectorMap.get("notificationWorker")?.();
 
     expect(result).toMatchObject({
       status: "observed",
-      value: {
-        walletSyncExecution: {
+      walletSyncExecution: {
+        status: "observed",
+        value: {
           version: 1,
           observation: "observed",
           scope: "sampled_worker",

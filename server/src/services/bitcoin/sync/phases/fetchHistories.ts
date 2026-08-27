@@ -56,6 +56,18 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
       await fetchAddressHistories(ctx, stage, requestOptions, settledAddresses);
     } catch (error) {
       if (!isSyncStageBudgetError(requestOptions?.signal.reason)) throw error;
+      ctx.attemptRuntime?.phaseProgress?.budgetExpired(
+        'Address-history fetch exceeded its remote budget; retaining only complete evidence.',
+      );
+      ctx.attemptRuntime?.phaseProgress?.begin(
+        'address_history',
+        'Continuing address-history reconciliation with complete evidence.',
+        {
+          completed: settledAddresses.size,
+          total: addresses.length,
+          unit: 'addresses',
+        },
+      );
       for (const { address } of addresses) {
         if (settledAddresses.has(address)) continue;
         ctx.historyResults.set(address, []);

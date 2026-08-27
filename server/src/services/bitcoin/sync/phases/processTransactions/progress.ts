@@ -8,6 +8,7 @@ import {
 } from "@sanctuary/shared/schemas/syncProgress";
 import { walletLog } from "../../../../../websocket/notifications";
 import type { SyncAttemptTelemetry } from "../../attemptRuntime";
+import type { SyncPhaseProgress } from '../../phaseProgress';
 
 type ProgressEvent = SyncProgressDetails["event"];
 
@@ -35,6 +36,7 @@ export function createCandidateBatchProgress(
   batchCount: number,
   now: () => number = Date.now,
   telemetry?: SyncAttemptTelemetry,
+  phaseProgress?: SyncPhaseProgress,
 ): CandidateBatchProgress {
   const normalizedBatchCount = Math.max(
     1,
@@ -93,13 +95,16 @@ export function createCandidateBatchProgress(
       stage = nextStage;
       unit = nextUnit;
       stageStartedAt = now();
+      phaseProgress?.begin(nextStage, message);
       emit("stage_started", message);
     },
     fallback(message) {
+      phaseProgress?.budgetExpired(message);
       emit("fallback", message);
     },
     complete(completed, total) {
       const boundedTotal = boundedInteger(total, SYNC_PROGRESS_MAX_COUNT);
+      phaseProgress?.finish('stage_completed', 'Transaction candidate stage completed.');
       emit("batch_completed", "Transaction batch saved.", {
         completed: Math.min(
           boundedInteger(completed, SYNC_PROGRESS_MAX_COUNT),
@@ -107,8 +112,13 @@ export function createCandidateBatchProgress(
         ),
         total: boundedTotal,
       });
+      phaseProgress?.begin(
+        'transaction_reconciliation',
+        'Continuing transaction reconciliation.',
+      );
     },
     terminal(event, message) {
+      phaseProgress?.finish('stage_aborted', message);
       emit(event, message);
     },
     candidates(fetched, rejected) {

@@ -8,8 +8,10 @@ import {
 import {
   WORKER_DIAGNOSTICS_PATH,
   WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
+  WorkerDiagnosticsBareResponseSchema,
   WorkerDiagnosticsRequestSchema,
-  WorkerDiagnosticsResponseSchema,
+  WorkerDiagnosticsResponseV1Schema,
+  WorkerDiagnosticsResponseV2Schema,
   type WorkerDiagnosticsRequest,
   type WorkerDiagnosticsResponse,
 } from '../../internal/workerDiagnostics/protocol';
@@ -204,7 +206,12 @@ export function createWorkerDiagnosticsRequestHandler(
             Promise.resolve(options.getSnapshot(request)),
             options.timeoutMs,
           );
-          writeJson(res, 200, WorkerDiagnosticsResponseSchema.parse(snapshot));
+          const responseSchema = request.walletSyncExecutionVersion === 2
+            ? WorkerDiagnosticsResponseV2Schema
+            : request.walletSyncExecution === true
+              ? WorkerDiagnosticsResponseV1Schema
+              : WorkerDiagnosticsBareResponseSchema;
+          writeJson(res, 200, responseSchema.parse(snapshot));
         } catch {
           writeJson(res, 503, { error: 'diagnostics_unavailable' });
         }

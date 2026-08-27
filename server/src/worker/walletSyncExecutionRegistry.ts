@@ -1,13 +1,15 @@
 import {
-  SYNC_PROGRESS_STAGES,
-  type SyncProgressStage,
+  SYNC_EXECUTION_STAGES,
+  type SyncExecutionStage,
 } from '@sanctuary/shared/schemas/syncProgress';
 import { WALLET_SYNC_MAX_EXECUTION_MS } from '../constants/walletSyncActivation';
 import { getRedisClient, isRedisConnected } from '../infrastructure/redis';
 import type {
   ObservedWalletSyncExecutionDiagnostics,
   WalletSyncExecutionDiagnostics,
+  WalletSyncExecutionDiagnosticsVersion,
 } from '../internal/workerDiagnostics/protocol';
+import { WALLET_SYNC_EXECUTION_V1_STAGES } from '../internal/workerDiagnostics/protocol';
 import { bucketAge, bucketCount } from '../internal/workerDiagnostics/buckets';
 
 export type WalletSyncExecutionOutcome = 'completed' | 'failed' | 'timedOut' | 'aborted';
@@ -21,7 +23,7 @@ export interface OwnedWalletSyncLock {
 
 export interface WalletSyncExecutionStart {
   executionId: string;
-  stage: SyncProgressStage;
+  stage: SyncExecutionStage;
   ownedLock: OwnedWalletSyncLock;
   atMs?: number;
 }
@@ -31,7 +33,8 @@ export interface WalletSyncLockValueReader {
 }
 
 interface ActiveExecution {
-  stage: SyncProgressStage;
+  stage: SyncExecutionStage;
+  stageStartedAt: number;
   lastProgressAt: number;
   ownedLock: OwnedWalletSyncLock;
   lockLossRecorded: boolean;
@@ -70,8 +73,8 @@ function validTimestamp(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
 
-function validStage(value: unknown): value is SyncProgressStage {
-  return SYNC_PROGRESS_STAGES.includes(value as SyncProgressStage);
+function validStage(value: unknown): value is SyncExecutionStage {
+  return SYNC_EXECUTION_STAGES.includes(value as SyncExecutionStage);
 }
 
 function hasSafeInternalIdentity(input: WalletSyncExecutionStart): boolean {
@@ -91,7 +94,7 @@ export class WalletSyncExecutionRegistry {
 
   constructor(
     private readonly processStartedAt = Date.now(),
-    private readonly staleAfterMs = WALLET_SYNC_MAX_EXECUTION_MS,
+    private readonly staleAfterMs = WALLET_SYNC_MAX_EXECUTION_MS + 30_000,
     private readonly maxActive = MAX_ACTIVE_EXECUTIONS,
     private readonly now = () => Date.now(),
     private readonly agreementReadTimeoutMs = AGREEMENT_READ_TIMEOUT_MS,
@@ -106,6 +109,7 @@ export class WalletSyncExecutionRegistry {
     if (this.active.has(input.executionId) || this.active.size >= this.maxActive) return false;
     this.active.set(input.executionId, {
       stage: input.stage,
+      stageStartedAt: atMs,
       lastProgressAt: atMs,
       ownedLock: { ...input.ownedLock },
       lockLossRecorded: false,
@@ -114,13 +118,16 @@ export class WalletSyncExecutionRegistry {
     return true;
   }
 
-  transition(executionId: string, stage: SyncProgressStage, atMs = this.now()): boolean {
+  transition(executionId: string, stage: SyncExecutionStage, atMs = this.now()): boolean {
     const entry = this.active.get(executionId);
     if (!entry || !validStage(stage)) return false;
+    if (entry.stage === stage) return true;
     const nextAt = validTimestamp(atMs, this.now());
-    if (entry.stage !== stage) this.increment('stageTransitions');
+    const transitionAt = Math.max(entry.lastProgressAt, nextAt);
+    this.increment('stageTransitions');
     entry.stage = stage;
-    entry.lastProgressAt = Math.max(entry.lastProgressAt, nextAt);
+    entry.stageStartedAt = transitionAt;
+    entry.lastProgressAt = transitionAt;
     return true;
   }
 
@@ -164,24 +171,39 @@ export class WalletSyncExecutionRegistry {
   async diagnostics(
     reader: WalletSyncLockValueReader | null,
     atMs = this.now(),
+    version: WalletSyncExecutionDiagnosticsVersion = 1,
   ): Promise<WalletSyncExecutionDiagnostics> {
     const nowMs = validTimestamp(atMs, this.now());
     this.prune(nowMs);
-    const redisLockAgreement = await this.readAgreement(reader);
-    return {
-      version: 1,
-      observation: 'observed',
-      scope: 'sampled_worker',
+    const visibleStages = version === 2
+      ? SYNC_EXECUTION_STAGES
+      : WALLET_SYNC_EXECUTION_V1_STAGES;
+    const redisLockAgreement = await this.readAgreement(reader, visibleStages);
+    const common = {
+      observation: 'observed' as const,
+      scope: 'sampled_worker' as const,
       processEpochAge: this.nonNeverAge(this.processStartedAt, nowMs),
       countersResetAge: this.nonNeverAge(this.countersResetAt, nowMs),
-      active: {
-        total: bucketCount(this.active.size),
-        byStage: this.activeByStage(),
-        oldestProgressAge: bucketAge(this.oldestProgressAt(), nowMs),
-      },
       counters: this.bucketedCounters(),
       redisLockAgreement,
     };
+    return version === 2
+      ? {
+          ...common,
+          version: 2,
+          active: {
+            ...this.activeSummary(SYNC_EXECUTION_STAGES, nowMs),
+            byStage: this.activeByStage(SYNC_EXECUTION_STAGES),
+          },
+        }
+      : {
+          ...common,
+          version: 1,
+          active: {
+            ...this.activeSummary(WALLET_SYNC_EXECUTION_V1_STAGES, nowMs),
+            byStage: this.activeByStage(WALLET_SYNC_EXECUTION_V1_STAGES),
+          },
+        };
   }
 
   private increment(counter: CounterName, amount = 1): void {
@@ -191,29 +213,45 @@ export class WalletSyncExecutionRegistry {
     );
   }
 
-  private activeByStage(): Record<SyncProgressStage, ReturnType<typeof bucketCount>> {
-    const counts = Object.fromEntries(SYNC_PROGRESS_STAGES.map(stage => [stage, 0])) as Record<
-      SyncProgressStage,
+  private activeByStage<const Stage extends SyncExecutionStage>(
+    stages: readonly Stage[],
+  ): Record<Stage, ReturnType<typeof bucketCount>> {
+    const counts = Object.fromEntries(stages.map(stage => [stage, 0])) as Record<
+      Stage,
       number
     >;
-    for (const entry of this.active.values()) counts[entry.stage]++;
-    return Object.fromEntries(SYNC_PROGRESS_STAGES.map(
+    for (const entry of this.active.values()) {
+      if (stages.includes(entry.stage as Stage)) counts[entry.stage as Stage]++;
+    }
+    return Object.fromEntries(stages.map(
       stage => [stage, bucketCount(counts[stage])],
-    )) as Record<SyncProgressStage, ReturnType<typeof bucketCount>>;
+    )) as Record<Stage, ReturnType<typeof bucketCount>>;
   }
 
-  private oldestProgressAt(): number | null {
+  private activeSummary(
+    stages: readonly SyncExecutionStage[],
+    nowMs: number,
+  ): {
+    total: ReturnType<typeof bucketCount>;
+    oldestProgressAge: ReturnType<typeof bucketAge>;
+  } {
+    let total = 0;
     let oldest: number | null = null;
     for (const entry of this.active.values()) {
-      oldest = oldest === null ? entry.lastProgressAt : Math.min(oldest, entry.lastProgressAt);
+      if (!stages.includes(entry.stage)) continue;
+      total++;
+      oldest = oldest === null ? entry.stageStartedAt : Math.min(oldest, entry.stageStartedAt);
     }
-    return oldest;
+    return {
+      total: bucketCount(total),
+      oldestProgressAge: bucketAge(oldest, nowMs),
+    };
   }
 
-  private bucketedCounters(): ObservedWalletSyncExecutionDiagnostics['counters'] {
+  private bucketedCounters() {
     return Object.fromEntries(Object.entries(this.counters).map(
       ([name, value]) => [name, bucketCount(value)],
-    )) as ObservedWalletSyncExecutionDiagnostics['counters'];
+    )) as Record<CounterName, ReturnType<typeof bucketCount>>;
   }
 
   private nonNeverAge(timestamp: number, nowMs: number) {
@@ -223,10 +261,11 @@ export class WalletSyncExecutionRegistry {
 
   private async readAgreement(
     reader: WalletSyncLockValueReader | null,
+    stages: readonly SyncExecutionStage[],
   ): Promise<ObservedWalletSyncExecutionDiagnostics['redisLockAgreement']> {
     if (!reader) return { agreement: 'unavailable' };
     try {
-      const counts = await this.readAgreementCounts(reader);
+      const counts = await this.readAgreementCounts(reader, stages);
       if (!counts) return { agreement: 'unavailable' };
       const { matching, missing, mismatch } = counts;
       return {
@@ -240,12 +279,17 @@ export class WalletSyncExecutionRegistry {
     }
   }
 
-  private async readAgreementCounts(reader: WalletSyncLockValueReader): Promise<{
+  private async readAgreementCounts(
+    reader: WalletSyncLockValueReader,
+    stages: readonly SyncExecutionStage[],
+  ): Promise<{
     matching: number;
     missing: number;
     mismatch: number;
   } | null> {
-    const entries = [...this.active.entries()];
+    const entries = [...this.active.entries()].filter(([, entry]) => (
+      stages.includes(entry.stage)
+    ));
     const counts = { matching: 0, missing: 0, mismatch: 0 };
     let nextIndex = 0;
     let expired = false;
@@ -288,9 +332,11 @@ export class WalletSyncExecutionRegistry {
 
 export const walletSyncExecutionRegistry = new WalletSyncExecutionRegistry();
 
-export async function collectWalletSyncExecutionDiagnostics(): Promise<
+export async function collectWalletSyncExecutionDiagnostics(
+  version: WalletSyncExecutionDiagnosticsVersion = 1,
+): Promise<
   WalletSyncExecutionDiagnostics
 > {
   const reader = isRedisConnected() ? getRedisClient() : null;
-  return walletSyncExecutionRegistry.diagnostics(reader);
+  return walletSyncExecutionRegistry.diagnostics(reader, Date.now(), version);
 }

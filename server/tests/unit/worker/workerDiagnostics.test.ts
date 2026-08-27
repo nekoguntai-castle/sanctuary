@@ -3,7 +3,10 @@ import {
   signDiagnosticsRequest,
   verifyDiagnosticsRequest,
 } from '../../../src/internal/workerDiagnostics/auth';
-import { WorkerDiagnosticsResponseSchema } from '../../../src/internal/workerDiagnostics/protocol';
+import {
+  WorkerDiagnosticsRequestSchema,
+  WorkerDiagnosticsResponseSchema,
+} from '../../../src/internal/workerDiagnostics/protocol';
 import { BoundedReplayGuard } from '../../../src/worker/diagnostics/replayGuard';
 import {
   bucketAge,
@@ -12,6 +15,28 @@ import {
 } from '../../../src/worker/diagnostics/snapshot';
 
 describe('worker diagnostics', () => {
+  it('accepts only bare, v1 execution, and explicitly negotiated v2 requests', () => {
+    expect(WorkerDiagnosticsRequestSchema.safeParse({ protocolVersion: 1 }).success).toBe(true);
+    expect(WorkerDiagnosticsRequestSchema.safeParse({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+    }).success).toBe(true);
+    expect(WorkerDiagnosticsRequestSchema.safeParse({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+      walletSyncExecutionVersion: 2,
+    }).success).toBe(true);
+    expect(WorkerDiagnosticsRequestSchema.safeParse({
+      protocolVersion: 1,
+      walletSyncExecutionVersion: 2,
+    }).success).toBe(false);
+    expect(WorkerDiagnosticsRequestSchema.safeParse({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+      privateSelector: true,
+    }).success).toBe(false);
+  });
+
   it('authenticates once and rejects replay, tampering, and stale requests', () => {
     const body = JSON.stringify({ protocolVersion: 1 });
     const secret = 's'.repeat(32);

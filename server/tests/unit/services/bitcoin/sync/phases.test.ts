@@ -279,6 +279,12 @@ describe('Sync Phases', () => {
           },
         );
         const now = Date.now();
+        const phaseProgress = {
+          begin: vi.fn(() => true),
+          finish: vi.fn(() => true),
+          budgetExpired: vi.fn(() => true),
+          activeStage: vi.fn(() => 'address_history' as const),
+        };
         const ctx = createTestContext({
           addresses: [acceptedAddress, failedAddress, budgetAddress].map((address, index) => ({
             id: String(index),
@@ -289,6 +295,7 @@ describe('Sync Phases', () => {
           attemptRuntime: {
             signal: new AbortController().signal,
             deadlineAt: now + 100,
+            phaseProgress,
           },
         });
 
@@ -309,6 +316,12 @@ describe('Sync Phases', () => {
           ['history_fetch_failed', 1],
           ['fetch_budget_exhausted', 1],
         ]));
+        expect(phaseProgress.budgetExpired).toHaveBeenCalledOnce();
+        expect(phaseProgress.begin).toHaveBeenCalledWith(
+          'address_history',
+          'Continuing address-history reconciliation with complete evidence.',
+          { completed: 2, total: 3, unit: 'addresses' },
+        );
       } finally {
         vi.useRealTimers();
       }

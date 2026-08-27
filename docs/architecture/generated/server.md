@@ -91,6 +91,7 @@ n_src_worker_ts["worker.ts"]
 subgraph n_src_worker["worker"]
 n_src_worker__collapsed[" "]
 end
+n_src_workerDiagnosticsCli_ts["workerDiagnosticsCli.ts"]
 end
 n_src_agent__collapsed-->n_src_errors__collapsed
 n_src_agent__collapsed-->n_src_repositories__collapsed
@@ -230,4 +231,5 @@ n_src_worker__collapsed-->n_src_repositories__collapsed
 n_src_worker__collapsed-->n_src_services__collapsed
 n_src_worker__collapsed-->n_src_utils__collapsed
 n_src_worker__collapsed-->n_src_websocket__collapsed
+n_src_workerDiagnosticsCli_ts-->n_src_services__collapsed
 ```

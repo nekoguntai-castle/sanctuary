@@ -73,6 +73,12 @@ export function registerFetchUtxosPhaseTests(): void {
         address,
         scriptPubKey: '0014',
       }));
+      const phaseProgress = {
+        begin: vi.fn(() => true),
+        finish: vi.fn(() => true),
+        budgetExpired: vi.fn(() => true),
+        activeStage: vi.fn(() => 'utxo_reconciliation' as const),
+      };
       const ctx = createTestContext({
         addresses: addresses as any,
         addressMap: new Map(addresses.map(address => [address.address, address])) as any,
@@ -80,6 +86,7 @@ export function registerFetchUtxosPhaseTests(): void {
         attemptRuntime: {
           signal: new AbortController().signal,
           deadlineAt: now + 100,
+          phaseProgress,
         },
       });
 
@@ -98,6 +105,12 @@ export function registerFetchUtxosPhaseTests(): void {
         ['utxo_fetch_failed', 1],
         ['fetch_budget_exhausted', 1],
       ]));
+      expect(phaseProgress.budgetExpired).toHaveBeenCalledOnce();
+      expect(phaseProgress.begin).toHaveBeenCalledWith(
+        'utxo_reconciliation',
+        'Continuing UTXO reconciliation with authenticated evidence.',
+        { completed: 2, total: 3, unit: 'addresses' },
+      );
     } finally {
       vi.useRealTimers();
     }

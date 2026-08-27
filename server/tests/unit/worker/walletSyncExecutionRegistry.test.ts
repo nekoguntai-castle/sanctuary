@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SyncProgressStage } from '@sanctuary/shared/schemas/syncProgress';
+import type { SyncExecutionStage } from '@sanctuary/shared/schemas/syncProgress';
 
 const redisState = vi.hoisted(() => ({
   connected: false,
@@ -19,7 +19,7 @@ import {
 
 const NOW = 1_800_000_000_000;
 
-function startInput(executionId: string, stage: SyncProgressStage = 'candidate_fetch') {
+function startInput(executionId: string, stage: SyncExecutionStage = 'candidate_fetch') {
   return {
     executionId,
     stage,
@@ -127,6 +127,63 @@ describe('wallet sync execution registry', () => {
       active: { total: '2-5', oldestProgressAge: '1m-15m' },
     });
     expect(WalletSyncExecutionDiagnosticsSchema.safeParse(snapshot).success).toBe(true);
+  });
+
+  it('freezes v1 stage keys while v2 exposes the complete execution inventory', async () => {
+    const registry = new WalletSyncExecutionRegistry(NOW, 10_000, 10, () => NOW);
+    registry.start(startInput('preflight', 'preflight'));
+
+    const matchingReader = { get: vi.fn().mockResolvedValue('a'.repeat(32)) };
+    const v1 = await registry.diagnostics(matchingReader, NOW, 1);
+    const v2 = await registry.diagnostics(matchingReader, NOW, 2);
+    expect(v1.version).toBe(1);
+    expect(v1.observation === 'observed' && Object.keys(v1.active.byStage)).toEqual([
+      'candidate_fetch', 'parent_fetch', 'timestamp_fetch', 'classification', 'persistence',
+    ]);
+    expect(v1.observation === 'observed' && v1.active).toMatchObject({
+      total: '0',
+      oldestProgressAge: 'never',
+    });
+    expect(v1.observation === 'observed' && v1.redisLockAgreement).toEqual({
+      agreement: 'observed',
+      registryWithOwnedLock: '0',
+      registryMissingOwnedLock: '0',
+      registryOwnershipMismatch: '0',
+    });
+    expect(v2.version).toBe(2);
+    expect(v2.observation === 'observed' && v2.active).toMatchObject({
+      total: '1',
+      oldestProgressAge: '<1m',
+      byStage: {
+        preflight: '1',
+        address_history: '0',
+        finalization: '0',
+      },
+    });
+    expect(v2.observation === 'observed' && v2.redisLockAgreement).toMatchObject({
+      agreement: 'observed',
+      registryWithOwnedLock: '1',
+    });
+    expect(matchingReader.get).toHaveBeenCalledOnce();
+    expect(WalletSyncExecutionDiagnosticsSchema.parse(v1)).toEqual(v1);
+    expect(WalletSyncExecutionDiagnosticsSchema.parse(v2)).toEqual(v2);
+  });
+
+  it('does not refresh stage age on duplicate begin and resets it on a real transition', async () => {
+    let now = NOW;
+    const registry = new WalletSyncExecutionRegistry(NOW, 20 * 60_000, 10, () => now);
+    registry.start(startInput('one', 'preflight'));
+    now += 10 * 60_000;
+    expect(registry.transition('one', 'preflight', now)).toBe(true);
+    let snapshot = await registry.diagnostics(null, now, 2);
+    expect(snapshot.observation === 'observed' && snapshot.active.oldestProgressAge)
+      .toBe('1m-15m');
+    expect(snapshot.observation === 'observed' && snapshot.counters.stageTransitions).toBe('0');
+
+    expect(registry.transition('one', 'initial_network', now)).toBe(true);
+    snapshot = await registry.diagnostics(null, now, 2);
+    expect(snapshot.observation === 'observed' && snapshot.active.oldestProgressAge).toBe('<1m');
+    expect(snapshot.observation === 'observed' && snapshot.counters.stageTransitions).toBe('1');
   });
 
   it('samples only retained locks and reports matching, missing, and mismatched values', async () => {

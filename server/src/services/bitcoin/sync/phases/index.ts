@@ -51,17 +51,17 @@ export {
  * Phase 11: Fix Consolidations - Correct misclassified consolidation transactions
  */
 export const defaultSyncPhases: SyncPhase[] = [
-  createPhase('rbfCleanup', rbfCleanupPhase),
-  createPhase('fetchHistories', fetchHistoriesPhase),
-  createPhase('checkExisting', checkExistingPhase),
-  createPhase('processTransactions', processTransactionsPhase),
-  createPhase('fetchUtxos', fetchUtxosPhase),
-  createPhase('reconcileUtxos', reconcileUtxosPhase),
-  createPhase('insertUtxos', insertUtxosPhase),
-  createPhase('updateAddresses', updateAddressesPhase),
-  createPhase('receiveEvidenceGate', receiveEvidenceGatePhase),
-  createPhase('gapLimit', gapLimitPhase),
-  createPhase('fixConsolidations', fixConsolidationsPhase),
+  createPhase('rbfCleanup', rbfCleanupPhase, 'transaction_reconciliation'),
+  createPhase('fetchHistories', fetchHistoriesPhase, 'address_history'),
+  createPhase('checkExisting', checkExistingPhase, 'transaction_reconciliation'),
+  createPhase('processTransactions', processTransactionsPhase, 'transaction_reconciliation'),
+  createPhase('fetchUtxos', fetchUtxosPhase, 'utxo_reconciliation'),
+  createPhase('reconcileUtxos', reconcileUtxosPhase, 'utxo_reconciliation'),
+  createPhase('insertUtxos', insertUtxosPhase, 'utxo_reconciliation'),
+  createPhase('updateAddresses', updateAddressesPhase, 'address_maintenance'),
+  createPhase('receiveEvidenceGate', receiveEvidenceGatePhase, 'address_maintenance'),
+  createPhase('gapLimit', gapLimitPhase, 'address_maintenance'),
+  createPhase('fixConsolidations', fixConsolidationsPhase, 'address_maintenance'),
 ];
 
 /**
@@ -69,13 +69,13 @@ export const defaultSyncPhases: SyncPhase[] = [
  * Skips consolidation correction and gap limit expansion
  */
 export const quickSyncPhases: SyncPhase[] = [
-  createPhase('rbfCleanup', rbfCleanupPhase),
-  createPhase('fetchHistories', fetchHistoriesPhase),
-  createPhase('checkExisting', checkExistingPhase),
-  createPhase('processTransactions', processTransactionsPhase),
-  createPhase('fetchUtxos', fetchUtxosPhase),
-  createPhase('reconcileUtxos', reconcileUtxosPhase),
-  createPhase('insertUtxos', insertUtxosPhase),
-  createPhase('updateAddresses', updateAddressesPhase),
-  createPhase('receiveEvidenceGate', receiveEvidenceGatePhase),
+  createPhase('rbfCleanup', rbfCleanupPhase, 'transaction_reconciliation'),
+  createPhase('fetchHistories', fetchHistoriesPhase, 'address_history'),
+  createPhase('checkExisting', checkExistingPhase, 'transaction_reconciliation'),
+  createPhase('processTransactions', processTransactionsPhase, 'transaction_reconciliation'),
+  createPhase('fetchUtxos', fetchUtxosPhase, 'utxo_reconciliation'),
+  createPhase('reconcileUtxos', reconcileUtxosPhase, 'utxo_reconciliation'),
+  createPhase('insertUtxos', insertUtxosPhase, 'utxo_reconciliation'),
+  createPhase('updateAddresses', updateAddressesPhase, 'address_maintenance'),
+  createPhase('receiveEvidenceGate', receiveEvidenceGatePhase, 'address_maintenance'),
 ];

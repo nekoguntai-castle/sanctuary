@@ -31,7 +31,9 @@ import { runWalletSyncMutation } from '../mutationBoundary';
 import {
   createSyncStageRuntime,
   type SyncAttemptRuntime,
+  type SyncAttemptTelemetry,
 } from '../attemptRuntime';
+import type { SyncPhaseProgress } from '../phaseProgress';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 
@@ -59,10 +61,17 @@ export async function populateMissingTransactionFields(
   mutationFence?: WalletSyncMutationFence,
   serializeUnfenced = false,
   attemptDeadlineAt = Number.POSITIVE_INFINITY,
+  telemetry?: SyncAttemptTelemetry,
+  phaseProgress?: SyncPhaseProgress,
 ): Promise<PopulateFieldsResult> {
   signal?.throwIfAborted();
   const attemptRuntime: SyncAttemptRuntime | undefined = signal
-    ? { signal, deadlineAt: attemptDeadlineAt }
+    ? {
+        signal,
+        deadlineAt: attemptDeadlineAt,
+        ...(telemetry ? { telemetry } : {}),
+        ...(phaseProgress ? { phaseProgress } : {}),
+      }
     : undefined;
   // Get wallet to determine network for correct block height
   const network = await walletRepository.findNetwork(walletId);
