@@ -33,6 +33,21 @@ describe('gapLimitPhase', () => {
     vi.mocked(walletLog).mockReset();
   });
 
+  it('skips persistence when gap-limit preparation is unavailable', async () => {
+    hoisted.prepareGapLimitExpansion.mockResolvedValue(null);
+    const client = { getAddressHistoryBatch: vi.fn() };
+    const ctx = createTestContext({
+      walletId: 'wallet-gap-unavailable',
+      client: client as any,
+    });
+
+    const result = await gapLimitPhase(ctx);
+
+    expect(result).toBe(ctx);
+    expect(hoisted.persistGapLimitExpansion).not.toHaveBeenCalled();
+    expect(client.getAddressHistoryBatch).not.toHaveBeenCalled();
+  });
+
   it('returns unchanged context when no new addresses are needed', async () => {
     hoisted.persistGapLimitExpansion.mockResolvedValue([]);
     const client = { getAddressHistoryBatch: vi.fn() };
@@ -65,13 +80,23 @@ describe('gapLimitPhase', () => {
     const ctx = createTestContext({
       walletId: 'wallet-gap-scan-empty',
       client: client as any,
+      attemptRuntime: {
+        signal: new AbortController().signal,
+        deadlineAt: Date.now() + 5_000,
+      },
     });
 
     const result = await gapLimitPhase(ctx);
 
     expect(result.newAddresses).toEqual(generated);
     expect(result.stats.newAddressesGenerated).toBe(2);
-    expect(client.getAddressHistoryBatch).toHaveBeenCalledWith(generated.map(a => a.address));
+    expect(client.getAddressHistoryBatch).toHaveBeenCalledWith(
+      generated.map(a => a.address),
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        deadlineAt: expect.any(Number),
+      }),
+    );
     expect(vi.mocked(walletLog)).toHaveBeenCalledWith(
       'wallet-gap-scan-empty',
       'info',

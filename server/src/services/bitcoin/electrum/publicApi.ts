@@ -17,6 +17,7 @@ import type {
   TransactionDetails,
   BitcoinNetwork,
 } from './types';
+import type { NodeRequestOptions } from '../nodeClient';
 
 const log = createLogger('ELECTRUM:SVC_API');
 
@@ -28,6 +29,38 @@ export type BatchRequestFn = (requests: Array<{ method: string; params: unknown[
 
 /** Callback for decoding raw transactions (bound to the class instance for test spying) */
 export type DecodeRawTxFn = (rawTx: string) => TransactionDetails;
+
+function throwIfRequestStopped(options?: NodeRequestOptions): void {
+  options?.signal?.throwIfAborted();
+  if (options?.deadlineAt !== undefined && Date.now() >= options.deadlineAt) {
+    throw new Error('Electrum transaction batch deadline exhausted');
+  }
+}
+
+async function requestDelay(ms: number, options?: NodeRequestOptions): Promise<void> {
+  throwIfRequestStopped(options);
+  await new Promise<void>((resolve, reject) => {
+    const remaining = options?.deadlineAt === undefined
+      ? ms
+      : Math.min(ms, Math.max(0, options.deadlineAt - Date.now()));
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      options?.signal?.removeEventListener('abort', onAbort);
+    };
+    const finish = (): void => {
+      cleanup();
+      resolve();
+    };
+    const onAbort = (): void => {
+      cleanup();
+      reject(options?.signal?.reason ?? new Error('Electrum request cancelled'));
+    };
+    const timer = setTimeout(finish, remaining);
+    options?.signal?.addEventListener('abort', onAbort, { once: true });
+    timer.unref();
+  });
+  throwIfRequestStopped(options);
+}
 
 /**
  * Get server version (results are cached in the class)
@@ -236,7 +269,8 @@ export async function getAddressUTXOsBatch(
 export async function getTransactionsBatch(
   batchRequestFn: BatchRequestFn,
   decodeRawTxFn: DecodeRawTxFn,
-  txids: string[]
+  txids: string[],
+  options?: NodeRequestOptions,
 ): Promise<Map<string, any>> {
   if (txids.length === 0) return new Map();
 
@@ -253,16 +287,18 @@ export async function getTransactionsBatch(
   const MAX_RETRIES = 2;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    throwIfRequestStopped(options);
     try {
       results = await batchRequestFn(requests);
       // Decode raw transactions since we're using non-verbose mode
       results = results.map(rawTx => decodeRawTxFn(rawTx as string));
       break;
     } catch (error) {
+      options?.signal?.throwIfAborted();
       if (getErrorMessage(error).includes('timeout')) {
         log.warn(`Batch transaction fetch timeout, attempt ${attempt + 1}/${MAX_RETRIES + 1}`);
         if (attempt < MAX_RETRIES) {
-          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+          await requestDelay(500 * (attempt + 1), options);
           continue;
         }
       }

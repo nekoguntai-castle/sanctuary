@@ -28,6 +28,10 @@ import type {
 } from './types';
 import type { WalletSyncMutationFence } from '../../../../repositories/types';
 import { runWalletSyncMutation } from '../mutationBoundary';
+import {
+  createSyncStageRuntime,
+  type SyncAttemptRuntime,
+} from '../attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 
@@ -54,8 +58,12 @@ export async function populateMissingTransactionFields(
   onCommit?: PopulateFieldsCommitHandler,
   mutationFence?: WalletSyncMutationFence,
   serializeUnfenced = false,
+  attemptDeadlineAt = Number.POSITIVE_INFINITY,
 ): Promise<PopulateFieldsResult> {
   signal?.throwIfAborted();
+  const attemptRuntime: SyncAttemptRuntime | undefined = signal
+    ? { signal, deadlineAt: attemptDeadlineAt }
+    : undefined;
   // Get wallet to determine network for correct block height
   const network = await walletRepository.findNetwork(walletId);
   if (network === null) {
@@ -66,7 +74,24 @@ export async function populateMissingTransactionFields(
   return populateSemaphore.run(async () => {
     signal?.throwIfAborted();
     const castNetwork = resolvePersistedBitcoinNetwork(network);
-    const client = await getNodeClient(castNetwork);
+    const initialStage = attemptRuntime
+      ? createSyncStageRuntime(attemptRuntime, 'missing_fields_initial')
+      : undefined;
+    const initialOptions = initialStage
+      ? { signal: initialStage.signal, deadlineAt: initialStage.deadlineAt }
+      : undefined;
+    let client: Awaited<ReturnType<typeof getNodeClient>>;
+    let currentHeight: number;
+    try {
+      client = initialOptions
+        ? await getNodeClient(castNetwork, initialOptions)
+        : await getNodeClient(castNetwork);
+      currentHeight = initialOptions
+        ? await getBlockHeight(castNetwork, initialOptions)
+        : await getBlockHeight(castNetwork);
+    } finally {
+      initialStage?.dispose();
+    }
 
     // Find transactions with missing fields
     const transactions = await transactionRepository.findWithMissingFields(walletId);
@@ -93,12 +118,21 @@ export async function populateMissingTransactionFields(
       },
     });
 
-    const currentHeight = await getBlockHeight(castNetwork);
-
     // PHASE 0: Get block heights from address history (runs once — small Map<txid, number>)
-    const txHeightFromHistory = await fetchBlockHeightsFromHistory(
-      walletId, transactions, walletAddressSet, client
-    );
+    const historyStage = attemptRuntime
+      ? createSyncStageRuntime(attemptRuntime, 'missing_fields_history')
+      : undefined;
+    const historyOptions = historyStage
+      ? { signal: historyStage.signal, deadlineAt: historyStage.deadlineAt }
+      : undefined;
+    let txHeightFromHistory: Map<string, number>;
+    try {
+      txHeightFromHistory = await fetchBlockHeightsFromHistory(
+        walletId, transactions, walletAddressSet, client, historyOptions,
+      );
+    } finally {
+      historyStage?.dispose();
+    }
 
     // Process in chunks to bound memory: fetch, process, write, then release caches for GC
     const allConfirmationUpdates: ConfirmationUpdate[] = [];
@@ -123,13 +157,29 @@ export async function populateMissingTransactionFields(
         walletLog(walletId, 'info', 'POPULATE', `Processing chunk ${chunkNum}/${totalChunks} (${chunk.length} transactions)`);
       }
 
-      const txDetailsCache = await fetchTransactionDetails(walletId, chunk, client);
-      const prevTxCache = await fetchPreviousTransactions(walletId, chunk, txDetailsCache, client);
-
-      const { pendingUpdates, stats } = await processTransactionUpdates(
-        walletId, chunk, txDetailsCache, prevTxCache, txHeightFromHistory,
-        walletAddresses, walletAddressLookup, walletAddressSet, currentHeight, castNetwork
-      );
+      const chunkStage = attemptRuntime
+        ? createSyncStageRuntime(attemptRuntime, 'missing_fields_chunk')
+        : undefined;
+      const chunkOptions = chunkStage
+        ? { signal: chunkStage.signal, deadlineAt: chunkStage.deadlineAt }
+        : undefined;
+      let txDetailsCache: Awaited<ReturnType<typeof fetchTransactionDetails>>;
+      let prevTxCache: Awaited<ReturnType<typeof fetchPreviousTransactions>>;
+      let pendingUpdates: Awaited<ReturnType<typeof processTransactionUpdates>>['pendingUpdates'];
+      let stats: Awaited<ReturnType<typeof processTransactionUpdates>>['stats'];
+      try {
+        txDetailsCache = await fetchTransactionDetails(walletId, chunk, client, chunkOptions);
+        prevTxCache = await fetchPreviousTransactions(
+          walletId, chunk, txDetailsCache, client, chunkOptions,
+        );
+        ({ pendingUpdates, stats } = await processTransactionUpdates(
+          walletId, chunk, txDetailsCache, prevTxCache, txHeightFromHistory,
+          walletAddresses, walletAddressLookup, walletAddressSet, currentHeight,
+          castNetwork, chunkOptions,
+        ));
+      } finally {
+        chunkStage?.dispose();
+      }
 
       if (pendingUpdates.length > 0) {
         await executeInChunks(pendingUpdates, walletId, (committedUpdates) => {
@@ -179,7 +229,7 @@ export async function populateMissingTransactionFields(
       if (hasAmountUpdates) {
         walletLog(walletId, 'info', 'POPULATE', 'Recalculating running balances...');
         await runWalletSyncMutation(
-          { walletId, mutationFence },
+          { walletId, mutationFence, attemptRuntime },
           'balance_recalculation',
           (tx, deferPostCommit) => recalculateWalletBalances(
             walletId,

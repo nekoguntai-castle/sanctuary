@@ -12,6 +12,14 @@ import type { SyncContext } from '../types';
 import { authenticateRawTransactionOutput, RawTransactionEvidenceError } from '../../rawTransactionEvidence';
 import { fetchAuthenticatedTransactions } from '../evidenceAuthentication';
 import { recordRejectedEvidence } from '../rejectedEvidence';
+import type { NodeRequestOptions } from '../../nodeClient';
+import {
+  createSyncStageRuntime,
+  isSyncStageBudgetError,
+  mapWithSyncConcurrency,
+  SYNC_REMOTE_FALLBACK_CONCURRENCY,
+  type SyncStageRuntime,
+} from '../attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXOS');
 
@@ -36,41 +44,27 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
   walletLog(walletId, 'info', 'SYNC', `Fetching UTXOs (${addresses.length} addresses)...`);
   log.debug(`[SYNC] Fetching UTXOs for ${addresses.length} addresses using batch RPC...`);
 
-  const totalBatches = Math.ceil(addresses.length / BATCH_SIZE);
+  const stage = ctx.attemptRuntime
+    ? createSyncStageRuntime(ctx.attemptRuntime, 'utxo_observation')
+    : undefined;
+  const requestOptions = stage
+    ? { signal: stage.signal, deadlineAt: stage.deadlineAt }
+    : undefined;
+  const settledAddresses = new Set<string>();
 
-  for (let i = 0; i < addresses.length; i += BATCH_SIZE) {
-    const batchAddresses = addresses.slice(i, i + BATCH_SIZE).map(a => a.address);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-
-    // Log progress for larger wallets
-    if (addresses.length > BATCH_SIZE) {
-      walletLog(walletId, 'debug', 'SYNC', `UTXO batch ${batchNum}/${totalBatches}...`);
-    }
-
+  try {
     try {
-      const batchResults = await client.getAddressUTXOsBatch(batchAddresses);
-      for (const addr of batchAddresses) {
-        const utxos = batchResults.get(addr);
-        if (utxos) {
-          await authenticateAddressUtxos(ctx, addr, utxos);
-        } else {
-          recordFailClosed(ctx, 'missing_utxo_result');
-        }
-      }
+      await fetchAddressUtxos(ctx, stage, requestOptions, settledAddresses);
     } catch (error) {
-      log.warn(`[SYNC] Batch UTXO fetch failed, falling back to individual requests`, { error: getErrorMessage(error) });
-
-      // Fallback to individual requests
-      for (const addr of batchAddresses) {
-        try {
-          const utxos = await client.getAddressUTXOs(addr);
-          await authenticateAddressUtxos(ctx, addr, utxos);
-        } catch (e) {
-          log.warn(`[SYNC] Failed to get UTXOs for ${addr}`, { error: getErrorMessage(e) });
-          recordFailClosed(ctx, 'utxo_fetch_failed');
-        }
+      if (!isSyncStageBudgetError(requestOptions?.signal.reason)) throw error;
+      for (const { address } of addresses) {
+        if (settledAddresses.has(address)) continue;
+        recordFailClosed(ctx, 'fetch_budget_exhausted');
+        settledAddresses.add(address);
       }
     }
+  } finally {
+    stage?.dispose();
   }
 
   // Collect all UTXO identifiers and build lookup map
@@ -87,10 +81,71 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
   return ctx;
 }
 
+async function fetchAddressUtxos(
+  ctx: SyncContext,
+  stage: SyncStageRuntime | undefined,
+  requestOptions: NodeRequestOptions | undefined,
+  settledAddresses: Set<string>,
+): Promise<void> {
+  const { walletId, client, addresses } = ctx;
+  const totalBatches = Math.ceil(addresses.length / BATCH_SIZE);
+  for (let i = 0; i < addresses.length; i += BATCH_SIZE) {
+    requestOptions?.signal?.throwIfAborted();
+    const batchAddresses = addresses.slice(i, i + BATCH_SIZE).map(a => a.address);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    if (addresses.length > BATCH_SIZE) {
+      walletLog(walletId, 'debug', 'SYNC', `UTXO batch ${batchNum}/${totalBatches}...`);
+    }
+
+    const batchRequest = requestOptions
+      ? client.getAddressUTXOsBatch(batchAddresses, requestOptions)
+      : client.getAddressUTXOsBatch(batchAddresses);
+    await batchRequest.then(
+      async batchResults => {
+        for (const address of batchAddresses) {
+          const utxos = batchResults.get(address);
+          if (utxos) await authenticateAddressUtxos(ctx, address, utxos, requestOptions);
+          else recordFailClosed(ctx, 'missing_utxo_result');
+          settledAddresses.add(address);
+        }
+      },
+      async error => {
+        requestOptions?.signal?.throwIfAborted();
+        log.warn('[SYNC] Batch UTXO fetch failed, falling back to individual requests', {
+          error: getErrorMessage(error),
+        });
+        await mapWithSyncConcurrency(
+          batchAddresses,
+          SYNC_REMOTE_FALLBACK_CONCURRENCY,
+          stage,
+          async (address) => {
+            try {
+              const utxos = requestOptions
+                ? await client.getAddressUTXOs(address, requestOptions)
+                : await client.getAddressUTXOs(address);
+              await authenticateAddressUtxos(ctx, address, utxos, requestOptions);
+              settledAddresses.add(address);
+            } catch (fallbackError) {
+              requestOptions?.signal?.throwIfAborted();
+              log.warn(`[SYNC] Failed to get UTXOs for ${address}`, {
+                error: getErrorMessage(fallbackError),
+              });
+              recordFailClosed(ctx, 'utxo_fetch_failed');
+              settledAddresses.add(address);
+              return;
+            }
+          },
+        );
+      },
+    );
+  }
+}
+
 const authenticateAddressUtxos = async (
   ctx: SyncContext,
   address: string,
   utxos: SyncContext['utxoResults'][number]['utxos'],
+  options?: NodeRequestOptions,
 ): Promise<void> => {
   const addressRecord = ctx.addressMap.get(address);
   const expectedScript = addressRecord?.scriptPubKey?.toLowerCase();
@@ -99,9 +154,14 @@ const authenticateAddressUtxos = async (
     return;
   }
 
-  await fetchAuthenticatedTransactions(ctx, utxos.map(utxo => utxo.tx_hash));
+  const authenticatedTxids = await fetchAuthenticatedTransactions(
+    ctx,
+    utxos.map(utxo => utxo.tx_hash),
+    options,
+  );
   const accepted = [] as typeof utxos;
   for (const utxo of utxos) {
+    if (!authenticatedTxids.has(utxo.tx_hash)) continue;
     try {
       const rawHex = ctx.txDetailsCache.get(utxo.tx_hash)?.hex;
       if (!rawHex) throw new Error('missing_raw_transaction');

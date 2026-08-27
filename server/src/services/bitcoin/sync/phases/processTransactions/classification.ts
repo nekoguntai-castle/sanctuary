@@ -18,6 +18,7 @@ import type {
   TxHistoryEntry,
 } from '../../types';
 import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
+import type { NodeRequestOptions } from '../../../nodeClient';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -76,12 +77,14 @@ export function outputMatchesAddress(out: TransactionOutput, address: string): b
  */
 export async function classifyTransactions(
   ctx: SyncContext,
-  batchTxidSet: Set<string>
+  batchTxidSet: Set<string>,
+  options?: NodeRequestOptions,
 ): Promise<TransactionCreateData[]> {
   const transactionsToCreate: TransactionCreateData[] = [];
   const classifiedTxids = new Set<string>();
 
   for (const [addressStr, history] of ctx.historyResults) {
+    options?.signal?.throwIfAborted();
     const addressRecord = ctx.addressMap.get(addressStr)!;
 
     for (const item of history) {
@@ -91,7 +94,8 @@ export async function classifyTransactions(
         batchTxidSet,
         addressStr,
         addressRecord.id,
-        item
+        item,
+        options,
       );
 
       if (transaction) {
@@ -104,12 +108,47 @@ export async function classifyTransactions(
   return transactionsToCreate;
 }
 
+/**
+ * Keep only candidates whose classification can be completed from evidence
+ * already accepted into the sync context. This is used after the candidate
+ * remote budget expires, when classification must not start another parent or
+ * block-header request.
+ */
+export function locallyClassifiableTransactionIds(
+  ctx: SyncContext,
+  batchTxidSet: Set<string>,
+): Set<string> {
+  const result = new Set<string>();
+  for (const txid of batchTxidSet) {
+    const txDetails = ctx.txDetailsCache.get(txid);
+    const historyItem = findFirstHistoryItem(ctx, txid);
+    if (!txDetails || !historyItem) continue;
+    if (!txDetails.time && historyItem.height > 0) continue;
+    if ((txDetails.vin || []).every(input => hasCompleteLocalInputEvidence(ctx, input))) {
+      result.add(txid);
+    }
+  }
+  return result;
+}
+
+const findFirstHistoryItem = (
+  ctx: SyncContext,
+  txid: string,
+): TxHistoryEntry | undefined => {
+  for (const history of ctx.historyResults.values()) {
+    const item = history.find(candidate => candidate.tx_hash === txid);
+    if (item) return item;
+  }
+  return undefined;
+};
+
 const classifyHistoryItem = async (
   ctx: SyncContext,
   batchTxidSet: Set<string>,
   addressStr: string,
   addressId: string,
-  item: TxHistoryEntry
+  item: TxHistoryEntry,
+  options?: NodeRequestOptions,
 ): Promise<TransactionCreateData | null> => {
   if (!batchTxidSet.has(item.tx_hash)) {
     return null;
@@ -122,7 +161,7 @@ const classifyHistoryItem = async (
 
   const outputs = txDetails.vout || [];
   const inputs = txDetails.vin || [];
-  const inputClassification = await classifyInputs(ctx, inputs);
+  const inputClassification = await classifyInputs(ctx, inputs, options);
   const outputTotals = calculateOutputTotals(outputs, ctx);
   const fee = calculateFee(inputClassification, outputTotals.totalOutputs);
 
@@ -134,13 +173,14 @@ const classifyHistoryItem = async (
     fee,
     inputClassification,
     isReceived: outputs.some((out) => outputMatchesAddress(out, addressStr)),
-    blockTime: await getTransactionBlockTime(txDetails, item.height),
+    blockTime: await getTransactionBlockTime(txDetails, item.height, ctx.network, options),
   });
 };
 
 const classifyInputs = async (
   ctx: SyncContext,
-  inputs: TransactionInput[]
+  inputs: TransactionInput[],
+  options?: NodeRequestOptions,
 ): Promise<InputClassification> => {
   let isSent = false;
   let classificationInputsComplete = true;
@@ -148,9 +188,10 @@ const classifyInputs = async (
   let totalFromWallet = 0;
 
   for (const input of inputs) {
+    options?.signal?.throwIfAborted();
     if (input.coinbase) continue;
 
-    const evidence = await resolveInputEvidence(ctx, input);
+    const evidence = await resolveInputEvidence(ctx, input, options);
     if (!evidence.address || evidence.value === undefined) {
       classificationInputsComplete = false;
     }
@@ -175,15 +216,23 @@ const classifyInputs = async (
 
 const resolveInputEvidence = async (
   ctx: SyncContext,
-  input: TransactionInput
+  input: TransactionInput,
+  options?: NodeRequestOptions,
 ): Promise<InputEvidence> => {
   const inlineEvidence = getInlineInputEvidence(input);
   if (inlineEvidence.address !== undefined && inlineEvidence.value !== undefined) {
     return inlineEvidence;
   }
 
-  const previousOutput = await resolvePreviousOutput(ctx, input);
+  const previousOutput = await resolvePreviousOutput(ctx, input, options);
   const previousEvidence = getOutputEvidence(previousOutput);
+  return combineInputEvidence(inlineEvidence, previousEvidence);
+};
+
+const combineInputEvidence = (
+  inlineEvidence: InputEvidence,
+  previousEvidence: InputEvidence,
+): InputEvidence => {
   return {
     address: inlineEvidence.address ?? previousEvidence.address,
     value: inlineEvidence.address === undefined
@@ -191,6 +240,21 @@ const resolveInputEvidence = async (
       : inlineEvidence.value ?? previousEvidence.value,
     scriptPubKey: inlineEvidence.scriptPubKey ?? previousEvidence.scriptPubKey,
   };
+};
+
+const hasCompleteLocalInputEvidence = (
+  ctx: SyncContext,
+  input: TransactionInput,
+): boolean => {
+  if (input.coinbase) return true;
+  const inlineEvidence = getInlineInputEvidence(input);
+  if (inlineEvidence.address !== undefined && inlineEvidence.value !== undefined) return true;
+  if (!input.txid || input.vout === undefined) return false;
+  const previousEvidence = getOutputEvidence(
+    getCachedPreviousOutput(ctx.txDetailsCache, input.txid, input.vout),
+  );
+  const combined = combineInputEvidence(inlineEvidence, previousEvidence);
+  return combined.address !== undefined && combined.value !== undefined;
 };
 
 const getInlineInputEvidence = (input: TransactionInput): InputEvidence => ({
@@ -205,11 +269,12 @@ const getInlineInputEvidence = (input: TransactionInput): InputEvidence => ({
 
 const resolvePreviousOutput = async (
   ctx: SyncContext,
-  input: TransactionInput
+  input: TransactionInput,
+  options?: NodeRequestOptions,
 ): Promise<TransactionOutput | undefined> => {
   if (!input.txid || input.vout === undefined) return undefined;
   return getCachedPreviousOutput(ctx.txDetailsCache, input.txid, input.vout)
-    ?? fetchPreviousOutput(ctx, input.txid, input.vout);
+    ?? fetchPreviousOutput(ctx, input.txid, input.vout, options);
 };
 
 const getOutputEvidence = (
@@ -233,14 +298,15 @@ const normalizeInlineInputValue = (value: number): number => (
 const fetchPreviousOutput = async (
   ctx: SyncContext,
   txid: string,
-  vout: number
+  vout: number,
+  options?: NodeRequestOptions,
 ): Promise<TransactionOutput | undefined> => {
   if (ctx.txDetailsCache.has(txid)) {
     return undefined;
   }
 
   log.debug(`[SYNC] Cache miss for prev tx ${txid.slice(0, 8)}..., fetching individually`);
-  await fetchAuthenticatedTransactions(ctx, [txid]);
+  await fetchAuthenticatedTransactions(ctx, [txid], options);
   return getCachedPreviousOutput(ctx.txDetailsCache, txid, vout);
 };
 
@@ -410,13 +476,18 @@ const getConfirmations = (height: number, currentBlockHeight: number): number =>
 
 const getTransactionBlockTime = async (
   txDetails: RawTransaction,
-  height: number
+  height: number,
+  network: SyncContext['network'],
+  options?: NodeRequestOptions,
 ): Promise<Date | null> => {
   if (txDetails.time) {
     return new Date(txDetails.time * 1000);
   }
 
-  return height > 0 ? getBlockTimestamp(height) : null;
+  if (height <= 0) return null;
+  return options
+    ? getBlockTimestamp(height, network, options)
+    : getBlockTimestamp(height, network);
 };
 
 const getScriptAddress = (

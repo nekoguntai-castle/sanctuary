@@ -11,6 +11,7 @@ import {
   processTransactionsPhase,
   type SyncContext,
 } from '../../../../../../src/services/bitcoin/sync';
+import { fetchAuthenticatedTransactions } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
 import {
   correctMisclassifiedConsolidations,
   recalculateWalletBalances,
@@ -20,6 +21,103 @@ import { getNotificationService, walletLog } from '../../../../../../src/websock
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
 
 export function registerProcessTransactionBatchIoTests(walletId: string): void {
+    it('propagates a non-budget candidate failure without persisting the batch', async () => {
+      const txid = 'candidate_transport_failure'.padEnd(64, 'f');
+      const failure = new Error('candidate transport failed');
+      vi.mocked(fetchAuthenticatedTransactions).mockRejectedValueOnce(failure);
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map(),
+        txDetailsCache: new Map() as any,
+      });
+
+      await expect(processTransactionsPhase(ctx)).rejects.toBe(failure);
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+      expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
+    });
+
+    it('persists locally complete siblings when the candidate budget expires', async () => {
+      const walletAddress = 'tb1q_budget_wallet';
+      const externalAddress = 'tb1q_budget_external';
+      const localTxid = 'budget_local'.padEnd(64, 'a');
+      const headerTxid = 'budget_header'.padEnd(64, 'b');
+      const parentTxid = 'budget_parent'.padEnd(64, 'c');
+      const missingParentTxid = 'missing_parent'.padEnd(64, 'd');
+      const inlineInput = {
+        txid: 'inline_parent'.padEnd(64, 'e'),
+        vout: 0,
+        prevout: {
+          value: 0.001,
+          scriptPubKey: { address: externalAddress },
+        },
+      };
+      const output = {
+        value: 0.0009,
+        n: 0,
+        scriptPubKey: { address: walletAddress },
+      };
+      const transactions = new Map<string, any>([
+        [localTxid, {
+          txid: localTxid,
+          hex: 'local',
+          time: 1_700_000_000,
+          vin: [inlineInput],
+          vout: [output],
+        }],
+        [headerTxid, {
+          txid: headerTxid,
+          hex: 'header',
+          vin: [inlineInput],
+          vout: [output],
+        }],
+        [parentTxid, {
+          txid: parentTxid,
+          hex: 'parent',
+          time: 1_700_000_000,
+          vin: [{ txid: missingParentTxid, vout: 0 }],
+          vout: [output],
+        }],
+      ]);
+      vi.mocked(fetchAuthenticatedTransactions).mockImplementationOnce(async (ctx, txids) => {
+        for (const txid of txids) ctx.txDetailsCache.set(txid, transactions.get(txid));
+        return new Set(txids);
+      });
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [localTxid, headerTxid, parentTxid],
+        historyResults: new Map([[walletAddress, [
+          { tx_hash: localTxid, height: 800000 },
+          { tx_hash: headerTxid, height: 800000 },
+          { tx_hash: parentTxid, height: 800000 },
+        ]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'addr-budget', address: walletAddress } as any]]),
+        txDetailsCache: new Map() as any,
+        currentBlockHeight: 800100,
+        attemptRuntime: {
+          signal: new AbortController().signal,
+          deadlineAt: Date.now(),
+        },
+      });
+
+      const result = await processTransactionsPhase(ctx);
+
+      expect(fetchAuthenticatedTransactions).toHaveBeenCalledOnce();
+      expect(mockElectrumClient.getTransactionsBatch).not.toHaveBeenCalled();
+      expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
+      expect(getBlockTimestamp).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({ txid: localTxid, type: 'received' })],
+        }),
+      );
+      expect(result.newTransactions.map(transaction => transaction.txid)).toEqual([localTxid]);
+    });
+
     it('should classify coinbase transaction as received', async () => {
       const txid = 'coinbase_tx'.padEnd(64, 'a');
       const walletAddress = 'tb1q_miner_addr';
@@ -45,6 +143,10 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
         existingTxMap: new Map(),
         txDetailsCache: new Map() as any,
         currentBlockHeight: 800100,
+        attemptRuntime: {
+          signal: new AbortController().signal,
+          deadlineAt: Date.now() + 5_000,
+        },
       });
 
       await processTransactionsPhase(ctx);
@@ -564,6 +666,10 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
         existingTxMap: new Map(),
         txDetailsCache: new Map() as any,
         currentBlockHeight: 800100,
+        attemptRuntime: {
+          signal: new AbortController().signal,
+          deadlineAt: Date.now() + 5_000,
+        },
       });
 
       const result = await processTransactionsPhase(ctx);

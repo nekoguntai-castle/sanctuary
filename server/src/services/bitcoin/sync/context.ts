@@ -9,6 +9,7 @@ import type { NodeClientInterface } from '../nodeClient';
 import { addressToOutputScript } from '../utils';
 import type { SyncContext, SyncStats, BitcoinNetwork } from './types';
 import type { WalletSyncMutationFence } from '../../../repositories/types';
+import type { SyncAttemptRuntime } from './attemptRuntime';
 
 /**
  * Give one address row the ownership anchor the evidence phases require.
@@ -69,10 +70,11 @@ export function createSyncContext(params: {
   currentBlockHeight: number;
   viaTor?: boolean;
   mutationFence?: WalletSyncMutationFence;
+  attemptRuntime?: SyncAttemptRuntime;
 }): SyncContext {
   const {
     walletId, wallet, network, client, currentBlockHeight, viaTor = false,
-    mutationFence,
+    mutationFence, attemptRuntime,
   } = params;
   const addresses = params.addresses.map(address => withOwnershipScript(address, network));
 
@@ -96,6 +98,7 @@ export function createSyncContext(params: {
     wallet,
     network,
     mutationFence,
+    attemptRuntime,
 
     // Services
     client,

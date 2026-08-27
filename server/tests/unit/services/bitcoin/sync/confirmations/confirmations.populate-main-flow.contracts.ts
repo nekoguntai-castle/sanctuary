@@ -115,10 +115,14 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     ]);
 
     const onCommit = vi.fn();
+    const signal = new AbortController().signal;
     const result = await populateMissingTransactionFields(
       'wallet-1',
-      undefined,
+      signal,
       onCommit,
+      undefined,
+      false,
+      Date.now() + 30_000,
     );
 
     expect(result.updated).toBe(4);
@@ -143,7 +147,11 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
         ],
       },
     ]);
-    expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-fee', true);
+    expect(mockClient.getTransaction).toHaveBeenCalledWith(
+      'prev-fee',
+      true,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: expect.objectContaining({

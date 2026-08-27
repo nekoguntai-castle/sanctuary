@@ -13,6 +13,12 @@ import type {
   TransactionOutput,
   TxHistoryEntry,
 } from './types';
+import type { NodeRequestOptions } from '../nodeClient';
+import {
+  isSyncStageBudgetError,
+  mapWithSyncConcurrency,
+  SYNC_REMOTE_FALLBACK_CONCURRENCY,
+} from './attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
 const FETCH_BATCH_SIZE = 100;
@@ -106,31 +112,92 @@ const cacheAuthenticatedResult = (
 export async function fetchAuthenticatedTransactions(
   ctx: SyncContext,
   txids: readonly string[],
+  options?: NodeRequestOptions,
 ): Promise<Set<string>> {
   const accepted = new Set<string>();
+  const settled = new Set<string>();
   const unique = [...new Set(txids)];
   for (const txid of unique) {
-    if (ctx.txDetailsCache.has(txid)) accepted.add(txid);
+    if (ctx.txDetailsCache.has(txid)) {
+      accepted.add(txid);
+      settled.add(txid);
+    }
   }
   const pending = unique.filter(txid => !accepted.has(txid));
+  if (options?.signal?.aborted) {
+    if (isSyncStageBudgetError(options.signal.reason)) {
+      for (const txid of pending) {
+        recordFailClosed(ctx, 'fetch_budget_exhausted');
+      }
+      return accepted;
+    }
+    options.signal.throwIfAborted();
+  }
   for (let offset = 0; offset < pending.length; offset += FETCH_BATCH_SIZE) {
+    if (options?.signal?.aborted) {
+      if (isSyncStageBudgetError(options.signal.reason)) {
+        for (const txid of pending.slice(offset)) {
+          recordFailClosed(ctx, 'fetch_budget_exhausted');
+        }
+        return accepted;
+      }
+      options.signal.throwIfAborted();
+    }
     const batchTxids = pending.slice(offset, offset + FETCH_BATCH_SIZE);
-    const results = await ctx.client.getTransactionsBatch(batchTxids, false).then(
+    let budgetExpired = false;
+    const batchRequest = options
+      ? ctx.client.getTransactionsBatch(batchTxids, false, options)
+      : ctx.client.getTransactionsBatch(batchTxids, false);
+    const results = await batchRequest.then(
       value => value,
-      () => undefined,
+      () => {
+        if (options?.signal?.aborted) {
+          if (isSyncStageBudgetError(options.signal.reason)) {
+            for (const txid of batchTxids) {
+              recordFailClosed(ctx, 'fetch_budget_exhausted');
+            }
+            budgetExpired = true;
+            return undefined;
+          }
+          options.signal.throwIfAborted();
+        }
+        return undefined;
+      },
     );
+    if (budgetExpired) return accepted;
     if (results) {
       for (const txid of batchTxids) {
         if (cacheAuthenticatedResult(ctx, txid, results.get(txid))) accepted.add(txid);
+        settled.add(txid);
       }
     } else {
-      for (const txid of batchTxids) {
-        try {
-          const details = await ctx.client.getTransaction(txid, false);
-          if (cacheAuthenticatedResult(ctx, txid, details)) accepted.add(txid);
-        } catch {
-          recordFailClosed(ctx, 'fetch_failed');
+      try {
+        await mapWithSyncConcurrency(
+          batchTxids,
+          SYNC_REMOTE_FALLBACK_CONCURRENCY,
+          options?.signal ? { signal: options.signal } : undefined,
+          async (txid) => {
+            try {
+              const details = options
+                ? await ctx.client.getTransaction(txid, false, options)
+                : await ctx.client.getTransaction(txid, false);
+              if (cacheAuthenticatedResult(ctx, txid, details)) accepted.add(txid);
+              settled.add(txid);
+            } catch (error) {
+              options?.signal?.throwIfAborted();
+              recordFailClosed(ctx, 'fetch_failed');
+              settled.add(txid);
+            }
+          },
+        );
+      } catch (error) {
+        if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
+          for (const txid of batchTxids) {
+            if (!settled.has(txid)) recordFailClosed(ctx, 'fetch_budget_exhausted');
+          }
+          return accepted;
         }
+        throw error;
       }
     }
   }
@@ -197,12 +264,15 @@ const authenticateAddressHistory = (
 };
 
 /** Replaces remote history with only raw-authenticated, script-relevant entries. */
-export async function authenticateHistoryResults(ctx: SyncContext): Promise<void> {
+export async function authenticateHistoryResults(
+  ctx: SyncContext,
+  options?: NodeRequestOptions,
+): Promise<void> {
   const currentTxids = [...new Set(
     [...ctx.historyResults.values()].flatMap(history => history.map(item => item.tx_hash)),
   )];
-  const acceptedCurrent = await fetchAuthenticatedTransactions(ctx, currentTxids);
-  await fetchAuthenticatedTransactions(ctx, previousTxids(ctx, acceptedCurrent));
+  const acceptedCurrent = await fetchAuthenticatedTransactions(ctx, currentTxids, options);
+  await fetchAuthenticatedTransactions(ctx, previousTxids(ctx, acceptedCurrent), options);
 
   collectAuthenticatedSpentOutpoints(ctx, acceptedCurrent);
 

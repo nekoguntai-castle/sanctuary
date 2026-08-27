@@ -11,7 +11,10 @@ import {
   processTransactionsPhase,
   type SyncContext,
 } from '../../../../../../src/services/bitcoin/sync';
-import { classifyTransactions } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/classification';
+import {
+  classifyTransactions,
+  locallyClassifiableTransactionIds,
+} from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/classification';
 import {
   correctMisclassifiedConsolidations,
   recalculateWalletBalances,
@@ -21,6 +24,66 @@ import { getNotificationService, walletLog } from '../../../../../../src/websock
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
 
 export function registerProcessTransactionClassificationTests(walletId: string): void {
+    it('selects only candidates complete from local input and block-time evidence', () => {
+      const ids = {
+        noDetails: 'local_filter_no_details',
+        noHistory: 'local_filter_no_history',
+        needsHeader: 'local_filter_header',
+        noInputs: 'local_filter_no_inputs',
+        coinbase: 'local_filter_coinbase',
+        inline: 'local_filter_inline',
+        missingReference: 'local_filter_missing_ref',
+        cachedParent: 'local_filter_cached_parent',
+        incompleteParent: 'local_filter_bad_parent',
+      };
+      const txid = (value: string, fill: string) => value.padEnd(64, fill);
+      const candidateIds = new Map(Object.entries(ids).map(
+        ([key, value], index) => [key, txid(value, (index + 1).toString(16))],
+      ));
+      const goodParent = txid('local_filter_parent', 'a');
+      const badParent = txid('local_filter_incomplete_parent', 'b');
+      const timed = (vin?: any[]) => ({ time: 1_700_000_000, vin, vout: [] });
+      const txDetailsCache = new Map<string, any>([
+        [candidateIds.get('noHistory')!, timed([])],
+        [candidateIds.get('needsHeader')!, { vin: [], vout: [] }],
+        [candidateIds.get('noInputs')!, timed()],
+        [candidateIds.get('coinbase')!, timed([{ coinbase: '00' }])],
+        [candidateIds.get('inline')!, timed([{
+          txid: txid('inline_parent', 'c'),
+          vout: 0,
+          prevout: { value: 0.001, scriptPubKey: { address: 'external-inline' } },
+        }])],
+        [candidateIds.get('missingReference')!, timed([{}])],
+        [candidateIds.get('cachedParent')!, timed([{ txid: goodParent, vout: 0 }])],
+        [candidateIds.get('incompleteParent')!, timed([{ txid: badParent, vout: 0 }])],
+        [goodParent, { vout: [{ value: 0.001, scriptPubKey: { address: 'external-cached' } }] }],
+        [badParent, { vout: [{ value: 0.001, scriptPubKey: {} }] }],
+      ]);
+      const history = [...candidateIds.entries()]
+        .filter(([key]) => key !== 'noHistory')
+        .map(([, candidateTxid]) => ({ tx_hash: candidateTxid, height: 800000 }));
+      const ctx = createTestContext({
+        walletId,
+        historyResults: new Map([
+          ['first-address', [{ tx_hash: txid('unrelated', 'f'), height: 1 }]],
+          ['second-address', history],
+        ]),
+        txDetailsCache: txDetailsCache as any,
+      });
+
+      const result = locallyClassifiableTransactionIds(
+        ctx,
+        new Set(candidateIds.values()),
+      );
+
+      expect(result).toEqual(new Set([
+        candidateIds.get('noInputs'),
+        candidateIds.get('coinbase'),
+        candidateIds.get('inline'),
+        candidateIds.get('cachedParent'),
+      ]));
+    });
+
     it('does not classify a requested history item without authenticated transaction details', async () => {
       const txid = 'missing_authenticated_details'.padEnd(64, 'a');
       const walletAddress = 'tb1q_missing_authenticated_details';
@@ -62,6 +125,10 @@ export function registerProcessTransactionClassificationTests(walletId: string):
         } as any]]),
         addressMap: new Map([[walletAddress, { id: 'canonical-script-address' } as any]]),
         txDetailsCache: new Map() as any,
+        attemptRuntime: {
+          signal: new AbortController().signal,
+          deadlineAt: Date.now() + 5_000,
+        },
       });
 
       await processTransactionsPhase(ctx);
@@ -70,6 +137,11 @@ export function registerProcessTransactionClassificationTests(walletId: string):
         expect.objectContaining({
           data: [expect.objectContaining({ txid, type: 'sent', amount: BigInt(-100000) })],
         })
+      );
+      expect(getBlockTimestamp).toHaveBeenCalledWith(
+        800000,
+        'mainnet',
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
 

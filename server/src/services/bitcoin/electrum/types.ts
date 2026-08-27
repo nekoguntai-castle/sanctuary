@@ -284,4 +284,5 @@ export interface PendingRequest {
   timeoutId: NodeJS.Timeout;
   method?: string;
   params?: unknown[];
+  cleanup?: () => void;
 }

@@ -9,6 +9,7 @@ import type { NodeClientInterface } from '../nodeClient';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { RbfStatus } from '@sanctuary/shared/constants/transactions';
 import type { WalletSyncMutationFence } from '../../../repositories/types';
+import type { SyncAttemptRuntime } from './attemptRuntime';
 
 // ============================================
 // Core Types
@@ -96,6 +97,8 @@ export interface SyncContext {
   network: BitcoinNetwork;
   /** Exact generation owner required by every canonical database mutation. */
   readonly mutationFence?: WalletSyncMutationFence;
+  /** One immutable cancellation/deadline authority for this recursive attempt. */
+  readonly attemptRuntime?: SyncAttemptRuntime;
 
   // Services
   client: NodeClientInterface;
@@ -215,6 +218,8 @@ export type SyncPhase = {
 export interface PipelineOptions {
   /** Cooperative cancellation checked between completed sync phases. */
   signal?: AbortSignal;
+  /** Preferred exact attempt runtime; `signal` remains for compatibility callers. */
+  attemptRuntime?: SyncAttemptRuntime;
   /** Present only for generation-bound canonical worker execution. */
   mutationFence?: WalletSyncMutationFence;
   /** Skip certain phases (by name) */

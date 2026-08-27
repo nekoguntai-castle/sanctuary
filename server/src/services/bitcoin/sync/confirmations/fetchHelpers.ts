@@ -7,7 +7,7 @@
 
 import { createLogger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/errors';
-import { getNodeClient } from '../../nodeClient';
+import { getNodeClient, type NodeRequestOptions } from '../../nodeClient';
 import { walletLog } from '../../../../websocket/notifications';
 import { mapWithConcurrency } from '../../../../utils/async';
 
@@ -22,7 +22,8 @@ export async function fetchBlockHeightsFromHistory(
   walletId: string,
   transactions: Array<{ blockHeight: number | null; txid: string }>,
   walletAddressSet: Set<string>,
-  client: Awaited<ReturnType<typeof getNodeClient>>
+  client: Awaited<ReturnType<typeof getNodeClient>>,
+  options?: NodeRequestOptions,
 ): Promise<Map<string, number>> {
   const txHeightFromHistory = new Map<string, number>();
 
@@ -37,6 +38,7 @@ export async function fetchBlockHeightsFromHistory(
   }
 
   for (let i = 0; i < addressList.length; i += HISTORY_BATCH_SIZE) {
+    options?.signal?.throwIfAborted();
     const batch = addressList.slice(i, i + HISTORY_BATCH_SIZE);
     const batchNum = Math.floor(i / HISTORY_BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(addressList.length / HISTORY_BATCH_SIZE);
@@ -47,9 +49,12 @@ export async function fetchBlockHeightsFromHistory(
       batch,
       async (address) => {
         try {
-          const history = await client.getAddressHistory(address);
+          const history = options
+            ? await client.getAddressHistory(address, options)
+            : await client.getAddressHistory(address);
           return history;
         } catch (error) {
+          options?.signal?.throwIfAborted();
           return [];
         }
       },
@@ -77,7 +82,8 @@ export async function fetchBlockHeightsFromHistory(
 export async function fetchTransactionDetails(
   walletId: string,
   transactions: Array<{ txid: string }>,
-  client: Awaited<ReturnType<typeof getNodeClient>>
+  client: Awaited<ReturnType<typeof getNodeClient>>,
+  options?: NodeRequestOptions,
 ): Promise<Map<string, any>> {
   const TX_BATCH_SIZE = 5;
   const txDetailsCache = new Map<string, any>();
@@ -89,6 +95,7 @@ export async function fetchTransactionDetails(
   let failedCount = 0;
 
   for (let i = 0; i < txids.length; i += TX_BATCH_SIZE) {
+    options?.signal?.throwIfAborted();
     const batch = txids.slice(i, i + TX_BATCH_SIZE);
     const batchNum = Math.floor(i / TX_BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(txids.length / TX_BATCH_SIZE);
@@ -99,9 +106,12 @@ export async function fetchTransactionDetails(
       batch,
       async (txid) => {
         try {
-          const details = await client.getTransaction(txid, true);
+          const details = options
+            ? await client.getTransaction(txid, true, options)
+            : await client.getTransaction(txid, true);
           return { txid, details };
         } catch (error) {
+          options?.signal?.throwIfAborted();
           log.warn(`Failed to fetch tx ${txid}`, { error: getErrorMessage(error) });
           return { txid, details: null };
         }
@@ -134,7 +144,8 @@ export async function fetchPreviousTransactions(
   walletId: string,
   transactions: Array<{ txid: string; type: string; fee: bigint | null; counterpartyAddress: string | null }>,
   txDetailsCache: Map<string, any>,
-  client: Awaited<ReturnType<typeof getNodeClient>>
+  client: Awaited<ReturnType<typeof getNodeClient>>,
+  options?: NodeRequestOptions,
 ): Promise<Map<string, any>> {
   const prevTxCache = new Map<string, any>();
   const requiredPrevTxids = collectRequiredPreviousTxids(transactions, txDetailsCache);
@@ -148,8 +159,9 @@ export async function fetchPreviousTransactions(
     let prevFailed = 0;
 
     for (let i = 0; i < prevTxidsList.length; i += PREV_TX_BATCH_SIZE) {
+      options?.signal?.throwIfAborted();
       const batch = prevTxidsList.slice(i, i + PREV_TX_BATCH_SIZE);
-      const results = await fetchPreviousTransactionBatch(batch, client);
+      const results = await fetchPreviousTransactionBatch(batch, client, options);
       const counts = storePreviousTransactionResults(results, prevTxCache);
       prevFetched += counts.fetched;
       prevFailed += counts.failed;
@@ -210,15 +222,19 @@ function addPrevTxidsFromInputs(requiredPrevTxids: Set<string>, inputs: any[]): 
 
 async function fetchPreviousTransactionBatch(
   batch: string[],
-  client: Awaited<ReturnType<typeof getNodeClient>>
+  client: Awaited<ReturnType<typeof getNodeClient>>,
+  options?: NodeRequestOptions,
 ): Promise<Array<{ txid: string; details: any | null }>> {
   return mapWithConcurrency(
     batch,
     async (txid) => {
       try {
-        const details = await client.getTransaction(txid, true);
+        const details = options
+          ? await client.getTransaction(txid, true, options)
+          : await client.getTransaction(txid, true);
         return { txid, details };
       } catch (error) {
+        options?.signal?.throwIfAborted();
         log.warn(`Failed to fetch previous tx ${txid}`, { error: getErrorMessage(error) });
         return { txid, details: null };
       }

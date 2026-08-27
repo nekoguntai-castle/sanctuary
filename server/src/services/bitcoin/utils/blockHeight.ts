@@ -4,7 +4,7 @@
  * Handles block height caching and fetching for fast confirmation calculations.
  */
 
-import { getNodeClient, resetNodeClient } from "../nodeClient";
+import { getNodeClient, resetNodeClient, type NodeRequestOptions } from "../nodeClient";
 import type { NetworkType } from "@sanctuary/shared/constants/bitcoin";
 import { createLogger } from "../../../utils/logger";
 import { getErrorMessage } from "../../../utils/errors";
@@ -75,12 +75,15 @@ export function setAuthoritativeBlockHeight(
  */
 export async function getBlockHeight(
   network: Network = "mainnet",
+  options?: NodeRequestOptions,
 ): Promise<number> {
+  options?.signal?.throwIfAborted();
   try {
-    const height = await fetchBlockHeight(network);
+    const height = await fetchBlockHeight(network, options);
     setCachedBlockHeight(height, network);
     return height;
   } catch (error) {
+    options?.signal?.throwIfAborted();
     if (shouldRetryBlockHeight(error)) {
       try {
         log.warn("Retrying block height after transient connection error", {
@@ -88,10 +91,12 @@ export async function getBlockHeight(
           network,
         });
         await resetNodeClient(network);
-        const height = await fetchBlockHeight(network);
+        options?.signal?.throwIfAborted();
+        const height = await fetchBlockHeight(network, options);
         setCachedBlockHeight(height, network);
         return height;
       } catch (retryError) {
+        options?.signal?.throwIfAborted();
         log.error("Failed to get block height after retry", {
           error: getErrorMessage(retryError),
           originalError: getErrorMessage(error),
@@ -109,9 +114,11 @@ export async function getBlockHeight(
   }
 }
 
-async function fetchBlockHeight(network: Network): Promise<number> {
-  const client = await getNodeClient(network);
-  return client.getBlockHeight();
+async function fetchBlockHeight(network: Network, options?: NodeRequestOptions): Promise<number> {
+  const client = options
+    ? await getNodeClient(network, options)
+    : await getNodeClient(network);
+  return options ? client.getBlockHeight(options) : client.getBlockHeight();
 }
 
 /**
@@ -123,8 +130,9 @@ async function fetchBlockHeight(network: Network): Promise<number> {
  */
 export async function assertChainReachable(
   network: Network = "mainnet",
+  options?: NodeRequestOptions,
 ): Promise<number> {
-  const height = await fetchBlockHeight(network);
+  const height = await fetchBlockHeight(network, options);
   setCachedBlockHeight(height, network);
   return height;
 }
@@ -204,7 +212,9 @@ const blockTimestampCache = new LRUCache<string, Date>(1000);
 export async function getBlockTimestamp(
   height: number,
   network: Network = "mainnet",
+  options?: NodeRequestOptions,
 ): Promise<Date | null> {
+  options?.signal?.throwIfAborted();
   if (height <= 0) return null;
 
   // Check cache first
@@ -215,8 +225,9 @@ export async function getBlockTimestamp(
   }
 
   try {
-    const client = await getNodeClient(network);
-    const headerHex = await client.getBlockHeader(height);
+    const client = await getNodeClient(network, options);
+    const headerHex = await client.getBlockHeader(height, options);
+    options?.signal?.throwIfAborted();
 
     // Block header structure (80 bytes):
     // - version: 4 bytes (0-3)
@@ -240,6 +251,7 @@ export async function getBlockTimestamp(
 
     return date;
   } catch (error) {
+    options?.signal?.throwIfAborted();
     log.warn(`Failed to get block timestamp for height ${height}`, {
       error: getErrorMessage(error),
     });

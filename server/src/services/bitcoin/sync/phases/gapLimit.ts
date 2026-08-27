@@ -14,6 +14,7 @@ import {
 } from '../addressDiscovery';
 import type { SyncContext } from '../types';
 import { runWalletSyncMutation } from '../mutationBoundary';
+import { createSyncStageRuntime } from '../attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_SYNC_GAP');
 
@@ -55,9 +56,17 @@ export async function gapLimitPhase(ctx: SyncContext): Promise<SyncContext> {
 
   // Fetch history for new addresses to check if any have transactions
   const newAddressStrings = newAddresses.map(a => a.address);
+  const stage = ctx.attemptRuntime
+    ? createSyncStageRuntime(ctx.attemptRuntime, 'gap_limit_history')
+    : undefined;
+  const requestOptions = stage
+    ? { signal: stage.signal, deadlineAt: stage.deadlineAt }
+    : undefined;
 
   try {
-    const newHistoryResults = await client.getAddressHistoryBatch(newAddressStrings);
+    const newHistoryResults = requestOptions
+      ? await client.getAddressHistoryBatch(newAddressStrings, requestOptions)
+      : await client.getAddressHistoryBatch(newAddressStrings);
 
     // Check if any new addresses have transactions
     let foundTransactions = false;
@@ -77,7 +86,10 @@ export async function gapLimitPhase(ctx: SyncContext): Promise<SyncContext> {
       // For now, we store the new addresses in context for the parent to handle
     }
   } catch (error) {
+    requestOptions?.signal.throwIfAborted();
     log.warn(`[SYNC] Failed to scan new addresses: ${error}`);
+  } finally {
+    stage?.dispose();
   }
 
   return ctx;

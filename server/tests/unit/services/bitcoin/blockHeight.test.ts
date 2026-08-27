@@ -156,6 +156,28 @@ describe("blockHeight utils", () => {
       );
     });
 
+    it("does not swallow retry cancellation behind a warm height cache", async () => {
+      const { getBlockHeight, setCachedBlockHeight } = await loadModule();
+      const controller = new AbortController();
+      const abortReason = new Error("sync cancelled during height retry");
+      setCachedBlockHeight(777779, "mainnet");
+      mockGetNodeClient
+        .mockResolvedValueOnce({
+          getBlockHeight: vi.fn().mockRejectedValue(new Error("socket closed")),
+        })
+        .mockResolvedValueOnce({
+          getBlockHeight: vi.fn().mockImplementation(async () => {
+            controller.abort(abortReason);
+            throw abortReason;
+          }),
+        });
+
+      await expect(getBlockHeight("mainnet", {
+        signal: controller.signal,
+        deadlineAt: Date.now() + 60_000,
+      })).rejects.toBe(abortReason);
+    });
+
     it("throws when node call fails and no cache exists", async () => {
       const { getBlockHeight } = await loadModule();
       const error = new Error("totally down");

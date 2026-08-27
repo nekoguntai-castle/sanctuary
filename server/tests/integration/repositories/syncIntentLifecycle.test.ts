@@ -37,6 +37,23 @@ describeWithDatabase('sync intent lifecycle', () => {
   const walletIds: string[] = [];
   const factoryClient = prisma as unknown as PrismaClient;
 
+  async function waitForWalletMutationLockWaiter(): Promise<void> {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const [waiting] = await prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*) AS "count"
+        FROM pg_stat_activity
+        WHERE "pid" <> pg_backend_pid()
+          AND "datname" = current_database()
+          AND "query" LIKE '%pg_advisory_xact_lock(hashtextextended%'
+          AND "wait_event_type" = 'Lock'
+      `;
+      if (Number(waiting?.count ?? 0) > 0) return;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error('Timed out waiting for the wallet mutation lock waiter');
+  }
+
   afterEach(async () => {
     if (walletIds.length > 0) {
       await prisma.wallet.deleteMany({ where: { id: { in: walletIds.splice(0) } } });
@@ -691,6 +708,53 @@ describeWithDatabase('sync intent lifecycle', () => {
       lastSyncedBlockHeight: 840_010,
     });
     expect(published).toEqual(['gap-limit-committed']);
+  });
+
+  it('rejects a fenced mutation cancelled while waiting for the real wallet lock', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const mutationFence = { walletId, generation: 1, leaseToken } as const;
+    let releaseLock!: () => void;
+    const lockGate = new Promise<void>(resolve => { releaseLock = resolve; });
+    let reportLocked!: () => void;
+    const locked = new Promise<void>(resolve => { reportLocked = resolve; });
+    const holder = withWalletSyncMutationFence(mutationFence, async () => {
+      reportLocked();
+      await lockGate;
+    });
+    await locked;
+
+    const controller = new AbortController();
+    const callback = vi.fn();
+    const postCommitEffect = vi.fn();
+    const queued = runWalletSyncMutation(
+      {
+        walletId,
+        mutationFence,
+        attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 30_000 },
+      },
+      'transaction_batch',
+      async (_tx, deferPostCommit) => {
+        callback();
+        deferPostCommit(postCommitEffect);
+      },
+    );
+    await waitForWalletMutationLockWaiter();
+    const cancellation = new Error('sync attempt cancelled while waiting');
+    controller.abort(cancellation);
+    releaseLock();
+    await holder;
+
+    await expect(queued).rejects.toBe(cancellation);
+    expect(callback).not.toHaveBeenCalled();
+    expect(postCommitEffect).not.toHaveBeenCalled();
   });
 
   it('rejects a cross-wallet mutation target before opening the fenced transaction', async () => {

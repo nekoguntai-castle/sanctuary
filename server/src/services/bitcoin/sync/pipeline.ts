@@ -5,7 +5,7 @@
  */
 
 import { walletRepository, addressRepository } from "../../../repositories";
-import { getNodeClient } from "../nodeClient";
+import { getNodeClient, type NodeClientInterface } from "../nodeClient";
 import { normalizeLegacyBitcoinNetwork } from "../networks";
 import { getElectrumPool } from "../electrumPool";
 import { createLogger } from "../../../utils/logger";
@@ -17,6 +17,7 @@ import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddre
 import { hasCanonicalPolicyIdentity } from '../../wallet/canonicalPolicy';
 
 import { createSyncContext } from "./context";
+import { createSyncStageRuntime, type SyncAttemptRuntime } from './attemptRuntime';
 import type {
   SyncContext,
   SyncPhase,
@@ -59,7 +60,11 @@ export async function executeSyncPipeline(
   phases: SyncPhase[],
   options?: PipelineOptions,
 ): Promise<SyncResult> {
-  options?.signal?.throwIfAborted();
+  const attemptRuntime: SyncAttemptRuntime | undefined = options?.attemptRuntime
+    ?? (options?.signal
+      ? { signal: options.signal, deadlineAt: Number.POSITIVE_INFINITY }
+      : undefined);
+  attemptRuntime?.signal.throwIfAborted();
   const startTime = Date.now();
 
   // Load wallet
@@ -80,8 +85,24 @@ export async function executeSyncPipeline(
   );
 
   // Get node client and current block height
-  const client = await getNodeClient(network);
-  const currentBlockHeight = await getBlockHeight(network);
+  const initialStage = attemptRuntime
+    ? createSyncStageRuntime(attemptRuntime, 'initial_network')
+    : undefined;
+  const requestOptions = initialStage
+    ? { signal: initialStage.signal, deadlineAt: initialStage.deadlineAt }
+    : undefined;
+  let client: NodeClientInterface;
+  let currentBlockHeight: number;
+  try {
+    client = requestOptions
+      ? await getNodeClient(network, requestOptions)
+      : await getNodeClient(network);
+    currentBlockHeight = requestOptions
+      ? await getBlockHeight(network, requestOptions)
+      : await getBlockHeight(network);
+  } finally {
+    initialStage?.dispose();
+  }
 
   // Load all addresses for the wallet
   const addresses = await addressRepository.findByWalletId(walletId);
@@ -153,6 +174,7 @@ export async function executeSyncPipeline(
     currentBlockHeight,
     viaTor,
     mutationFence: options?.mutationFence,
+    attemptRuntime,
   });
 
   // Filter phases based on options
@@ -170,13 +192,13 @@ export async function executeSyncPipeline(
 
   // Execute phases in sequence
   for (const phase of phasesToExecute) {
-    options?.signal?.throwIfAborted();
+    attemptRuntime?.signal.throwIfAborted();
     const phaseStart = Date.now();
     log.debug(`[SYNC] Starting phase: ${phase.name}`);
 
     try {
       ctx = await phase.execute(ctx);
-      options?.signal?.throwIfAborted();
+      attemptRuntime?.signal.throwIfAborted();
       ctx.completedPhases.push(phase.name);
 
       const phaseElapsed = Date.now() - phaseStart;

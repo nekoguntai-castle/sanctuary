@@ -204,18 +204,28 @@ export async function executeCanonicalIncrementalSync(
       );
     }
 
-    if (data.fullResync === true) {
-      await assertChainReachable(resolvedNetwork);
-      await resyncRepository.resetWalletForFullResync(
-        data.walletId,
-        data.fullResyncGeneration,
-        fence,
-      );
-    }
+    const maxSyncDurationMs = getConfig().sync.maxSyncDurationMs;
     const result = await runSyncAttemptWithTimeout(
-      async (signal) => {
-        const syncResult = await syncWallet(data.walletId, 0, signal, fence);
-        await populateMissingTransactionFields(data.walletId, signal, undefined, fence);
+      async (signal, deadlineAt) => {
+        const requestOptions = { signal, deadlineAt };
+        if (data.fullResync === true) {
+          await assertChainReachable(resolvedNetwork, requestOptions);
+          signal.throwIfAborted();
+          await resyncRepository.resetWalletForFullResync(
+            data.walletId,
+            data.fullResyncGeneration,
+            fence,
+          );
+        }
+        const syncResult = await syncWallet(data.walletId, 0, signal, fence, deadlineAt);
+        await populateMissingTransactionFields(
+          data.walletId,
+          signal,
+          undefined,
+          fence,
+          false,
+          deadlineAt,
+        );
         await dependencies.enrollWalletSubscriptions(
           data.walletId,
           walletNetwork,
@@ -223,7 +233,7 @@ export async function executeCanonicalIncrementalSync(
         );
         return syncResult;
       },
-      getConfig().sync.maxSyncDurationMs,
+      maxSyncDurationMs,
       SYNC_ABORT_GRACE_MS,
       execution.signal,
     );

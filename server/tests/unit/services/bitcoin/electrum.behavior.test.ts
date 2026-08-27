@@ -81,6 +81,23 @@ function makeClient() {
   });
 }
 
+function attachFakeSocket(client: ElectrumClient): FakeSocket {
+  const socket = new FakeSocket();
+  (client as any).socket = socket;
+  (client as any).connected = true;
+  return socket;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('ElectrumClient behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -242,6 +259,245 @@ describe('ElectrumClient behavior', () => {
     expect(batchSpy).toHaveBeenCalledTimes(2);
     expect(result.size).toBe(2);
     expect((await client.getTransactionsBatch([], true)).size).toBe(0);
+  });
+
+  it('aborts one pending request, clears its timer/listener, and ignores a late reply', async () => {
+    vi.useFakeTimers();
+    const client = makeClient();
+    attachFakeSocket(client);
+    const controller = new AbortController();
+    const abortReason = new Error('attempt cancelled');
+    const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
+
+    const request = (client as any).request(
+      'server.ping',
+      [],
+      { signal: controller.signal },
+    ) as Promise<unknown>;
+    const outcome = request.then(
+      value => ({ status: 'resolved' as const, value }),
+      error => ({ status: 'rejected' as const, error }),
+    );
+    const requestId = [...(client as any).pendingRequests.keys()][0] as number;
+
+    controller.abort(abortReason);
+    const pendingAfterAbort = (client as any).pendingRequests.size;
+    const timersAfterAbort = vi.getTimerCount();
+    (client as any).handleData(Buffer.from(
+      `${JSON.stringify({ jsonrpc: '2.0', id: requestId, result: 'late' })}\n`,
+    ));
+    await vi.runAllTimersAsync();
+
+    await expect(outcome).resolves.toEqual({
+      status: 'rejected',
+      error: abortReason,
+    });
+    expect(pendingAfterAbort).toBe(0);
+    expect(timersAfterAbort).toBe(0);
+    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+  });
+
+  it('aborts all IDs from one pending batch without touching the shared socket', async () => {
+    vi.useFakeTimers();
+    const client = makeClient();
+    const socket = attachFakeSocket(client);
+    const controller = new AbortController();
+    const abortReason = new Error('batch cancelled');
+    const addListener = vi.spyOn(controller.signal, 'addEventListener');
+    const requests = Array.from({ length: 100 }, (_, index) => ({
+      method: 'blockchain.transaction.get',
+      params: [index.toString(16).padStart(64, '0'), false],
+    }));
+
+    const batch = (client as any).batchRequest(requests, {
+      signal: controller.signal,
+    }) as Promise<unknown[]>;
+    const outcome = batch.then(
+      value => ({ status: 'resolved' as const, value }),
+      error => ({ status: 'rejected' as const, error }),
+    );
+    const requestIds = [...(client as any).pendingRequests.keys()] as number[];
+
+    controller.abort(abortReason);
+    const pendingAfterAbort = (client as any).pendingRequests.size;
+    const timersAfterAbort = vi.getTimerCount();
+    for (const id of requestIds) {
+      (client as any).handleData(Buffer.from(
+        `${JSON.stringify({ jsonrpc: '2.0', id, result: rawTxHex })}\n`,
+      ));
+    }
+    await vi.runAllTimersAsync();
+
+    await expect(outcome).resolves.toEqual({
+      status: 'rejected',
+      error: abortReason,
+    });
+    expect(requestIds).toHaveLength(100);
+    expect(addListener).toHaveBeenCalledTimes(1);
+    expect(pendingAfterAbort).toBe(0);
+    expect(timersAfterAbort).toBe(0);
+    expect(socket.destroy).not.toHaveBeenCalled();
+  });
+
+  it('normalizes a non-Error cancellation reason', async () => {
+    const client = makeClient();
+    attachFakeSocket(client);
+    const controller = new AbortController();
+    const request = (client as any).request(
+      'server.ping',
+      [],
+      { signal: controller.signal },
+    ) as Promise<unknown>;
+
+    controller.abort('cancelled by caller');
+
+    await expect(request).rejects.toMatchObject({ message: 'cancelled by caller' });
+  });
+
+  it('provides a stable cancellation error for a legacy signal without a reason', async () => {
+    const client = makeClient();
+    attachFakeSocket(client);
+    let abortListener!: () => void;
+    const signal = {
+      aborted: false,
+      reason: undefined,
+      throwIfAborted: () => undefined,
+      addEventListener: (_event: string, listener: () => void) => { abortListener = listener; },
+      removeEventListener: vi.fn(),
+    } as unknown as AbortSignal;
+    const request = (client as any).request('server.ping', [], { signal }) as Promise<unknown>;
+
+    abortListener();
+
+    await expect(request).rejects.toThrow('Electrum request cancelled');
+  });
+
+  it('cleans a single request after its low-level timeout', async () => {
+    vi.useFakeTimers();
+    const client = makeClient();
+    attachFakeSocket(client);
+    const request = (client as any).request('server.ping') as Promise<unknown>;
+    const outcome = request.catch(error => error as Error);
+
+    await vi.advanceTimersByTimeAsync(30);
+
+    await expect(outcome).resolves.toMatchObject({ message: expect.stringContaining('timeout') });
+    expect((client as any).pendingRequests.size).toBe(0);
+  });
+
+  it('cleans every batch entry after low-level timeouts', async () => {
+    vi.useFakeTimers();
+    const client = makeClient();
+    attachFakeSocket(client);
+    const request = (client as any).batchRequest([
+      { method: 'server.ping', params: [] },
+      { method: 'server.ping', params: [] },
+    ]) as Promise<unknown>;
+    const outcome = request.catch(error => error as Error);
+
+    await vi.advanceTimersByTimeAsync(50);
+
+    await expect(outcome).resolves.toMatchObject({ message: expect.stringContaining('timeout') });
+    expect((client as any).pendingRequests.size).toBe(0);
+  });
+
+  it.each([new Error('socket closed'), 'socket closed'])(
+    'cleans a single request when socket write throws %p',
+    async (failure) => {
+      vi.useFakeTimers();
+      const client = makeClient();
+      const socket = attachFakeSocket(client);
+      socket.write.mockImplementationOnce(() => { throw failure; });
+
+      await expect((client as any).request('server.ping')).rejects.toThrow('socket closed');
+
+      expect((client as any).pendingRequests.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it.each([new Error('batch socket closed'), 'batch socket closed'])(
+    'cleans a batch when socket write throws %p',
+    async (failure) => {
+      vi.useFakeTimers();
+      const client = makeClient();
+      const socket = attachFakeSocket(client);
+      socket.write.mockImplementationOnce(() => { throw failure; });
+
+      await expect((client as any).batchRequest([
+        { method: 'server.ping', params: [] },
+        { method: 'server.ping', params: [] },
+      ])).rejects.toThrow('batch socket closed');
+
+      expect((client as any).pendingRequests.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it('detaches one aborted caller from a shared deferred connection attempt', async () => {
+    const client = makeClient();
+    const connection = deferred<void>();
+    vi.spyOn(client as any, 'establishConnection').mockReturnValue(connection.promise);
+    const disconnect = vi.spyOn(client, 'disconnect');
+    const controller = new AbortController();
+    const abortReason = new Error('caller cancelled');
+    let callerAState: unknown = 'pending';
+
+    const callerA = (client as any).request(
+      'server.ping',
+      [],
+      { signal: controller.signal },
+    ) as Promise<unknown>;
+    void callerA.then(
+      () => { callerAState = 'resolved'; },
+      error => { callerAState = error; },
+    );
+    const callerB = (client as any).request('server.version', []) as Promise<unknown>;
+
+    controller.abort(abortReason);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const stateAfterAbort = callerAState;
+    attachFakeSocket(client);
+    connection.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const callerBRequestId = [...(client as any).pendingRequests.keys()][0] as number;
+    (client as any).handleData(Buffer.from(
+      `${JSON.stringify({ jsonrpc: '2.0', id: callerBRequestId, result: 'connected' })}\n`,
+    ));
+    await expect(callerB).resolves.toBe('connected');
+    await callerA.catch(() => undefined);
+
+    expect(stateAfterAbort).toBe(abortReason);
+    expect(disconnect).not.toHaveBeenCalled();
+    expect((client as any).establishConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops a transaction batch retry delay when its caller aborts', async () => {
+    vi.useFakeTimers();
+    const client = makeClient();
+    const batchRequest = vi.spyOn(client as any, 'batchRequest')
+      .mockRejectedValue(new Error('request timeout'));
+    const controller = new AbortController();
+    const abortReason = new Error('attempt timed out');
+
+    const pending = (client as any).getTransactionsBatch(
+      ['a'.repeat(64)],
+      false,
+      { signal: controller.signal },
+    ) as Promise<Map<string, unknown>>;
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(abortReason);
+    const outcome = pending.then(
+      value => ({ status: 'resolved' as const, value }),
+      error => ({ status: 'rejected' as const, error }),
+    );
+    await vi.runAllTimersAsync();
+
+    await expect(outcome).resolves.toEqual({
+      status: 'rejected',
+      error: abortReason,
+    });
+    expect(batchRequest).toHaveBeenCalledTimes(1);
   });
 
   it('throws non-timeout batch errors', async () => {

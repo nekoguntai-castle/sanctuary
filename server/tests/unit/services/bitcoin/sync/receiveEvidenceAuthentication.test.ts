@@ -11,6 +11,7 @@ import {
   authenticateHistoryResults,
   fetchAuthenticatedTransactions,
 } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
 
 const makeRawTransaction = (script: Uint8Array, value: bigint) => {
   const transaction = new bitcoin.Transaction();
@@ -62,6 +63,276 @@ const clientFor = (transactions: Map<string, RawTransaction>) => ({
 });
 
 describe('full-wallet receive evidence authentication', () => {
+  it('propagates an already-aborted attempt instead of recording evidence failure', async () => {
+    const controller = new AbortController();
+    const reason = new Error('attempt cancelled before raw fetch');
+    controller.abort(reason);
+    const client = clientFor(new Map());
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(
+      ctx,
+      ['10'.repeat(32)],
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    )).rejects.toBe(reason);
+
+    expect(ctx.rejectedEvidenceCount).toBe(0);
+    expect(client.getTransactionsBatch).not.toHaveBeenCalled();
+  });
+
+  it('attributes only the untouched next chunk when the budget expires between chunks', async () => {
+    const controller = new AbortController();
+    const txids = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(64, '0'));
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockImplementationOnce(async () => {
+      controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
+      return new Map();
+    });
+    const ctx = createTestContext({ client: client as any });
+
+    const result = await fetchAuthenticatedTransactions(
+      ctx,
+      txids,
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    );
+
+    expect(result).toEqual(new Set());
+    expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['missing_result', 100],
+      ['fetch_budget_exhausted', 1],
+    ]));
+  });
+
+  it('propagates non-budget cancellation between chunks without attributing the untouched chunk', async () => {
+    const controller = new AbortController();
+    const reason = new Error('attempt cancelled between raw chunks');
+    const txids = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(64, '0'));
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockImplementationOnce(async () => {
+      controller.abort(reason);
+      return new Map();
+    });
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(
+      ctx,
+      txids,
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    )).rejects.toBe(reason);
+
+    expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['missing_result', 100],
+    ]));
+  });
+
+  it('attributes the current batch when its request ends on local budget expiry', async () => {
+    const controller = new AbortController();
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockImplementation(async () => {
+      controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
+      throw new Error('request stopped at deadline');
+    });
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(
+      ctx,
+      ['20'.repeat(32), '21'.repeat(32)],
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    )).resolves.toEqual(new Set());
+
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['fetch_budget_exhausted', 2],
+    ]));
+    expect(client.getTransaction).not.toHaveBeenCalled();
+  });
+
+  it('propagates cancellation raised by a batch request without fallback', async () => {
+    const controller = new AbortController();
+    const reason = new Error('attempt cancelled during raw batch');
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockImplementation(async () => {
+      controller.abort(reason);
+      throw reason;
+    });
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(
+      ctx,
+      ['30'.repeat(32)],
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    )).rejects.toBe(reason);
+
+    expect(ctx.rejectedEvidenceCount).toBe(0);
+    expect(client.getTransaction).not.toHaveBeenCalled();
+  });
+
+  it('propagates non-budget cancellation raised by fallback scheduling', async () => {
+    const controller = new AbortController();
+    const reason = new Error('attempt cancelled during raw fallback');
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+    client.getTransaction.mockImplementation(async () => {
+      controller.abort(reason);
+      throw reason;
+    });
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(
+      ctx,
+      ['31'.repeat(32)],
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    )).rejects.toBe(reason);
+
+    expect(client.getTransaction).toHaveBeenCalledOnce();
+    expect(ctx.rejectedEvidenceCount).toBe(0);
+  });
+
+  it('rejects a missing individual fallback result without accepting the candidate', async () => {
+    const txid = '32'.repeat(32);
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [txid])).resolves.toEqual(new Set());
+
+    expect(client.getTransaction).toHaveBeenCalledWith(txid, false);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([['missing_result', 1]]));
+  });
+
+  it('does not count a settled fallback failure again when a sibling exhausts the budget', async () => {
+    const acceptedTransaction = makeRawTransaction(Uint8Array.from([0x51]), 4n);
+    const failedTxid = 'cc'.repeat(32);
+    const budgetTxid = 'dd'.repeat(32);
+    const controller = new AbortController();
+    let started = 0;
+    let resolveAllStarted!: () => void;
+    const allStarted = new Promise<void>(resolve => {
+      resolveAllStarted = resolve;
+    });
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+    client.getTransaction.mockImplementation(
+      async (txid: string, _verbose?: boolean, options?: { signal?: AbortSignal }) => {
+        started++;
+        if (started === 3) resolveAllStarted();
+        if (txid === acceptedTransaction.getId()) return details(acceptedTransaction);
+        if (txid === failedTxid) throw new Error('individual unavailable');
+        return new Promise((_, reject) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () => reject(options.signal?.reason),
+            { once: true },
+          );
+        });
+      },
+    );
+    const ctx = createTestContext({ client: client as any });
+
+    const pending = fetchAuthenticatedTransactions(
+      ctx,
+      [acceptedTransaction.getId(), failedTxid, budgetTxid],
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    );
+    await allStarted;
+    controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
+    const result = await pending;
+
+    expect(result).toEqual(new Set([acceptedTransaction.getId()]));
+    expect(ctx.rejectedEvidenceCount).toBe(2);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['fetch_failed', 1],
+      ['fetch_budget_exhausted', 1],
+    ]));
+  });
+
+  it('accounts for four active fallbacks and leaves a fifth candidate queued at budget expiry', async () => {
+    const acceptedTransaction = makeRawTransaction(Uint8Array.from([0x51]), 5n);
+    const failedTxid = '41'.repeat(32);
+    const abortedTxids = ['42'.repeat(32), '43'.repeat(32)];
+    const queuedTxid = '44'.repeat(32);
+    const controller = new AbortController();
+    const started: string[] = [];
+    let rejectFailure!: (error: Error) => void;
+    let releaseAccepted!: () => void;
+    let resolveAllStarted!: () => void;
+    const allStarted = new Promise<void>(resolve => {
+      resolveAllStarted = resolve;
+    });
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+    client.getTransaction.mockImplementation(
+      (txid: string, _verbose?: boolean, options?: { signal?: AbortSignal }) => {
+        started.push(txid);
+        if (started.length === 4) resolveAllStarted();
+        if (txid === acceptedTransaction.getId()) {
+          return new Promise(resolve => {
+            releaseAccepted = () => {
+              resolve(details(acceptedTransaction));
+            };
+          });
+        }
+        if (txid === failedTxid) {
+          return new Promise((_, reject) => {
+            rejectFailure = reject;
+          });
+        }
+        return new Promise((_, reject) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () => reject(options.signal?.reason),
+            { once: true },
+          );
+        });
+      },
+    );
+    const ctx = createTestContext({ client: client as any });
+
+    const pending = fetchAuthenticatedTransactions(
+      ctx,
+      [acceptedTransaction.getId(), failedTxid, ...abortedTxids, queuedTxid],
+      { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+    );
+    await allStarted;
+    releaseAccepted();
+    rejectFailure(new Error('ordinary fallback failure'));
+    queueMicrotask(() => {
+      controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
+    });
+    const result = await pending;
+
+    expect(result).toEqual(new Set([acceptedTransaction.getId()]));
+    expect(started).toEqual([
+      acceptedTransaction.getId(),
+      failedTxid,
+      ...abortedTxids,
+    ]);
+    expect(started).not.toContain(queuedTxid);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['fetch_failed', 1],
+      ['fetch_budget_exhausted', 3],
+    ]));
+    expect(ctx.rejectedEvidenceCount).toBe(4);
+  });
+
+  it('records every unresolved candidate once when its remote budget is already exhausted', async () => {
+    const controller = new AbortController();
+    controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
+    const client = clientFor(new Map());
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(
+      ctx,
+      ['aa'.repeat(32), 'aa'.repeat(32), 'bb'.repeat(32)],
+      { signal: controller.signal, deadlineAt: Date.now() },
+    )).resolves.toEqual(new Set());
+
+    expect(ctx.rejectedEvidenceCount).toBe(2);
+    expect(client.getTransactionsBatch).not.toHaveBeenCalled();
+    expect(client.getTransaction).not.toHaveBeenCalled();
+  });
+
   it('keeps only a raw-authenticated history transaction that pays the canonical script', async () => {
     const payment = bitcoin.payments.p2wpkh({
       pubkey: Buffer.from(`02${'11'.repeat(32)}`, 'hex'),

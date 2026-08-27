@@ -12,6 +12,7 @@ import { walletLog } from '../../../../websocket/notifications';
 import { populateBlockHeight, populateBlockTime, populateFee, populateCounterpartyAddress, populateAddressId } from './fieldPopulators';
 import type { PopulationStats, PendingUpdate } from './types';
 import type { BitcoinNetwork } from '../../networks';
+import type { NodeRequestOptions } from '../../nodeClient';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 const LOG_INTERVAL = 20;
@@ -44,7 +45,8 @@ export async function processTransactionUpdates(
   walletAddressLookup: Map<string, string>,
   walletAddressSet: Set<string>,
   currentHeight: number,
-  network: BitcoinNetwork
+  network: BitcoinNetwork,
+  options?: NodeRequestOptions,
 ): Promise<{ pendingUpdates: PendingUpdate[]; updated: number; stats: PopulationStats }> {
   const pendingUpdates: PendingUpdate[] = [];
   const stats = createPopulationStats();
@@ -55,6 +57,7 @@ export async function processTransactionUpdates(
   walletLog(walletId, 'info', 'POPULATE', 'Processing transactions and calculating fields...');
 
   for (const tx of transactions) {
+    options?.signal?.throwIfAborted();
     processedCount++;
 
     logProgress(walletId, processedCount, totalTxCount, stats);
@@ -70,9 +73,11 @@ export async function processTransactionUpdates(
         currentHeight,
         network,
         stats,
+        options,
       });
       if (pendingUpdate) pendingUpdates.push(pendingUpdate);
     } catch (error) {
+      options?.signal?.throwIfAborted();
       log.warn(`Failed to populate fields for tx ${tx.txid}`, { error: getErrorMessage(error) });
       walletLog(walletId, 'warn', 'POPULATE', `Failed to process tx ${tx.txid.slice(0, 8)}...`, { error: getErrorMessage(error) });
     }
@@ -115,6 +120,7 @@ async function processSingleTransaction(input: {
   currentHeight: number;
   network: BitcoinNetwork;
   stats: PopulationStats;
+  options?: NodeRequestOptions;
 }): Promise<PendingUpdate | null> {
   const { tx, stats } = input;
   const txDetails = input.txDetailsCache.get(tx.txid);
@@ -140,13 +146,14 @@ async function populateTransactionDetails(
     walletAddressSet: Set<string>;
     network: BitcoinNetwork;
     stats: PopulationStats;
+    options?: NodeRequestOptions;
   },
   txDetails: any,
   updates: Record<string, unknown>
 ): Promise<void> {
   const { tx, stats } = input;
   populateBlockTime(tx, txDetails, updates, stats);
-  await populateBlockTimeFromHeader(tx, updates, input.network, stats);
+  await populateBlockTimeFromHeader(tx, updates, input.network, stats, input.options);
 
   const inputs = txDetails.vin || [];
   const outputs = txDetails.vout || [];
@@ -169,14 +176,15 @@ async function populateBlockTimeFromHeader(
   tx: TransactionForUpdate,
   updates: Record<string, unknown>,
   network: BitcoinNetwork,
-  stats: PopulationStats
+  stats: PopulationStats,
+  options?: NodeRequestOptions,
 ): Promise<void> {
   if (tx.blockTime !== null || updates.blockTime || (!tx.blockHeight && !updates.blockHeight)) {
     return;
   }
 
   const height = (updates.blockHeight || tx.blockHeight) as number;
-  const blockTime = await getBlockTimestamp(height, network);
+  const blockTime = await getBlockTimestamp(height, network, options);
   if (blockTime) {
     updates.blockTime = blockTime;
     stats.blockTimesPopulated++;

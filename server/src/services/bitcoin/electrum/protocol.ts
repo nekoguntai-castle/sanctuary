@@ -59,6 +59,7 @@ export function processResponse(
 
   // Clear timeout since we got a response
   clearTimeout(request.timeoutId);
+  request.cleanup?.();
   pendingRequests.delete(response.id);
   log.debug(`Received response: id=${response.id} pendingCount=${pendingRequests.size} hasError=${!!response.error}`);
 
@@ -121,8 +122,9 @@ export function rejectAllPendingRequests(
   pendingRequests: Map<number, PendingRequest>,
   error: Error
 ): void {
-  for (const [_id, { reject, timeoutId }] of pendingRequests) {
+  for (const [_id, { reject, timeoutId, cleanup }] of pendingRequests) {
     clearTimeout(timeoutId);
+    cleanup?.();
     reject(error);
   }
   pendingRequests.clear();

@@ -112,6 +112,31 @@ describe('wallet sync mutation boundary', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it('rejects work cancelled while waiting for the wallet row lock', async () => {
+    const controller = new AbortController();
+    const write = vi.fn();
+    hoisted.withWalletSyncMutationLock.mockImplementationOnce(
+      async (_walletId, assertAuthority, callback) => {
+        controller.abort(new Error('attempt deadline elapsed'));
+        assertAuthority();
+        return callback({ wallet: {} });
+      },
+    );
+
+    await expect(runWalletSyncMutation(
+      {
+        walletId: 'legacy-wallet',
+        attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 1_000 },
+      },
+      'missing_field_chunk',
+      write,
+      undefined,
+      true,
+    )).rejects.toThrow('attempt deadline elapsed');
+
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('rejects a fence for another wallet before opening a transaction', async () => {
     await expect(runWalletSyncMutation(
       { walletId: 'wallet-target', mutationFence: fence },

@@ -18,6 +18,10 @@ import { normalizeLegacyBitcoinNetwork } from '../networks';
 import type { SyncWalletResult } from './types';
 import type { WalletSyncMutationFence } from '../../../repositories/types';
 import { runWalletSyncMutation } from '../sync/mutationBoundary';
+import {
+  createSyncStageRuntime,
+  type SyncAttemptRuntime,
+} from '../sync/attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
 
@@ -60,11 +64,16 @@ export async function syncWallet(
   depth = 0,
   signal?: AbortSignal,
   mutationFence?: WalletSyncMutationFence,
+  attemptDeadlineAt = Number.POSITIVE_INFINITY,
 ): Promise<SyncWalletResult> {
   signal?.throwIfAborted();
+  const attemptRuntime: SyncAttemptRuntime | undefined = signal
+    ? { signal, deadlineAt: attemptDeadlineAt }
+    : undefined;
   const result = await executeSyncPipeline(walletId, defaultSyncPhases, {
-    signal,
-    mutationFence,
+    ...(signal ? { signal } : {}),
+    ...(mutationFence ? { mutationFence } : {}),
+    ...(attemptRuntime ? { attemptRuntime } : {}),
   });
   signal?.throwIfAborted();
 
@@ -81,77 +90,21 @@ export async function syncWallet(
       };
     }
 
-    const wallet = await walletRepository.findById(walletId);
-    signal?.throwIfAborted();
-    if (wallet) {
-      const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
-      const client = await getNodeClient(network);
-
-      const newAddresses = await addressRepository.findRecentUnused(walletId, result.stats.newAddressesGenerated);
-      signal?.throwIfAborted();
-
-      if (newAddresses.length > 0) {
-        try {
-          const newHistoryResults = await client.getAddressHistoryBatch(newAddresses.map(a => a.address));
-          signal?.throwIfAborted();
-
-          let foundTransactions = false;
-          for (const [, history] of newHistoryResults) {
-            if (history.length > 0) {
-              foundTransactions = true;
-              break;
-            }
-          }
-
-          if (foundTransactions) {
-            const ownershipRepairTxids = [...new Set(
-              [...newHistoryResults.values()].flatMap(history =>
-                history.map(item => item.tx_hash)
-              )
-            )];
-            try {
-              await runWalletSyncMutation(
-                { walletId, mutationFence },
-                'ownership_repair',
-                async (tx, deferPostCommit) => {
-                  const targetAddressCount = (
-                    await addressRepository.findAddressStrings(walletId, tx)
-                  ).length;
-                  await transactionRepository.markOwnershipRepairNeeded(
-                    walletId,
-                    ownershipRepairTxids,
-                    targetAddressCount,
-                    tx,
-                  );
-                  deferPostCommit(() => walletLog(
-                    walletId,
-                    'info',
-                    'BLOCKCHAIN',
-                    `Found transactions on new addresses, re-syncing (depth ${depth + 1})...`,
-                  ));
-                },
-              );
-            } catch (error) {
-              throw new OwnershipRepairPersistenceError(error);
-            }
-            const recursiveResult = await syncWallet(
-              walletId,
-              depth + 1,
-              signal,
-              mutationFence,
-            );
-            return {
-              addresses: result.addresses + recursiveResult.addresses,
-              transactions: result.transactions + recursiveResult.transactions,
-              utxos: result.utxos + recursiveResult.utxos,
-            };
-          }
-        } catch (error) {
-          signal?.throwIfAborted();
-          if (error instanceof OwnershipRepairPersistenceError) throw error;
-          log.warn(`[BLOCKCHAIN] Failed to scan new addresses: ${error}`);
-        }
-      }
+    const recursiveResult = await scanGeneratedAddresses({
+      walletId,
+      depth,
+      generatedCount: result.stats.newAddressesGenerated,
+      signal,
+      mutationFence,
+      attemptRuntime,
+      attemptDeadlineAt,
+    });
+    if (recursiveResult) {
+      return {
+        addresses: result.addresses + recursiveResult.addresses,
+        transactions: result.transactions + recursiveResult.transactions,
+        utxos: result.utxos + recursiveResult.utxos,
+      };
     }
   }
 
@@ -161,3 +114,94 @@ export async function syncWallet(
     utxos: result.utxos,
   };
 }
+
+type RecursiveScanInput = {
+  walletId: string;
+  depth: number;
+  generatedCount: number;
+  signal?: AbortSignal;
+  mutationFence?: WalletSyncMutationFence;
+  attemptRuntime?: SyncAttemptRuntime;
+  attemptDeadlineAt: number;
+};
+
+const scanGeneratedAddresses = async (
+  input: RecursiveScanInput,
+): Promise<SyncWalletResult | undefined> => {
+  const wallet = await walletRepository.findById(input.walletId);
+  input.signal?.throwIfAborted();
+  if (!wallet) return undefined;
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
+  const stage = input.attemptRuntime
+    ? createSyncStageRuntime(input.attemptRuntime, 'gap_limit_recursive_history')
+    : undefined;
+  const options = stage ? { signal: stage.signal, deadlineAt: stage.deadlineAt } : undefined;
+  try {
+    const client = options ? await getNodeClient(network, options) : await getNodeClient(network);
+    const addresses = await addressRepository.findRecentUnused(
+      input.walletId,
+      input.generatedCount,
+    );
+    input.signal?.throwIfAborted();
+    if (addresses.length === 0) return undefined;
+    const addressStrings = addresses.map(address => address.address);
+    const histories = options
+      ? await client.getAddressHistoryBatch(addressStrings, options)
+      : await client.getAddressHistoryBatch(addressStrings);
+    input.signal?.throwIfAborted();
+    if (![...histories.values()].some(history => history.length > 0)) return undefined;
+    const txids = [...new Set(
+      [...histories.values()].flatMap(history => history.map(item => item.tx_hash)),
+    )];
+    await persistOwnershipRepair(input, txids);
+    return syncWallet(
+      input.walletId,
+      input.depth + 1,
+      input.signal,
+      input.mutationFence,
+      input.attemptDeadlineAt,
+    );
+  } catch (error) {
+    input.signal?.throwIfAborted();
+    if (error instanceof OwnershipRepairPersistenceError) throw error;
+    log.warn(`[BLOCKCHAIN] Failed to scan new addresses: ${error}`);
+    return undefined;
+  } finally {
+    stage?.dispose();
+  }
+};
+
+const persistOwnershipRepair = async (
+  input: RecursiveScanInput,
+  txids: string[],
+): Promise<void> => {
+  try {
+    await runWalletSyncMutation(
+      {
+        walletId: input.walletId,
+        mutationFence: input.mutationFence,
+        attemptRuntime: input.attemptRuntime,
+      },
+      'ownership_repair',
+      async (tx, deferPostCommit) => {
+        const targetAddressCount = (
+          await addressRepository.findAddressStrings(input.walletId, tx)
+        ).length;
+        await transactionRepository.markOwnershipRepairNeeded(
+          input.walletId,
+          txids,
+          targetAddressCount,
+          tx,
+        );
+        deferPostCommit(() => walletLog(
+          input.walletId,
+          'info',
+          'BLOCKCHAIN',
+          `Found transactions on new addresses, re-syncing (depth ${input.depth + 1})...`,
+        ));
+      },
+    );
+  } catch (error) {
+    throw new OwnershipRepairPersistenceError(error);
+  }
+};

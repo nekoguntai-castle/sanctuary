@@ -54,11 +54,26 @@ export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts(
     mockPrismaClient.address.findMany.mockResolvedValue([]);
     mockGetBlockTimestamp.mockResolvedValue(null);
 
-    const result = await populateMissingTransactionFields('wallet-1');
+    const signal = new AbortController().signal;
+    const result = await populateMissingTransactionFields(
+      'wallet-1',
+      signal,
+      undefined,
+      undefined,
+      false,
+      Date.now() + 30_000,
+    );
 
     expect(result).toEqual({ updated: 0, confirmationUpdates: [] });
-    expect(mockGetNodeClient).toHaveBeenCalledWith('mainnet');
-    expect(mockGetBlockTimestamp).toHaveBeenCalledWith(999, 'mainnet');
+    expect(mockGetNodeClient).toHaveBeenCalledWith(
+      'mainnet',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(mockGetBlockTimestamp).toHaveBeenCalledWith(
+      999,
+      'mainnet',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
   });
 

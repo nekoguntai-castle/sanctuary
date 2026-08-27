@@ -25,6 +25,27 @@ import {
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error(String(signal.reason ?? 'Node client request cancelled'));
+}
+
+async function awaitSharedConnection<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    void promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
+
 export interface NodeConfig {
   host: string;
   port: number;
@@ -32,6 +53,11 @@ export interface NodeConfig {
   network?: NetworkType;
   // Pool mode - when true, use multi-server pool; when false, use single server
   poolEnabled?: boolean;
+}
+
+export interface NodeRequestOptions {
+  signal?: AbortSignal;
+  deadlineAt?: number;
 }
 
 /**
@@ -53,21 +79,21 @@ export interface NodeClientInterface {
   isConnected(): boolean;
   getServerVersion(): Promise<{ server: string; protocol: string }>;
   getServerFeatures(): Promise<Record<string, unknown>>;
-  getBlockHeight(): Promise<number>;
-  getBlockHeader(height: number): Promise<string>;
-  getAddressHistory(address: string): Promise<Array<{ tx_hash: string; height: number }>>;
+  getBlockHeight(options?: NodeRequestOptions): Promise<number>;
+  getBlockHeader(height: number, options?: NodeRequestOptions): Promise<string>;
+  getAddressHistory(address: string, options?: NodeRequestOptions): Promise<Array<{ tx_hash: string; height: number }>>;
   getAddressBalance(address: string): Promise<{ confirmed: number; unconfirmed: number }>;
-  getAddressUTXOs(address: string): Promise<Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>;
-  getTransaction(txid: string, verbose?: boolean): Promise<any>;
+  getAddressUTXOs(address: string, options?: NodeRequestOptions): Promise<Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>;
+  getTransaction(txid: string, verbose?: boolean, options?: NodeRequestOptions): Promise<any>;
   broadcastTransaction(rawTx: string): Promise<string>;
   estimateFee(blocks: number): Promise<number>;
   subscribeAddress(address: string): Promise<string | null>;
   subscribeAddressBatch(addresses: string[]): Promise<Map<string, string | null>>;
 
   // Batch methods - send multiple requests in a single RPC call
-  getAddressHistoryBatch(addresses: string[]): Promise<Map<string, Array<{ tx_hash: string; height: number }>>>;
-  getAddressUTXOsBatch(addresses: string[]): Promise<Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>>;
-  getTransactionsBatch(txids: string[], verbose?: boolean): Promise<Map<string, any>>;
+  getAddressHistoryBatch(addresses: string[], options?: NodeRequestOptions): Promise<Map<string, Array<{ tx_hash: string; height: number }>>>;
+  getAddressUTXOsBatch(addresses: string[], options?: NodeRequestOptions): Promise<Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>>;
+  getTransactionsBatch(txids: string[], verbose?: boolean, options?: NodeRequestOptions): Promise<Map<string, any>>;
 }
 
 // Cache for the active node configuration (legacy - for mainnet)
@@ -140,7 +166,11 @@ function getDefaultElectrumConfig(): NodeConfig {
  * Get the node client based on active configuration
  * @param network Network parameter (mainnet, testnet3, testnet4, signet, or regtest)
  */
-export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<NodeClientInterface> {
+export async function getNodeClient(
+  network: NetworkType = 'mainnet',
+  options?: NodeRequestOptions,
+): Promise<NodeClientInterface> {
+  options?.signal?.throwIfAborted();
   // Check if we have a cached client for this network
   const cachedClient = networkClients.get(network);
   if (cachedClient && cachedClient.isConnected()) {
@@ -148,7 +178,10 @@ export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<N
   }
 
   // Get the network-specific mode configuration
-  const networkConfig = await getNetworkModeConfig(network);
+  const networkConfig = await awaitSharedConnection(
+    getNetworkModeConfig(network),
+    options?.signal,
+  );
 
   log.debug(`Getting client for ${network}, mode: ${networkConfig.mode}`);
 
@@ -158,20 +191,27 @@ export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<N
     // Pool mode - use dedicated subscription connection from the pool
     // This connection is long-lived and doesn't need to be released
     try {
-      const pool = await getElectrumPoolForNetwork(network);
+      const pool = await awaitSharedConnection(
+        getElectrumPoolForNetwork(network),
+        options?.signal,
+      );
 
       // Use getSubscriptionConnection() for long-lived cached clients
       // This returns a dedicated connection that stays active for the pool's lifetime
       // Do NOT use pool.acquire() here - that requires release() which we can't do with caching
-      client = await pool.getSubscriptionConnection();
+      client = await awaitSharedConnection(
+        pool.getSubscriptionConnection(),
+        options?.signal,
+      );
       log.info(`Using Electrum connection pool for ${network}`);
     } catch (error) {
+      options?.signal?.throwIfAborted();
       // Fall back to singleton if pool fails
       log.warn(`Pool initialization failed for ${network}, falling back to singleton`, { error: getErrorMessage(error) });
       const electrumClient = getElectrumClientForNetwork(network);
 
       if (!electrumClient.isConnected()) {
-        await electrumClient.connect();
+        await awaitSharedConnection(electrumClient.connect(), options?.signal);
       }
 
       client = electrumClient;
@@ -182,7 +222,7 @@ export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<N
     const electrumClient = getElectrumClientForNetwork(network);
 
     if (!electrumClient.isConnected()) {
-      await electrumClient.connect();
+      await awaitSharedConnection(electrumClient.connect(), options?.signal);
     }
 
     client = electrumClient;
@@ -192,8 +232,9 @@ export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<N
   }
 
   try {
-    await verifyNodeClientNetwork(client, network);
+    await verifyNodeClientNetwork(client, network, options);
   } catch (error) {
+    options?.signal?.throwIfAborted();
     disconnectQuietly(client, `Rejected ${network} client`);
     throw error;
   }

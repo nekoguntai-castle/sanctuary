@@ -339,6 +339,30 @@ describe('Sync Phases', () => {
       vi.clearAllMocks();
     });
 
+    it('does not swallow attempt cancellation while fetching transaction details', async () => {
+      const txid = 'cancelled_utxo'.padEnd(64, 'a');
+      const controller = new AbortController();
+      const reason = new Error('attempt cancelled');
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+      mockElectrumClient.getTransaction.mockImplementation(async () => {
+        controller.abort(reason);
+        throw reason;
+      });
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 800000 } }],
+        ]),
+        txDetailsCache: new Map() as any,
+        attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+      });
+
+      await expect(insertUtxosPhase(ctx)).rejects.toBe(reason);
+      expect(mockPrismaClient.uTXO.createMany).not.toHaveBeenCalled();
+    });
+
     it('should insert new UTXOs not in database', async () => {
       const txid = 'new_utxo_tx'.padEnd(64, 'a');
       const utxoAddress = 'tb1q_utxo_addr';

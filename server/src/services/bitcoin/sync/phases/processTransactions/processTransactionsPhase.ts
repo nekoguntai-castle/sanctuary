@@ -17,12 +17,21 @@ import { getErrorMessage } from '../../../../../utils/errors';
 import { walletLog } from '../../../../../websocket/notifications';
 import { recalculateWalletBalances } from '../../../utils/balanceCalculation';
 import type { SyncContext, TransactionCreateData } from '../../types';
-import { classifyTransactions } from './classification';
+import {
+  classifyTransactions,
+  locallyClassifiableTransactionIds,
+} from './classification';
 import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
 import { sendNotifications } from './notifications';
 import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
 import { runWalletSyncMutation } from '../../mutationBoundary';
+import type { NodeRequestOptions } from '../../../nodeClient';
+import {
+  abortableSyncDelay,
+  createSyncStageRuntime,
+  isSyncStageBudgetError,
+} from '../../attemptRuntime';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -50,9 +59,7 @@ const getInlineInputAddress = (input: {
 export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncContext> {
   const {
     walletId,
-    client,
     newTxids,
-    txDetailsCache,
   } = ctx;
 
   if (newTxids.length === 0) {
@@ -76,7 +83,7 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
   for (let batchIndex = 0; batchIndex < newTxids.length; batchIndex += TX_BATCH_SIZE) {
     const batchTxids = newTxids.slice(batchIndex, batchIndex + TX_BATCH_SIZE);
     const classificationRepairTxids = batchTxids.filter(
-      txid => ctx.classificationRepairTxids.has(txid)
+      txid => ctx.classificationRepairTxids.has(txid),
     );
     const ioRepairTxids = batchTxids.filter(txid => ctx.ioRepairTxids.has(txid));
 
@@ -95,21 +102,27 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
       walletId,
       'info',
       'SYNC',
-      `Fetching transactions ${batchIndex + 1}-${Math.min(batchIndex + TX_BATCH_SIZE, newTxids.length)} of ${newTxids.length}...`
+      `Fetching transactions ${batchIndex + 1}-${Math.min(batchIndex + TX_BATCH_SIZE, newTxids.length)} of ${newTxids.length}...`,
     );
 
-    // Step 1: Fetch this batch of transactions
-    await fetchAuthenticatedTransactions(ctx, batchTxids);
+    const stage = ctx.attemptRuntime
+      ? createSyncStageRuntime(ctx.attemptRuntime, 'candidate_batch_remote')
+      : undefined;
+    const requestOptions = stage
+      ? { signal: stage.signal, deadlineAt: stage.deadlineAt }
+      : undefined;
+    let batchTxidSet: Set<string>;
+    let transactionsToCreate: TransactionCreateData[];
+    try {
+      ({ batchTxidSet, transactionsToCreate } = await resolveCandidateBatch(
+        ctx,
+        batchTxids,
+        requestOptions,
+      ));
+    } finally {
+      stage?.dispose();
+    }
 
-    const batchTxidSet = new Set(batchTxids.filter(txid => txDetailsCache.has(txid)));
-
-    // Step 1b: Batch prefetch previous transactions for inputs (avoids N+1 queries)
-    await prefetchPreviousTransactions(ctx, batchTxidSet);
-
-    // Step 2: Classify transactions in this batch
-    const transactionsToCreate = await classifyTransactions(ctx, batchTxidSet);
-
-    // Step 3: Insert batch to DB
     if (transactionsToCreate.length > 0) {
       const persisted = await runWalletSyncMutation(
         ctx,
@@ -128,14 +141,13 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
       if (newTransactions.length > 0) {
         totalTransactions += newTransactions.length;
         allNewTransactions.push(...newTransactions);
-
-        // Log batch results
         logBatchResults(walletId, newTransactions);
       }
     }
+
     const classifiedTxids = new Set(transactionsToCreate.map(transaction => transaction.txid));
     const unclassifiedIoRepairTxids = ioRepairTxids.filter(
-      txid => batchTxidSet.has(txid) && !classifiedTxids.has(txid)
+      txid => batchTxidSet.has(txid) && !classifiedTxids.has(txid),
     );
     if (unclassifiedIoRepairTxids.length > 0) {
       await runWalletSyncMutation(
@@ -152,7 +164,8 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
 
     // Small delay between batches
     if (batchIndex + TX_BATCH_SIZE < newTxids.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      if (ctx.attemptRuntime) await abortableSyncDelay(100, ctx.attemptRuntime);
+      else await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
 
@@ -185,12 +198,54 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
   return ctx;
 }
 
+const availableBatchTransactionIds = (
+  batchTxids: string[],
+  txDetailsCache: SyncContext['txDetailsCache'],
+): Set<string> => new Set(batchTxids.filter(txid => txDetailsCache.has(txid)));
+
+const resolveCandidateBatch = async (
+  ctx: SyncContext,
+  batchTxids: string[],
+  options: NodeRequestOptions | undefined,
+): Promise<{
+  batchTxidSet: Set<string>;
+  transactionsToCreate: TransactionCreateData[];
+}> => {
+  try {
+    await fetchAuthenticatedTransactions(ctx, batchTxids, options);
+    const batchTxidSet = availableBatchTransactionIds(batchTxids, ctx.txDetailsCache);
+    options?.signal?.throwIfAborted();
+    await prefetchPreviousTransactions(ctx, batchTxidSet, options);
+    return {
+      batchTxidSet,
+      transactionsToCreate: await classifyTransactions(ctx, batchTxidSet, options),
+    };
+  } catch (error) {
+    if (!isCandidateBudgetExpiry(error, options)) throw error;
+    const batchTxidSet = availableBatchTransactionIds(batchTxids, ctx.txDetailsCache);
+    return {
+      batchTxidSet,
+      transactionsToCreate: await classifyTransactions(
+        ctx,
+        locallyClassifiableTransactionIds(ctx, batchTxidSet),
+      ),
+    };
+  }
+};
+
+const isCandidateBudgetExpiry = (
+  error: unknown,
+  options: NodeRequestOptions | undefined,
+): boolean => isSyncStageBudgetError(error)
+  || isSyncStageBudgetError(options?.signal?.reason);
+
 /**
  * Batch prefetch previous transactions for inputs to avoid N+1 queries
  */
 async function prefetchPreviousTransactions(
   ctx: SyncContext,
-  batchTxidSet: Set<string>
+  batchTxidSet: Set<string>,
+  options?: NodeRequestOptions,
 ): Promise<void> {
   const { walletId, client, txDetailsCache } = ctx;
 
@@ -210,8 +265,9 @@ async function prefetchPreviousTransactions(
     const prevTxidsArray = Array.from(prevTxidsNeeded);
     walletLog(walletId, 'debug', 'SYNC', `Prefetching ${prevTxidsArray.length} previous transactions for input resolution...`);
     try {
-      await fetchAuthenticatedTransactions(ctx, prevTxidsArray);
+      await fetchAuthenticatedTransactions(ctx, prevTxidsArray, options);
     } catch (error) {
+      options?.signal?.throwIfAborted();
       log.warn(`[SYNC] Batch prev tx fetch failed, will fall back to individual requests`, { error: getErrorMessage(error) });
     }
   }

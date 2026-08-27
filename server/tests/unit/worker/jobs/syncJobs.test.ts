@@ -523,6 +523,7 @@ describe('Sync Jobs', () => {
         0,
         expect.any(AbortSignal),
         { walletId: 'wallet-intent', generation: 1, leaseToken: 'rotated-token' },
+        expect.any(Number),
       );
     });
 
@@ -739,10 +740,11 @@ describe('Sync Jobs', () => {
         expect(Object.isFrozen(fence)).toBe(true);
         expect(assertChainReachable).toHaveBeenCalledBefore(reset);
         expect(syncWallet).toHaveBeenCalledWith(
-          'wallet-intent', 0, expect.any(AbortSignal), fence,
+          'wallet-intent', 0, expect.any(AbortSignal), fence, expect.any(Number),
         );
         expect(populateMissingTransactionFields).toHaveBeenCalledWith(
-          'wallet-intent', expect.any(AbortSignal), undefined, fence,
+          'wallet-intent', expect.any(AbortSignal), undefined, fence, false,
+          expect.any(Number),
         );
         expect(complete).toHaveBeenCalledWith(
           'wallet-intent',

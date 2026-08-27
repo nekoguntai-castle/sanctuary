@@ -372,6 +372,21 @@ describe('sync attempt lifecycle', () => {
 });
 
 describe('runSyncAttemptWithTimeout', () => {
+  it('passes the exact attempt deadline to the execution', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-20T12:00:00.000Z'));
+    let receivedDeadline = 0;
+
+    await runSyncAttemptWithTimeout(
+      async (_signal, deadlineAt) => { receivedDeadline = deadlineAt; },
+      1_000,
+      100,
+    );
+
+    expect(receivedDeadline).toBe(Date.now() + 1_000);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('returns a completed attempt and clears its duration timer', async () => {
     vi.useFakeTimers();
 
@@ -570,6 +585,20 @@ describe('runSyncAttemptWithTimeout', () => {
 });
 
 describe('runSettledSyncAttemptWithTimeout', () => {
+  it('passes the exact attempt deadline to the execution', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-20T12:00:00.000Z'));
+    let receivedDeadline = 0;
+
+    await runSettledSyncAttemptWithTimeout(
+      async (_signal, deadlineAt) => { receivedDeadline = deadlineAt; },
+      1_000,
+    );
+
+    expect(receivedDeadline).toBe(Date.now() + 1_000);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('delivers cancellation but waits for an uncooperative execution to settle', async () => {
     vi.useFakeTimers();
     const parent = new AbortController();

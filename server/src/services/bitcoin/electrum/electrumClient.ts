@@ -28,8 +28,27 @@ import {
   resolveElectrumConnectionConfig,
   type ResolvedConnectionConfig,
 } from './connectionConfigResolver';
+import type { NodeRequestOptions } from '../nodeClient';
 
 const log = createLogger('ELECTRUM:SVC_CLIENT');
+
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error(String(signal.reason ?? 'Electrum request cancelled'));
+}
+
+async function awaitForCaller<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    void promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
 
 interface ConnectionState {
   cleanup: () => void;
@@ -316,27 +335,51 @@ class ElectrumClient extends EventEmitter {
   /**
    * Send request to Electrum server
    */
-  private async request(method: string, params: unknown[] = []): Promise<unknown> {
+  private async request(
+    method: string,
+    params: unknown[] = [],
+    options?: NodeRequestOptions,
+  ): Promise<unknown> {
+    options?.signal?.throwIfAborted();
     if (!this.connected || !this.socket) {
-      await this.connect();
+      await awaitForCaller(this.connect(), options?.signal);
     }
+    options?.signal?.throwIfAborted();
 
     return new Promise((resolve, reject) => {
       const id = ++this.requestId;
 
+      const cleanup = (): void => {
+        options?.signal?.removeEventListener('abort', onAbort);
+      };
+      const onAbort = (): void => {
+        const pending = this.pendingRequests.get(id)!;
+        this.pendingRequests.delete(id);
+        clearTimeout(pending.timeoutId);
+        cleanup();
+        reject(abortError(options!.signal!));
+      };
+
       const timeoutId = setTimeout(() => {
-        if (this.pendingRequests.has(id)) {
-          this.pendingRequests.delete(id);
-          log.warn(`Request timeout: method=${method} id=${id} pendingCount=${this.pendingRequests.size}`);
-          reject(new Error(`Request timeout after ${this.requestTimeoutMs}ms`));
-        }
+        this.pendingRequests.delete(id);
+        cleanup();
+        log.warn(`Request timeout: method=${method} id=${id} pendingCount=${this.pendingRequests.size}`);
+        reject(new Error(`Request timeout after ${this.requestTimeoutMs}ms`));
       }, this.requestTimeoutMs);
 
-      this.pendingRequests.set(id, { resolve, reject, timeoutId, method, params });
+      this.pendingRequests.set(id, { resolve, reject, timeoutId, method, params, cleanup });
+      options?.signal?.addEventListener('abort', onAbort, { once: true });
 
       const message = createRequestMessage(method, params, id);
       log.debug(`Sending request: method=${method} id=${id} pendingCount=${this.pendingRequests.size}`);
-      this.socket!.write(message);
+      try {
+        this.socket!.write(message);
+      } catch (error) {
+        this.pendingRequests.delete(id);
+        clearTimeout(timeoutId);
+        cleanup();
+        return reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
@@ -345,28 +388,52 @@ class ElectrumClient extends EventEmitter {
    * Each request is sent on its own line but in quick succession.
    * Returns results in the same order as requests.
    */
-  private async batchRequest(requests: Array<{ method: string; params: unknown[] }>): Promise<unknown[]> {
+  private async batchRequest(
+    requests: Array<{ method: string; params: unknown[] }>,
+    options?: NodeRequestOptions,
+  ): Promise<unknown[]> {
     if (requests.length === 0) return [];
+    options?.signal?.throwIfAborted();
 
     if (!this.connected || !this.socket) {
-      await this.connect();
+      await awaitForCaller(this.connect(), options?.signal);
     }
+    options?.signal?.throwIfAborted();
 
     const startId = this.requestId + 1;
     const requestPromises: Promise<unknown>[] = [];
+    const activeIds = new Set<number>();
 
     const { message, ids } = createBatchMessage(requests, startId);
     this.requestId += requests.length;
 
+    const cleanupBatchEntry = (id: number): void => {
+      activeIds.delete(id);
+      if (activeIds.size === 0) {
+        options?.signal?.removeEventListener('abort', onAbort);
+      }
+    };
+    const rejectPendingBatch = (reason: unknown): void => {
+      const error = reason instanceof Error ? reason : new Error(String(reason));
+      for (const id of [...activeIds]) {
+        const pending = this.pendingRequests.get(id)!;
+        this.pendingRequests.delete(id);
+        clearTimeout(pending.timeoutId);
+        pending.cleanup?.();
+        pending.reject(error);
+      }
+    };
+    const onAbort = (): void => rejectPendingBatch(abortError(options!.signal!));
+
     for (let i = 0; i < requests.length; i++) {
       const id = ids[i];
       const promise = new Promise<unknown>((resolve, reject) => {
+        const cleanup = (): void => cleanupBatchEntry(id);
         const timeoutId = setTimeout(() => {
-          if (this.pendingRequests.has(id)) {
-            this.pendingRequests.delete(id);
-            log.warn(`Batch request timeout: method=${requests[i].method} id=${id} pendingCount=${this.pendingRequests.size}`);
-            reject(new Error(`Batch request timeout after ${this.batchRequestTimeoutMs}ms for id ${id}`));
-          }
+          this.pendingRequests.delete(id);
+          cleanup();
+          log.warn(`Batch request timeout: method=${requests[i].method} id=${id} pendingCount=${this.pendingRequests.size}`);
+          reject(new Error(`Batch request timeout after ${this.batchRequestTimeoutMs}ms for id ${id}`));
         }, this.batchRequestTimeoutMs);
 
         this.pendingRequests.set(id, {
@@ -375,13 +442,22 @@ class ElectrumClient extends EventEmitter {
           timeoutId,
           method: requests[i].method,
           params: requests[i].params,
+          cleanup,
         });
+        activeIds.add(id);
       });
       requestPromises.push(promise);
     }
 
+    options?.signal?.addEventListener('abort', onAbort, { once: true });
+
     log.debug(`Sending batch: count=${requests.length} firstId=${startId} lastId=${this.requestId} pendingCount=${this.pendingRequests.size}`);
-    this.socket!.write(message);
+    try {
+      this.socket!.write(message);
+    } catch (error) {
+      rejectPendingBatch(error);
+      return Promise.all(requestPromises);
+    }
 
     return Promise.all(requestPromises);
   }
@@ -416,23 +492,23 @@ class ElectrumClient extends EventEmitter {
     );
   }
 
-  async getAddressHistory(address: string): Promise<Array<{ tx_hash: string; height: number }>> {
+  async getAddressHistory(address: string, options?: NodeRequestOptions): Promise<Array<{ tx_hash: string; height: number }>> {
     return publicApi.getAddressHistory(
-      (method, params) => this.request(method, params), address, this.network
+      (method, params) => this.request(method, params, options), address, this.network
     );
   }
 
-  async getAddressUTXOs(address: string): Promise<Array<{
+  async getAddressUTXOs(address: string, options?: NodeRequestOptions): Promise<Array<{
     tx_hash: string; tx_pos: number; height: number; value: number;
   }>> {
     return publicApi.getAddressUTXOs(
-      (method, params) => this.request(method, params), address, this.network
+      (method, params) => this.request(method, params, options), address, this.network
     );
   }
 
-  async getTransaction(txid: string, _verbose: boolean = false): Promise<TransactionDetails> {
+  async getTransaction(txid: string, _verbose: boolean = false, options?: NodeRequestOptions): Promise<TransactionDetails> {
     return publicApi.getTransaction(
-      (method, params) => this.request(method, params), txid, this.network
+      (method, params) => this.request(method, params, options), txid, this.network
     );
   }
 
@@ -482,9 +558,9 @@ class ElectrumClient extends EventEmitter {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electrum returns varying formats per server implementation
-  async getBlockHeader(height: number): Promise<any> {
+  async getBlockHeader(height: number, options?: NodeRequestOptions): Promise<any> {
     return publicApi.getBlockHeader(
-      (method, params) => this.request(method, params), height
+      (method, params) => this.request(method, params, options), height
     );
   }
 
@@ -496,9 +572,9 @@ class ElectrumClient extends EventEmitter {
     );
   }
 
-  async getBlockHeight(): Promise<number> {
+  async getBlockHeight(options?: NodeRequestOptions): Promise<number> {
     return publicApi.getBlockHeight(
-      (method, params) => this.request(method, params)
+      (method, params) => this.request(method, params, options)
     );
   }
 
@@ -508,24 +584,25 @@ class ElectrumClient extends EventEmitter {
     );
   }
 
-  async getAddressHistoryBatch(addresses: string[]): Promise<Map<string, Array<{ tx_hash: string; height: number }>>> {
+  async getAddressHistoryBatch(addresses: string[], options?: NodeRequestOptions): Promise<Map<string, Array<{ tx_hash: string; height: number }>>> {
     return publicApi.getAddressHistoryBatch(
-      (reqs) => this.batchRequest(reqs), addresses, this.network
+      (reqs) => this.batchRequest(reqs, options), addresses, this.network
     );
   }
 
-  async getAddressUTXOsBatch(addresses: string[]): Promise<Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>> {
+  async getAddressUTXOsBatch(addresses: string[], options?: NodeRequestOptions): Promise<Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>> {
     return publicApi.getAddressUTXOsBatch(
-      (reqs) => this.batchRequest(reqs), addresses, this.network
+      (reqs) => this.batchRequest(reqs, options), addresses, this.network
     );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches NodeClientInterface signature
-  async getTransactionsBatch(txids: string[], _verbose: boolean = true): Promise<Map<string, any>> {
+  async getTransactionsBatch(txids: string[], _verbose: boolean = true, options?: NodeRequestOptions): Promise<Map<string, any>> {
     return publicApi.getTransactionsBatch(
-      (reqs) => this.batchRequest(reqs),
+      (reqs) => this.batchRequest(reqs, options),
       (rawTx) => this.decodeRawTransaction(rawTx),
-      txids
+      txids,
+      options,
     );
   }
 }

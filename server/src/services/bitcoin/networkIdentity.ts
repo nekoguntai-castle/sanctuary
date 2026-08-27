@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import type { NetworkType } from "./electrumPool";
-import type { NodeClientInterface } from "./nodeClient";
+import type { NodeClientInterface, NodeRequestOptions } from "./nodeClient";
 
 const DEFAULT_IDENTITY_TIMEOUT_MS = 10_000;
 
@@ -93,24 +93,54 @@ function getNetworkLabel(network: NetworkType): string {
   return NETWORK_LABELS[network];
 }
 
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error(String(signal.reason ?? 'Chain identity check cancelled'));
+}
+
+async function awaitIdentityRequest<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
+
 async function getGenesisHeaderWithTimeout(
   client: Pick<NodeClientInterface, "getBlockHeader">,
   network: NetworkType,
   timeoutMs: number,
+  requestOptions?: NodeRequestOptions,
 ): Promise<string> {
-  let timeout!: ReturnType<typeof setTimeout>;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => {
-      reject(new Error(`${getNetworkLabel(network)} chain identity check timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
+  requestOptions?.signal?.throwIfAborted();
+  const controller = new AbortController();
+  const timeoutError = new Error(
+    `${getNetworkLabel(network)} chain identity check timed out after ${timeoutMs}ms`,
+  );
+  const remainingMs = requestOptions?.deadlineAt === undefined
+    ? timeoutMs
+    : Math.min(timeoutMs, Math.max(0, requestOptions.deadlineAt - Date.now()));
+  if (remainingMs === 0) throw timeoutError;
+  const onParentAbort = (): void => controller.abort(requestOptions?.signal?.reason);
+  requestOptions?.signal?.addEventListener('abort', onParentAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(timeoutError), remainingMs);
+  timeout.unref?.();
   try {
-    return await Promise.race([
-      client.getBlockHeader(0),
-      timeoutPromise,
-    ]);
+    return await awaitIdentityRequest(
+      client.getBlockHeader(0, {
+        signal: controller.signal,
+        deadlineAt: requestOptions?.deadlineAt,
+      }),
+      controller.signal,
+    );
   } finally {
     clearTimeout(timeout);
+    requestOptions?.signal?.removeEventListener('abort', onParentAbort);
   }
 }
 
@@ -122,11 +152,11 @@ async function getGenesisHeaderWithTimeout(
 export async function verifyNodeClientNetwork(
   client: Pick<NodeClientInterface, "getBlockHeader">,
   network: NetworkType,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; signal?: AbortSignal; deadlineAt?: number } = {},
 ): Promise<void> {
   const expectedHash = getExpectedGenesisHash(network);
   const timeoutMs = options.timeoutMs ?? DEFAULT_IDENTITY_TIMEOUT_MS;
-  const genesisHeader = await getGenesisHeaderWithTimeout(client, network, timeoutMs);
+  const genesisHeader = await getGenesisHeaderWithTimeout(client, network, timeoutMs, options);
   const actualHash = hashBlockHeader(genesisHeader);
   if (actualHash === expectedHash) return;
 

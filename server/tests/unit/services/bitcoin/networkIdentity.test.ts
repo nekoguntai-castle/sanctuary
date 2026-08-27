@@ -112,6 +112,62 @@ describe('network identity', () => {
     ).rejects.toThrow('Testnet4 chain identity check timed out');
   });
 
+  it('does not start an identity probe after the caller deadline has expired', async () => {
+    const getBlockHeader = vi.fn(() => new Promise<string>(() => undefined));
+
+    await expect(
+      verifyNodeClientNetwork(
+        { getBlockHeader },
+        'testnet4',
+        { timeoutMs: 1_000, deadlineAt: Date.now() - 1 },
+      ),
+    ).rejects.toThrow('Testnet4 chain identity check timed out after 1000ms');
+    expect(getBlockHeader).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a string reason', 'identity check superseded', 'identity check superseded'],
+    ['a null reason', null, 'Chain identity check cancelled'],
+  ])('normalizes %s when the caller aborts a pending identity probe', async (
+    _label,
+    reason,
+    expectedMessage,
+  ) => {
+    const controller = new AbortController();
+    const getBlockHeader = vi.fn(() => new Promise<string>(() => undefined));
+    const pending = verifyNodeClientNetwork(
+      { getBlockHeader },
+      'testnet4',
+      { signal: controller.signal, timeoutMs: 60_000 },
+    );
+    await vi.waitFor(() => expect(getBlockHeader).toHaveBeenCalledOnce());
+
+    controller.abort(reason);
+
+    await expect(pending).rejects.toThrow(expectedMessage);
+  });
+
+  it('handles cancellation that races with identity abort-listener registration', async () => {
+    const controller = new AbortController();
+    const abortReason = new Error('identity request cancelled during registration');
+    const getBlockHeader = vi.fn((_height: number, options?: { signal?: AbortSignal }) => {
+      const childSignal = options?.signal;
+      if (!childSignal) throw new Error('identity request signal missing');
+      const addEventListener = childSignal.addEventListener.bind(childSignal);
+      vi.spyOn(childSignal, 'addEventListener').mockImplementation((type, listener, eventOptions) => {
+        addEventListener(type, listener, eventOptions);
+        controller.abort(abortReason);
+      });
+      return new Promise<string>(() => undefined);
+    });
+
+    await expect(verifyNodeClientNetwork(
+      { getBlockHeader },
+      'testnet4',
+      { signal: controller.signal, timeoutMs: 60_000 },
+    )).rejects.toBe(abortReason);
+  });
+
   it('validates Regtest against its fixed genesis anchor', async () => {
     const client = { getBlockHeader: vi.fn().mockResolvedValue(REGTEST_GENESIS_HEADER) };
 
@@ -119,6 +175,9 @@ describe('network identity', () => {
       '0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206',
     );
     await expect(verifyNodeClientNetwork(client, 'regtest')).resolves.toBeUndefined();
-    expect(client.getBlockHeader).toHaveBeenCalledWith(0);
+    expect(client.getBlockHeader).toHaveBeenCalledWith(0, {
+      signal: expect.any(AbortSignal),
+      deadlineAt: undefined,
+    });
   });
 });

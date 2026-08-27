@@ -162,7 +162,7 @@ function abortReason(signal: AbortSignal): unknown {
  * returned to the adapter.
  */
 export async function runSyncAttemptWithTimeout<T>(
-  execute: (signal: AbortSignal) => Promise<T>,
+  execute: (signal: AbortSignal, deadlineAt: number) => Promise<T>,
   timeoutMs: number,
   abortGraceMs: number,
   parentSignal?: AbortSignal,
@@ -182,10 +182,11 @@ export async function runSyncAttemptWithTimeout<T>(
   if (parentSignal?.aborted) onParentAbort();
   else parentSignal?.addEventListener('abort', onParentAbort, { once: true });
 
+  const deadlineAt = Date.now() + timeoutMs;
   const timeoutError = new Error(`Sync attempt timed out after ${timeoutMs}ms`);
   const timeoutHandle = setTimeout(() => abort(timeoutError), timeoutMs);
   timeoutHandle?.unref?.();
-  const execution = Promise.resolve().then(() => execute(controller.signal));
+  const execution = Promise.resolve().then(() => execute(controller.signal, deadlineAt));
 
   try {
     const first = await Promise.race([
@@ -222,7 +223,7 @@ export async function runSyncAttemptWithTimeout<T>(
  * to overlap its successor.
  */
 export async function runSettledSyncAttemptWithTimeout<T>(
-  execute: (signal: AbortSignal) => Promise<T>,
+  execute: (signal: AbortSignal, deadlineAt: number) => Promise<T>,
   timeoutMs: number,
   parentSignal?: AbortSignal,
 ): Promise<T> {
@@ -235,6 +236,7 @@ export async function runSettledSyncAttemptWithTimeout<T>(
   if (parentSignal?.aborted) onParentAbort();
   else parentSignal?.addEventListener('abort', onParentAbort, { once: true });
 
+  const deadlineAt = Date.now() + timeoutMs;
   const timeoutHandle = setTimeout(
     () => abort(new Error(`Sync attempt timed out after ${timeoutMs}ms`)),
     timeoutMs,
@@ -244,7 +246,7 @@ export async function runSettledSyncAttemptWithTimeout<T>(
   try {
     try {
       controller.signal.throwIfAborted();
-      const result = await execute(controller.signal);
+      const result = await execute(controller.signal, deadlineAt);
       controller.signal.throwIfAborted();
       return result;
     } catch (error) {

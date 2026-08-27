@@ -73,6 +73,128 @@ export function registerNodeClientSelectionTests(
     expect(mocks.getElectrumClientForNetwork).toHaveBeenCalledWith("mainnet");
   });
 
+  it("does not fall back to a singleton after pool acquisition is cancelled", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("sync attempt cancelled");
+    let rejectPool!: (error: unknown) => void;
+    const poolAttempt = new Promise<never>((_resolve, reject) => {
+      rejectPool = reject;
+    });
+    mocks.getElectrumPoolForNetwork.mockReturnValueOnce(poolAttempt);
+    mainnetSingleton.isConnected.mockReturnValue(false);
+
+    const pending = (getNodeClient as any)("mainnet", {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 60_000,
+    }) as Promise<unknown>;
+    await vi.waitFor(() => {
+      expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledTimes(1);
+    });
+    controller.abort(abortReason);
+    rejectPool(new Error("pool unavailable after cancellation"));
+
+    await expect(pending).rejects.toBe(abortReason);
+
+    expect(mocks.getElectrumClientForNetwork).not.toHaveBeenCalled();
+    expect(mainnetSingleton.connect).not.toHaveBeenCalled();
+  });
+
+  it("detaches an aborted caller promptly from shared pool initialization", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("sync attempt cancelled during pool initialization");
+    let resolvePool!: (pool: typeof poolFacade) => void;
+    const poolAttempt = new Promise<typeof poolFacade>((resolve) => {
+      resolvePool = resolve;
+    });
+    mocks.getElectrumPoolForNetwork.mockReturnValueOnce(poolAttempt);
+
+    let rejection: unknown;
+    const pending = (getNodeClient as any)("mainnet", {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 60_000,
+    }).catch((error: unknown) => {
+      rejection = error;
+    });
+    await vi.waitFor(() => {
+      expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledTimes(1);
+    });
+
+    controller.abort(abortReason);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const detachedBeforeSharedInitializationSettled = rejection === abortReason;
+
+    resolvePool(poolFacade);
+    await pending;
+
+    expect(detachedBeforeSharedInitializationSettled).toBe(true);
+    expect(rejection).toBe(abortReason);
+    expect(mocks.getElectrumClientForNetwork).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a string reason", "configuration superseded", "configuration superseded"],
+    ["a null reason", null, "Node client request cancelled"],
+  ])("normalizes %s while detaching from shared configuration loading", async (
+    _label,
+    reason,
+    expectedMessage,
+  ) => {
+    const controller = new AbortController();
+    let resolveConfig!: (config: ReturnType<typeof buildNodeConfig>) => void;
+    const configAttempt = new Promise<ReturnType<typeof buildNodeConfig>>((resolve) => {
+      resolveConfig = resolve;
+    });
+    mockPrismaClient.nodeConfig.findFirst.mockReturnValueOnce(configAttempt);
+
+    const pending = (getNodeClient as any)("mainnet", {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 60_000,
+    }) as Promise<unknown>;
+    await vi.waitFor(() => {
+      expect(mockPrismaClient.nodeConfig.findFirst).toHaveBeenCalledOnce();
+    });
+
+    controller.abort(reason);
+
+    await expect(pending).rejects.toThrow(expectedMessage);
+    resolveConfig(buildNodeConfig());
+  });
+
+  it("does not disconnect a shared client when one caller aborts identity verification", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("caller A cancelled during identity verification");
+    mocks.verifyNodeClientNetwork
+      .mockImplementationOnce(
+        (_client: unknown, _network: unknown, options: { signal?: AbortSignal }) =>
+          new Promise<void>((_resolve, reject) => {
+            options.signal?.addEventListener(
+              "abort",
+              () => reject(options.signal?.reason),
+              { once: true },
+            );
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    const disconnectCallsBefore = poolSubscriptionClient.disconnect.mock.calls.length;
+    const callerA = (getNodeClient as any)("mainnet", {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 60_000,
+    }) as Promise<unknown>;
+    await vi.waitFor(() => {
+      expect(mocks.verifyNodeClientNetwork).toHaveBeenCalledTimes(1);
+    });
+
+    const callerB = getNodeClient("mainnet");
+    await expect(callerB).resolves.toBe(poolSubscriptionClient);
+    controller.abort(abortReason);
+
+    await expect(callerA).rejects.toBe(abortReason);
+    expect(poolSubscriptionClient.disconnect.mock.calls.length).toBe(
+      disconnectCallsBefore,
+    );
+  });
+
   it("uses singleton mode for testnet when configured", async () => {
     mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
       buildNodeConfig({

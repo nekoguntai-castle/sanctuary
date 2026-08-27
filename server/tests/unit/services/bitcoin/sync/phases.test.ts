@@ -17,8 +17,8 @@ import {
   mockElectrumClient,
   resetElectrumMocks,
   createMockTransaction,
-  createMockUTXO,
 } from '../../../../mocks/electrum';
+import { registerFetchUtxosPhaseTests } from './phases/fetchUtxos.contracts';
 
 // Mock Prisma
 vi.mock('../../../../../src/models/prisma', () => ({
@@ -109,7 +109,6 @@ import {
   rbfCleanupPhase,
   fetchHistoriesPhase,
   checkExistingPhase,
-  fetchUtxosPhase,
   updateAddressesPhase,
   gapLimitPhase,
   fixConsolidationsPhase,
@@ -137,6 +136,12 @@ describe('Sync Phases', () => {
   beforeEach(() => {
     resetPrismaMocks();
     resetElectrumMocks();
+    vi.mocked(fetchAuthenticatedTransactions).mockImplementation(async (ctx, txids) => {
+      for (const txid of txids) {
+        ctx.txDetailsCache.set(txid, { txid, hex: '00', vin: [], vout: [] });
+      }
+      return new Set(txids);
+    });
   });
 
   describe('rbfCleanupPhase', () => {
@@ -252,6 +257,80 @@ describe('Sync Phases', () => {
   });
 
   describe('fetchHistoriesPhase', () => {
+    it('records only unresolved fallback addresses when the local history budget expires', async () => {
+      vi.useFakeTimers();
+      try {
+        const acceptedAddress = 'history-accepted';
+        const failedAddress = 'history-failed';
+        const budgetAddress = 'history-budget';
+        const acceptedHistory = [{ tx_hash: 'a'.repeat(64), height: 800000 }];
+        mockElectrumClient.getAddressHistoryBatch.mockRejectedValue(new Error('Batch failed'));
+        mockElectrumClient.getAddressHistory.mockImplementation(
+          async (address: string, options?: { signal?: AbortSignal }) => {
+            if (address === acceptedAddress) return acceptedHistory;
+            if (address === failedAddress) throw new Error('Individual failed');
+            return new Promise((_, reject) => {
+              options?.signal?.addEventListener(
+                'abort',
+                () => reject(options.signal?.reason),
+                { once: true },
+              );
+            });
+          },
+        );
+        const now = Date.now();
+        const ctx = createTestContext({
+          addresses: [acceptedAddress, failedAddress, budgetAddress].map((address, index) => ({
+            id: String(index),
+            address,
+            derivationPath: `m/84'/0'/0'/0/${index}`,
+          })) as any,
+          client: mockElectrumClient as any,
+          attemptRuntime: {
+            signal: new AbortController().signal,
+            deadlineAt: now + 100,
+          },
+        });
+
+        const pending = fetchHistoriesPhase(ctx).then(
+          result => result,
+          error => error as unknown,
+        );
+        await vi.advanceTimersByTimeAsync(100);
+        const result = await pending as SyncContext;
+
+        expect(result).toBe(ctx);
+        if (result !== ctx) return;
+        expect(result.historyResults.get(acceptedAddress)).toEqual(acceptedHistory);
+        expect(result.historyResults.get(failedAddress)).toEqual([]);
+        expect(result.historyResults.get(budgetAddress)).toEqual([]);
+        expect(result.rejectedEvidenceCount).toBe(2);
+        expect(result.rejectedEvidenceReasons).toEqual(new Map([
+          ['history_fetch_failed', 1],
+          ['fetch_budget_exhausted', 1],
+        ]));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not swallow attempt cancellation as an empty history', async () => {
+      const controller = new AbortController();
+      const reason = new Error('attempt cancelled');
+      mockElectrumClient.getAddressHistoryBatch.mockImplementation(async () => {
+        controller.abort(reason);
+        throw reason;
+      });
+      const ctx = createTestContext({
+        addresses: [{ id: '1', address: 'addr1', derivationPath: "m/84'/0'/0'/0/0" } as any],
+        client: mockElectrumClient as any,
+        attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+      });
+
+      await expect(fetchHistoriesPhase(ctx)).rejects.toBe(reason);
+      expect(mockElectrumClient.getAddressHistory).not.toHaveBeenCalled();
+    });
+
     it('should fetch histories for all addresses', async () => {
       const addr1 = 'tb1qaddr1';
       const addr2 = 'tb1qaddr2';
@@ -588,130 +667,7 @@ describe('Sync Phases', () => {
     });
   });
 
-  describe('fetchUtxosPhase', () => {
-    it('rejects a UTXO response when its canonical address script is unavailable', async () => {
-      const address = 'tb1qmissingcanonicalscript';
-      const utxo = createMockUTXO({ value: 100000, height: 800000 });
-      mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(
-        new Map([[address, [utxo]]])
-      );
-
-      const ctx = createTestContext({
-        addresses: [{ id: 'missing-script', address, scriptPubKey: null } as any],
-        addressMap: new Map([[address, { id: 'missing-script', address, scriptPubKey: null }]]) as any,
-        client: mockElectrumClient as any,
-      });
-
-      const result = await fetchUtxosPhase(ctx);
-
-      expect(result.utxoResults).toEqual([]);
-      expect(result.allUtxoKeys.size).toBe(0);
-      expect(result.rejectedEvidenceCount).toBe(1);
-      expect(fetchAuthenticatedTransactions).not.toHaveBeenCalled();
-    });
-
-    it('makes an omitted batch address retryable', async () => {
-      mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map());
-      const ctx = createTestContext({
-        addresses: [{ id: '1', address: 'addr1', scriptPubKey: '0014' } as any],
-        addressMap: new Map([['addr1', { id: '1', address: 'addr1', scriptPubKey: '0014' }]]) as any,
-        client: mockElectrumClient as any,
-      });
-
-      const result = await fetchUtxosPhase(ctx);
-
-      expect(result.utxoResults).toEqual([]);
-      expect(result.rejectedEvidenceCount).toBe(1);
-    });
-
-    it('should fetch UTXOs for all addresses', async () => {
-      const addr1 = 'tb1qaddr1';
-      const addr2 = 'tb1qaddr2';
-
-      mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(
-        new Map([
-          [addr1, [createMockUTXO({ value: 100000, height: 800000 })]],
-          [addr2, [createMockUTXO({ value: 200000, height: 800001 })]],
-        ])
-      );
-
-      const ctx = createTestContext({
-        addresses: [
-          { id: '1', address: addr1, scriptPubKey: '0014' } as any,
-          { id: '2', address: addr2, scriptPubKey: '0014' } as any,
-        ],
-        addressMap: new Map([
-          [addr1, { id: '1', address: addr1, scriptPubKey: '0014' }],
-          [addr2, { id: '2', address: addr2, scriptPubKey: '0014' }],
-        ]) as any,
-        client: mockElectrumClient as any,
-      });
-
-      const result = await fetchUtxosPhase(ctx);
-
-      expect(result.utxoResults.length).toBe(2);
-      // utxosFetched counts total UTXO count, not addresses
-      expect(result.stats.utxosFetched).toBeGreaterThanOrEqual(1);
-    });
-
-    it('should build UTXO data map with correct keys', async () => {
-      const txid = 'utxo_tx'.padEnd(64, 'a');
-      const vout = 1;
-
-      mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(
-        new Map([
-          ['addr1', [{ tx_hash: txid, tx_pos: vout, value: 50000, height: 800000 }]],
-        ])
-      );
-
-      const ctx = createTestContext({
-        addresses: [{ id: '1', address: 'addr1', scriptPubKey: '0014' } as any],
-        addressMap: new Map([['addr1', { id: '1', address: 'addr1', scriptPubKey: '0014' }]]) as any,
-        client: mockElectrumClient as any,
-      });
-
-      const result = await fetchUtxosPhase(ctx);
-
-      const key = `${txid}:${vout}`;
-      expect(result.allUtxoKeys.has(key)).toBe(true);
-      expect(result.utxoDataMap.get(key)).toBeDefined();
-      expect(result.utxoDataMap.get(key)?.address).toBe('addr1');
-    });
-
-    it('should fall back to individual requests on batch failure', async () => {
-      mockElectrumClient.getAddressUTXOsBatch.mockRejectedValue(new Error('Batch failed'));
-      mockElectrumClient.getAddressUTXOs.mockResolvedValue([
-        createMockUTXO({ value: 75000, height: 800000 }),
-      ]);
-
-      const ctx = createTestContext({
-        addresses: [{ id: '1', address: 'addr1', scriptPubKey: '0014' } as any],
-        addressMap: new Map([['addr1', { id: '1', address: 'addr1', scriptPubKey: '0014' }]]) as any,
-        client: mockElectrumClient as any,
-      });
-
-      const result = await fetchUtxosPhase(ctx);
-
-      expect(result.utxoResults.length).toBe(1);
-      expect(mockElectrumClient.getAddressUTXOs).toHaveBeenCalled();
-    });
-
-    it('should continue when individual UTXO fallback fails for an address', async () => {
-      mockElectrumClient.getAddressUTXOsBatch.mockRejectedValue(new Error('Batch failed'));
-      mockElectrumClient.getAddressUTXOs.mockRejectedValue(new Error('Address lookup failed'));
-
-      const ctx = createTestContext({
-        addresses: [{ id: '1', address: 'addr1', scriptPubKey: '0014' } as any],
-        client: mockElectrumClient as any,
-      });
-
-      const result = await fetchUtxosPhase(ctx);
-
-      expect(result.utxoResults).toEqual([]);
-      expect(result.rejectedEvidenceCount).toBe(1);
-      expect(mockElectrumClient.getAddressUTXOs).toHaveBeenCalledWith('addr1');
-    });
-  });
+  describe('fetchUtxosPhase', registerFetchUtxosPhaseTests);
 
   describe('updateAddressesPhase', () => {
     it('should mark addresses with transactions as used', async () => {

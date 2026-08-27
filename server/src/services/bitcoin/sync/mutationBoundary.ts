@@ -32,7 +32,7 @@ type DeferPostCommit = (effect: PostCommitEffect) => void;
  * lease reclaim and must disappear at the later producer cutover.
  */
 export async function runWalletSyncMutation<T>(
-  ctx: Pick<SyncContext, 'walletId' | 'mutationFence'>,
+  ctx: Pick<SyncContext, 'walletId' | 'mutationFence' | 'attemptRuntime'>,
   unit: WalletSyncMutationUnit,
   callback: (
     tx: PrismaTxClient | undefined,
@@ -48,21 +48,30 @@ export async function runWalletSyncMutation<T>(
   const deferPostCommit: DeferPostCommit = effect => {
     effects.push(effect);
   };
-  const execute = (tx: PrismaTxClient): Promise<T> => {
+  const assertActive = (): void => {
+    ctx.attemptRuntime?.signal.throwIfAborted();
     assertAuthority();
+  };
+  const execute = (tx: PrismaTxClient): Promise<T> => {
+    assertActive();
     return callback(tx, deferPostCommit);
+  };
+  const executeUnfenced = (): Promise<T> => {
+    assertActive();
+    return callback(undefined, deferPostCommit);
   };
   const result = ctx.mutationFence
     ? await withWalletSyncMutationFence(ctx.mutationFence, execute)
     : serializeUnfenced && ctx.walletId
       ? await withWalletSyncMutationLock(
           ctx.walletId,
-          assertAuthority,
+          assertActive,
           tx => callback(tx, deferPostCommit),
         )
-      : await callback(undefined, deferPostCommit);
+      : await executeUnfenced();
 
   for (const effect of effects) {
+    ctx.attemptRuntime?.signal.throwIfAborted();
     await effect();
   }
   return result;

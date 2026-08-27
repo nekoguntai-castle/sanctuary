@@ -153,13 +153,47 @@ describe('Blockchain syncWallet recursion', () => {
       1,
       walletId,
       [],
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        attemptRuntime: { signal: controller.signal, deadlineAt: Number.POSITIVE_INFINITY },
+      },
     );
     expect(mockExecuteSyncPipeline).toHaveBeenNthCalledWith(
       2,
       walletId,
       [],
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        attemptRuntime: { signal: controller.signal, deadlineAt: Number.POSITIVE_INFINITY },
+      },
+    );
+  });
+
+  it('passes the immutable mutation fence into the sync pipeline', async () => {
+    const walletId = 'wallet-fenced';
+    const mutationFence = {
+      walletId,
+      generation: 7,
+      leaseToken: 'lease-token-7',
+    };
+    mockExecuteSyncPipeline.mockResolvedValueOnce({
+      addresses: 1,
+      transactions: 2,
+      utxos: 3,
+      stats: { newAddressesGenerated: 0 },
+    });
+
+    await expect(syncWallet(
+      walletId,
+      0,
+      undefined,
+      mutationFence,
+    )).resolves.toEqual({ addresses: 1, transactions: 2, utxos: 3 });
+
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledWith(
+      walletId,
+      [],
+      { mutationFence },
     );
   });
 
