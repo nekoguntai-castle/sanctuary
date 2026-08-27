@@ -13,6 +13,12 @@ This document records the checks that should protect the A-grade engineering goa
 - External maturity references must not silently expand Sanctuary's supported runtime. Bitcoin Core, hardware devices, and third-party tools may be required as lab or release evidence only when the product feature being released does not require them at runtime; Bitcoin evidence areas keep this boundary executable in `server/src/services/bitcoin/validationEvidenceContracts.ts`.
 - Accepted dependency findings must remain documented in `docs/plans/dependency-audit-triage.md`; new high or critical production advisories require a fix or explicit risk acceptance before release.
 - CI/CD tiering, required aggregate checks, merge-queue behavior, and emergency hotfix rules are documented in `docs/reference/ci-cd-strategy.md`.
+- Release/tag recovery is governed by [Release distribution](release-distribution.md);
+  contributor or command documentation must not invent a separate policy.
+- Stable promotion requires the exact accepted RC's external
+  [release-candidate canary receipt](../how-to/release-candidate-canary.md), with
+  affected-fleet outcomes, diagnostics, metric and bounded-error evidence, and
+  operator signoff. The receipt and support evidence never enter the repository.
 
 ## Nonblocking Release Observations
 

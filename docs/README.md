@@ -31,6 +31,7 @@ Procedural guides for operators and developers.
 - [Migrate from retired packaged deployments](how-to/migrate-from-packaged-deployments.md) — move an existing packaged deployment to the supported source or offline path
 - [Runtime secrets](how-to/runtime-secrets.md) — runtime secret management
 - [Docker deployment](how-to/docker.md) — container build, runtime, HTTPS, and troubleshooting guidance
+- [Release-candidate canary](how-to/release-candidate-canary.md) — validate an exact RC against an affected fleet and produce external signoff evidence
 
 ## Reference
 

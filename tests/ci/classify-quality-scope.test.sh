@@ -177,6 +177,16 @@ main() {
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    tests/release/release-policy.test.mjs 'export {};' \
+    'release policy contract change' true true false false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    docs/reference/release-distribution.md '# Release distribution' \
+    'release policy documentation change' false false false false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
     server/src/example.ts 'export const example = 1;' 'code change' \
     true true false false false)"
 
@@ -192,7 +202,7 @@ main() {
   git -C "$repo_dir" commit --amend -qm 'mixed source and manifest'
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_quality_scope "$output_file" true true true false false
+  assert_quality_scope "$output_file" true true true false true
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \

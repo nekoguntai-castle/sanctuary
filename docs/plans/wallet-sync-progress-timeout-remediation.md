@@ -1,10 +1,17 @@
 # Wallet Sync Progress and Timeout Remediation
 
-Status: approved after five recursive review passes; implementation in progress
+Status: implemented by PRs #949, #950, and #951; release follow-up continues in
+[`v0.8.69-release-gap-remediation-plan.md`](v0.8.69-release-gap-remediation-plan.md)
 Date: 2026-08-26
 Target: `origin/main` at `40aae345531911da72f7d18d522ccf61575eedde` (v0.8.68)
 Incident evidence: `~/sync-diagnosis.txt`, `~/sync-diagnosis2.txt`, and the
 2026-08-26 support aggregates
+
+Implementation evidence: PR #949 established bounded remote execution and
+cancellation, PR #950 completed canonical wallet-sync lifecycle and visibility
+work, and PR #951 closed the remaining timeout/progress regressions. The v0.8.69
+gap plan owns launcher, whole-pipeline diagnostic presentation, monitoring,
+release-policy, and canary evidence required before release.
 
 ## 1. Confirmed problem
 

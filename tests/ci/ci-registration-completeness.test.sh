@@ -23,6 +23,7 @@ QUALITY="$REPO_ROOT/.github/workflows/quality.yml"
 WORKFLOW_DIR="$REPO_ROOT/.github/workflows"
 # Suites can be registered by name here instead of in a workflow.
 SUITE_RUNNER="$REPO_ROOT/scripts/ci/run-install-unit-tests.sh"
+RELEASE_SUITE_MANIFEST="$REPO_ROOT/package.json"
 
 PASS=0
 FAIL=0
@@ -94,6 +95,13 @@ mapfile -t WORKFLOW_EXECUTIONS < <(
 
 workflow_executes() {
   allowed "$1" ${WORKFLOW_EXECUTIONS+"${WORKFLOW_EXECUTIONS[@]}"}
+}
+
+release_aggregate_executes() {
+  local rel="$1"
+  grep -rqE 'npm run test:release-distribution([[:space:]]|$)' "$WORKFLOW_DIR" \
+    && [ -f "$RELEASE_SUITE_MANIFEST" ] \
+    && grep -qF "$rel" "$RELEASE_SUITE_MANIFEST"
 }
 
 [ -f "$QUALITY" ] || bad "quality.yml not found at $QUALITY"
@@ -263,7 +271,7 @@ while IFS= read -r path; do
   name="$(basename "$path")"
   rel="${path#"$REPO_ROOT"/}"
   count_release=$((count_release + 1))
-  if workflow_executes "$rel"; then
+  if workflow_executes "$rel" || release_aggregate_executes "$rel"; then
     continue
   fi
   allowed "$name" ${RELEASE_EXECUTION_ALLOWLIST+"${RELEASE_EXECUTION_ALLOWLIST[@]}"} && continue

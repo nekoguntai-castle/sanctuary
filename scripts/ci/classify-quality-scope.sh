@@ -104,6 +104,9 @@ is_ci_classifier_file() {
     scripts/ci/*|tests/ci/*|config/ci-toolchain-lock.json|config/hardware-emulator-source-inventory.json|.github/actions/setup-node-toolchain/action.yml|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/quality.yml|.github/workflows/verify-vectors.yml)
       return 0
       ;;
+    package.json|scripts/bump-version.sh|scripts/release/*|tests/release/*|CLAUDE.md|.claude/commands/release.md|.claude/commands/pre-release.md|.github/CONTRIBUTING.md|docs/reference/release-distribution.md|docs/reference/release-gates.md|docs/reference/changelog.md|docs/how-to/release-candidate-canary.md)
+      return 0
+      ;;
   esac
   return 1
 }

@@ -1,171 +1,192 @@
-#!/bin/bash
-#
-# Version Bump Script
-#
-# Updates version across all package.json files. Release distribution is an
-# operator-owned step after Forgejo tag CI succeeds; Forgejo Actions never
-# creates releases or mutates public distribution endpoints.
-#
-# Usage:
-#   ./scripts/bump-version.sh 0.7.20      # Set explicit version
-#   ./scripts/bump-version.sh patch       # 0.7.19 -> 0.7.20
-#   ./scripts/bump-version.sh minor       # 0.7.19 -> 0.8.0
-#   ./scripts/bump-version.sh major       # 0.7.19 -> 1.0.0
-#   ./scripts/bump-version.sh --check     # Check if all versions are in sync
-#
-
-set -e
+#!/usr/bin/env bash
+# Transactional version bump and release-evidence validator.
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-PACKAGE_FILES=(
-  package.json
-  server/package.json
-  gateway/package.json
-  llm-egress-proxy/package.json
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+PACKAGE_FILES=(package.json server/package.json gateway/package.json llm-egress-proxy/package.json)
+DECLARED_OUTPUTS=(
+  "${PACKAGE_FILES[@]}"
+  package-lock.json
+  llm-egress-proxy/package-lock.json
+  docs/reference/generated/hardware-wallet-compatibility.json
+  docs/reference/generated/hardware-wallet-compatibility.md
 )
+HARDWARE_JSON=docs/reference/generated/hardware-wallet-compatibility.json
+HARDWARE_MARKDOWN=docs/reference/generated/hardware-wallet-compatibility.md
+NPM_BIN="${SANCTUARY_BUMP_NPM_BIN:-npm}"
+REPORT_BIN="${SANCTUARY_BUMP_REPORT_BIN:-}"
+TRANSACTION_DIR=""
+ROLLBACK=false
 
-get_version() {
-  local file=$1
-  grep '"version"' "$file" | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/'
+fail() { echo -e "${RED}Version evidence check failed:${NC} $*" >&2; return 1; }
+
+cleanup_transaction() {
+  [[ -n "$TRANSACTION_DIR" && -d "$TRANSACTION_DIR" ]] || return 0
+  find "$TRANSACTION_DIR" -type f -delete
+  find "$TRANSACTION_DIR" -depth -type d -empty -delete
 }
 
-check_versions() {
-  local root_ver=$(get_version "package.json")
-  local all_match=true
+finish_transaction() {
+  local status=${1:-$?}
+  trap - EXIT INT TERM
+  if [[ "$ROLLBACK" == true ]]; then
+    local output
+    for output in "${DECLARED_OUTPUTS[@]}"; do
+      cp -p "$TRANSACTION_DIR/$output" "$output" || status=1
+    done
+    echo -e "${YELLOW}Version bump failed; restored every declared output.${NC}" >&2
+  fi
+  cleanup_transaction || status=1
+  exit "$status"
+}
 
-  echo -e "${YELLOW}Checking version sync...${NC}"
-  echo ""
-
-  for file in "${PACKAGE_FILES[@]}"; do
-    local ver=$(get_version "$file")
-    if [[ "$ver" == "$root_ver" ]]; then
-      echo -e "  ${GREEN}✓${NC} $file: $ver"
-    else
-      echo -e "  ${RED}✗${NC} $file: $ver (expected $root_ver)"
-      all_match=false
-    fi
+require_declared_outputs() {
+  local output
+  for output in "${DECLARED_OUTPUTS[@]}"; do
+    [[ -f "$output" ]] || fail "required release output is missing: $output"
   done
-
-  echo ""
-  if $all_match; then
-    echo -e "${GREEN}All versions are in sync: $root_ver${NC}"
-    return 0
+  command -v "$NPM_BIN" >/dev/null || fail "npm command is unavailable: $NPM_BIN"
+  if [[ -n "$REPORT_BIN" ]]; then
+    command -v "$REPORT_BIN" >/dev/null || fail "report command is unavailable: $REPORT_BIN"
   else
-    echo -e "${RED}Version mismatch detected!${NC}"
-    echo "Run: ./scripts/bump-version.sh $root_ver"
-    return 1
+    command -v npx >/dev/null || fail "npx is required to generate release evidence"
+    [[ -f scripts/ci/hardware-compatibility-report.ts ]] || fail "hardware report generator is missing"
   fi
 }
 
-calc_version() {
-  local current=$1
-  local bump=$2
-  IFS='.' read -r major minor patch <<< "$current"
+json_value() {
+  node -e '
+    const fs = require("node:fs");
+    const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    let current = value;
+    for (const key of process.argv[2].split(".")) current = current?.[key];
+    if (typeof current !== "string") process.exit(1);
+    process.stdout.write(current);
+  ' "$1" "$2"
+}
 
+get_version() { json_value "$1" version; }
+
+run_hardware_report() {
+  local json_path=$1 markdown_path=$2 generated_at revision
+  generated_at="$(json_value "$HARDWARE_JSON" generatedAt)" || fail "$HARDWARE_JSON needs string generatedAt"
+  revision="$(node -e '
+    const value = require("./docs/reference/generated/hardware-wallet-compatibility.json").revision;
+    if (value !== null && typeof value !== "string") process.exit(1);
+    if (typeof value === "string") process.stdout.write(value);
+  ')" || fail "$HARDWARE_JSON has invalid revision"
+  local args=(--as-of "$generated_at" --json "$json_path" --markdown "$markdown_path")
+  [[ -z "$revision" ]] || args+=(--revision "$revision")
+  if [[ -n "$REPORT_BIN" ]]; then
+    "$REPORT_BIN" "${args[@]}"
+  else
+    npx tsx scripts/ci/hardware-compatibility-report.ts "${args[@]}"
+  fi
+}
+
+validate_version_identities() {
+  node - "$HARDWARE_JSON" <<'NODE'
+const { createHash } = require('node:crypto');
+const { readFileSync } = require('node:fs');
+const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const root = read('package.json');
+const server = read('server/package.json');
+const gateway = read('gateway/package.json');
+const proxy = read('llm-egress-proxy/package.json');
+const rootLock = read('package-lock.json');
+const proxyLock = read('llm-egress-proxy/package-lock.json');
+const report = read(process.argv[2]);
+const expected = root.version;
+const checks = [
+  ['server/package.json', server.version],
+  ['gateway/package.json', gateway.version],
+  ['llm-egress-proxy/package.json', proxy.version],
+  ['package-lock.json version', rootLock.version],
+  ['package-lock.json packages[""]', rootLock.packages?.['']?.version],
+  ['package-lock.json packages.server', rootLock.packages?.server?.version],
+  ['package-lock.json packages.gateway', rootLock.packages?.gateway?.version],
+  ['llm-egress-proxy/package-lock.json version', proxyLock.version],
+  ['llm-egress-proxy/package-lock.json packages[""]', proxyLock.packages?.['']?.version],
+  ['generated JSON source.applicationVersion', report.source?.applicationVersion],
+];
+const errors = checks.filter(([, actual]) => actual !== expected)
+  .map(([label, actual]) => `${label}: ${String(actual)} (expected ${expected})`);
+const digest = createHash('sha256').update(readFileSync('package-lock.json')).digest('hex');
+if (report.source?.packageLockSha256 !== digest) {
+  errors.push(`generated JSON source.packageLockSha256: ${String(report.source?.packageLockSha256)} (expected ${digest})`);
+}
+if (errors.length) { process.stderr.write(`${errors.join('\n')}\n`); process.exit(1); }
+NODE
+}
+
+remove_temp_dir() {
+  local directory=$1
+  find "$directory" -type f -delete 2>/dev/null || true
+  find "$directory" -depth -type d -empty -delete 2>/dev/null || true
+}
+
+check_release_evidence() {
+  require_declared_outputs
+  validate_version_identities || fail "manifest, lockfile, or generated JSON identity mismatch"
+  local parity_dir
+  parity_dir="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-version-check.XXXXXX")"
+  if ! run_hardware_report "$parity_dir/report.json" "$parity_dir/report.md" \
+    || ! cmp -s "$HARDWARE_JSON" "$parity_dir/report.json" \
+    || ! cmp -s "$HARDWARE_MARKDOWN" "$parity_dir/report.md"; then
+    remove_temp_dir "$parity_dir"
+    fail "generated hardware JSON/Markdown are not the canonical matching pair"
+  fi
+  remove_temp_dir "$parity_dir"
+  echo -e "${GREEN}All release version evidence is in sync: $(get_version package.json)${NC}"
+}
+
+calc_version() {
+  local current=$1 bump=$2 major minor patch
+  IFS='.' read -r major minor patch <<< "$current"
   case "$bump" in
     major) echo "$((major + 1)).0.0" ;;
     minor) echo "$major.$((minor + 1)).0" ;;
     patch) echo "$major.$minor.$((patch + 1))" ;;
-    *)     echo "$bump" ;;
+    *) echo "$bump" ;;
   esac
 }
 
-# Show help
-if [[ $# -eq 0 ]]; then
-  echo "Usage: $0 <version|patch|minor|major|--check>"
-  echo ""
-  echo "Examples:"
-  echo "  $0 0.7.20    # Set explicit version"
-  echo "  $0 patch     # Bump patch (0.7.19 -> 0.7.20)"
-  echo "  $0 minor     # Bump minor (0.7.19 -> 0.8.0)"
-  echo "  $0 major     # Bump major (0.7.19 -> 1.0.0)"
-  echo "  $0 --check   # Check if all versions are in sync"
-  exit 1
-fi
+begin_transaction() {
+  TRANSACTION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-version-bump.XXXXXX")"
+  local output
+  for output in "${DECLARED_OUTPUTS[@]}"; do
+    mkdir -p "$TRANSACTION_DIR/$(dirname "$output")"
+    cp -p "$output" "$TRANSACTION_DIR/$output"
+  done
+  ROLLBACK=true
+  trap 'finish_transaction $?' EXIT
+  trap 'finish_transaction 130' INT
+  trap 'finish_transaction 143' TERM
+}
 
-# Check mode
-if [[ "$1" == "--check" ]]; then
-  check_versions
-  exit $?
-fi
+usage() { echo "Usage: $0 <version|patch|minor|major|--check>" >&2; }
 
-# Calculate new version
-CURRENT=$(get_version "package.json")
-NEW_VERSION=$(calc_version "$CURRENT" "$1")
+[[ $# -eq 1 ]] || { usage; exit 2; }
+if [[ "$1" == --check ]]; then check_release_evidence; exit 0; fi
 
-# Validate version format
-if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo -e "${RED}Error: Invalid version format: $NEW_VERSION${NC}"
-  echo "Version must be in format X.Y.Z (e.g., 0.7.20)"
-  exit 1
-fi
+require_declared_outputs
+CURRENT="$(get_version package.json)" || fail "package.json has no valid version"
+NEW_VERSION="$(calc_version "$CURRENT" "$1")"
+[[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { fail "invalid version '$NEW_VERSION'; expected X.Y.Z"; exit 2; }
 
 echo -e "${YELLOW}Bumping version: $CURRENT -> $NEW_VERSION${NC}"
-echo ""
-
-# Update package.json AND its package-lock.json atomically per package, without re-resolving
-# dependencies. `npm version --no-git-tag-version` only touches the version fields; it does not
-# rewrite peer-dep resolutions the way `npm install --package-lock-only` does (the latter
-# silently dropped @bitcoinerlab/descriptors-core peer-optional resolutions in v0.8.47).
-PKG_DIRS=(. server gateway llm-egress-proxy)
-for dir in "${PKG_DIRS[@]}"; do
-  if [ -f "$dir/package.json" ]; then
-    (cd "$dir" && npm version --no-git-tag-version --allow-same-version "$NEW_VERSION" > /dev/null)
-    echo -e "  ${GREEN}✓${NC} $dir/package.json + package-lock.json"
-  fi
-done
-
-# The hardware-compatibility statement pins both the application version and the
-# package-lock digest, so a bump invalidates the checked-in artifact and
-# tests/ci/hardwareCompatibilityReport.test.ts fails until it is regenerated.
-# Regenerate here rather than leaving it to be rediscovered mid-release: the
-# `--as-of` value must stay the one the artifact was generated with, because the
-# test builds its expectation from that same constant.
-HARDWARE_REPORT_AS_OF="$(node -e "process.stdout.write(require('./docs/reference/generated/hardware-wallet-compatibility.json').generatedAt)" 2>/dev/null || true)"
-if [ -n "$HARDWARE_REPORT_AS_OF" ]; then
-  if npx tsx scripts/ci/hardware-compatibility-report.ts \
-      --as-of "$HARDWARE_REPORT_AS_OF" \
-      --json docs/reference/generated/hardware-wallet-compatibility.json \
-      --markdown docs/reference/generated/hardware-wallet-compatibility.md >/dev/null 2>&1; then
-    echo -e "  ${GREEN}✓${NC} docs/reference/generated/hardware-wallet-compatibility.{json,md}"
-  else
-    echo -e "  ${YELLOW}!${NC} could not regenerate the hardware-compatibility statement — run it by hand before committing"
-  fi
-fi
-
-echo ""
-echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
-echo ""
-echo "This script only updates package.json files. The full release flow"
-echo "(local validation, upgrade-test audit, PR through Forgejo, tag, CI"
-echo "monitoring on Forgejo Actions, then operator-owned Forgejo/GitHub release publication) lives"
-echo "in the /release skill at .claude/commands/release.md — invoke that"
-echo "for an end-to-end release rather than driving these steps by hand."
-echo ""
-echo "Quick reference for the manual path (origin = Forgejo; main is PR-only):"
-echo "  0. If you re-resolve a lockfile after this script ran, regenerate the"
-echo "     hardware-compatibility statement again - it pins the lockfile digest:"
-echo "     npx tsx scripts/ci/hardware-compatibility-report.ts --as-of <generatedAt> \\"
-echo "       --json docs/reference/generated/hardware-wallet-compatibility.json \\"
-echo "       --markdown docs/reference/generated/hardware-wallet-compatibility.md"
-echo "  1. bash scripts/quality/check-lockfile-peer-resolution.sh   # verify lockfile"
-echo "  2. git checkout -b chore/bump-version-$NEW_VERSION"
-echo "  3. git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"
-echo "  4. git push origin chore/bump-version-$NEW_VERSION"
-echo "  5. Open PR via Forgejo API/UI, wait for CI, merge (squash)"
-echo "  6. git checkout main && git pull --ff-only origin main"
-echo "  7. git tag v$NEW_VERSION-rc1 && git push origin v$NEW_VERSION-rc1   # RC smoke"
-echo "  8. After RC CI is green: git tag v$NEW_VERSION && git push origin v$NEW_VERSION"
-echo "  9. Wait for stable-tag CI, then run: npm run release:publish -- v$NEW_VERSION"
-echo ""
-echo "The trusted operator command verifies tag parity and publishes matching"
-echo "Forgejo and GitHub Release objects."
+begin_transaction
+"$NPM_BIN" version --no-git-tag-version --allow-same-version "$NEW_VERSION" >/dev/null
+(cd server && "$NPM_BIN" version --no-git-tag-version --allow-same-version "$NEW_VERSION" >/dev/null)
+(cd gateway && "$NPM_BIN" version --no-git-tag-version --allow-same-version "$NEW_VERSION" >/dev/null)
+(cd llm-egress-proxy && "$NPM_BIN" version --no-git-tag-version --allow-same-version "$NEW_VERSION" >/dev/null)
+run_hardware_report "$HARDWARE_JSON" "$HARDWARE_MARKDOWN"
+check_release_evidence
+ROLLBACK=false
+echo -e "${GREEN}Version and all declared release evidence updated to $NEW_VERSION.${NC}"
+echo "Follow the authoritative release policy: docs/reference/release-distribution.md"

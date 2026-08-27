@@ -147,13 +147,23 @@ Never bump the version to fix a CI failure. Fix on the current version.
 
 ### Release process
 
-1. Bump version: `./scripts/bump-version.sh patch|minor|major`
-2. Local validation (must be fully green)
-3. Commit, tag RC: `git tag vX.Y.Z-rc.1`, push
-4. Monitor CI: `gh run list --limit 5`; fix failures, re-tag
-5. Cut release: `git tag vX.Y.Z`, push
+Release preparation follows the same protected-branch workflow as every other
+change. Prepare the version on a dedicated branch, validate it locally, deliver
+it through a Forgejo pull request, and verify its reported merge commit is an
+ancestor of freshly fetched `origin/main`. Never push a release commit directly
+to `main`, and never delete a branch until that ancestry proof succeeds.
 
-See [`.claude/commands/release.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/.claude/commands/release.md) for the full automated release flow.
+RC and stable tags are immutable once pushed. A failed RC is repaired through a
+new pull request and receives the next unused RC number; it is never deleted or
+retargeted. A defect in a pushed stable release is fixed in a new patch release.
+Forgejo Actions is the CI authority; GitHub Actions remains disabled.
+
+The authoritative sequence and recovery state machine live in
+[`docs/reference/release-distribution.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/reference/release-distribution.md).
+Stable promotion also requires the external evidence described by the
+[`release-candidate canary`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/how-to/release-candidate-canary.md).
+If your local tooling provides an automated release command, use it only when
+it agrees with that policy authority.
 
 ## Documentation
 

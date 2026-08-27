@@ -9,20 +9,246 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support bundle collectors for vault policies, agent wallets, AI/intelligence, MCP, devices, drafts, backups, and mobile permissions
-- Support bundle database collector now reports Prisma migration head
+- Whole-pipeline wallet-sync phase progress, active-stage age metrics, and
+  request-negotiated worker diagnostics v2 while preserving diagnostics v1.
+- Wallet-sync execution panels and alerts, live stage timing in the Log tab, and
+  privacy-safe incident evidence for generation, lease, and worker state.
 
 ### Changed
 
-- Reorganized documentation under the Diataxis framework (explanation, how-to, reference) with kebab-case naming
-- Purged 58 auto-generated CI proof artifacts from `docs/plans/`
-- Added `CONTRIBUTING.md`, `CHANGELOG.md`, and `docs/README.md` navigation index
+- Made the default MCP-disabled launcher and release rebuild gate fail closed.
+- Established one immutable-tag release recovery policy and an affected-fleet
+  release-candidate canary contract for v0.8.69.
 
 ### Fixed
 
-- Hardened auth and AI proxy request validation
-- Fixed npm 10 lockfile compatibility
-- Avoided express type dependency in AI proxy schemas
+- Bounded wallet-sync remote work, cancellation, recursion, and fallback paths
+  delivered by PRs #949, #950, and #951.
+- Preserved causal ordering for equal-millisecond wallet-sync progress events
+  across mixed worker versions.
+
+## [0.8.68] - 2026-08-26
+
+### Changed
+
+- Prepared the v0.8.68 release from the accepted v0.8.67 baseline.
+
+## [0.8.67] - 2026-08-26
+
+### Added
+
+- Added bounded cross-network wallet-sync recovery and retired the legacy stale-wallet scheduler.
+
+### Fixed
+
+- Coordinated frontend refresh and CSRF recovery, repaired MCP health probes, and updated monitoring and security dependencies.
+
+## [0.8.66] - 2026-08-21
+
+### Changed
+
+- Unified the wallet-sync lifecycle, persistence, publication, retry ladder, and diagnostic contracts.
+- Made static quality gates and architecture-boundary ratchets reflect the work they actually execute.
+
+## [0.8.65] - 2026-08-20
+
+### Added
+
+- Added transaction sub-tabs, detachable panels, and clearer wallet-sync failure presentation.
+
+### Changed
+
+- Suspended the single-maintainer wallet-safety human-attestation gate while retaining automated evidence.
+
+## [0.8.64] - 2026-08-19
+
+### Fixed
+
+- Restored sync for legacy wallets, enforced live WebSocket authorization, and hardened approval persistence.
+- Corrected release evidence, Grafana migration settling, and install cleanup behavior.
+
+## [0.8.63] - 2026-08-13
+
+### Added
+
+- Added hardware-wallet conformance and authenticated wallet-safety evidence for Ledger, Trezor, Jade, and Taproot flows.
+
+### Fixed
+
+- Corrected release-evidence builds and Tor configuration paths in upgrade tests.
+
+## [0.8.62] - 2026-08-08
+
+### Added
+
+- Added strict frontend validation for wallet, UTXO, signing, fee, price, xpub, and RBF API responses.
+
+### Fixed
+
+- Made dashboard request failures visible instead of presenting them as empty data.
+
+## [0.8.61] - 2026-08-07
+
+### Fixed
+
+- Made failed or stale backups externally visible and hardened send-fee and dashboard fee-rate handling.
+- Isolated install lanes, migration waits, release notes, and runner-lock evidence.
+
+## [0.8.60] - 2026-08-06
+
+### Changed
+
+- Made CI shell inventories self-checking and registered previously orphaned test suites.
+
+### Fixed
+
+- Removed the unusable Promtail host-log mount and hardened monitoring, diagnostics, and address-verification CI.
+
+## [0.8.59] - 2026-08-05
+
+### Added
+
+- Reworked the dashboard layout, activity pagination, and BTC balance movement display.
+
+### Fixed
+
+- Corrected monitoring configuration seeding and strengthened package-compromise and AES-GCM validation.
+
+## [0.8.58] - 2026-08-02
+
+### Added
+
+- Added privacy-safe notification diagnostics and single-incident support evidence.
+
+### Fixed
+
+- Restored candidate, upgrade, offline-upgrade, and isolated release build behavior.
+
+## [0.8.57] - 2026-07-30
+
+### Changed
+
+- Made Forgejo the CI authority and GitHub the passive public mirror and operator-owned distribution endpoint.
+
+### Fixed
+
+- Hardened worker lock-loss termination, scheduling, webhook retries, migrations, transfers, backups, and outbound request bounds.
+
+## [0.8.56] - 2026-06-07
+
+### Added
+
+- Added keyboard and dialog accessibility across dashboards, tables, charts, modals, and UTXO selection.
+
+### Changed
+
+- Converged shared transaction, draft, and vault-policy request schemas.
+
+## [0.8.55] - 2026-05-27
+
+### Added
+
+- Added Silent Payments Electrum readiness infrastructure and wallet webhook notifications.
+
+### Fixed
+
+- Hardened remote LLM provider connectivity, persistent settings, and Codeberg tag refresh during upgrades.
+
+## [0.8.54] - 2026-05-16
+
+### Changed
+
+- Completed quality, dependency-advisory, architecture, and hardware-readiness remediation.
+
+### Fixed
+
+- Corrected the release target after the prerelease preparation selected the wrong version line.
+
+## [0.8.53] - 2026-05-13
+
+### Changed
+
+- Moved the prebuilt image path to Codeberg Packages and removed obsolete GitHub-only release workflows.
+
+### Fixed
+
+- Repaired fresh-install migrations, worker startup, release CI diagnostics, and image publication reliability.
+
+## [0.8.52] - 2026-05-08
+
+### Added
+
+- Added blocking-I/O quality enforcement and reliability documentation.
+
+### Changed
+
+- Consolidated release-candidate upgrade evidence under the install-test owner and improved CI isolation.
+
+## [0.8.50] - 2026-05-02
+
+### Added
+
+- Added signed offline-release bundle infrastructure and Codeberg installer fallback.
+
+### Changed
+
+- Removed the GitLab mirror and unused privacy-mixing references.
+
+## [0.8.49] - 2026-05-02
+
+### Added
+
+- Added testnet and signet wallet workflows and a sidebar network selector.
+
+### Fixed
+
+- Hardened wallet addresses, derivation evidence, and PSBT safety verification.
+
+## [0.8.48] - 2026-04-30
+
+### Changed
+
+- Published a version-only follow-up to v0.8.47.
+
+## [0.8.47] - 2026-04-30
+
+### Added
+
+- Added requester-scoped agent-wallet setup and database-backed price-provider controls.
+
+### Fixed
+
+- Hardened decoy randomness, wallet references, derivation paths, transaction intent limits, and BullMQ job identifiers.
+
+## [0.8.46] - 2026-04-28
+
+### Added
+
+- Added local AI providers and automatic Sanctuary Console context.
+
+### Fixed
+
+- Corrected Console transaction planning and expanded local-provider regression coverage.
+
+## [0.8.45] - 2026-04-27
+
+### Added
+
+- Added the Sanctuary Console, AI provider credential boundary, MCP access controls, and assistant read tools.
+
+### Changed
+
+- Reduced complexity across transaction sync, signing, configuration, and UI flows while restoring exact quality gates.
+
+## [0.8.44] - 2026-04-25
+
+### Changed
+
+- Unified notification worker delivery and parallelized browser, backend, and coverage CI lanes.
+
+### Fixed
+
+- Hardened privacy-score rendering, test semantics, and integration-suite ownership.
 
 ## [0.8.43] - 2026-04-24
 
@@ -323,7 +549,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.34...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.68...HEAD
+[0.8.68]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.67...v0.8.68
+[0.8.67]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.66...v0.8.67
+[0.8.66]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.65...v0.8.66
+[0.8.65]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.64...v0.8.65
+[0.8.64]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.63...v0.8.64
+[0.8.63]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.62...v0.8.63
+[0.8.62]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.61...v0.8.62
+[0.8.61]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.60...v0.8.61
+[0.8.60]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.59...v0.8.60
+[0.8.59]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.58...v0.8.59
+[0.8.58]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.57...v0.8.58
+[0.8.57]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.56...v0.8.57
+[0.8.56]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.55...v0.8.56
+[0.8.55]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.54...v0.8.55
+[0.8.54]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.53...v0.8.54
+[0.8.53]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.52...v0.8.53
+[0.8.52]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.50...v0.8.52
+[0.8.50]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.49...v0.8.50
+[0.8.49]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.48...v0.8.49
+[0.8.48]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.47...v0.8.48
+[0.8.47]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.46...v0.8.47
+[0.8.46]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.45...v0.8.46
+[0.8.45]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.44...v0.8.45
+[0.8.44]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.43...v0.8.44
 [0.8.34]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.33...v0.8.34
 [0.8.33]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.32...v0.8.33
 [0.8.32]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.31...v0.8.32

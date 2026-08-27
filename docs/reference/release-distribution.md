@@ -6,6 +6,10 @@ neither GitHub Actions nor Forgejo Actions publishes releases.
 The branch mirror's credentials and tag boundary are documented separately in
 [Repository mirroring](repository-mirroring.md).
 
+This document is the authoritative release and recovery policy. Command files,
+contributor guidance, and script output must link here and may not define a
+different tag-recovery procedure.
+
 The supported online installation path clones the immutable GitHub release tag
 and builds the main Compose stack locally. Sanctuary does not publish a
 supported prebuilt-registry deployment. Disconnected installations use signed
@@ -72,16 +76,27 @@ matching tag or Release object when reconciliation is needed.
 
 ## Release sequence
 
-1. Complete the normal version and tag preparation on Forgejo.
-2. Wait for the tag's `install-test.yml` push run to finish successfully.
-3. Check out the immutable tag in a clean worktree.
-4. Rehearse without API writes:
+1. Complete version preparation through a protected Forgejo pull request.
+   Confirm the PR-reported merge commit is an ancestor of freshly fetched
+   `origin/main` before deleting its branch or selecting an RC commit.
+2. Create the next unused RC tag on that exact commit and wait for its Forgejo
+   release-candidate and `install-test.yml` runs to finish successfully. If it
+   fails, follow the recovery state machine below and use a new RC number.
+3. Run the affected-fleet
+   [release-candidate canary](../how-to/release-candidate-canary.md) against the
+   exact accepted RC tag and commit. Keep its receipt outside the checkout.
+4. Validate that receipt and complete credential, signing-key, and new external
+   output-directory readiness checks. Create the stable tag on the exact accepted
+   RC commit only after every pre-tag check succeeds, then wait for the stable
+   tag's own `install-test.yml` run.
+5. Check out the immutable stable tag in a clean worktree.
+6. Rehearse without API writes:
 
    ```bash
    npm run release:publish -- v0.8.57 --dry-run
    ```
 
-5. Prepare the complete signed release asset set outside the checkout. The
+7. Prepare the complete signed release asset set outside the checkout. The
    output directory must be new and empty:
 
    ```bash
@@ -93,13 +108,13 @@ matching tag or Release object when reconciliation is needed.
      --run-id operator-20260731-01
    ```
 
-6. Publish the stable Release objects:
+8. Publish the stable Release objects:
 
    ```bash
    npm run release:publish -- v0.8.57
    ```
 
-7. Attach and byte-verify the exact signed asset inventory on both providers:
+9. Attach and byte-verify the exact signed asset inventory on both providers:
 
    ```bash
    COMMIT="$(git rev-parse 'v0.8.57^{commit}')"
@@ -125,6 +140,81 @@ A failed or partial run is safe to repeat: tags are immutable, an existing
 matching tag is reused, and release creation is idempotent. Stop rather than
 rewriting a tag or silently accepting a mismatched Release object.
 
+## Version preparation and prepared resume
+
+The release command accepts exactly one of two modes: a bare next-version bump,
+or `--prepared-version <X.Y.Z> --commit <40-lowercase-hex-sha>`. Never combine
+the modes or accept missing, reordered, abbreviated, duplicate, or unknown
+arguments.
+
+Prepared mode is the safe handoff from an already merged version-preparation
+pull request. Start by freshly fetching `origin/main` and all tags. Require the
+supplied commit to be an ancestor of `origin/main`, create a detached worktree at
+that exact commit, and prove all of the following before selecting a tag:
+
+- every package and lockfile version identity matches the requested version;
+- the changelog contains one dated stable heading for that version;
+- generated hardware JSON/Markdown are the canonical matching pair, with the
+  requested application version and current root-lock digest;
+- the worktree has no unrelated or uncommitted release evidence.
+
+Prepared mode skips the bump and protected-PR delivery steps completely. It
+resumes at first-unused-RC selection, so it cannot create a duplicate version PR
+or accidentally advance to the next patch. A newly prepared release must use a
+protected Forgejo pull request, read the PR-reported merge commit, freshly fetch
+`origin/main`, prove that exact commit is its ancestor, and only then delete the
+preparation branch.
+
+Version preparation may stage only these release-evidence paths:
+
+```text
+package.json
+package-lock.json
+server/package.json
+gateway/package.json
+llm-egress-proxy/package.json
+llm-egress-proxy/package-lock.json
+docs/reference/changelog.md
+docs/reference/generated/hardware-wallet-compatibility.json
+docs/reference/generated/hardware-wallet-compatibility.md
+```
+
+Compare both the unstaged and staged path sets with that allowlist. Stop if an
+expected changed path is omitted or any unrelated path is staged. Run
+`./scripts/bump-version.sh --check` before delivery and again from the exact
+merged commit.
+
+From the detached worktree at that merge commit, run the tracked verifier before
+creating an RC:
+
+```bash
+node scripts/release/verify-prepared-release.mjs \
+  --prepared-version X.Y.Z \
+  --commit 0123456789abcdef0123456789abcdef01234567
+```
+
+It accepts no other argument shape, fetches authoritative refs and tags, proves
+the clean worktree/HEAD/`origin/main` identity and all version evidence, and
+reports the first unused RC without creating or moving any ref.
+
+## Recovery state machine
+
+Release refs are immutable once pushed. Choose recovery from the observed state:
+
+| State | Required action |
+| --- | --- |
+| An RC fails validation or contains a code/configuration defect | Fix through a protected PR, wait for landed-main CI, and create the next unused RC number. Never delete, move, or reuse the failed RC. |
+| Publication stopped for a transient reason | Rerun only when every existing tag, commit, manifest, digest, and remote byte is identical to the intended release. The publishers are designed to converge on identical state. |
+| A local/remote ref, digest, manifest, or same-name asset differs | Stop. Preserve the evidence and investigate; never overwrite, retarget, or silently accept the conflict. |
+| A pushed stable tag has a code or configuration defect | Leave the tag and Release objects immutable. Fix through a protected PR and ship a new patch version through a new RC sequence. |
+
+Stable tagging additionally requires credential, signing-key, canary-receipt,
+and new external output-directory readiness to succeed before the tag is created.
+The asset output path must be absolute, its existing parent must canonicalize
+outside every repository worktree, and the target itself must not exist yet.
+The canary receipt must validate against the exact accepted RC tag and commit;
+it is release evidence, not a repository artifact.
+
 The asset publisher requires both matching Release objects to exist. It refuses
 unlisted local files, unexpected or duplicate remote assets, symlinks, nested
 paths, tag/commit drift, and same-name content conflicts. It never deletes or
@@ -147,6 +237,9 @@ Before calling a release complete, confirm:
   main Compose stack locally.
 - The signed/checksummed offline asset set is present on both providers, every
   byte matches, and the publication receipt identifies both provider releases.
+- The external affected-fleet canary receipt names the exact accepted RC tag and
+  commit and contains complete outcome, diagnostics, metric, bounded-error, and
+  operator-signoff evidence.
 
-Never rewrite an already published stable tag. Stop and investigate any ref or
-digest mismatch.
+Never rewrite any pushed RC or stable tag. Apply the recovery state machine above
+for every validation, publication, ref, digest, or content failure.

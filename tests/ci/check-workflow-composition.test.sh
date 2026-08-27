@@ -2973,6 +2973,8 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality ci-classifier diagnostics" \
   "ci-classifier-tests:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-ci-classifier-tests' \
+  "Checkout" \
+  "fetch-depth: 0" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log"' \
   "npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false" \
   "bash tests/ci/measure-wallclock.test.sh" \
