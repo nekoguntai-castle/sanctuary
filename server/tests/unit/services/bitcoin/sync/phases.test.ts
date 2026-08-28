@@ -1,5 +1,4 @@
 import { vi, Mock } from 'vitest';
-
 vi.mock('../../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
   ...await importOriginal<typeof import('../../../../../src/services/hardwareWalletCapabilities')>(),
   assertWalletHardwareCapabilityById: vi.fn(),
@@ -401,8 +400,11 @@ describe('Sync Phases', () => {
       expect(result.rejectedEvidenceCount).toBe(1);
     });
 
-    it('fails oversized history batches closed without repeating individual requests', async () => {
+    it('retries oversized history batches as bounded individual requests', async () => {
       mockElectrumClient.getAddressHistoryBatch.mockRejectedValue(
+        new ElectrumFrameTooLargeError(17, 16),
+      );
+      mockElectrumClient.getAddressHistory.mockRejectedValue(
         new ElectrumFrameTooLargeError(17, 16),
       );
       const ctx = createTestContext({
@@ -416,7 +418,40 @@ describe('Sync Phases', () => {
       expect(result.rejectedEvidenceReasons).toEqual(new Map([
         ['response_frame_too_large', 1],
       ]));
-      expect(mockElectrumClient.getAddressHistory).not.toHaveBeenCalled();
+      expect(mockElectrumClient.getAddressHistory).toHaveBeenCalledOnce();
+    });
+
+    it('serializes individual fallback so a fail-closed peer preserves valid neighbors', async () => {
+      mockElectrumClient.getAddressHistoryBatch.mockRejectedValue(
+        new ElectrumFrameTooLargeError(17, 16),
+      );
+      const validHistory = [{ tx_hash: 'valid'.padEnd(64, 'a'), height: 800000 }];
+      let activeRequests = 0;
+      let maxActiveRequests = 0;
+      mockElectrumClient.getAddressHistory.mockImplementation(async (address: string) => {
+        activeRequests++;
+        maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+        await Promise.resolve();
+        activeRequests--;
+        if (address === 'addr1') throw new ElectrumFrameTooLargeError(17, 16);
+        return validHistory;
+      });
+      const ctx = createTestContext({
+        addresses: [
+          { id: '1', address: 'addr1', derivationPath: "m/84'/0'/0'/0/0" } as any,
+          { id: '2', address: 'addr2', derivationPath: "m/84'/0'/0'/0/1" } as any,
+        ],
+        client: mockElectrumClient as any,
+      });
+
+      const result = await fetchHistoriesPhase(ctx);
+
+      expect(maxActiveRequests).toBe(1);
+      expect(result.historyResults.get('addr1')).toEqual([]);
+      expect(result.historyResults.get('addr2')).toEqual(validHistory);
+      expect(result.rejectedEvidenceReasons).toEqual(new Map([
+        ['response_frame_too_large', 1],
+      ]));
     });
 
     it('should deduplicate txids from multiple addresses', async () => {
@@ -497,8 +532,12 @@ describe('Sync Phases', () => {
         'test-wallet',
         'debug',
         'SYNC',
-        expect.stringContaining('Address history batch 1/2')
+        expect.stringContaining('Address history batch 1/6')
       );
+      expect(mockElectrumClient.getAddressHistoryBatch).toHaveBeenCalledTimes(6);
+      expect(mockElectrumClient.getAddressHistoryBatch.mock.calls.every(
+        ([batch]) => batch.length <= 10,
+      )).toBe(true);
     });
   });
 

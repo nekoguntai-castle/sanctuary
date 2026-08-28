@@ -37,6 +37,24 @@ import type {
 import { bitcoinJsNetworkName } from '../networks';
 
 const log = createLogger('ELECTRUM:SVC_METHODS');
+export const ELECTRUM_MAX_HISTORY_ITEMS = 4_096;
+
+function validateHistoryResponse(
+  result: unknown,
+  context: string,
+): Array<{ tx_hash: string; height: number }> {
+  if (Array.isArray(result) && result.length > ELECTRUM_MAX_HISTORY_ITEMS) {
+    log.warn('Electrum address history exceeded the item limit', {
+      context,
+      items: result.length,
+      limit: ELECTRUM_MAX_HISTORY_ITEMS,
+    });
+    throw new ElectrumResponseValidationError(
+      `Invalid Electrum response for ${context}: history exceeded ${ELECTRUM_MAX_HISTORY_ITEMS} items`,
+    );
+  }
+  return validateResponse(z.array(HistoryItemSchema), result, context);
+}
 
 // ==============================================================================
 // NETWORK HELPERS
@@ -200,7 +218,7 @@ export async function getAddressHistory(
 ): Promise<Array<{ tx_hash: string; height: number }>> {
   const scriptHash = addressToScriptHash(address, network);
   const result = await requestFn('blockchain.scripthash.get_history', [scriptHash]);
-  return validateResponse(z.array(HistoryItemSchema), result, `getAddressHistory(${address})`);
+  return validateHistoryResponse(result, `getAddressHistory(${address})`);
 }
 
 /**
@@ -467,11 +485,7 @@ export async function getAddressHistoryBatch(
   for (let i = 0; i < addresses.length; i++) {
     resultMap.set(
       addresses[i],
-      validateResponse(
-        z.array(HistoryItemSchema),
-        results[i],
-        `getAddressHistoryBatch(${addresses[i]})`,
-      ),
+      validateHistoryResponse(results[i], `getAddressHistoryBatch(${addresses[i]})`),
     );
   }
 

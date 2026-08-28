@@ -17,7 +17,10 @@ import {
   createBatchMessage,
   ElectrumFrameDecoder,
   ELECTRUM_MAX_BATCH_RESPONSE_BYTES,
+  ELECTRUM_MAX_HISTORY_BATCH_RESPONSE_BYTES,
+  ELECTRUM_MAX_HISTORY_FRAME_BYTES,
   ElectrumBatchResponseTooLargeError,
+  readElectrumResponseId,
   rejectAllPendingRequests,
 } from './protocol';
 import { getDefaultTimeouts } from './clientConfig';
@@ -38,6 +41,11 @@ import {
 import type { NodeRequestOptions } from '../nodeClient';
 
 const log = createLogger('ELECTRUM:SVC_CLIENT');
+const HISTORY_METHOD = 'blockchain.scripthash.get_history';
+
+function isHistoryMethod(method: string | undefined): boolean {
+  return method === HISTORY_METHOD;
+}
 
 function abortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error
@@ -339,6 +347,7 @@ class ElectrumClient extends EventEmitter {
         this.pendingRequests,
         this,
         this.scriptHashToAddress,
+        frame => this.responseFrameLimit(frame),
       );
     } catch (error) {
       const protocolError = error instanceof Error
@@ -350,6 +359,20 @@ class ElectrumClient extends EventEmitter {
       this.failClosedConnection(protocolError);
       return;
     }
+  }
+
+  private responseFrameLimit(frame: Buffer): number | undefined {
+    const responseId = readElectrumResponseId(frame);
+    if (typeof responseId === 'number') {
+      return isHistoryMethod(this.pendingRequests.get(responseId)?.method)
+        ? ELECTRUM_MAX_HISTORY_FRAME_BYTES
+        : undefined;
+    }
+    if (responseId === null) return undefined;
+    for (const request of this.pendingRequests.values()) {
+      if (isHistoryMethod(request.method)) return ELECTRUM_MAX_HISTORY_FRAME_BYTES;
+    }
+    return undefined;
   }
 
   private failClosedConnection(error: Error): void {
@@ -388,18 +411,28 @@ class ElectrumClient extends EventEmitter {
         options?.signal?.removeEventListener('abort', onAbort);
       };
       const onAbort = (): void => {
+        const reason = abortError(options!.signal!);
+        if (isHistoryMethod(method)) {
+          this.failClosedConnection(reason);
+          return;
+        }
         const pending = this.pendingRequests.get(id)!;
         this.pendingRequests.delete(id);
         clearTimeout(pending.timeoutId);
         cleanup();
-        reject(abortError(options!.signal!));
+        reject(reason);
       };
 
       const timeoutId = setTimeout(() => {
+        const error = new Error(`Request timeout after ${this.requestTimeoutMs}ms`);
+        if (isHistoryMethod(method)) {
+          this.failClosedConnection(error);
+          return;
+        }
         this.pendingRequests.delete(id);
         cleanup();
         log.warn(`Request timeout: method=${method} id=${id} pendingCount=${this.pendingRequests.size}`);
-        reject(new Error(`Request timeout after ${this.requestTimeoutMs}ms`));
+        reject(error);
       }, this.requestTimeoutMs);
 
       this.pendingRequests.set(id, { resolve, reject, timeoutId, method, params, cleanup });
@@ -439,6 +472,10 @@ class ElectrumClient extends EventEmitter {
     const requestPromises: Promise<unknown>[] = [];
     const activeIds = new Set<number>();
     let responseBytes = 0;
+    const isHistoryBatch = requests.some(request => isHistoryMethod(request.method));
+    const maxResponseBytes = isHistoryBatch
+      ? ELECTRUM_MAX_HISTORY_BATCH_RESPONSE_BYTES
+      : this.maxBatchResponseBytes;
 
     const { message, ids } = createBatchMessage(requests, startId);
     this.requestId += requests.length;
@@ -451,6 +488,10 @@ class ElectrumClient extends EventEmitter {
     };
     const rejectPendingBatch = (reason: unknown): void => {
       const error = reason instanceof Error ? reason : new Error(String(reason));
+      if (isHistoryBatch) {
+        this.failClosedConnection(error);
+        return;
+      }
       for (const id of [...activeIds]) {
         const pending = this.pendingRequests.get(id)!;
         this.pendingRequests.delete(id);
@@ -462,10 +503,10 @@ class ElectrumClient extends EventEmitter {
     const onAbort = (): void => rejectPendingBatch(abortError(options!.signal!));
     const accountResponseBytes = (frameBytes: number): void => {
       responseBytes += frameBytes;
-      if (responseBytes > this.maxBatchResponseBytes) {
+      if (responseBytes > maxResponseBytes) {
         throw new ElectrumBatchResponseTooLargeError(
           responseBytes,
-          this.maxBatchResponseBytes,
+          maxResponseBytes,
         );
       }
     };
@@ -475,10 +516,17 @@ class ElectrumClient extends EventEmitter {
       const promise = new Promise<unknown>((resolve, reject) => {
         const cleanup = (): void => cleanupBatchEntry(id);
         const timeoutId = setTimeout(() => {
+          const error = new Error(
+            `Batch request timeout after ${this.batchRequestTimeoutMs}ms for id ${id}`,
+          );
+          if (isHistoryBatch) {
+            this.failClosedConnection(error);
+            return;
+          }
           this.pendingRequests.delete(id);
           cleanup();
           log.warn(`Batch request timeout: method=${requests[i].method} id=${id} pendingCount=${this.pendingRequests.size}`);
-          reject(new Error(`Batch request timeout after ${this.batchRequestTimeoutMs}ms for id ${id}`));
+          reject(error);
         }, this.batchRequestTimeoutMs);
 
         this.pendingRequests.set(id, {

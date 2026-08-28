@@ -16,7 +16,6 @@ import {
   createSyncStageRuntime,
   isSyncStageBudgetError,
   mapWithSyncConcurrency,
-  SYNC_REMOTE_FALLBACK_CONCURRENCY,
   type SyncStageRuntime,
 } from '../attemptRuntime';
 import { isElectrumResponseTooLargeError } from '../../electrum/protocol';
@@ -30,7 +29,7 @@ const recordHistoryFetchFailure = (ctx: SyncContext, reason: string): void => {
 };
 
 /** Number of addresses to fetch per batch RPC call */
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 10;
 const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
 /**
@@ -140,21 +139,12 @@ async function fetchAddressHistories(
       },
       async error => {
         requestOptions?.signal?.throwIfAborted();
-        if (isElectrumResponseTooLargeError(error)) {
-          for (const address of batchAddresses) {
-            ctx.historyResults.set(address, []);
-            recordHistoryFetchFailure(ctx, 'response_frame_too_large');
-            settledAddresses.add(address);
-            await checkpoint();
-          }
-          return;
-        }
         log.warn('[SYNC] Batch history failed, falling back to individual requests', {
           error: getErrorMessage(error),
         });
         await mapWithSyncConcurrency(
           batchAddresses,
-          SYNC_REMOTE_FALLBACK_CONCURRENCY,
+          1,
           stage,
           async (address) => {
             try {
@@ -169,7 +159,12 @@ async function fetchAddressHistories(
                 error: getErrorMessage(fallbackError),
               });
               ctx.historyResults.set(address, []);
-              recordHistoryFetchFailure(ctx, 'history_fetch_failed');
+              recordHistoryFetchFailure(
+                ctx,
+                isElectrumResponseTooLargeError(fallbackError)
+                  ? 'response_frame_too_large'
+                  : 'history_fetch_failed',
+              );
               settledAddresses.add(address);
               return;
             }

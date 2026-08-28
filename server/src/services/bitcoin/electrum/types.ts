@@ -12,6 +12,37 @@ import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('ELECTRUM:SVC');
 const ELECTRUM_STATUS_PATTERN = /^[0-9a-f]{64}$/;
+const ELECTRUM_PREVIEW_ITEMS = 3;
+const ELECTRUM_PREVIEW_CHARS = 500;
+
+function previewValue(value: unknown): unknown {
+  if (typeof value === 'string') return value.slice(0, 200);
+  if (value === null || typeof value !== 'object') return String(value);
+  if (Array.isArray(value)) return `[Array(${value.length})]`;
+  return '[Object]';
+}
+
+function boundedDataPreview(data: unknown): string {
+  if (Array.isArray(data)) {
+    return JSON.stringify({
+      type: 'array',
+      length: data.length,
+      sample: data.slice(0, ELECTRUM_PREVIEW_ITEMS).map(previewValue),
+    }).slice(0, ELECTRUM_PREVIEW_CHARS);
+  }
+  if (data !== null && typeof data === 'object') {
+    const sample: Record<string, unknown> = {};
+    let sampled = 0;
+    for (const key in data) {
+      if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+      sample[key.slice(0, 100)] = previewValue((data as Record<string, unknown>)[key]);
+      sampled++;
+      if (sampled === ELECTRUM_PREVIEW_ITEMS) break;
+    }
+    return JSON.stringify({ type: 'object', sample }).slice(0, ELECTRUM_PREVIEW_CHARS);
+  }
+  return String(previewValue(data)).slice(0, ELECTRUM_PREVIEW_CHARS);
+}
 
 /** Untrusted Electrum payload failed its structural or semantic contract. */
 export class ElectrumResponseValidationError extends Error {
@@ -154,7 +185,7 @@ export function validateResponse<T>(
         path: e.path.join('.'),
         message: e.message,
       })),
-      dataPreview: String(JSON.stringify(data)).substring(0, 200),
+      dataPreview: boundedDataPreview(data),
     });
     // Throw to let caller handle - invalid data shouldn't be silently used
     throw new ElectrumResponseValidationError(

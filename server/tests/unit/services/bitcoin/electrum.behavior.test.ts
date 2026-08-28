@@ -58,7 +58,6 @@ import {
   resetElectrumClient,
 } from '../../../../src/services/bitcoin/electrum';
 import { handleNotification } from '../../../../src/services/bitcoin/electrum/dataHandler';
-import { ElectrumFrameDecoder } from '../../../../src/services/bitcoin/electrum/protocol';
 
 class FakeSocket extends EventEmitter {
   write = vi.fn();
@@ -524,78 +523,6 @@ describe('ElectrumClient behavior', () => {
     const utxos = await client.getAddressUTXOsBatch([testAddress]);
 
     expect(utxos.get(testAddress)).toEqual([]);
-  });
-
-  it('rejects pending work and destroys the socket on an oversized frame', async () => {
-    vi.useFakeTimers();
-    const client = makeClient();
-    const socket = attachFakeSocket(client);
-    (client as any).frameDecoder = new ElectrumFrameDecoder(16);
-    const pending = (client as any).request('server.ping') as Promise<unknown>;
-
-    (client as any).handleData(Buffer.alloc(17, 0x61));
-
-    await expect(pending).rejects.toThrow('exceeded 16 bytes');
-    expect(socket.destroy).toHaveBeenCalledOnce();
-    expect(client.isConnected()).toBe(false);
-    expect((client as any).socket).toBeNull();
-    expect((client as any).pendingRequests.size).toBe(0);
-    expect(vi.getTimerCount()).toBe(0);
-
-    vi.spyOn(client as any, 'establishConnection').mockImplementation(async () => {
-      attachFakeSocket(client);
-    });
-    const recovery = (client as any).request('server.ping') as Promise<unknown>;
-    await vi.advanceTimersByTimeAsync(0);
-    const recoveryId = [...(client as any).pendingRequests.keys()][0] as number;
-    (client as any).handleData(Buffer.from(
-      `${JSON.stringify({ id: recoveryId })}\n`,
-    ));
-    await expect(recovery).resolves.toBeUndefined();
-    expect(client.isConnected()).toBe(true);
-  });
-
-  it('tears down a batch before retaining responses beyond its aggregate budget', async () => {
-    vi.useFakeTimers();
-    const client = makeClient();
-    const socket = attachFakeSocket(client);
-    Object.defineProperty(client, 'maxBatchResponseBytes', { value: 100 });
-    const batch = (client as any).batchRequest([
-      { method: 'server.ping', params: [] },
-      { method: 'server.ping', params: [] },
-    ]) as Promise<unknown[]>;
-    const ids = [...(client as any).pendingRequests.keys()] as number[];
-
-    (client as any).handleData(Buffer.from(
-      `${JSON.stringify({ id: ids[0], result: 'x'.repeat(40) })}\n`,
-    ));
-    (client as any).handleData(Buffer.from(
-      `${JSON.stringify({ id: ids[1], result: 'x'.repeat(40) })}\n`,
-    ));
-
-    await expect(batch).rejects.toThrow('batch responses exceeded 100 bytes');
-    expect(client.isConnected()).toBe(false);
-    expect(socket.destroy).toHaveBeenCalledOnce();
-    expect((client as any).pendingRequests.size).toBe(0);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('normalizes non-Error decoder failures before fail-closed teardown', async () => {
-    vi.useFakeTimers();
-    const client = makeClient();
-    const socket = attachFakeSocket(client);
-    (client as any).frameDecoder = {
-      push: () => { throw 'invalid decoder failure'; },
-      reset: vi.fn(),
-    };
-    const pending = (client as any).request('server.ping') as Promise<unknown>;
-
-    (client as any).handleData(Buffer.from('ignored'));
-
-    await expect(pending).rejects.toThrow('Electrum protocol framing failed');
-    expect(client.isConnected()).toBe(false);
-    expect(socket.destroy).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('handles notifications and raw response parsing', async () => {

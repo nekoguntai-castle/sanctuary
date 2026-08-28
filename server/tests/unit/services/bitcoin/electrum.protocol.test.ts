@@ -3,6 +3,7 @@ import {
   ElectrumFrameDecoder,
   ElectrumFrameTooLargeError,
   ElectrumMalformedFrameError,
+  readElectrumResponseId,
 } from '../../../../src/services/bitcoin/electrum/protocol';
 
 describe('ElectrumFrameDecoder', () => {
@@ -57,6 +58,45 @@ describe('ElectrumFrameDecoder', () => {
 
     expect(() => decoder.push(Buffer.alloc(17, 0x61))).toThrow(ElectrumFrameTooLargeError);
     expect(decoder.push(Buffer.from('{"id":1}\n'))[0]?.response).toEqual({ id: 1 });
+  });
+
+  it('applies a stricter per-operation frame limit without changing its default', () => {
+    const decoder = new ElectrumFrameDecoder(64);
+
+    expect(() => decoder.push(
+      Buffer.from('{"id":1,"result":"xxxxxxxxxxxxxxxxx"}\n'),
+      undefined,
+      () => 16,
+    )).toThrow('exceeded 16 bytes');
+    expect(decoder.push(Buffer.from('{"id":2,"result":"recovered"}\n'))[0]?.response).toEqual({
+      id: 2,
+      result: 'recovered',
+    });
+  });
+
+  it('reads only a top-level JSON-RPC id without materializing nested results', () => {
+    expect(readElectrumResponseId(Buffer.from(
+      '{"result":{"id":999},"meta":"id","id" : 42}',
+    ))).toBe(42);
+    expect(readElectrumResponseId(Buffer.from('{"method":"notice","id":null}'))).toBeNull();
+    expect(readElectrumResponseId(Buffer.from('{"result":{"id":999}}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from(
+      '{"result":"escaped \\\" id","id" \t\r\n: \t-42}',
+    ))).toBe(-42);
+    expect(readElectrumResponseId(Buffer.from('{"id":invalid}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":-invalid}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":nullx}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":0}'))).toBe(0);
+    expect(readElectrumResponseId(Buffer.from('{"id":01}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":1.0}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":1e2}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":null,"id":42}'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from(
+      '{"id":null,"\\u0069d":42}',
+    ))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"\\u0069'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"unterminated'))).toBeUndefined();
+    expect(readElectrumResponseId(Buffer.from('{"id":9007199254740992}'))).toBeUndefined();
   });
 
   it('rejects malformed complete frames and resets for recovery', () => {

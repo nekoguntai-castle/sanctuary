@@ -7,7 +7,12 @@
 
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
-import { ElectrumFrameDecoder, isNotification, processResponse } from './protocol';
+import {
+  ElectrumFrameDecoder,
+  isNotification,
+  processResponse,
+  type ElectrumFrameLimitResolver,
+} from './protocol';
 import {
   BlockHeaderNotificationSchema,
   parseElectrumSubscriptionStatus,
@@ -27,7 +32,8 @@ export function handleIncomingData(
   data: Buffer,
   pendingRequests: Map<number, PendingRequest>,
   emitter: EventEmitter,
-  scriptHashToAddress: Map<string, string>
+  scriptHashToAddress: Map<string, string>,
+  resolveFrameLimit?: ElectrumFrameLimitResolver,
 ): void {
   decoder.push(data, ({ response, frameBytes }) => {
     if (isNotification(response)) {
@@ -36,7 +42,7 @@ export function handleIncomingData(
       handleSubscriptionResponse(response, pendingRequests, emitter, scriptHashToAddress);
       processResponse(response, pendingRequests, frameBytes);
     }
-  });
+  }, resolveFrameLimit);
 }
 
 function handleSubscriptionResponse(
