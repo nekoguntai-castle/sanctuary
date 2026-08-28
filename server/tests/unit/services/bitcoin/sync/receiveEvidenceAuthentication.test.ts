@@ -11,9 +11,32 @@ import type { RawTransaction } from '../../../../../src/services/bitcoin/sync';
 import {
   authenticateHistoryResults,
   fetchAuthenticatedTransactions,
+  MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT,
+  MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT,
+  MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT,
+  MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT,
 } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { projectAuthenticatedTransaction } from '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection';
 import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
 import { ElectrumFrameTooLargeError } from '../../../../../src/services/bitcoin/electrum/protocol';
+
+vi.mock('../../../../../src/services/bitcoin/sync/transactionEvidenceThread', async () => {
+  const { projectAuthenticatedTransaction } = await import(
+    '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection'
+  );
+  return {
+    projectTransactionEvidenceOffThread: async (
+      input: Parameters<typeof projectAuthenticatedTransaction>[0],
+      signal?: AbortSignal,
+      _createWorker?: unknown,
+      shouldAbort: (reason: unknown) => boolean = () => true,
+    ) => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (signal?.aborted && shouldAbort(signal.reason)) signal.throwIfAborted();
+      return projectAuthenticatedTransaction(input);
+    },
+  };
+});
 
 const makeRawTransaction = (script: Uint8Array, value: bigint) => {
   const transaction = new bitcoin.Transaction();
@@ -65,6 +88,154 @@ const clientFor = (transactions: Map<string, RawTransaction>) => ({
 });
 
 describe('full-wallet receive evidence authentication', () => {
+  it.each([
+    [{ maxInputs: 0, maxOutputs: 1, maxScriptHexChars: 2 }, 'input'],
+    [{ maxInputs: 1, maxOutputs: 0, maxScriptHexChars: 2 }, 'output'],
+    [{ maxInputs: 1, maxOutputs: 1, maxScriptHexChars: 0 }, 'script'],
+  ])('rejects a transaction above its worker-side %s projection limit', (limits) => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 1n);
+
+    expect(() => projectAuthenticatedTransaction({
+      expectedTxid: transaction.getId(),
+      details: details(transaction),
+      network: 'mainnet',
+      limits,
+    })).toThrow(expect.objectContaining({ reason: 'transaction_complexity_exceeded' }));
+  });
+
+  it('yields the event loop while projecting a high-fanout authenticated transaction', async () => {
+    const transaction = new bitcoin.Transaction();
+    transaction.version = 2;
+    transaction.addInput(new Uint8Array(32), 0xffffffff);
+    for (let index = 0; index < 4; index++) {
+      transaction.addOutput(Uint8Array.from([0x51]), 1n);
+    }
+    const client = clientFor(new Map([[transaction.getId(), details(transaction)]]));
+    const ctx = createTestContext({ client: client as any });
+    let clock = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+      clock += 30;
+      return clock;
+    });
+    let heartbeatCount = 0;
+    let heartbeatActive = true;
+    const heartbeat = (): void => {
+      if (!heartbeatActive) return;
+      heartbeatCount += 1;
+      setImmediate(heartbeat);
+    };
+    setImmediate(heartbeat);
+
+    try {
+      await expect(fetchAuthenticatedTransactions(
+        ctx,
+        [transaction.getId()],
+      )).resolves.toEqual(new Set([transaction.getId()]));
+    } finally {
+      heartbeatActive = false;
+      now.mockRestore();
+    }
+
+    expect(heartbeatCount).toBeGreaterThanOrEqual(1);
+    expect(ctx.txDetailsCache.get(transaction.getId())?.vout).toHaveLength(4);
+  });
+
+  it('bounds authenticated raw-transaction requests to ten items per batch', async () => {
+    const transactions = Array.from({ length: 11 }, (_, index) => (
+      makeRawTransaction(Uint8Array.from([0x51]), BigInt(index + 1))
+    ));
+    const transactionMap = new Map(transactions.map(transaction => [
+      transaction.getId(),
+      details(transaction),
+    ]));
+    const client = clientFor(transactionMap);
+    const ctx = createTestContext({ client: client as any });
+    const txids = transactions.map(transaction => transaction.getId());
+
+    await expect(fetchAuthenticatedTransactions(ctx, txids)).resolves.toEqual(new Set(txids));
+
+    expect(client.getTransactionsBatch).toHaveBeenCalledTimes(2);
+    expect(client.getTransactionsBatch).toHaveBeenNthCalledWith(1, txids.slice(0, 10), false);
+    expect(client.getTransactionsBatch).toHaveBeenNthCalledWith(2, txids.slice(10), false);
+  });
+
+  it('uses the raw evidence client path without main-thread transaction decoding', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 1n);
+    const client = {
+      ...clientFor(new Map([[transaction.getId(), details(transaction)]])),
+      getRawTransactionEvidenceBatch: vi.fn(async () => new Map([[
+        transaction.getId(),
+        details(transaction),
+      ]])),
+    };
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .resolves.toEqual(new Set([transaction.getId()]));
+
+    expect(client.getRawTransactionEvidenceBatch).toHaveBeenCalledWith(
+      [transaction.getId()],
+      undefined,
+    );
+    expect(client.getTransactionsBatch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before retaining evidence beyond the attempt output ceiling', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 1n);
+    const existingTxid = '01'.repeat(32);
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), details(transaction)]])) as any,
+      txDetailsCache: new Map([[existingTxid, {
+        txid: existingTxid,
+        hex: '00',
+        vin: [],
+        vout: new Array(MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT),
+      } as RawTransaction]]),
+    });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .resolves.toEqual(new Set());
+
+    expect(ctx.txDetailsCache.has(transaction.getId())).toBe(false);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['transaction_complexity_exceeded', 1],
+    ]));
+  });
+
+  it.each([
+    ['raw hex', {
+      hex: { length: MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT } as string,
+      vin: [],
+      vout: [],
+    }],
+    ['inputs', {
+      hex: '00',
+      vin: new Array(MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT),
+      vout: [],
+    }],
+    ['scripts', {
+      hex: '00',
+      vin: [{ coinbase: { length: MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT } as string }],
+      vout: [],
+    }],
+  ])('fails closed beyond the retained %s ceiling', async (_label, cached) => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 1n);
+    const existingTxid = '02'.repeat(32);
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), details(transaction)]])) as any,
+      txDetailsCache: new Map([[existingTxid, {
+        txid: existingTxid,
+        ...cached,
+      } as RawTransaction]]),
+    });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .resolves.toEqual(new Set());
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['transaction_complexity_exceeded', 1],
+    ]));
+  });
+
   it('propagates an already-aborted attempt instead of recording evidence failure', async () => {
     const controller = new AbortController();
     const reason = new Error('attempt cancelled before raw fetch');
@@ -82,9 +253,41 @@ describe('full-wallet receive evidence authentication', () => {
     expect(client.getTransactionsBatch).not.toHaveBeenCalled();
   });
 
+  it('does not cache a partially projected transaction when the attempt is cancelled', async () => {
+    const transaction = new bitcoin.Transaction();
+    transaction.version = 2;
+    transaction.addInput(new Uint8Array(32), 0xffffffff);
+    for (let index = 0; index < 4; index++) {
+      transaction.addOutput(Uint8Array.from([0x51]), 1n);
+    }
+    const controller = new AbortController();
+    const reason = new Error('attempt cancelled during raw projection');
+    const client = clientFor(new Map([[transaction.getId(), details(transaction)]]));
+    const ctx = createTestContext({ client: client as any });
+    let clock = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+      clock += 30;
+      return clock;
+    });
+    setImmediate(() => controller.abort(reason));
+
+    try {
+      await expect(fetchAuthenticatedTransactions(
+        ctx,
+        [transaction.getId()],
+        { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+      )).rejects.toBe(reason);
+    } finally {
+      now.mockRestore();
+    }
+
+    expect(ctx.txDetailsCache.has(transaction.getId())).toBe(false);
+    expect(ctx.rejectedEvidenceCount).toBe(0);
+  });
+
   it('attributes only the untouched next chunk when the budget expires between chunks', async () => {
     const controller = new AbortController();
-    const txids = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(64, '0'));
+    const txids = Array.from({ length: 11 }, (_, index) => index.toString(16).padStart(64, '0'));
     const client = clientFor(new Map());
     client.getTransactionsBatch.mockImplementationOnce(async () => {
       controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
@@ -101,7 +304,7 @@ describe('full-wallet receive evidence authentication', () => {
     expect(result).toEqual(new Set());
     expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['missing_result', 100],
+      ['missing_result', 10],
       ['fetch_budget_exhausted', 1],
     ]));
   });
@@ -109,7 +312,7 @@ describe('full-wallet receive evidence authentication', () => {
   it('propagates non-budget cancellation promptly without attributing untouched results', async () => {
     const controller = new AbortController();
     const reason = new Error('attempt cancelled between raw chunks');
-    const txids = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(64, '0'));
+    const txids = Array.from({ length: 11 }, (_, index) => index.toString(16).padStart(64, '0'));
     const client = clientFor(new Map());
     client.getTransactionsBatch.mockImplementationOnce(async () => {
       controller.abort(reason);
@@ -124,9 +327,7 @@ describe('full-wallet receive evidence authentication', () => {
     )).rejects.toBe(reason);
 
     expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
-    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['missing_result', 1],
-    ]));
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map());
   });
 
   it('attributes the current batch when its request ends on local budget expiry', async () => {
@@ -203,6 +404,43 @@ describe('full-wallet receive evidence authentication', () => {
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([['missing_result', 1]]));
   });
 
+  it('uses raw individual evidence after a batch transport failure', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 3n);
+    const client = {
+      ...clientFor(new Map()),
+      getTransactionsBatch: vi.fn().mockRejectedValue(new Error('batch unavailable')),
+      getRawTransactionEvidence: vi.fn().mockResolvedValue(details(transaction)),
+    };
+    const ctx = createTestContext({ client: client as any });
+    const options = {
+      signal: new AbortController().signal,
+      deadlineAt: Date.now() + 5_000,
+    };
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()], options))
+      .resolves.toEqual(new Set([transaction.getId()]));
+
+    expect(client.getRawTransactionEvidence).toHaveBeenCalledWith(
+      transaction.getId(),
+      options,
+    );
+    expect(client.getTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects an absent raw individual evidence result', async () => {
+    const txid = '33'.repeat(32);
+    const client = {
+      ...clientFor(new Map()),
+      getTransactionsBatch: vi.fn().mockRejectedValue(new Error('batch unavailable')),
+      getRawTransactionEvidence: vi.fn().mockResolvedValue(undefined),
+    };
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [txid])).resolves.toEqual(new Set());
+
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([['missing_result', 1]]));
+  });
+
   it('does not count a settled fallback failure again when a sibling exhausts the budget', async () => {
     const acceptedTransaction = makeRawTransaction(Uint8Array.from([0x51]), 4n);
     const failedTxid = 'cc'.repeat(32);
@@ -249,73 +487,32 @@ describe('full-wallet receive evidence authentication', () => {
     ]));
   });
 
-  it('accounts for four active fallbacks and leaves a fifth candidate queued at budget expiry', async () => {
+  it('serializes fallback projection and leaves every later candidate queued at budget expiry', async () => {
     const acceptedTransaction = makeRawTransaction(Uint8Array.from([0x51]), 5n);
-    const failedTxid = '41'.repeat(32);
-    const abortedTxids = ['42'.repeat(32), '43'.repeat(32)];
-    const queuedTxid = '44'.repeat(32);
+    const queuedTxids = ['41'.repeat(32), '42'.repeat(32), '43'.repeat(32), '44'.repeat(32)];
     const controller = new AbortController();
     const started: string[] = [];
-    let rejectFailure!: (error: Error) => void;
-    let releaseAccepted!: () => void;
-    let resolveAllStarted!: () => void;
-    const allStarted = new Promise<void>(resolve => {
-      resolveAllStarted = resolve;
-    });
     const client = clientFor(new Map());
     client.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
-    client.getTransaction.mockImplementation(
-      (txid: string, _verbose?: boolean, options?: { signal?: AbortSignal }) => {
-        started.push(txid);
-        if (started.length === 4) resolveAllStarted();
-        if (txid === acceptedTransaction.getId()) {
-          return new Promise(resolve => {
-            releaseAccepted = () => {
-              resolve(details(acceptedTransaction));
-            };
-          });
-        }
-        if (txid === failedTxid) {
-          return new Promise((_, reject) => {
-            rejectFailure = reject;
-          });
-        }
-        return new Promise((_, reject) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () => reject(options.signal?.reason),
-            { once: true },
-          );
-        });
-      },
-    );
+    client.getTransaction.mockImplementation(async (txid: string) => {
+      started.push(txid);
+      controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
+      return details(acceptedTransaction);
+    });
     const ctx = createTestContext({ client: client as any });
 
-    const pending = fetchAuthenticatedTransactions(
+    const result = await fetchAuthenticatedTransactions(
       ctx,
-      [acceptedTransaction.getId(), failedTxid, ...abortedTxids, queuedTxid],
+      [acceptedTransaction.getId(), ...queuedTxids],
       { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
     );
-    await allStarted;
-    releaseAccepted();
-    rejectFailure(new Error('ordinary fallback failure'));
-    queueMicrotask(() => {
-      controller.abort(new SyncRemoteStageBudgetError('candidate_batch_remote'));
-    });
-    const result = await pending;
 
     expect(result).toEqual(new Set([acceptedTransaction.getId()]));
-    expect(started).toEqual([
-      acceptedTransaction.getId(),
-      failedTxid,
-      ...abortedTxids,
-    ]);
-    expect(started).not.toContain(queuedTxid);
+    expect(started).toEqual([acceptedTransaction.getId()]);
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['fetch_failed', 1],
-      ['fetch_budget_exhausted', 3],
+      ['fetch_budget_exhausted', queuedTxids.length],
     ]));
-    expect(ctx.rejectedEvidenceCount).toBe(4);
+    expect(ctx.rejectedEvidenceCount).toBe(queuedTxids.length);
   });
 
   it('records every unresolved candidate once when its remote budget is already exhausted', async () => {
@@ -523,6 +720,23 @@ describe('full-wallet receive evidence authentication', () => {
       confirmations: 4,
       blockhash: 'block-hash',
     });
+  });
+
+  it('initializes retained complexity from a cached entry without raw hex', async () => {
+    const cachedTxid = '04'.repeat(32);
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 2n);
+    const client = clientFor(new Map([[transaction.getId(), details(transaction)]]));
+    const ctx = createTestContext({
+      client: client as any,
+      txDetailsCache: new Map([[cachedTxid, {
+        txid: cachedTxid,
+        vin: [],
+        vout: [],
+      } as RawTransaction]]),
+    });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .resolves.toEqual(new Set([transaction.getId()]));
   });
 
   it('yields to worker timers during transaction evidence authentication', async () => {

@@ -13,6 +13,7 @@ export const RAW_TRANSACTION_EVIDENCE_REASONS = [
   'invalid_expected_script',
   'amount_mismatch',
   'script_mismatch',
+  'transaction_complexity_exceeded',
 ] as const;
 
 export type RawTransactionEvidenceReason =
@@ -28,6 +29,7 @@ const ERROR_MESSAGES: Record<RawTransactionEvidenceReason, string> = {
   invalid_expected_script: 'Expected output script is invalid',
   amount_mismatch: 'Transaction output amount does not match expected evidence',
   script_mismatch: 'Transaction output script does not match expected evidence',
+  transaction_complexity_exceeded: 'Transaction evidence exceeds the safe sync complexity limit',
 };
 
 /**

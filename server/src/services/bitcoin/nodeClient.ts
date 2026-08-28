@@ -95,6 +95,12 @@ export interface NodeClientInterface {
   getAddressHistoryBatch(addresses: string[], options?: NodeRequestOptions): Promise<Map<string, Array<{ tx_hash: string; height: number }>>>;
   getAddressUTXOsBatch(addresses: string[], options?: NodeRequestOptions): Promise<Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>>;
   getTransactionsBatch(txids: string[], verbose?: boolean, options?: NodeRequestOptions): Promise<Map<string, any>>;
+  /** Raw-byte evidence path used by sync to avoid redundant main-thread projection. */
+  getRawTransactionEvidence?(txid: string, options?: NodeRequestOptions): Promise<any>;
+  getRawTransactionEvidenceBatch?(
+    txids: string[],
+    options?: NodeRequestOptions,
+  ): Promise<Map<string, any>>;
 }
 
 // Cache for the active node configuration (legacy - for mainnet)

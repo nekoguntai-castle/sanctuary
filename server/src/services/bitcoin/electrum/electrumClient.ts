@@ -606,6 +606,16 @@ class ElectrumClient extends EventEmitter {
     );
   }
 
+  async getRawTransactionEvidence(
+    txid: string,
+    options?: NodeRequestOptions,
+  ): Promise<publicApi.RawTransactionEvidenceDetails> {
+    return publicApi.getRawTransactionEvidence(
+      (method, params) => this.request(method, params, options),
+      txid,
+    );
+  }
+
   async broadcastTransaction(rawTx: string): Promise<string> {
     return publicApi.broadcastTransaction(
       (method, params) => this.request(method, params), rawTx
@@ -695,6 +705,18 @@ class ElectrumClient extends EventEmitter {
     return publicApi.getTransactionsBatch(
       (reqs) => this.batchRequest(reqs, options),
       (rawTx) => this.decodeRawTransaction(rawTx),
+      txids,
+      options,
+    );
+  }
+
+
+  async getRawTransactionEvidenceBatch(
+    txids: string[],
+    options?: NodeRequestOptions,
+  ): Promise<Map<string, publicApi.RawTransactionEvidenceDetails>> {
+    return publicApi.getRawTransactionEvidenceBatch(
+      reqs => this.batchRequest(reqs, options),
       txids,
       options,
     );

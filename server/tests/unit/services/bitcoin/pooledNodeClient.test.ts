@@ -16,6 +16,8 @@ function harness() {
     getAddressHistoryBatch: vi.fn().mockResolvedValue(new Map()),
     getAddressUTXOsBatch: vi.fn().mockResolvedValue(new Map()),
     getTransactionsBatch: vi.fn().mockResolvedValue(new Map()),
+    getRawTransactionEvidence: vi.fn().mockResolvedValue({ txid: 'tx', hex: '00' }),
+    getRawTransactionEvidenceBatch: vi.fn().mockResolvedValue(new Map()),
   };
   const release = vi.fn();
   const pool = {
@@ -80,9 +82,11 @@ describe('PooledNodeClient', () => {
     await facade.getAddressHistoryBatch(['address'], options);
     await facade.getAddressUTXOsBatch(['address'], options);
     await facade.getTransactionsBatch(['txid'], false, options);
+    await facade.getRawTransactionEvidence('txid', options);
+    await facade.getRawTransactionEvidenceBatch(['txid'], options);
 
-    expect(pool.acquire).toHaveBeenCalledTimes(14);
-    expect(release).toHaveBeenCalledTimes(14);
+    expect(pool.acquire).toHaveBeenCalledTimes(16);
+    expect(release).toHaveBeenCalledTimes(16);
     expect(pool.acquire).toHaveBeenCalledWith({ purpose: 'node-request' });
     expect(facade.isConnected()).toBe(true);
     facade.disconnect();

@@ -1,29 +1,26 @@
-import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { getNetwork } from '../utils';
-import {
-  parseAuthenticatedRawTransaction,
-  RawTransactionEvidenceError,
-} from '../rawTransactionEvidence';
+import { RawTransactionEvidenceError } from '../rawTransactionEvidence';
 import { recordRejectedEvidence } from './rejectedEvidence';
 import type {
   RawTransaction,
   SyncContext,
-  TransactionOutput,
   TxHistoryEntry,
 } from './types';
 import type { NodeRequestOptions } from '../nodeClient';
-import {
-  isSyncStageBudgetError,
-  mapWithSyncConcurrency,
-  SYNC_REMOTE_FALLBACK_CONCURRENCY,
-} from './attemptRuntime';
+import { isSyncStageBudgetError } from './attemptRuntime';
 import { isElectrumResponseTooLargeError } from '../electrum/protocol';
 import { createCooperativeScheduler } from '../../../utils/cooperativeScheduler';
+import { projectTransactionEvidenceOffThread } from './transactionEvidenceThread';
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
-const FETCH_BATCH_SIZE = 100;
+const FETCH_BATCH_SIZE = 10;
+export const MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
+export const MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT = 100_000;
+export const MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT = 600_000;
+export const MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
+export const MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION = 25_000;
+export const MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION = 25_000;
 const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
 /** Sentinel for "the server listed this txid but returned no entry for it". */
@@ -44,67 +41,95 @@ const recordFailClosed = (ctx: SyncContext, reason: string): void => {
   log.warn('[SYNC] Rejected unauthenticated transaction evidence', { reason, count: 1 });
 };
 
-const decodeAddress = (script: Uint8Array, ctx: SyncContext): string | undefined => {
-  try {
-    return bitcoin.address.fromOutputScript(script, getNetwork(ctx.network));
-  } catch {
-    return undefined;
+interface EvidenceComplexity {
+  rawHexChars: number;
+  inputs: number;
+  outputs: number;
+  scriptHexChars: number;
+}
+
+const evidenceComplexity = new WeakMap<SyncContext, EvidenceComplexity>();
+
+const addDetailsComplexity = (total: EvidenceComplexity, details: RawTransaction): void => {
+  total.rawHexChars += details.hex?.length ?? 0;
+  total.inputs += details.vin.length;
+  total.outputs += details.vout.length;
+  for (const input of details.vin) total.scriptHexChars += input?.coinbase?.length ?? 0;
+  for (const output of details.vout) {
+    total.scriptHexChars += output?.scriptPubKey.hex?.length ?? 0;
   }
 };
 
-const toAuthenticatedDetails = (
-  ctx: SyncContext,
-  expectedTxid: string,
-  details: RawTransaction,
-): RawTransaction => {
-  const authenticated = parseAuthenticatedRawTransaction({
-    expectedTxid,
-    rawHex: details.hex ?? '',
-  });
-  if (details.txid.toLowerCase() !== authenticated.txid) {
-    throw new RawTransactionEvidenceError('txid_mismatch');
-  }
-  const transaction = authenticated.transaction;
-  return {
-    txid: authenticated.txid,
-    time: details.time,
-    blocktime: details.blocktime,
-    blockheight: details.blockheight,
-    confirmations: details.confirmations,
-    blockhash: details.blockhash,
-    hex: authenticated.canonicalHex,
-    vin: transaction.ins.map(input => {
-      const txid = Buffer.from(input.hash).reverse().toString('hex');
-      const coinbase = txid === '00'.repeat(32) && input.index === 0xffffffff;
-      return coinbase
-        ? { coinbase: Buffer.from(input.script).toString('hex') }
-        : { txid, vout: input.index };
-    }),
-    vout: transaction.outs.map((output, n): TransactionOutput => {
-      const address = decodeAddress(output.script, ctx);
-      return {
-        n,
-        value: Number(output.value) / 100_000_000,
-        scriptPubKey: {
-          hex: Buffer.from(output.script).toString('hex'),
-          address,
-          addresses: address ? [address] : [],
-        },
-      };
-    }),
-  };
+const complexityFor = (ctx: SyncContext): EvidenceComplexity => {
+  const existing = evidenceComplexity.get(ctx);
+  if (existing) return existing;
+  const initialized = { rawHexChars: 0, inputs: 0, outputs: 0, scriptHexChars: 0 };
+  for (const details of ctx.txDetailsCache.values()) addDetailsComplexity(initialized, details);
+  evidenceComplexity.set(ctx, initialized);
+  return initialized;
 };
 
-const cacheAuthenticatedResult = (
+const remainingProjectionLimits = (
+  complexity: EvidenceComplexity,
+) => ({
+  maxInputs: Math.min(
+    MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION,
+    MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT - complexity.inputs,
+  ),
+  maxOutputs: Math.min(
+    MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION,
+    MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT - complexity.outputs,
+  ),
+  maxScriptHexChars:
+    MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT - complexity.scriptHexChars,
+});
+
+const rawHexFits = (complexity: EvidenceComplexity, details: RawTransaction): boolean => {
+  const rawHexChars = details.hex?.length ?? 0;
+  return rawHexChars <= MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT
+    - complexity.rawHexChars;
+};
+
+const mapEvidenceFallbacks = async <T>(
+  items: readonly T[],
+  signal: AbortSignal | undefined,
+  fn: (item: T) => Promise<void>,
+): Promise<void> => {
+  for (const item of items) {
+    signal?.throwIfAborted();
+    await fn(item);
+    signal?.throwIfAborted();
+  }
+};
+
+const cacheAuthenticatedResult = async (
   ctx: SyncContext,
   expectedTxid: string,
   details: RawTransaction | undefined,
-): boolean => {
+  signal?: AbortSignal,
+): Promise<boolean> => {
   try {
     if (!details) throw new Error(MISSING_RESULT);
-    ctx.txDetailsCache.set(expectedTxid, toAuthenticatedDetails(ctx, expectedTxid, details));
+    const complexity = complexityFor(ctx);
+    if (!rawHexFits(complexity, details)) {
+      throw new RawTransactionEvidenceError('transaction_complexity_exceeded');
+    }
+    const authenticated = await projectTransactionEvidenceOffThread(
+      {
+        expectedTxid,
+        details,
+        network: ctx.network,
+        limits: remainingProjectionLimits(complexity),
+      },
+      signal,
+      undefined,
+      isAttemptCancellation,
+    );
+    addDetailsComplexity(complexity, authenticated);
+    ctx.txDetailsCache.set(expectedTxid, authenticated);
     return true;
   } catch (error) {
+    if (signal?.aborted && isAttemptCancellation(signal.reason)) signal.throwIfAborted();
     ctx.txDetailsCache.delete(expectedTxid);
     recordFailClosed(ctx, reasonCode(error));
     return false;
@@ -150,9 +175,11 @@ export async function fetchAuthenticatedTransactions(
     const batchTxids = pending.slice(offset, offset + FETCH_BATCH_SIZE);
     let budgetExpired = false;
     let oversizedFrame = false;
-    const batchRequest = options
-      ? ctx.client.getTransactionsBatch(batchTxids, false, options)
-      : ctx.client.getTransactionsBatch(batchTxids, false);
+    const batchRequest = ctx.client.getRawTransactionEvidenceBatch
+      ? ctx.client.getRawTransactionEvidenceBatch(batchTxids, options)
+      : options
+        ? ctx.client.getTransactionsBatch(batchTxids, false, options)
+        : ctx.client.getTransactionsBatch(batchTxids, false);
     const results = await batchRequest.then(
       value => value,
       (error) => {
@@ -180,22 +207,38 @@ export async function fetchAuthenticatedTransactions(
     if (oversizedFrame) continue;
     if (results) {
       for (const txid of batchTxids) {
-        if (cacheAuthenticatedResult(ctx, txid, results.get(txid))) accepted.add(txid);
+        if (await cacheAuthenticatedResult(
+          ctx,
+          txid,
+          results.get(txid),
+          options?.signal,
+        )) accepted.add(txid);
         settled.add(txid);
         await checkpoint();
       }
     } else {
       try {
-        await mapWithSyncConcurrency(
+        await mapEvidenceFallbacks(
           batchTxids,
-          SYNC_REMOTE_FALLBACK_CONCURRENCY,
-          options?.signal ? { signal: options.signal } : undefined,
+          options?.signal,
           async (txid) => {
             try {
-              const details = options
-                ? await ctx.client.getTransaction(txid, false, options)
-                : await ctx.client.getTransaction(txid, false);
-              if (cacheAuthenticatedResult(ctx, txid, details)) accepted.add(txid);
+              const details = ctx.client.getRawTransactionEvidence
+                ? await ctx.client.getRawTransactionEvidence(txid, options)
+                : options
+                  ? await ctx.client.getTransaction(txid, false, options)
+                  : await ctx.client.getTransaction(txid, false);
+              const authenticated = await cacheAuthenticatedResult(
+                ctx,
+                txid,
+                details,
+                options?.signal,
+              );
+              if (authenticated) {
+                accepted.add(txid);
+              } else {
+                accepted.delete(txid);
+              }
               settled.add(txid);
               await checkpoint();
             } catch (error) {

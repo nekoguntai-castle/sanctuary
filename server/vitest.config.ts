@@ -43,6 +43,8 @@ export default defineConfig({
         'src/mcp-entry.ts',
         // Side-effect-only worker daemon entrypoint; behavior is covered through worker job modules.
         'src/worker.ts',
+        // Side-effect-only worker-thread entrypoint; projection and transport are unit tested.
+        'src/services/bitcoin/sync/transactionEvidenceWorker.ts',
         // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/services/aiService.ts',
         'src/services/eventService.ts',

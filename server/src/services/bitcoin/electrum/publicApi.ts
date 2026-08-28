@@ -31,6 +31,20 @@ export type BatchRequestFn = (requests: Array<{ method: string; params: unknown[
 /** Callback for decoding raw transactions (bound to the class instance for test spying) */
 export type DecodeRawTxFn = (rawTx: string) => TransactionDetails;
 
+export interface RawTransactionEvidenceDetails {
+  txid: string;
+  hex: string;
+  vin: [];
+  vout: [];
+}
+
+const rawEvidenceDetails = (txid: string, value: unknown): RawTransactionEvidenceDetails => ({
+  txid,
+  hex: typeof value === 'string' ? value : '',
+  vin: [],
+  vout: [],
+});
+
 function throwIfRequestStopped(options?: NodeRequestOptions): void {
   options?.signal?.throwIfAborted();
   if (options?.deadlineAt !== undefined && Date.now() >= options.deadlineAt) {
@@ -322,4 +336,35 @@ export async function getTransactionsBatch(
   }
 
   return resultMap;
+}
+
+/** Fetches raw transaction bytes without synchronously decoding them on the caller thread. */
+export async function getRawTransactionEvidenceBatch(
+  batchRequestFn: BatchRequestFn,
+  txids: string[],
+  options?: NodeRequestOptions,
+): Promise<Map<string, RawTransactionEvidenceDetails>> {
+  if (txids.length === 0) return new Map();
+  throwIfRequestStopped(options);
+  const results = await batchRequestFn(txids.map(txid => ({
+    method: 'blockchain.transaction.get',
+    params: [txid, false],
+  })));
+  throwIfRequestStopped(options);
+  const resultMap = new Map<string, RawTransactionEvidenceDetails>();
+  for (let index = 0; index < txids.length; index++) {
+    if (results[index] !== undefined) {
+      resultMap.set(txids[index], rawEvidenceDetails(txids[index], results[index]));
+    }
+  }
+  return resultMap;
+}
+
+/** Fetches one raw transaction without projecting every input and output. */
+export async function getRawTransactionEvidence(
+  requestFn: RequestFn,
+  txid: string,
+): Promise<RawTransactionEvidenceDetails> {
+  const value = await requestFn('blockchain.transaction.get', [txid, false]);
+  return rawEvidenceDetails(txid, value);
 }

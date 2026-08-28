@@ -708,6 +708,34 @@ describe('ElectrumClient behavior', () => {
     expect(result.has(txids[1])).toBe(false);
   });
 
+  it('fetches raw transaction evidence without calling the synchronous decoder', async () => {
+    const client = makeClient();
+    const txid = 'a'.repeat(64);
+    const request = vi.spyOn(client as any, 'request').mockResolvedValue('0102');
+    const batchRequest = vi.spyOn(client as any, 'batchRequest').mockResolvedValue(['0304']);
+    const decode = vi.spyOn(client as any, 'decodeRawTransaction');
+
+    await expect(client.getRawTransactionEvidence(txid)).resolves.toMatchObject({
+      txid,
+      hex: '0102',
+    });
+    await expect(client.getRawTransactionEvidenceBatch([txid])).resolves.toEqual(new Map([[
+      txid,
+      { txid, hex: '0304', vin: [], vout: [] },
+    ]]));
+
+    expect(request).toHaveBeenCalledWith(
+      'blockchain.transaction.get',
+      [txid, false],
+      undefined,
+    );
+    expect(batchRequest).toHaveBeenCalledWith([{
+      method: 'blockchain.transaction.get',
+      params: [txid, false],
+    }], undefined);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
   it('disconnects and rejects pending requests', () => {
     const client = makeClient();
     const socket = new FakeSocket();

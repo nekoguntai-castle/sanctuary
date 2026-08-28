@@ -146,4 +146,15 @@ export class PooledNodeClient implements NodeClientInterface {
   getTransactionsBatch(txids: string[], verbose = true, options?: NodeRequestOptions) {
     return this.withClient(options, client => client.getTransactionsBatch(txids, verbose, options));
   }
+
+  getRawTransactionEvidence(txid: string, options?: NodeRequestOptions) {
+    return this.withClient(options, client => client.getRawTransactionEvidence(txid, options));
+  }
+
+  getRawTransactionEvidenceBatch(txids: string[], options?: NodeRequestOptions) {
+    return this.withClient(
+      options,
+      client => client.getRawTransactionEvidenceBatch(txids, options),
+    );
+  }
 }

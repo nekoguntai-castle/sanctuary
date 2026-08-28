@@ -1271,8 +1271,8 @@
         {
           "id": "receive-raw-transaction-txid-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 77,
-          "lineEnd": 84,
+          "lineStart": 79,
+          "lineEnd": 86,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects invalid and mismatched expected transaction ids without exposing raw bytes"
@@ -1280,8 +1280,8 @@
           "canaries": [{
             "id": "receive-txid-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 82, "column": 7 },
-              "end": { "line": 82, "column": 48 }
+              "start": { "line": 84, "column": 7 },
+              "end": { "line": 84, "column": 48 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1294,8 +1294,8 @@
         {
           "id": "receive-output-amount-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 104,
-          "lineEnd": 110,
+          "lineStart": 106,
+          "lineEnd": 112,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects exact amount and script mismatches independently"
@@ -1303,8 +1303,8 @@
           "canaries": [{
             "id": "receive-amount-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 108, "column": 7 },
-              "end": { "line": 108, "column": 85 }
+              "start": { "line": 110, "column": 7 },
+              "end": { "line": 110, "column": 85 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1317,8 +1317,8 @@
         {
           "id": "receive-output-script-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 111,
-          "lineEnd": 115,
+          "lineStart": 113,
+          "lineEnd": 117,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects exact amount and script mismatches independently"
@@ -1326,8 +1326,8 @@
           "canaries": [{
             "id": "receive-script-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 113, "column": 73 },
-              "end": { "line": 115, "column": 4 }
+              "start": { "line": 115, "column": 73 },
+              "end": { "line": 117, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
