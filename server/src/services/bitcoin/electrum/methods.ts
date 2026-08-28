@@ -465,7 +465,14 @@ export async function getAddressHistoryBatch(
   // Map results back to addresses
   const resultMap = new Map<string, Array<{ tx_hash: string; height: number }>>();
   for (let i = 0; i < addresses.length; i++) {
-    resultMap.set(addresses[i], (results[i] as Array<{ tx_hash: string; height: number }>) || []);
+    resultMap.set(
+      addresses[i],
+      validateResponse(
+        z.array(HistoryItemSchema),
+        results[i],
+        `getAddressHistoryBatch(${addresses[i]})`,
+      ),
+    );
   }
 
   return resultMap;

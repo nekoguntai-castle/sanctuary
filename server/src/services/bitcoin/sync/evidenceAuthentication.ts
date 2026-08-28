@@ -19,9 +19,12 @@ import {
   mapWithSyncConcurrency,
   SYNC_REMOTE_FALLBACK_CONCURRENCY,
 } from './attemptRuntime';
+import { isElectrumResponseTooLargeError } from '../electrum/protocol';
+import { createCooperativeScheduler } from '../../../utils/cooperativeScheduler';
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
 const FETCH_BATCH_SIZE = 100;
+const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
 /** Sentinel for "the server listed this txid but returned no entry for it". */
 const MISSING_RESULT = 'missing_result';
@@ -114,6 +117,12 @@ export async function fetchAuthenticatedTransactions(
   txids: readonly string[],
   options?: NodeRequestOptions,
 ): Promise<Set<string>> {
+  if (options?.signal?.aborted && isAttemptCancellation(options.signal.reason)) {
+    options.signal.throwIfAborted();
+  }
+  const checkpoint = createCooperativeScheduler(options?.signal, {
+    shouldThrowAbort: isAttemptCancellation,
+  });
   const accepted = new Set<string>();
   const settled = new Set<string>();
   const unique = [...new Set(txids)];
@@ -122,35 +131,31 @@ export async function fetchAuthenticatedTransactions(
       accepted.add(txid);
       settled.add(txid);
     }
+    await checkpoint();
   }
   const pending = unique.filter(txid => !accepted.has(txid));
   if (options?.signal?.aborted) {
-    if (isSyncStageBudgetError(options.signal.reason)) {
-      for (const txid of pending) {
+    for (const txid of pending) {
+      recordFailClosed(ctx, 'fetch_budget_exhausted');
+    }
+    return accepted;
+  }
+  for (let offset = 0; offset < pending.length; offset += FETCH_BATCH_SIZE) {
+    if (options?.signal?.aborted) {
+      for (const txid of pending.slice(offset)) {
         recordFailClosed(ctx, 'fetch_budget_exhausted');
       }
       return accepted;
     }
-    options.signal.throwIfAborted();
-  }
-  for (let offset = 0; offset < pending.length; offset += FETCH_BATCH_SIZE) {
-    if (options?.signal?.aborted) {
-      if (isSyncStageBudgetError(options.signal.reason)) {
-        for (const txid of pending.slice(offset)) {
-          recordFailClosed(ctx, 'fetch_budget_exhausted');
-        }
-        return accepted;
-      }
-      options.signal.throwIfAborted();
-    }
     const batchTxids = pending.slice(offset, offset + FETCH_BATCH_SIZE);
     let budgetExpired = false;
+    let oversizedFrame = false;
     const batchRequest = options
       ? ctx.client.getTransactionsBatch(batchTxids, false, options)
       : ctx.client.getTransactionsBatch(batchTxids, false);
     const results = await batchRequest.then(
       value => value,
-      () => {
+      (error) => {
         if (options?.signal?.aborted) {
           if (isSyncStageBudgetError(options.signal.reason)) {
             for (const txid of batchTxids) {
@@ -161,14 +166,23 @@ export async function fetchAuthenticatedTransactions(
           }
           options.signal.throwIfAborted();
         }
+        if (isElectrumResponseTooLargeError(error)) {
+          for (const txid of batchTxids) {
+            recordFailClosed(ctx, 'response_frame_too_large');
+            settled.add(txid);
+          }
+          oversizedFrame = true;
+        }
         return undefined;
       },
     );
     if (budgetExpired) return accepted;
+    if (oversizedFrame) continue;
     if (results) {
       for (const txid of batchTxids) {
         if (cacheAuthenticatedResult(ctx, txid, results.get(txid))) accepted.add(txid);
         settled.add(txid);
+        await checkpoint();
       }
     } else {
       try {
@@ -183,10 +197,17 @@ export async function fetchAuthenticatedTransactions(
                 : await ctx.client.getTransaction(txid, false);
               if (cacheAuthenticatedResult(ctx, txid, details)) accepted.add(txid);
               settled.add(txid);
+              await checkpoint();
             } catch (error) {
               options?.signal?.throwIfAborted();
-              recordFailClosed(ctx, 'fetch_failed');
+              recordFailClosed(
+                ctx,
+                isElectrumResponseTooLargeError(error)
+                  ? 'response_frame_too_large'
+                  : 'fetch_failed',
+              );
               settled.add(txid);
+              await checkpoint();
             }
           },
         );
@@ -204,63 +225,97 @@ export async function fetchAuthenticatedTransactions(
   return accepted;
 }
 
-const previousTxids = (ctx: SyncContext, txids: Iterable<string>): string[] => {
+const previousTxids = async (
+  ctx: SyncContext,
+  txids: Iterable<string>,
+  checkpoint: () => Promise<void>,
+): Promise<string[]> => {
   const result = new Set<string>();
   for (const txid of txids) {
     for (const input of ctx.txDetailsCache.get(txid)?.vin ?? []) {
       if (!input.coinbase && input.txid) result.add(input.txid);
+      await checkpoint();
     }
   }
   return [...result];
 };
 
-const paysScript = (details: RawTransaction, script: string): boolean => (
-  details.vout.some(output => output.scriptPubKey.hex?.toLowerCase() === script)
-);
+const paysScript = async (
+  details: RawTransaction,
+  script: string,
+  checkpoint: () => Promise<void>,
+): Promise<boolean> => {
+  for (const output of details.vout) {
+    if (output.scriptPubKey.hex?.toLowerCase() === script) return true;
+    await checkpoint();
+  }
+  return false;
+};
 
-const spendsScript = (ctx: SyncContext, details: RawTransaction, script: string): boolean => (
-  details.vin.some(input => {
-    if (!input.txid || input.vout === undefined) return false;
-    return ctx.txDetailsCache.get(input.txid)?.vout[input.vout]?.scriptPubKey.hex?.toLowerCase() === script;
-  })
-);
+const spendsScript = async (
+  ctx: SyncContext,
+  details: RawTransaction,
+  script: string,
+  checkpoint: () => Promise<void>,
+): Promise<boolean> => {
+  for (const input of details.vin) {
+    if (input.txid && input.vout !== undefined) {
+      const previousScript = ctx.txDetailsCache
+        .get(input.txid)
+        ?.vout[input.vout]
+        ?.scriptPubKey.hex
+        ?.toLowerCase();
+      if (previousScript === script) return true;
+    }
+    await checkpoint();
+  }
+  return false;
+};
 
-const collectAuthenticatedSpentOutpoints = (
+const collectAuthenticatedSpentOutpoints = async (
   ctx: SyncContext,
   acceptedCurrent: ReadonlySet<string>,
-): void => {
+  checkpoint: () => Promise<void>,
+): Promise<void> => {
   ctx.authenticatedSpentOutpointKeys.clear();
   for (const txid of acceptedCurrent) {
     for (const input of ctx.txDetailsCache.get(txid)?.vin ?? []) {
-      if (!input.txid || input.vout === undefined) continue;
-      const previous = ctx.txDetailsCache.get(input.txid)?.vout[input.vout];
-      const script = previous?.scriptPubKey.hex?.toLowerCase();
-      if (script && ctx.walletScriptToAddress.has(script)) {
-        ctx.authenticatedSpentOutpointKeys.add(`${input.txid}:${input.vout}`);
+      if (input.txid && input.vout !== undefined) {
+        const previous = ctx.txDetailsCache.get(input.txid)?.vout[input.vout];
+        const script = previous?.scriptPubKey.hex?.toLowerCase();
+        if (script && ctx.walletScriptToAddress.has(script)) {
+          ctx.authenticatedSpentOutpointKeys.add(`${input.txid}:${input.vout}`);
+        }
       }
+      await checkpoint();
     }
   }
 };
 
-const authenticateAddressHistory = (
+const authenticateAddressHistory = async (
   ctx: SyncContext,
   address: SyncContext['addresses'][number],
   acceptedCurrent: ReadonlySet<string>,
-): TxHistoryEntry[] => {
+  checkpoint: () => Promise<void>,
+): Promise<TxHistoryEntry[]> => {
   const script = address.scriptPubKey?.toLowerCase();
   const history = ctx.historyResults.get(address.address) ?? [];
   if (script === undefined) return [];
-  return history.filter(item => {
+  const authenticated: TxHistoryEntry[] = [];
+  for (const item of history) {
     const details = acceptedCurrent.has(item.tx_hash)
       ? ctx.txDetailsCache.get(item.tx_hash)
       : undefined;
     const relevant = details !== undefined
-      && (paysScript(details, script) || spendsScript(ctx, details, script));
+      && (await paysScript(details, script, checkpoint)
+        || await spendsScript(ctx, details, script, checkpoint));
     if (details !== undefined && !relevant) {
       recordFailClosed(ctx, 'history_script_mismatch');
     }
-    return relevant;
-  });
+    if (relevant) authenticated.push(item);
+    await checkpoint();
+  }
+  return authenticated;
 };
 
 /** Replaces remote history with only raw-authenticated, script-relevant entries. */
@@ -268,21 +323,38 @@ export async function authenticateHistoryResults(
   ctx: SyncContext,
   options?: NodeRequestOptions,
 ): Promise<void> {
-  const currentTxids = [...new Set(
-    [...ctx.historyResults.values()].flatMap(history => history.map(item => item.tx_hash)),
-  )];
+  const checkpoint = createCooperativeScheduler(options?.signal, {
+    shouldThrowAbort: isAttemptCancellation,
+  });
+  const currentTxidSet = new Set<string>();
+  for (const history of ctx.historyResults.values()) {
+    for (const item of history) {
+      currentTxidSet.add(item.tx_hash);
+      await checkpoint();
+    }
+  }
+  const currentTxids = [...currentTxidSet];
   const acceptedCurrent = await fetchAuthenticatedTransactions(ctx, currentTxids, options);
-  await fetchAuthenticatedTransactions(ctx, previousTxids(ctx, acceptedCurrent), options);
+  const previous = await previousTxids(ctx, acceptedCurrent, checkpoint);
+  await fetchAuthenticatedTransactions(ctx, previous, options);
 
-  collectAuthenticatedSpentOutpoints(ctx, acceptedCurrent);
+  await collectAuthenticatedSpentOutpoints(ctx, acceptedCurrent, checkpoint);
 
   const filtered = new Map<string, TxHistoryEntry[]>();
   for (const address of ctx.addresses) {
-    filtered.set(address.address, authenticateAddressHistory(ctx, address, acceptedCurrent));
+    filtered.set(
+      address.address,
+      await authenticateAddressHistory(ctx, address, acceptedCurrent, checkpoint),
+    );
   }
   ctx.historyResults = filtered;
-  ctx.allTxids = new Set([...filtered.values()].flatMap(history => history.map(item => item.tx_hash)));
-  ctx.txHeightMap = new Map(
-    [...filtered.values()].flatMap(history => history.map(item => [item.tx_hash, item.height] as const)),
-  );
+  ctx.allTxids = new Set();
+  ctx.txHeightMap = new Map();
+  for (const history of filtered.values()) {
+    for (const item of history) {
+      ctx.allTxids.add(item.tx_hash);
+      ctx.txHeightMap.set(item.tx_hash, item.height);
+      await checkpoint();
+    }
+  }
 }

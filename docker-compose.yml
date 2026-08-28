@@ -346,7 +346,10 @@ services:
       # Worker-specific settings
       WORKER_HEALTH_PORT: 3002
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
-      SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-2}
+      # Concurrent large-wallet syncs can saturate the worker's one-CPU deployment
+      # limit. Keep the default serial to avoid overlapping that load; operators
+      # with measured headroom may raise it explicitly.
+      SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-1}
       # The bundled deployment has one worker slot. A stable default makes its
       # capability heartbeat authoritative; multi-replica operators must assign
       # a distinct stable value to each independently defined worker service.

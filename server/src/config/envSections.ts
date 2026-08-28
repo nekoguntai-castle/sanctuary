@@ -71,7 +71,7 @@ export function buildSyncConfig() {
     confirmationUpdateIntervalMs: parseIntegerEnv('SYNC_CONFIRMATION_INTERVAL_MS', 2 * 60 * 1000),
     staleThresholdMs: parseIntegerEnv('SYNC_STALE_THRESHOLD_MS', 10 * 60 * 1000),
     staleBatchSize: parseIntegerEnv('SYNC_STALE_BATCH_SIZE', 50),
-    maxConcurrentSyncs: parseIntegerEnv('SYNC_MAX_CONCURRENT', 2),
+    maxConcurrentSyncs: parseIntegerEnv('SYNC_MAX_CONCURRENT', 1),
     syncStaggerDelayMs: parseIntegerEnv('SYNC_STAGGER_DELAY_MS', 2000),
     startupCatchUpBatchSize: parseIntegerEnv('SYNC_STARTUP_CATCH_UP_BATCH_SIZE', 250),
     startupCatchUpDelayMs: parseIntegerEnv('SYNC_STARTUP_CATCH_UP_DELAY_MS', 10000),

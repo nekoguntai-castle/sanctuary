@@ -1,4 +1,5 @@
 import * as bitcoin from 'bitcoinjs-lib';
+import { performance } from 'node:perf_hooks';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createTestContext,
@@ -12,6 +13,7 @@ import {
   fetchAuthenticatedTransactions,
 } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
 import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
+import { ElectrumFrameTooLargeError } from '../../../../../src/services/bitcoin/electrum/protocol';
 
 const makeRawTransaction = (script: Uint8Array, value: bigint) => {
   const transaction = new bitcoin.Transaction();
@@ -104,7 +106,7 @@ describe('full-wallet receive evidence authentication', () => {
     ]));
   });
 
-  it('propagates non-budget cancellation between chunks without attributing the untouched chunk', async () => {
+  it('propagates non-budget cancellation promptly without attributing untouched results', async () => {
     const controller = new AbortController();
     const reason = new Error('attempt cancelled between raw chunks');
     const txids = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(64, '0'));
@@ -123,7 +125,7 @@ describe('full-wallet receive evidence authentication', () => {
 
     expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['missing_result', 100],
+      ['missing_result', 1],
     ]));
   });
 
@@ -333,6 +335,36 @@ describe('full-wallet receive evidence authentication', () => {
     expect(client.getTransaction).not.toHaveBeenCalled();
   });
 
+  it('fails a whole oversized batch closed without repeating individual fetches', async () => {
+    const txids = ['ab'.repeat(32), 'cd'.repeat(32)];
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockRejectedValue(
+      new ElectrumFrameTooLargeError(17, 16),
+    );
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(ctx, txids)).resolves.toEqual(new Set());
+
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['response_frame_too_large', 2],
+    ]));
+    expect(client.getTransaction).not.toHaveBeenCalled();
+  });
+
+  it('classifies an oversized individual fallback response without accepting it', async () => {
+    const txid = 'ef'.repeat(32);
+    const client = clientFor(new Map());
+    client.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+    client.getTransaction.mockRejectedValue(new ElectrumFrameTooLargeError(17, 16));
+    const ctx = createTestContext({ client: client as any });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [txid])).resolves.toEqual(new Set());
+
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['response_frame_too_large', 1],
+    ]));
+  });
+
   it('keeps only a raw-authenticated history transaction that pays the canonical script', async () => {
     const payment = bitcoin.payments.p2wpkh({
       pubkey: Buffer.from(`02${'11'.repeat(32)}`, 'hex'),
@@ -493,6 +525,59 @@ describe('full-wallet receive evidence authentication', () => {
     });
   });
 
+  it('yields to worker timers during transaction evidence authentication', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 2n);
+    const client = clientFor(new Map([[transaction.getId(), details(transaction)]]));
+    const ctx = createTestContext({ client: client as any });
+    let clock = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+      clock += 30;
+      return clock;
+    });
+    let heartbeatRan = false;
+    setImmediate(() => { heartbeatRan = true; });
+
+    try {
+      await fetchAuthenticatedTransactions(ctx, [transaction.getId()]);
+    } finally {
+      now.mockRestore();
+    }
+
+    expect(heartbeatRan).toBe(true);
+    expect(ctx.txDetailsCache.has(transaction.getId())).toBe(true);
+  });
+
+  it('stops history authentication when an attempt is cancelled at a yield boundary', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 2n);
+    const address = addressRecord(Uint8Array.from([0x51]), 'test-address');
+    const ctx = createTestContext({
+      addresses: [address] as any,
+      historyResults: new Map([[
+        address.address,
+        [{ tx_hash: transaction.getId(), height: 1 }],
+      ]]),
+      txDetailsCache: new Map([[transaction.getId(), details(transaction)]]),
+      client: clientFor(new Map()) as any,
+    });
+    const controller = new AbortController();
+    const reason = new Error('lease lost while filtering history');
+    let clock = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+      clock += 30;
+      return clock;
+    });
+    setImmediate(() => controller.abort(reason));
+
+    try {
+      await expect(authenticateHistoryResults(
+        ctx,
+        { signal: controller.signal },
+      )).rejects.toBe(reason);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('falls back to individual fetches and rejects thrown, missing, and malformed results independently', async () => {
     const acceptedTransaction = makeRawTransaction(Uint8Array.from([0x51]), 3n);
     const missingTxid = '55'.repeat(32);
@@ -552,6 +637,54 @@ describe('full-wallet receive evidence authentication', () => {
 
     expect(ctx.authenticatedSpentOutpointKeys.size).toBe(0);
     expect(ctx.allTxids.size).toBe(0);
+  });
+
+  it('rejects cached history when previous outputs are missing or mismatch its script', async () => {
+    const currentTxid = '11'.repeat(32);
+    const missingScriptTxid = '22'.repeat(32);
+    const mismatchedScriptTxid = '33'.repeat(32);
+    const address = {
+      ...addressRecord(Uint8Array.from([0x51]), 'cached-address'),
+      scriptPubKey: 'target-script',
+    };
+    const ctx = createTestContext({
+      addresses: [address] as any,
+      historyResults: new Map([[
+        address.address,
+        [{ tx_hash: currentTxid, height: 1 }],
+      ]]),
+      txDetailsCache: new Map([
+        [currentTxid, {
+          txid: currentTxid,
+          hex: '00',
+          vin: [
+            { txid: missingScriptTxid, vout: 0 },
+            { txid: mismatchedScriptTxid, vout: 0 },
+          ],
+          vout: [{ scriptPubKey: { hex: 'different-script' } }],
+        } as any],
+        [missingScriptTxid, {
+          txid: missingScriptTxid,
+          hex: '00',
+          vin: [],
+          vout: [{ scriptPubKey: {} }],
+        } as any],
+        [mismatchedScriptTxid, {
+          txid: mismatchedScriptTxid,
+          hex: '00',
+          vin: [],
+          vout: [{ scriptPubKey: { hex: 'different-script' } }],
+        } as any],
+      ]),
+      walletScriptToAddress: new Map([['target-script', address]]) as any,
+      client: clientFor(new Map()) as any,
+    });
+
+    await authenticateHistoryResults(ctx);
+
+    expect(ctx.historyResults.get(address.address)).toEqual([]);
+    expect(ctx.authenticatedSpentOutpointKeys.size).toBe(0);
+    expect(ctx.rejectedEvidenceReasons.get('history_script_mismatch')).toBe(1);
   });
 
   it('filters missing histories and addresses without canonical scripts without inventing failures', async () => {

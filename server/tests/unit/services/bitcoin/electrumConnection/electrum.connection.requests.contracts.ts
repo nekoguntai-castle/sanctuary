@@ -229,7 +229,7 @@ export function registerElectrumConnectionRequestContracts(): void {
     firstSocket.emit('close');
     expect(client.isConnected()).toBe(true);
     expect((client as any).socket).toBe(secondSocket);
-    expect((client as any).buffer).toBe('');
+    expect((client as any).frameDecoder.bufferedBytes).toBe(0);
   });
 
   it.each(['close', 'end'] as const)(

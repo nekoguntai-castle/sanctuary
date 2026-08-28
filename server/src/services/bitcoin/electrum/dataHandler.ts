@@ -7,7 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
-import { parseResponseBuffer, isNotification, processResponse } from './protocol';
+import { ElectrumFrameDecoder, isNotification, processResponse } from './protocol';
 import {
   BlockHeaderNotificationSchema,
   parseElectrumSubscriptionStatus,
@@ -21,27 +21,22 @@ const log = createLogger('ELECTRUM:SVC_DATA');
  * Handle incoming data from server. Parses the response buffer, processes
  * regular responses and routes notifications.
  *
- * @returns The new buffer value (caller must update its buffer state)
  */
 export function handleIncomingData(
-  currentBuffer: string,
+  decoder: ElectrumFrameDecoder,
   data: Buffer,
   pendingRequests: Map<number, PendingRequest>,
   emitter: EventEmitter,
   scriptHashToAddress: Map<string, string>
-): string {
-  const { responses, remainingBuffer } = parseResponseBuffer(currentBuffer, data.toString());
-
-  for (const response of responses) {
+): void {
+  decoder.push(data, ({ response, frameBytes }) => {
     if (isNotification(response)) {
       handleNotification(response, emitter, scriptHashToAddress);
     } else {
       handleSubscriptionResponse(response, pendingRequests, emitter, scriptHashToAddress);
-      processResponse(response, pendingRequests);
+      processResponse(response, pendingRequests, frameBytes);
     }
-  }
-
-  return remainingBuffer;
+  });
 }
 
 function handleSubscriptionResponse(

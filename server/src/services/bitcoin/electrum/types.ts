@@ -154,7 +154,7 @@ export function validateResponse<T>(
         path: e.path.join('.'),
         message: e.message,
       })),
-      dataPreview: JSON.stringify(data).substring(0, 200),
+      dataPreview: String(JSON.stringify(data)).substring(0, 200),
     });
     // Throw to let caller handle - invalid data shouldn't be silently used
     throw new ElectrumResponseValidationError(
@@ -285,4 +285,5 @@ export interface PendingRequest {
   method?: string;
   params?: unknown[];
   cleanup?: () => void;
+  accountResponseBytes?: (frameBytes: number) => void;
 }

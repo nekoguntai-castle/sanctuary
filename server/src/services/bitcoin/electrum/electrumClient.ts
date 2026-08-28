@@ -12,7 +12,14 @@ import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { createConnection, wrapSocketInTls, applySocketOptimizations } from './connection';
-import { createRequestMessage, createBatchMessage, rejectAllPendingRequests } from './protocol';
+import {
+  createRequestMessage,
+  createBatchMessage,
+  ElectrumFrameDecoder,
+  ELECTRUM_MAX_BATCH_RESPONSE_BYTES,
+  ElectrumBatchResponseTooLargeError,
+  rejectAllPendingRequests,
+} from './protocol';
 import { getDefaultTimeouts } from './clientConfig';
 import { handleIncomingData } from './dataHandler';
 import * as publicApi from './publicApi';
@@ -61,7 +68,7 @@ class ElectrumClient extends EventEmitter {
   private connectionPromise: Promise<void> | null = null;
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
-  private buffer = '';
+  private readonly frameDecoder = new ElectrumFrameDecoder();
   private connected = false;
   private serverVersion: { server: string; protocol: string } | null = null;
   private explicitConfig: ElectrumConfig | null = null;
@@ -72,6 +79,7 @@ class ElectrumClient extends EventEmitter {
   // Timeouts (adjusted for Tor when proxy is enabled)
   private requestTimeoutMs: number;
   private batchRequestTimeoutMs: number;
+  private readonly maxBatchResponseBytes = ELECTRUM_MAX_BATCH_RESPONSE_BYTES;
 
   /**
    * Create an ElectrumClient
@@ -218,7 +226,7 @@ class ElectrumClient extends EventEmitter {
     const { tlsSocket, handshakePromise } = wrapSocketInTls(
       baseSocket, host, port, allowSelfSignedCert, !!proxy?.enabled
     );
-    this.buffer = '';
+    this.frameDecoder.reset();
     this.socket = tlsSocket;
     handshakePromise
       .then(() => state.handleSuccess())
@@ -232,7 +240,7 @@ class ElectrumClient extends EventEmitter {
     state: ConnectionState
   ): net.Socket {
     const { host, port, protocol, proxy } = connectionConfig;
-    this.buffer = '';
+    this.frameDecoder.reset();
     this.socket = baseSocket;
     log.info(`Connected to ${host}:${port} (${protocol})${proxy?.enabled ? ' via proxy' : ''}`);
     applySocketOptimizations(baseSocket);
@@ -263,7 +271,7 @@ class ElectrumClient extends EventEmitter {
     const notifyClose = this.connected;
     this.connected = false;
     this.socket = null;
-    this.buffer = '';
+    this.frameDecoder.reset();
     this.serverVersion = null;
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed unexpectedly'));
     if (notifyClose) this.emit('close');
@@ -275,7 +283,7 @@ class ElectrumClient extends EventEmitter {
     const notifyClose = this.connected;
     this.connected = false;
     this.socket = null;
-    this.buffer = '';
+    this.frameDecoder.reset();
     this.serverVersion = null;
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection ended'));
     if (notifyClose) this.emit('close');
@@ -292,7 +300,7 @@ class ElectrumClient extends EventEmitter {
       this.connected = false;
       this.serverVersion = null;
       this.socket = null;
-      this.buffer = '';
+      this.frameDecoder.reset();
       socket.destroy();
       this.scriptHashToAddress.clear();
     }
@@ -324,9 +332,36 @@ class ElectrumClient extends EventEmitter {
    * Handle incoming socket data - delegates to standalone handleIncomingData
    */
   private handleData(data: Buffer): void {
-    this.buffer = handleIncomingData(
-      this.buffer, data, this.pendingRequests, this, this.scriptHashToAddress
-    );
+    try {
+      handleIncomingData(
+        this.frameDecoder,
+        data,
+        this.pendingRequests,
+        this,
+        this.scriptHashToAddress,
+      );
+    } catch (error) {
+      const protocolError = error instanceof Error
+        ? error
+        : new Error('Electrum protocol framing failed');
+      log.error('Electrum protocol framing failed; closing connection', {
+        error: getErrorMessage(protocolError),
+      });
+      this.failClosedConnection(protocolError);
+      return;
+    }
+  }
+
+  private failClosedConnection(error: Error): void {
+    const socket = this.socket;
+    const notifyClose = this.connected;
+    this.connected = false;
+    this.socket = null;
+    this.serverVersion = null;
+    this.frameDecoder.reset();
+    rejectAllPendingRequests(this.pendingRequests, error);
+    socket?.destroy();
+    if (notifyClose) this.emit('close');
   }
 
   // REQUEST/RESPONSE PRIMITIVES
@@ -403,6 +438,7 @@ class ElectrumClient extends EventEmitter {
     const startId = this.requestId + 1;
     const requestPromises: Promise<unknown>[] = [];
     const activeIds = new Set<number>();
+    let responseBytes = 0;
 
     const { message, ids } = createBatchMessage(requests, startId);
     this.requestId += requests.length;
@@ -424,6 +460,15 @@ class ElectrumClient extends EventEmitter {
       }
     };
     const onAbort = (): void => rejectPendingBatch(abortError(options!.signal!));
+    const accountResponseBytes = (frameBytes: number): void => {
+      responseBytes += frameBytes;
+      if (responseBytes > this.maxBatchResponseBytes) {
+        throw new ElectrumBatchResponseTooLargeError(
+          responseBytes,
+          this.maxBatchResponseBytes,
+        );
+      }
+    };
 
     for (let i = 0; i < requests.length; i++) {
       const id = ids[i];
@@ -443,6 +488,7 @@ class ElectrumClient extends EventEmitter {
           method: requests[i].method,
           params: requests[i].params,
           cleanup,
+          accountResponseBytes,
         });
         activeIds.add(id);
       });

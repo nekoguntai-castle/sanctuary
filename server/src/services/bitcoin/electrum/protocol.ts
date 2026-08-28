@@ -11,31 +11,143 @@ import type { ElectrumResponse, ElectrumRequest, PendingRequest } from './types'
 
 const log = createLogger('ELECTRUM:SVC_PROTOCOL');
 
+// A maximum-weight Bitcoin transaction is under 4 MiB on the wire and under
+// 8 MiB as hex. Leave room for JSON-RPC framing and unusually deep address
+// histories while reserving headroom for JSON parsing/object amplification in
+// the worker's 1 GiB container. A batch receives a separate aggregate cap.
+export const ELECTRUM_MAX_FRAME_BYTES = 16 * 1024 * 1024;
+export const ELECTRUM_MAX_BATCH_RESPONSE_BYTES = 32 * 1024 * 1024;
+const ELECTRUM_INITIAL_FRAME_BUFFER_BYTES = 4 * 1024;
+
+export interface DecodedElectrumFrame {
+  response: ElectrumResponse;
+  frameBytes: number;
+}
+
+export class ElectrumFrameTooLargeError extends Error {
+  constructor(
+    public readonly frameBytes: number,
+    public readonly maxFrameBytes: number,
+  ) {
+    super(`Electrum response frame exceeded ${maxFrameBytes} bytes`);
+    this.name = 'ElectrumFrameTooLargeError';
+  }
+}
+
+export class ElectrumMalformedFrameError extends Error {
+  constructor() {
+    super('Electrum response frame was not valid JSON');
+    this.name = 'ElectrumMalformedFrameError';
+  }
+}
+
+export class ElectrumBatchResponseTooLargeError extends Error {
+  constructor(
+    public readonly responseBytes: number,
+    public readonly maxResponseBytes: number,
+  ) {
+    super(`Electrum batch responses exceeded ${maxResponseBytes} bytes`);
+    this.name = 'ElectrumBatchResponseTooLargeError';
+  }
+}
+
+export function isElectrumResponseTooLargeError(
+  error: unknown,
+): error is ElectrumFrameTooLargeError | ElectrumBatchResponseTooLargeError {
+  return error instanceof ElectrumFrameTooLargeError
+    || error instanceof ElectrumBatchResponseTooLargeError;
+}
+
 /**
- * Parse incoming data buffer into complete JSON-RPC response lines.
- * Returns parsed responses and the remaining incomplete buffer.
+ * Stateful newline decoder for Electrum's JSON-RPC stream.
+ *
+ * Each incoming byte is searched once. Partial frames use one geometrically
+ * grown bounded buffer, avoiding both repeated prefix copies and unbounded
+ * per-fragment metadata when a peer sends tiny TLS records.
  */
-export function parseResponseBuffer(
-  buffer: string,
-  newData: string
-): { responses: ElectrumResponse[]; remainingBuffer: string } {
-  const fullBuffer = buffer + newData;
-  const lines = fullBuffer.split('\n');
-  const remainingBuffer = lines.pop() || ''; // Keep incomplete line in buffer
-  const responses: ElectrumResponse[] = [];
+export class ElectrumFrameDecoder {
+  private frameBuffer: Buffer | null = null;
+  private bufferedBytes = 0;
 
-  for (const line of lines) {
-    if (!line.trim()) continue;
+  constructor(private readonly maxFrameBytes = ELECTRUM_MAX_FRAME_BYTES) {}
 
-    try {
-      const parsed: ElectrumResponse = JSON.parse(line);
-      responses.push(parsed);
-    } catch (error) {
-      log.error('Failed to parse Electrum response', { error: getErrorMessage(error) });
-    }
+  reset(): void {
+    this.frameBuffer = null;
+    this.bufferedBytes = 0;
   }
 
-  return { responses, remainingBuffer };
+  push(
+    data: Buffer,
+    consume?: (frame: DecodedElectrumFrame) => void,
+  ): DecodedElectrumFrame[] {
+    const responses: DecodedElectrumFrame[] = [];
+    let offset = 0;
+
+    while (offset < data.length) {
+      const newline = data.indexOf(0x0a, offset);
+      if (newline === -1) {
+        this.appendFragment(data.subarray(offset));
+        break;
+      }
+
+      const suffix = data.subarray(offset, newline);
+      const frameBytes = this.bufferedBytes + suffix.length;
+      this.assertFrameSize(frameBytes);
+      const frame = this.bufferedBytes === 0
+        ? suffix
+        : this.completeBufferedFrame(suffix, frameBytes);
+      this.reset();
+      if (frame.length > 0) {
+        const decoded = { response: this.parseFrame(frame), frameBytes };
+        if (consume) consume(decoded);
+        else responses.push(decoded);
+      }
+      offset = newline + 1;
+    }
+
+    return responses;
+  }
+
+  private appendFragment(fragment: Buffer): void {
+    const nextBytes = this.bufferedBytes + fragment.length;
+    this.assertFrameSize(nextBytes);
+    this.ensureCapacity(nextBytes);
+    fragment.copy(this.frameBuffer!, this.bufferedBytes);
+    this.bufferedBytes = nextBytes;
+  }
+
+  private completeBufferedFrame(suffix: Buffer, frameBytes: number): Buffer {
+    this.ensureCapacity(frameBytes);
+    suffix.copy(this.frameBuffer!, this.bufferedBytes);
+    return this.frameBuffer!.subarray(0, frameBytes);
+  }
+
+  private ensureCapacity(requiredBytes: number): void {
+    if (this.frameBuffer && this.frameBuffer.length >= requiredBytes) return;
+    let capacity = Math.min(
+      this.maxFrameBytes,
+      Math.max(ELECTRUM_INITIAL_FRAME_BUFFER_BYTES, this.frameBuffer?.length ?? 0),
+    );
+    while (capacity < requiredBytes) capacity = Math.min(this.maxFrameBytes, capacity * 2);
+    const replacement = Buffer.allocUnsafe(capacity);
+    this.frameBuffer?.copy(replacement, 0, 0, this.bufferedBytes);
+    this.frameBuffer = replacement;
+  }
+
+  private assertFrameSize(frameBytes: number): void {
+    if (frameBytes <= this.maxFrameBytes) return;
+    this.reset();
+    throw new ElectrumFrameTooLargeError(frameBytes, this.maxFrameBytes);
+  }
+
+  private parseFrame(frame: Buffer): ElectrumResponse {
+    try {
+      return JSON.parse(frame.toString('utf8')) as ElectrumResponse;
+    } catch (error) {
+      log.error('Failed to parse Electrum response', { error: getErrorMessage(error) });
+      throw new ElectrumMalformedFrameError();
+    }
+  }
 }
 
 /**
@@ -50,12 +162,15 @@ export function isNotification(response: ElectrumResponse): boolean {
  */
 export function processResponse(
   response: ElectrumResponse,
-  pendingRequests: Map<number, PendingRequest>
+  pendingRequests: Map<number, PendingRequest>,
+  frameBytes = 0,
 ): void {
   if (response.id === null || response.id === undefined) return;
 
   const request = pendingRequests.get(response.id);
   if (!request) return;
+
+  request.accountResponseBytes?.(frameBytes);
 
   // Clear timeout since we got a response
   clearTimeout(request.timeoutId);

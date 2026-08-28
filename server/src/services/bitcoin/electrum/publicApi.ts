@@ -18,6 +18,7 @@ import type {
   BitcoinNetwork,
 } from './types';
 import type { NodeRequestOptions } from '../nodeClient';
+import { createCooperativeScheduler } from '../../../utils/cooperativeScheduler';
 
 const log = createLogger('ELECTRUM:SVC_API');
 
@@ -291,7 +292,13 @@ export async function getTransactionsBatch(
     try {
       results = await batchRequestFn(requests);
       // Decode raw transactions since we're using non-verbose mode
-      results = results.map(rawTx => decodeRawTxFn(rawTx as string));
+      const decoded: TransactionDetails[] = [];
+      const checkpoint = createCooperativeScheduler(options?.signal);
+      for (const rawTx of results) {
+        decoded.push(decodeRawTxFn(rawTx as string));
+        await checkpoint();
+      }
+      results = decoded;
       break;
     } catch (error) {
       options?.signal?.throwIfAborted();

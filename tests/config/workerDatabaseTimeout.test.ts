@@ -30,7 +30,7 @@ describe('worker database timeout contract', () => {
     const worker = workerServiceBlock();
 
     expect(worker).toContain(
-      'SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-2}',
+      'SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-1}',
     );
   });
 });

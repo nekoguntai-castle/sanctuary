@@ -22,6 +22,14 @@ describe('config env section builders', () => {
     expect(buildSyncConfig().maxSyncDurationMs).toBe(WALLET_SYNC_MAX_EXECUTION_MS + 1);
   });
 
+  it('keeps wallet sync serial by default and preserves an explicit concurrency', () => {
+    vi.stubEnv('SYNC_MAX_CONCURRENT', '');
+    expect(buildSyncConfig().maxConcurrentSyncs).toBe(1);
+
+    vi.stubEnv('SYNC_MAX_CONCURRENT', '3');
+    expect(buildSyncConfig().maxConcurrentSyncs).toBe(3);
+  });
+
   it('reads typed primitive env values with fallbacks', () => {
     expect(parseIntegerEnv('SANCTUARY_TEST_INTEGER', 7)).toBe(7);
     expect(parseStringEnv('SANCTUARY_TEST_STRING', 'fallback')).toBe('fallback');

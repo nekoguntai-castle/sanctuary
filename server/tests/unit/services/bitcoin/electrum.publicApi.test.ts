@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTransactionsBatch } from '../../../../src/services/bitcoin/electrum/publicApi';
+import { EVENT_LOOP_CPU_BURST_BUDGET_MS } from '../../../../src/utils/cooperativeScheduler';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -58,5 +59,26 @@ describe('Electrum public API transaction batch runtime', () => {
     abortListener();
 
     await expect(pending).rejects.toThrow('Electrum request cancelled');
+  });
+
+  it('yields to worker timers while decoding a CPU-heavy transaction batch', async () => {
+    let heartbeatRan = false;
+    setImmediate(() => { heartbeatRan = true; });
+    const decode = vi.fn(() => {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt <= EVENT_LOOP_CPU_BURST_BUDGET_MS) {
+        // Model one expensive raw-transaction decode.
+      }
+      return { txid: 'aa'.repeat(32) } as never;
+    });
+
+    await getTransactionsBatch(
+      vi.fn().mockResolvedValue(['raw-transaction']),
+      decode,
+      ['aa'.repeat(32)],
+    );
+
+    expect(heartbeatRan).toBe(true);
+    expect(decode).toHaveBeenCalledOnce();
   });
 });

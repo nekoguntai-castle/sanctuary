@@ -131,6 +131,7 @@ import { getBlockTimestamp } from '../../../../../src/services/bitcoin/utils/blo
 import { getNotificationService, walletLog } from '../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../src/services/notifications/notificationService';
 import { fetchAuthenticatedTransactions } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { ElectrumFrameTooLargeError } from '../../../../../src/services/bitcoin/electrum/protocol';
 
 describe('Sync Phases', () => {
   beforeEach(() => {
@@ -398,6 +399,24 @@ describe('Sync Phases', () => {
 
       expect(result.historyResults.get('addr1')).toEqual([]);
       expect(result.rejectedEvidenceCount).toBe(1);
+    });
+
+    it('fails oversized history batches closed without repeating individual requests', async () => {
+      mockElectrumClient.getAddressHistoryBatch.mockRejectedValue(
+        new ElectrumFrameTooLargeError(17, 16),
+      );
+      const ctx = createTestContext({
+        addresses: [{ id: '1', address: 'addr1', derivationPath: "m/84'/0'/0'/0/0" } as any],
+        client: mockElectrumClient as any,
+      });
+
+      const result = await fetchHistoriesPhase(ctx);
+
+      expect(result.historyResults.get('addr1')).toEqual([]);
+      expect(result.rejectedEvidenceReasons).toEqual(new Map([
+        ['response_frame_too_large', 1],
+      ]));
+      expect(mockElectrumClient.getAddressHistory).not.toHaveBeenCalled();
     });
 
     it('should deduplicate txids from multiple addresses', async () => {

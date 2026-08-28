@@ -19,6 +19,8 @@ import {
   SYNC_REMOTE_FALLBACK_CONCURRENCY,
   type SyncStageRuntime,
 } from '../attemptRuntime';
+import { isElectrumResponseTooLargeError } from '../../electrum/protocol';
+import { createCooperativeScheduler } from '../../../../utils/cooperativeScheduler';
 
 const log = createLogger('BITCOIN:SVC_SYNC_HISTORIES');
 
@@ -29,6 +31,7 @@ const recordHistoryFetchFailure = (ctx: SyncContext, reason: string): void => {
 
 /** Number of addresses to fetch per batch RPC call */
 const BATCH_SIZE = 50;
+const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
 /**
  * Execute fetch histories phase
@@ -77,11 +80,15 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
     }
 
     let addressesWithActivity = 0;
+    const checkpoint = createCooperativeScheduler(requestOptions?.signal, {
+      shouldThrowAbort: isAttemptCancellation,
+    });
     for (const history of ctx.historyResults.values()) {
       if (history.length > 0) addressesWithActivity++;
       for (const item of history) {
         ctx.allTxids.add(item.tx_hash);
         ctx.txHeightMap.set(item.tx_hash, item.height);
+        await checkpoint();
       }
     }
 
@@ -110,6 +117,9 @@ async function fetchAddressHistories(
 ): Promise<void> {
   const { walletId, client, addresses } = ctx;
   const totalBatches = Math.ceil(addresses.length / BATCH_SIZE);
+  const checkpoint = createCooperativeScheduler(requestOptions?.signal, {
+    shouldThrowAbort: isAttemptCancellation,
+  });
   for (let i = 0; i < addresses.length; i += BATCH_SIZE) {
     requestOptions?.signal?.throwIfAborted();
     const batchAddresses = addresses.slice(i, i + BATCH_SIZE).map(a => a.address);
@@ -119,16 +129,26 @@ async function fetchAddressHistories(
     }
 
     await client.getAddressHistoryBatch(batchAddresses, requestOptions).then(
-      batchResults => {
+      async batchResults => {
         for (const address of batchAddresses) {
           const history = batchResults.get(address);
           ctx.historyResults.set(address, history ?? []);
           if (!history) recordHistoryFetchFailure(ctx, 'missing_history_result');
           settledAddresses.add(address);
+          await checkpoint();
         }
       },
       async error => {
         requestOptions?.signal?.throwIfAborted();
+        if (isElectrumResponseTooLargeError(error)) {
+          for (const address of batchAddresses) {
+            ctx.historyResults.set(address, []);
+            recordHistoryFetchFailure(ctx, 'response_frame_too_large');
+            settledAddresses.add(address);
+            await checkpoint();
+          }
+          return;
+        }
         log.warn('[SYNC] Batch history failed, falling back to individual requests', {
           error: getErrorMessage(error),
         });

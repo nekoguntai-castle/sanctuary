@@ -124,7 +124,7 @@ const mocks = vi.hoisted(() => {
     sync: {
       intervalMs: 5 * 60 * 1000,
       confirmationUpdateIntervalMs: 2 * 60 * 1000,
-      maxConcurrentSyncs: 2,
+      maxConcurrentSyncs: 1,
       staleBatchSize: 50,
       syncStaggerDelayMs: 2000,
       startupCatchUpBatchSize: 250,
@@ -1661,7 +1661,7 @@ describe('worker entrypoint', () => {
     expect(intervalDelays).toContain(5_000);
     expect(mocks.WorkerJobQueue).toHaveBeenCalledWith({
       concurrency: 5,
-      concurrencyByQueue: { sync: 2 },
+      concurrencyByQueue: { sync: 1 },
       queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
       autorun: false,
     });
