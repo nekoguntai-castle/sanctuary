@@ -1608,6 +1608,17 @@ function callHasArgumentPath(call, pathName) {
   return call.arguments.some((argument) => expressionPath(argument) === pathName);
 }
 
+function callHasObjectArgumentPropertyPath(call, propertyName, pathName) {
+  return call.arguments.some((argument) => (
+    ts.isObjectLiteralExpression(argument)
+    && argument.properties.some((property) => (
+      ts.isPropertyAssignment(property)
+      && staticPropertyText(property.name, new Map()) === propertyName
+      && expressionPath(property.initializer) === pathName
+    ))
+  ));
+}
+
 function hasStrictRepresentedNetworkMap(file, source) {
   return collectContractNodes(file, source, (node) => (
     ts.isCallExpression(node)
@@ -1816,7 +1827,21 @@ function validateManagerStatusCalls(managerFile, manager, errors) {
       errors.push(`multi-network subscription must forward authoritative statuses through ${callPath}`);
     }
   }
-  if (callsPath(managerFile, manager, 'this.callbacks.onSubscriptionStatuses').length === 0) {
+  const refreshPublishesStatuses = callsPath(
+    managerFile,
+    manager,
+    'this.callbacks.onSubscriptionStatuses',
+  ).length > 0 || callsPath(
+    managerFile,
+    manager,
+    'subscribeAddressBatch',
+    'refreshSubscriptionStatusPage',
+  ).some((call) => callHasObjectArgumentPropertyPath(
+    call,
+    'observeStatuses',
+    'this.callbacks.onSubscriptionStatuses',
+  ));
+  if (!refreshPublishesStatuses) {
     errors.push('multi-network subscription must publish refresh statuses through its callback');
   }
   if (!hasStrictRepresentedNetworkMap(managerFile, manager)) {

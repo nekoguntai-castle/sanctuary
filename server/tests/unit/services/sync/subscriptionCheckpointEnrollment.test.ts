@@ -674,6 +674,43 @@ describe('subscriptionCheckpointEnrollment', () => {
     );
   });
 
+  it('releases a deferred subscription baseline after enrollment persistence', async () => {
+    const repository = repositoryMock();
+    const first = candidate('address-1', ADDRESS_1);
+    const statuses = new Map([[ADDRESS_1, STATUS_1]]);
+    const releaseBatch = vi.fn();
+    const serializePersistenceMock = vi.fn(
+      (operation: () => Promise<unknown>) => operation(),
+    );
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([first]);
+    subscribeBatch.mockResolvedValue(statuses);
+    vi.mocked(repository.completeSubscriptionEnrollment).mockResolvedValue({
+      status: 'applied',
+      state: appliedState(first, STATUS_1),
+      syncIntent: null,
+    });
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      releaseBatch,
+      serializePersistence: serializePersistenceMock as unknown as <T>(
+        operation: () => Promise<T>,
+      ) => Promise<T>,
+      now: () => NOW,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' }))
+      .resolves.toMatchObject({ enrolled: 1, unavailable: 0 });
+
+    expect(releaseBatch).toHaveBeenCalledOnce();
+    expect(releaseBatch).toHaveBeenCalledWith(statuses);
+    expect(subscribeBatch).toHaveBeenCalledBefore(serializePersistenceMock);
+    expect(serializePersistenceMock).toHaveBeenCalledBefore(
+      vi.mocked(repository.completeSubscriptionEnrollment),
+    );
+    expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledBefore(releaseBatch);
+  });
+
   it.each([0, -1, 1.5, Number.NaN])(
     'rejects invalid page limit %s before reading pending work',
     async (limit) => {
@@ -692,6 +729,7 @@ describe('subscriptionCheckpointEnrollment', () => {
 
   it('rejects unsupported networks before reads and invalid clocks before persistence', async () => {
     const repository = repositoryMock();
+    const releaseBatch = vi.fn();
     const invalidNetworkEnrollment = createSubscriptionCheckpointEnrollment({
       repository,
       subscribeBatch,
@@ -700,6 +738,7 @@ describe('subscriptionCheckpointEnrollment', () => {
     const invalidClockEnrollment = createSubscriptionCheckpointEnrollment({
       repository,
       subscribeBatch,
+      releaseBatch,
       now: () => new Date(Number.NaN),
     });
 
@@ -714,6 +753,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       .rejects.toThrow('valid date');
     expect(repository.findPendingSubscriptionEnrollments).toHaveBeenCalledTimes(1);
     expect(subscribeBatch).toHaveBeenCalledTimes(1);
+    expect(releaseBatch).toHaveBeenCalledOnce();
     expect(repository.completeSubscriptionEnrollment).not.toHaveBeenCalled();
   });
 });

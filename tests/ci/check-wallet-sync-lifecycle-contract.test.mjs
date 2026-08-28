@@ -328,7 +328,10 @@ function fixtureContract() {
       role: 'worker_owned_checkpoint_comparison_requester',
     }] },
     { symbol: 'subscribeAddress', entries: [] },
-    { symbol: 'subscribeAddressBatch', entries: [] },
+    { symbol: 'subscribeAddressBatch', entries: [{
+      file: 'server/src/worker/electrumManager/electrumManager.ts',
+      role: 'worker_owned_subscription_transport',
+    }] },
     { symbol: 'subscribeHeaders', entries: [{
       file: 'server/src/worker/electrumManager/networkConnection.ts',
       role: 'sole_worker_owned_header_subscription',
@@ -392,7 +395,7 @@ function writeMultiNetworkFixture(root) {
       + '  async reconcileSubscriptions() { return doReconcileSubscriptions(a, b, this.callbacks.onSubscriptionStatuses); }\n'
       + '  async subscribeWalletAddresses() { await this.ensureNetworkConnected(a); await doSubscribeWalletAddresses(a, b, c, d, this.callbacks.onSubscriptionStatuses); }\n'
       + '  async subscribeCheckpointAddresses() { await this.ensureNetworkConnected(a, b, false); }\n'
-      + '  async refresh() { await this.callbacks.onSubscriptionStatuses(a, b); }\n'
+      + '  async refreshSubscriptionStatusPage() { await subscribeAddressBatch(a, b, { observeStatuses: this.callbacks.onSubscriptionStatuses }); }\n'
       + '  async ensureNetworkConnected() {}\n'
       + '  async doConnectNetwork() { const existing = this.networkConnections.get(a); if (existing) { await existing; return; } const connection = connectNetwork(); this.networkConnections.set(a, connection); try { await connection; } finally { if (this.networkConnections.get(a) === connection) this.networkConnections.delete(a); } }\n'
       + '  doScheduleReconnect() { scheduleReconnect(a, b, c, d, e, f, (network) => this.doConnectNetwork(network)); }\n'
@@ -745,6 +748,23 @@ test('rejects loss of represented-network and strict routing boundaries', () => 
   );
   assert.ok(checkWalletSyncLifecycleContract(inertManagerTokens).errors.some(
     (error) => error.includes('through subscribeAllAddresses'),
+  ));
+
+  const missingRefreshObserver = createFixture();
+  const refreshManagerPath = path.join(
+    missingRefreshObserver,
+    'server/src/worker/electrumManager/electrumManager.ts',
+  );
+  write(
+    missingRefreshObserver,
+    'server/src/worker/electrumManager/electrumManager.ts',
+    readFileSync(refreshManagerPath, 'utf8').replace(
+      'observeStatuses: this.callbacks.onSubscriptionStatuses',
+      'observeStatuses: undefined',
+    ),
+  );
+  assert.ok(checkWalletSyncLifecycleContract(missingRefreshObserver).errors.some(
+    (error) => error.includes('publish refresh statuses'),
   ));
 
   const unsafeManager = createFixture();

@@ -15,6 +15,10 @@ import {
   type NetworkState,
   type ElectrumManagerCallbacks,
 } from './types';
+import {
+  bufferSubscriptionNotification,
+  markSubscriptionResponse,
+} from './subscriptionBaselines';
 
 const log = createLogger('WORKER:ELECTRUM_NET');
 type HeaderObservation = { height: number; hex: string };
@@ -31,7 +35,7 @@ function isActiveClientState(state: NetworkState): boolean {
 }
 
 function detachEventHandlers(state: NetworkState): void {
-  for (const event of ['newBlock', 'addressActivity', 'close', 'error']) {
+  for (const event of ['newBlock', 'addressActivity', 'subscriptionResponse', 'close', 'error']) {
     state.client.removeAllListeners(event);
   }
 }
@@ -279,10 +283,21 @@ export function setupEventHandlers(
   });
 
   // Handle address activity
-  client.on('addressActivity', (activity: { scriptHash: string; address?: string; status: string | null }) => {
+  client.on('addressActivity', (activity: {
+    scriptHash: string;
+    address?: string;
+    status: string | null;
+    sequence?: number;
+  }) => {
     if (!isRunning()) return;
+    if (bufferSubscriptionNotification(state, activity)) return;
     log.info(`Address activity on ${network}`, { scriptHash: activity.scriptHash });
     callbacks.onAddressActivity(network, activity.scriptHash, activity.status);
+  });
+
+  client.on('subscriptionResponse', (response: { address: string; sequence: number }) => {
+    if (!isRunning()) return;
+    markSubscriptionResponse(state, response.address, response.sequence);
   });
 
   // Handle connection close

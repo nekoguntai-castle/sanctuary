@@ -129,6 +129,8 @@ function createDependencies(): SubscriptionCheckpointRuntimeDependencies {
       }),
     },
     subscribeBatch: vi.fn(),
+    releaseBatch: vi.fn(),
+    serializePersistence: <T>(operation: () => Promise<T>) => operation(),
     publishTransition: vi.fn(),
     wake: vi.fn(),
     now: () => NOW,
@@ -137,6 +139,28 @@ function createDependencies(): SubscriptionCheckpointRuntimeDependencies {
 
 describe('subscriptionCheckpointRuntime', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('supports runtimes without optional release hooks', async () => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.repository.findPendingSubscriptionEnrollments)
+      .mockResolvedValue([]);
+    const runtime = createSubscriptionCheckpointRuntime({
+      repository: dependencies.repository,
+      subscribeBatch: dependencies.subscribeBatch,
+      publishTransition: dependencies.publishTransition,
+      wake: dependencies.wake,
+    });
+
+    await expect(runtime.enrollPendingPage({ network: 'mainnet' })).resolves.toMatchObject({
+      scanned: 0,
+      enrolled: 0,
+    });
+
+    expect(() => createProductionSubscriptionCheckpointRuntime(
+      vi.fn(),
+      () => true,
+    )).not.toThrow();
+  });
 
   it('bounds pending enrollment and dispatches the exact committed generation', async () => {
     const dependencies = createDependencies();
@@ -186,6 +210,7 @@ describe('subscriptionCheckpointRuntime', () => {
     });
     expect(dependencies.wake).toHaveBeenCalledWith('wallet-shared', 7);
     expect(dependencies.repository.requestSubscriptionEnrollment).not.toHaveBeenCalled();
+    expect(dependencies.releaseBatch).toHaveBeenCalledOnce();
   });
 
   it('forwards exact wallet scope to bounded enrollment', async () => {
@@ -207,6 +232,37 @@ describe('subscriptionCheckpointRuntime', () => {
         cursor: 'address-previous',
         limit: 200,
       });
+  });
+
+  it('serializes concurrent enrollment admission before reading pending candidates', async () => {
+    const dependencies = createDependencies();
+    const pendingCandidate = candidate('address-concurrent');
+    let settled = false;
+    vi.mocked(dependencies.repository.findPendingSubscriptionEnrollments)
+      .mockImplementation(async () => settled ? [] : [pendingCandidate]);
+    vi.mocked(dependencies.subscribeBatch)
+      .mockResolvedValue(new Map([[ADDRESS_1, STATUS]]));
+    vi.mocked(dependencies.repository.completeSubscriptionEnrollment)
+      .mockImplementation(async () => {
+        if (settled) return { status: 'not_applied' };
+        settled = true;
+        return {
+          status: 'applied',
+          state: { ...pendingCandidate, statusKnown: true, observedStatus: STATUS },
+          syncIntent: null,
+        };
+      });
+    const runtime = createSubscriptionCheckpointRuntime(dependencies);
+
+    const [first, second] = await Promise.all([
+      runtime.enrollPendingPage({ network: 'mainnet', walletId: 'wallet-concurrent' }),
+      runtime.enrollPendingPage({ network: 'mainnet', walletId: 'wallet-concurrent' }),
+    ]);
+
+    expect(first).toMatchObject({ scanned: 1, enrolled: 1, unavailable: 0 });
+    expect(second).toMatchObject({ scanned: 0, enrolled: 0, unavailable: 0 });
+    expect(dependencies.repository.findPendingSubscriptionEnrollments).toHaveBeenCalledTimes(2);
+    expect(dependencies.subscribeBatch).toHaveBeenCalledOnce();
   });
 
   it('checks exact wallet pending state without requiring subscription ownership', async () => {
@@ -681,7 +737,14 @@ describe('subscriptionCheckpointRuntime', () => {
     productionMocks.wake.mockResolvedValue(true);
     const subscribeBatch = vi.fn();
     const isActive = vi.fn(() => true);
-    const runtime = createProductionSubscriptionCheckpointRuntime(subscribeBatch, isActive);
+    const releaseBatch = vi.fn();
+    const serializePersistence = <T>(operation: () => Promise<T>) => operation();
+    const runtime = createProductionSubscriptionCheckpointRuntime(
+      subscribeBatch,
+      isActive,
+      releaseBatch,
+      serializePersistence,
+    );
 
     await expect(runtime.recordStatusPage({
       network: 'mainnet',

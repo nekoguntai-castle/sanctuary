@@ -198,14 +198,11 @@ async function subscribeNewAddressesByNetwork(
       continue;
     }
 
-    const statuses = await subscribeAddressBatch(state, networkAddresses, { isActive });
-    if (statuses.size > 0) {
-      await observeStatuses?.(network, statuses);
-      if (isActive && !isActive()) {
-        state.connected = false;
-        state.client.disconnect();
-        return;
-      }
+    await subscribeAddressBatch(state, networkAddresses, { isActive, observeStatuses });
+    if (isActive && !isActive()) {
+      state.connected = false;
+      state.client.disconnect();
+      return;
     }
   }
 }

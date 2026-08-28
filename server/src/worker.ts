@@ -47,6 +47,7 @@ import {
 } from './infrastructure';
 import { WorkerJobQueue } from './worker/workerJobQueue';
 import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/electrumManager';
+import { releaseSubscriptionBaseline } from './worker/electrumManager/subscriptionBaselines';
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
 import { featureFlagService } from './services/featureFlagService';
@@ -253,13 +254,11 @@ async function enrollPendingSubscriptionPage(
 ): Promise<void> {
   if (!electrumManager?.isSubscriptionOwner()) return;
   const cursor = subscriptionCheckpointCursors.get(network);
-  const result = await serializeSubscriptionCheckpointMutation(() => (
-    activeSubscriptionCheckpointRuntime().enrollPendingPage({
-      network,
-      ...(cursor !== undefined ? { cursor } : {}),
-      limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
-    })
-  ));
+  const result = await activeSubscriptionCheckpointRuntime().enrollPendingPage({
+    network,
+    ...(cursor !== undefined ? { cursor } : {}),
+    limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
+  });
   logCheckpointDispatchFailures(`network:${network}`, result);
   if (result.scanned === SUBSCRIPTION_CHECKPOINT_PAGE_SIZE && result.nextCursor) {
     subscriptionCheckpointCursors.set(network, result.nextCursor);
@@ -282,7 +281,9 @@ async function enrollWalletSubscriptions(
       if (!electrumManager) throw new Error('Electrum subscription manager is not initialized');
       await electrumManager.ensureNetworkConnected(targetNetwork);
     },
-    serializeMutation: operation => serializeSubscriptionCheckpointMutation(operation),
+    // The runtime acquires the global mutation lane only after its Electrum
+    // subscription turn, preserving one lock order across every caller.
+    serializeMutation: operation => operation(),
     onPageResult: result => logCheckpointDispatchFailures(`wallet:${walletId}`, result),
   });
 }
@@ -444,6 +445,8 @@ async function startWorker(): Promise<void> {
       return electrumManager.subscribeCheckpointAddresses(network, addresses);
     },
     () => electrumManager?.isSubscriptionOwner() ?? false,
+    releaseSubscriptionBaseline,
+    serializeSubscriptionCheckpointMutation,
   );
   await electrumManager.start();
   await networkHeaderReconciliationRuntime.recoverDue();

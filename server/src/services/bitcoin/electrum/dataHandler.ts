@@ -21,6 +21,7 @@ import {
 } from './types';
 
 const log = createLogger('ELECTRUM:SVC_DATA');
+const receiveSequences = new WeakMap<ElectrumFrameDecoder, number>();
 
 /**
  * Handle incoming data from server. Parses the response buffer, processes
@@ -36,33 +37,39 @@ export function handleIncomingData(
   resolveFrameLimit?: ElectrumFrameLimitResolver,
 ): void {
   decoder.push(data, ({ response, frameBytes }) => {
+    const sequence = (receiveSequences.get(decoder) ?? 0) + 1;
+    receiveSequences.set(decoder, sequence);
     if (isNotification(response)) {
-      handleNotification(response, emitter, scriptHashToAddress);
+      handleNotification(response, emitter, scriptHashToAddress, sequence);
     } else {
-      handleSubscriptionResponse(response, pendingRequests, emitter, scriptHashToAddress);
+      handleSubscriptionResponseMarker(
+        response,
+        pendingRequests,
+        emitter,
+        scriptHashToAddress,
+        sequence,
+      );
       processResponse(response, pendingRequests, frameBytes);
     }
   }, resolveFrameLimit);
 }
 
-function handleSubscriptionResponse(
+function handleSubscriptionResponseMarker(
   response: ElectrumResponse,
   pendingRequests: Map<number, PendingRequest>,
   emitter: EventEmitter,
   scriptHashToAddress: Map<string, string>,
+  sequence: number,
 ): void {
   if (response.error || response.id === null || response.id === undefined) return;
   const request = pendingRequests.get(response.id);
   if (request?.method !== 'blockchain.scripthash.subscribe') return;
   const scriptHash = request.params?.[0];
   if (typeof scriptHash !== 'string') return;
-  const status = parseElectrumSubscriptionStatus(response.result);
-  if (status === undefined) return;
-  emitter.emit('addressActivity', {
-    scriptHash,
-    address: scriptHashToAddress.get(scriptHash),
-    status,
-  });
+  const address = scriptHashToAddress.get(scriptHash);
+  if (address === undefined) return;
+  if (parseElectrumSubscriptionStatus(response.result) === undefined) return;
+  emitter.emit('subscriptionResponse', { address, sequence });
 }
 
 /**
@@ -71,7 +78,8 @@ function handleSubscriptionResponse(
 export function handleNotification(
   notification: ElectrumResponse,
   emitter: EventEmitter,
-  scriptHashToAddress: Map<string, string>
+  scriptHashToAddress: Map<string, string>,
+  sequence?: number,
 ): void {
   const { method, params } = notification;
 
@@ -106,6 +114,7 @@ export function handleNotification(
         scriptHash,
         address,
         status,
+        ...(sequence !== undefined ? { sequence } : {}),
       });
     }
   } else {

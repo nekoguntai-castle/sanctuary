@@ -120,7 +120,7 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
     expect(newBlock).toHaveBeenCalledWith({ height: 101, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
   });
 
-  it('emits subscription responses before later notifications from the same wire buffer', async () => {
+  it('resolves subscription responses without misclassifying them as live activity', async () => {
     const socket = new FakeSocket();
     const client = new ElectrumClient({
       host: 'localhost',
@@ -134,9 +134,11 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
     (client as any).connected = true;
     (client as any).scriptHashToAddress.set(scriptHash, 'bc1qordered');
     const observations: string[] = [];
+    const responseMarker = vi.fn();
     client.on('addressActivity', ({ status }: { status: string }) => {
       observations.push(status);
     });
+    client.on('subscriptionResponse', responseMarker);
     socket.write.mockImplementationOnce((message: string) => {
       const { id } = JSON.parse(message.trim());
       (client as any).handleData(Buffer.from([
@@ -155,7 +157,11 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
       method: 'blockchain.scripthash.subscribe',
       params: [scriptHash],
     }])).resolves.toEqual([olderStatus]);
-    expect(observations).toEqual([olderStatus, newerStatus]);
+    expect(observations).toEqual([newerStatus]);
+    expect(responseMarker).toHaveBeenCalledWith({
+      address: 'bc1qordered',
+      sequence: 1,
+    });
   });
 
   it('normalizes null subscription responses and ignores missing script-hash metadata', async () => {
@@ -177,10 +183,7 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
       { method: 'blockchain.scripthash.subscribe', params: [] },
     ]);
 
-    expect(activity).toHaveBeenCalledOnce();
-    expect(activity).toHaveBeenCalledWith(expect.objectContaining({
-      scriptHash: 'b'.repeat(64), status: null,
-    }));
+    expect(activity).not.toHaveBeenCalled();
   });
 
   it('ignores malformed subscription response and notification statuses', async () => {
@@ -189,8 +192,11 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
     const scriptHash = 'd'.repeat(64);
     (client as any).socket = socket;
     (client as any).connected = true;
+    (client as any).scriptHashToAddress.set(scriptHash, 'address-malformed');
     const activity = vi.fn();
+    const subscriptionResponse = vi.fn();
     client.on('addressActivity', activity);
+    client.on('subscriptionResponse', subscriptionResponse);
     socket.write.mockImplementation((message: string) => {
       const { id } = JSON.parse(message.trim());
       (client as any).handleData(Buffer.from([
@@ -208,5 +214,6 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
     }]);
 
     expect(activity).not.toHaveBeenCalled();
+    expect(subscriptionResponse).not.toHaveBeenCalled();
   });
 }

@@ -47,6 +47,8 @@ export interface SubscriptionCheckpointEnrollmentRepositoryPort {
 export interface SubscriptionCheckpointEnrollmentDependencies {
   repository: SubscriptionCheckpointEnrollmentRepositoryPort;
   subscribeBatch: SubscriptionBatchPort;
+  releaseBatch?: (statuses: Map<string, string | null>) => void;
+  serializePersistence?: <T>(operation: () => Promise<T>) => Promise<T>;
   now?: () => Date;
   isActive?: () => boolean;
 }
@@ -293,45 +295,54 @@ export function createSubscriptionCheckpointEnrollment(
       }
       return pageResult(candidates, 0);
     }
-    if (dependencies.isActive && !dependencies.isActive()) {
-      return pageResult(candidates, 0);
-    }
-    const observedAt = enrollmentTime(dependencies.now ?? (() => new Date()));
-    await recordFailures(
-      dependencies.repository,
-      invalidCandidates,
-      options.network,
-      observedAt,
-      dependencies.isActive,
-    );
+    const persistObservations = async (): Promise<SubscriptionCheckpointEnrollmentResult> => {
+      if (dependencies.isActive && !dependencies.isActive()) {
+        return pageResult(candidates, 0);
+      }
+      const observedAt = enrollmentTime(dependencies.now ?? (() => new Date()));
+      await recordFailures(
+        dependencies.repository,
+        invalidCandidates,
+        options.network,
+        observedAt,
+        dependencies.isActive,
+      );
 
-    let enrolled = 0;
-    const syncIntents = new Map<string, SubscriptionCheckpointSyncIntent>();
-    for (const item of prepared) {
-      if (dependencies.isActive && !dependencies.isActive()) break;
-      const observation = returnedStatus(statuses, item.candidate.address);
-      if (!observation.returned) {
-        await recordFailureSafely(
+      let enrolled = 0;
+      const syncIntents = new Map<string, SubscriptionCheckpointSyncIntent>();
+      for (const item of prepared) {
+        if (dependencies.isActive && !dependencies.isActive()) break;
+        const observation = returnedStatus(statuses, item.candidate.address);
+        if (!observation.returned) {
+          await recordFailureSafely(
+            dependencies.repository,
+            item.candidate,
+            options.network,
+            observedAt,
+          );
+          continue;
+        }
+        const completion = await completeSafely(
           dependencies.repository,
-          item.candidate,
+          item,
           options.network,
+          observation.status,
           observedAt,
         );
-        continue;
+        if (completion.status === 'applied') {
+          enrolled += 1;
+          addSyncIntent(syncIntents, completion.syncIntent);
+        }
       }
-      const completion = await completeSafely(
-        dependencies.repository,
-        item,
-        options.network,
-        observation.status,
-        observedAt,
-      );
-      if (completion.status === 'applied') {
-        enrolled += 1;
-        addSyncIntent(syncIntents, completion.syncIntent);
-      }
+      return pageResult(candidates, enrolled, [...syncIntents.values()]);
+    };
+    try {
+      return dependencies.serializePersistence
+        ? await dependencies.serializePersistence(persistObservations)
+        : await persistObservations();
+    } finally {
+      dependencies.releaseBatch?.(statuses);
     }
-    return pageResult(candidates, enrolled, [...syncIntents.values()]);
   }
 
   return { enrollPage };

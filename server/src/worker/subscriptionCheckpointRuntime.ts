@@ -48,6 +48,8 @@ interface RuntimeRepositoryPort extends SubscriptionCheckpointEnrollmentReposito
 export interface SubscriptionCheckpointRuntimeDependencies {
   repository: RuntimeRepositoryPort;
   subscribeBatch: SubscriptionBatchPort;
+  releaseBatch?: (statuses: Map<string, string | null>) => void;
+  serializePersistence?: <T>(operation: () => Promise<T>) => Promise<T>;
   publishTransition: SyncLifecyclePublisher['publish'];
   wake(walletId: string, generation: number): Promise<boolean>;
   now?: () => Date;
@@ -165,9 +167,14 @@ function addIntent(
 export function createSubscriptionCheckpointRuntime(
   dependencies: SubscriptionCheckpointRuntimeDependencies,
 ) {
+  let enrollmentAdmissionTail: Promise<void> = Promise.resolve();
   const enrollment = createSubscriptionCheckpointEnrollment({
     repository: dependencies.repository,
     subscribeBatch: dependencies.subscribeBatch,
+    ...(dependencies.releaseBatch ? { releaseBatch: dependencies.releaseBatch } : {}),
+    ...(dependencies.serializePersistence
+      ? { serializePersistence: dependencies.serializePersistence }
+      : {}),
     ...(dependencies.now ? { now: dependencies.now } : {}),
     ...(dependencies.isActive ? { isActive: dependencies.isActive } : {}),
   });
@@ -178,12 +185,23 @@ export function createSubscriptionCheckpointRuntime(
     cursor?: string;
     limit?: number;
   }): Promise<SubscriptionCheckpointEnrollmentPageResult> {
-    const page = await enrollment.enrollPage({
-      network: options.network,
-      ...(options.walletId !== undefined ? { walletId: options.walletId } : {}),
-      ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
-      limit: runtimeLimit(options.limit),
+    const previousAdmission = enrollmentAdmissionTail;
+    let releaseAdmission!: () => void;
+    enrollmentAdmissionTail = new Promise<void>((resolve) => {
+      releaseAdmission = resolve;
     });
+    await previousAdmission;
+    let page: SubscriptionCheckpointEnrollmentResult;
+    try {
+      page = await enrollment.enrollPage({
+        network: options.network,
+        ...(options.walletId !== undefined ? { walletId: options.walletId } : {}),
+        ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
+        limit: runtimeLimit(options.limit),
+      });
+    } finally {
+      releaseAdmission();
+    }
     return {
       ...page,
       dispatch: await dispatchIntents(dependencies, page.syncIntents),
@@ -303,6 +321,8 @@ export function createSubscriptionCheckpointRuntime(
 export function createProductionSubscriptionCheckpointRuntime(
   subscribeBatch: SubscriptionBatchPort,
   isActive: () => boolean,
+  releaseBatch?: (statuses: Map<string, string | null>) => void,
+  serializePersistence?: <T>(operation: () => Promise<T>) => Promise<T>,
 ) {
   return createSubscriptionCheckpointRuntime({
     repository: {
@@ -313,6 +333,8 @@ export function createProductionSubscriptionCheckpointRuntime(
       recordSubscriptionComparisonFailure,
     },
     subscribeBatch,
+    ...(releaseBatch ? { releaseBatch } : {}),
+    ...(serializePersistence ? { serializePersistence } : {}),
     publishTransition: (transition) => syncLifecyclePublisher.publish(transition),
     wake: (walletId, generation) => syncIntentAdmission.wake(walletId, generation),
     isActive,

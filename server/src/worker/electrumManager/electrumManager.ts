@@ -368,14 +368,12 @@ export class ElectrumSubscriptionManager {
           resolvePersistedBitcoinNetwork(address.wallet.network) === network
         ))
         .map((address) => ({ address: address.address, walletId: address.walletId }));
-      const statuses = await subscribeAddressBatch(state, networkAddresses, {
+      await subscribeAddressBatch(state, networkAddresses, {
         resubscribe: true,
         isActive: () => this.hasOwnership(ownershipEpoch),
+        observeStatuses: this.callbacks.onSubscriptionStatuses,
       });
-      if (statuses.size > 0) {
-        await this.callbacks.onSubscriptionStatuses?.(network, statuses);
-        if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
-      }
+      if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
     }
     return {
       scanned: addresses.length,
@@ -405,6 +403,7 @@ export class ElectrumSubscriptionManager {
       {
         resubscribe: true,
         isActive: () => this.hasOwnership(ownershipEpoch),
+        deferBaselineRelease: true,
       },
     );
   }

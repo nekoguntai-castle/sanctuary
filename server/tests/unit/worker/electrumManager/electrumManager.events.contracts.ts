@@ -93,6 +93,7 @@ export function registerElectrumManagerEventContracts() {
 
       mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
       mockClient.emit('addressActivity', { scriptHash: 'ignored', status: null });
+      mockClient.emit('subscriptionResponse', { address: 'ignored', sequence: 1 });
 
       expect(state.lastBlockHeight).toBe(100);
       expect(setCachedBlockHeight).not.toHaveBeenCalled();

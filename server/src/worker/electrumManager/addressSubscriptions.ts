@@ -17,12 +17,23 @@ import {
   type BitcoinNetwork,
   type NetworkState,
 } from './types';
+import {
+  attachSubscriptionBaseline,
+  beginSubscriptionBaseline,
+  releaseSubscriptionBaseline,
+  releaseSubscriptionOperationWithBaseline,
+} from './subscriptionBaselines';
 
 const log = createLogger('WORKER:ELECTRUM_ADDR');
 
 interface SubscriptionExecutionOptions {
   resubscribe?: boolean;
   isActive?: () => boolean;
+  observeStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>;
+  deferBaselineRelease?: boolean;
 }
 
 class SubscriptionOwnershipChangedError extends Error {
@@ -105,11 +116,8 @@ export async function subscribeAllAddresses(
         continue;
       }
 
-      const statuses = await subscribeAddressBatch(state, networkAddresses, { isActive });
-      if (statuses.size > 0) {
-        await observeStatuses?.(network, statuses);
-        requireActiveOwnership(state, isActive);
-      }
+      await subscribeAddressBatch(state, networkAddresses, { isActive, observeStatuses });
+      requireActiveOwnership(state, isActive);
     }
 
     totalProcessed += addresses.length;
@@ -157,18 +165,17 @@ export async function subscribeNetworkAddresses(
   }
 
   if (networkAddresses.length > 0) {
-    const statuses = await subscribeAddressBatch(state, networkAddresses, options);
-    if (statuses.size > 0) {
-      await observeStatuses?.(network, statuses);
-      requireActiveOwnership(state, options.isActive);
-    }
+    await subscribeAddressBatch(state, networkAddresses, { ...options, observeStatuses });
+    requireActiveOwnership(state, options.isActive);
   }
 }
 
 /**
  * Subscribe to a batch of addresses on a specific network.
  */
-export async function subscribeAddressBatch(
+const subscriptionOperationTails = new WeakMap<NetworkState, Promise<void>>();
+
+async function executeSubscriptionAddressBatch(
   state: NetworkState,
   addresses: Array<{ address: string; walletId: string }>,
   options: SubscriptionExecutionOptions = {},
@@ -191,57 +198,103 @@ export async function subscribeAddressBatch(
   }
 
   log.info(`Subscribing to ${toSubscribe.length} addresses on ${network}`);
+  const baseline = beginSubscriptionBaseline(state, toSubscribe.map(({ address }) => address));
+  let baselineDeferred = false;
 
-  // Subscribe in batches
-  for (let i = 0; i < toSubscribe.length; i += SUBSCRIPTION_BATCH_SIZE) {
-    const batch = toSubscribe.slice(i, i + SUBSCRIPTION_BATCH_SIZE);
-    const addressList = batch.map(a => a.address);
+  try {
+    // Subscribe in batches
+    for (let i = 0; i < toSubscribe.length; i += SUBSCRIPTION_BATCH_SIZE) {
+      const batch = toSubscribe.slice(i, i + SUBSCRIPTION_BATCH_SIZE);
+      const addressList = batch.map(a => a.address);
 
-    try {
-      requireActiveOwnership(state, options.isActive);
-      const batchStatuses = await client.subscribeAddressBatch(addressList);
-      requireActiveOwnership(state, options.isActive);
+      try {
+        requireActiveOwnership(state, options.isActive);
+        const batchStatuses = await client.subscribeAddressBatch(addressList);
+        requireActiveOwnership(state, options.isActive);
 
-      for (const addr of batch) {
-        if (!batchStatuses.has(addr.address)) continue;
-        state.subscribedAddresses.add(addr.address);
-        statuses.set(addr.address, batchStatuses.get(addr.address) ?? null);
-      }
-
-      log.debug(`Subscribed batch ${Math.floor(i / SUBSCRIPTION_BATCH_SIZE) + 1} on ${network}`, {
-        count: batch.length,
-      });
-    } catch (error) {
-      if (error instanceof SubscriptionOwnershipChangedError) throw error;
-      requireActiveOwnership(state, options.isActive);
-      log.error(`Failed to subscribe address batch on ${network}`, {
-        error: getErrorMessage(error),
-        startIndex: i,
-      });
-
-      // Try individual subscriptions as fallback
-      for (const addr of batch) {
-        try {
-          requireActiveOwnership(state, options.isActive);
-          const status = await client.subscribeAddress(addr.address);
-          requireActiveOwnership(state, options.isActive);
+        for (const addr of batch) {
+          if (!batchStatuses.has(addr.address)) continue;
           state.subscribedAddresses.add(addr.address);
-          statuses.set(addr.address, status);
-        } catch (individualError) {
-          if (individualError instanceof SubscriptionOwnershipChangedError) {
-            throw individualError;
+          statuses.set(addr.address, batchStatuses.get(addr.address) ?? null);
+        }
+
+        log.debug(`Subscribed batch ${Math.floor(i / SUBSCRIPTION_BATCH_SIZE) + 1} on ${network}`, {
+          count: batch.length,
+        });
+      } catch (error) {
+        if (error instanceof SubscriptionOwnershipChangedError) throw error;
+        requireActiveOwnership(state, options.isActive);
+        log.error(`Failed to subscribe address batch on ${network}`, {
+          error: getErrorMessage(error),
+          startIndex: i,
+        });
+
+        // Try individual subscriptions as fallback
+        for (const addr of batch) {
+          try {
+            requireActiveOwnership(state, options.isActive);
+            const status = await client.subscribeAddress(addr.address);
+            requireActiveOwnership(state, options.isActive);
+            state.subscribedAddresses.add(addr.address);
+            statuses.set(addr.address, status);
+          } catch (individualError) {
+            if (individualError instanceof SubscriptionOwnershipChangedError) {
+              throw individualError;
+            }
+            requireActiveOwnership(state, options.isActive);
+            log.warn(`Failed to subscribe individual address on ${network}`, {
+              address: addr.address,
+              error: getErrorMessage(individualError),
+            });
           }
-          requireActiveOwnership(state, options.isActive);
-          log.warn(`Failed to subscribe individual address on ${network}`, {
-            address: addr.address,
-            error: getErrorMessage(individualError),
-          });
         }
       }
     }
+    requireActiveOwnership(state, options.isActive);
+    if (statuses.size > 0) {
+      await options.observeStatuses?.(network, statuses);
+    }
+    if (options.deferBaselineRelease) {
+      attachSubscriptionBaseline(statuses, baseline);
+      baselineDeferred = true;
+    }
+    return statuses;
+  } finally {
+    if (!baselineDeferred) releaseSubscriptionBaseline(baseline);
   }
-  requireActiveOwnership(state, options.isActive);
-  return statuses;
+}
+
+export async function subscribeAddressBatch(
+  state: NetworkState,
+  addresses: Array<{ address: string; walletId: string }>,
+  options: SubscriptionExecutionOptions = {},
+): Promise<Map<string, string | null>> {
+  const previous = subscriptionOperationTails.get(state) ?? Promise.resolve();
+  let releaseTurn!: () => void;
+  const turn = new Promise<void>((resolve) => {
+    releaseTurn = resolve;
+  });
+  const tail = previous.then(() => turn);
+  subscriptionOperationTails.set(state, tail);
+  await previous;
+
+  let releaseDeferred = false;
+  const releaseOperation = () => {
+    releaseTurn();
+    if (subscriptionOperationTails.get(state) === tail) {
+      subscriptionOperationTails.delete(state);
+    }
+  };
+  try {
+    const statuses = await executeSubscriptionAddressBatch(state, addresses, options);
+    if (options.deferBaselineRelease) {
+      releaseSubscriptionOperationWithBaseline(statuses, releaseOperation);
+      releaseDeferred = true;
+    }
+    return statuses;
+  } finally {
+    if (!releaseDeferred) releaseOperation();
+  }
 }
 
 /**
@@ -287,11 +340,8 @@ export async function subscribeWalletAddresses(
     });
   }
 
-  const statuses = await subscribeAddressBatch(state, addressData, { isActive });
-  if (statuses.size > 0) {
-    await observeStatuses?.(network, statuses);
-    requireActiveOwnership(state, isActive);
-  }
+  await subscribeAddressBatch(state, addressData, { isActive, observeStatuses });
+  requireActiveOwnership(state, isActive);
 }
 
 /**
