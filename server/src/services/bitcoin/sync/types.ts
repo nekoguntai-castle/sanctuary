@@ -45,6 +45,8 @@ export interface RawTransaction {
   confirmations?: number;
   blockhash?: string;
   hex?: string;
+  /** Canonical raw bytes retained after authentication without UTF-16 hex amplification. */
+  raw?: Uint8Array;
 }
 
 /** Transaction input */
@@ -64,8 +66,12 @@ export interface TransactionInput {
 /** Transaction output */
 export interface TransactionOutput {
   value: number;
-  n: number;
-  scriptPubKey: {
+  /** Optional because canonical array position is the authoritative vout index. */
+  n?: number;
+  /** Compact authenticated representation; verbose clients may use scriptPubKey below. */
+  scriptHex?: string;
+  address?: string;
+  scriptPubKey?: {
     hex?: string;
     address?: string;
     addresses?: string[];

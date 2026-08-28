@@ -45,6 +45,8 @@ export default defineConfig({
         'src/worker.ts',
         // Side-effect-only worker-thread entrypoint; projection and transport are unit tested.
         'src/services/bitcoin/sync/transactionEvidenceWorker.ts',
+        // Container-only liveness replay entrypoint; its behavior is gated by the Docker harness.
+        'src/perf/walletSyncHighFanoutReplay.ts',
         // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/services/aiService.ts',
         'src/services/eventService.ts',

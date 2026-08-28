@@ -11,6 +11,26 @@ import {
 import { fetchAuthenticatedTransactions } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
 
 export function registerFetchUtxosPhaseTests(): void {
+  it('rejects an accepted UTXO when its authenticated cache entry is absent', async () => {
+    const address = 'utxo-missing-authenticated-cache';
+    const utxo = createMockUTXO({ txid: 'a'.repeat(64), vout: 0, value: 100_000 });
+    mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[address, [utxo]]]));
+    vi.mocked(fetchAuthenticatedTransactions).mockResolvedValueOnce(new Set([utxo.tx_hash]));
+    const addressRecord = { id: '1', address, scriptPubKey: '0014' };
+    const ctx = createTestContext({
+      addresses: [addressRecord] as any,
+      addressMap: new Map([[address, addressRecord]]) as any,
+      client: mockElectrumClient as any,
+    });
+
+    const result = await fetchUtxosPhase(ctx);
+
+    expect(result.utxoResults).toEqual([{ address, utxos: [] }]);
+    expect(result.rejectedEvidenceReasons).toEqual(new Map([
+      ['missing_raw_transaction', 1],
+    ]));
+  });
+
   it('keeps authenticated siblings and counts an unresolved transaction only once', async () => {
     const address = 'utxo-partial-authentication';
     const acceptedUtxo = createMockUTXO({

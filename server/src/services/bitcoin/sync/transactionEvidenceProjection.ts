@@ -19,6 +19,18 @@ export interface TransactionEvidenceProjectionLimits {
   maxScriptHexChars: number;
 }
 
+export interface TransactionEvidenceComplexity {
+  rawHexChars: number;
+  inputs: number;
+  outputs: number;
+  scriptHexChars: number;
+}
+
+export interface ProjectedTransactionEvidence {
+  value: RawTransaction;
+  complexity: TransactionEvidenceComplexity;
+}
+
 const decodeAddress = (
   script: Uint8Array,
   network: TransactionEvidenceProjectionInput['network'],
@@ -30,9 +42,9 @@ const decodeAddress = (
   }
 };
 
-export function projectAuthenticatedTransaction(
+export function projectAuthenticatedTransactionWithComplexity(
   input: TransactionEvidenceProjectionInput,
-): RawTransaction {
+): ProjectedTransactionEvidence {
   const authenticated = parseAuthenticatedRawTransaction({
     expectedTxid: input.expectedTxid,
     rawHex: input.details.hex ?? '',
@@ -57,27 +69,38 @@ export function projectAuthenticatedTransaction(
       ? { coinbase: Buffer.from(rawInput.script).toString('hex') }
       : { txid, vout: rawInput.index };
   });
-  const vout: TransactionOutput[] = transaction.outs.map((output, n) => {
+  const vout: TransactionOutput[] = transaction.outs.map(output => {
     const address = decodeAddress(output.script, input.network);
     return {
-      n,
       value: Number(output.value) / 100_000_000,
-      scriptPubKey: {
-        hex: Buffer.from(output.script).toString('hex'),
-        address,
-        addresses: address ? [address] : [],
-      },
+      scriptHex: Buffer.from(output.script).toString('hex'),
+      ...(address ? { address } : {}),
     };
   });
-  return {
+  const value: RawTransaction = {
     txid: authenticated.txid,
     time: input.details.time,
     blocktime: input.details.blocktime,
     blockheight: input.details.blockheight,
     confirmations: input.details.confirmations,
     blockhash: input.details.blockhash,
-    hex: authenticated.canonicalHex,
+    raw: Uint8Array.from(Buffer.from(authenticated.canonicalHex, 'hex')),
     vin,
     vout,
   };
+  return {
+    value,
+    complexity: {
+      rawHexChars: authenticated.canonicalHex.length,
+      inputs: transaction.ins.length,
+      outputs: transaction.outs.length,
+      scriptHexChars,
+    },
+  };
+}
+
+export function projectAuthenticatedTransaction(
+  input: TransactionEvidenceProjectionInput,
+): RawTransaction {
+  return projectAuthenticatedTransactionWithComplexity(input).value;
 }

@@ -58,6 +58,12 @@ export interface AuthenticatedRawTransactionOutput extends AuthenticatedRawTrans
   scriptPubKeyHex: string;
 }
 
+export interface AuthenticatedProjectedTransactionOutput {
+  vout: number;
+  valueSats: bigint;
+  scriptPubKeyHex: string;
+}
+
 const evidenceError = (
   reason: RawTransactionEvidenceReason,
 ): RawTransactionEvidenceError => new RawTransactionEvidenceError(reason);
@@ -122,4 +128,35 @@ export function authenticateRawTransactionOutput(input: {
     valueSats,
     scriptPubKeyHex,
   };
+}
+
+/** Validates an output from a transaction projection that was already txid-bound off-thread. */
+export function authenticateProjectedTransactionOutput(input: {
+  expectedTxid: string;
+  authenticatedTxid: string;
+  vout: number;
+  output?: { value: number; scriptPubKeyHex?: string };
+  expectedValueSats?: bigint;
+  expectedScriptPubKeyHex?: string;
+}): AuthenticatedProjectedTransactionOutput {
+  if (!TXID_PATTERN.test(input.expectedTxid)) throw evidenceError('invalid_expected_txid');
+  if (input.authenticatedTxid.toLowerCase() !== input.expectedTxid.toLowerCase()) {
+    throw evidenceError('txid_mismatch');
+  }
+  if (!Number.isSafeInteger(input.vout) || input.vout < 0) throw evidenceError('invalid_vout');
+  if (input.expectedScriptPubKeyHex !== undefined
+    && !SCRIPT_BYTES_PATTERN.test(input.expectedScriptPubKeyHex)) {
+    throw evidenceError('invalid_expected_script');
+  }
+  if (!input.output) throw evidenceError('missing_output');
+  const valueSats = BigInt(Math.round(input.output.value * 100_000_000));
+  if (input.expectedValueSats !== undefined && valueSats !== input.expectedValueSats) {
+    throw evidenceError('amount_mismatch');
+  }
+  const scriptPubKeyHex = input.output.scriptPubKeyHex?.toLowerCase() ?? '';
+  if (input.expectedScriptPubKeyHex !== undefined
+    && scriptPubKeyHex !== input.expectedScriptPubKeyHex.toLowerCase()) {
+    throw evidenceError('script_mismatch');
+  }
+  return { vout: input.vout, valueSats, scriptPubKeyHex };
 }

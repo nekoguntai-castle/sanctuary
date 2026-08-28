@@ -1,6 +1,7 @@
 import { createLogger } from '../../../../utils/logger';
 import type { RawTransaction, TransactionInput, TransactionOutput } from '../types';
 import type { PopulationStats } from './types';
+import { transactionOutputAddress } from '../transactionOutputEvidence';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATION_COUNTERPARTY');
 
@@ -28,7 +29,7 @@ const getInputCounterpartyAddress = (
   }
 
   const prevOutput = prevTxCache.get(input.txid)?.vout?.[input.vout];
-  return getScriptAddress(prevOutput?.scriptPubKey);
+  return transactionOutputAddress(prevOutput);
 };
 
 const findReceivedCounterpartyAddress = (
@@ -49,7 +50,7 @@ const findSentCounterpartyAddress = (
   walletAddressSet: Set<string>
 ): string | undefined => {
   for (const output of outputs) {
-    const address = getScriptAddress(output.scriptPubKey);
+    const address = transactionOutputAddress(output);
     if (address && !walletAddressSet.has(address)) {
       return address;
     }

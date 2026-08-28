@@ -139,6 +139,16 @@ vi.mock('../../../../../src/services/bitcoin/rawTransactionEvidence', async impo
       }
       return { valueSats, scriptPubKeyHex: input.expectedScriptPubKeyHex };
     }),
+    authenticateProjectedTransactionOutput: vi.fn((input: any) => {
+      const output = legacyReceiveEvidence.transactions.get(input.expectedTxid)?.vout?.[input.vout]
+        ?? input.output;
+      if (!output) throw new actual.RawTransactionEvidenceError('missing_output');
+      const valueSats = BigInt(Math.round(output.value * 100_000_000));
+      if (valueSats !== input.expectedValueSats) {
+        throw new actual.RawTransactionEvidenceError('amount_mismatch');
+      }
+      return { valueSats, scriptPubKeyHex: input.expectedScriptPubKeyHex };
+    }),
   };
 });
 

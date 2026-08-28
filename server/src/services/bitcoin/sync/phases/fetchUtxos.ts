@@ -9,7 +9,10 @@ import { createLogger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
-import { authenticateRawTransactionOutput, RawTransactionEvidenceError } from '../../rawTransactionEvidence';
+import {
+  authenticateProjectedTransactionOutput,
+  RawTransactionEvidenceError,
+} from '../../rawTransactionEvidence';
 import { fetchAuthenticatedTransactions } from '../evidenceAuthentication';
 import { recordRejectedEvidence } from '../rejectedEvidence';
 import type { NodeRequestOptions } from '../../nodeClient';
@@ -20,6 +23,7 @@ import {
   SYNC_REMOTE_FALLBACK_CONCURRENCY,
   type SyncStageRuntime,
 } from '../attemptRuntime';
+import { transactionOutputScriptHex } from '../transactionOutputEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXOS');
 
@@ -175,12 +179,17 @@ const authenticateAddressUtxos = async (
   for (const utxo of utxos) {
     if (!authenticatedTxids.has(utxo.tx_hash)) continue;
     try {
-      const rawHex = ctx.txDetailsCache.get(utxo.tx_hash)?.hex;
-      if (!rawHex) throw new Error('missing_raw_transaction');
-      authenticateRawTransactionOutput({
+      const cached = ctx.txDetailsCache.get(utxo.tx_hash);
+      if (!cached) throw new Error('missing_raw_transaction');
+      const output = cached.vout[utxo.tx_pos];
+      authenticateProjectedTransactionOutput({
         expectedTxid: utxo.tx_hash,
-        rawHex,
+        authenticatedTxid: cached.txid,
         vout: utxo.tx_pos,
+        output: output ? {
+          value: output.value,
+          scriptPubKeyHex: transactionOutputScriptHex(output),
+        } : undefined,
         expectedValueSats: BigInt(utxo.value),
         expectedScriptPubKeyHex: expectedScript,
       });

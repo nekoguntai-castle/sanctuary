@@ -3,11 +3,15 @@ import { Worker } from 'node:worker_threads';
 import { RawTransactionEvidenceError } from '../rawTransactionEvidence';
 import type { RawTransactionEvidenceReason } from '../rawTransactionEvidence';
 import type { RawTransaction } from './types';
-import type { TransactionEvidenceProjectionInput } from './transactionEvidenceProjection';
+import type {
+  TransactionEvidenceComplexity,
+  TransactionEvidenceProjectionInput,
+} from './transactionEvidenceProjection';
 
 interface ProjectionWorkerSuccess {
   ok: true;
   value: RawTransaction;
+  complexity?: TransactionEvidenceComplexity;
 }
 
 interface ProjectionWorkerFailure {
@@ -18,16 +22,26 @@ interface ProjectionWorkerFailure {
 type ProjectionWorkerResponse = ProjectionWorkerSuccess | ProjectionWorkerFailure;
 
 interface ProjectionWorker {
+  on(event: 'message', listener: (response: ProjectionWorkerResponse) => void): this;
+  on(event: 'error', listener: (error: Error) => void): this;
+  on(event: 'exit', listener: (code: number) => void): this;
   once(event: 'message', listener: (response: ProjectionWorkerResponse) => void): this;
   once(event: 'error', listener: (error: Error) => void): this;
   once(event: 'exit', listener: (code: number) => void): this;
   off(event: 'message', listener: (response: ProjectionWorkerResponse) => void): this;
   off(event: 'error', listener: (error: Error) => void): this;
   off(event: 'exit', listener: (code: number) => void): this;
+  postMessage?(value: unknown): void;
   terminate(): Promise<number>;
 }
 
 type ProjectionWorkerFactory = (input: TransactionEvidenceProjectionInput) => ProjectionWorker;
+
+const projectedComplexity = new WeakMap<RawTransaction, TransactionEvidenceComplexity>();
+
+export const projectedTransactionEvidenceComplexity = (
+  value: RawTransaction,
+): TransactionEvidenceComplexity | undefined => projectedComplexity.get(value);
 
 export function resolveTransactionEvidenceWorkerEntrypoint(runtimeFilename: string): {
   filename: string;
@@ -47,6 +61,15 @@ const createProjectionWorker: ProjectionWorkerFactory = input => {
   const entrypoint = resolveTransactionEvidenceWorkerEntrypoint(__filename);
   return new Worker(entrypoint.filename, {
     workerData: input,
+    resourceLimits: { maxOldGenerationSizeMb: 128 },
+    execArgv: entrypoint.execArgv,
+  });
+};
+
+const createPersistentProjectionWorker = (): ProjectionWorker => {
+  const entrypoint = resolveTransactionEvidenceWorkerEntrypoint(__filename);
+  return new Worker(entrypoint.filename, {
+    workerData: { persistent: true },
     resourceLimits: { maxOldGenerationSizeMb: 128 },
     execArgv: entrypoint.execArgv,
   });
@@ -82,7 +105,14 @@ export async function projectTransactionEvidenceOffThread(
       action();
     };
     const onMessage = (response: ProjectionWorkerResponse): void => {
-      finish(() => response.ok ? resolve(response.value) : reject(projectionFailure(response)));
+      finish(() => {
+        if (!response.ok) {
+          reject(projectionFailure(response));
+          return;
+        }
+        if (response.complexity) projectedComplexity.set(response.value, response.complexity);
+        resolve(response.value);
+      });
     };
     const onError = (error: Error): void => {
       finish(() => reject(error));
@@ -99,4 +129,124 @@ export async function projectTransactionEvidenceOffThread(
     worker.once('exit', onExit);
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+export interface TransactionEvidenceProjector {
+  project(
+    input: TransactionEvidenceProjectionInput,
+    signal?: AbortSignal,
+  ): Promise<RawTransaction>;
+  close(): Promise<void>;
+}
+
+export function createTransactionEvidenceProjector(
+  createWorker: () => ProjectionWorker = createPersistentProjectionWorker,
+): TransactionEvidenceProjector {
+  const worker = createWorker();
+  interface ActiveProjection {
+    resolve: (value: RawTransaction) => void;
+    reject: (error: unknown) => void;
+    signal?: AbortSignal;
+    onAbort: () => void;
+  }
+
+  let active: ActiveProjection | undefined;
+  let closed = false;
+  let terminalError: Error | undefined;
+  let closePromise: Promise<void> | undefined;
+
+  const settleActive = (action: (pending: ActiveProjection) => void): void => {
+    const pending = active;
+    if (!pending) return;
+    active = undefined;
+    pending.signal?.removeEventListener('abort', pending.onAbort);
+    action(pending);
+  };
+
+  const detachLifecycleListeners = (): void => {
+    worker.off('message', onMessage);
+    worker.off('error', onError);
+    worker.off('exit', onExit);
+  };
+
+  const beginTermination = (): Promise<void> => {
+    if (closePromise) return closePromise;
+    closed = true;
+    closePromise = worker.terminate().then(
+      () => undefined,
+      error => {
+        throw error;
+      },
+    ).finally(detachLifecycleListeners);
+    return closePromise;
+  };
+
+  const stopAfterWorkerFailure = (error: Error): void => {
+    terminalError ??= error;
+    settleActive(pending => pending.reject(error));
+    void beginTermination().catch(() => undefined);
+  };
+
+  const onMessage = (response: ProjectionWorkerResponse): void => {
+    settleActive(pending => {
+      if (!response.ok) {
+        pending.reject(projectionFailure(response));
+        return;
+      }
+      if (response.complexity) projectedComplexity.set(response.value, response.complexity);
+      pending.resolve(response.value);
+    });
+  };
+
+  const onError = (error: Error): void => {
+    stopAfterWorkerFailure(error);
+  };
+
+  const onExit = (code: number): void => {
+    if (closed) return;
+    stopAfterWorkerFailure(
+      new Error(`Transaction evidence worker exited before reply (${code})`),
+    );
+  };
+
+  worker.on('message', onMessage);
+  worker.on('error', onError);
+  worker.on('exit', onExit);
+
+  const close = async (): Promise<void> => {
+    if (!closed) {
+      settleActive(pending => pending.reject(new Error('Transaction evidence projector closed')));
+    }
+    await beginTermination();
+  };
+
+  const project = async (
+    input: TransactionEvidenceProjectionInput,
+    signal?: AbortSignal,
+  ): Promise<RawTransaction> => {
+    signal?.throwIfAborted();
+    if (terminalError) throw terminalError;
+    if (closed) throw new Error('Transaction evidence projector is closed');
+    if (active) throw new Error('Transaction evidence projector queue is full');
+    if (!worker.postMessage) throw new Error('Transaction evidence projector cannot accept work');
+    return new Promise<RawTransaction>((resolve, reject) => {
+      const onAbort = (): void => {
+        settleActive(pending => pending.reject(
+          signal?.reason ?? new Error('Transaction evidence projection cancelled'),
+        ));
+        void beginTermination().catch(() => undefined);
+      };
+      active = { resolve, reject, signal, onAbort };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      try {
+        worker.postMessage?.({ input });
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        stopAfterWorkerFailure(failure);
+        return;
+      }
+    });
+  };
+
+  return { project, close };
 }

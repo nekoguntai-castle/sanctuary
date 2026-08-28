@@ -95,6 +95,7 @@
     "test:hygiene": "node scripts/test-hygiene.mjs",
     "perf:phase3": "node scripts/perf/phase3-benchmark.mjs",
     "perf:phase3:compose-smoke": "node scripts/perf/phase3-compose-benchmark-smoke.mjs",
+    "perf:wallet-sync-high-fanout": "node scripts/perf/wallet-sync-high-fanout-replay.mjs",
     "typecheck": "npm run typecheck:all",
     "typecheck:all": "tsc --noEmit -p config/tooling/tsconfig.all.json",
     "typecheck:app": "tsc --noEmit -p config/tooling/tsconfig.app.json --noUnusedLocals --noUnusedParameters",

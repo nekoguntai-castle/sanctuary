@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { describe, expect, it } from 'vitest';
 import {
+  authenticateProjectedTransactionOutput,
   authenticateRawTransactionOutput,
   parseAuthenticatedRawTransaction,
   RawTransactionEvidenceError,
@@ -168,5 +169,45 @@ describe('raw transaction evidence', () => {
     expectReason(() => authenticateRawTransactionOutput({
       ...base, expectedScriptPubKeyHex: '51',
     }), 'script_mismatch');
+  });
+
+  it('validates an already-authenticated compact projection without reparsing raw bytes', () => {
+    const txid = 'ab'.repeat(32);
+    expect(authenticateProjectedTransactionOutput({
+      expectedTxid: txid.toUpperCase(),
+      authenticatedTxid: txid,
+      vout: 2,
+      output: { value: 0.00001234, scriptPubKeyHex: '0014AB' },
+      expectedValueSats: 1_234n,
+      expectedScriptPubKeyHex: '0014ab',
+    })).toEqual({ vout: 2, valueSats: 1_234n, scriptPubKeyHex: '0014ab' });
+
+    expect(authenticateProjectedTransactionOutput({
+      expectedTxid: txid,
+      authenticatedTxid: txid,
+      vout: 0,
+      output: { value: 0 },
+    })).toEqual({ vout: 0, valueSats: 0n, scriptPubKeyHex: '' });
+  });
+
+  it.each([
+    ['invalid_expected_txid', { expectedTxid: 'bad' }],
+    ['txid_mismatch', { authenticatedTxid: 'cd'.repeat(32) }],
+    ['invalid_vout', { vout: -1 }],
+    ['invalid_expected_script', { expectedScriptPubKeyHex: '0' }],
+    ['missing_output', { output: undefined }],
+    ['amount_mismatch', { expectedValueSats: 2n }],
+    ['script_mismatch', { expectedScriptPubKeyHex: '51' }],
+  ] as const)('rejects compact projected output evidence: %s', (reason, overrides) => {
+    const txid = 'ab'.repeat(32);
+    expectReason(() => authenticateProjectedTransactionOutput({
+      expectedTxid: txid,
+      authenticatedTxid: txid,
+      vout: 0,
+      output: { value: 0.00000001, scriptPubKeyHex: '0014ab' },
+      expectedValueSats: 1n,
+      expectedScriptPubKeyHex: '0014ab',
+      ...overrides,
+    }), reason);
   });
 });

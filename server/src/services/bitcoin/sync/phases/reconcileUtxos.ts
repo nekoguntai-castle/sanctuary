@@ -14,6 +14,7 @@ import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
 import type { PrismaTxClient } from '../../../../models/prisma';
 import { runWalletSyncMutation } from '../mutationBoundary';
+import { transactionOutputScriptHex } from '../transactionOutputEvidence';
 
 type DeferPostCommit = (effect: () => void | Promise<void>) => void;
 
@@ -38,7 +39,7 @@ const evidenceMatchesExistingUtxo = (
 ): boolean => {
   const authenticatedOutput = ctx.txDetailsCache
     .get(blockchainUtxo.utxo.tx_hash)?.vout?.[blockchainUtxo.utxo.tx_pos];
-  const authenticatedScript = authenticatedOutput?.scriptPubKey.hex?.toLowerCase();
+  const authenticatedScript = transactionOutputScriptHex(authenticatedOutput)?.toLowerCase();
   return authenticatedOutput !== undefined
     && BigInt(Math.round(authenticatedOutput.value * 100_000_000)) === dbUtxo.amount
     && authenticatedScript === dbUtxo.scriptPubKey.toLowerCase()

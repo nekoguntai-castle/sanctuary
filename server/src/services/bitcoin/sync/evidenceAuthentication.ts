@@ -11,7 +11,12 @@ import type { NodeRequestOptions } from '../nodeClient';
 import { isSyncStageBudgetError } from './attemptRuntime';
 import { isElectrumResponseTooLargeError } from '../electrum/protocol';
 import { createCooperativeScheduler } from '../../../utils/cooperativeScheduler';
-import { projectTransactionEvidenceOffThread } from './transactionEvidenceThread';
+import {
+  createTransactionEvidenceProjector,
+  projectedTransactionEvidenceComplexity,
+  type TransactionEvidenceProjector,
+} from './transactionEvidenceThread';
+import { transactionOutputScriptHex } from './transactionOutputEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
 const FETCH_BATCH_SIZE = 10;
@@ -51,12 +56,12 @@ interface EvidenceComplexity {
 const evidenceComplexity = new WeakMap<SyncContext, EvidenceComplexity>();
 
 const addDetailsComplexity = (total: EvidenceComplexity, details: RawTransaction): void => {
-  total.rawHexChars += details.hex?.length ?? 0;
+  total.rawHexChars += details.hex?.length ?? (details.raw?.byteLength ?? 0) * 2;
   total.inputs += details.vin.length;
   total.outputs += details.vout.length;
   for (const input of details.vin) total.scriptHexChars += input?.coinbase?.length ?? 0;
   for (const output of details.vout) {
-    total.scriptHexChars += output?.scriptPubKey.hex?.length ?? 0;
+    total.scriptHexChars += transactionOutputScriptHex(output)?.length ?? 0;
   }
 };
 
@@ -106,6 +111,7 @@ const cacheAuthenticatedResult = async (
   ctx: SyncContext,
   expectedTxid: string,
   details: RawTransaction | undefined,
+  projector: TransactionEvidenceProjector,
   signal?: AbortSignal,
 ): Promise<boolean> => {
   try {
@@ -114,7 +120,7 @@ const cacheAuthenticatedResult = async (
     if (!rawHexFits(complexity, details)) {
       throw new RawTransactionEvidenceError('transaction_complexity_exceeded');
     }
-    const authenticated = await projectTransactionEvidenceOffThread(
+    const authenticated = await projector.project(
       {
         expectedTxid,
         details,
@@ -122,16 +128,27 @@ const cacheAuthenticatedResult = async (
         limits: remainingProjectionLimits(complexity),
       },
       signal,
-      undefined,
-      isAttemptCancellation,
     );
-    addDetailsComplexity(complexity, authenticated);
+    const projected = projectedTransactionEvidenceComplexity(authenticated);
+    if (projected) {
+      complexity.rawHexChars += projected.rawHexChars;
+      complexity.inputs += projected.inputs;
+      complexity.outputs += projected.outputs;
+      complexity.scriptHexChars += projected.scriptHexChars;
+    } else {
+      addDetailsComplexity(complexity, authenticated);
+    }
     ctx.txDetailsCache.set(expectedTxid, authenticated);
     return true;
   } catch (error) {
     if (signal?.aborted && isAttemptCancellation(signal.reason)) signal.throwIfAborted();
     ctx.txDetailsCache.delete(expectedTxid);
-    recordFailClosed(ctx, reasonCode(error));
+    recordFailClosed(
+      ctx,
+      signal?.aborted && isSyncStageBudgetError(signal.reason)
+        ? 'fetch_budget_exhausted'
+        : reasonCode(error),
+    );
     return false;
   }
 };
@@ -140,6 +157,27 @@ const cacheAuthenticatedResult = async (
 export async function fetchAuthenticatedTransactions(
   ctx: SyncContext,
   txids: readonly string[],
+  options?: NodeRequestOptions,
+): Promise<Set<string>> {
+  const unique = [...new Set(txids)];
+  if (unique.every(txid => ctx.txDetailsCache.has(txid))) {
+    if (options?.signal?.aborted && isAttemptCancellation(options.signal.reason)) {
+      options.signal.throwIfAborted();
+    }
+    return new Set(unique);
+  }
+  const projector = createTransactionEvidenceProjector();
+  try {
+    return await fetchAuthenticatedTransactionsWithProjector(ctx, txids, projector, options);
+  } finally {
+    await projector.close();
+  }
+}
+
+async function fetchAuthenticatedTransactionsWithProjector(
+  ctx: SyncContext,
+  txids: readonly string[],
+  projector: TransactionEvidenceProjector,
   options?: NodeRequestOptions,
 ): Promise<Set<string>> {
   if (options?.signal?.aborted && isAttemptCancellation(options.signal.reason)) {
@@ -159,19 +197,18 @@ export async function fetchAuthenticatedTransactions(
     await checkpoint();
   }
   const pending = unique.filter(txid => !accepted.has(txid));
-  if (options?.signal?.aborted) {
+  const recordUnsettledBudget = (): void => {
     for (const txid of pending) {
+      if (settled.has(txid)) continue;
       recordFailClosed(ctx, 'fetch_budget_exhausted');
+      settled.add(txid);
     }
+  };
+  if (options?.signal?.aborted) {
+    recordUnsettledBudget();
     return accepted;
   }
   for (let offset = 0; offset < pending.length; offset += FETCH_BATCH_SIZE) {
-    if (options?.signal?.aborted) {
-      for (const txid of pending.slice(offset)) {
-        recordFailClosed(ctx, 'fetch_budget_exhausted');
-      }
-      return accepted;
-    }
     const batchTxids = pending.slice(offset, offset + FETCH_BATCH_SIZE);
     let budgetExpired = false;
     let oversizedFrame = false;
@@ -185,9 +222,7 @@ export async function fetchAuthenticatedTransactions(
       (error) => {
         if (options?.signal?.aborted) {
           if (isSyncStageBudgetError(options.signal.reason)) {
-            for (const txid of batchTxids) {
-              recordFailClosed(ctx, 'fetch_budget_exhausted');
-            }
+            recordUnsettledBudget();
             budgetExpired = true;
             return undefined;
           }
@@ -211,10 +246,19 @@ export async function fetchAuthenticatedTransactions(
           ctx,
           txid,
           results.get(txid),
+          projector,
           options?.signal,
         )) accepted.add(txid);
         settled.add(txid);
+        if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
+          recordUnsettledBudget();
+          return accepted;
+        }
         await checkpoint();
+        if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
+          recordUnsettledBudget();
+          return accepted;
+        }
       }
     } else {
       try {
@@ -232,6 +276,7 @@ export async function fetchAuthenticatedTransactions(
                 ctx,
                 txid,
                 details,
+                projector,
                 options?.signal,
               );
               if (authenticated) {
@@ -256,9 +301,7 @@ export async function fetchAuthenticatedTransactions(
         );
       } catch (error) {
         if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
-          for (const txid of batchTxids) {
-            if (!settled.has(txid)) recordFailClosed(ctx, 'fetch_budget_exhausted');
-          }
+          recordUnsettledBudget();
           return accepted;
         }
         throw error;
@@ -289,7 +332,7 @@ const paysScript = async (
   checkpoint: () => Promise<void>,
 ): Promise<boolean> => {
   for (const output of details.vout) {
-    if (output.scriptPubKey.hex?.toLowerCase() === script) return true;
+    if (transactionOutputScriptHex(output)?.toLowerCase() === script) return true;
     await checkpoint();
   }
   return false;
@@ -303,11 +346,9 @@ const spendsScript = async (
 ): Promise<boolean> => {
   for (const input of details.vin) {
     if (input.txid && input.vout !== undefined) {
-      const previousScript = ctx.txDetailsCache
-        .get(input.txid)
-        ?.vout[input.vout]
-        ?.scriptPubKey.hex
-        ?.toLowerCase();
+      const previousScript = transactionOutputScriptHex(
+        ctx.txDetailsCache.get(input.txid)?.vout[input.vout],
+      )?.toLowerCase();
       if (previousScript === script) return true;
     }
     await checkpoint();
@@ -325,7 +366,7 @@ const collectAuthenticatedSpentOutpoints = async (
     for (const input of ctx.txDetailsCache.get(txid)?.vin ?? []) {
       if (input.txid && input.vout !== undefined) {
         const previous = ctx.txDetailsCache.get(input.txid)?.vout[input.vout];
-        const script = previous?.scriptPubKey.hex?.toLowerCase();
+        const script = transactionOutputScriptHex(previous)?.toLowerCase();
         if (script && ctx.walletScriptToAddress.has(script)) {
           ctx.authenticatedSpentOutpointKeys.add(`${input.txid}:${input.vout}`);
         }

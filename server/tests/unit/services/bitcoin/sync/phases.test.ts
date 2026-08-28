@@ -49,8 +49,8 @@ vi.mock('../../../../../src/services/bitcoin/sync/evidenceAuthentication', () =>
 vi.mock('../../../../../src/services/bitcoin/rawTransactionEvidence', () => ({
   RawTransactionEvidenceError: class extends Error {},
   authenticateRawTransactionOutput: vi.fn(),
+  authenticateProjectedTransactionOutput: vi.fn(),
 }));
-
 // Mock notifications
 vi.mock('../../../../../src/websocket/notifications', () => ({
   walletLog: vi.fn(),

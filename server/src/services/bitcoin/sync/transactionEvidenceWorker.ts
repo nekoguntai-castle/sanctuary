@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { RawTransactionEvidenceError } from '../rawTransactionEvidence';
 import {
-  projectAuthenticatedTransaction,
+  projectAuthenticatedTransactionWithComplexity,
   type TransactionEvidenceProjectionInput,
 } from './transactionEvidenceProjection';
 
@@ -10,12 +10,24 @@ if (workerParentPort === null) {
   throw new Error('Transaction evidence worker requires a parent port');
 }
 
-const runProjection = (): void => {
+interface ProjectionRequest {
+  input: TransactionEvidenceProjectionInput;
+}
+
+interface PersistentWorkerMarker {
+  persistent: true;
+}
+
+const project = (input: TransactionEvidenceProjectionInput): void => {
   try {
-    workerParentPort.postMessage({
+    const projected = projectAuthenticatedTransactionWithComplexity(input);
+    const response = {
       ok: true,
-      value: projectAuthenticatedTransaction(workerData as TransactionEvidenceProjectionInput),
-    });
+      ...projected,
+    };
+    const raw = projected.value.raw;
+    const transfer = raw?.buffer instanceof ArrayBuffer ? [raw.buffer] : [];
+    workerParentPort.postMessage(response, transfer);
   } catch (error) {
     workerParentPort.postMessage({
       ok: false,
@@ -25,4 +37,8 @@ const runProjection = (): void => {
   }
 };
 
-runProjection();
+if ((workerData as PersistentWorkerMarker | undefined)?.persistent === true) {
+  workerParentPort.on('message', (request: ProjectionRequest) => project(request.input));
+} else {
+  project(workerData as TransactionEvidenceProjectionInput);
+}

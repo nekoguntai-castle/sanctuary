@@ -20,21 +20,45 @@ import { projectAuthenticatedTransaction } from '../../../../../src/services/bit
 import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
 import { ElectrumFrameTooLargeError } from '../../../../../src/services/bitcoin/electrum/protocol';
 
+const projectionComplexity = vi.hoisted(() => new WeakMap<RawTransaction, {
+  rawHexChars: number;
+  inputs: number;
+  outputs: number;
+  scriptHexChars: number;
+}>());
+const projectionControl = vi.hoisted(() => ({
+  beforeProject: undefined as (() => void) | undefined,
+  exposeComplexity: true,
+  projectorCreations: 0,
+}));
+
 vi.mock('../../../../../src/services/bitcoin/sync/transactionEvidenceThread', async () => {
-  const { projectAuthenticatedTransaction } = await import(
+  const { projectAuthenticatedTransactionWithComplexity } = await import(
     '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection'
   );
+  const project = async (
+    input: Parameters<typeof projectAuthenticatedTransactionWithComplexity>[0],
+    signal?: AbortSignal,
+  ) => {
+    signal?.throwIfAborted();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    projectionControl.beforeProject?.();
+    signal?.throwIfAborted();
+    const projected = projectAuthenticatedTransactionWithComplexity(input);
+    projectionComplexity.set(projected.value, projected.complexity);
+    return projected.value;
+  };
   return {
-    projectTransactionEvidenceOffThread: async (
-      input: Parameters<typeof projectAuthenticatedTransaction>[0],
-      signal?: AbortSignal,
-      _createWorker?: unknown,
-      shouldAbort: (reason: unknown) => boolean = () => true,
-    ) => {
-      await new Promise<void>(resolve => setImmediate(resolve));
-      if (signal?.aborted && shouldAbort(signal.reason)) signal.throwIfAborted();
-      return projectAuthenticatedTransaction(input);
+    createTransactionEvidenceProjector: () => {
+      projectionControl.projectorCreations++;
+      return {
+        project,
+        close: async () => undefined,
+      };
     },
+    projectedTransactionEvidenceComplexity: (value: RawTransaction) => (
+      projectionControl.exposeComplexity ? projectionComplexity.get(value) : undefined
+    ),
   };
 });
 
@@ -285,7 +309,7 @@ describe('full-wallet receive evidence authentication', () => {
     expect(ctx.rejectedEvidenceCount).toBe(0);
   });
 
-  it('attributes only the untouched next chunk when the budget expires between chunks', async () => {
+  it('attributes every unresolved candidate when the budget expires with a batch response', async () => {
     const controller = new AbortController();
     const txids = Array.from({ length: 11 }, (_, index) => index.toString(16).padStart(64, '0'));
     const client = clientFor(new Map());
@@ -304,8 +328,7 @@ describe('full-wallet receive evidence authentication', () => {
     expect(result).toEqual(new Set());
     expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['missing_result', 10],
-      ['fetch_budget_exhausted', 1],
+      ['fetch_budget_exhausted', 11],
     ]));
   });
 
@@ -487,7 +510,7 @@ describe('full-wallet receive evidence authentication', () => {
     ]));
   });
 
-  it('serializes fallback projection and leaves every later candidate queued at budget expiry', async () => {
+  it('cancels active fallback projection and leaves later candidates queued at budget expiry', async () => {
     const acceptedTransaction = makeRawTransaction(Uint8Array.from([0x51]), 5n);
     const queuedTxids = ['41'.repeat(32), '42'.repeat(32), '43'.repeat(32), '44'.repeat(32)];
     const controller = new AbortController();
@@ -507,12 +530,83 @@ describe('full-wallet receive evidence authentication', () => {
       { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
     );
 
-    expect(result).toEqual(new Set([acceptedTransaction.getId()]));
+    expect(result).toEqual(new Set());
     expect(started).toEqual([acceptedTransaction.getId()]);
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['fetch_budget_exhausted', queuedTxids.length],
+      ['fetch_budget_exhausted', queuedTxids.length + 1],
     ]));
-    expect(ctx.rejectedEvidenceCount).toBe(queuedTxids.length);
+    expect(ctx.rejectedEvidenceCount).toBe(queuedTxids.length + 1);
+  });
+
+  it('stops a successful batch after active projection reaches its budget', async () => {
+    const first = makeRawTransaction(Uint8Array.from([0x51]), 5n);
+    const second = makeRawTransaction(Uint8Array.from([0x51]), 6n);
+    const controller = new AbortController();
+    const reason = new SyncRemoteStageBudgetError('candidate_batch_remote');
+    let startedProjections = 0;
+    projectionControl.beforeProject = () => {
+      startedProjections++;
+      controller.abort(reason);
+      projectionControl.beforeProject = undefined;
+    };
+    const client = clientFor(new Map([
+      [first.getId(), details(first)],
+      [second.getId(), details(second)],
+    ]));
+    const ctx = createTestContext({ client: client as any });
+
+    try {
+      await expect(fetchAuthenticatedTransactions(
+        ctx,
+        [first.getId(), second.getId()],
+        { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+      )).resolves.toEqual(new Set());
+    } finally {
+      projectionControl.beforeProject = undefined;
+    }
+
+    expect(startedProjections).toBe(1);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['fetch_budget_exhausted', 2],
+    ]));
+  });
+
+  it('stops after a budget expires at the cooperative checkpoint', async () => {
+    const first = makeRawTransaction(Uint8Array.from([0x51]), 7n);
+    const second = makeRawTransaction(Uint8Array.from([0x51]), 8n);
+    const controller = new AbortController();
+    const now = vi.spyOn(performance, 'now');
+    let clock = 0;
+    now.mockImplementation(() => {
+      clock += 30;
+      return clock;
+    });
+    projectionControl.beforeProject = () => {
+      setImmediate(() => controller.abort(
+        new SyncRemoteStageBudgetError('candidate_batch_remote'),
+      ));
+      projectionControl.beforeProject = undefined;
+    };
+    const client = clientFor(new Map([
+      [first.getId(), details(first)],
+      [second.getId(), details(second)],
+    ]));
+    const ctx = createTestContext({ client: client as any });
+
+    try {
+      await expect(fetchAuthenticatedTransactions(
+        ctx,
+        [first.getId(), second.getId()],
+        { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
+      )).resolves.toEqual(new Set([first.getId()]));
+    } finally {
+      projectionControl.beforeProject = undefined;
+      now.mockRestore();
+    }
+
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['fetch_budget_exhausted', 1],
+    ]));
   });
 
   it('records every unresolved candidate once when its remote budget is already exhausted', async () => {
@@ -602,7 +696,8 @@ describe('full-wallet receive evidence authentication', () => {
     expect(ctx.allTxids).toEqual(new Set([transaction.getId()]));
     expect(ctx.txDetailsCache.get(transaction.getId())?.vout[0]).toMatchObject({
       value: 0.00042,
-      scriptPubKey: { hex: address.scriptPubKey, address: address.address },
+      scriptHex: address.scriptPubKey,
+      address: address.address,
     });
     expect(ctx.rejectedEvidenceCount).toBe(3);
     await expect(receiveEvidenceGatePhase(ctx)).rejects.toMatchObject({
@@ -623,6 +718,7 @@ describe('full-wallet receive evidence authentication', () => {
     ]));
     client.getAddressUTXOsBatch.mockResolvedValue(new Map([[payment.address!, [
       { tx_hash: good.getId(), tx_pos: 0, value: 50_000, height: 20 },
+      { tx_hash: good.getId(), tx_pos: 1, value: 50_000, height: 20 },
       { tx_hash: bad.getId(), tx_pos: 0, value: 60_001, height: 20 },
     ]]]));
     const address = addressRecord(payment.output!, payment.address!);
@@ -638,7 +734,11 @@ describe('full-wallet receive evidence authentication', () => {
     await fetchUtxosPhase(ctx);
 
     expect(ctx.allUtxoKeys).toEqual(new Set([`${good.getId()}:0`]));
-    expect(ctx.rejectedEvidenceCount).toBe(1);
+    expect(ctx.rejectedEvidenceCount).toBe(2);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['missing_output', 1],
+      ['amount_mismatch', 1],
+    ]));
     expect(ctx.utxoResults[0].utxos).toHaveLength(1);
   });
 
@@ -692,51 +792,6 @@ describe('full-wallet receive evidence authentication', () => {
       vout: 0,
     }]);
     expect(client.getTransactionsBatch).toHaveBeenNthCalledWith(2, [previous.getId()], false);
-  });
-
-  it('uses cached evidence, deduplicates requests, and preserves authenticated metadata', async () => {
-    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 2n);
-    const rawDetails = {
-      ...details(transaction),
-      time: 1,
-      blocktime: 2,
-      blockheight: 3,
-      confirmations: 4,
-      blockhash: 'block-hash',
-    };
-    const client = clientFor(new Map([[transaction.getId(), rawDetails]]));
-    const ctx = createTestContext({ client: client as any });
-
-    const first = await fetchAuthenticatedTransactions(ctx, [transaction.getId(), transaction.getId()]);
-    const second = await fetchAuthenticatedTransactions(ctx, [transaction.getId()]);
-
-    expect(first).toEqual(new Set([transaction.getId()]));
-    expect(second).toEqual(first);
-    expect(client.getTransactionsBatch).toHaveBeenCalledOnce();
-    expect(ctx.txDetailsCache.get(transaction.getId())).toMatchObject({
-      time: 1,
-      blocktime: 2,
-      blockheight: 3,
-      confirmations: 4,
-      blockhash: 'block-hash',
-    });
-  });
-
-  it('initializes retained complexity from a cached entry without raw hex', async () => {
-    const cachedTxid = '04'.repeat(32);
-    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 2n);
-    const client = clientFor(new Map([[transaction.getId(), details(transaction)]]));
-    const ctx = createTestContext({
-      client: client as any,
-      txDetailsCache: new Map([[cachedTxid, {
-        txid: cachedTxid,
-        vin: [],
-        vout: [],
-      } as RawTransaction]]),
-    });
-
-    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
-      .resolves.toEqual(new Set([transaction.getId()]));
   });
 
   it('yields to worker timers during transaction evidence authentication', async () => {

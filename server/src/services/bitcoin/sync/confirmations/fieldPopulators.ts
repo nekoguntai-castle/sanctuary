@@ -8,17 +8,13 @@
 import { createLogger } from '../../../../utils/logger';
 import type { RawTransaction, TransactionInput, TransactionOutput } from '../types';
 import type { PopulationStats } from './types';
+import { transactionOutputAddresses } from '../transactionOutputEvidence';
 export { populateFee } from './feePopulation';
 export { populateCounterpartyAddress } from './counterpartyPopulation';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 
 type AddressLookup = Map<string, string>;
-type ScriptAddressSource = {
-  address?: string;
-  addresses?: string[];
-};
-
 /**
  * Populate blockHeight from various sources (Electrum, RPC, address history)
  */
@@ -126,7 +122,7 @@ const findReceivedAddressId = (
 ): string | undefined => {
   for (const output of outputs) {
     const addressId = findWalletAddressId(
-      getOutputAddresses(output.scriptPubKey),
+      transactionOutputAddresses(output),
       walletAddressLookup,
       walletAddressSet
     );
@@ -151,14 +147,6 @@ const findSentAddressId = (
   }
 
   return undefined;
-};
-
-const getOutputAddresses = (scriptPubKey: ScriptAddressSource | undefined): string[] => {
-  const addresses = scriptPubKey?.addresses ? [...scriptPubKey.addresses] : [];
-  if (scriptPubKey?.address) {
-    addresses.push(scriptPubKey.address);
-  }
-  return addresses;
 };
 
 const getInputAddresses = (input: TransactionInput): string[] => {

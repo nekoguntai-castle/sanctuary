@@ -184,6 +184,10 @@ vi.mock('../../../../src/services/bitcoin/rawTransactionEvidence', async importO
       valueSats: input.expectedValueSats,
       scriptPubKeyHex: input.expectedScriptPubKeyHex,
     })),
+    authenticateProjectedTransactionOutput: vi.fn((input: any) => ({
+      valueSats: input.expectedValueSats,
+      scriptPubKeyHex: input.expectedScriptPubKeyHex,
+    })),
   };
 });
 

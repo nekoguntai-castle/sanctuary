@@ -19,6 +19,11 @@ import type {
 import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
 import type { NodeRequestOptions } from '../../../nodeClient';
 import { resolveTransactionBlockTime } from './timestampPrefetch';
+import {
+  transactionOutputAddress,
+  transactionOutputAddresses,
+  transactionOutputScriptHex,
+} from '../../transactionOutputEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -64,9 +69,7 @@ type InputScriptPubKey = NonNullable<
  * Helper to check if output matches an address
  */
 export function outputMatchesAddress(out: TransactionOutput, address: string): boolean {
-  if (out.scriptPubKey?.address === address) return true;
-  if (out.scriptPubKey?.addresses?.includes(address)) return true;
-  return false;
+  return transactionOutputAddresses(out).includes(address);
 }
 
 /**
@@ -289,9 +292,9 @@ const resolvePreviousOutput = async (
 const getOutputEvidence = (
   output: TransactionOutput | undefined
 ): InputEvidence => ({
-  address: output ? getScriptAddress(output.scriptPubKey) : undefined,
+  address: transactionOutputAddress(output),
   value: output ? Math.round(output.value * 100000000) : undefined,
-  scriptPubKey: output?.scriptPubKey?.hex?.toLowerCase(),
+  scriptPubKey: transactionOutputScriptHex(output)?.toLowerCase(),
 });
 
 const isWalletEvidence = (ctx: SyncContext, evidence: InputEvidence): boolean => (
@@ -349,10 +352,10 @@ const addOutputToTotals = (
   ctx: SyncContext
 ): void => {
   const outputValue = Math.round(output.value * 100000000);
-  const outputAddress = getScriptAddress(output.scriptPubKey);
+  const outputAddress = transactionOutputAddress(output);
 
   totals.totalOutputs += outputValue;
-  const scriptPubKey = output.scriptPubKey?.hex?.toLowerCase();
+  const scriptPubKey = transactionOutputScriptHex(output)?.toLowerCase();
   const isOurs = scriptPubKey !== undefined && ctx.walletScriptToAddress.size > 0
     ? ctx.walletScriptToAddress.has(scriptPubKey)
     : outputAddress !== undefined && ctx.walletAddressSet.has(outputAddress);

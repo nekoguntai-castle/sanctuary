@@ -17,6 +17,10 @@ import type {
 } from '../../types';
 import { detectRBFReplacements } from './rbfDetection';
 import type { PrismaTxClient } from '../../../../../models/prisma';
+import {
+  transactionOutputAddress,
+  transactionOutputScriptHex,
+} from '../../transactionOutputEvidence';
 
 type DeferPostCommit = (effect: () => void | Promise<void>) => void;
 
@@ -253,7 +257,7 @@ const resolveInput = (
     : undefined;
   return {
     address: inlineAddress || (prevOutput
-      ? getScriptAddress(prevOutput.scriptPubKey)
+      ? transactionOutputAddress(prevOutput)
       : undefined),
     amount: inlineAmount ?? (prevOutput?.value !== undefined
       ? Math.round(prevOutput.value * 100000000)
@@ -293,12 +297,12 @@ const buildOutputRow = (
   output: TransactionOutput,
   outputIdx: number
 ): Omit<TxOutputCreateData, 'outputType'> | null => {
-  const outputAddress = getScriptAddress(output.scriptPubKey);
+  const outputAddress = transactionOutputAddress(output);
   if (!outputAddress) {
     return null;
   }
 
-  const scriptPubKey = output.scriptPubKey?.hex?.toLowerCase();
+  const scriptPubKey = transactionOutputScriptHex(output)?.toLowerCase();
   const isOurs = scriptPubKey !== undefined && ctx.walletScriptToAddress.size > 0
     ? ctx.walletScriptToAddress.has(scriptPubKey)
     : ctx.walletAddressSet.has(outputAddress);
@@ -308,7 +312,7 @@ const buildOutputRow = (
     outputIndex: outputIdx,
     address: outputAddress,
     amount: BigInt(Math.round((output.value || 0) * 100000000)),
-    scriptPubKey: output.scriptPubKey?.hex,
+    scriptPubKey: transactionOutputScriptHex(output),
     isOurs,
   };
 };

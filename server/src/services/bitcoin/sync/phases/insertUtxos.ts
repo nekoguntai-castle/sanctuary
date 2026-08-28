@@ -13,6 +13,7 @@ import { getConfig } from '../../../../config';
 import type { SyncContext, UTXOCreateData } from '../types';
 import { runWalletSyncMutation } from '../mutationBoundary';
 import { createSyncStageRuntime } from '../attemptRuntime';
+import { transactionOutputScriptHex } from '../transactionOutputEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXO_INSERT');
 
@@ -88,7 +89,7 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
         vout: utxo.tx_pos,
         address,
         amount: BigInt(utxo.value),
-        scriptPubKey: output.scriptPubKey?.hex || '',
+        scriptPubKey: transactionOutputScriptHex(output) || '',
         confirmations,
         blockHeight: utxo.height > 0 ? utxo.height : null,
         spent: false,
