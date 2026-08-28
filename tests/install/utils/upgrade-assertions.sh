@@ -54,6 +54,156 @@ assert_browser_auth_smoke() {
     fi
 }
 
+assert_authenticated_websocket_handshake() {
+    local base_url="$1"
+    local websocket_key
+    local ws_headers
+
+    websocket_key="$(openssl rand -base64 16 2>/dev/null || printf 'sanctuary-upgrade-websocket' | base64)"
+    ws_headers="$(curl -k -sS --max-time 10 --http1.1 -D - -o /dev/null \
+        -H "Connection: Upgrade" \
+        -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" \
+        -H "Sec-WebSocket-Key: $websocket_key" \
+        -H "Origin: $base_url" \
+        -b "$COOKIE_JAR" \
+        "$base_url/ws" 2>/dev/null || true)"
+
+    if ! echo "$ws_headers" | grep -q '101 Switching Protocols'; then
+        log_error "Authenticated WebSocket handshake failed"
+        log_error "Headers: $ws_headers"
+        return 1
+    fi
+}
+
+assert_authenticated_me_response() {
+    local base_url="$1"
+    local response
+
+    response="$(curl -k -f -sS --max-time 10 -b "$COOKIE_JAR" \
+        "$base_url/api/v1/auth/me?proxy_recovery=1" 2>/dev/null || true)"
+    if ! echo "$response" | grep -q '"username":"admin"'; then
+        log_error "Authenticated browser route did not return the expected user"
+        log_error "Response: $response"
+        return 1
+    fi
+}
+
+resolve_frontend_backend_network() {
+    local frontend_container="$1"
+    local backend_container="$2"
+    local frontend_networks backend_networks shared_networks
+
+    frontend_networks="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+        "$frontend_container" 2>/dev/null)" || return 1
+    backend_networks="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+        "$backend_container" 2>/dev/null)" || return 1
+    shared_networks="$(
+        while IFS= read -r network; do
+            if [ -n "$network" ] && printf '%s\n' "$backend_networks" | grep -Fxq -- "$network"; then
+                printf '%s\n' "$network"
+            fi
+        done <<< "$frontend_networks"
+    )"
+
+    if [ "$(printf '%s\n' "$shared_networks" | grep -c .)" -ne 1 ]; then
+        log_error "Expected exactly one shared frontend/backend network"
+        return 1
+    fi
+
+    printf '%s\n' "$shared_networks"
+}
+
+assert_frontend_proxy_recovers_after_backend_recreate_inner() {
+    local browser_base_url="$1"
+    local holder_container="$2"
+    local frontend_container backend_container frontend_id backend_id backend_image network old_ip
+    local new_backend_container new_backend_id new_ip attempt
+
+    frontend_container="$(get_container_name frontend)"
+    backend_container="$(get_container_name backend)"
+    frontend_id="$(docker inspect -f '{{.Id}}' "$frontend_container" 2>/dev/null)" || return 1
+    backend_id="$(docker inspect -f '{{.Id}}' "$backend_container" 2>/dev/null)" || return 1
+    backend_image="$(docker inspect -f '{{.Config.Image}}' "$backend_container" 2>/dev/null)" || return 1
+    network="$(resolve_frontend_backend_network "$frontend_container" "$backend_container")" || return 1
+    old_ip="$(docker inspect -f "{{with index .NetworkSettings.Networks \"$network\"}}{{.IPAddress}}{{end}}" "$backend_container" 2>/dev/null)" || return 1
+
+    if [ -z "$frontend_id" ] || [ -z "$backend_id" ] || [ -z "$backend_image" ] || [ -z "$network" ] || [ -z "$old_ip" ]; then
+        log_error "Could not capture the pre-replacement frontend/backend network identity"
+        return 1
+    fi
+
+    assert_authenticated_me_response "$browser_base_url" || return 1
+    assert_authenticated_websocket_handshake "$browser_base_url" || return 1
+
+    docker rm -f "$backend_container" >/dev/null || return 1
+    docker run -d --name "$holder_container" \
+        --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
+        --network "$network" --ip "$old_ip" \
+        --entrypoint sh "$backend_image" -c 'sleep 300' >/dev/null || return 1
+    run_project_compose "$PROJECT_ROOT" up -d --no-deps backend >/dev/null || return 1
+
+    new_backend_container="$(get_container_name backend)"
+    wait_for_container_healthy "$new_backend_container" "$HEALTH_CHECK_TIMEOUT" || return 1
+    new_backend_id="$(docker inspect -f '{{.Id}}' "$new_backend_container" 2>/dev/null)" || return 1
+    new_ip="$(docker inspect -f "{{with index .NetworkSettings.Networks \"$network\"}}{{.IPAddress}}{{end}}" "$new_backend_container" 2>/dev/null)" || return 1
+
+    if [ "$new_backend_id" = "$backend_id" ] || [ -z "$new_ip" ] || [ "$new_ip" = "$old_ip" ]; then
+        log_error "Backend replacement did not create a new container at a different address"
+        return 1
+    fi
+    if [ "$(docker inspect -f '{{.Id}}' "$frontend_container" 2>/dev/null)" != "$frontend_id" ]; then
+        log_error "Frontend was recreated during backend-only replacement"
+        return 1
+    fi
+
+    for attempt in $(seq 1 12); do
+        if assert_authenticated_me_response "$browser_base_url"; then
+            break
+        fi
+        if [ "$attempt" -eq 12 ]; then
+            log_error "Frontend route did not recover within the Docker DNS refresh window"
+            return 1
+        fi
+        sleep 1
+    done
+
+    assert_authenticated_websocket_handshake "$browser_base_url" || return 1
+    if [ "$(docker inspect -f '{{.Id}}' "$frontend_container" 2>/dev/null)" != "$frontend_id" ]; then
+        log_error "Frontend changed while proxy traffic recovered"
+        return 1
+    fi
+
+    log_success "Unchanged frontend recovered API and WebSocket routes after backend IP replacement"
+}
+
+assert_frontend_proxy_recovers_after_backend_recreate() {
+    local browser_base_url="$1"
+    local holder_container="${COMPOSE_PROJECT_NAME}-backend-ip-holder-${TEST_ID}"
+    local status
+
+    docker rm -f "$holder_container" >/dev/null 2>&1 || true
+    if assert_frontend_proxy_recovers_after_backend_recreate_inner "$browser_base_url" "$holder_container"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    docker rm -f "$holder_container" >/dev/null 2>&1 || true
+    if ! run_project_compose "$PROJECT_ROOT" up -d --no-deps backend >/dev/null; then
+        log_error "Could not restore the backend after the replacement regression"
+        [ "$status" -ne 0 ] && return "$status"
+        return 1
+    fi
+    if ! wait_for_container_healthy "$(get_container_name backend)" "$HEALTH_CHECK_TIMEOUT"; then
+        log_error "Backend did not recover after the replacement regression"
+        [ "$status" -ne 0 ] && return "$status"
+        return 1
+    fi
+
+    return "$status"
+}
+
 assert_support_package_generation() {
     local base_url="$1"
     local support_response

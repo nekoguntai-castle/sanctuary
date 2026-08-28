@@ -1186,6 +1186,35 @@ wait_for_healthy() {
     echo ""
 }
 
+wait_for_routed_api() {
+    local deadline=$((SECONDS + 60))
+    local interval=2
+    local api_url
+
+    if [ -f "$SSL_DIR/fullchain.pem" ]; then
+        api_url="https://localhost:${NGINX_HTTPS_PORT:-8443}/api/v1/health"
+    else
+        api_url="http://localhost:${NGINX_HTTP_PORT:-8080}/api/v1/health"
+    fi
+
+    echo "Verifying the browser-routed backend API..."
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if docker compose "${COMPOSE_FILE_ARGS[@]}" exec -T frontend \
+            wget -q -O /dev/null --no-check-certificate "$api_url" 2>/dev/null; then
+            echo -e "${GREEN}Browser-routed backend API is ready.${NC}"
+            echo ""
+            return 0
+        fi
+
+        sleep "$interval"
+    done
+
+    echo -e "${RED}Backend containers started, but the browser-routed API is unavailable.${NC}"
+    echo "  Checked: $api_url"
+    echo "  Inspect: docker compose logs frontend backend"
+    return 1
+}
+
 # ============================================
 # Completion Banner
 # ============================================
@@ -1379,6 +1408,7 @@ main() {
             start_services
             STARTED=true
             wait_for_healthy
+            wait_for_routed_api
         else
             # Interactive: ask user
             read -p "Start Sanctuary now? [Y/n] " -n 1 -r
@@ -1387,6 +1417,7 @@ main() {
                 start_services
                 STARTED=true
                 wait_for_healthy
+                wait_for_routed_api
             fi
         fi
     fi

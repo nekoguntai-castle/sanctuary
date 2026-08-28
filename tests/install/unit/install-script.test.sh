@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 INSTALL_SCRIPT="$PROJECT_ROOT/install.sh"
 SETUP_SCRIPT="$PROJECT_ROOT/scripts/setup.sh"
+NGINX_ENTRYPOINT="$PROJECT_ROOT/docker/nginx/docker-entrypoint.sh"
 
 # ============================================
 # Test Framework
@@ -1468,6 +1469,9 @@ if [ "$1" = "compose" ]; then
                     ;;
             esac
             ;;
+        exec)
+            exit 0
+            ;;
         ps)
             exit 0
             ;;
@@ -1560,6 +1564,60 @@ test_install_script_has_health_check_timeout() {
         echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should have MAX_WAIT for health check timeout"
         return 1
     fi
+}
+
+test_setup_script_requires_routed_api_readiness() {
+    local contents main_body call_count
+    contents="$(cat "$SETUP_SCRIPT")"
+    main_body="$(extract_shell_function "main" "$SETUP_SCRIPT")"
+
+    assert_contains "$contents" "wait_for_routed_api()" \
+        "setup.sh should define a browser-routed API readiness gate" || return 1
+    assert_contains "$contents" "/api/v1/health" \
+        "setup.sh should probe the backend through the frontend route" || return 1
+    assert_contains "$contents" 'docker compose "${COMPOSE_FILE_ARGS[@]}" exec -T frontend' \
+        "setup.sh should use the required frontend container for its routed probe" || return 1
+    call_count="$(grep -c '^[[:space:]]*wait_for_routed_api$' <<< "$main_body")"
+    assert_equals "2" "$call_count" \
+        "setup.sh should gate both noninteractive and interactive startup paths"
+}
+
+test_nginx_entrypoint_selects_runtime_dns_resolver() {
+    local resolver_body
+    local docker_resolv="$TEST_TMP_DIR/resolv-docker.conf"
+    local podman_resolv="$TEST_TMP_DIR/resolv-podman.conf"
+    local dual_stack_resolv="$TEST_TMP_DIR/resolv-dual-stack.conf"
+    local malformed_resolv="$TEST_TMP_DIR/resolv-malformed.conf"
+    local output
+
+    resolver_body="$(extract_shell_function "resolve_dns_resolver" "$NGINX_ENTRYPOINT")"
+    printf 'nameserver 127.0.0.11\n' > "$docker_resolv"
+    printf 'nameserver 10.89.0.1\n' > "$podman_resolv"
+    printf 'nameserver fd00::1\nnameserver 10.89.0.1\n' > "$dual_stack_resolv"
+    printf 'nameserver 999.2.3.4\nnameserver not-an-address\n' > "$malformed_resolv"
+
+    output="$(NGINX_RESOLV_CONF_PATH="$docker_resolv" bash -c "$resolver_body; resolve_dns_resolver")" || return 1
+    assert_equals "127.0.0.11" "$output" "Docker DNS resolver should be selected" || return 1
+    output="$(NGINX_RESOLV_CONF_PATH="$podman_resolv" bash -c "$resolver_body; resolve_dns_resolver")" || return 1
+    assert_equals "10.89.0.1" "$output" "Podman DNS resolver should be selected" || return 1
+    output="$(NGINX_RESOLV_CONF_PATH="$dual_stack_resolv" bash -c "$resolver_body; resolve_dns_resolver")" || return 1
+    assert_equals "10.89.0.1" "$output" "valid IPv4 should be selected after an IPv6 resolver" || return 1
+
+    if NGINX_RESOLV_CONF_PATH="$malformed_resolv" bash -c "$resolver_body; resolve_dns_resolver" \
+        > "$TEST_TMP_DIR/resolver-malformed.out" 2> "$TEST_TMP_DIR/resolver-malformed.err"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} malformed resolvers should fail closed"
+        return 1
+    fi
+    assert_contains "$(cat "$TEST_TMP_DIR/resolver-malformed.err")" "no valid IPv4 nameserver" \
+        "malformed resolver diagnostics should be visible on stderr" || return 1
+
+    if NGINX_RESOLV_CONF_PATH="$TEST_TMP_DIR/missing-resolv.conf" bash -c "$resolver_body; resolve_dns_resolver" \
+        > "$TEST_TMP_DIR/resolver-missing.out" 2> "$TEST_TMP_DIR/resolver-missing.err"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} missing resolv.conf should fail closed"
+        return 1
+    fi
+    assert_contains "$(cat "$TEST_TMP_DIR/resolver-missing.err")" "no valid IPv4 nameserver" \
+        "missing resolver diagnostics should be visible on stderr"
 }
 
 # ============================================
@@ -2114,6 +2172,8 @@ main() {
     run_test "setup script rejects legacy default salt" test_setup_script_rejects_legacy_default_salt
     run_test "setup script generates unique salt for fresh install" test_setup_script_generates_unique_salt_for_fresh_install
     run_test "setup script persists LLM egress policy env" test_setup_script_persists_llm_egress_policy_env
+    run_test "setup script requires routed API readiness" test_setup_script_requires_routed_api_readiness
+    run_test "nginx entrypoint selects runtime DNS resolver" test_nginx_entrypoint_selects_runtime_dns_resolver
     echo ""
 
     echo -e "${YELLOW}Test Suite: .env.example${NC}"

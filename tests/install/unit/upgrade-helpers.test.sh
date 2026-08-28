@@ -1894,6 +1894,79 @@ test_upgrade_finish_fails_successful_fixture_on_cleanup_failure() {
     "cleanup failure must fail an otherwise successful fixture"
 }
 
+test_upgrade_harness_covers_backend_address_replacement() {
+  local lane assertions
+  lane="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+  assertions="$(cat "$PROJECT_ROOT/tests/install/utils/upgrade-assertions.sh")"
+
+  assert_contains "$lane" 'run_test "Frontend Proxy Survives Backend Recreate"' \
+    "upgrade lane should dispatch the backend replacement regression" || return 1
+  assert_contains "$lane" 'fixture_list_contains "$UPGRADE_FIXTURE" "baseline"' \
+    "PR baseline upgrades should execute the real backend replacement regression" || return 1
+  assert_contains "$assertions" 'docker rm -f "$backend_container"' \
+    "regression should replace only the backend container" || return 1
+  assert_contains "$assertions" '--ip "$old_ip"' \
+    "regression should prevent reuse of the old backend address" || return 1
+  assert_contains "$assertions" 'com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+    "holder should be swept by exact project-label cleanup on interruption" || return 1
+  assert_contains "$assertions" 'resolve_frontend_backend_network' \
+    "regression should select the one network shared with the frontend" || return 1
+  assert_contains "$assertions" 'assert_authenticated_websocket_handshake' \
+    "regression should verify WebSocket recovery" || return 1
+  assert_contains "$assertions" 'Frontend was recreated during backend-only replacement' \
+    "regression should require the frontend container to stay unchanged" || return 1
+  assert_contains "$assertions" 'Could not restore the backend after the replacement regression' \
+    "regression cleanup should fail closed if backend restoration fails"
+}
+
+test_backend_replacement_failure_restores_backend() {
+  local call_log="$TEST_TMP_DIR/backend-replacement-cleanup.log"
+  local exit_code
+
+  set +e
+  (
+    COMPOSE_PROJECT_NAME="upgrade-cleanup-test"
+    TEST_ID="cleanup-test"
+    PROJECT_ROOT="$PROJECT_ROOT"
+    HEALTH_CHECK_TIMEOUT=5
+
+    assert_frontend_proxy_recovers_after_backend_recreate_inner() { return 7; }
+    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
+    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
+    get_container_name() { printf 'upgrade-cleanup-test-backend-1\n'; }
+    wait_for_container_healthy() { printf 'healthy:%s\n' "$*" >> "$call_log"; }
+
+    assert_frontend_proxy_recovers_after_backend_recreate "https://127.0.0.1:9443"
+  )
+  exit_code=$?
+  set -e
+
+  assert_equals "7" "$exit_code" \
+    "backend cleanup should preserve the original replacement failure" || return 1
+  assert_contains "$(cat "$call_log")" "compose:$PROJECT_ROOT up -d --no-deps backend" \
+    "backend cleanup should always recreate the compose backend" || return 1
+  assert_contains "$(cat "$call_log")" "healthy:upgrade-cleanup-test-backend-1 5" \
+    "backend cleanup should wait for restored health"
+}
+
+test_backend_replacement_selects_shared_frontend_network() {
+  local selected
+
+  selected="$({
+    docker() {
+      case "${*: -1}" in
+        frontend) printf 'sanctuary-network\n' ;;
+        backend) printf 'llm-egress-network\nsanctuary-network\n' ;;
+        *) return 1 ;;
+      esac
+    }
+    resolve_frontend_backend_network frontend backend
+  })" || return 1
+
+  assert_equals "sanctuary-network" "$selected" \
+    "backend replacement should use the exact network shared with frontend"
+}
+
 main() {
   echo ""
   echo "Upgrade Helper Unit Tests"
@@ -1959,6 +2032,9 @@ main() {
   run_test "upgrade cleanup preserves failed fixture status" test_upgrade_finish_preserves_failed_fixture_status
   run_test "upgrade cleanup preserves failure when cleanup fails" test_upgrade_finish_preserves_failure_when_cleanup_fails
   run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
+  run_test "upgrade harness covers backend address replacement" test_upgrade_harness_covers_backend_address_replacement
+  run_test "backend replacement failure restores backend" test_backend_replacement_failure_restores_backend
+  run_test "backend replacement selects shared frontend network" test_backend_replacement_selects_shared_frontend_network
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
   run_test "no undispatched upgrade fixture hooks" test_no_undispatched_fixture_hooks

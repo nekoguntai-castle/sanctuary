@@ -2,7 +2,10 @@
 # Environment variables are substituted at container startup
 
 upstream backend {
-    server ${BACKEND_HOST}:${BACKEND_PORT};
+    zone backend 64k;
+    resolver ${NGINX_DNS_RESOLVER} valid=5s ipv6=off;
+    resolver_timeout 2s;
+    server ${BACKEND_HOST}:${BACKEND_PORT} resolve;
     keepalive 32;
 }
 

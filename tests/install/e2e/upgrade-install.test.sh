@@ -1758,6 +1758,16 @@ test_post_upgrade_user_visible_smoke() {
     assert_post_upgrade_user_smoke "$BROWSER_BASE_URL"
 }
 
+test_frontend_proxy_survives_backend_recreate() {
+    if ! fixture_list_contains "$UPGRADE_FIXTURE" "baseline" \
+        && ! fixture_list_contains "$UPGRADE_FIXTURE" "browser-origin-ip"; then
+        log_info "Skipping backend-replacement proxy recovery for fixture: $UPGRADE_FIXTURE"
+        return 0
+    fi
+
+    assert_frontend_proxy_recovers_after_backend_recreate "$BROWSER_BASE_URL"
+}
+
 test_verify_notification_delivery_diagnostics() {
     if [ "$UPGRADE_SEED_NOTIFICATION_STATE" != "true" ]; then
         log_info "Skipping notification delivery diagnostics for fixture: $UPGRADE_FIXTURE"
@@ -2136,6 +2146,7 @@ main() {
     run_test "Reset 2FA And Re-Enroll" test_reset_two_factor_and_reenroll
     run_test "Verify Migration on Upgrade" test_verify_migration_on_upgrade
     run_test "Post-Upgrade User-Visible Smoke" test_post_upgrade_user_visible_smoke
+    run_test "Frontend Proxy Survives Backend Recreate" test_frontend_proxy_survives_backend_recreate
     run_test "Verify Notification Delivery Diagnostics" test_verify_notification_delivery_diagnostics
     run_extended_upgrade_scenarios
     if [ "$VERIFY_FORCE_REBUILD" = "true" ]; then
