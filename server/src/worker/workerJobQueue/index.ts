@@ -48,6 +48,7 @@ import { unwrapRecurringJobData } from "./recurringJobEnvelope";
 import {
   DEAD_LETTER_RECONCILIATION_INTERVAL_MS,
   reconcileExhaustedJobs,
+  type DeadLetterReconciliationState,
 } from "./deadLetterReconciler";
 import { classifyStaleWalletScheduleJob } from "../../jobs/staleWalletJobPolicy";
 
@@ -199,6 +200,7 @@ export class WorkerJobQueue {
   private shutdownController = new AbortController();
   private deadLetterTimer: NodeJS.Timeout | null = null;
   private deadLetterReconciliation: Promise<void> | null = null;
+  private deadLetterReconciliationState: DeadLetterReconciliationState = new Map();
 
   constructor(config: WorkerJobQueueConfig) {
     this.config = {
@@ -295,7 +297,11 @@ export class WorkerJobQueue {
 
   async reconcileDeadLetters(): Promise<void> {
     if (this.deadLetterReconciliation) return this.deadLetterReconciliation;
-    const reconciliation = reconcileExhaustedJobs(this.queues).then(
+    const reconciliation = reconcileExhaustedJobs(
+      this.queues,
+      Date.now(),
+      this.deadLetterReconciliationState,
+    ).then(
       (count) => {
         if (count > 0) {
           log.info("Reconciled exhausted jobs into the DLQ", { count });
