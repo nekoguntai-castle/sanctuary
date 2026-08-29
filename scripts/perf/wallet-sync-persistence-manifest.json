@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "driverSha256": "59f578d64ed4f1e7bc77b678fb4f4826fd5be46918d3aa53175cfafa58dbedcc",
-  "driverHelperSha256": "4b409ff58e48ba13332343ffb7148fdea00abcf80fe9308bce38bbdca7d70067",
+  "driverSha256": "0abc2a252fb37d7b315a3f7190b8983fe9951f0365d81f137be9433328baf0dc",
+  "driverHelperSha256": "43524acfb2b0e5dc4d24c7c2713335e0808c37880a6c08f7cd1d02401723d079",
   "fixtureBuilderSha256": "fc6bdb495b27ed514755e0b4aa157579dae6e57e2df2c013b7a9edb04324fecd",
   "fixtureDefinitionSha256": "2e0dcdbb47307276dde53fef71ea1bca13c463a4180630cfa327332d1172cef1",
   "migrationTreeSha256": "6bb7b3e284e229778e0a0584b7f80be062c21d3237135b1e5daa79670ff62fd2",
@@ -23,6 +23,26 @@
   "architecture": {
     "fullCurrentCounts": [100, 69, 0]
   },
+  "maxFixtureSequence": [
+    "output-below-success",
+    "output-below-rollback",
+    "output-at-success",
+    "output-at-rollback",
+    "input-below-success",
+    "input-below-rollback",
+    "input-at-success",
+    "input-at-rollback",
+    "weight-below",
+    "weight-at",
+    "weight-above",
+    "output-count-below",
+    "output-count-at",
+    "output-count-above",
+    "input-count-24999",
+    "input-count-25000",
+    "input-count-25001",
+    "combined"
+  ],
   "maxAxes": {
     "outputBelow": { "inputs": 0, "outputs": 24999, "weight": 3100096, "scriptBytes": 0 },
     "outputAt": { "inputs": 0, "outputs": 25000, "weight": 3100220, "scriptBytes": 0 },
@@ -42,6 +62,8 @@
     "sampledAndKernelPeakBytes": 805306368,
     "growthBytes": 536870912,
     "maxFixtureStageBytes": 100663296,
+    "maxFixturePreparationIdleMs": 120000,
+    "maxFixturePreparationMs": 1200000,
     "passMs": 900000,
     "noopPassMs": 120000,
     "addressHistoryMs": 300000,

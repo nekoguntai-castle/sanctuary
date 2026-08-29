@@ -772,11 +772,20 @@ assert_contains_in_order "$RC" \
   "maximum-shape gate is serialized after live shape and cannot rebuild" \
   "wallet-sync-maximum-shapes:" \
   "needs: [validation-info, wallet-sync-replay-images, wallet-sync-live-shape]" \
-  "timeout-minutes: 60" \
+  "timeout-minutes: 100" \
   "Download build-once replay images" \
   'wallet-sync-replay-image.sh load' \
-  'timeout --foreground --signal=TERM --kill-after=60s 2700s' \
+  'timeout --foreground --signal=TERM --kill-after=60s 5100s' \
   '--mode max'
+
+max_setup_ms="$(jq -r '.limits.maxFixturePreparationMs' scripts/perf/wallet-sync-persistence-manifest.json)"
+max_product_ms="$(jq -r '.limits.maxOuterMs' scripts/perf/wallet-sync-persistence-manifest.json)"
+max_command_ms=$((5100 * 1000))
+max_job_ms=$((100 * 60 * 1000))
+(( max_command_ms >= max_setup_ms + max_product_ms + 300000 )) \
+  || fail "maximum replay command timeout lacks five-minute cleanup headroom"
+(( max_job_ms >= max_command_ms + 900000 )) \
+  || fail "maximum replay job timeout lacks fifteen-minute runner headroom"
 
 for replay_job in wallet-sync-live-shape wallet-sync-maximum-shapes; do
   assert_named_job_not_contains "$RC" "$replay_job" \

@@ -14,7 +14,7 @@ const mode = process.env.SANCTUARY_REPLAY_MODE || 'live';
 const imageRequire = createRequire(resolve(IMAGE_ROOT, 'package.json'));
 const bitcoin = imageRequire('bitcoinjs-lib');
 const { buildFixture, canonicalJson, sha256 } = require(fixturePath);
-const { createDriverHelpers } = require(helperPath);
+const { createDriverHelpers, createMaxFixtureSequence } = require(helperPath);
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 
 const absoluteModule = relative => require(resolve(COMPILED_ROOT, relative));
@@ -166,6 +166,7 @@ const {
   prisma,
   sha256,
 });
+const maxFixtureSequence = createMaxFixtureSequence(manifest, emit);
 
 function assertManifest(fixture) {
   const builderDigest = sha256(readFileSync(fixturePath));
@@ -627,7 +628,7 @@ function persistPreparedMaxFixture(label, fixture) {
   }
   writeFileSync(path, bytes, { mode: 0o600 });
   stagedMaxFixtureBytes += byteLength;
-  emit('max_fixture_sealed', { label, sha256: sha256(bytes), bytes: byteLength, stagedMaxFixtureBytes });
+  maxFixtureSequence.seal(label, byteLength, stagedMaxFixtureBytes, sha256(bytes));
   return path;
 }
 
@@ -874,6 +875,7 @@ async function runMax(fixture, baselineThreads) {
   const combinedPath = persistPreparedMaxFixture('combined', combinedFixture);
   combinedFixture = undefined;
   if (typeof global.gc === 'function') global.gc();
+  maxFixtureSequence.assertComplete();
   emit('replay_ready', {
     rssBytes: process.memoryUsage().rss,
     firstPageUnionSha256: fixture.firstPageDigest,

@@ -383,7 +383,7 @@ jobs:
     name: Wallet Sync Maximum Shape Replay
     runs-on: [ubuntu-22.04, docker-socket]
     needs: [validation-info, wallet-sync-replay-images, wallet-sync-live-shape]
-    timeout-minutes: 60
+    timeout-minutes: 100
     env:
       RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
       IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
@@ -428,7 +428,7 @@ jobs:
           scripts/ci/run-with-log.sh "${EVIDENCE_DIR}.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "wallet sync maximum-shape replay" \
-            timeout --foreground --signal=TERM --kill-after=60s 2700s \
+            timeout --foreground --signal=TERM --kill-after=60s 5100s \
             node scripts/perf/wallet-sync-high-fanout-replay.mjs \
               --mode max \
               --rc11-image "$RC11_IMAGE" \

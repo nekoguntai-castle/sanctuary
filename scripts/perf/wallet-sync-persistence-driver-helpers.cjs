@@ -66,6 +66,26 @@ function createDriverHelpers({
   };
 }
 
+function createMaxFixtureSequence(manifest, emit) {
+  const labels = manifest.maxFixtureSequence;
+  let count = 0;
+  return {
+    seal(label, bytes, stagedMaxFixtureBytes, digest) {
+      if (!Array.isArray(labels) || labels.length !== 18 || labels[count] !== label) {
+        throw new Error(`Maximum fixture sequence drifted at ${label}`);
+      }
+      count += 1;
+      emit('max_fixture_sealed', {
+        label, sequence: count, total: labels.length, sha256: digest,
+        bytes, stagedMaxFixtureBytes,
+      });
+    },
+    assertComplete() {
+      if (count !== labels.length) throw new Error(`Maximum fixture sequence incomplete: ${count}`);
+    },
+  };
+}
+
 function createArchitectureState() {
   return {
     compact: new Map(),
@@ -440,4 +460,4 @@ function assertPreStartUtxos(fixture, receipt) {
   if (!ids.has(fixture.seededValidUtxo.id)) throw new Error('Pre-start seeded valid UTXO is missing');
 }
 
-module.exports = { createDriverHelpers };
+module.exports = { createDriverHelpers, createMaxFixtureSequence };

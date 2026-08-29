@@ -29,12 +29,61 @@ import {
   validateProductionEvidenceReleaseReceipts,
   validatePhaseAndMutationTrace,
   stageAndStartWorker,
+  waitForMaxFixturePreparation,
   workerCreateArgs,
   workerFileCopyArgs,
 } from '../../scripts/perf/wallet-sync-high-fanout-replay.mjs';
 
+const MAX_FIXTURE_SEQUENCE = [
+  'output-below-success', 'output-below-rollback',
+  'output-at-success', 'output-at-rollback',
+  'input-below-success', 'input-below-rollback',
+  'input-at-success', 'input-at-rollback',
+  'weight-below', 'weight-at', 'weight-above',
+  'output-count-below', 'output-count-at', 'output-count-above',
+  'input-count-24999', 'input-count-25000', 'input-count-25001',
+  'combined',
+];
+
+const maxFixtureProgress = (index) => ({
+  event: 'max_fixture_sealed',
+  label: MAX_FIXTURE_SEQUENCE[index],
+  sequence: index + 1,
+  total: MAX_FIXTURE_SEQUENCE.length,
+  sha256: String(index + 1).padStart(64, '0'),
+  bytes: 100 + index,
+  stagedMaxFixtureBytes: Array.from(
+    { length: index + 1 },
+    (_, itemIndex) => 100 + itemIndex,
+  ).reduce((sum, value) => sum + value, 0),
+});
+
+function scriptedPreparationRuntime(frames) {
+  let frameIndex = 0;
+  const current = () => frames[Math.min(frameIndex, frames.length - 1)];
+  return {
+    now: () => current().at,
+    logs: () => current().events.map(event => JSON.stringify(event)).join('\n'),
+    running: () => current().running ?? 'true',
+    sleep: async () => { frameIndex += 1; },
+  };
+}
+
+const maxPreparationManifest = {
+  maxFixtureSequence: MAX_FIXTURE_SEQUENCE,
+  limits: {
+    maxFixturePreparationIdleMs: 120_000,
+    maxFixturePreparationMs: 1_200_000,
+    maxFixtureStageBytes: 100_000,
+  },
+};
+
 const replayDriverSource = readFileSync(
   new URL('../../scripts/perf/wallet-sync-persistence-driver.cjs', import.meta.url),
+  'utf8',
+);
+const replayControllerSource = readFileSync(
+  new URL('../../scripts/perf/wallet-sync-high-fanout-replay.mjs', import.meta.url),
   'utf8',
 );
 const replayDriverHelperSource = readFileSync(
@@ -42,7 +91,7 @@ const replayDriverHelperSource = readFileSync(
   'utf8',
 );
 const fixtureRequire = createRequire(import.meta.url);
-const { createDriverHelpers } = fixtureRequire(
+const { createDriverHelpers, createMaxFixtureSequence } = fixtureRequire(
   '../../scripts/perf/wallet-sync-persistence-driver-helpers.cjs',
 );
 test('replay driver exits explicitly after success or failure cleanup', () => {
@@ -85,6 +134,143 @@ test('outer observation budgets leave receipt and teardown headroom beyond per-p
   const limits = { liveOuterMs: 100 * 60_000, maxOuterMs: 60 * 60_000 };
   assert.equal(replayObservationTimeout('live', { limits }), 100 * 60_000);
   assert.equal(replayObservationTimeout('max', { limits }), 60 * 60_000);
+});
+
+test('maximum fixture preparation extends past the former fixed timeout only on exact progress', async () => {
+  const progress = MAX_FIXTURE_SEQUENCE.map((_, index) => maxFixtureProgress(index));
+  const frames = [
+    { at: 0, events: [] },
+    ...progress.map((_, index) => ({ at: (index + 1) * 50_000, events: progress.slice(0, index + 1) })),
+    {
+      at: 950_000,
+      events: [...progress, {
+        event: 'replay_ready', stagedMaxFixtureBytes: progress.at(-1).stagedMaxFixtureBytes,
+      }],
+    },
+  ];
+  const ready = await waitForMaxFixturePreparation(
+    'worker', maxPreparationManifest, scriptedPreparationRuntime(frames),
+  );
+  assert.equal(ready.event, 'replay_ready');
+  assert.equal(frames.at(-1).at > 600_000, true);
+});
+
+test('driver seals the exact maximum-fixture sequence before readiness', () => {
+  const emitted = [];
+  const tracker = createMaxFixtureSequence(
+    { maxFixtureSequence: MAX_FIXTURE_SEQUENCE },
+    (event, details) => emitted.push({ event, ...details }),
+  );
+  MAX_FIXTURE_SEQUENCE.forEach((label, index) => {
+    tracker.seal(label, index + 1, ((index + 1) * (index + 2)) / 2, 'a'.repeat(64));
+  });
+  assert.doesNotThrow(() => tracker.assertComplete());
+  assert.deepEqual(emitted.map(item => item.sequence), Array.from({ length: 18 }, (_, index) => index + 1));
+
+  const drifted = createMaxFixtureSequence(
+    { maxFixtureSequence: MAX_FIXTURE_SEQUENCE }, () => {},
+  );
+  assert.throws(() => drifted.seal('unknown', 1, 1, 'a'.repeat(64)), /sequence drifted/);
+  assert.throws(() => drifted.assertComplete(), /incomplete/);
+});
+
+test('maximum fixture preparation does not renew idle time for reread progress', async () => {
+  const progress = maxFixtureProgress(0);
+  const runtime = scriptedPreparationRuntime([
+    { at: 0, events: [] },
+    { at: 50_000, events: [progress] },
+    { at: 100_000, events: [progress] },
+    { at: 170_000, events: [progress] },
+  ]);
+  await assert.rejects(
+    waitForMaxFixturePreparation('worker', maxPreparationManifest, runtime),
+    /idle.*output-below-success.*1\/18/i,
+  );
+});
+
+test('maximum fixture preparation fails closed at idle and absolute bounds', async () => {
+  await assert.rejects(waitForMaxFixturePreparation(
+    'idle-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([{ at: 0, events: [] }, { at: 120_000, events: [] }]),
+  ), /idle/i);
+
+  const progress = MAX_FIXTURE_SEQUENCE.slice(0, 12).map((_, index) => maxFixtureProgress(index));
+  const frames = [
+    { at: 0, events: [] },
+    ...progress.map((_, index) => ({ at: (index + 1) * 100_000, events: progress.slice(0, index + 1) })),
+  ];
+  await assert.rejects(waitForMaxFixturePreparation(
+    'absolute-worker', maxPreparationManifest, scriptedPreparationRuntime(frames),
+  ), /absolute/i);
+});
+
+test('maximum fixture preparation rejects malformed sequence and container exit', async () => {
+  const malformed = { ...maxFixtureProgress(0), sha256: 'not-a-digest' };
+  await assert.rejects(waitForMaxFixturePreparation(
+    'malformed-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([{ at: 0, events: [] }, { at: 1, events: [malformed] }]),
+  ), /malformed.*sha256/i);
+
+  await assert.rejects(waitForMaxFixturePreparation(
+    'stopped-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([{ at: 0, events: [], running: 'false' }]),
+  ), /stopped.*replay_ready/i);
+
+  await assert.rejects(waitForMaxFixturePreparation(
+    'unknown-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([{
+      at: 0, events: [{ ...maxFixtureProgress(0), label: 'unknown-fixture' }],
+    }]),
+  ), /sequence/i);
+});
+
+test('maximum fixture preparation rejects duplicate, cumulative, truncated, and premature traces', async () => {
+  const first = maxFixtureProgress(0);
+  for (const [events, message] of [
+    [[first, first], /sequence/],
+    [[{ ...first, stagedMaxFixtureBytes: first.stagedMaxFixtureBytes + 1 }], /cumulative/],
+    [[first, { event: 'replay_ready', stagedMaxFixtureBytes: first.stagedMaxFixtureBytes }], /exact sequence/],
+  ]) {
+    await assert.rejects(waitForMaxFixturePreparation(
+      'invalid-worker',
+      maxPreparationManifest,
+      scriptedPreparationRuntime([{ at: 0, events }, { at: 1, events }]),
+    ), message);
+  }
+
+  await assert.rejects(waitForMaxFixturePreparation(
+    'truncated-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([
+      { at: 0, events: [first] },
+      { at: 1, events: [] },
+    ]),
+  ), /history shrank/);
+
+  const complete = MAX_FIXTURE_SEQUENCE.map((_, index) => maxFixtureProgress(index));
+  await assert.rejects(waitForMaxFixturePreparation(
+    'post-final-idle-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([
+      { at: 0, events: complete },
+      { at: 120_000, events: complete },
+    ]),
+  ), /idle.*combined.*18\/18/i);
+
+  await assert.rejects(waitForMaxFixturePreparation(
+    'staging-budget-worker',
+    { ...maxPreparationManifest, limits: { ...maxPreparationManifest.limits, maxFixtureStageBytes: 50 } },
+    scriptedPreparationRuntime([{ at: 0, events: [first] }]),
+  ), /staging budget/i);
+});
+
+test('maximum product observation receives a fresh clock only after preparation and start', () => {
+  assert.match(replayControllerSource,
+    /await waitForMaxFixturePreparation\(names\.worker, manifest\)[\s\S]*signal', 'USR2'[\s\S]*const deadline = Date\.now\(\) \+ timeout/);
 });
 
 test('resource sampling accepts subject exit races but fails closed while running', () => {
@@ -405,6 +591,9 @@ test('sealed fixture deterministically matches its manifest union and counts', (
   assert.equal(sealed.limits.maxFixtureStageBytes, 96 * 1024 * 1024);
   assert.equal(sealed.limits.liveOuterMs, 100 * 60_000);
   assert.equal(sealed.limits.addressHistoryMs, 5 * 60_000);
+  assert.equal(sealed.limits.maxFixturePreparationIdleMs, 120_000);
+  assert.equal(sealed.limits.maxFixturePreparationMs, 20 * 60_000);
+  assert.deepEqual(sealed.maxFixtureSequence, MAX_FIXTURE_SEQUENCE);
 });
 
 test('TERM during setup preserves failure receipts and exact owned cleanup', async () => {
