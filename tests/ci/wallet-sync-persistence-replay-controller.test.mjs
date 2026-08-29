@@ -22,6 +22,7 @@ import {
   postgresRunArgs,
   qualifyRc10Failure,
   replayObservationTimeout,
+  shouldStopQualifiedRc10Observation,
   validateReceiptValidationTrace,
   validateLiveReceiptInvariants,
   validateArchitectureReceipts,
@@ -664,6 +665,25 @@ test('RC10 failure only qualifies after checkExisting and persistence are observ
   };
   assert.deepEqual(qualifyRc10Failure(reached, manifest), { qualified: true, reason: 'oom' });
   assert.equal(qualifyRc10Failure({ ...reached, oomKilled: false }, manifest).qualified, false);
+});
+
+test('RC10 observation stops as soon as an authorized failure is fully evidenced', () => {
+  const reached = [
+    { event: 'phase_completed', stage: 'checkExisting' },
+    { event: 'mutation_started', unit: 'transaction_batch' },
+  ];
+
+  assert.equal(shouldStopQualifiedRc10Observation(
+    { role: 'rc10', mode: 'live' }, reached, 1, 0, manifest,
+  ), true);
+  assert.equal(shouldStopQualifiedRc10Observation(
+    { role: 'rc10', mode: 'live' }, reached.slice(0, 1), 1, 0, manifest,
+  ), false);
+  assert.equal(shouldStopQualifiedRc10Observation(
+    { role: 'rc11', mode: 'live' }, reached, 1, 0, manifest,
+  ), false);
+  assert.match(replayControllerSource,
+    /shouldStopQualifiedRc10Observation\([\s\S]*docker', 'kill', names\.worker/);
 });
 
 test('JSONL parser ignores non-events and malformed output', () => {

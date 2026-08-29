@@ -291,6 +291,16 @@ export function qualifyRc10Failure(result, manifest) {
   return { qualified: false, reason: 'no authorized persistence-stage failure' };
 }
 
+export function shouldStopQualifiedRc10Observation(subject, events, failedProbes, peakBytes, manifest) {
+  if (subject.role !== 'rc10' || subject.mode !== 'live') return false;
+  return qualifyRc10Failure({
+    events,
+    oomKilled: false,
+    failedProbes,
+    peakBytes,
+  }, manifest).qualified;
+}
+
 const run = (args, options = {}) => execFileSync(args[0], args.slice(1), {
   encoding: 'utf8', stdio: options.stdio ?? ['ignore', 'pipe', 'pipe'], ...options,
 });
@@ -706,7 +716,18 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
       sampledPeakBytes = Math.max(sampledPeakBytes, resourceSample.sampled);
       currentPeakBytes = Math.max(currentPeakBytes, resourceSample.current);
       kernelPeakBytes = Math.max(kernelPeakBytes, resourceSample.kernel);
-      if (!completionReleased && parseJsonEvents(logs(names.worker)).some(event => event.event === 'replay_cleanup_completed')) {
+      const observedEvents = parseJsonEvents(logs(names.worker));
+      if (shouldStopQualifiedRc10Observation(
+        subject,
+        observedEvents,
+        samples.filter(sample => !sample.ok).length,
+        Math.max(sampledPeakBytes, kernelPeakBytes),
+        manifest,
+      )) {
+        run(['docker', 'kill', names.worker]);
+        break;
+      }
+      if (!completionReleased && observedEvents.some(event => event.event === 'replay_cleanup_completed')) {
         completionReleased = true;
         run(['docker', 'kill', '--signal', 'HUP', names.worker]);
         break;
