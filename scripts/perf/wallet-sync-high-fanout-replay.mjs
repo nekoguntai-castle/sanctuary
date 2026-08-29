@@ -374,13 +374,9 @@ export function postgresRunArgs(names, password, mode) {
     '-c', `statement_timeout=${statementTimeoutMs}`, '-c', 'log_min_duration_statement=0'];
 }
 
-export function workerRunArgs(subject, names, databaseUrl) {
-  return ['docker', 'run', '--detach', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
+export function workerCreateArgs(subject, names, databaseUrl) {
+  return ['docker', 'create', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
     '--memory-swap', '1280m', '--publish', '127.0.0.1::3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
-    '--mount', `type=bind,src=${DRIVER_PATH},dst=/replay/${basename(DRIVER_PATH)},readonly`,
-    '--mount', `type=bind,src=${DRIVER_HELPER_PATH},dst=/replay/${basename(DRIVER_HELPER_PATH)},readonly`,
-    '--mount', `type=bind,src=${FIXTURE_PATH},dst=/replay/${basename(FIXTURE_PATH)},readonly`,
-    '--mount', `type=bind,src=${subject.manifestPath},dst=/replay/${basename(subject.manifestPath)},readonly`,
     '--env', 'NODE_OPTIONS=--max-old-space-size=1024', '--env', `DATABASE_URL=${databaseUrl}`,
     '--env', `WALLET_SYNC_MUTATION_TIMEOUT_MS=${subject.mode === 'max' ? 45000 : 60000}`,
     '--env', 'REDIS_URL=redis://127.0.0.1:1',
@@ -389,8 +385,22 @@ export function workerRunArgs(subject, names, databaseUrl) {
     '--env', 'WORKER_DIAGNOSTICS_SECRET=wallet-sync-replay-diagnostics-secret-32-bytes',
     '--env', 'GATEWAY_SECRET=wallet-sync-replay-gateway-secret-32-bytes',
     '--env', `SANCTUARY_REPLAY_ROLE=${subject.role}`, '--env', `SANCTUARY_REPLAY_MODE=${subject.mode}`,
-    '--env', `SANCTUARY_REPLAY_MANIFEST=/replay/${basename(subject.manifestPath)}`,
-    subject.image, 'node', '--expose-gc', `/replay/${basename(DRIVER_PATH)}`];
+    '--env', `SANCTUARY_REPLAY_DRIVER_HELPERS=/app/${basename(DRIVER_HELPER_PATH)}`,
+    '--env', `SANCTUARY_REPLAY_FIXTURE=/app/${basename(FIXTURE_PATH)}`,
+    '--env', `SANCTUARY_REPLAY_MANIFEST=/app/${basename(subject.manifestPath)}`,
+    subject.image, 'node', '--expose-gc', `/app/${basename(DRIVER_PATH)}`];
+}
+
+export function workerFileCopyArgs(subject, names) {
+  return [DRIVER_PATH, DRIVER_HELPER_PATH, FIXTURE_PATH, subject.manifestPath].map(source => (
+    ['docker', 'cp', source, `${names.worker}:/app/${basename(source)}`]
+  ));
+}
+
+export function stageAndStartWorker(subject, names, databaseUrl, operation = run) {
+  operation(workerCreateArgs(subject, names, databaseUrl));
+  workerFileCopyArgs(subject, names).forEach(args => operation(args));
+  operation(['docker', 'start', names.worker]);
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -415,7 +425,7 @@ async function startDatabase(names, password, image, mode) {
 }
 
 function startWorker(subject, names, databaseUrl) {
-  run(workerRunArgs(subject, names, databaseUrl));
+  stageAndStartWorker(subject, names, databaseUrl);
 }
 
 export async function observe(subject, manifest, evidenceDir, failureRuntime = {

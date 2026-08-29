@@ -26,7 +26,9 @@ import {
   validateMaxArchitectureReceipts,
   validateProductionEvidenceReleaseReceipts,
   validatePhaseAndMutationTrace,
-  workerRunArgs,
+  stageAndStartWorker,
+  workerCreateArgs,
+  workerFileCopyArgs,
 } from '../../scripts/perf/wallet-sync-high-fanout-replay.mjs';
 
 const replayDriverSource = readFileSync(
@@ -120,7 +122,7 @@ test('resource snapshots retain counter provenance at baseline and fixture-ready
   });
 });
 
-test('container argv seals distinct resources, cgroups, timeouts, and read-only mounts', () => {
+test('container argv seals distinct resources, cgroups, and timeouts', () => {
   const names = ownedResourceNames('rc11', 'fixture');
   assert.equal(new Set(Object.values(names)).size, 3);
   const postgres = postgresRunArgs(names, 'secret', 'max');
@@ -129,15 +131,36 @@ test('container argv seals distinct resources, cgroups, timeouts, and read-only 
   ]);
   assert.ok(postgres.includes('statement_timeout=20000'));
   assert.ok(postgresRunArgs(names, 'secret', 'live').includes('statement_timeout=30000'));
-  const worker = workerRunArgs({
+  const subject = {
     role: 'rc11', mode: 'max', image: 'subject-image', manifestPath: '/tmp/manifest.json',
-  }, names, 'postgresql://database');
+  };
+  const worker = workerCreateArgs(subject, names, 'postgresql://database');
+  assert.equal(worker[1], 'create');
   assert.deepEqual(worker.slice(worker.indexOf('--cpus'), worker.indexOf('--cpus') + 6), [
     '--cpus', '1', '--memory', '1g', '--memory-swap', '1280m',
   ]);
-  assert.equal(worker.filter(value => value.startsWith('type=bind,')).length, 4);
-  assert.ok(worker.filter(value => value.startsWith('type=bind,')).every(value => value.endsWith(',readonly')));
+  assert.equal(worker.some(value => value.startsWith('type=bind,')), false);
+  assert.equal(worker.at(-1), '/app/wallet-sync-persistence-driver.cjs');
   assert.ok(worker.includes('WALLET_SYNC_MUTATION_TIMEOUT_MS=45000'));
+  assert.ok(worker.includes('SANCTUARY_REPLAY_DRIVER_HELPERS=/app/wallet-sync-persistence-driver-helpers.cjs'));
+  assert.ok(worker.includes('SANCTUARY_REPLAY_FIXTURE=/app/wallet-sync-persistence-fixture.cjs'));
+  assert.ok(worker.includes('SANCTUARY_REPLAY_MANIFEST=/app/manifest.json'));
+
+  const copies = workerFileCopyArgs(subject, names);
+  assert.equal(copies.length, 4);
+  assert.ok(copies.every(args => args[0] === 'docker' && args[1] === 'cp'));
+  assert.deepEqual(copies.map(args => args.at(-1)), [
+    `${names.worker}:/app/wallet-sync-persistence-driver.cjs`,
+    `${names.worker}:/app/wallet-sync-persistence-driver-helpers.cjs`,
+    `${names.worker}:/app/wallet-sync-persistence-fixture.cjs`,
+    `${names.worker}:/app/manifest.json`,
+  ]);
+
+  const operations = [];
+  stageAndStartWorker(subject, names, 'postgresql://database', args => operations.push(args));
+  assert.equal(operations[0][1], 'create');
+  assert.deepEqual(operations.slice(1, -1), copies);
+  assert.deepEqual(operations.at(-1), ['docker', 'start', names.worker]);
 });
 
 test('RC11 gate enforces exact resource, health, SQL, mutation, and cleanup boundaries', () => {

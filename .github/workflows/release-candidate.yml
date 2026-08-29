@@ -293,7 +293,8 @@ jobs:
 
   # This exact-production-shape job owns both the immutable RC10 negative
   # control and the RC11 100/69/no-op proof. The external controller creates a
-  # fresh PostgreSQL database for each subject and mounts its driver read-only.
+  # fresh PostgreSQL database for each subject and stages its sealed driver
+  # through the daemon API.
   wallet-sync-live-shape:
     name: Wallet Sync Live Shape Replay
     runs-on: [ubuntu-22.04, docker-socket]
