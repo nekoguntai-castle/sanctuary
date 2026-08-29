@@ -79,24 +79,28 @@ matching tag or Release object when reconciliation is needed.
 1. Complete version preparation through a protected Forgejo pull request.
    Confirm the PR-reported merge commit is an ancestor of freshly fetched
    `origin/main` before deleting its branch or selecting an RC commit.
-2. Create the next unused RC tag on that exact commit and wait for its Forgejo
-   release-candidate and `install-test.yml` runs to finish successfully. If it
-   fails, follow the recovery state machine below and use a new RC number.
-3. Run the affected-fleet
+2. From freshly fetched `main`, manually dispatch `release-candidate.yml` and
+   require its locked `candidate_sha` to equal that intended merge commit.
+   Create no tag unless every candidate job passes and `Validation Summary` succeeds.
+3. Create the next unused RC tag on that exact validated commit and wait for
+   its Forgejo release-candidate and `install-test.yml` runs to finish
+   successfully. If either fails, follow the recovery state machine below and
+   use a new RC number.
+4. Run the affected-fleet
    [release-candidate canary](../how-to/release-candidate-canary.md) against the
    exact accepted RC tag and commit. Keep its receipt outside the checkout.
-4. Validate that receipt and complete credential, signing-key, and new external
+5. Validate that receipt and complete credential, signing-key, and new external
    output-directory readiness checks. Create the stable tag on the exact accepted
    RC commit only after every pre-tag check succeeds, then wait for the stable
    tag's own `install-test.yml` run.
-5. Check out the immutable stable tag in a clean worktree.
-6. Rehearse without API writes:
+6. Check out the immutable stable tag in a clean worktree.
+7. Rehearse without API writes:
 
    ```bash
    npm run release:publish -- v0.8.57 --dry-run
    ```
 
-7. Prepare the complete signed release asset set outside the checkout. The
+8. Prepare the complete signed release asset set outside the checkout. The
    output directory must be new and empty:
 
    ```bash
@@ -108,13 +112,13 @@ matching tag or Release object when reconciliation is needed.
      --run-id operator-20260731-01
    ```
 
-8. Publish the stable Release objects:
+9. Publish the stable Release objects:
 
    ```bash
    npm run release:publish -- v0.8.57
    ```
 
-9. Attach and byte-verify the exact signed asset inventory on both providers:
+10. Attach and byte-verify the exact signed asset inventory on both providers:
 
    ```bash
    COMMIT="$(git rev-parse 'v0.8.57^{commit}')"

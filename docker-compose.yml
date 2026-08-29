@@ -326,9 +326,8 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      # Node.js memory settings
-      NODE_OPTIONS: "--max-old-space-size=1024"
-
+      # Keep process-wide V8 heap flags unset: Node derives the main heap from
+      # this service's cgroup while evidence threads retain their tighter limit.
       # Server
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}

@@ -575,7 +575,7 @@ export function postgresRunArgs(names, password, mode) {
 export function workerCreateArgs(subject, names, databaseUrl) {
   return ['docker', 'create', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
     '--memory-swap', '1280m', '--publish', '3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
-    '--env', 'NODE_OPTIONS=--max-old-space-size=1024', '--env', `DATABASE_URL=${databaseUrl}`,
+    '--env', `DATABASE_URL=${databaseUrl}`,
     '--env', `WALLET_SYNC_MUTATION_TIMEOUT_MS=${subject.mode === 'max' ? 45000 : 60000}`,
     '--env', 'REDIS_URL=redis://127.0.0.1:1',
     '--env', 'JWT_SECRET=wallet-sync-replay-jwt-secret-32-characters',

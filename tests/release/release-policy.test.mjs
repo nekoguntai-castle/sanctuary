@@ -96,6 +96,18 @@ test('merge proof and readiness happen before branch deletion and stable tagging
   assert.match(distribution, /outside every repository worktree/);
 });
 
+test('landed commit validation succeeds before an immutable RC tag is created', () => {
+  const dispatch = distribution.indexOf('manually dispatch `release-candidate.yml`');
+  const candidateSha = distribution.indexOf('locked `candidate_sha`');
+  const validation = distribution.indexOf('`Validation Summary` succeeds');
+  const rcTag = distribution.indexOf('Create the next unused RC tag');
+
+  assert.ok(dispatch > -1);
+  assert.ok(candidateSha > dispatch);
+  assert.ok(validation > candidateSha);
+  assert.ok(rcTag > validation);
+});
+
 test('owned release surfaces exclude stale or destructive mechanics', () => {
   const tracked = [distribution, gates, contributing, bump, preparedVerifier];
   const localCommands = localSurfaces

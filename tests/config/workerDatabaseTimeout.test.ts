@@ -33,4 +33,11 @@ describe('worker database timeout contract', () => {
       'SYNC_MAX_CONCURRENT: ${SYNC_MAX_CONCURRENT:-1}',
     );
   });
+
+  it('keeps process-wide V8 heap overrides off the worker service', () => {
+    const worker = workerServiceBlock();
+
+    expect(worker).not.toContain('NODE_OPTIONS');
+    expect(worker).not.toContain('--max-old-space-size');
+  });
 });

@@ -448,6 +448,7 @@ test('container argv seals distinct resources, cgroups, and timeouts', () => {
   assert.equal(worker[worker.indexOf('--publish') + 1], '3002');
   assert.equal(worker.includes('0.0.0.0::3002'), false);
   assert.equal(worker.includes('127.0.0.1::3002'), false);
+  assert.equal(worker.some(value => value.startsWith('NODE_OPTIONS=')), false);
   assert.equal(worker.at(-1), '/app/wallet-sync-persistence-driver.cjs');
   assert.ok(worker.includes('WALLET_SYNC_MUTATION_TIMEOUT_MS=45000'));
   assert.ok(worker.includes('SANCTUARY_REPLAY_DRIVER_HELPERS=/app/wallet-sync-persistence-driver-helpers.cjs'));
