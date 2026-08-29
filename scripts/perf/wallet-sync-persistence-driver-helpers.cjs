@@ -86,6 +86,113 @@ function createMaxFixtureSequence(manifest, emit) {
   };
 }
 
+function createMaxCombinedFixtureProgressSequence(manifest, emit) {
+  const labels = manifest.maxCombinedFixtureProgressSequence;
+  let count = 0;
+  return {
+    complete(label) {
+      if (!Array.isArray(labels) || labels.length !== 5 || labels[count] !== label) {
+        throw new Error(`Maximum combined fixture progress drifted at ${label}`);
+      }
+      count += 1;
+      emit('max_combined_fixture_progress', { label, sequence: count, total: labels.length });
+    },
+    assertComplete() {
+      if (count !== labels.length) throw new Error(`Maximum combined fixture progress incomplete: ${count}`);
+    },
+  };
+}
+
+function rawTransactionDetails(transaction) {
+  return { txid: transaction.getId(), hex: transaction.toHex(), vin: [], vout: [] };
+}
+
+function buildMaxTransaction(
+  bitcoin, externalScript, ownedScript, previous, outputCount, scriptBytes = 0, progress,
+) {
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  if (previous.length === 0) {
+    transaction.ins = [{
+      hash: new Uint8Array(32), index: 0xffffffff, script: Buffer.from([1, 1]),
+      sequence: 0xffffffff, witness: [],
+    }];
+  } else {
+    transaction.ins = previous.map((details, index) => ({
+      hash: Buffer.from(details.txid, 'hex').reverse(), index: details.vout ?? 0,
+      script: index === 0 && scriptBytes > 0 ? Buffer.alloc(scriptBytes) : new Uint8Array(),
+      sequence: 0xffffffff, witness: [],
+    }));
+  }
+  progress?.('transaction-inputs-built');
+  transaction.outs = [
+    ...Array.from({ length: outputCount - 1 }, () => ({ script: externalScript, value: 1n })),
+    { script: ownedScript, value: 1n },
+  ];
+  progress?.('transaction-outputs-built');
+  const details = rawTransactionDetails(transaction);
+  progress?.('transaction-serialized');
+  return details;
+}
+
+function buildMaxFixture(
+  bitcoin, axis, walletOrdinal, scriptBytes = 0, countOverride,
+  includePreviousEvidence = true, outputCountOverride, progress,
+) {
+  const hash = Buffer.alloc(20);
+  hash.writeUInt32BE(9000 + walletOrdinal, 16);
+  const addressItem = bitcoin.payments.p2wpkh({ hash, network: bitcoin.networks.bitcoin });
+  if (!addressItem.address || !addressItem.output) throw new Error('Could not build max-shape address');
+  const externalScript = bitcoin.payments.p2wpkh({
+    hash: Buffer.alloc(20, 0xee), network: bitcoin.networks.bitcoin,
+  }).output;
+  if (!externalScript) throw new Error('Could not build max-shape external script');
+  const inputCount = axis === 'input' ? (countOverride ?? 24389) : 0;
+  const outputCount = outputCountOverride ?? (axis === 'output' ? (countOverride ?? 25000) : 1);
+  const previous = inputCount > 0 && includePreviousEvidence ? (() => {
+    const parent = new bitcoin.Transaction();
+    parent.version = 2;
+    parent.locktime = walletOrdinal;
+    parent.ins = [{ hash: new Uint8Array(32), index: 0xffffffff,
+      script: Buffer.from([1, walletOrdinal & 0xff]), sequence: 0xffffffff, witness: [] }];
+    parent.outs = Array.from({ length: inputCount }, () => ({ script: addressItem.output, value: 1n }));
+    return [rawTransactionDetails(parent)];
+  })() : [];
+  const inputReferences = includePreviousEvidence
+    ? Array.from({ length: inputCount }, (_, vout) => ({ txid: previous[0].txid, vout }))
+    : Array.from({ length: inputCount }, () => ({ txid: '11'.repeat(32) }));
+  progress?.('input-references-built');
+  const details = buildMaxTransaction(
+    bitcoin, externalScript, addressItem.output, inputReferences, outputCount, scriptBytes, progress,
+  );
+  const walletId = `00000000-0000-4000-8000-${String(100000000000 + walletOrdinal).slice(-12)}`;
+  const leaseToken = `00000000-0000-4000-8001-${String(100000000000 + walletOrdinal).slice(-12)}`;
+  const address = {
+    id: `max-address-${walletOrdinal}`, walletId, address: addressItem.address,
+    derivationPath: "m/84'/0'/0'/0/0", index: 0, branch: 0, coordinateVersion: 1,
+    canonicalPolicyId: 'single_sig_native_segwit', canonicalPolicyVersion: 1,
+    scriptPubKey: Buffer.from(addressItem.output).toString('hex'), used: false, createdAt: new Date(0),
+  };
+  const weight = bitcoin.Transaction.fromHex(details.hex).weight();
+  progress?.('weight-measured');
+  return {
+    definition: { walletId, leaseToken, leaseGeneration: 1, network: 'mainnet', addressCount: 1, seededOutputs: [] },
+    addresses: [address],
+    histories: new Map([[address.address, [{ tx_hash: details.txid, height: 800000 }]]]),
+    transactions: [{ addressIndex: 0, outputCount, details }],
+    rawTransactions: new Map([[details.txid, details], ...previous.map(parent => [parent.txid, parent])]),
+    previousTransactions: previous,
+    utxos: new Map([[address.address, [{ tx_hash: details.txid, tx_pos: outputCount - 1, value: 1, height: 800000 }]]]),
+    weight,
+    inputCount,
+    outputCount,
+  };
+}
+
+function buildCombinedMaxFixture(bitcoin, counts, progress) {
+  return buildMaxFixture(bitcoin, 'input', 100, 0, counts.inputs, false, counts.outputs, progress);
+}
+
 function createArchitectureState() {
   return {
     compact: new Map(),
@@ -460,4 +567,10 @@ function assertPreStartUtxos(fixture, receipt) {
   if (!ids.has(fixture.seededValidUtxo.id)) throw new Error('Pre-start seeded valid UTXO is missing');
 }
 
-module.exports = { createDriverHelpers, createMaxFixtureSequence };
+module.exports = {
+  buildCombinedMaxFixture,
+  buildMaxFixture,
+  createDriverHelpers,
+  createMaxCombinedFixtureProgressSequence,
+  createMaxFixtureSequence,
+};

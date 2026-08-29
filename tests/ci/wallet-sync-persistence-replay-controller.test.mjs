@@ -44,6 +44,13 @@ const MAX_FIXTURE_SEQUENCE = [
   'input-count-24999', 'input-count-25000', 'input-count-25001',
   'combined',
 ];
+const MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE = [
+  'input-references-built',
+  'transaction-inputs-built',
+  'transaction-outputs-built',
+  'transaction-serialized',
+  'weight-measured',
+];
 
 const maxFixtureProgress = (index) => ({
   event: 'max_fixture_sealed',
@@ -56,6 +63,12 @@ const maxFixtureProgress = (index) => ({
     { length: index + 1 },
     (_, itemIndex) => 100 + itemIndex,
   ).reduce((sum, value) => sum + value, 0),
+});
+const maxCombinedFixtureProgress = index => ({
+  event: 'max_combined_fixture_progress',
+  label: MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE[index],
+  sequence: index + 1,
+  total: MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE.length,
 });
 
 function scriptedPreparationRuntime(frames) {
@@ -71,6 +84,7 @@ function scriptedPreparationRuntime(frames) {
 
 const maxPreparationManifest = {
   maxFixtureSequence: MAX_FIXTURE_SEQUENCE,
+  maxCombinedFixtureProgressSequence: MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE,
   limits: {
     maxFixturePreparationIdleMs: 120_000,
     maxFixturePreparationMs: 1_200_000,
@@ -91,9 +105,12 @@ const replayDriverHelperSource = readFileSync(
   'utf8',
 );
 const fixtureRequire = createRequire(import.meta.url);
-const { createDriverHelpers, createMaxFixtureSequence } = fixtureRequire(
-  '../../scripts/perf/wallet-sync-persistence-driver-helpers.cjs',
-);
+const {
+  buildCombinedMaxFixture,
+  createDriverHelpers,
+  createMaxCombinedFixtureProgressSequence,
+  createMaxFixtureSequence,
+} = fixtureRequire('../../scripts/perf/wallet-sync-persistence-driver-helpers.cjs');
 test('replay driver exits explicitly after success or failure cleanup', () => {
   assert.match(replayDriverSource, /main\(\)\.then\([\s\S]*process\.exit\(0\)/);
   assert.match(replayDriverSource, /error => \{[\s\S]*emit\('replay_failed'[\s\S]*process\.exit\(1\)/);
@@ -137,14 +154,22 @@ test('outer observation budgets leave receipt and teardown headroom beyond per-p
 });
 
 test('maximum fixture preparation extends past the former fixed timeout only on exact progress', async () => {
-  const progress = MAX_FIXTURE_SEQUENCE.map((_, index) => maxFixtureProgress(index));
+  const progress = MAX_FIXTURE_SEQUENCE.slice(0, -1).map((_, index) => maxFixtureProgress(index));
+  const combined = MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE.map(
+    (_, index) => maxCombinedFixtureProgress(index),
+  );
+  const finalProgress = maxFixtureProgress(MAX_FIXTURE_SEQUENCE.length - 1);
   const frames = [
     { at: 0, events: [] },
     ...progress.map((_, index) => ({ at: (index + 1) * 50_000, events: progress.slice(0, index + 1) })),
+    ...combined.map((_, index) => ({
+      at: 870_000 + (index * 20_000),
+      events: [...progress, ...combined.slice(0, index + 1)],
+    })),
     {
-      at: 950_000,
-      events: [...progress, {
-        event: 'replay_ready', stagedMaxFixtureBytes: progress.at(-1).stagedMaxFixtureBytes,
+      at: 980_000,
+      events: [...progress, ...combined, finalProgress, {
+        event: 'replay_ready', stagedMaxFixtureBytes: finalProgress.stagedMaxFixtureBytes,
       }],
     },
   ];
@@ -172,6 +197,18 @@ test('driver seals the exact maximum-fixture sequence before readiness', () => {
   );
   assert.throws(() => drifted.seal('unknown', 1, 1, 'a'.repeat(64)), /sequence drifted/);
   assert.throws(() => drifted.assertComplete(), /incomplete/);
+
+  const combinedEmitted = [];
+  const combinedTracker = createMaxCombinedFixtureProgressSequence(
+    { maxCombinedFixtureProgressSequence: MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE },
+    (event, details) => combinedEmitted.push({ event, ...details }),
+  );
+  MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE.forEach(label => combinedTracker.complete(label));
+  assert.doesNotThrow(() => combinedTracker.assertComplete());
+  assert.deepEqual(
+    combinedEmitted.map(item => item.label),
+    MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE,
+  );
 });
 
 test('maximum fixture preparation does not renew idle time for reread progress', async () => {
@@ -186,6 +223,75 @@ test('maximum fixture preparation does not renew idle time for reread progress',
     waitForMaxFixturePreparation('worker', maxPreparationManifest, runtime),
     /idle.*output-below-success.*1\/18/i,
   );
+});
+
+test('maximum fixture preparation accepts only new exact combined progress', async () => {
+  const sealed = MAX_FIXTURE_SEQUENCE.slice(0, -1).map((_, index) => maxFixtureProgress(index));
+  const first = maxCombinedFixtureProgress(0);
+  await assert.rejects(waitForMaxFixturePreparation(
+    'combined-reread-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([
+      { at: 0, events: [...sealed, first] },
+      { at: 60_000, events: [...sealed, first] },
+      { at: 120_000, events: [...sealed, first] },
+    ]),
+  ), /idle/i);
+
+  await assert.rejects(waitForMaxFixturePreparation(
+    'combined-order-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([{
+      at: 0,
+      events: [...sealed, maxCombinedFixtureProgress(1)],
+    }]),
+  ), /malformed maximum combined-fixture progress sequence/i);
+
+  await assert.rejects(waitForMaxFixturePreparation(
+    'combined-truncated-worker',
+    maxPreparationManifest,
+    scriptedPreparationRuntime([
+      { at: 0, events: [...sealed, first] },
+      { at: 1, events: sealed },
+    ]),
+  ), /protocol log history shrank/i);
+});
+
+test('maximum fixture preparation enforces one ordered cross-stream protocol', async () => {
+  const firstSeventeen = MAX_FIXTURE_SEQUENCE.slice(0, -1)
+    .map((_, index) => maxFixtureProgress(index));
+  const combined = MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE
+    .map((_, index) => maxCombinedFixtureProgress(index));
+  const finalSeal = maxFixtureProgress(MAX_FIXTURE_SEQUENCE.length - 1);
+  const ready = { event: 'replay_ready', stagedMaxFixtureBytes: finalSeal.stagedMaxFixtureBytes };
+  for (const [name, events, expected] of [
+    [
+      'combined-before-seals',
+      [...firstSeventeen.slice(0, -1), combined[0]],
+      /expected max_fixture_sealed before max_combined_fixture_progress/i,
+    ],
+    [
+      'final-seal-before-combined',
+      [...firstSeventeen, finalSeal],
+      /expected max_combined_fixture_progress before max_fixture_sealed/i,
+    ],
+    [
+      'ready-before-final-seal',
+      [...firstSeventeen, ...combined, ready],
+      /expected max_fixture_sealed before replay_ready/i,
+    ],
+    [
+      'duplicate-ready',
+      [...firstSeventeen, ...combined, finalSeal, ready, ready],
+      /event after replay_ready/i,
+    ],
+  ]) {
+    await assert.rejects(waitForMaxFixturePreparation(
+      name,
+      maxPreparationManifest,
+      scriptedPreparationRuntime([{ at: 0, events }]),
+    ), expected);
+  }
 });
 
 test('maximum fixture preparation fails closed at idle and absolute bounds', async () => {
@@ -233,7 +339,8 @@ test('maximum fixture preparation rejects duplicate, cumulative, truncated, and 
   for (const [events, message] of [
     [[first, first], /sequence/],
     [[{ ...first, stagedMaxFixtureBytes: first.stagedMaxFixtureBytes + 1 }], /cumulative/],
-    [[first, { event: 'replay_ready', stagedMaxFixtureBytes: first.stagedMaxFixtureBytes }], /exact sequence/],
+    [[first, { event: 'replay_ready', stagedMaxFixtureBytes: first.stagedMaxFixtureBytes }],
+      /expected max_fixture_sealed before replay_ready/],
   ]) {
     await assert.rejects(waitForMaxFixturePreparation(
       'invalid-worker',
@@ -252,12 +359,15 @@ test('maximum fixture preparation rejects duplicate, cumulative, truncated, and 
   ), /history shrank/);
 
   const complete = MAX_FIXTURE_SEQUENCE.map((_, index) => maxFixtureProgress(index));
+  const combined = MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE.map(
+    (_, index) => maxCombinedFixtureProgress(index),
+  );
   await assert.rejects(waitForMaxFixturePreparation(
     'post-final-idle-worker',
     maxPreparationManifest,
     scriptedPreparationRuntime([
-      { at: 0, events: complete },
-      { at: 120_000, events: complete },
+      { at: 0, events: [...complete.slice(0, -1), ...combined, complete.at(-1)] },
+      { at: 120_000, events: [...complete.slice(0, -1), ...combined, complete.at(-1)] },
     ]),
   ), /idle.*combined.*18\/18/i);
 
@@ -594,6 +704,37 @@ test('sealed fixture deterministically matches its manifest union and counts', (
   assert.equal(sealed.limits.maxFixturePreparationIdleMs, 120_000);
   assert.equal(sealed.limits.maxFixturePreparationMs, 20 * 60_000);
   assert.deepEqual(sealed.maxFixtureSequence, MAX_FIXTURE_SEQUENCE);
+  assert.deepEqual(
+    sealed.maxCombinedFixtureProgressSequence,
+    MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE,
+  );
+});
+
+test('combined maximum fixture has one coherent transaction identity and shape', () => {
+  const require = createRequire(new URL('../../server/package.json', import.meta.url));
+  const bitcoin = require('bitcoinjs-lib');
+  const progress = [];
+  const fixture = buildCombinedMaxFixture(
+    bitcoin,
+    { inputs: 3, outputs: 4 },
+    label => progress.push(label),
+  );
+  const details = fixture.transactions[0].details;
+  const parsed = bitcoin.Transaction.fromHex(details.hex);
+  const history = fixture.histories.get(fixture.addresses[0].address)[0];
+  const utxo = fixture.utxos.get(fixture.addresses[0].address)[0];
+
+  assert.equal(parsed.ins.length, 3);
+  assert.equal(parsed.outs.length, 4);
+  assert.equal(fixture.inputCount, 3);
+  assert.equal(fixture.outputCount, 4);
+  assert.equal(fixture.transactions[0].outputCount, 4);
+  assert.equal(history.tx_hash, details.txid);
+  assert.equal(utxo.tx_hash, details.txid);
+  assert.equal(utxo.tx_pos, 3);
+  assert.equal(fixture.rawTransactions.get(details.txid), details);
+  assert.equal(fixture.weight, parsed.weight());
+  assert.deepEqual(progress, MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE);
 });
 
 test('TERM during setup preserves failure receipts and exact owned cleanup', async () => {

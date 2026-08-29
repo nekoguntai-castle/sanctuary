@@ -360,6 +360,7 @@ const defaultPreparationRuntime = {
 
 function maxFixturePreparationContract(manifest) {
   const sequence = manifest.maxFixtureSequence;
+  const combinedSequence = manifest.maxCombinedFixtureProgressSequence;
   const idleMs = manifest.limits.maxFixturePreparationIdleMs;
   const maximumMs = manifest.limits.maxFixturePreparationMs;
   if (!Array.isArray(sequence) || sequence.length !== 18
@@ -367,11 +368,16 @@ function maxFixturePreparationContract(manifest) {
     || new Set(sequence).size !== sequence.length) {
     throw new Error('Sealed maximum-fixture sequence is invalid');
   }
+  if (!Array.isArray(combinedSequence) || combinedSequence.length !== 5
+    || combinedSequence.some(label => typeof label !== 'string' || label.length === 0)
+    || new Set(combinedSequence).size !== combinedSequence.length) {
+    throw new Error('Sealed maximum combined-fixture progress sequence is invalid');
+  }
   if (!Number.isSafeInteger(idleMs) || idleMs <= 0
     || !Number.isSafeInteger(maximumMs) || maximumMs <= idleMs) {
     throw new Error('Sealed maximum-fixture preparation limits are invalid');
   }
-  return { idleMs, maximumMs, sequence };
+  return { combinedSequence, idleMs, maximumMs, sequence };
 }
 
 function validateMaxFixtureProgress(
@@ -396,10 +402,73 @@ function validateMaxFixtureProgress(
   }
 }
 
+function validateMaxCombinedFixtureProgress(item, expectedLabel, expectedSequence, total) {
+  if (item.label !== expectedLabel || item.sequence !== expectedSequence || item.total !== total) {
+    throw new Error(
+      `Malformed maximum combined-fixture progress sequence ${item.sequence ?? '<missing>'}/${total}`,
+    );
+  }
+}
+
 function preparationTimeoutError(kind, name, progress, total, lastLabel) {
   return new Error(
     `Maximum-fixture preparation ${kind} for ${name}; last=${lastLabel ?? 'none'} progress=${progress}/${total}`,
   );
+}
+
+const MAX_PREPARATION_EVENTS = new Set([
+  'max_fixture_sealed',
+  'max_combined_fixture_progress',
+  'replay_ready',
+]);
+
+function expectedMaxPreparationEvent(state, contract) {
+  if (state.progressCount < contract.sequence.length - 1) return 'max_fixture_sealed';
+  if (state.combinedProgressCount < contract.combinedSequence.length) {
+    return 'max_combined_fixture_progress';
+  }
+  if (state.progressCount < contract.sequence.length) return 'max_fixture_sealed';
+  return 'replay_ready';
+}
+
+function consumeMaxPreparationEvent(item, state, contract, maximumStagedBytes) {
+  if (state.ready) throw new Error('Maximum-fixture protocol emitted an event after replay_ready');
+  const expectedEvent = expectedMaxPreparationEvent(state, contract);
+  if (item.event !== expectedEvent) {
+    throw new Error(`Maximum-fixture protocol expected ${expectedEvent} before ${item.event}`);
+  }
+  if (item.event === 'max_fixture_sealed') {
+    validateMaxFixtureProgress(
+      item, contract.sequence[state.progressCount], state.progressCount + 1,
+      contract.sequence.length, state.stagedBytes, maximumStagedBytes,
+    );
+    state.stagedBytes = item.stagedMaxFixtureBytes;
+    state.progressCount += 1;
+  } else if (item.event === 'max_combined_fixture_progress') {
+    validateMaxCombinedFixtureProgress(
+      item, contract.combinedSequence[state.combinedProgressCount],
+      state.combinedProgressCount + 1, contract.combinedSequence.length,
+    );
+    state.combinedProgressCount += 1;
+  } else if (item.stagedMaxFixtureBytes !== state.stagedBytes) {
+    throw new Error('Maximum-fixture replay_ready staged-byte evidence drifted');
+  } else {
+    state.ready = item;
+  }
+  state.lastLabel = item.label ?? item.event;
+}
+
+function consumeMaxPreparationEvents(events, state, contract, maximumStagedBytes) {
+  const protocolEvents = events.filter(item => MAX_PREPARATION_EVENTS.has(item.event));
+  if (protocolEvents.length < state.eventCount) {
+    throw new Error('Maximum-fixture protocol log history shrank');
+  }
+  const previousEventCount = state.eventCount;
+  for (const item of protocolEvents.slice(state.eventCount)) {
+    consumeMaxPreparationEvent(item, state, contract, maximumStagedBytes);
+    state.eventCount += 1;
+  }
+  return state.eventCount > previousEventCount;
 }
 
 export async function waitForMaxFixturePreparation(
@@ -407,46 +476,40 @@ export async function waitForMaxFixturePreparation(
   manifest,
   runtime = defaultPreparationRuntime,
 ) {
-  const { idleMs, maximumMs, sequence } = maxFixturePreparationContract(manifest);
+  const { combinedSequence, idleMs, maximumMs, sequence } = maxFixturePreparationContract(manifest);
   const maximumStagedBytes = manifest.limits.maxFixtureStageBytes;
   if (!Number.isSafeInteger(maximumStagedBytes) || maximumStagedBytes <= 0) {
     throw new Error('Sealed maximum-fixture staging budget is invalid');
   }
   const startedAt = runtime.now();
   let lastProgressAt = startedAt;
-  let progressCount = 0;
-  let stagedBytes = 0;
-  let lastLabel;
+  const state = {
+    combinedProgressCount: 0,
+    eventCount: 0,
+    lastLabel: undefined,
+    progressCount: 0,
+    ready: undefined,
+    stagedBytes: 0,
+  };
   for (;;) {
     throwIfTerminated();
     const now = runtime.now();
     if (now - startedAt >= maximumMs) {
-      throw preparationTimeoutError('absolute timeout', name, progressCount, sequence.length, lastLabel);
+      throw preparationTimeoutError(
+        'absolute timeout', name, state.progressCount, sequence.length, state.lastLabel,
+      );
     }
     if (now - lastProgressAt >= idleMs) {
-      throw preparationTimeoutError('idle timeout', name, progressCount, sequence.length, lastLabel);
+      throw preparationTimeoutError(
+        'idle timeout', name, state.progressCount, sequence.length, state.lastLabel,
+      );
     }
     const events = parseJsonEvents(runtime.logs(name));
-    const progress = events.filter(item => item.event === 'max_fixture_sealed');
-    if (progress.length < progressCount) throw new Error('Maximum-fixture progress log history shrank');
-    const previousProgressCount = progressCount;
-    for (const item of progress.slice(progressCount)) {
-      validateMaxFixtureProgress(
-        item, sequence[progressCount], progressCount + 1, sequence.length, stagedBytes,
-        maximumStagedBytes,
-      );
-      stagedBytes = item.stagedMaxFixtureBytes;
-      lastLabel = item.label;
-      progressCount += 1;
+    const contract = { combinedSequence, sequence };
+    if (consumeMaxPreparationEvents(events, state, contract, maximumStagedBytes)) {
+      lastProgressAt = now;
     }
-    if (progressCount > previousProgressCount) lastProgressAt = now;
-    const ready = events.findLast(item => item.event === 'replay_ready');
-    if (ready) {
-      if (progressCount !== sequence.length || ready.stagedMaxFixtureBytes !== stagedBytes) {
-        throw new Error(`Maximum-fixture replay_ready preceded exact sequence ${progressCount}/${sequence.length}`);
-      }
-      return ready;
-    }
+    if (state.ready) return state.ready;
     if (!classifyContainerRunningState(runtime.running(name))) {
       throw new Error(`${name} stopped before replay_ready`);
     }

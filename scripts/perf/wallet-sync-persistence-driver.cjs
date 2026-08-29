@@ -14,7 +14,13 @@ const mode = process.env.SANCTUARY_REPLAY_MODE || 'live';
 const imageRequire = createRequire(resolve(IMAGE_ROOT, 'package.json'));
 const bitcoin = imageRequire('bitcoinjs-lib');
 const { buildFixture, canonicalJson, sha256 } = require(fixturePath);
-const { createDriverHelpers, createMaxFixtureSequence } = require(helperPath);
+const {
+  buildCombinedMaxFixture,
+  buildMaxFixture,
+  createDriverHelpers,
+  createMaxCombinedFixtureProgressSequence,
+  createMaxFixtureSequence,
+} = require(helperPath);
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 
 const absoluteModule = relative => require(resolve(COMPILED_ROOT, relative));
@@ -167,6 +173,7 @@ const {
   sha256,
 });
 const maxFixtureSequence = createMaxFixtureSequence(manifest, emit);
+const maxCombinedFixtureProgress = createMaxCombinedFixtureProgressSequence(manifest, emit);
 
 function assertManifest(fixture) {
   const builderDigest = sha256(readFileSync(fixturePath));
@@ -539,79 +546,6 @@ async function runLive(fixture, baselineThreads) {
   await new Promise(resolvePromise => process.once('SIGHUP', resolvePromise));
 }
 
-function rawDetails(transaction) {
-  return { txid: transaction.getId(), hex: transaction.toHex(), vin: [], vout: [] };
-}
-
-function buildMaxTransaction(externalScript, ownedScript, previous, outputCount, scriptBytes = 0) {
-  const transaction = new bitcoin.Transaction();
-  transaction.version = 2;
-  if (previous.length === 0) {
-    transaction.ins = [{
-      hash: new Uint8Array(32), index: 0xffffffff, script: Buffer.from([1, 1]),
-      sequence: 0xffffffff, witness: [],
-    }];
-  } else {
-    transaction.ins = previous.map((details, index) => ({
-      hash: Buffer.from(details.txid, 'hex').reverse(), index: details.vout ?? 0,
-      script: index === 0 && scriptBytes > 0 ? Buffer.alloc(scriptBytes) : new Uint8Array(),
-      sequence: 0xffffffff, witness: [],
-    }));
-  }
-  transaction.outs = [
-    ...Array.from({ length: outputCount - 1 }, () => ({ script: externalScript, value: 1n })),
-    { script: ownedScript, value: 1n },
-  ];
-  return rawDetails(transaction);
-}
-
-function buildMaxFixture(axis, walletOrdinal, scriptBytes = 0, countOverride, includePreviousEvidence = true) {
-  const addressItem = (() => {
-    const hash = Buffer.alloc(20);
-    hash.writeUInt32BE(9000 + walletOrdinal, 16);
-    const payment = bitcoin.payments.p2wpkh({ hash, network: bitcoin.networks.bitcoin });
-    if (!payment.address || !payment.output) throw new Error('Could not build max-shape address');
-    return { address: payment.address, script: payment.output };
-  })();
-  const externalScript = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 0xee), network: bitcoin.networks.bitcoin }).output;
-  if (!externalScript) throw new Error('Could not build max-shape external script');
-  const inputCount = axis === 'input' ? (countOverride ?? 24389) : 0;
-  const outputCount = axis === 'output' ? (countOverride ?? 25000) : 1;
-  const previous = inputCount > 0 && includePreviousEvidence ? (() => {
-    const parent = new bitcoin.Transaction();
-    parent.version = 2;
-    parent.locktime = walletOrdinal;
-    parent.ins = [{ hash: new Uint8Array(32), index: 0xffffffff,
-      script: Buffer.from([1, walletOrdinal & 0xff]), sequence: 0xffffffff, witness: [] }];
-    parent.outs = Array.from({ length: inputCount }, () => ({ script: addressItem.script, value: 1n }));
-    return [rawDetails(parent)];
-  })() : [];
-  const inputReferences = includePreviousEvidence
-    ? Array.from({ length: inputCount }, (_, vout) => ({ txid: previous[0].txid, vout }))
-    : Array.from({ length: inputCount }, () => ({ txid: '11'.repeat(32) }));
-  const details = buildMaxTransaction(externalScript, addressItem.script, inputReferences, outputCount, scriptBytes);
-  const walletId = `00000000-0000-4000-8000-${String(100000000000 + walletOrdinal).slice(-12)}`;
-  const leaseToken = `00000000-0000-4000-8001-${String(100000000000 + walletOrdinal).slice(-12)}`;
-  const address = {
-    id: `max-address-${walletOrdinal}`, walletId, address: addressItem.address,
-    derivationPath: "m/84'/0'/0'/0/0", index: 0, branch: 0, coordinateVersion: 1,
-    canonicalPolicyId: 'single_sig_native_segwit', canonicalPolicyVersion: 1,
-    scriptPubKey: Buffer.from(addressItem.script).toString('hex'), used: false, createdAt: new Date(0),
-  };
-  return {
-    definition: { walletId, leaseToken, leaseGeneration: 1, network: 'mainnet', addressCount: 1, seededOutputs: [] },
-    addresses: [address],
-    histories: new Map([[address.address, [{ tx_hash: details.txid, height: 800000 }]]]),
-    transactions: [{ addressIndex: 0, outputCount, details }],
-    rawTransactions: new Map([[details.txid, details], ...previous.map(parent => [parent.txid, parent])]),
-    previousTransactions: previous,
-    utxos: new Map([[address.address, [{ tx_hash: details.txid, tx_pos: outputCount - 1, value: 1, height: 800000 }]]]),
-    weight: bitcoin.Transaction.fromHex(details.hex).weight(),
-    inputCount,
-    outputCount,
-  };
-}
-
 function persistPreparedMaxFixture(label, fixture) {
   const path = `/tmp/sanctuary-replay-${label}.json`;
   const { rawTransactions: _rawTransactions, ...fixtureWithoutRawMap } = fixture;
@@ -651,7 +585,7 @@ function loadPreparedMaxFixture(path) {
 }
 
 function prepareMaxFixture(label, ...args) {
-  let fixture = buildMaxFixture(...args);
+  let fixture = buildMaxFixture(bitcoin, ...args);
   const path = persistPreparedMaxFixture(label, fixture);
   fixture = undefined;
   if (typeof global.gc === 'function') global.gc();
@@ -864,17 +798,15 @@ async function runMax(fixture, baselineThreads) {
     input25000: prepareMaxFixture('input-count-25000', 'input', 97, 0, 25000, false),
     input25001: prepareMaxFixture('input-count-25001', 'input', 98, 0, 25001, false),
   };
-  let combinedFixture = buildMaxFixture('input', 100, 0, 25000, false);
-  combinedFixture.transactions[0].details = buildMaxTransaction(
-    bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 0xee), network: bitcoin.networks.bitcoin }).output,
-    Buffer.from(combinedFixture.addresses[0].scriptPubKey, 'hex'),
-    Array.from({ length: 25000 }, () => ({ txid: '11'.repeat(32) })), 25000,
+  let combinedFixture = buildCombinedMaxFixture(
+    bitcoin,
+    manifest.maxAxes.combined,
+    label => maxCombinedFixtureProgress.complete(label),
   );
-  combinedFixture.outputCount = 25000;
-  combinedFixture.weight = bitcoin.Transaction.fromHex(combinedFixture.transactions[0].details.hex).weight();
   const combinedPath = persistPreparedMaxFixture('combined', combinedFixture);
   combinedFixture = undefined;
   if (typeof global.gc === 'function') global.gc();
+  maxCombinedFixtureProgress.assertComplete();
   maxFixtureSequence.assertComplete();
   emit('replay_ready', {
     rssBytes: process.memoryUsage().rss,
