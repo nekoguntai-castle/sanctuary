@@ -13,6 +13,7 @@ import {
   classifyContainerRunningState,
   classifyResourceSample,
   cleanup,
+  healthProbeUrl,
   ownedResourceNames,
   parseArgs,
   parseJsonEvents,
@@ -35,7 +36,6 @@ const replayDriverSource = readFileSync(
   new URL('../../scripts/perf/wallet-sync-persistence-driver.cjs', import.meta.url),
   'utf8',
 );
-
 test('replay driver exits explicitly after success or failure cleanup', () => {
   assert.match(replayDriverSource, /main\(\)\.then\([\s\S]*process\.exit\(0\)/);
   assert.match(replayDriverSource, /error => \{[\s\S]*emit\('replay_failed'[\s\S]*process\.exit\(1\)/);
@@ -140,6 +140,9 @@ test('container argv seals distinct resources, cgroups, and timeouts', () => {
     '--cpus', '1', '--memory', '1g', '--memory-swap', '1280m',
   ]);
   assert.equal(worker.some(value => value.startsWith('type=bind,')), false);
+  assert.equal(worker[worker.indexOf('--publish') + 1], '3002');
+  assert.equal(worker.includes('0.0.0.0::3002'), false);
+  assert.equal(worker.includes('127.0.0.1::3002'), false);
   assert.equal(worker.at(-1), '/app/wallet-sync-persistence-driver.cjs');
   assert.ok(worker.includes('WALLET_SYNC_MUTATION_TIMEOUT_MS=45000'));
   assert.ok(worker.includes('SANCTUARY_REPLAY_DRIVER_HELPERS=/app/wallet-sync-persistence-driver-helpers.cjs'));
@@ -161,6 +164,19 @@ test('container argv seals distinct resources, cgroups, and timeouts', () => {
   assert.equal(operations[0][1], 'create');
   assert.deepEqual(operations.slice(1, -1), copies);
   assert.deepEqual(operations.at(-1), ['docker', 'start', names.worker]);
+});
+
+test('health probes use the daemon-reachable published host with a local fallback', () => {
+  assert.equal(healthProbeUrl(49152, '/live', {}).href, 'http://127.0.0.1:49152/live');
+  assert.equal(healthProbeUrl(49152, '/ready', {
+    SANCTUARY_DOCKER_PUBLISHED_HOST: 'docker-in-docker',
+  }).href, 'http://docker-in-docker:49152/ready');
+  assert.equal(healthProbeUrl(49152, '/metrics/prometheus', {
+    SANCTUARY_DOCKER_PUBLISHED_HOST: '::1',
+  }).href, 'http://[::1]:49152/metrics/prometheus');
+  assert.throws(() => healthProbeUrl(49152, '/live', {
+    SANCTUARY_DOCKER_PUBLISHED_HOST: 'host/path',
+  }), /published host/);
 });
 
 test('RC11 gate enforces exact resource, health, SQL, mutation, and cleanup boundaries', () => {

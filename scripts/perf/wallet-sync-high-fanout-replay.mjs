@@ -336,10 +336,17 @@ async function hostPort(name) {
   throw new Error('Replay health port was not published');
 }
 
+export function healthProbeUrl(port, path, environment = process.env) {
+  const host = environment.SANCTUARY_DOCKER_PUBLISHED_HOST || '127.0.0.1';
+  if (!/^[A-Za-z0-9._:[\]-]+$/.test(host)) throw new Error('Invalid Docker published host');
+  const hostname = host.includes(':') ? `[${host.replace(/^\[|\]$/g, '')}]` : host;
+  return new URL(`http://${hostname}:${port}${path}`);
+}
+
 async function probe(port, path) {
   const started = performance.now();
   try {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(healthProbeUrl(port, path), { signal: AbortSignal.timeout(1000) });
     await response.arrayBuffer();
     return { path, ok: response.status === 200, elapsedMs: performance.now() - started };
   } catch { return { path, ok: false, elapsedMs: performance.now() - started }; }
@@ -376,7 +383,7 @@ export function postgresRunArgs(names, password, mode) {
 
 export function workerCreateArgs(subject, names, databaseUrl) {
   return ['docker', 'create', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
-    '--memory-swap', '1280m', '--publish', '127.0.0.1::3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
+    '--memory-swap', '1280m', '--publish', '3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
     '--env', 'NODE_OPTIONS=--max-old-space-size=1024', '--env', `DATABASE_URL=${databaseUrl}`,
     '--env', `WALLET_SYNC_MUTATION_TIMEOUT_MS=${subject.mode === 'max' ? 45000 : 60000}`,
     '--env', 'REDIS_URL=redis://127.0.0.1:1',
