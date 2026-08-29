@@ -11,9 +11,10 @@ Choose an absolute operator-controlled path outside every Sanctuary checkout:
 
 ```bash
 CANARY_RECEIPT="$HOME/release-receipts/v0.8.69-rc1-canary.json"
+CANARY_EVIDENCE="$HOME/release-receipts/v0.8.69-rc1-canary.jsonl"
 ```
 
-Never put the receipt, support bundles, logs, screenshots, wallet names, wallet
+Never put the receipt or raw evidence sidecar, support bundles, logs, screenshots, wallet names, wallet
 IDs, addresses, transaction IDs, endpoints, credentials, or operator names in
 the repository. Use a short pseudonymous role identifier such as
 `release-operator-01` for signoff. The validator rejects unknown fields and
@@ -38,17 +39,22 @@ symlinked, relative, oversized, or in-checkout receipt paths.
    evidence, but put only the reconciled reason count in the receipt. Confirm the
    repeated stale wallet is not stranded, then record completion and signoff.
 
-## Receipt format
+## Receipt and raw-evidence format
 
-The only accepted schema is `sanctuary.release-candidate-canary.v1`. All keys are
-required and no additional keys are allowed.
+Version 0.8.69 requires `sanctuary.release-candidate-canary.v2`. All keys are
+required and no additional keys are allowed. The bounded receipt contains only
+redacted summaries; write timestamped probe, cgroup, Docker, lifecycle, and UI
+events to the private JSONL sidecar and bind its exact bytes into `rawEvidence`.
+The validator retains v1 compatibility for older releases, but a v1 receipt
+cannot authorize v0.8.69.
 
 ```json
 {
-  "schemaVersion": "sanctuary.release-candidate-canary.v1",
+  "schemaVersion": "sanctuary.release-candidate-canary.v2",
   "releaseCandidate": {
     "tag": "v0.8.69-rc1",
-    "commit": "0123456789abcdef0123456789abcdef01234567"
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "imageIds": ["sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
   },
   "canaryWindow": {
     "startedAt": "2026-08-27T09:00:00.000Z",
@@ -95,6 +101,34 @@ required and no additional keys are allowed.
     "withinBudgetAndGrace": true,
     "silentHang": false
   },
+  "remoteEvidence": {
+    "probeWindowMs": 600000,
+    "postTerminalWindowMs": 300000,
+    "endpoints": {
+      "live": { "samples": 600, "postTerminalSamples": 300, "failures": 0, "p99Ms": 125, "maxMs": 500 },
+      "ready": { "samples": 600, "postTerminalSamples": 300, "failures": 0, "p99Ms": 125, "maxMs": 500 },
+      "metricsPrometheus": { "samples": 600, "postTerminalSamples": 300, "failures": 0, "p99Ms": 125, "maxMs": 500 }
+    },
+    "runtime": {
+      "peakBytes": 670466048,
+      "memoryLimitBytes": 1073741824,
+      "oomKilled": false,
+      "restartCount": 0,
+      "exitCode": 0,
+      "fallbackCount": 0
+    },
+    "lifecycle": {
+      "leaseLockAgreement": true,
+      "leasesAndLocksCleared": true,
+      "generationsConverged": true,
+      "formerlyStaleRepeatConverged": true,
+      "uiHealthyThroughoutPostTerminal": true
+    },
+    "rawEvidence": {
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "bytes": 1024
+    }
+  },
   "signoff": {
     "decision": "accepted",
     "signedAt": "2026-08-27T10:30:00.000Z",
@@ -109,6 +143,13 @@ required and no additional keys are allowed.
 mandatory. Fleet outcome counts must equal `fleet.total`.
 `actionRequiredWithExplicitReason` must exactly equal the action-required
 outcome count; free-form reasons remain only in the private evidence.
+Each endpoint needs at least 60 pre-terminal samples plus 300 post-terminal
+samples, zero failures, p99 no greater than 250 ms, and maximum latency no
+greater than the one-second timeout. The post-terminal window must be at least
+five minutes, the overall probe window must include both periods, and the canary
+timestamps must cover the claimed probe window.
+The runtime and lifecycle summaries are strict acceptance assertions, and the
+sidecar SHA-256 and byte length must match the safely opened external file.
 
 ## Validate before stable tagging
 
@@ -124,6 +165,7 @@ git merge-base --is-ancestor "$ACCEPTED_RC_SHA" origin/main
 node scripts/release/verify-release-candidate-canary.mjs \
   --repo "$(pwd)" \
   --receipt "$CANARY_RECEIPT" \
+  --evidence "$CANARY_EVIDENCE" \
   --tag "$ACCEPTED_RC_TAG" \
   --commit "$ACCEPTED_RC_SHA"
 ```

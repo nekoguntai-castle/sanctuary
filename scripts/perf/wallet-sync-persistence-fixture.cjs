@@ -139,6 +139,7 @@ function buildFixture(bitcoin) {
     if (addressIndex === walletAddresses.length - 1) {
       return [address.address, [{
         tx_hash: utxoOnlyTransaction.txid, tx_pos: 0, value: 1, height: 800000 + addressIndex,
+        scriptPubKey: address.scriptPubKey,
       }]];
     }
     return [address.address, [{
@@ -146,6 +147,7 @@ function buildFixture(bitcoin) {
       tx_pos: item.outputCount - 1,
       value: 1,
       height: 800000 + addressIndex,
+      scriptPubKey: address.scriptPubKey,
     }]];
   }));
   const utxos = new Map([...validUtxos].map(([address, rows]) => [address, [...rows]]));

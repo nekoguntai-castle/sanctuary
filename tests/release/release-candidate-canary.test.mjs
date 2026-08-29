@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
@@ -14,11 +15,13 @@ import { fileURLToPath } from 'node:url';
 import {
   CANARY_RECEIPT_MAX_BYTES,
   CANARY_RECEIPT_SCHEMA_VERSION,
+  CANARY_RECEIPT_V2_SCHEMA_VERSION,
   validateCanaryReceipt,
   verifyReleaseCandidateCanary,
 } from '../../scripts/release/verify-release-candidate-canary.mjs';
 
-const TAG = 'v0.8.69-rc2';
+const TAG = 'v0.8.68-rc2';
+const V2_TAG = 'v0.8.69-rc14';
 const COMMIT = 'a'.repeat(40);
 const NOW = new Date('2026-08-27T12:00:00.000Z');
 const SCRIPT = fileURLToPath(new URL(
@@ -74,6 +77,35 @@ function validReceipt() {
   };
 }
 
+function validV2Receipt(rawEvidence) {
+  return {
+    ...validReceipt(),
+    schemaVersion: CANARY_RECEIPT_V2_SCHEMA_VERSION,
+    releaseCandidate: {
+      tag: V2_TAG,
+      commit: COMMIT,
+      imageIds: [`sha256:${'b'.repeat(64)}`],
+    },
+    remoteEvidence: {
+      probeWindowMs: 600_000,
+      postTerminalWindowMs: 300_000,
+      endpoints: Object.fromEntries(['live', 'ready', 'metricsPrometheus'].map(name => [name, {
+        samples: 600, postTerminalSamples: 300, failures: 0, p99Ms: 125, maxMs: 500,
+      }])),
+      runtime: {
+        peakBytes: 670_466_048, memoryLimitBytes: 1_073_741_824,
+        oomKilled: false, restartCount: 0, exitCode: 0, fallbackCount: 0,
+      },
+      lifecycle: {
+        leaseLockAgreement: true, leasesAndLocksCleared: true,
+        generationsConverged: true, formerlyStaleRepeatConverged: true,
+        uiHealthyThroughoutPostTerminal: true,
+      },
+      rawEvidence,
+    },
+  };
+}
+
 function validate(receipt) {
   return validateCanaryReceipt(receipt, { tag: TAG, commit: COMMIT, now: NOW });
 }
@@ -99,6 +131,59 @@ test('accepts a complete strict receipt for the exact RC identity', () => {
   receipt.boundedErrorEvidence.outcome = 'retryable';
   receipt.boundedErrorEvidence.candidateBatch.endCompleted = 1;
   assert.deepEqual(validate(receipt), receipt);
+});
+
+test('v2 requires strict remote summaries and rejects v1 for v0.8.69', () => {
+  const receipt = validV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+  assert.deepEqual(validateCanaryReceipt(receipt, {
+    tag: V2_TAG, commit: COMMIT, now: NOW,
+  }), receipt);
+  for (const mutate of [
+    value => { value.remoteEvidence.endpoints.live.failures = 1; },
+    value => { value.remoteEvidence.endpoints.ready.p99Ms = 251; },
+    value => { value.remoteEvidence.endpoints.metricsPrometheus.postTerminalSamples = 299; },
+    value => { value.remoteEvidence.endpoints.live.samples = 300; },
+    value => { value.remoteEvidence.probeWindowMs = 300_000; },
+    value => { value.canaryWindow.startedAt = '2026-08-27T09:55:00.000Z'; },
+    value => { value.remoteEvidence.runtime.peakBytes = 0; },
+    value => { value.remoteEvidence.runtime.oomKilled = true; },
+    value => { value.remoteEvidence.lifecycle.leasesAndLocksCleared = false; },
+    value => { value.remoteEvidence.rawEvidence.sha256 = 'not-a-digest'; },
+  ]) {
+    const invalid = structuredClone(receipt);
+    mutate(invalid);
+    assert.throws(() => validateCanaryReceipt(invalid, {
+      tag: V2_TAG, commit: COMMIT, now: NOW,
+    }));
+  }
+  assert.throws(() => validateCanaryReceipt({
+    ...validReceipt(), releaseCandidate: { tag: V2_TAG, commit: COMMIT },
+  }, { tag: V2_TAG, commit: COMMIT, now: NOW }), /v2/);
+  assert.throws(() => validateCanaryReceipt({
+    ...validReceipt(), releaseCandidate: { tag: 'v0.8.70-rc1', commit: COMMIT },
+  }, { tag: 'v0.8.70-rc1', commit: COMMIT, now: NOW }), /v2/);
+});
+
+test('v2 verification binds the receipt to a private raw evidence sidecar', (context) => {
+  const files = fixture();
+  context.after(() => rmSync(files.base, { recursive: true, force: true }));
+  const rawEvidencePath = path.join(files.evidence, 'raw.jsonl');
+  const rawEvidence = '{"event":"probe","status":200}\n';
+  writeFileSync(rawEvidencePath, rawEvidence, { mode: 0o600 });
+  const receipt = validV2Receipt({
+    sha256: createHash('sha256').update(rawEvidence).digest('hex'),
+    bytes: Buffer.byteLength(rawEvidence),
+  });
+  writeReceipt(files.receipt, receipt);
+  assert.deepEqual(verifyReleaseCandidateCanary({
+    repo: files.repo, receipt: files.receipt, evidence: rawEvidencePath,
+    tag: V2_TAG, commit: COMMIT, now: NOW,
+  }), receipt);
+  writeFileSync(rawEvidencePath, `${rawEvidence}{"event":"drift"}\n`);
+  assert.throws(() => verifyReleaseCandidateCanary({
+    repo: files.repo, receipt: files.receipt, evidence: rawEvidencePath,
+    tag: V2_TAG, commit: COMMIT, now: NOW,
+  }), /identity/);
 });
 
 test('rejects unknown and missing keys at every schema depth', () => {

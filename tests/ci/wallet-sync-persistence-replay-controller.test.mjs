@@ -22,6 +22,7 @@ import {
   postgresRunArgs,
   qualifyRc10Failure,
   replayObservationTimeout,
+  validateReceiptValidationTrace,
   validateLiveReceiptInvariants,
   validateArchitectureReceipts,
   validateMaxArchitectureReceipts,
@@ -35,6 +36,14 @@ import {
 const replayDriverSource = readFileSync(
   new URL('../../scripts/perf/wallet-sync-persistence-driver.cjs', import.meta.url),
   'utf8',
+);
+const replayDriverHelperSource = readFileSync(
+  new URL('../../scripts/perf/wallet-sync-persistence-driver-helpers.cjs', import.meta.url),
+  'utf8',
+);
+const fixtureRequire = createRequire(import.meta.url);
+const { createDriverHelpers } = fixtureRequire(
+  '../../scripts/perf/wallet-sync-persistence-driver-helpers.cjs',
 );
 test('replay driver exits explicitly after success or failure cleanup', () => {
   assert.match(replayDriverSource, /main\(\)\.then\([\s\S]*process\.exit\(0\)/);
@@ -246,9 +255,15 @@ test('trace validation requires ordered production phases and one parent per RC1
 test('live receipts preserve wallet lifecycle and no-op transaction evidence', () => {
   const receipts = [
     { event: 'pre_start_receipt', walletLifecycleDigest: 'lifecycle-a' },
+    { event: 'receipt_validation_started', pass: 1 },
     { event: 'pass_completed', pass: 1, walletLifecycleDigest: 'lifecycle-a', transactionEvidenceDigest: 'tx-1', utxoCount: 47, draftCount: 0, utxoDigest: 'utxo', draftDigest: 'draft' },
+    { event: 'receipt_validation_completed', pass: 1, outcome: 'success' },
+    { event: 'receipt_validation_started', pass: 2 },
     { event: 'pass_completed', pass: 2, walletLifecycleDigest: 'lifecycle-a', transactionEvidenceDigest: 'tx-2', utxoCount: 47, draftCount: 0, utxoDigest: 'utxo', draftDigest: 'draft' },
+    { event: 'receipt_validation_completed', pass: 2, outcome: 'success' },
+    { event: 'receipt_validation_started', pass: 3 },
     { event: 'pass_completed', pass: 3, walletLifecycleDigest: 'lifecycle-a', transactionEvidenceDigest: 'tx-2', utxoCount: 47, draftCount: 0, utxoDigest: 'utxo', draftDigest: 'draft' },
+    { event: 'receipt_validation_completed', pass: 3, outcome: 'success' },
     ...[1, 2, 3].map(pass => ({
       event: 'utxo_evidence_receipt', pass, acceptedCount: 47, acceptedOutpointDigest: 'outpoints',
       rejectedListingCount: 5, omissionSentinelCount: 1, unauthenticatedFallbackCount: 0,
@@ -257,12 +272,59 @@ test('live receipts preserve wallet lifecycle and no-op transaction evidence', (
   assert.deepEqual(validateLiveReceiptInvariants(receipts, { finalReceipt: { utxos: 47 } }), {
     lifecycleDigest: 'lifecycle-a', transactionEvidenceDigest: 'tx-2', utxoDigest: 'utxo', draftDigest: 'draft',
   });
-  assert.throws(() => validateLiveReceiptInvariants(receipts.map((receipt, index) => (
-    index === 1 ? { ...receipt, walletLifecycleDigest: 'lifecycle-b' } : receipt
+  assert.throws(() => validateLiveReceiptInvariants(receipts.map(receipt => (
+    receipt.event === 'pass_completed' && receipt.pass === 1
+      ? { ...receipt, walletLifecycleDigest: 'lifecycle-b' } : receipt
   )), { finalReceipt: { utxos: 47 } }), /lifecycle/);
-  assert.throws(() => validateLiveReceiptInvariants(receipts.map((receipt, index) => (
-    index === 3 ? { ...receipt, transactionEvidenceDigest: 'tx-3' } : receipt
+  assert.throws(() => validateLiveReceiptInvariants(receipts.map(receipt => (
+    receipt.event === 'pass_completed' && receipt.pass === 3
+      ? { ...receipt, transactionEvidenceDigest: 'tx-3' } : receipt
   )), { finalReceipt: { utxos: 47 } }), /transaction evidence/);
+});
+
+test('receipt validation trace requires balanced successful markers for every pass', () => {
+  const balanced = [1, 2, 3].flatMap(pass => [
+    { event: 'receipt_validation_started', pass },
+    { event: 'receipt_validation_completed', pass, outcome: 'success' },
+  ]);
+  assert.deepEqual(validateReceiptValidationTrace(balanced), [1, 2, 3]);
+  assert.throws(() => validateReceiptValidationTrace(balanced.slice(0, -1)), /balanced/);
+  assert.throws(() => validateReceiptValidationTrace(balanced.map((event, index) => (
+    index === 1 ? { ...event, outcome: 'failure' } : event
+  ))), /failed/);
+  assert.match(replayDriverHelperSource, /receipt_validation_started[\s\S]*finally[\s\S]*receipt_validation_completed/);
+});
+
+test('receipt validation uses sealed scripts without reparsing raw transactions', () => {
+  const forbiddenBitcoin = {
+    Transaction: { fromHex: () => { throw new Error('runtime transaction parse forbidden'); } },
+  };
+  const { assertValidUtxoReceipt } = createDriverHelpers({
+    bitcoin: forbiddenBitcoin,
+    canonicalJson: JSON.stringify,
+    classificationVersion: 1,
+    emit: () => {},
+    emitResourceCheckpoint: () => {},
+    prisma: {},
+    sha256: value => value,
+  });
+  const utxo = {
+    tx_hash: 'txid', tx_pos: 0, value: 1, height: 800000, scriptPubKey: '0014abcd',
+  };
+  const fixture = {
+    validUtxos: new Map([['bc1qfixture', [utxo]]]),
+    negativeUtxoSentinels: [],
+    seededValidUtxo: { txid: 'different' },
+    rawTransactions: { get: () => { throw new Error('raw transaction access forbidden'); } },
+  };
+  const row = {
+    id: 'utxo-1', txid: 'txid', vout: 0, address: 'bc1qfixture', amount: '1',
+    scriptPubKey: utxo.scriptPubKey, spent: false, blockHeight: 800000, confirmations: 1,
+  };
+  assert.doesNotThrow(() => assertValidUtxoReceipt(fixture, { utxos: [row], drafts: [] }));
+  assert.throws(() => assertValidUtxoReceipt(fixture, {
+    utxos: [{ ...row, scriptPubKey: '0014abce' }], drafts: [],
+  }), /Exact UTXO receipt mismatch/);
 });
 
 test('architecture receipts require fresh compact authentication and one-current full staging', () => {

@@ -212,8 +212,10 @@ Stable tagging additionally requires credential, signing-key, canary-receipt,
 and new external output-directory readiness to succeed before the tag is created.
 The asset output path must be absolute, its existing parent must canonicalize
 outside every repository worktree, and the target itself must not exist yet.
-The canary receipt must validate against the exact accepted RC tag and commit;
-it is release evidence, not a repository artifact.
+The canary receipt must validate against the exact accepted RC tag and commit.
+For v0.8.69 and later, the v2 receipt also binds the safely opened private raw
+evidence sidecar by SHA-256 and byte length; pass both external paths to the
+validator. Neither file is a repository artifact.
 
 The asset publisher requires both matching Release objects to exist. It refuses
 unlisted local files, unexpected or duplicate remote assets, symlinks, nested

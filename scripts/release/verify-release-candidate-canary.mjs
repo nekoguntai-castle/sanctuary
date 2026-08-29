@@ -9,10 +9,12 @@ import {
   readSync,
   realpathSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const CANARY_RECEIPT_SCHEMA_VERSION = 'sanctuary.release-candidate-canary.v1';
+export const CANARY_RECEIPT_V2_SCHEMA_VERSION = 'sanctuary.release-candidate-canary.v2';
 export const CANARY_RECEIPT_MAX_BYTES = 64 * 1024;
 
 const METRIC_FAMILIES = [
@@ -26,6 +28,8 @@ const METRIC_FAMILIES = [
 ];
 const RC_TAG_PATTERN = /^v\d+\.\d+\.\d+-rc[1-9]\d*$/;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const IMAGE_ID_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const OPERATOR_PATTERN = /^[a-z0-9][a-z0-9._-]{2,63}$/;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -62,8 +66,13 @@ function parseInstant(value, label) {
 }
 
 function validateIdentity(receipt, expected) {
-  if (receipt.schemaVersion !== CANARY_RECEIPT_SCHEMA_VERSION) {
+  if (![CANARY_RECEIPT_SCHEMA_VERSION, CANARY_RECEIPT_V2_SCHEMA_VERSION]
+    .includes(receipt.schemaVersion)) {
     throw new Error('unsupported canary receipt schema version');
+  }
+  if (receipt.schemaVersion === CANARY_RECEIPT_SCHEMA_VERSION
+    && requiresV2Receipt(receipt.releaseCandidate.tag)) {
+    throw new Error('v0.8.69 requires a v2 canary receipt');
   }
   if (!RC_TAG_PATTERN.test(receipt.releaseCandidate.tag)) {
     throw new Error('release candidate tag is invalid');
@@ -80,6 +89,63 @@ function validateIdentity(receipt, expected) {
   }
 }
 
+function requiresV2Receipt(tag) {
+  const match = /^v(\d+)\.(\d+)\.(\d+)-rc/.exec(tag);
+  if (!match) return false;
+  const version = match.slice(1).map(Number);
+  const baseline = [0, 8, 69];
+  return version.some((part, index) => (
+    part > baseline[index]
+    && version.slice(0, index).every((prior, priorIndex) => prior === baseline[priorIndex])
+  )) || version.every((part, index) => part === baseline[index]);
+}
+
+function validateProbeWindows(evidence) {
+  requireSafeCount(evidence.probeWindowMs, 'probe window');
+  requireSafeCount(evidence.postTerminalWindowMs, 'post-terminal window');
+  if (evidence.postTerminalWindowMs < 300_000
+    || evidence.probeWindowMs < evidence.postTerminalWindowMs + 60_000) {
+    throw new Error('probe window does not contain the required pre/post-terminal periods');
+  }
+}
+
+function validateEndpointSummary(endpoint, summary) {
+  requireSafeCount(summary.samples, `${endpoint} samples`);
+  requireSafeCount(summary.postTerminalSamples, `${endpoint} post-terminal samples`);
+  requireSafeCount(summary.failures, `${endpoint} failures`);
+  if (summary.samples < summary.postTerminalSamples + 60
+    || summary.postTerminalSamples < 300 || summary.failures !== 0
+    || !Number.isFinite(summary.p99Ms) || summary.p99Ms < 0 || summary.p99Ms > 250
+    || !Number.isFinite(summary.maxMs) || summary.maxMs < 0 || summary.maxMs > 1000) {
+    throw new Error(`${endpoint} probe evidence failed`);
+  }
+}
+
+function validateRuntimeEvidence(runtime) {
+  for (const key of ['peakBytes', 'memoryLimitBytes', 'restartCount', 'exitCode', 'fallbackCount']) {
+    requireSafeCount(runtime[key], `runtime ${key}`);
+  }
+  if (runtime.peakBytes === 0 || runtime.memoryLimitBytes === 0
+    || runtime.peakBytes > runtime.memoryLimitBytes || runtime.oomKilled !== false
+    || runtime.restartCount !== 0 || runtime.exitCode !== 0 || runtime.fallbackCount !== 0) {
+    throw new Error('remote runtime evidence failed');
+  }
+}
+
+function validateRemoteEvidence(evidence) {
+  validateProbeWindows(evidence);
+  for (const endpoint of ['live', 'ready', 'metricsPrometheus']) {
+    validateEndpointSummary(endpoint, evidence.endpoints[endpoint]);
+  }
+  validateRuntimeEvidence(evidence.runtime);
+  for (const [key, value] of Object.entries(evidence.lifecycle)) requireTrue(value, key);
+  if (!SHA256_PATTERN.test(evidence.rawEvidence.sha256)) {
+    throw new Error('raw evidence SHA-256 is invalid');
+  }
+  requireSafeCount(evidence.rawEvidence.bytes, 'raw evidence bytes');
+  if (evidence.rawEvidence.bytes === 0) throw new Error('raw evidence is empty');
+}
+
 function validateWindow(receipt, now) {
   const startedAt = parseInstant(receipt.canaryWindow.startedAt, 'canary startedAt');
   const completedAt = parseInstant(receipt.canaryWindow.completedAt, 'canary completedAt');
@@ -89,6 +155,10 @@ function validateWindow(receipt, now) {
   if (startedAt > completedAt) throw new Error('canary completed before it started');
   if (completedAt > signedAt) throw new Error('canary was signed before it completed');
   if (signedAt > nowMs) throw new Error('canary receipt timestamp is in the future');
+  if (receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION
+    && completedAt - startedAt < receipt.remoteEvidence.probeWindowMs) {
+    throw new Error('canary window is shorter than the claimed probe window');
+  }
 }
 
 function validateFleet(fleet) {
@@ -182,12 +252,21 @@ function validateSignoff(signoff) {
 }
 
 function validateShape(receipt) {
+  const v2 = receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION;
   exactKeys(receipt, [
     'schemaVersion', 'releaseCandidate', 'canaryWindow', 'fleet',
     'progressEvidence', 'diagnosticsEvidence', 'metricEvidence',
-    'boundedErrorEvidence', 'signoff',
+    'boundedErrorEvidence', 'signoff', ...(v2 ? ['remoteEvidence'] : []),
   ], 'canary receipt');
-  exactKeys(receipt.releaseCandidate, ['tag', 'commit'], 'release candidate identity');
+  exactKeys(receipt.releaseCandidate, [
+    'tag', 'commit', ...(v2 ? ['imageIds'] : []),
+  ], 'release candidate identity');
+  if (v2 && (!Array.isArray(receipt.releaseCandidate.imageIds)
+    || receipt.releaseCandidate.imageIds.length === 0
+    || receipt.releaseCandidate.imageIds.some(id => !IMAGE_ID_PATTERN.test(id))
+    || new Set(receipt.releaseCandidate.imageIds).size !== receipt.releaseCandidate.imageIds.length)) {
+    throw new Error('release candidate image IDs are invalid');
+  }
   exactKeys(receipt.canaryWindow, ['startedAt', 'completedAt'], 'canary window');
   exactKeys(receipt.fleet, [
     'total', 'outcomes', 'actionRequiredWithExplicitReason', 'previouslyStaleRepeat',
@@ -214,6 +293,29 @@ function validateShape(receipt) {
     'startCompleted', 'endCompleted', 'total',
   ], 'candidate batch evidence');
   exactKeys(receipt.signoff, ['decision', 'signedAt', 'operatorId'], 'canary signoff');
+  if (v2) {
+    exactKeys(receipt.remoteEvidence, [
+      'probeWindowMs', 'postTerminalWindowMs', 'endpoints', 'runtime',
+      'lifecycle', 'rawEvidence',
+    ], 'remote evidence');
+    exactKeys(receipt.remoteEvidence.endpoints, [
+      'live', 'ready', 'metricsPrometheus',
+    ], 'remote endpoints');
+    for (const endpoint of Object.values(receipt.remoteEvidence.endpoints)) {
+      exactKeys(endpoint, [
+        'samples', 'postTerminalSamples', 'failures', 'p99Ms', 'maxMs',
+      ], 'remote endpoint summary');
+    }
+    exactKeys(receipt.remoteEvidence.runtime, [
+      'peakBytes', 'memoryLimitBytes', 'oomKilled', 'restartCount', 'exitCode',
+      'fallbackCount',
+    ], 'remote runtime summary');
+    exactKeys(receipt.remoteEvidence.lifecycle, [
+      'leaseLockAgreement', 'leasesAndLocksCleared', 'generationsConverged',
+      'formerlyStaleRepeatConverged', 'uiHealthyThroughoutPostTerminal',
+    ], 'remote lifecycle summary');
+    exactKeys(receipt.remoteEvidence.rawEvidence, ['sha256', 'bytes'], 'raw evidence identity');
+  }
 }
 
 export function validateCanaryReceipt(receipt, options) {
@@ -224,9 +326,45 @@ export function validateCanaryReceipt(receipt, options) {
   validateDiagnostics(receipt.diagnosticsEvidence);
   validateMetrics(receipt.metricEvidence);
   validateBoundedError(receipt.boundedErrorEvidence);
+  if (receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION) {
+    validateRemoteEvidence(receipt.remoteEvidence);
+  }
   validateSignoff(receipt.signoff);
   validateWindow(receipt, options.now ?? new Date());
   return receipt;
+}
+
+function hashExternalEvidence(repo, evidencePath) {
+  if (typeof evidencePath !== 'string' || !path.isAbsolute(evidencePath)) {
+    throw new Error('canary evidence path must be absolute');
+  }
+  const realRepo = realpathSync(repo);
+  const metadata = lstatSync(evidencePath);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new Error('canary evidence must be a regular non-symlink file');
+  }
+  const realEvidence = realpathSync(evidencePath);
+  if (isInside(realRepo, realEvidence)) throw new Error('canary evidence must be outside the release checkout');
+  const descriptor = openSync(evidencePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const opened = fstatSync(descriptor);
+    const openedEvidence = realpathSync(`/proc/self/fd/${descriptor}`);
+    if (!opened.isFile() || openedEvidence !== realEvidence || isInside(realRepo, openedEvidence)) {
+      throw new Error('canary evidence changed during safe open');
+    }
+    const hash = createHash('sha256');
+    const buffer = Buffer.alloc(64 * 1024);
+    let bytes = 0;
+    for (;;) {
+      const count = readSync(descriptor, buffer, 0, buffer.length, null);
+      if (count === 0) break;
+      hash.update(buffer.subarray(0, count));
+      bytes += count;
+    }
+    return { sha256: hash.digest('hex'), bytes };
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function isInside(parent, candidate) {
@@ -285,15 +423,30 @@ export function verifyReleaseCandidateCanary(options) {
   } catch {
     throw new Error('canary receipt is invalid JSON');
   }
-  return validateCanaryReceipt(receipt, {
+  const validated = validateCanaryReceipt(receipt, {
     tag: options.tag,
     commit: options.commit,
     now: options.now ?? new Date(),
   });
+  if (validated.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION) {
+    let identity;
+    try {
+      identity = hashExternalEvidence(options.repo, options.evidence);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('canary evidence')) throw error;
+      throw new Error('canary evidence could not be read safely');
+    }
+    if (identity.sha256 !== validated.remoteEvidence.rawEvidence.sha256
+      || identity.bytes !== validated.remoteEvidence.rawEvidence.bytes) {
+      throw new Error('canary raw evidence identity mismatch');
+    }
+  }
+  return validated;
 }
 
 function parseArguments(argv) {
-  const permitted = new Set(['--repo', '--receipt', '--tag', '--commit']);
+  const required = new Set(['--repo', '--receipt', '--tag', '--commit']);
+  const permitted = new Set([...required, '--evidence']);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
@@ -303,12 +456,13 @@ function parseArguments(argv) {
     }
     values.set(key, value);
   }
-  if (values.size !== permitted.size) throw new Error('invalid arguments');
+  if ([...required].some(key => !values.has(key))) throw new Error('invalid arguments');
   return {
     repo: values.get('--repo'),
     receipt: values.get('--receipt'),
     tag: values.get('--tag'),
     commit: values.get('--commit'),
+    evidence: values.get('--evidence'),
   };
 }
 

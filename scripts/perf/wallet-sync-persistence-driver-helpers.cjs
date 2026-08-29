@@ -3,7 +3,6 @@
 const { createHash } = require('node:crypto');
 
 function createDriverHelpers({
-  bitcoin,
   canonicalJson,
   classificationVersion,
   emit,
@@ -46,9 +45,21 @@ function createDriverHelpers({
     return receipt;
   }
 
+  function assertSealedUtxoReceipt(fixture, receipt, pass) {
+    emit('receipt_validation_started', { pass });
+    let outcome = 'failure';
+    try {
+      assertValidUtxoReceipt(fixture, receipt);
+      outcome = 'success';
+    } finally {
+      emit('receipt_validation_completed', { pass, outcome });
+    }
+  }
+
   return {
     assertPreStartUtxos,
-    assertValidUtxoReceipt: (fixture, receipt) => assertValidUtxoReceipt(bitcoin, fixture, receipt),
+    assertSealedUtxoReceipt,
+    assertValidUtxoReceipt,
     createArchitectureCollector,
     databaseReceipt,
     seedDatabase,
@@ -379,7 +390,7 @@ const utxoReceiptSelect = () => ({
   confirmations: true, blockHeight: true, spent: true, spentTxid: true, frozen: true,
 });
 
-function assertValidUtxoReceipt(bitcoin, fixture, receipt) {
+function assertValidUtxoReceipt(fixture, receipt) {
   const expected = [...fixture.validUtxos.entries()].flatMap(([address, utxos]) => (
     utxos.map(utxo => ({ address, utxo }))
   ));
@@ -388,19 +399,16 @@ function assertValidUtxoReceipt(bitcoin, fixture, receipt) {
   if (receipt.utxos.length !== expectedCount) {
     throw new Error(`Expected ${expectedCount} sealed UTXOs, received ${receipt.utxos.length}`);
   }
-  expected.forEach(({ address, utxo }) => assertValidUtxo(bitcoin, fixture, rows, address, utxo));
+  expected.forEach(({ address, utxo }) => assertValidUtxo(fixture, rows, address, utxo));
   for (const sentinel of fixture.negativeUtxoSentinels) assertNegativeUtxo(rows, sentinel);
   if (receipt.drafts.length !== 0) throw new Error('Replay unexpectedly created or retained draft state');
 }
 
-function assertValidUtxo(bitcoin, fixture, rows, address, utxo) {
+function assertValidUtxo(fixture, rows, address, utxo) {
   const row = rows.get(`${utxo.tx_hash}:${utxo.tx_pos}`);
-  const transaction = fixture.rawTransactions.get(utxo.tx_hash);
-  const script = Buffer.from(
-    bitcoin.Transaction.fromHex(transaction.hex).outs[utxo.tx_pos].script,
-  ).toString('hex');
   if (!row || row.txid !== utxo.tx_hash || row.vout !== utxo.tx_pos || row.address !== address
-    || row.amount !== String(utxo.value) || row.scriptPubKey !== script || row.spent !== false
+    || row.amount !== String(utxo.value) || row.scriptPubKey !== utxo.scriptPubKey
+    || row.spent !== false
     || row.blockHeight !== utxo.height
     || row.confirmations !== Math.max(0, 800000 - utxo.height + 1)) {
     throw new Error(`Exact UTXO receipt mismatch for ${utxo.tx_hash}:${utxo.tx_pos}`);

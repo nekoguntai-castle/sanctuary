@@ -153,7 +153,7 @@ const { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } = absoluteModule('constants
 const { startHealthServer } = absoluteModule('worker/healthServer.js');
 const {
   assertPreStartUtxos,
-  assertValidUtxoReceipt,
+  assertSealedUtxoReceipt,
   createArchitectureCollector,
   databaseReceipt,
   seedDatabase,
@@ -483,7 +483,7 @@ async function runLive(fixture, baselineThreads) {
     || receiptOne.inputs !== manifest.firstPage.inputs || receiptOne.outputs !== manifest.firstPage.outputs) {
     throw new Error('Pass-one database receipt mismatch');
   }
-  assertValidUtxoReceipt(fixture, receiptOne);
+  assertSealedUtxoReceipt(fixture, receiptOne, 1);
   const selected = new Set(passOne.selectedTxids);
   for (const cursor of receiptOne.cursors) {
     const now = cursor.ioLastAttemptAt?.toISOString();
@@ -504,7 +504,7 @@ async function runLive(fixture, baselineThreads) {
     || receiptTwo.inputs !== manifest.finalReceipt.inputs || receiptTwo.outputs !== manifest.finalReceipt.outputs) {
     throw new Error('Pass-two database receipt mismatch');
   }
-  assertValidUtxoReceipt(fixture, receiptTwo);
+  assertSealedUtxoReceipt(fixture, receiptTwo, 2);
   const passThree = await executePass(fixture, 3);
   if (passThree.selectedTxids.length !== 0) throw new Error(`Pass three selected ${passThree.selectedTxids.length}`);
   const forbiddenNoopWrites = passThree.passTrace.filter(entry => entry.kind === 'mutation');
@@ -512,7 +512,7 @@ async function runLive(fixture, baselineThreads) {
   if (role === 'rc11') assertUtxoMutationSet(fixture, passThree, false);
   const receiptThree = await databaseReceipt(fixture, 'pass_completed', 3);
   assertSeededOutputs(fixture, receiptThree);
-  assertValidUtxoReceipt(fixture, receiptThree);
+  assertSealedUtxoReceipt(fixture, receiptThree, 3);
   if (receiptThree.walletLifecycleDigest !== sealedLifecycleDigest) throw new Error('Pass three mutated wallet lifecycle state');
   for (const key of ['transactions', 'complete', 'inputs', 'outputs', 'cursorDigest', 'transactionEvidenceDigest', 'inputDigest', 'outputDigest', 'utxoDigest', 'draftDigest', 'balanceMarkers']) {
     if (receiptThree[key] !== receiptTwo[key]) throw new Error(`No-op pass changed ${key}`);

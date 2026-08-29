@@ -18,7 +18,9 @@ This document records the checks that should protect the A-grade engineering goa
 - Stable promotion requires the exact accepted RC's external
   [release-candidate canary receipt](../how-to/release-candidate-canary.md), with
   affected-fleet outcomes, diagnostics, metric and bounded-error evidence, and
-  operator signoff. The receipt and support evidence never enter the repository.
+  operator signoff. For v0.8.69 and later, the compact v2 receipt must bind the
+  private raw evidence sidecar. The receipt and support evidence never enter the
+  repository.
 
 ## Nonblocking Release Observations
 

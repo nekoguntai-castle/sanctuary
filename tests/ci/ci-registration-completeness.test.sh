@@ -24,6 +24,7 @@ WORKFLOW_DIR="$REPO_ROOT/.github/workflows"
 # Suites can be registered by name here instead of in a workflow.
 SUITE_RUNNER="$REPO_ROOT/scripts/ci/run-install-unit-tests.sh"
 RELEASE_SUITE_MANIFEST="$REPO_ROOT/package.json"
+WORKFLOW_COMPOSITION_TEST="$REPO_ROOT/tests/ci/check-workflow-composition.test.sh"
 
 PASS=0
 FAIL=0
@@ -112,6 +113,32 @@ release_aggregate_executes() {
 # pipefail surfaces that as the pipeline status. It only bites past the pipe
 # buffer, so it looks like a content problem rather than a plumbing one — this
 # guard reported 50 false orphans and one real finding before it was spotted.
+
+unsafe_pipeline_functions=()
+for function_name in \
+  assert_contains_in_order \
+  assert_named_job_contains \
+  assert_named_job_not_contains \
+  check_interpreter_heredocs; do
+  function_body="$(awk -v start="$function_name() {" \
+    '$0 == start { inside = 1 } inside { print } inside && $0 == "}" { exit }' \
+    "$WORKFLOW_COMPOSITION_TEST")"
+  if [ -z "$function_body" ]; then
+    unsafe_pipeline_functions+=("$function_name (missing)")
+    continue
+  fi
+  normalized_body="${function_body//$'\n'/ }"
+  normalized_body="${normalized_body//\\/ }"
+  if [[ "$normalized_body" =~ \|[[:space:]]*grep([[:space:]]|$) ]]; then
+    unsafe_pipeline_functions+=("$function_name")
+  fi
+done
+
+if [ "${#unsafe_pipeline_functions[@]}" -eq 0 ]; then
+  ok 'workflow composition assertions avoid grep -q producer SIGPIPE inversions'
+else
+  bad "workflow composition assertion functions use piped grep:${unsafe_pipeline_functions[*]/#/ }"
+fi
 
 # ----- 1. every test is executed somewhere ----------------------------------
 missing_exec=()

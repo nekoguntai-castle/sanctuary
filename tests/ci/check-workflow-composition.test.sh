@@ -63,7 +63,9 @@ assert_contains_in_order() {
     fi
   done
 
-  if printf '%s' "$normalized" | grep -Eq "$pattern"; then
+  # Do not pipe a large value into grep -q under pipefail: grep exits after a
+  # match and can leave the producer reporting SIGPIPE, inverting the result.
+  if grep -Eq "$pattern" <<<"$normalized"; then
     PASS=$((PASS + 1))
     echo "PASS: $label"
   else
@@ -241,7 +243,7 @@ assert_named_job_contains() {
   local job
 
   job="$(extract_named_job "$file" "$job_name")"
-  if [ -n "$job" ] && printf '%s\n' "$job" | grep -Fq "$needle"; then
+  if [ -n "$job" ] && [[ "$job" == *"$needle"* ]]; then
     PASS=$((PASS + 1))
     echo "PASS: $label"
   else
@@ -263,7 +265,7 @@ assert_named_job_not_contains() {
     FAIL=$((FAIL + 1))
     FAILURES+=("$label: job not found: $job_name")
     echo "FAIL: $label" >&2
-  elif printf '%s\n' "$job" | grep -Fq "$needle"; then
+  elif [[ "$job" == *"$needle"* ]]; then
     FAIL=$((FAIL + 1))
     FAILURES+=("$label: $job_name contains forbidden text: $needle")
     echo "FAIL: $label" >&2
@@ -3387,8 +3389,7 @@ check_interpreter_heredocs() {
       body="$(awk -v start="$lineno" -v term="$term" \
         'NR > start { if ($0 ~ "^[[:space:]]*"term"[[:space:]]*$") exit; print }' "$wf")"
       guarded=no
-      printf '%s
-' "$body" | grep -Eq '^[[:space:]]*set -[a-z]*e' && guarded=yes
+      grep -Eq '^[[:space:]]*set -[a-z]*e' <<<"$body" && guarded=yes
       [ "$guarded" = yes ] || offenders="${offenders} $(basename "$wf"):${lineno}"
     done < "$wf"
   done

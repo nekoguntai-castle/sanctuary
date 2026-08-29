@@ -241,12 +241,37 @@ function validateUtxoEvidenceReceipts(events, manifest) {
   }
 }
 
+export function validateReceiptValidationTrace(events) {
+  const markers = events.filter(event => (
+    event.event === 'receipt_validation_started'
+    || event.event === 'receipt_validation_completed'
+  ));
+  if (markers.length !== 6) throw new Error('Receipt validation markers are not balanced');
+  for (const pass of [1, 2, 3]) {
+    const started = markers.filter(event => (
+      event.event === 'receipt_validation_started' && event.pass === pass
+    ));
+    const completed = markers.filter(event => (
+      event.event === 'receipt_validation_completed' && event.pass === pass
+    ));
+    if (started.length !== 1 || completed.length !== 1
+      || markers.indexOf(started[0]) > markers.indexOf(completed[0])) {
+      throw new Error(`Receipt validation markers are not balanced for pass ${pass}`);
+    }
+    if (completed[0].outcome !== 'success') {
+      throw new Error(`Receipt validation failed for pass ${pass}`);
+    }
+  }
+  return [1, 2, 3];
+}
+
 export function validateLiveReceiptInvariants(events, manifest = { finalReceipt: { utxos: 53 } }) {
   const receipts = collectLiveReplayReceipts(events);
   const lifecycleDigest = validateWalletLifecycleReceipts(receipts);
   const transactionEvidenceDigest = validateTransactionEvidenceReceipts(receipts);
   validateUtxoAndDraftReceipts(receipts, manifest);
   validateUtxoEvidenceReceipts(events, manifest);
+  validateReceiptValidationTrace(events);
   return {
     lifecycleDigest,
     transactionEvidenceDigest,
