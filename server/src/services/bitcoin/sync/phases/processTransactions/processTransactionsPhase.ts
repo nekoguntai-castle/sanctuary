@@ -24,7 +24,11 @@ import {
 import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
 import { sendNotifications } from './notifications';
-import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
+import {
+  fetchAuthenticatedOutpoints,
+  fetchAuthenticatedTransactions,
+  releaseAuthenticatedTransactionDetails,
+} from '../../evidenceAuthentication';
 import { runWalletSyncMutation } from '../../mutationBoundary';
 import type { NodeRequestOptions } from '../../../nodeClient';
 import {
@@ -96,6 +100,7 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
       txid => ctx.classificationRepairTxids.has(txid),
     );
     const ioRepairTxids = batchTxids.filter(txid => ctx.ioRepairTxids.has(txid));
+    try {
 
     // Advance selected repairs before network I/O so missing/null/failed raw
     // fetches rotate behind the durable backlog instead of starving it.
@@ -120,69 +125,88 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     const requestOptions = stage
       ? { signal: stage.signal, deadlineAt: stage.deadlineAt }
       : undefined;
-    let batchTxidSet: Set<string>;
-    let transactionsToCreate: TransactionCreateData[];
+    const batchTxidSet = new Set<string>();
+    const classifiedTxids = new Set<string>();
+    const rejectedBeforePage = ctx.rejectedEvidenceCount;
+    let persistenceReported = false;
     try {
-      try {
-        ({ batchTxidSet, transactionsToCreate } = await resolveCandidateBatch(
-          ctx,
-          batchTxids,
-          requestOptions,
-          progress,
-        ));
-      } catch (error) {
-        emitCandidateTerminalProgress(progress, error, requestOptions?.signal);
+      const pageBlockTimestamps = await prefetchTransactionBlockTimestamps(
+        ctx,
+        new Set(batchTxids),
+        requestOptions,
+      ).catch(error => {
+        if (isCandidateBudgetExpiry(error, requestOptions)) return new Map<number, Date | null>();
         throw error;
+      });
+      for (const [candidateIndex, txid] of batchTxids.entries()) {
+        try {
+          const resolved = await resolveCandidateBatch(
+            ctx,
+            [txid],
+            requestOptions,
+            progress,
+            pageBlockTimestamps,
+            candidateIndex === 0,
+          );
+          for (const availableTxid of resolved.batchTxidSet) batchTxidSet.add(availableTxid);
+          for (const transaction of resolved.transactionsToCreate) {
+            classifiedTxids.add(transaction.txid);
+          }
+          if (!persistenceReported) {
+            progress.start(
+              'persistence',
+              'transactions',
+              `Saving transaction batch ${batch} of ${batchCount}...`,
+            );
+            persistenceReported = true;
+          }
+          if (resolved.transactionsToCreate.length > 0) {
+            const persisted = await persistTransactionsIndividually(
+              ctx,
+              resolved.transactionsToCreate,
+            );
+            repairedTransactions += persisted.repaired.length;
+            if (persisted.created.length > 0) {
+              totalTransactions += persisted.created.length;
+              allNewTransactions.push(...persisted.created);
+              logBatchResults(walletId, persisted.created);
+            }
+          }
+          if (ioRepairTxids.includes(txid)
+            && resolved.batchTxidSet.has(txid)
+            && !classifiedTxids.has(txid)) {
+            ctx.attemptRuntime?.signal.throwIfAborted();
+            await runWalletSyncMutation(
+              ctx,
+              'transaction_io_repair',
+              (tx, deferPostCommit) => repairTransactionIO(
+                ctx, [txid], tx, deferPostCommit,
+              ),
+            );
+            ctx.attemptRuntime?.signal.throwIfAborted();
+          }
+        } finally {
+          releaseAuthenticatedTransactionDetails(ctx, { scope: 'candidate', txid });
+        }
       }
+    } catch (error) {
+      emitCandidateTerminalProgress(progress, error, requestOptions?.signal);
+      throw error;
     } finally {
       stage?.dispose();
     }
-
-    progress.start('persistence', 'transactions', `Saving transaction batch ${batch} of ${batchCount}...`);
-    if (transactionsToCreate.length > 0) {
-      const persisted = await runWalletSyncMutation(
-        ctx,
-        'transaction_batch',
-        (tx, deferPostCommit) => persistTransactionBatch(
-          ctx,
-          transactionsToCreate,
-          tx,
-          deferPostCommit,
-        ),
-      );
-      const newTransactions = persisted.created;
-      repairedTransactions += persisted.repaired.length;
-      await applyPersistedAddressLabels(ctx, [...persisted.created, ...persisted.repaired]);
-
-      if (newTransactions.length > 0) {
-        totalTransactions += newTransactions.length;
-        allNewTransactions.push(...newTransactions);
-        logBatchResults(walletId, newTransactions);
-      }
-    }
-
-    const classifiedTxids = new Set(transactionsToCreate.map(transaction => transaction.txid));
-    const unclassifiedIoRepairTxids = ioRepairTxids.filter(
-      txid => batchTxidSet.has(txid) && !classifiedTxids.has(txid),
-    );
-    if (unclassifiedIoRepairTxids.length > 0) {
-      await runWalletSyncMutation(
-        ctx,
-        'transaction_io_repair',
-        (tx, deferPostCommit) => repairTransactionIO(
-          ctx,
-          unclassifiedIoRepairTxids,
-          tx,
-          deferPostCommit,
-        ),
-      );
-    }
+    progress.candidates(batchTxidSet.size, ctx.rejectedEvidenceCount - rejectedBeforePage);
     progress.complete(batchEnd, newTxids.length);
 
     // Small delay between batches
     if (batchIndex + TX_BATCH_SIZE < newTxids.length) {
       if (ctx.attemptRuntime) await abortableSyncDelay(100, ctx.attemptRuntime);
       else await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    } finally {
+      // The selected current transaction is the only full graph owned by the
+      // attempt. Exact parent evidence lives in the compact outpoint maps.
+      releaseAuthenticatedTransactionDetails(ctx, { scope: 'batch' });
     }
   }
 
@@ -215,6 +239,39 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
   return ctx;
 }
 
+/**
+ * Keep the remote candidate page independent from the authoritative mutation
+ * unit. A single high-fanout transaction may already approach the supported I/O
+ * ceiling, so sharing one fence transaction across 25 candidates amplifies both
+ * the retained row graph and Prisma serialization beyond the worker cgroup.
+ */
+async function persistTransactionsIndividually(
+  ctx: SyncContext,
+  transactions: TransactionCreateData[],
+): Promise<BatchPersistenceResult> {
+  const aggregate: BatchPersistenceResult = { created: [], repaired: [] };
+
+  for (const transaction of transactions) {
+    ctx.attemptRuntime?.signal.throwIfAborted();
+    const persisted = await runWalletSyncMutation(
+      ctx,
+      'transaction_batch',
+      (tx, deferPostCommit) => persistTransactionBatch(
+        ctx,
+        [transaction],
+        tx,
+        deferPostCommit,
+      ),
+    );
+    ctx.attemptRuntime?.signal.throwIfAborted();
+    aggregate.created.push(...persisted.created);
+    aggregate.repaired.push(...persisted.repaired);
+    await applyPersistedAddressLabels(ctx, [...persisted.created, ...persisted.repaired]);
+  }
+
+  return aggregate;
+}
+
 const availableBatchTransactionIds = (
   batchTxids: string[],
   txDetailsCache: SyncContext['txDetailsCache'],
@@ -225,34 +282,33 @@ const resolveCandidateBatch = async (
   batchTxids: string[],
   options: NodeRequestOptions | undefined,
   progress: ReturnType<typeof createCandidateBatchProgress>,
+  pageBlockTimestamps: ReadonlyMap<number, Date | null>,
+  reportProgress = true,
 ): Promise<{
   batchTxidSet: Set<string>;
   transactionsToCreate: TransactionCreateData[];
 }> => {
-  const rejectedBefore = ctx.rejectedEvidenceCount;
   try {
     await fetchAuthenticatedTransactions(ctx, batchTxids, options);
     const batchTxidSet = availableBatchTransactionIds(batchTxids, ctx.txDetailsCache);
     options?.signal?.throwIfAborted();
-    progress.start('parent_fetch', 'transactions', 'Resolving previous transactions for this batch...');
+    if (reportProgress) progress.start('parent_fetch', 'transactions', 'Resolving previous transactions for this batch...');
     await prefetchPreviousTransactions(ctx, batchTxidSet, options);
-    progress.start('timestamp_fetch', 'block_heights', 'Resolving block timestamps for this batch...');
-    const blockTimestamps = await prefetchTransactionBlockTimestamps(ctx, batchTxidSet, options);
-    progress.start('classification', 'transactions', 'Classifying transactions in this batch...');
+    if (reportProgress) progress.start('timestamp_fetch', 'block_heights', 'Resolving block timestamps for this batch...');
+    const blockTimestamps = pageBlockTimestamps;
+    if (reportProgress) progress.start('classification', 'transactions', 'Classifying transactions in this batch...');
     const transactionsToCreate = await classifyTransactions(
       ctx,
       batchTxidSet,
       options,
       blockTimestamps,
     );
-    progress.candidates(batchTxidSet.size, ctx.rejectedEvidenceCount - rejectedBefore);
     return { batchTxidSet, transactionsToCreate };
   } catch (error) {
     const batchTxidSet = availableBatchTransactionIds(batchTxids, ctx.txDetailsCache);
-    progress.candidates(batchTxidSet.size, ctx.rejectedEvidenceCount - rejectedBefore);
     if (!isCandidateBudgetExpiry(error, options)) throw error;
     progress.fallback('Remote batch budget expired; continuing with locally complete transactions.');
-    progress.start('classification', 'transactions', 'Classifying locally complete transactions...');
+    if (reportProgress) progress.start('classification', 'transactions', 'Classifying locally complete transactions...');
     return {
       batchTxidSet,
       transactionsToCreate: await classifyTransactions(
@@ -295,25 +351,29 @@ async function prefetchPreviousTransactions(
   batchTxidSet: Set<string>,
   options?: NodeRequestOptions,
 ): Promise<void> {
-  const { walletId, client, txDetailsCache } = ctx;
+  const { walletId, txDetailsCache } = ctx;
 
-  const prevTxidsNeeded = new Set<string>();
+  const outpointsNeeded = new Map<string, Set<number>>();
   for (const txid of batchTxidSet) {
     const txDetails = txDetailsCache.get(txid);
     if (!txDetails?.vin) continue;
     for (const input of txDetails.vin) {
       if (input.coinbase) continue;
-      if (!getInlineInputAddress(input) && input.txid && !txDetailsCache.has(input.txid)) {
-        prevTxidsNeeded.add(input.txid);
+      if (!getInlineInputAddress(input) && input.txid && input.vout !== undefined) {
+        const vouts = outpointsNeeded.get(input.txid) ?? new Set<number>();
+        vouts.add(input.vout);
+        outpointsNeeded.set(input.txid, vouts);
       }
     }
   }
 
-  if (prevTxidsNeeded.size > 0) {
-    const prevTxidsArray = Array.from(prevTxidsNeeded);
-    walletLog(walletId, 'debug', 'SYNC', `Prefetching ${prevTxidsArray.length} previous transactions for input resolution...`);
+  if (outpointsNeeded.size > 0) {
+    walletLog(walletId, 'debug', 'SYNC', `Prefetching ${outpointsNeeded.size} previous transactions for input resolution...`);
     try {
-      await fetchAuthenticatedTransactions(ctx, prevTxidsArray, options);
+      await fetchAuthenticatedOutpoints(ctx, outpointsNeeded, {
+        ...options,
+        evidenceRole: 'parent',
+      });
     } catch (error) {
       options?.signal?.throwIfAborted();
       log.warn(`[SYNC] Batch prev tx fetch failed, will fall back to individual requests`, { error: getErrorMessage(error) });

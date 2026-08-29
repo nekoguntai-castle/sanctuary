@@ -1,9 +1,15 @@
 import * as bitcoin from 'bitcoinjs-lib';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestContext } from '../../../../../src/services/bitcoin/sync';
 import type { RawTransaction } from '../../../../../src/services/bitcoin/sync';
 import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
-import { fetchAuthenticatedTransactions } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import {
+  authenticatedRawHexChars,
+  clearAuthenticatedEvidenceComplexity,
+  fetchAuthenticatedTransactions,
+  releaseAuthenticatedEvidence,
+} from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { DetachedTransactionEvidenceError } from '../../../../../src/services/bitcoin/sync/transactionEvidenceThread';
 
 const projectionComplexity = vi.hoisted(() => new WeakMap<RawTransaction, {
   rawHexChars: number;
@@ -14,25 +20,89 @@ const projectionComplexity = vi.hoisted(() => new WeakMap<RawTransaction, {
 const projectionControl = vi.hoisted(() => ({
   exposeComplexity: true,
   projectorCreations: 0,
+  fullFailure: undefined as unknown,
+  afterFull: undefined as undefined | (() => void),
 }));
 
 vi.mock('../../../../../src/services/bitcoin/sync/transactionEvidenceThread', async () => {
-  const { projectAuthenticatedTransactionWithComplexity } = await import(
+  const actual = await vi.importActual<typeof import(
+    '../../../../../src/services/bitcoin/sync/transactionEvidenceThread'
+  )>('../../../../../src/services/bitcoin/sync/transactionEvidenceThread');
+  const projection = await import(
     '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection'
   );
+  const project = async (
+    input: Parameters<typeof projection.projectAuthenticatedTransactionWithComplexity>[0],
+    signal?: AbortSignal,
+  ) => {
+    signal?.throwIfAborted();
+    const projected = projection.projectAuthenticatedTransactionWithComplexity(input);
+    projectionComplexity.set(projected.value, projected.complexity);
+    return projected.value;
+  };
   return {
+    ...actual,
     createTransactionEvidenceProjector: () => {
       projectionControl.projectorCreations++;
       return {
-        project: async (
-          input: Parameters<typeof projectAuthenticatedTransactionWithComplexity>[0],
+        project,
+        close: async () => undefined,
+      };
+    },
+    createCompactTransactionEvidenceProjector: (walletScripts: readonly string[]) => {
+      projectionControl.projectorCreations++;
+      return {
+        project,
+        projectCompact: async (
+          input: Parameters<typeof projection.projectAuthenticatedTransactionWithComplexity>[0],
           signal?: AbortSignal,
         ) => {
-          signal?.throwIfAborted();
-          const projected = projectAuthenticatedTransactionWithComplexity(input);
-          projectionComplexity.set(projected.value, projected.complexity);
-          return projected.value;
+          await project(input, signal);
+          return projection.projectCompactAuthenticatedTransaction({
+            expectedTxid: input.expectedTxid,
+            remoteTxid: input.details.txid,
+            canonicalBytes: Uint8Array.from(Buffer.from(input.details.hex ?? '', 'hex')),
+            metadata: {
+              time: input.details.time,
+              blocktime: input.details.blocktime,
+              blockheight: input.details.blockheight,
+              confirmations: input.details.confirmations,
+              blockhash: input.details.blockhash,
+            },
+            limits: input.limits,
+          }, walletScripts);
         },
+        projectFull: async (envelope: any, signal?: AbortSignal) => {
+          signal?.throwIfAborted();
+          if (projectionControl.fullFailure !== undefined) throw projectionControl.fullFailure;
+          const result = projection.reprojectFullAuthenticatedTransaction({
+            expectedTxid: envelope.txid,
+            canonicalBytes: envelope.canonicalBytes,
+            digest: envelope.digest,
+            complexity: envelope.complexity,
+            metadata: envelope.metadata,
+          });
+          projectionControl.afterFull?.();
+          return result;
+        },
+        extractOutput: async (envelope: any, vout: number) => (
+          projection.extractExactAuthenticatedTransactionOutput({
+            expectedTxid: envelope.txid,
+            canonicalBytes: envelope.canonicalBytes,
+            digest: envelope.digest,
+            complexity: envelope.complexity,
+            metadata: envelope.metadata,
+          }, vout)
+        ),
+        extractOutputs: async (envelope: any, vouts: readonly number[]) => (
+          projection.extractExactAuthenticatedTransactionOutputs({
+            expectedTxid: envelope.txid,
+            canonicalBytes: envelope.canonicalBytes,
+            digest: envelope.digest,
+            complexity: envelope.complexity,
+            metadata: envelope.metadata,
+          }, vouts)
+        ),
         close: async () => undefined,
       };
     },
@@ -64,7 +134,51 @@ const clientFor = (transactions: Map<string, RawTransaction>) => ({
   getTransaction: vi.fn(async (txid: string) => transactions.get(txid)),
 });
 
+beforeEach(() => {
+  projectionControl.fullFailure = undefined;
+  projectionControl.afterFull = undefined;
+});
+
 describe('cached receive evidence authentication', () => {
+  it('releases all attempt-scoped authenticated evidence together', () => {
+    const ctx = createTestContext({});
+    const txid = '01'.repeat(32);
+    ctx.authenticatedTransactionEvidence.set(txid, {
+      txid,
+      canonicalBytes: new Uint8Array(),
+      digest: 'digest',
+      complexity: { rawHexChars: 0, inputs: 0, outputs: 0, scriptHexChars: 0 },
+      metadata: {},
+      inputTxids: new Uint8Array(),
+      inputVouts: new Uint32Array(),
+      paidWalletScriptIndexes: new Uint32Array(),
+    });
+    ctx.authenticatedOutpointEvidence.set(`${txid}:0`, {
+      txid, vout: 0, valueSats: 1n, scriptHex: '51',
+    });
+    ctx.authenticatedOutpointCoverage.set(txid, new Set([0]));
+    ctx.authenticatedSpentOutpointKeys.add(`${txid}:0`);
+
+    releaseAuthenticatedEvidence(ctx, 'attempt');
+
+    expect(ctx.authenticatedTransactionEvidence.size).toBe(0);
+    expect(ctx.authenticatedOutpointEvidence.size).toBe(0);
+    expect(ctx.authenticatedOutpointCoverage.size).toBe(0);
+    expect(ctx.authenticatedSpentOutpointKeys.size).toBe(0);
+  });
+
+  it('charges one exact raw encoding for compact and legacy projector results', () => {
+    const txid = '03'.repeat(32);
+    expect(authenticatedRawHexChars({ txid, vin: [], vout: [] }, 8)).toBe(8);
+    expect(authenticatedRawHexChars({ txid, hex: '00112233', vin: [], vout: [] }, 16)).toBe(8);
+    expect(authenticatedRawHexChars({
+      txid,
+      raw: Uint8Array.from([0, 1, 2, 3]),
+      vin: [],
+      vout: [],
+    }, 16)).toBe(8);
+  });
+
   it('deduplicates requests, preserves metadata, and skips projectors for cached or empty work', async () => {
     const transaction = makeRawTransaction(Uint8Array.from([0x51]), 2n);
     const rawDetails = {
@@ -147,6 +261,113 @@ describe('cached receive evidence authentication', () => {
     await expect(fetchAuthenticatedTransactions(ctx, [cachedTxid, pending.getId()]))
       .resolves.toEqual(new Set([cachedTxid, pending.getId()]));
     expect(client.getTransactionsBatch).toHaveBeenCalledWith([pending.getId()], false);
+  });
+
+  it('rebuilds retained complexity without double-charging a compact full-cache entry', async () => {
+    const retained = makeRawTransaction(Uint8Array.from([0x51]), 8n);
+    const pending = makeRawTransaction(Uint8Array.from([0x52]), 9n);
+    const client = clientFor(new Map([
+      [retained.getId(), details(retained)],
+      [pending.getId(), details(pending)],
+    ]));
+    const ctx = createTestContext({ client: client as any });
+
+    await fetchAuthenticatedTransactions(ctx, [retained.getId()]);
+    clearAuthenticatedEvidenceComplexity(ctx);
+
+    await expect(fetchAuthenticatedTransactions(ctx, [pending.getId()]))
+      .resolves.toEqual(new Set([pending.getId()]));
+    expect(ctx.authenticatedTransactionEvidence.has(retained.getId())).toBe(true);
+    expect(ctx.txDetailsCache.has(retained.getId())).toBe(true);
+  });
+
+  it('clears rejected full projections and preserves their fail-closed reason', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 10n);
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), details(transaction)]])) as any,
+    });
+    projectionControl.fullFailure = { reason: 'full_projection_rejected' };
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .resolves.toEqual(new Set());
+
+    expect(ctx.txDetailsCache.has(transaction.getId())).toBe(false);
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['full_projection_rejected', 1],
+    ]));
+  });
+
+  it('classifies an unstructured full projection error as a fetch failure', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 10n);
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), details(transaction)]])) as any,
+    });
+    projectionControl.fullFailure = new Error('worker unavailable');
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .resolves.toEqual(new Set());
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([['fetch_failed', 1]]));
+  });
+
+  it('finishes local projection when only the remote stage budget expires', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 10n);
+    const controller = new AbortController();
+    const budget = new SyncRemoteStageBudgetError('candidate_batch_remote');
+    let aborted = false;
+    const rawDetails: RawTransaction = {
+      txid: transaction.getId(),
+      vin: [],
+      vout: [],
+      get hex() {
+        if (!aborted) {
+          aborted = true;
+          controller.abort(budget);
+        }
+        return transaction.toHex();
+      },
+    };
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), rawDetails]])) as any,
+    });
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()], {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 1_000,
+    })).resolves.toEqual(new Set());
+    expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
+      ['fetch_budget_exhausted', 1],
+    ]));
+  });
+
+  it('clears and rethrows detached full projections without remote fallback', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 11n);
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), details(transaction)]])) as any,
+    });
+    const failure = new DetachedTransactionEvidenceError(new Error('worker lost ownership'));
+    projectionControl.fullFailure = failure;
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
+      .rejects.toBe(failure);
+    expect(ctx.txDetailsCache.has(transaction.getId())).toBe(false);
+    expect(ctx.rejectedEvidenceCount).toBe(0);
+  });
+
+  it('rechecks the attempt runtime after full projection completes', async () => {
+    const transaction = makeRawTransaction(Uint8Array.from([0x51]), 12n);
+    const controller = new AbortController();
+    const failure = new Error('attempt expired after full projection');
+    const ctx = createTestContext({
+      client: clientFor(new Map([[transaction.getId(), details(transaction)]])) as any,
+      attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 1_000 },
+    });
+    projectionControl.afterFull = () => controller.abort(failure);
+
+    await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()], {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 1_000,
+    })).rejects.toBe(failure);
+    expect(ctx.txDetailsCache.has(transaction.getId())).toBe(false);
   });
 
   it('initializes retained complexity from a cached entry without raw hex', async () => {

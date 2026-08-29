@@ -79,6 +79,30 @@ describe('wallet sync mutation boundary', () => {
     expect(notification).not.toHaveBeenCalled();
   });
 
+  it('rechecks cancellation immediately before the fenced transaction commits', async () => {
+    const controller = new AbortController();
+    const commit = vi.fn();
+    hoisted.withWalletSyncMutationFence.mockImplementation(async (_fence, callback) => {
+      const value = await callback({ wallet: {} });
+      commit();
+      return value;
+    });
+
+    await expect(runWalletSyncMutation(
+      {
+        walletId: fence.walletId,
+        mutationFence: fence,
+        attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 1_000 },
+      },
+      'transaction_batch',
+      async () => {
+        controller.abort(new Error('lease expired during persistence'));
+      },
+    )).rejects.toThrow('lease expired during persistence');
+
+    expect(commit).not.toHaveBeenCalled();
+  });
+
   it('preserves compatibility behavior without granting reclaim authority', async () => {
     const effect = vi.fn();
     await runWalletSyncMutation(

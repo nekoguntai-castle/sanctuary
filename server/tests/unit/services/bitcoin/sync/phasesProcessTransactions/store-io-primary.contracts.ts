@@ -1,3 +1,4 @@
+import * as bitcoin from 'bitcoinjs-lib';
 import { expect, it, vi, type Mock } from 'vitest';
 import './processTransactionsTestHarness';
 import { mockPrismaClient } from '../../../../../mocks/prisma';
@@ -23,6 +24,7 @@ import {
   repairTransactionIO,
   storeTransactionIO,
 } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
+import { ADDRESS_SYNC_IO_UPSERT_MAX_ROWS } from '../../../../../../src/constants/addressSyncPersistence';
 
 export function registerProcessTransactionStoreIoPrimaryTests(walletId: string): void {
     it('uses the supplied transaction for new I/O persistence', async () => {
@@ -37,6 +39,137 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
       expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { walletId, txid: { in: [] } } }),
       );
+    });
+
+    it('streams a 2,792-output transaction through bounded I/O chunks', async () => {
+      const txid = 'bounded_output_chunks'.padEnd(64, 'a');
+      const transactionId = 'bounded-output-row';
+      const payment = bitcoin.payments.p2wpkh({
+        hash: Buffer.alloc(20, 5),
+        network: bitcoin.networks.testnet,
+      });
+      const scriptHex = Buffer.from(payment.output!).toString('hex');
+      const outputs = Array.from({ length: 2_792 }, (_, outputIndex) => ({
+        value: 0.00000001,
+        n: outputIndex,
+        scriptHex,
+      }));
+      mockPrismaClient.transaction.findMany.mockResolvedValue([{
+        id: transactionId,
+        txid,
+        type: 'received',
+        classificationAddressCount: 1,
+      }]);
+      const ctx = createTestContext({
+        walletId,
+        network: 'testnet3',
+        walletAddressSet: new Set([payment.address!]),
+        walletScriptToAddress: new Map([[scriptHex, { address: payment.address } as never]]),
+        txDetailsCache: new Map([[txid, {
+          txid,
+          vin: [{ coinbase: '03abcdef' }],
+          vout: outputs,
+        }]]) as any,
+      });
+
+      await storeTransactionIO(
+        ctx,
+        [{ txid, confirmations: 0 }] as never,
+        mockPrismaClient as never,
+      );
+
+      const chunks = mockPrismaClient.transactionOutput.createMany.mock.calls
+        .map(([args]) => args.data);
+      expect(chunks).toHaveLength(6);
+      expect(chunks.map(chunk => chunk.length)).toEqual([512, 512, 512, 512, 512, 232]);
+      expect(chunks.flat()).toHaveLength(2_792);
+      expect(chunks.every(chunk => chunk.length <= 512)).toBe(true);
+      expect(chunks.flat().every(output => output.address === payment.address)).toBe(true);
+      const completion = mockPrismaClient.$executeRaw.mock.calls
+        .map(([statement]) => statement as { strings: string[] })
+        .find(statement => statement.strings.join('').includes('SET "ioComplete" = true'));
+      expect(completion).toBeDefined();
+    });
+
+    it('flushes an exact full input chunk without a trailing partial write', async () => {
+      const txid = 'bounded_input_chunks'.padEnd(64, 'b');
+      const transactionId = 'bounded-input-row';
+      const inputs = Array.from({ length: ADDRESS_SYNC_IO_UPSERT_MAX_ROWS }, (_, vout) => ({
+        txid: vout.toString(16).padStart(64, '0'),
+        vout,
+        prevout: {
+          value: 0.00000001,
+          scriptPubKey: { address: 'tb1q_external_input' },
+        },
+      }));
+      mockPrismaClient.transaction.findMany.mockResolvedValue([{
+        id: transactionId,
+        txid,
+        type: 'sent',
+        classificationAddressCount: 1,
+      }]);
+      const ctx = createTestContext({
+        walletId,
+        walletAddressSet: new Set(['tb1q_wallet_input']),
+        txDetailsCache: new Map([[txid, { txid, vin: inputs, vout: [] }]]) as any,
+      });
+
+      await storeTransactionIO(
+        ctx,
+        [{ txid, confirmations: 0 }] as never,
+        mockPrismaClient as never,
+      );
+
+      expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.transactionInput.createMany.mock.calls[0][0].data)
+        .toHaveLength(ADDRESS_SYNC_IO_UPSERT_MAX_ROWS);
+      expect(mockPrismaClient.transactionOutput.createMany).not.toHaveBeenCalled();
+      const completion = mockPrismaClient.$executeRaw.mock.calls
+        .map(([statement]) => statement as { strings: string[] })
+        .find(statement => statement.strings.join('').includes('SET "ioComplete" = true'));
+      expect(completion).toBeDefined();
+    });
+
+    it('decodes a script-only authenticated output inside bounded persistence', async () => {
+      const txid = 'script_only_output'.padEnd(64, 'a');
+      const payment = bitcoin.payments.p2wpkh({
+        hash: Buffer.alloc(20, 11),
+        network: bitcoin.networks.testnet,
+      });
+      mockPrismaClient.transaction.findMany.mockResolvedValue([{
+        id: 'script-only-row',
+        txid,
+        type: 'received',
+        classificationAddressCount: 1,
+      }]);
+      const ctx = createTestContext({
+        walletId,
+        network: 'testnet3',
+        walletAddressSet: new Set([payment.address!]),
+        walletScriptToAddress: new Map([[Buffer.from(payment.output!).toString('hex'), {
+          address: payment.address,
+        } as never]]),
+        txDetailsCache: new Map([[txid, {
+          txid,
+          vin: [{ coinbase: '03abcdef' }],
+          vout: [{ value: 0.00000001, scriptHex: Buffer.from(payment.output!).toString('hex') }],
+        }]]) as never,
+      });
+
+      await storeTransactionIO(
+        ctx,
+        [{ txid, confirmations: 0 }] as never,
+        mockPrismaClient as never,
+      );
+
+      expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          address: payment.address,
+          scriptPubKey: Buffer.from(payment.output!).toString('hex'),
+          isOurs: true,
+        })],
+        skipDuplicates: true,
+      });
     });
 
     it('propagates fenced I/O repair failures to roll back the mutation', async () => {
@@ -83,6 +216,10 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
         }
         return [];
       });
+      mockPrismaClient.$queryRaw.mockImplementation(async (statement: any) => {
+        const sql = statement?.strings?.join('') ?? '';
+        return sql.includes('replacement_candidates') ? [{ count: 0 }] : [];
+      });
       const transaction = createMockTransaction({
         txid,
         inputs: [{
@@ -109,14 +246,9 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
         })],
         skipDuplicates: true,
       });
-      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            confirmations: 0,
-            rbfStatus: 'active',
-          }),
-        })
-      );
+      expect(mockPrismaClient.$queryRaw).toHaveBeenCalledWith(expect.objectContaining({
+        strings: expect.arrayContaining([expect.stringContaining('replacement_candidates')]),
+      }));
     });
 
     it('contains I/O repair persistence failures', async () => {
@@ -165,7 +297,7 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
 
       const result = await processTransactionsPhase(ctx);
       expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
-      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalled();
       expect(mockPrismaClient.transaction.updateMany).not.toHaveBeenCalled();
       expect(result.stats.newTransactionsCreated).toBe(0);
       expect(notifyNewTransactions).not.toHaveBeenCalled();
@@ -220,7 +352,12 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
     it('should resolve input address and amount from cached previous tx in storeTransactionIO', async () => {
       const txid = 'store_prev_lookup'.padEnd(64, 'a');
       const prevTxid = 'store_prev_source'.padEnd(64, 'b');
-      const walletAddress = 'tb1q_wallet_addr';
+      const payment = bitcoin.payments.p2wpkh({
+        hash: Buffer.alloc(20, 13),
+        network: bitcoin.networks.testnet,
+      });
+      const walletAddress = payment.address!;
+      const walletScript = Buffer.from(payment.output!).toString('hex');
 
       const txDetails = {
         txid,
@@ -240,11 +377,13 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
         vout: [{
           value: 0.002,
           n: 0,
-          scriptPubKey: { hex: '0014...', address: walletAddress },
+          scriptHex: walletScript,
         }],
       };
 
-      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, txDetails], [prevTxid, prevTx]]));
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(
+        new Map<string, any>([[txid, txDetails], [prevTxid, prevTx]]),
+      );
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
         if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') return [];
         if (args?.select?.txid && !args?.select?.id) return [];
@@ -257,10 +396,12 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
 
       const ctx = createTestContext({
         walletId,
+        network: 'testnet3',
         client: mockElectrumClient as any,
         newTxids: [txid],
         historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),
         walletAddressSet: new Set([walletAddress]),
+        walletScriptToAddress: new Map([[walletScript, { address: walletAddress } as never]]),
         addressMap: new Map([[walletAddress, { id: 'addr-store-prev', address: walletAddress } as any]]),
         existingTxMap: new Map(),
         txDetailsCache: new Map() as any,

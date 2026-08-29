@@ -31,6 +31,7 @@ import type {
   SyncPipelineError,
 } from "./types";
 import type { SyncExecutionStage } from '@sanctuary/shared/schemas/syncProgress';
+import { releaseAuthenticatedEvidence } from './evidenceAuthentication';
 
 const log = createLogger("BITCOIN:SVC_SYNC_PIPELINE");
 
@@ -240,6 +241,7 @@ export async function executeSyncPipeline(
         options.onPhaseComplete(phase.name, ctx);
       }
     } catch (error) {
+      releaseAuthenticatedEvidence(ctx, 'rollback');
       if (isSyncStageBudgetError(error)) {
         phaseProgress?.budgetExpired();
       } else {

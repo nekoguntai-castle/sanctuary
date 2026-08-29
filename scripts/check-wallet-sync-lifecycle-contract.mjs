@@ -176,6 +176,7 @@ function walkCode(root, relativePath = 'server/src', files = []) {
 function collectProductionSources(root) {
   return new Map(PRODUCTION_SOURCE_ROOTS.flatMap(sourceRoot => walkCode(root, sourceRoot))
     .filter(file => !file.startsWith('server/src/generated/'))
+    .filter(file => !file.startsWith('server/src/perf/'))
     .map(file => [file, readFileSync(path.join(root, file), 'utf8')]));
 }
 

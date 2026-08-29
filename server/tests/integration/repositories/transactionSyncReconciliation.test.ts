@@ -25,6 +25,12 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       'DROP FUNCTION IF EXISTS test_fail_classification_role_update()',
     );
     await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS test_fail_middle_io_chunk_trigger ON "transaction_outputs"',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS test_fail_middle_io_chunk()',
+    );
+    await prisma.$executeRawUnsafe(
       'DROP TRIGGER IF EXISTS test_pause_ownership_target_trigger ON "transaction_ownership_repairs"',
     );
     await prisma.$executeRawUnsafe(
@@ -332,6 +338,395 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       isOurs: true,
       outputType: 'consolidation',
     });
+  });
+
+  it('reconciles conflicting I/O without replacing IDs or user metadata', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, txid, 'sent'),
+    });
+    const input = await prisma.transactionInput.create({
+      data: {
+        transactionId: transaction.id,
+        inputIndex: 0,
+        txid: generateTxid(),
+        vout: 1,
+        address: 'old-input-address',
+        amount: BigInt(100),
+        derivationPath: "m/84'/1'/0'/0/0",
+      },
+    });
+    const output = await prisma.transactionOutput.create({
+      data: {
+        transactionId: transaction.id,
+        outputIndex: 0,
+        address: 'old-output-address',
+        amount: BigInt(200),
+        scriptPubKey: '0014old',
+        isOurs: false,
+        outputType: 'recipient',
+        label: 'preserve me',
+      },
+    });
+
+    const replacementInputTxid = generateTxid();
+    await transactionRepository.persistAddressSyncIORows([{
+      transactionId: transaction.id,
+      inputIndex: 0,
+      txid: replacementInputTxid,
+      vout: 2,
+      address: 'new-input-address',
+      amount: BigInt(300),
+    }], [{
+      transactionId: transaction.id,
+      outputIndex: 0,
+      address: 'new-output-address',
+      amount: BigInt(400),
+      isOurs: true,
+    }], [transaction.id], 1);
+
+    await expect(prisma.transactionInput.findUniqueOrThrow({
+      where: {
+        transactionId_inputIndex: {
+          transactionId: transaction.id,
+          inputIndex: 0,
+        },
+      },
+    })).resolves.toMatchObject({
+      id: input.id,
+      txid: replacementInputTxid,
+      vout: 2,
+      address: 'new-input-address',
+      amount: BigInt(300),
+      derivationPath: "m/84'/1'/0'/0/0",
+    });
+    await expect(prisma.transactionOutput.findUniqueOrThrow({
+      where: {
+        transactionId_outputIndex: {
+          transactionId: transaction.id,
+          outputIndex: 0,
+        },
+      },
+    })).resolves.toMatchObject({
+      id: output.id,
+      address: 'new-output-address',
+      amount: BigInt(400),
+      scriptPubKey: '0014old',
+      isOurs: true,
+      outputType: 'change',
+      label: 'preserve me',
+    });
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { ioComplete: true },
+    })).resolves.toEqual({ ioComplete: true });
+  });
+
+  it('uses fresh confirmed evidence for atomic RBF reconciliation and idempotent retry', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const sharedInputTxid = generateTxid();
+    const confirmed = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'sent'),
+        confirmations: 0,
+        blockHeight: null,
+        blockTime: null,
+        rbfStatus: 'active',
+      },
+    });
+    const pending = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    await prisma.transactionInput.createMany({
+      data: [confirmed, pending].map((transaction, inputIndex) => ({
+        transactionId: transaction.id,
+        inputIndex,
+        txid: sharedInputTxid,
+        vout: 7,
+        address: `input-address-${inputIndex}`,
+        amount: BigInt(10_000),
+      })),
+    });
+
+    const rollback = new Error('rollback RBF reconciliation');
+    await expect(prisma.$transaction(async tx => {
+      await expect(transactionRepository.reconcilePendingRbfForConfirmedTransactions(
+        wallet.id,
+        [{ id: confirmed.id, txid: confirmed.txid }],
+        tx,
+      )).resolves.toBe(1);
+      await expect(tx.transaction.findUniqueOrThrow({
+        where: { id: pending.id },
+        select: { rbfStatus: true, replacedByTxid: true },
+      })).resolves.toEqual({
+        rbfStatus: 'replaced',
+        replacedByTxid: confirmed.txid,
+      });
+      throw rollback;
+    })).rejects.toBe(rollback);
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: pending.id },
+      select: { rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual({ rbfStatus: 'active', replacedByTxid: null });
+
+    await expect(transactionRepository.reconcilePendingRbfForConfirmedTransactions(
+      wallet.id,
+      [{ id: confirmed.id, txid: confirmed.txid }],
+    )).resolves.toBe(1);
+    await expect(transactionRepository.reconcilePendingRbfForConfirmedTransactions(
+      wallet.id,
+      [{ id: confirmed.id, txid: confirmed.txid }],
+    )).resolves.toBe(0);
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: pending.id },
+      select: { rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual({
+      rbfStatus: 'replaced',
+      replacedByTxid: confirmed.txid,
+    });
+  });
+
+  it('finds bounded active and unlinked cleanup replacements database-side', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const sharedInputTxid = generateTxid();
+    const confirmed = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'sent'),
+    });
+    const active = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    const unlinked = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+        rbfStatus: 'replaced',
+        replacedByTxid: null,
+      },
+    });
+    await prisma.transactionInput.createMany({
+      data: [confirmed, active, unlinked].map((transaction, inputIndex) => ({
+        transactionId: transaction.id,
+        inputIndex,
+        txid: sharedInputTxid,
+        vout: 3,
+        address: `cleanup-input-${inputIndex}`,
+        amount: BigInt(5_000),
+      })),
+    });
+
+    await expect(transactionRepository.findWalletRbfReplacements(
+      wallet.id,
+      'active',
+    )).resolves.toEqual([{
+      id: active.id,
+      txid: active.txid,
+      replacementTxid: confirmed.txid,
+    }]);
+    await expect(transactionRepository.findWalletRbfReplacements(
+      wallet.id,
+      'unlinked',
+    )).resolves.toEqual([{
+      id: unlinked.id,
+      txid: unlinked.txid,
+      replacementTxid: confirmed.txid,
+    }]);
+    await expect(transactionRepository.reconcileWalletRbfReplacement(
+      wallet.id,
+      active.id,
+      confirmed.txid,
+      'active',
+    )).resolves.toBe(true);
+    await expect(transactionRepository.reconcileWalletRbfReplacement(
+      wallet.id,
+      unlinked.id,
+      confirmed.txid,
+      'unlinked',
+    )).resolves.toBe(true);
+  });
+
+  it('rejects stale RBF cleanup decisions after target or replacement state changes', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const sharedInputTxid = generateTxid();
+    const confirmed = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'sent'),
+    });
+    const active = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    const unlinked = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+        rbfStatus: 'replaced',
+        replacedByTxid: null,
+      },
+    });
+    await prisma.transactionInput.createMany({
+      data: [confirmed, active, unlinked].map((transaction, inputIndex) => ({
+        transactionId: transaction.id,
+        inputIndex,
+        txid: sharedInputTxid,
+        vout: 9,
+        address: `stale-cleanup-input-${inputIndex}`,
+        amount: BigInt(8_000),
+      })),
+    });
+
+    await prisma.transaction.update({
+      where: { id: active.id },
+      data: { confirmations: 1, rbfStatus: 'confirmed' },
+    });
+    await prisma.transaction.update({
+      where: { id: unlinked.id },
+      data: { replacedByTxid: 'already-linked' },
+    });
+    await expect(transactionRepository.reconcileWalletRbfReplacement(
+      wallet.id, active.id, confirmed.txid, 'active'
+    )).resolves.toBe(false);
+    await expect(transactionRepository.reconcileWalletRbfReplacement(
+      wallet.id, unlinked.id, confirmed.txid, 'unlinked'
+    )).resolves.toBe(false);
+
+    await prisma.transaction.update({
+      where: { id: unlinked.id },
+      data: { replacedByTxid: null },
+    });
+    await prisma.transaction.update({
+      where: { id: confirmed.id },
+      data: { confirmations: 0, rbfStatus: 'active' },
+    });
+    await expect(transactionRepository.reconcileWalletRbfReplacement(
+      wallet.id, unlinked.id, confirmed.txid, 'unlinked'
+    )).resolves.toBe(false);
+
+    await expect(prisma.transaction.findMany({
+      where: { id: { in: [active.id, unlinked.id] } },
+      orderBy: { id: 'asc' },
+      select: { id: true, rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual([
+      { id: active.id, rbfStatus: 'confirmed', replacedByTxid: null },
+      { id: unlinked.id, rbfStatus: 'replaced', replacedByTxid: null },
+    ].sort((left, right) => left.id.localeCompare(right.id)));
+  });
+
+  it('rolls back a real 2,792-output transaction when a middle chunk fails, then retries idempotently', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    const transaction = await prisma.transaction.create({
+      data: { ...candidate(wallet.id, address.id, txid, 'received'), ioComplete: false },
+    });
+    const context = {
+      walletId: wallet.id,
+      walletAddressSet: new Set<string>([address.address]),
+      walletScriptToAddress: new Map<string, string>(),
+      addressToDerivationPath: new Map<string, string>(),
+      txDetailsCache: new Map([[txid, {
+        txid,
+        vin: [{ coinbase: '03abcdef' }],
+        vout: Array.from({ length: 2_792 }, (_, outputIndex) => ({
+          n: outputIndex,
+          value: 0.00000001,
+          scriptPubKey: { address: `middle-chunk-output-${outputIndex}` },
+        })),
+      }]]),
+    } as unknown as SyncContext;
+    const candidateTransaction = [{ txid, confirmations: 0 }] as never;
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION test_fail_middle_io_chunk() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced middle I/O chunk failure';
+      END;
+      $$
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER test_fail_middle_io_chunk_trigger
+      BEFORE INSERT OR UPDATE ON "transaction_outputs"
+      FOR EACH ROW WHEN (NEW."outputIndex" = 512)
+      EXECUTE FUNCTION test_fail_middle_io_chunk()
+    `);
+
+    await expect(prisma.$transaction(tx => storeTransactionIO(
+      context,
+      candidateTransaction,
+      tx,
+    ))).rejects.toThrow('forced middle I/O chunk failure');
+    await expect(prisma.transactionOutput.count({
+      where: { transactionId: transaction.id },
+    })).resolves.toBe(0);
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { ioComplete: true },
+    })).resolves.toEqual({ ioComplete: false });
+
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER test_fail_middle_io_chunk_trigger ON "transaction_outputs"',
+    );
+    await prisma.$executeRawUnsafe('DROP FUNCTION test_fail_middle_io_chunk()');
+    await prisma.$transaction(tx => storeTransactionIO(context, candidateTransaction, tx));
+    await prisma.$transaction(tx => storeTransactionIO(context, candidateTransaction, tx));
+
+    await expect(prisma.transactionOutput.count({
+      where: { transactionId: transaction.id },
+    })).resolves.toBe(2_792);
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { ioComplete: true },
+    })).resolves.toEqual({ ioComplete: true });
+  });
+
+  it('rolls back a real 2,792-output transaction when the attempt aborts after a persisted chunk', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    const transaction = await prisma.transaction.create({
+      data: { ...candidate(wallet.id, address.id, txid, 'received'), ioComplete: false },
+    });
+    const controller = new AbortController();
+    const context = {
+      walletId: wallet.id,
+      walletAddressSet: new Set<string>([address.address]),
+      walletScriptToAddress: new Map<string, string>(),
+      addressToDerivationPath: new Map<string, string>(),
+      attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 60_000 },
+      txDetailsCache: new Map([[txid, {
+        txid,
+        vin: [{ coinbase: '03abcdef' }],
+        vout: Array.from({ length: 2_792 }, (_, outputIndex) => ({
+          n: outputIndex,
+          value: 0.00000001,
+          scriptPubKey: { address: `aborted-chunk-output-${outputIndex}` },
+        })),
+      }]]),
+    } as unknown as SyncContext;
+    const persistRows = transactionRepository.persistAddressSyncIORows;
+    let persistedChunks = 0;
+    const persistence = vi.spyOn(transactionRepository, 'persistAddressSyncIORows')
+      .mockImplementation(async (...args) => {
+        await persistRows(...args);
+        persistedChunks++;
+        if (persistedChunks === 1) {
+          controller.abort(new Error('attempt lease expired after I/O chunk'));
+        }
+      });
+
+    try {
+      await expect(prisma.$transaction(tx => storeTransactionIO(
+        context,
+        [{ txid, confirmations: 0 }] as never,
+        tx,
+      ))).rejects.toThrow('attempt lease expired after I/O chunk');
+    } finally {
+      persistence.mockRestore();
+    }
+
+    expect(persistedChunks).toBe(1);
+    await expect(prisma.transactionOutput.count({
+      where: { transactionId: transaction.id },
+    })).resolves.toBe(0);
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { ioComplete: true },
+    })).resolves.toEqual({ ioComplete: false });
   });
 
   it('repairs weaker rows but never downgrades or overwrites a stronger row', async () => {

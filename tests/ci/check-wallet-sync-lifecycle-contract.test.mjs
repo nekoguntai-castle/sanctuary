@@ -678,6 +678,22 @@ test('live canonical producer inventory matches production after scheduler cutov
   );
 });
 
+test('excludes non-runtime performance harnesses from production ownership inventories', () => {
+  const root = createFixture();
+  const baseline = checkWalletSyncLifecycleContract(root);
+  write(
+    root,
+    'server/src/perf/replayFixture.ts',
+    'export async function seed(prisma) {\n'
+      + '  await prisma.wallet.create({ data: { requestedIncrementalSyncGeneration: 1 } });\n'
+      + '  await prisma.address.createMany({ data: [] });\n'
+      + '}\n',
+  );
+
+  const result = checkWalletSyncLifecycleContract(root);
+  assert.deepEqual(result.errors, baseline.errors);
+});
+
 test('accepts an exact gated bounded-recovery inventory fixture', () => {
   assert.deepEqual(checkWalletSyncLifecycleContract(createFixture()).errors, []);
 });

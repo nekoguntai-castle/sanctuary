@@ -183,9 +183,10 @@ describe('Blockchain Service - UTXO Management', () => {
       ];
 
       // UTXO with old confirmation count
+      const confirmedTxid = 'confirmed-tx'.padEnd(64, 'a');
       const existingUtxo = {
         id: 'utxo-1',
-        txid: 'confirmed-tx',
+        txid: confirmedTxid,
         vout: 0,
         spent: false,
         confirmations: 3, // Old count
@@ -210,11 +211,11 @@ describe('Blockchain Service - UTXO Management', () => {
       );
       mockNodeClient.getAddressUTXOsBatch.mockResolvedValue(
         new Map([
-          ['bc1qwallet', [{ tx_hash: 'confirmed-tx', tx_pos: 0, height: 799997, value: 10000000 }]],
+          ['bc1qwallet', [{ tx_hash: confirmedTxid, tx_pos: 0, height: 799997, value: 10000000 }]],
         ])
       );
       mockNodeClient.getTransaction.mockResolvedValue({
-        txid: 'confirmed-tx',
+        txid: confirmedTxid,
         hex: '00',
         vin: [],
         vout: [{

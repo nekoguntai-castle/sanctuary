@@ -1,276 +1,731 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+#!/usr/bin/env node
+import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const MAX_RUNTIME_MS = 120_000;
-const MAX_PROBE_MS = 1_000;
-const MAX_P99_PROBE_MS = 250;
-const MAX_MEMORY_DELTA_BYTES = 512 * 1024 * 1024;
-const MAX_MEMORY_BYTES = 768 * 1024 * 1024;
-const POLL_MS = 100;
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
+const DRIVER_PATH = resolve(SCRIPT_DIR, 'wallet-sync-persistence-driver.cjs');
+const DRIVER_HELPER_PATH = resolve(SCRIPT_DIR, 'wallet-sync-persistence-driver-helpers.cjs');
+const FIXTURE_PATH = resolve(SCRIPT_DIR, 'wallet-sync-persistence-fixture.cjs');
+const POSTGRES_IMAGE = 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777';
+const RC10_REVISION = '5c1d1909f177b7bbd7c8f470da375b2de6bd0de3';
+const PROBE_PATHS = ['/live', '/ready', '/metrics/prometheus'];
+let activeOwnedNames;
+let terminationSignal;
 
-const run = (args, options = {}) =>
-  execFileSync(args[0], args.slice(1), {
-    encoding: 'utf8',
-    stdio: options.stdio ?? ['ignore', 'pipe', 'pipe'],
-    ...options,
-  });
-
-const sourceCommit = run(['git', 'rev-parse', 'HEAD']).trim();
-const imageLockSha = createHash('sha256').update(readFileSync('config/container-image-lock.json')).digest('hex');
-const image = process.env.WALLET_SYNC_REPLAY_IMAGE ?? `sanctuary-wallet-sync-replay:${sourceCommit.slice(0, 12)}`;
-const container = `sanctuary-wallet-sync-replay-${process.pid}`;
-
-const buildImage = () => {
-  if (process.env.WALLET_SYNC_REPLAY_IMAGE) return;
-  run(
-    [
-      'docker',
-      'buildx',
-      'build',
-      '--file',
-      'server/Dockerfile',
-      '--load',
-      '--tag',
-      image,
-      '--build-arg',
-      `SANCTUARY_SOURCE_COMMIT=${sourceCommit}`,
-      '--build-arg',
-      `SANCTUARY_IMAGE_LOCK_SHA256=${imageLockSha}`,
-      '.',
-    ],
-    { stdio: 'inherit' },
-  );
-};
-
-const verifyImage = () => {
-  const revision = run([
-    'docker', 'image', 'inspect', '--format',
-    '{{index .Config.Labels "org.opencontainers.image.revision"}}', image,
-  ]).trim();
-  const lockSha = run([
-    'docker', 'image', 'inspect', '--format',
-    '{{index .Config.Labels "dev.sanctuary.image-lock-sha256"}}', image,
-  ]).trim();
-  if (revision !== sourceCommit || lockSha !== imageLockSha) {
-    throw new Error(`Replay image identity mismatch: revision=${revision} lock=${lockSha}`);
-  }
-};
-
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-const inspect = format => {
-  try {
-    return run(['docker', 'inspect', '--format', format, container]).trim();
-  } catch {
-    return '';
-  }
-};
-
-const parseMemory = value => {
-  const match = value.match(/^([0-9.]+)([KMGT]iB)$/);
-  if (!match) return 0;
-  const powers = { KiB: 1, MiB: 2, GiB: 3, TiB: 4 };
-  return Number(match[1]) * 1024 ** powers[match[2]];
-};
-
-const memoryUsage = () => {
-  const usage = run(['docker', 'stats', '--no-stream', '--format', '{{.MemUsage}}', container]);
-  const parsed = parseMemory(usage.split('/')[0].trim());
-  if (!(parsed > 0)) {
-    if (inspect('{{.State.Running}}') === 'false') return undefined;
-    throw new Error(`Could not parse replay memory usage: ${usage.trim()}`);
-  }
-  return parsed;
-};
-
-const mappedPort = async () => {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const output = inspect('{{(index (index .NetworkSettings.Ports "3002/tcp") 0).HostPort}}');
-    if (/^[0-9]+$/.test(output)) return Number(output);
-    if (inspect('{{.State.Running}}') === 'false') break;
-    await sleep(100);
-  }
-  throw new Error('Replay health port was not published');
-};
-
-const waitForReplayReady = async () => {
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const logs = run(['docker', 'logs', container]);
-    if (parseEvent(logs, 'replay_ready')) return;
-    if (inspect('{{.State.Running}}') === 'false') break;
-    await sleep(100);
-  }
-  throw new Error('Replay did not enter the measured phase');
-};
-
-const probe = async (port, path) => {
-  const started = performance.now();
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      signal: AbortSignal.timeout(MAX_PROBE_MS),
-    });
-    await response.arrayBuffer();
-    return {
-      ok: response.status === 200,
-      elapsedMs: performance.now() - started,
-    };
-  } catch {
-    return { ok: false, elapsedMs: performance.now() - started };
-  }
-};
-
-const percentile = (values, fraction) => {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
-};
-
-const parseEvent = (logs, event) =>
-  logs
-    .split('\n')
-    .flatMap(line => {
-      try {
-        const parsed = JSON.parse(line);
-        return parsed.event === event ? [parsed] : [];
-      } catch {
-        return [];
-      }
-    })
-    .at(-1);
-
-const cleanup = () => {
-  if (!inspect('{{.Id}}')) return;
-  try {
-    run(['docker', 'rm', '--force', container]);
-  } catch {
-    // Preserve the original proof failure; the exact owned name is reported below.
-  }
-};
-
-async function main() {
-  buildImage();
-  verifyImage();
-  run([
-    'docker',
-    'run',
-    '--detach',
-    '--name',
-    container,
-    '--cpus',
-    '1',
-    '--memory',
-    '1g',
-    '--memory-swap',
-    '1280m',
-    '--publish',
-    '127.0.0.1::3002',
-    '--env',
-    'NODE_OPTIONS=--max-old-space-size=1024',
-    '--env',
-    'JWT_SECRET=wallet-sync-replay-jwt-secret-32-characters',
-    '--env',
-    'ENCRYPTION_KEY=wallet-sync-replay-encryption-key-32-chars',
-    '--env',
-    'ENCRYPTION_SALT=wallet-sync-replay-salt',
-    '--env',
-    'WORKER_DIAGNOSTICS_SECRET=wallet-sync-replay-diagnostics-secret',
-    '--env',
-    'GATEWAY_SECRET=wallet-sync-replay-gateway-secret',
-    '--env',
-    'DATABASE_URL=postgresql://unused:unused@127.0.0.1:1/unused',
-    '--env',
-    'REDIS_URL=redis://127.0.0.1:1',
-    image,
-    'node',
-    'dist/server/src/perf/walletSyncHighFanoutReplay.js',
-  ]);
-
-  const port = await mappedPort();
-  await waitForReplayReady();
-  const samples = [await probe(port, '/live'), await probe(port, '/metrics/prometheus')];
-  const preStartSamples = samples.length;
-  const baselineMemoryBytes = memoryUsage();
-  if (baselineMemoryBytes === undefined) throw new Error('Replay exited before baseline sampling');
-  let peakMemoryBytes = baselineMemoryBytes;
-  let memorySamples = 1;
-  let nextMemorySampleAt = 0;
-  let postCompletionSamples = 0;
-  let completionReleased = false;
-  run(['docker', 'kill', '--signal', 'USR1', container]);
-  const observerStartedAt = Date.now();
-  while (inspect('{{.State.Running}}') === 'true') {
-    if (Date.now() - observerStartedAt > MAX_RUNTIME_MS + 30_000) {
-      throw new Error('Replay observer watchdog expired');
-    }
-    const completionSeen = Boolean(parseEvent(run(['docker', 'logs', container]), 'replay_completed'));
-    samples.push(await probe(port, samples.length % 2 === 0 ? '/live' : '/metrics/prometheus'));
-    if (completionSeen) {
-      postCompletionSamples++;
-      if (postCompletionSamples >= 2 && !completionReleased) {
-        completionReleased = true;
-        run(['docker', 'kill', '--signal', 'USR2', container]);
-      }
-    }
-    if (Date.now() >= nextMemorySampleAt) {
-      const currentMemoryBytes = memoryUsage();
-      if (currentMemoryBytes !== undefined) {
-        peakMemoryBytes = Math.max(peakMemoryBytes, currentMemoryBytes);
-        memorySamples++;
-      }
-      nextMemorySampleAt = Date.now() + 500;
-    }
-    await sleep(POLL_MS);
-  }
-
-  const exitCode = Number(inspect('{{.State.ExitCode}}'));
-  const oomKilled = inspect('{{.State.OOMKilled}}') === 'true';
-  const logs = run(['docker', 'logs', container]);
-  const ready = parseEvent(logs, 'replay_ready');
-  const completed = parseEvent(logs, 'replay_completed');
-  const cancellation = parseEvent(logs, 'cancellation_completed');
-  if (exitCode !== 0 || oomKilled || !ready || !completed || !cancellation) {
-    throw new Error(`Replay failed: exit=${exitCode} oom=${oomKilled}\n${logs}`);
-  }
-  const failures = samples.filter(sample => !sample.ok).length;
-  const latencies = samples.map(sample => sample.elapsedMs);
-  const result = {
-    elapsedMs: completed.elapsedMs,
-    samples: samples.length,
-    failedProbes: failures,
-    maxProbeMs: Math.round(Math.max(...latencies)),
-    p99ProbeMs: Math.round(percentile(latencies, 0.99)),
-    baselineMemoryBytes,
-    peakMemoryBytes,
-    memoryDeltaBytes: peakMemoryBytes - baselineMemoryBytes,
-    baselineThreads: ready.baselineThreads,
-    finalThreads: completed.finalThreads,
-    compiledWorker: ready.compiledWorker,
-    preStartSamples,
-    postCompletionSamples,
-    memorySamples,
-  };
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-
-  const failuresFound = [
-    completed.elapsedMs > MAX_RUNTIME_MS && `elapsed ${completed.elapsedMs}ms > ${MAX_RUNTIME_MS}ms`,
-    samples.length < 20 && `only ${samples.length} active samples`,
-    preStartSamples < 2 && 'observation did not begin before the measured phase',
-    postCompletionSamples < 1 && 'observation did not continue through phase completion',
-    memorySamples < 2 && 'insufficient memory samples',
-    failures > 0 && `${failures} health/metrics probes failed`,
-    result.maxProbeMs > MAX_PROBE_MS && `max probe ${result.maxProbeMs}ms`,
-    result.p99ProbeMs > MAX_P99_PROBE_MS && `p99 probe ${result.p99ProbeMs}ms`,
-    peakMemoryBytes > MAX_MEMORY_BYTES && `peak memory ${peakMemoryBytes} bytes`,
-    result.memoryDeltaBytes > MAX_MEMORY_DELTA_BYTES && `memory delta ${result.memoryDeltaBytes} bytes`,
-    ready.baselineThreads !== completed.finalThreads && 'evidence worker thread leaked',
-    !ready.compiledWorker && 'source-runtime evidence worker ran',
-    cancellation.activeProjectionCancelled !== true && 'active projection cancellation was not proven',
-  ].filter(Boolean);
-  if (failuresFound.length > 0) throw new Error(failuresFound.join('; '));
+function throwIfTerminated() {
+  if (terminationSignal) throw new Error(`Replay controller interrupted by ${terminationSignal}`);
 }
 
-try {
-  await main();
-} finally {
-  cleanup();
+export function parseArgs(argv) {
+  const values = {};
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (!flag?.startsWith('--') || value === undefined || value.startsWith('--')) {
+      throw new Error(`Expected --name value arguments; received ${flag ?? '<end>'}`);
+    }
+    values[flag.slice(2)] = value;
+  }
+  if (!['live', 'max'].includes(values.mode)) throw new Error('--mode must be live or max');
+  for (const name of ['rc11-image', 'rc11-revision', 'fixture-manifest', 'evidence-dir']) {
+    if (!values[name]) throw new Error(`Missing --${name}`);
+  }
+  if (values.mode === 'live') {
+    for (const name of ['rc10-image', 'rc10-revision']) if (!values[name]) throw new Error(`Missing --${name}`);
+    if (values['rc10-revision'] !== RC10_REVISION) throw new Error(`RC10 must use immutable ${RC10_REVISION}`);
+  }
+  return {
+    mode: values.mode,
+    rc10Image: values['rc10-image'], rc10Revision: values['rc10-revision'],
+    rc11Image: values['rc11-image'], rc11Revision: values['rc11-revision'],
+    manifestPath: resolve(values['fixture-manifest']), evidenceDir: resolve(values['evidence-dir']),
+  };
+}
+
+export function parseMemory(value) {
+  const match = String(value).trim().match(/^([0-9.]+)([KMGT]iB)$/);
+  if (!match) return undefined;
+  return Number(match[1]) * 1024 ** ({ KiB: 1, MiB: 2, GiB: 3, TiB: 4 }[match[2]]);
+}
+
+export function percentile(values, fraction) {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+}
+
+export function replayObservationTimeout(mode, manifest) {
+  return mode === 'max' ? manifest.limits.maxOuterMs : manifest.limits.liveOuterMs;
+}
+
+export function classifyContainerRunningState(state) {
+  if (state === 'true') return true;
+  if (state === 'false') return false;
+  throw new Error('Required container running state became unavailable');
+}
+
+export function classifyResourceSample(sampled, current, kernel, subjectRunningState) {
+  if (sampled !== undefined && current !== undefined && kernel !== undefined) {
+    return { subjectStopped: false, sampled, current, kernel };
+  }
+  if (!classifyContainerRunningState(subjectRunningState)) return { subjectStopped: true };
+  throw new Error('Required memory evidence became unavailable');
+}
+
+export function calculateMemoryEvidence({
+  baselineBytes,
+  baselineCurrentBytes,
+  sampledPeakBytes,
+  kernelPeakBytes,
+}) {
+  const sampledGrowthBytes = Math.max(0, sampledPeakBytes - baselineBytes);
+  const kernelGrowthBytes = Math.max(0, kernelPeakBytes - baselineCurrentBytes);
+  return {
+    peakBytes: Math.max(sampledPeakBytes, kernelPeakBytes),
+    sampledGrowthBytes,
+    kernelGrowthBytes,
+    growthBytes: Math.max(sampledGrowthBytes, kernelGrowthBytes),
+  };
+}
+
+export function createResourceSnapshot(stage, sampledBytes, currentBytes, kernelPeakBytes, at) {
+  return {
+    at: at ?? new Date().toISOString(),
+    stage,
+    sampledBytes,
+    currentBytes,
+    kernelPeakBytes,
+  };
+}
+
+export function parseJsonEvents(logs) {
+  return String(logs).split('\n').flatMap(line => {
+    try {
+      const parsed = JSON.parse(line);
+      return typeof parsed?.event === 'string' ? [parsed] : [];
+    } catch { return []; }
+  });
+}
+
+export function validatePhaseAndMutationTrace(events, role) {
+  const phases = events.filter(event => event.event === 'phase_completed').map(event => event.stage);
+  const required = ['fetchHistories', 'checkExisting', 'processTransactions', 'fetchUtxos', 'reconcileUtxos', 'insertUtxos'];
+  if (phases.slice(0, required.length).join('|') !== required.join('|')) {
+    throw new Error(`Production phase trace mismatch: ${phases.slice(0, required.length).join(' -> ')}`);
+  }
+  const mutations = events.filter(event => event.event === 'mutation_completed' && event.unit === 'transaction_batch');
+  if (mutations.length === 0) throw new Error('Trace never completed a production persistence mutation');
+  if (role === 'rc11' && mutations.some(event => new Set(event.parentIds || []).size !== 1)) {
+    throw new Error('RC11 trace contains a non-single-parent persistence mutation');
+  }
+  return { phases, persistenceMutations: mutations.length };
+}
+
+export function validateArchitectureReceipts(events, manifest) {
+  const receipts = [1, 2, 3].map(pass => events.find(
+    event => event.event === 'architecture_receipt' && event.pass === pass,
+  ));
+  if (receipts.some(receipt => !receipt)) throw new Error('Architecture receipt sequence is incomplete');
+  const expectedFullCounts = manifest.architecture?.fullCurrentCounts ?? [100, 69, 0];
+  receipts.forEach((receipt, index) => {
+    if (receipt.fullProjectCount !== expectedFullCounts[index]
+      || receipt.maxFullCurrentCount !== (expectedFullCounts[index] > 0 ? 1 : 0)
+      || receipt.maxTxDetailsCacheSize > 1
+      || receipt.fullParentOrUtxoMaterializations !== 0
+      || receipt.compactToFullLocalReuseCount !== receipt.fullProjectCount
+      || receipt.selectedCandidateRemoteRefetchCount !== 0
+      || receipt.remoteRefetchCount !== 0
+      || receipt.fullProjectTxidDigest !== receipt.expectedFullProjectTxidDigest) {
+      throw new Error(`Architecture receipt failed for pass ${index + 1}`);
+    }
+    if (!(receipt.compactProjectCount > 0)
+      || receipt.canonicalBytesHighWater > 32 * 1024 * 1024
+      || receipt.sourceRawHexCharsHighWater > 64 * 1024 * 1024) {
+      throw new Error(`Compact architecture bounds failed for pass ${index + 1}`);
+    }
+  });
+  if (receipts.some(receipt => receipt.compactProjectTxidDigest !== receipts[0].compactProjectTxidDigest)) {
+    throw new Error('Fresh-context compact authentication sets diverged');
+  }
+  const cleanup = [1, 2, 3].map(pass => events.find(event => event.event === 'resource_checkpoint'
+    && event.pass === pass && event.stage === 'pass_context_released'));
+  if (cleanup.some(receipt => !receipt)) throw new Error('Post-context cgroup receipt sequence is incomplete');
+  for (let index = 1; index < cleanup.length; index += 1) {
+    if (cleanup[index].currentBytes - cleanup[index - 1].currentBytes > 32 * 1024 * 1024) {
+      throw new Error('Post-context cgroup growth exceeded 32 MiB');
+    }
+  }
+  validateProductionEvidenceReleaseReceipts(events, [1, 2, 3]);
+  return receipts;
+}
+
+export function validateProductionEvidenceReleaseReceipts(events, passes) {
+  const receipts = passes.map(pass => events.find(event => (
+    event.event === 'production_evidence_release_receipt' && event.pass === pass
+  )));
+  const sizeFields = [
+    'txDetailsCacheSize', 'compactEvidenceSize', 'outpointEvidenceSize',
+    'outpointCoverageSize', 'spentOutpointSize',
+  ];
+  if (receipts.some(receipt => !receipt)
+    || receipts.some(receipt => sizeFields.some(field => receipt[field] !== 0))) {
+    throw new Error('Production evidence release receipts are incomplete or non-empty');
+  }
+  return receipts;
+}
+
+export function validateMaxArchitectureReceipts(events) {
+  const receipts = events.filter(event => event.event === 'architecture_receipt');
+  if (receipts.length < 12) throw new Error('Maximum-shape architecture receipts are incomplete');
+  for (const receipt of receipts) {
+    if (receipt.fullProjectCount > 1 || receipt.maxFullCurrentCount > 1
+      || receipt.maxTxDetailsCacheSize > 1 || receipt.fullParentOrUtxoMaterializations !== 0
+      || receipt.compactToFullLocalReuseCount !== receipt.fullProjectCount
+      || receipt.remoteRefetchCount !== 0 || receipt.selectedCandidateRemoteRefetchCount !== 0
+      || receipt.fullProjectTxidDigest !== receipt.expectedFullProjectTxidDigest
+      || receipt.canonicalBytesHighWater > 32 * 1024 * 1024
+      || receipt.sourceRawHexCharsHighWater > 64 * 1024 * 1024) {
+      throw new Error(`Maximum-shape architecture receipt failed for pass ${receipt.pass}`);
+    }
+  }
+  validateProductionEvidenceReleaseReceipts(events, receipts.map(receipt => receipt.pass));
+  return receipts;
+}
+
+function collectLiveReplayReceipts(events) {
+  const receipts = [
+    events.find(event => event.event === 'pre_start_receipt'),
+    ...[1, 2, 3].map(pass => events.find(event => event.event === 'pass_completed' && event.pass === pass)),
+  ];
+  if (receipts.some(receipt => !receipt)) throw new Error('Live replay receipt sequence is incomplete');
+  return receipts;
+}
+
+function validateWalletLifecycleReceipts(receipts) {
+  const lifecycleDigest = receipts[0].walletLifecycleDigest;
+  if (!lifecycleDigest || receipts.some(receipt => receipt.walletLifecycleDigest !== lifecycleDigest)) {
+    throw new Error('Live replay mutated wallet lifecycle state');
+  }
+  return lifecycleDigest;
+}
+
+function validateTransactionEvidenceReceipts(receipts) {
+  if (!receipts[2].transactionEvidenceDigest
+    || receipts[2].transactionEvidenceDigest !== receipts[3].transactionEvidenceDigest) {
+    throw new Error('No-op replay mutated transaction evidence');
+  }
+  return receipts[3].transactionEvidenceDigest;
+}
+
+function validateUtxoAndDraftReceipts(receipts, manifest) {
+  if (receipts[1].utxoCount !== manifest.finalReceipt.utxos || receipts[1].draftCount !== 0
+    || receipts.slice(1).some(receipt => receipt.utxoDigest !== receipts[1].utxoDigest
+      || receipt.draftDigest !== receipts[1].draftDigest)) {
+    throw new Error('Live replay UTXO/draft receipts changed or are incomplete');
+  }
+}
+
+function validateUtxoEvidenceReceipts(events, manifest) {
+  const evidence = [1, 2, 3].map(pass => events.find(event => (
+    event.event === 'utxo_evidence_receipt' && event.pass === pass
+  )));
+  if (evidence.some(receipt => !receipt)
+    || evidence.some(receipt => receipt.acceptedCount !== (manifest.finalReceipt.validUtxos ?? 47)
+      || receipt.rejectedListingCount !== (manifest.finalReceipt.rejectedUtxoListings ?? 5)
+      || receipt.omissionSentinelCount !== 1 || receipt.unauthenticatedFallbackCount !== 0)
+    || evidence.some(receipt => receipt.acceptedOutpointDigest !== evidence[0].acceptedOutpointDigest)) {
+    throw new Error('UTXO evidence receipt sequence is incomplete or divergent');
+  }
+}
+
+export function validateLiveReceiptInvariants(events, manifest = { finalReceipt: { utxos: 53 } }) {
+  const receipts = collectLiveReplayReceipts(events);
+  const lifecycleDigest = validateWalletLifecycleReceipts(receipts);
+  const transactionEvidenceDigest = validateTransactionEvidenceReceipts(receipts);
+  validateUtxoAndDraftReceipts(receipts, manifest);
+  validateUtxoEvidenceReceipts(events, manifest);
+  return {
+    lifecycleDigest,
+    transactionEvidenceDigest,
+    utxoDigest: receipts[3].utxoDigest,
+    draftDigest: receipts[3].draftDigest,
+  };
+}
+
+export function qualifyRc10Failure(result, manifest) {
+  const checkExisting = result.events.some(event => event.event === 'phase_completed' && event.stage === 'checkExisting');
+  const persistence = result.events.some(event => event.event === 'mutation_started' && event.unit === 'transaction_batch');
+  if (!checkExisting || !persistence) return { qualified: false, reason: 'failure preceded checkExisting/first persistence' };
+  if (result.oomKilled) return { qualified: true, reason: 'oom' };
+  if (result.failedProbes > 0) return { qualified: true, reason: 'external_probe' };
+  if (result.peakBytes > manifest.limits.sampledAndKernelPeakBytes) return { qualified: true, reason: 'memory_threshold' };
+  if (result.watchdogStage === 'processTransactions') return { qualified: true, reason: 'persistence_watchdog' };
+  return { qualified: false, reason: 'no authorized persistence-stage failure' };
+}
+
+const run = (args, options = {}) => execFileSync(args[0], args.slice(1), {
+  encoding: 'utf8', stdio: options.stdio ?? ['ignore', 'pipe', 'pipe'], ...options,
+});
+const sha256File = path => createHash('sha256').update(readFileSync(path)).digest('hex');
+
+function migrationDigest(root) {
+  const files = [];
+  const walk = directory => readdirSync(directory).sort().forEach(name => {
+    const path = join(directory, name);
+    statSync(path).isDirectory() ? walk(path) : files.push(path);
+  });
+  walk(root);
+  const hash = createHash('sha256');
+  files.forEach(path => { hash.update(path.slice(root.length + 1)); hash.update('\0'); hash.update(readFileSync(path)); hash.update('\0'); });
+  return hash.digest('hex');
+}
+
+function imageMigrationDigest(image) {
+  const code = "const f=require('fs'),c=require('crypto'),p=require('path'),r='/app/prisma/migrations',a=[];const w=d=>f.readdirSync(d).sort().forEach(n=>{const x=p.join(d,n);f.statSync(x).isDirectory()?w(x):a.push(x)});w(r);const h=c.createHash('sha256');a.forEach(x=>{h.update(p.relative(r,x));h.update('\\0');h.update(f.readFileSync(x));h.update('\\0')});process.stdout.write(h.digest('hex'))";
+  return run(['docker', 'run', '--rm', '--entrypoint', 'node', image, '-e', code]).trim();
+}
+
+function verifyImage(image, revision, lockSha) {
+  const inspect = format => run(['docker', 'image', 'inspect', '--format', format, image]).trim();
+  const actualRevision = inspect('{{index .Config.Labels "org.opencontainers.image.revision"}}');
+  const actualLock = inspect('{{index .Config.Labels "dev.sanctuary.image-lock-sha256"}}');
+  if (actualRevision !== revision || actualLock !== lockSha) throw new Error(`Image identity mismatch: ${image}`);
+  return { image, revision, imageId: inspect('{{.Id}}'), repoDigests: inspect('{{json .RepoDigests}}'), imageLockSha256: actualLock };
+}
+
+function containerInspect(name, format) {
+  try { return run(['docker', 'inspect', '--format', format, name]).trim(); } catch { return ''; }
+}
+function logs(name) {
+  try { return run(['docker', 'logs', name]); } catch (error) { return `${error.stdout || ''}\n${error.stderr || ''}`; }
+}
+function memory(name) {
+  try { return parseMemory(run(['docker', 'stats', '--no-stream', '--format', '{{.MemUsage}}', name]).split('/')[0]); } catch { return undefined; }
+}
+function cgroupMemory(name, counter) {
+  try {
+    const value = run(['docker', 'exec', name, 'cat', `/sys/fs/cgroup/${counter}`]).trim();
+    return /^\d+$/.test(value) ? Number(value) : undefined;
+  } catch { return undefined; }
+}
+const kernelCurrent = name => cgroupMemory(name, 'memory.current');
+const kernelPeak = name => cgroupMemory(name, 'memory.peak');
+
+async function waitEvent(name, event, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    throwIfTerminated();
+    const found = parseJsonEvents(logs(name)).findLast(item => item.event === event);
+    if (found) return found;
+    if (!classifyContainerRunningState(containerInspect(name, '{{.State.Running}}'))) break;
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+  }
+  throw new Error(`${name} did not emit ${event}`);
+}
+
+async function hostPort(name) {
+  for (let count = 0; count < 100; count++) {
+    throwIfTerminated();
+    const value = containerInspect(name, '{{(index (index .NetworkSettings.Ports "3002/tcp") 0).HostPort}}');
+    if (/^\d+$/.test(value)) return Number(value);
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+  }
+  throw new Error('Replay health port was not published');
+}
+
+async function probe(port, path) {
+  const started = performance.now();
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(1000) });
+    await response.arrayBuffer();
+    return { path, ok: response.status === 200, elapsedMs: performance.now() - started };
+  } catch { return { path, ok: false, elapsedMs: performance.now() - started }; }
+}
+
+export function cleanup(names, operations = { inspect: containerInspect, run }) {
+  const failures = [];
+  [names.worker, names.postgres].forEach(name => {
+    if (operations.inspect(name, '{{.Id}}')) try { operations.run(['docker', 'rm', '--force', name]); } catch { failures.push(name); }
+  });
+  let networkExists = true;
+  try { operations.run(['docker', 'network', 'inspect', names.network]); } catch { networkExists = false; }
+  if (networkExists) try { operations.run(['docker', 'network', 'rm', names.network]); } catch { failures.push(names.network); }
+  if (operations.inspect(names.worker, '{{.Id}}') || operations.inspect(names.postgres, '{{.Id}}')) failures.push('container_verify');
+  try { operations.run(['docker', 'network', 'inspect', names.network]); failures.push('network_verify'); } catch { /* absent */ }
+  return failures;
+}
+
+export function ownedResourceNames(role, suffix) {
+  return {
+    worker: `sanctuary-replay-${role}-${suffix}`,
+    postgres: `sanctuary-replay-pg-${role}-${suffix}`,
+    network: `sanctuary-replay-net-${role}-${suffix}`,
+  };
+}
+
+export function postgresRunArgs(names, password, mode) {
+  const statementTimeoutMs = mode === 'max' ? 20000 : 30000;
+  return ['docker', 'run', '--detach', '--name', names.postgres, '--network', names.network, '--network-alias', 'postgres',
+    '--cpus', '2', '--memory', '1g', '--memory-swap', '1280m', '--env', 'POSTGRES_USER=sanctuary',
+    '--env', `POSTGRES_PASSWORD=${password}`, '--env', 'POSTGRES_DB=sanctuary_replay', POSTGRES_IMAGE,
+    '-c', `statement_timeout=${statementTimeoutMs}`, '-c', 'log_min_duration_statement=0'];
+}
+
+export function workerRunArgs(subject, names, databaseUrl) {
+  return ['docker', 'run', '--detach', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
+    '--memory-swap', '1280m', '--publish', '127.0.0.1::3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
+    '--mount', `type=bind,src=${DRIVER_PATH},dst=/replay/${basename(DRIVER_PATH)},readonly`,
+    '--mount', `type=bind,src=${DRIVER_HELPER_PATH},dst=/replay/${basename(DRIVER_HELPER_PATH)},readonly`,
+    '--mount', `type=bind,src=${FIXTURE_PATH},dst=/replay/${basename(FIXTURE_PATH)},readonly`,
+    '--mount', `type=bind,src=${subject.manifestPath},dst=/replay/${basename(subject.manifestPath)},readonly`,
+    '--env', 'NODE_OPTIONS=--max-old-space-size=1024', '--env', `DATABASE_URL=${databaseUrl}`,
+    '--env', `WALLET_SYNC_MUTATION_TIMEOUT_MS=${subject.mode === 'max' ? 45000 : 60000}`,
+    '--env', 'REDIS_URL=redis://127.0.0.1:1',
+    '--env', 'JWT_SECRET=wallet-sync-replay-jwt-secret-32-characters',
+    '--env', 'ENCRYPTION_KEY=wallet-sync-replay-encryption-key-32-chars', '--env', 'ENCRYPTION_SALT=replay-salt',
+    '--env', 'WORKER_DIAGNOSTICS_SECRET=wallet-sync-replay-diagnostics-secret-32-bytes',
+    '--env', 'GATEWAY_SECRET=wallet-sync-replay-gateway-secret-32-bytes',
+    '--env', `SANCTUARY_REPLAY_ROLE=${subject.role}`, '--env', `SANCTUARY_REPLAY_MODE=${subject.mode}`,
+    '--env', `SANCTUARY_REPLAY_MANIFEST=/replay/${basename(subject.manifestPath)}`,
+    subject.image, 'node', '--expose-gc', `/replay/${basename(DRIVER_PATH)}`];
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    terminationSignal = signal;
+  });
+}
+
+async function startDatabase(names, password, image, mode) {
+  const statementTimeoutMs = mode === 'max' ? 20000 : 30000;
+  run(['docker', 'network', 'create', names.network]);
+  run(postgresRunArgs(names, password, mode));
+  for (let count = 0; count < 300; count++) {
+    throwIfTerminated();
+    try { run(['docker', 'exec', names.postgres, 'pg_isready', '-U', 'sanctuary', '-d', 'sanctuary_replay']); break; }
+    catch { if (count === 299) throw new Error('PostgreSQL readiness timeout'); await new Promise(r => setTimeout(r, 100)); }
+  }
+  const url = `postgresql://sanctuary:${password}@postgres:5432/sanctuary_replay?schema=public&connection_limit=30&pool_timeout=30&connect_timeout=10&statement_timeout=${statementTimeoutMs}`;
+  run(['docker', 'run', '--rm', '--network', names.network, '--env', `DATABASE_URL=${url}`, image,
+    'npx', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma'], { stdio: 'inherit' });
+  return url;
+}
+
+function startWorker(subject, names, databaseUrl) {
+  run(workerRunArgs(subject, names, databaseUrl));
+}
+
+export async function observe(subject, manifest, evidenceDir, failureRuntime = {
+  logs,
+  inspect: containerInspect,
+  cleanup,
+}) {
+  const suffix = `${process.pid}-${randomBytes(4).toString('hex')}`;
+  const names = ownedResourceNames(subject.role, suffix);
+  const samples = [];
+  const resourceSamples = [];
+  let baselineBytes = 0, baselineCurrentBytes = 0, fixtureReadyBytes = 0, fixtureReadyCurrentBytes = 0;
+  let sampledPeakBytes = 0, currentPeakBytes = 0, kernelPeakBytes = 0;
+  let baselineKernelPeakBytes = 0, fixtureReadyKernelPeakBytes = 0, watchdogStage;
+  let postgresMeasurementOffset = 0;
+  let observerEvidence;
+  try {
+    activeOwnedNames = names;
+    throwIfTerminated();
+    const url = await startDatabase(names, randomBytes(16).toString('hex'), subject.image, subject.mode);
+    startWorker(subject, names, url);
+    const port = await hostPort(names.worker);
+    await waitEvent(names.worker, 'replay_idle', 60000);
+    baselineBytes = memory(names.worker) || 0;
+    baselineCurrentBytes = kernelCurrent(names.worker) || 0;
+    baselineKernelPeakBytes = kernelPeak(names.worker) || 0;
+    resourceSamples.push(createResourceSnapshot(
+      'idle_baseline', baselineBytes, baselineCurrentBytes, baselineKernelPeakBytes,
+    ));
+    run(['docker', 'kill', '--signal', 'USR1', names.worker]);
+    await waitEvent(names.worker, 'replay_ready', 600000);
+    fixtureReadyBytes = memory(names.worker) || 0;
+    fixtureReadyCurrentBytes = kernelCurrent(names.worker) || 0;
+    fixtureReadyKernelPeakBytes = kernelPeak(names.worker) || 0;
+    resourceSamples.push(createResourceSnapshot(
+      'fixture_ready', fixtureReadyBytes, fixtureReadyCurrentBytes, fixtureReadyKernelPeakBytes,
+    ));
+    if (!(baselineBytes > 0) || !(baselineCurrentBytes > 0)
+      || !(baselineKernelPeakBytes > 0) || !(fixtureReadyBytes > 0)
+      || !(fixtureReadyCurrentBytes > 0) || !(fixtureReadyKernelPeakBytes > 0)) {
+      throw new Error('Required baseline memory evidence unavailable');
+    }
+    sampledPeakBytes = Math.max(baselineBytes, fixtureReadyBytes);
+    currentPeakBytes = Math.max(baselineCurrentBytes, fixtureReadyCurrentBytes);
+    kernelPeakBytes = Math.max(baselineKernelPeakBytes, fixtureReadyKernelPeakBytes);
+    postgresMeasurementOffset = logs(names.postgres).length;
+    run(['docker', 'kill', '--signal', 'USR2', names.worker]);
+    const timeout = replayObservationTimeout(subject.mode, manifest);
+    const deadline = Date.now() + timeout;
+    let completionReleased = false;
+    while (Date.now() < deadline) {
+      if (!classifyContainerRunningState(
+        containerInspect(names.worker, '{{.State.Running}}'),
+      )) break;
+      throwIfTerminated();
+      const probeSample = await probe(port, PROBE_PATHS[samples.length % 3]);
+      const sampled = memory(names.worker);
+      const current = kernelCurrent(names.worker);
+      const kernel = kernelPeak(names.worker);
+      const resourceSample = classifyResourceSample(
+        sampled,
+        current,
+        kernel,
+        containerInspect(names.worker, '{{.State.Running}}'),
+      );
+      if (resourceSample.subjectStopped) break;
+      samples.push(probeSample);
+      resourceSamples.push({
+        ...createResourceSnapshot(
+          'active', resourceSample.sampled, resourceSample.current, resourceSample.kernel,
+        ),
+        probePath: probeSample.path,
+        probeOk: probeSample.ok,
+        probeElapsedMs: probeSample.elapsedMs,
+      });
+      sampledPeakBytes = Math.max(sampledPeakBytes, resourceSample.sampled);
+      currentPeakBytes = Math.max(currentPeakBytes, resourceSample.current);
+      kernelPeakBytes = Math.max(kernelPeakBytes, resourceSample.kernel);
+      if (!completionReleased && parseJsonEvents(logs(names.worker)).some(event => event.event === 'replay_cleanup_completed')) {
+        completionReleased = true;
+        run(['docker', 'kill', '--signal', 'HUP', names.worker]);
+        break;
+      }
+    }
+    while (completionReleased && Date.now() < deadline) {
+      if (!classifyContainerRunningState(
+        containerInspect(names.worker, '{{.State.Running}}'),
+      )) break;
+      throwIfTerminated();
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+    }
+    if (classifyContainerRunningState(
+      containerInspect(names.worker, '{{.State.Running}}'),
+    )) {
+      watchdogStage = parseJsonEvents(logs(names.worker)).findLast(event => event.event === 'phase_started')?.stage;
+      run(['docker', 'kill', names.worker]);
+    }
+    const output = logs(names.worker);
+    const postgresLogs = logs(names.postgres);
+    const measuredPostgresLogs = postgresLogs.slice(postgresMeasurementOffset);
+    const sqlDurations = [...measuredPostgresLogs.matchAll(/duration:\s+([0-9.]+)\s+ms/g)].map(match => Number(match[1]));
+    const workerEvents = parseJsonEvents(output);
+    const mutationDurations = workerEvents
+      .filter(event => ['mutation_completed', 'mutation_failed'].includes(event.event) && event.startedAt)
+      .map(event => Date.parse(event.completedAt || event.failedAt) - Date.parse(event.startedAt));
+    const cleanupEvent = workerEvents.findLast(event => event.event === 'replay_cleanup_completed');
+    const memoryEvidence = calculateMemoryEvidence({
+      baselineBytes, baselineCurrentBytes, sampledPeakBytes, kernelPeakBytes,
+    });
+    const result = {
+      role: subject.role, mode: subject.mode, exitCode: Number(containerInspect(names.worker, '{{.State.ExitCode}}')),
+      oomKilled: containerInspect(names.worker, '{{.State.OOMKilled}}') === 'true', restartCount: Number(containerInspect(names.worker, '{{.RestartCount}}')),
+      baselineBytes, baselineCurrentBytes, fixtureReadyBytes, fixtureReadyCurrentBytes,
+      sampledPeakBytes, currentPeakBytes, kernelPeakBytes, ...memoryEvidence,
+      resourceSamples, failedProbes: samples.filter(sample => !sample.ok).length,
+      p99ProbeMs: percentile(samples.map(sample => sample.elapsedMs), .99), maxProbeMs: Math.max(0, ...samples.map(sample => sample.elapsedMs)),
+      sampleCount: samples.length, watchdogStage,
+      maxSqlStatementMs: Math.max(0, ...sqlDurations),
+      maxMutationMs: Math.max(0, ...mutationDurations),
+      sqlDurationSamples: sqlDurations.length,
+      cleanupRssBytes: cleanupEvent?.rssBytes,
+      cleanupThreads: cleanupEvent?.threads,
+      baselineThreads: cleanupEvent?.baselineThreads,
+      events: workerEvents,
+    };
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}.jsonl`), output);
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-postgres.log`), postgresLogs);
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-observer.json`), `${JSON.stringify({ ...result, events: undefined }, null, 2)}\n`);
+    observerEvidence = result;
+    return result;
+  } catch (error) {
+    const workerLogs = failureRuntime.logs(names.worker);
+    const postgresLogs = failureRuntime.logs(names.postgres);
+    const measuredPostgresLogs = postgresLogs.slice(postgresMeasurementOffset);
+    const sqlDurations = [...measuredPostgresLogs.matchAll(/duration:\s+([0-9.]+)\s+ms/g)].map(match => Number(match[1]));
+    const workerEvents = parseJsonEvents(workerLogs);
+    const mutationDurations = workerEvents
+      .filter(event => ['mutation_completed', 'mutation_failed'].includes(event.event) && event.startedAt)
+      .map(event => Date.parse(event.completedAt || event.failedAt) - Date.parse(event.startedAt));
+    const cleanupEvent = workerEvents.findLast(event => event.event === 'replay_cleanup_completed');
+    const memoryEvidence = calculateMemoryEvidence({
+      baselineBytes, baselineCurrentBytes, sampledPeakBytes, kernelPeakBytes,
+    });
+    const failureEvidence = {
+      role: subject.role,
+      mode: subject.mode,
+      error: error instanceof Error ? error.message : String(error),
+      exitCode: Number(failureRuntime.inspect(names.worker, '{{.State.ExitCode}}')),
+      oomKilled: failureRuntime.inspect(names.worker, '{{.State.OOMKilled}}') === 'true',
+      baselineBytes,
+      baselineCurrentBytes,
+      fixtureReadyBytes,
+      fixtureReadyCurrentBytes,
+      sampledPeakBytes,
+      currentPeakBytes,
+      kernelPeakBytes,
+      ...memoryEvidence,
+      resourceSamples,
+      failedProbes: samples.filter(sample => !sample.ok).length,
+      sampleCount: samples.length,
+      p99ProbeMs: percentile(samples.map(sample => sample.elapsedMs), .99),
+      maxSqlStatementMs: Math.max(0, ...sqlDurations),
+      maxMutationMs: Math.max(0, ...mutationDurations),
+      sqlDurationSamples: sqlDurations.length,
+      watchdogStage,
+      terminationSignal,
+      cleanupRssBytes: cleanupEvent?.rssBytes,
+      cleanupThreads: cleanupEvent?.threads,
+      baselineThreads: cleanupEvent?.baselineThreads,
+      events: workerEvents,
+    };
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}.jsonl`), workerLogs);
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-postgres.log`), postgresLogs);
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-observer.json`), `${JSON.stringify(failureEvidence, null, 2)}\n`);
+    observerEvidence = failureEvidence;
+    if (error && typeof error === 'object') error.replayEvidence = failureEvidence;
+    throw error;
+  } finally {
+    const cleanupFailures = failureRuntime.cleanup(names);
+    activeOwnedNames = undefined;
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-cleanup.json`), `${JSON.stringify({
+      worker: names.worker,
+      postgres: names.postgres,
+      network: names.network,
+      verifiedAbsent: cleanupFailures.length === 0,
+      failures: cleanupFailures,
+    }, null, 2)}\n`);
+    if (cleanupFailures.length > 0 && process.exitCode === undefined) {
+      const cleanupError = new Error(`Owned replay cleanup failed: ${cleanupFailures.join(',')}`);
+      cleanupError.replayEvidence = observerEvidence;
+      throw cleanupError;
+    }
+  }
+}
+
+function assertRc11Process(result) {
+  const completed = result.events.some(event => event.event === 'replay_completed');
+  if (result.exitCode !== 0 || result.oomKilled || result.restartCount !== 0 || !completed) {
+    throw new Error('RC11 replay process failed');
+  }
+}
+
+function assertRc11Health(result, manifest) {
+  if (result.failedProbes || result.maxProbeMs > 1000
+    || result.p99ProbeMs > manifest.limits.probeP99Ms || result.sampleCount < 20) {
+    throw new Error('RC11 health gate failed');
+  }
+}
+
+function assertRc11Memory(result, manifest) {
+  if (result.peakBytes > manifest.limits.sampledAndKernelPeakBytes
+    || result.growthBytes > manifest.limits.growthBytes) {
+    throw new Error('RC11 memory gate failed');
+  }
+}
+
+function assertRc11Cleanup(result) {
+  if (!(result.cleanupRssBytes > 0) || result.cleanupThreads !== result.baselineThreads) {
+    throw new Error('RC11 cleanup/thread gate failed');
+  }
+}
+
+function assertRc11Durations(result, manifest) {
+  if (result.sqlDurationSamples < 1) throw new Error('RC11 SQL duration evidence is empty');
+  const maxSqlMs = result.mode === 'max' ? manifest.limits.maxCaseStatementMs : 30000;
+  const maxMutationMs = result.mode === 'max' ? manifest.limits.maxCaseMutationMs : manifest.limits.transactionMutationMs;
+  if (result.maxSqlStatementMs > maxSqlMs || result.maxMutationMs > maxMutationMs) {
+    throw new Error('RC11 SQL/mutation duration gate failed');
+  }
+}
+
+function validateRc11Receipts(result, manifest) {
+  if (result.mode === 'live') {
+    validatePhaseAndMutationTrace(result.events, 'rc11');
+    validateLiveReceiptInvariants(result.events, manifest);
+    validateArchitectureReceipts(result.events, manifest);
+  } else validateMaxArchitectureReceipts(result.events);
+}
+
+export function assertRc11(result, manifest) {
+  assertRc11Process(result);
+  assertRc11Health(result, manifest);
+  assertRc11Memory(result, manifest);
+  assertRc11Durations(result, manifest);
+  assertRc11Cleanup(result);
+  validateRc11Receipts(result, manifest);
+}
+
+export function writeReplayFailureSummary(evidenceDir, mode, results, error) {
+  const failedResult = error?.replayEvidence;
+  const summarizedResults = failedResult ? [...results, failedResult] : results;
+  const summary = {
+    schemaVersion: 1,
+    mode,
+    status: 'failed',
+    error: error instanceof Error ? error.message : String(error),
+    identityReceiptSha256: sha256File(join(evidenceDir, 'sealed-identity-receipt.json')),
+    results: summarizedResults.map(result => ({ ...result, events: undefined })),
+  };
+  writeFileSync(join(evidenceDir, 'replay-summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  return summary;
+}
+
+function preflight() {
+  const cpu = Number(run(['getconf', '_NPROCESSORS_ONLN']).trim());
+  const memoryKiB = Number(run(['awk', '/MemTotal/ {print $2}', '/proc/meminfo']).trim());
+  const disk = Number(run(['df', '--output=avail', '--block-size=1', REPO_ROOT]).trim().split('\n').at(-1));
+  if (cpu < 2 || memoryKiB * 1024 < 4 * 1024 ** 3 || disk < 15 * 1024 ** 3) throw new Error('Replay host preflight failed');
+  return { cpu, memoryBytes: memoryKiB * 1024, diskBytes: disk };
+}
+
+export async function main(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+  if (existsSync(options.evidenceDir) && readdirSync(options.evidenceDir).length) throw new Error('Evidence directory must be empty');
+  mkdirSync(options.evidenceDir, { recursive: true });
+  const manifest = JSON.parse(readFileSync(options.manifestPath, 'utf8'));
+  const local = { driverSha256: sha256File(DRIVER_PATH), driverHelperSha256: sha256File(DRIVER_HELPER_PATH), fixtureBuilderSha256: sha256File(FIXTURE_PATH), manifestSha256: sha256File(options.manifestPath), migrationTreeSha256: migrationDigest(resolve(REPO_ROOT, 'server/prisma/migrations')) };
+  if (local.driverSha256 !== manifest.driverSha256
+    || local.driverHelperSha256 !== manifest.driverHelperSha256
+    || local.fixtureBuilderSha256 !== manifest.fixtureBuilderSha256
+    || local.migrationTreeSha256 !== manifest.migrationTreeSha256) throw new Error('Sealed manifest digest mismatch');
+  const subjects = options.mode === 'live'
+    ? [{ role: 'rc10', mode: 'live', image: options.rc10Image, revision: options.rc10Revision }, { role: 'rc11', mode: 'live', image: options.rc11Image, revision: options.rc11Revision }]
+    : [{ role: 'rc11', mode: 'max', image: options.rc11Image, revision: options.rc11Revision }];
+  const identities = subjects.map(subject => {
+    const lockBytes = run(['git', 'show', `${subject.revision}:config/container-image-lock.json`]);
+    const lockSha = createHash('sha256').update(lockBytes).digest('hex');
+    return { ...verifyImage(subject.image, subject.revision, lockSha), migrationTreeSha256: imageMigrationDigest(subject.image) };
+  });
+  if (identities.some(identity => identity.migrationTreeSha256 !== manifest.migrationTreeSha256)) throw new Error('Image migration digest mismatch');
+  const seal = { schemaVersion: 1, preflight: preflight(), local, identities };
+  writeFileSync(join(options.evidenceDir, 'sealed-identity-receipt.json'), `${JSON.stringify(seal, null, 2)}\n`);
+  const results = [];
+  try {
+    for (const subject of subjects) results.push(await observe({ ...subject, manifestPath: options.manifestPath }, manifest, options.evidenceDir));
+    if (options.mode === 'live') {
+      const qualification = qualifyRc10Failure(results[0], manifest);
+      if (!qualification.qualified) throw new Error(qualification.reason);
+      assertRc11(results[1], manifest);
+    } else assertRc11(results[0], manifest);
+  } catch (error) {
+    writeReplayFailureSummary(options.evidenceDir, options.mode, results, error);
+    throw error;
+  }
+  const summary = { schemaVersion: 1, mode: options.mode, identityReceiptSha256: sha256File(join(options.evidenceDir, 'sealed-identity-receipt.json')), results: results.map(result => ({ ...result, events: undefined })) };
+  writeFileSync(join(options.evidenceDir, 'replay-summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  return summary;
+}
+
+if (import.meta.url === (process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '')) {
+  main().catch(error => { process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`); process.exitCode = 1; });
 }

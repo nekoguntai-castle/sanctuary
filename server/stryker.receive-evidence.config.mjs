@@ -4,7 +4,7 @@ import baseConfig from './stryker.critical.config.mjs';
 export default {
   ...baseConfig,
   mutate: [
-    'src/services/bitcoin/rawTransactionEvidence.ts:63-161',
+    'src/services/bitcoin/rawTransactionEvidence.ts:63-219',
   ],
   testFiles: [
     'tests/unit/services/bitcoin/rawTransactionEvidence.test.ts',

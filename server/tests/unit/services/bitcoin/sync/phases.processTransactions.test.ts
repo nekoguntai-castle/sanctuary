@@ -15,6 +15,7 @@ import { registerProcessTransactionNotificationsRbfTests } from './phasesProcess
 import { registerProcessTransactionStoreIoEdgeTests } from './phasesProcessTransactions/store-io-edge.contracts';
 import { registerProcessTransactionStoreIoPrimaryTests } from './phasesProcessTransactions/store-io-primary.contracts';
 import { registerProcessTransactionProgressTimestampTests } from './phasesProcessTransactions/progress-timestamps.contracts';
+import { getBlockTimestamp } from '../../../../../src/services/bitcoin/utils/blockHeight';
 
 describe('Sync Phases', () => {
   beforeEach(() => {
@@ -32,6 +33,7 @@ describe('Sync Phases', () => {
       mockPrismaClient.transactionInput.createMany.mockResolvedValue({ count: 0 });
       mockPrismaClient.transactionOutput.createMany.mockResolvedValue({ count: 0 });
       mockPrismaClient.addressLabel.findMany.mockResolvedValue([]);
+      vi.mocked(getBlockTimestamp).mockResolvedValue(new Date('2024-01-15T12:00:00Z'));
     });
 
     registerProcessTransactionClassificationTests(walletId);

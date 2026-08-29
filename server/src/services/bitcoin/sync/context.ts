@@ -7,7 +7,12 @@
 import type { Address, Wallet } from '../../../generated/prisma/client';
 import type { NodeClientInterface } from '../nodeClient';
 import { addressToOutputScript } from '../utils';
-import type { SyncContext, SyncStats, BitcoinNetwork } from './types';
+import type {
+  BitcoinNetwork,
+  SyncContext,
+  SyncEvidenceArchitectureObserver,
+  SyncStats,
+} from './types';
 import type { WalletSyncMutationFence } from '../../../repositories/types';
 import type { SyncAttemptRuntime } from './attemptRuntime';
 
@@ -71,10 +76,11 @@ export function createSyncContext(params: {
   viaTor?: boolean;
   mutationFence?: WalletSyncMutationFence;
   attemptRuntime?: SyncAttemptRuntime;
+  evidenceObserver?: SyncEvidenceArchitectureObserver;
 }): SyncContext {
   const {
     walletId, wallet, network, client, currentBlockHeight, viaTor = false,
-    mutationFence, attemptRuntime,
+    mutationFence, attemptRuntime, evidenceObserver,
   } = params;
   const addresses = params.addresses.map(address => withOwnershipScript(address, network));
 
@@ -102,6 +108,7 @@ export function createSyncContext(params: {
 
     // Services
     client,
+    evidenceObserver,
 
     // Input data
     addresses,
@@ -119,6 +126,9 @@ export function createSyncContext(params: {
     ioRepairTxids: new Set(),
     newTxids: [],
     txDetailsCache: new Map(),
+    authenticatedTransactionEvidence: new Map(),
+    authenticatedOutpointEvidence: new Map(),
+    authenticatedOutpointCoverage: new Map(),
     txHeightMap: new Map(),
 
     // UTXO phase data
@@ -166,6 +176,9 @@ export function createTestContext(overrides: Partial<SyncContext>): SyncContext 
     ioRepairTxids: new Set(),
     newTxids: [],
     txDetailsCache: new Map(),
+    authenticatedTransactionEvidence: new Map(),
+    authenticatedOutpointEvidence: new Map(),
+    authenticatedOutpointCoverage: new Map(),
     txHeightMap: new Map(),
     utxoResults: [],
     allUtxoKeys: new Set(),

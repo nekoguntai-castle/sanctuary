@@ -3,41 +3,50 @@ import { getErrorMessage } from '../../../utils/errors';
 import { RawTransactionEvidenceError } from '../rawTransactionEvidence';
 import { recordRejectedEvidence } from './rejectedEvidence';
 import type {
+  EvidenceProjectionRole,
   RawTransaction,
   SyncContext,
-  TxHistoryEntry,
 } from './types';
 import type { NodeRequestOptions } from '../nodeClient';
 import { isSyncStageBudgetError } from './attemptRuntime';
 import { isElectrumResponseTooLargeError } from '../electrum/protocol';
 import { createCooperativeScheduler } from '../../../utils/cooperativeScheduler';
 import {
-  createTransactionEvidenceProjector,
-  projectedTransactionEvidenceComplexity,
-  type TransactionEvidenceProjector,
+  createCompactTransactionEvidenceProjector,
+  DetachedTransactionEvidenceError,
+  type CompactTransactionEvidenceProjector,
 } from './transactionEvidenceThread';
+import type {
+  ExactTransactionOutputsEvidenceResult,
+  TransactionEvidenceComplexity,
+} from './transactionEvidenceProjection';
 import { transactionOutputScriptHex } from './transactionOutputEvidence';
+import {
+  recordCompactProjection,
+  recordExactOutputProjection,
+  recordFullProjection,
+  recordRemoteEvidenceFetch,
+  releaseAuthenticatedTransactionDetails,
+} from './evidenceArchitectureReceipts';
+
+export { releaseAuthenticatedTransactionDetails } from './evidenceArchitectureReceipts';
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
 const FETCH_BATCH_SIZE = 10;
+const MISSING_RESULT = 'missing_result';
 export const MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
 export const MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT = 100_000;
 export const MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT = 600_000;
 export const MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
 export const MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION = 25_000;
 export const MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION = 25_000;
+
 const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
-/** Sentinel for "the server listed this txid but returned no entry for it". */
-const MISSING_RESULT = 'missing_result';
-
-// `missing_result` (the server returned no entry for a txid it listed) and a
-// genuine transport failure are different faults with different remedies, so
-// they no longer collapse into one `fetch_failed` label.
 const reasonCode = (error: unknown): string => {
   if (error instanceof RawTransactionEvidenceError) return error.reason;
-  // getErrorMessage already normalises a non-Error throw, so there is no
-  // unreachable `instanceof Error` fallback to carry here.
+  if (typeof error === 'object' && error !== null && 'reason' in error
+    && typeof error.reason === 'string') return error.reason;
   return getErrorMessage(error) === MISSING_RESULT ? MISSING_RESULT : 'fetch_failed';
 };
 
@@ -46,22 +55,58 @@ const recordFailClosed = (ctx: SyncContext, reason: string): void => {
   log.warn('[SYNC] Rejected unauthenticated transaction evidence', { reason, count: 1 });
 };
 
-interface EvidenceComplexity {
-  rawHexChars: number;
-  inputs: number;
-  outputs: number;
-  scriptHexChars: number;
+interface EvidenceComplexity extends TransactionEvidenceComplexity {}
+const evidenceComplexity = new WeakMap<SyncContext, EvidenceComplexity>();
+const outpointFetchTails = new WeakMap<SyncContext, Promise<void>>();
+const attemptOnlySignals = new WeakMap<AbortSignal, AbortSignal>();
+
+export interface EvidenceRequestOptions extends NodeRequestOptions {
+  evidenceRole?: EvidenceProjectionRole;
 }
 
-const evidenceComplexity = new WeakMap<SyncContext, EvidenceComplexity>();
+export const clearAuthenticatedEvidenceComplexity = (ctx: SyncContext): void => {
+  evidenceComplexity.delete(ctx);
+};
 
-const addDetailsComplexity = (total: EvidenceComplexity, details: RawTransaction): void => {
-  total.rawHexChars += details.hex?.length ?? (details.raw?.byteLength ?? 0) * 2;
-  total.inputs += details.vin.length;
-  total.outputs += details.vout.length;
-  for (const input of details.vin) total.scriptHexChars += input?.coinbase?.length ?? 0;
+export const releaseAuthenticatedEvidence = (
+  ctx: SyncContext,
+  scope: 'attempt' | 'rollback',
+): void => {
+  releaseAuthenticatedTransactionDetails(ctx, { scope });
+  ctx.authenticatedTransactionEvidence.clear();
+  ctx.authenticatedOutpointEvidence.clear();
+  ctx.authenticatedOutpointCoverage.clear();
+  ctx.authenticatedSpentOutpointKeys.clear();
+  clearAuthenticatedEvidenceComplexity(ctx);
+};
+
+export const authenticatedRawHexChars = (
+  details: RawTransaction,
+  compactFallbackChars = 0,
+): number => details.hex !== undefined
+  ? details.hex.length
+  : details.raw !== undefined ? details.raw.byteLength * 2 : compactFallbackChars;
+
+const addComplexity = (
+  target: EvidenceComplexity,
+  addition: TransactionEvidenceComplexity,
+): void => {
+  target.rawHexChars += addition.rawHexChars;
+  target.inputs += addition.inputs;
+  target.outputs += addition.outputs;
+  target.scriptHexChars += addition.scriptHexChars;
+};
+
+const addLegacyDetailsComplexity = (
+  target: EvidenceComplexity,
+  details: RawTransaction,
+): void => {
+  target.rawHexChars += authenticatedRawHexChars(details);
+  target.inputs += details.vin.length;
+  target.outputs += details.vout.length;
+  for (const input of details.vin) target.scriptHexChars += input?.coinbase?.length ?? 0;
   for (const output of details.vout) {
-    total.scriptHexChars += transactionOutputScriptHex(output)?.length ?? 0;
+    target.scriptHexChars += transactionOutputScriptHex(output)?.length ?? 0;
   }
 };
 
@@ -69,14 +114,19 @@ const complexityFor = (ctx: SyncContext): EvidenceComplexity => {
   const existing = evidenceComplexity.get(ctx);
   if (existing) return existing;
   const initialized = { rawHexChars: 0, inputs: 0, outputs: 0, scriptHexChars: 0 };
-  for (const details of ctx.txDetailsCache.values()) addDetailsComplexity(initialized, details);
+  for (const envelope of ctx.authenticatedTransactionEvidence.values()) {
+    addComplexity(initialized, envelope.complexity);
+  }
+  for (const [txid, details] of ctx.txDetailsCache) {
+    if (!ctx.authenticatedTransactionEvidence.has(txid)) {
+      addLegacyDetailsComplexity(initialized, details);
+    }
+  }
   evidenceComplexity.set(ctx, initialized);
   return initialized;
 };
 
-const remainingProjectionLimits = (
-  complexity: EvidenceComplexity,
-) => ({
+const remainingProjectionLimits = (complexity: EvidenceComplexity) => ({
   maxInputs: Math.min(
     MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION,
     MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT - complexity.inputs,
@@ -89,60 +139,74 @@ const remainingProjectionLimits = (
     MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT - complexity.scriptHexChars,
 });
 
-const rawHexFits = (complexity: EvidenceComplexity, details: RawTransaction): boolean => {
-  const rawHexChars = details.hex?.length ?? 0;
-  return rawHexChars <= MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT
-    - complexity.rawHexChars;
+const rawHexFits = (complexity: EvidenceComplexity, details: RawTransaction): boolean => (
+  authenticatedRawHexChars(details)
+  <= MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT - complexity.rawHexChars
+);
+
+const shouldRethrow = (error: unknown, signal?: AbortSignal): boolean => (
+  error instanceof DetachedTransactionEvidenceError
+  || Boolean(signal?.aborted && isAttemptCancellation(signal.reason))
+);
+
+const localProjectionSignal = (
+  ctx: SyncContext,
+  fallback?: AbortSignal,
+): AbortSignal | undefined => {
+  if (ctx.attemptRuntime) return ctx.attemptRuntime.signal;
+  if (!fallback) return undefined;
+  const existing = attemptOnlySignals.get(fallback);
+  if (existing) return existing;
+  const controller = new AbortController();
+  const forwardAttemptCancellation = (): void => {
+    if (isAttemptCancellation(fallback.reason)) controller.abort(fallback.reason);
+  };
+  if (fallback.aborted) forwardAttemptCancellation();
+  else fallback.addEventListener('abort', forwardAttemptCancellation, { once: true });
+  attemptOnlySignals.set(fallback, controller.signal);
+  return controller.signal;
 };
 
-const mapEvidenceFallbacks = async <T>(
-  items: readonly T[],
-  signal: AbortSignal | undefined,
-  fn: (item: T) => Promise<void>,
-): Promise<void> => {
-  for (const item of items) {
-    signal?.throwIfAborted();
-    await fn(item);
-    signal?.throwIfAborted();
-  }
+const throwIfAttemptCancelled = (ctx: SyncContext, fallback?: AbortSignal): void => {
+  const signal = ctx.attemptRuntime?.signal ?? fallback;
+  if (signal?.aborted && isAttemptCancellation(signal.reason)) signal.throwIfAborted();
 };
 
-const cacheAuthenticatedResult = async (
+const cacheCompactResult = async (
   ctx: SyncContext,
   expectedTxid: string,
   details: RawTransaction | undefined,
-  projector: TransactionEvidenceProjector,
+  projector: CompactTransactionEvidenceProjector,
   signal?: AbortSignal,
+  retainOnBudgetExpiry = false,
 ): Promise<boolean> => {
   try {
+    signal?.throwIfAborted();
     if (!details) throw new Error(MISSING_RESULT);
     const complexity = complexityFor(ctx);
     if (!rawHexFits(complexity, details)) {
       throw new RawTransactionEvidenceError('transaction_complexity_exceeded');
     }
-    const authenticated = await projector.project(
-      {
-        expectedTxid,
-        details,
-        network: ctx.network,
-        limits: remainingProjectionLimits(complexity),
-      },
-      signal,
+    const envelope = await projector.projectCompact({
+      expectedTxid,
+      details,
+      network: ctx.network,
+      limits: remainingProjectionLimits(complexity),
+    }, localProjectionSignal(ctx, signal));
+    if (retainOnBudgetExpiry) throwIfAttemptCancelled(ctx, signal);
+    else signal?.throwIfAborted();
+    addComplexity(complexity, envelope.complexity);
+    ctx.authenticatedTransactionEvidence.set(expectedTxid, envelope);
+    recordCompactProjection(
+      ctx,
+      expectedTxid,
+      envelope.digest,
+      envelope.canonicalBytes.byteLength,
     );
-    const projected = projectedTransactionEvidenceComplexity(authenticated);
-    if (projected) {
-      complexity.rawHexChars += projected.rawHexChars;
-      complexity.inputs += projected.inputs;
-      complexity.outputs += projected.outputs;
-      complexity.scriptHexChars += projected.scriptHexChars;
-    } else {
-      addDetailsComplexity(complexity, authenticated);
-    }
-    ctx.txDetailsCache.set(expectedTxid, authenticated);
     return true;
   } catch (error) {
-    if (signal?.aborted && isAttemptCancellation(signal.reason)) signal.throwIfAborted();
-    ctx.txDetailsCache.delete(expectedTxid);
+    ctx.authenticatedTransactionEvidence.delete(expectedTxid);
+    if (shouldRethrow(error, signal)) throw error;
     recordFailClosed(
       ctx,
       signal?.aborted && isSyncStageBudgetError(signal.reason)
@@ -153,50 +217,43 @@ const cacheAuthenticatedResult = async (
   }
 };
 
-/** Fetches raw transactions and puts only txid-bound, byte-derived details in the cache. */
-export async function fetchAuthenticatedTransactions(
+const fetchFallback = async (
   ctx: SyncContext,
-  txids: readonly string[],
-  options?: NodeRequestOptions,
-): Promise<Set<string>> {
-  const unique = [...new Set(txids)];
-  if (unique.every(txid => ctx.txDetailsCache.has(txid))) {
-    if (options?.signal?.aborted && isAttemptCancellation(options.signal.reason)) {
-      options.signal.throwIfAborted();
-    }
-    return new Set(unique);
-  }
-  const projector = createTransactionEvidenceProjector();
+  txid: string,
+  projector: CompactTransactionEvidenceProjector,
+  options?: EvidenceRequestOptions,
+): Promise<boolean> => {
   try {
-    return await fetchAuthenticatedTransactionsWithProjector(ctx, txids, projector, options);
-  } finally {
-    await projector.close();
+    recordRemoteEvidenceFetch(ctx, [txid], 'single');
+    const details = ctx.client.getRawTransactionEvidence
+      ? await ctx.client.getRawTransactionEvidence(txid, options)
+      : options
+        ? await ctx.client.getTransaction(txid, false, options)
+        : await ctx.client.getTransaction(txid, false);
+    return await cacheCompactResult(ctx, txid, details, projector, options?.signal, true);
+  } catch (error) {
+    if (shouldRethrow(error, options?.signal)) throw error;
+    recordFailClosed(ctx,
+      options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)
+        ? 'fetch_budget_exhausted'
+        : isElectrumResponseTooLargeError(error) ? 'response_frame_too_large' : 'fetch_failed');
+    return false;
   }
-}
+};
 
-async function fetchAuthenticatedTransactionsWithProjector(
+const fetchCompactWithProjector = async (
   ctx: SyncContext,
   txids: readonly string[],
-  projector: TransactionEvidenceProjector,
-  options?: NodeRequestOptions,
-): Promise<Set<string>> {
-  if (options?.signal?.aborted && isAttemptCancellation(options.signal.reason)) {
-    options.signal.throwIfAborted();
-  }
-  const checkpoint = createCooperativeScheduler(options?.signal, {
-    shouldThrowAbort: isAttemptCancellation,
-  });
-  const accepted = new Set<string>();
-  const settled = new Set<string>();
+  projector: CompactTransactionEvidenceProjector,
+  options?: EvidenceRequestOptions,
+): Promise<Set<string>> => {
+  const signal = options?.signal;
+  if (signal?.aborted && isAttemptCancellation(signal.reason)) signal.throwIfAborted();
+  const checkpoint = createCooperativeScheduler(signal, { shouldThrowAbort: isAttemptCancellation });
   const unique = [...new Set(txids)];
-  for (const txid of unique) {
-    if (ctx.txDetailsCache.has(txid)) {
-      accepted.add(txid);
-      settled.add(txid);
-    }
-    await checkpoint();
-  }
+  const accepted = new Set(unique.filter(txid => ctx.authenticatedTransactionEvidence.has(txid)));
   const pending = unique.filter(txid => !accepted.has(txid));
+  const settled = new Set<string>();
   const recordUnsettledBudget = (): void => {
     for (const txid of pending) {
       if (settled.has(txid)) continue;
@@ -204,241 +261,248 @@ async function fetchAuthenticatedTransactionsWithProjector(
       settled.add(txid);
     }
   };
-  if (options?.signal?.aborted) {
+  if (signal?.aborted) {
     recordUnsettledBudget();
     return accepted;
   }
+
   for (let offset = 0; offset < pending.length; offset += FETCH_BATCH_SIZE) {
     const batchTxids = pending.slice(offset, offset + FETCH_BATCH_SIZE);
-    let budgetExpired = false;
     let oversizedFrame = false;
-    const batchRequest = ctx.client.getRawTransactionEvidenceBatch
+    recordRemoteEvidenceFetch(ctx, batchTxids, 'batch');
+    const request = ctx.client.getRawTransactionEvidenceBatch
       ? ctx.client.getRawTransactionEvidenceBatch(batchTxids, options)
       : options
         ? ctx.client.getTransactionsBatch(batchTxids, false, options)
         : ctx.client.getTransactionsBatch(batchTxids, false);
-    const results = await batchRequest.then(
-      value => value,
-      (error) => {
-        if (options?.signal?.aborted) {
-          if (isSyncStageBudgetError(options.signal.reason)) {
-            recordUnsettledBudget();
-            budgetExpired = true;
-            return undefined;
-          }
-          options.signal.throwIfAborted();
+    const results = await request.then(value => value, error => {
+      if (signal?.aborted) {
+        if (isSyncStageBudgetError(signal.reason)) {
+          recordUnsettledBudget();
+          return undefined;
         }
-        if (isElectrumResponseTooLargeError(error)) {
-          for (const txid of batchTxids) {
-            recordFailClosed(ctx, 'response_frame_too_large');
-            settled.add(txid);
-          }
-          oversizedFrame = true;
+        signal.throwIfAborted();
+      }
+      if (isElectrumResponseTooLargeError(error)) {
+        for (const txid of batchTxids) {
+          recordFailClosed(ctx, 'response_frame_too_large');
+          settled.add(txid);
         }
-        return undefined;
-      },
-    );
-    if (budgetExpired) return accepted;
+        oversizedFrame = true;
+      }
+      return undefined;
+    });
+    if (signal?.aborted && isAttemptCancellation(signal.reason)) signal.throwIfAborted();
+    if (signal?.aborted && isSyncStageBudgetError(signal.reason)) {
+      recordUnsettledBudget();
+      return accepted;
+    }
     if (oversizedFrame) continue;
-    if (results) {
-      for (const txid of batchTxids) {
-        if (await cacheAuthenticatedResult(
-          ctx,
-          txid,
-          results.get(txid),
-          projector,
-          options?.signal,
-        )) accepted.add(txid);
-        settled.add(txid);
-        if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
-          recordUnsettledBudget();
-          return accepted;
-        }
-        await checkpoint();
-        if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
-          recordUnsettledBudget();
-          return accepted;
-        }
+
+    for (const txid of batchTxids) {
+      const didAccept = results
+        ? await cacheCompactResult(ctx, txid, results.get(txid), projector, signal)
+        : await fetchFallback(ctx, txid, projector, options);
+      results?.delete(txid);
+      if (didAccept) accepted.add(txid);
+      settled.add(txid);
+      if (signal?.aborted && isSyncStageBudgetError(signal.reason)) {
+        recordUnsettledBudget();
+        return accepted;
       }
-    } else {
-      try {
-        await mapEvidenceFallbacks(
-          batchTxids,
-          options?.signal,
-          async (txid) => {
-            try {
-              const details = ctx.client.getRawTransactionEvidence
-                ? await ctx.client.getRawTransactionEvidence(txid, options)
-                : options
-                  ? await ctx.client.getTransaction(txid, false, options)
-                  : await ctx.client.getTransaction(txid, false);
-              const authenticated = await cacheAuthenticatedResult(
-                ctx,
-                txid,
-                details,
-                projector,
-                options?.signal,
-              );
-              if (authenticated) {
-                accepted.add(txid);
-              } else {
-                accepted.delete(txid);
-              }
-              settled.add(txid);
-              await checkpoint();
-            } catch (error) {
-              options?.signal?.throwIfAborted();
-              recordFailClosed(
-                ctx,
-                isElectrumResponseTooLargeError(error)
-                  ? 'response_frame_too_large'
-                  : 'fetch_failed',
-              );
-              settled.add(txid);
-              await checkpoint();
-            }
-          },
-        );
-      } catch (error) {
-        if (options?.signal?.aborted && isSyncStageBudgetError(options.signal.reason)) {
-          recordUnsettledBudget();
-          return accepted;
-        }
-        throw error;
-      }
+      await checkpoint();
     }
   }
   return accepted;
+};
+
+export async function fetchCompactAuthenticatedTransactions(
+  ctx: SyncContext,
+  txids: readonly string[],
+  options?: EvidenceRequestOptions,
+): Promise<Set<string>> {
+  const projector = createCompactTransactionEvidenceProjector([...ctx.walletScriptToAddress.keys()]);
+  try {
+    return await fetchCompactWithProjector(ctx, txids, projector, options);
+  } finally {
+    await projector.close();
+  }
 }
 
-const previousTxids = async (
+export async function fetchAuthenticatedTransactions(
   ctx: SyncContext,
-  txids: Iterable<string>,
-  checkpoint: () => Promise<void>,
-): Promise<string[]> => {
-  const result = new Set<string>();
-  for (const txid of txids) {
-    for (const input of ctx.txDetailsCache.get(txid)?.vin ?? []) {
-      if (!input.coinbase && input.txid) result.add(input.txid);
-      await checkpoint();
+  txids: readonly string[],
+  options?: EvidenceRequestOptions,
+): Promise<Set<string>> {
+  const unique = [...new Set(txids)];
+  const accepted = new Set(unique.filter(txid => ctx.txDetailsCache.has(txid)));
+  const pending = unique.filter(txid => !accepted.has(txid));
+  if (pending.length === 0) {
+    if (options?.signal?.aborted && isAttemptCancellation(options.signal.reason)) {
+      options.signal.throwIfAborted();
     }
+    return accepted;
   }
-  return [...result];
-};
-
-const paysScript = async (
-  details: RawTransaction,
-  script: string,
-  checkpoint: () => Promise<void>,
-): Promise<boolean> => {
-  for (const output of details.vout) {
-    if (transactionOutputScriptHex(output)?.toLowerCase() === script) return true;
-    await checkpoint();
-  }
-  return false;
-};
-
-const spendsScript = async (
-  ctx: SyncContext,
-  details: RawTransaction,
-  script: string,
-  checkpoint: () => Promise<void>,
-): Promise<boolean> => {
-  for (const input of details.vin) {
-    if (input.txid && input.vout !== undefined) {
-      const previousScript = transactionOutputScriptHex(
-        ctx.txDetailsCache.get(input.txid)?.vout[input.vout],
-      )?.toLowerCase();
-      if (previousScript === script) return true;
-    }
-    await checkpoint();
-  }
-  return false;
-};
-
-const collectAuthenticatedSpentOutpoints = async (
-  ctx: SyncContext,
-  acceptedCurrent: ReadonlySet<string>,
-  checkpoint: () => Promise<void>,
-): Promise<void> => {
-  ctx.authenticatedSpentOutpointKeys.clear();
-  for (const txid of acceptedCurrent) {
-    for (const input of ctx.txDetailsCache.get(txid)?.vin ?? []) {
-      if (input.txid && input.vout !== undefined) {
-        const previous = ctx.txDetailsCache.get(input.txid)?.vout[input.vout];
-        const script = transactionOutputScriptHex(previous)?.toLowerCase();
-        if (script && ctx.walletScriptToAddress.has(script)) {
-          ctx.authenticatedSpentOutpointKeys.add(`${input.txid}:${input.vout}`);
-        }
+  const projector = createCompactTransactionEvidenceProjector([...ctx.walletScriptToAddress.keys()]);
+  try {
+    const compact = await fetchCompactWithProjector(ctx, pending, projector, options);
+    for (const txid of pending) {
+      const envelope = ctx.authenticatedTransactionEvidence.get(txid);
+      if (!compact.has(txid) || !envelope) continue;
+      try {
+        throwIfAttemptCancelled(ctx, options?.signal);
+        const projected = await projector.projectFull(
+          envelope,
+          localProjectionSignal(ctx, options?.signal),
+        );
+        throwIfAttemptCancelled(ctx, options?.signal);
+        ctx.txDetailsCache.set(txid, projected.value);
+        const role = options?.evidenceRole ?? 'current';
+        recordFullProjection(ctx, txid, projected, role);
+        accepted.add(txid);
+      } catch (error) {
+        ctx.txDetailsCache.delete(txid);
+        if (shouldRethrow(error, options?.signal)) throw error;
+        recordFailClosed(ctx, reasonCode(error));
       }
-      await checkpoint();
     }
+    return accepted;
+  } finally {
+    await projector.close();
+  }
+}
+
+const withOutpointFetchLock = async (
+  ctx: SyncContext,
+  signal: AbortSignal | undefined,
+  task: () => Promise<void>,
+): Promise<void> => {
+  const previous = outpointFetchTails.get(ctx) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const tail = previous.then(() => gate);
+  outpointFetchTails.set(ctx, tail);
+  await previous;
+  try {
+    signal?.throwIfAborted();
+    await task();
+  } finally {
+    release();
+    if (outpointFetchTails.get(ctx) === tail) outpointFetchTails.delete(ctx);
   }
 };
 
-const authenticateAddressHistory = async (
-  ctx: SyncContext,
-  address: SyncContext['addresses'][number],
-  acceptedCurrent: ReadonlySet<string>,
-  checkpoint: () => Promise<void>,
-): Promise<TxHistoryEntry[]> => {
-  const script = address.scriptPubKey?.toLowerCase();
-  const history = ctx.historyResults.get(address.address) ?? [];
-  if (script === undefined) return [];
-  const authenticated: TxHistoryEntry[] = [];
-  for (const item of history) {
-    const details = acceptedCurrent.has(item.tx_hash)
-      ? ctx.txDetailsCache.get(item.tx_hash)
-      : undefined;
-    const relevant = details !== undefined
-      && (await paysScript(details, script, checkpoint)
-        || await spendsScript(ctx, details, script, checkpoint));
-    if (details !== undefined && !relevant) {
-      recordFailClosed(ctx, 'history_script_mismatch');
-    }
-    if (relevant) authenticated.push(item);
-    await checkpoint();
+const assertExactOutputPartition = (
+  pendingVouts: readonly number[],
+  result: ExactTransactionOutputsEvidenceResult,
+): void => {
+  const returnedVouts = new Set([
+    ...result.outputs.map(output => output.vout),
+    ...result.missingVouts,
+    ...result.invalidVouts,
+  ]);
+  if (returnedVouts.size !== result.outputs.length
+      + result.missingVouts.length
+      + result.invalidVouts.length
+    || returnedVouts.size !== pendingVouts.length
+    || pendingVouts.some(vout => !returnedVouts.has(vout))) {
+    throw new RawTransactionEvidenceError('evidence_digest_mismatch');
   }
-  return authenticated;
 };
 
-/** Replaces remote history with only raw-authenticated, script-relevant entries. */
-export async function authenticateHistoryResults(
+const publishAuthenticatedOutpointResult = (
   ctx: SyncContext,
-  options?: NodeRequestOptions,
-): Promise<void> {
-  const checkpoint = createCooperativeScheduler(options?.signal, {
-    shouldThrowAbort: isAttemptCancellation,
-  });
-  const currentTxidSet = new Set<string>();
-  for (const history of ctx.historyResults.values()) {
-    for (const item of history) {
-      currentTxidSet.add(item.tx_hash);
-      await checkpoint();
-    }
+  txid: string,
+  coverage: Set<number>,
+  result: ExactTransactionOutputsEvidenceResult,
+  role: EvidenceProjectionRole,
+): void => {
+  for (const output of result.outputs) {
+    const { vout } = output;
+    ctx.authenticatedOutpointEvidence.set(`${txid}:${vout}`, {
+      txid,
+      vout,
+      valueSats: output.valueSats,
+      scriptHex: output.scriptPubKeyHex.toLowerCase(),
+    });
   }
-  const currentTxids = [...currentTxidSet];
-  const acceptedCurrent = await fetchAuthenticatedTransactions(ctx, currentTxids, options);
-  const previous = await previousTxids(ctx, acceptedCurrent, checkpoint);
-  await fetchAuthenticatedTransactions(ctx, previous, options);
+  for (const _vout of result.missingVouts) recordFailClosed(ctx, 'missing_output');
+  for (const _vout of result.invalidVouts) recordFailClosed(ctx, 'invalid_vout');
+  for (const output of result.outputs) coverage.add(output.vout);
+  for (const vout of result.missingVouts) coverage.add(vout);
+  ctx.authenticatedOutpointCoverage.set(txid, coverage);
+  recordExactOutputProjection(ctx, txid, result, role);
+};
 
-  await collectAuthenticatedSpentOutpoints(ctx, acceptedCurrent, checkpoint);
+const removePendingOutpointEvidence = (
+  ctx: SyncContext,
+  txid: string,
+  pendingVouts: readonly number[],
+): void => {
+  for (const vout of pendingVouts) {
+    ctx.authenticatedOutpointEvidence.delete(`${txid}:${vout}`);
+  }
+};
 
-  const filtered = new Map<string, TxHistoryEntry[]>();
-  for (const address of ctx.addresses) {
-    filtered.set(
-      address.address,
-      await authenticateAddressHistory(ctx, address, acceptedCurrent, checkpoint),
+const fetchTransactionOutpoints = async (
+  ctx: SyncContext,
+  txid: string,
+  vouts: ReadonlySet<number>,
+  projector: CompactTransactionEvidenceProjector,
+  options?: EvidenceRequestOptions,
+): Promise<void> => {
+  const envelope = ctx.authenticatedTransactionEvidence.get(txid);
+  if (!envelope) return;
+  const coverage = ctx.authenticatedOutpointCoverage.get(txid) ?? new Set<number>();
+  const pendingVouts = [...vouts].filter(vout => !coverage.has(vout));
+  if (pendingVouts.length === 0) return;
+  try {
+    throwIfAttemptCancelled(ctx, options?.signal);
+    const result = await projector.extractOutputs(
+      envelope,
+      pendingVouts,
+      localProjectionSignal(ctx, options?.signal),
     );
+    throwIfAttemptCancelled(ctx, options?.signal);
+    assertExactOutputPartition(pendingVouts, result);
+    publishAuthenticatedOutpointResult(
+      ctx,
+      txid,
+      coverage,
+      result,
+      options?.evidenceRole ?? 'unspecified',
+    );
+  } catch (error) {
+    removePendingOutpointEvidence(ctx, txid, pendingVouts);
+    if (shouldRethrow(error, options?.signal)) throw error;
+    recordFailClosed(ctx, reasonCode(error));
   }
-  ctx.historyResults = filtered;
-  ctx.allTxids = new Set();
-  ctx.txHeightMap = new Map();
-  for (const history of filtered.values()) {
-    for (const item of history) {
-      ctx.allTxids.add(item.tx_hash);
-      ctx.txHeightMap.set(item.tx_hash, item.height);
-      await checkpoint();
+};
+
+const fetchAuthenticatedOutpointsLocked = async (
+  ctx: SyncContext,
+  requests: ReadonlyMap<string, ReadonlySet<number>>,
+  options?: EvidenceRequestOptions,
+): Promise<void> => {
+  const projector = createCompactTransactionEvidenceProjector([...ctx.walletScriptToAddress.keys()]);
+  try {
+    await fetchCompactWithProjector(ctx, [...requests.keys()], projector, options);
+    for (const [txid, vouts] of requests) {
+      await fetchTransactionOutpoints(ctx, txid, vouts, projector, options);
     }
+  } finally {
+    await projector.close();
   }
+}
+
+export async function fetchAuthenticatedOutpoints(
+  ctx: SyncContext,
+  requests: ReadonlyMap<string, ReadonlySet<number>>,
+  options?: EvidenceRequestOptions,
+): Promise<void> {
+  await withOutpointFetchLock(
+    ctx,
+    options?.signal,
+    () => fetchAuthenticatedOutpointsLocked(ctx, requests, options),
+  );
 }

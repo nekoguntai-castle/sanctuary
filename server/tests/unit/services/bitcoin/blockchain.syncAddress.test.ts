@@ -119,13 +119,18 @@ import {
 } from '../../../../src/services/bitcoin/rawTransactionEvidence';
 import {
   type AddressSyncTransactionInput,
+  ADDRESS_SYNC_IO_UPSERT_MAX_BINDS,
+  ADDRESS_SYNC_IO_UPSERT_MAX_ROWS,
+  ADDRESS_SYNC_OUTPUT_UPSERT_BIND_COLUMNS,
   persistAddressSyncIORows,
   markClassificationRepairAttempts,
   markOwnershipRepairNeeded,
   markIoRepairAttempts,
   reconcileAddressSyncTransaction,
   reconcileTransactionBatch,
-  batchUpdateRbfStatus,
+  findWalletRbfReplacements,
+  reconcilePendingRbfForConfirmedTransactions,
+  reconcileWalletRbfReplacement,
   batchUpdateByIds as batchUpdateTransactionsByIds,
   recalculateBalancesAtomically,
 } from '../../../../src/repositories/transactions/sync';
@@ -1180,17 +1185,24 @@ describe('Blockchain syncAddress branch coverage', () => {
         classificationAddressCount: 2,
       }),
     });
-    expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenCalledWith({
-      where: {
-        transactionId: 'gap-repair-row',
-        outputIndex: 1,
-      },
-      data: expect.objectContaining({
-        address: discoveredWalletAddress,
-        isOurs: true,
-        outputType: 'consolidation',
-      }),
-    });
+    const ownershipPatch = mockPrismaClient.$executeRaw.mock.calls.find(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes(
+        'UPDATE "transaction_outputs" AS stored'
+      ) && (statement as { values?: unknown[] }).values?.includes(discoveredWalletAddress)
+    ));
+    expect(ownershipPatch).toBeDefined();
+    const ownershipValues = (ownershipPatch?.[0] as { values: unknown[] }).values;
+    const ownershipOffset = ownershipValues.indexOf(discoveredWalletAddress) - 2;
+    expect(ownershipValues.slice(ownershipOffset, ownershipOffset + 8)).toEqual([
+      'gap-repair-row',
+      1,
+      discoveredWalletAddress,
+      BigInt(150_000),
+      expect.any(String),
+      true,
+      true,
+      'consolidation',
+    ]);
     expect(recalculateWalletBalances).toHaveBeenCalledWith(walletId);
   });
 
@@ -1704,18 +1716,13 @@ describe('Blockchain syncAddress branch coverage', () => {
     expect(statement.values).toEqual(['wallet-io-attempt', txid]);
   });
 
-  it('reuses the supplied client for ownership repair and bulk sync writers', async () => {
+  it('reuses the supplied client for ownership and bulk sync writers', async () => {
     await markOwnershipRepairNeeded(
       'wallet-fenced',
       ['a'.repeat(64)],
       3,
       mockPrismaClient as never,
     );
-    await batchUpdateRbfStatus([{
-      id: 'tx-rbf',
-      rbfStatus: 'replaced',
-      replacedByTxid: 'replacement',
-    }], mockPrismaClient as never);
     await batchUpdateTransactionsByIds(
       [{ id: 'tx-fields', data: { confirmations: 2 } }],
       100,
@@ -1727,10 +1734,6 @@ describe('Blockchain syncAddress branch coverage', () => {
     )).resolves.toBe(0);
 
     expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 'tx-rbf' },
-      data: { rbfStatus: 'replaced', replacedByTxid: 'replacement' },
-    });
     const fieldPatch = mockPrismaClient.$executeRaw.mock.calls.find(([statement]) => (
       (statement as { strings?: string[] }).strings?.join('').includes('jsonb_to_recordset')
     ));
@@ -1881,6 +1884,218 @@ describe('Blockchain syncAddress branch coverage', () => {
     expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
   });
 
+  it('rejects stale I/O rows after the parent classification horizon advances', async () => {
+    mockPrismaClient.transaction.findMany.mockResolvedValueOnce([{
+      id: 'stale-io-row',
+      txid: 'stale-io-txid',
+      type: 'received',
+      classificationAddressCount: 2,
+    }]);
+
+    await persistAddressSyncIORows(
+      [{
+        transactionId: 'stale-io-row',
+        inputIndex: 0,
+        txid: '8'.repeat(64),
+        vout: 0,
+        address: 'stale-input',
+        amount: 1n,
+      }],
+      [{
+        transactionId: 'stale-io-row',
+        outputIndex: 0,
+        address: 'stale-output',
+        amount: 1n,
+        isOurs: true,
+      }],
+      ['stale-io-row'],
+      1,
+      mockPrismaClient as never,
+    );
+
+    expect(mockPrismaClient.transactionInput.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transactionOutput.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.$executeRaw.mock.calls.some(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes('SET "ioComplete" = true')
+    ))).toBe(false);
+  });
+
+  it('bounds address-sync output upserts and SQL binds to 512 rows', async () => {
+    expect(ADDRESS_SYNC_IO_UPSERT_MAX_BINDS).toBe(
+      ADDRESS_SYNC_IO_UPSERT_MAX_ROWS * ADDRESS_SYNC_OUTPUT_UPSERT_BIND_COLUMNS
+    );
+    expect(ADDRESS_SYNC_IO_UPSERT_MAX_BINDS).toBeLessThan(65_535);
+    const outputs = Array.from(
+      { length: ADDRESS_SYNC_IO_UPSERT_MAX_ROWS + 1 },
+      (_, outputIndex) => ({
+        transactionId: 'output-boundary',
+        outputIndex,
+        address: `output-${outputIndex}`,
+        amount: BigInt(outputIndex),
+        isOurs: outputIndex % 2 === 0,
+      })
+    );
+
+    await persistAddressSyncIORows(
+      [],
+      outputs,
+      [],
+      undefined,
+      mockPrismaClient as never
+    );
+
+    expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.transactionOutput.createMany.mock.calls[0][0].data)
+      .toHaveLength(ADDRESS_SYNC_IO_UPSERT_MAX_ROWS);
+    expect(mockPrismaClient.transactionOutput.createMany.mock.calls[1][0].data)
+      .toHaveLength(1);
+    const updates = mockPrismaClient.$executeRaw.mock.calls.filter(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes(
+        'UPDATE "transaction_outputs" AS stored'
+      )
+    ));
+    expect(updates).toHaveLength(2);
+    expect((updates[0][0] as { values: unknown[] }).values)
+      .toHaveLength(ADDRESS_SYNC_IO_UPSERT_MAX_BINDS);
+    expect((updates[1][0] as { values: unknown[] }).values)
+      .toHaveLength(ADDRESS_SYNC_OUTPUT_UPSERT_BIND_COLUMNS);
+  });
+
+  it('finds a bounded RBF cleanup page without loading input relations', async () => {
+    mockPrismaClient.$queryRaw.mockResolvedValue([{ id: 'pending', txid: 'old', replacementTxid: 'new' }]);
+    const assertActive = vi.fn();
+
+    await expect(findWalletRbfReplacements(
+      'wallet-rbf', 'active', mockPrismaClient as never, assertActive
+    )).resolves.toEqual([{ id: 'pending', txid: 'old', replacementTxid: 'new' }]);
+
+    expect(assertActive).toHaveBeenCalledTimes(2);
+    const statement = mockPrismaClient.$queryRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(statement.strings.join('')).toContain('LIMIT ');
+    expect(statement.strings.join('')).not.toContain('inputs:');
+    expect(statement.values).toEqual([
+      'wallet-rbf',
+      'wallet-rbf',
+      ADDRESS_SYNC_IO_UPSERT_MAX_ROWS,
+    ]);
+  });
+
+  it('stops bounded RBF cleanup selection when cancellation follows its query', async () => {
+    mockPrismaClient.$queryRaw.mockResolvedValue([]);
+    const cancellation = new Error('RBF cleanup selection expired');
+    const assertActive = vi.fn()
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => { throw cancellation; });
+
+    await expect(findWalletRbfReplacements(
+      'wallet-rbf', 'unlinked', mockPrismaClient as never, assertActive
+    )).rejects.toBe(cancellation);
+
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledOnce();
+  });
+
+  it('reconciles maximum-input RBF matches database-side in bounded result pages', async () => {
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([{ count: ADDRESS_SYNC_IO_UPSERT_MAX_ROWS }])
+      .mockResolvedValueOnce([{ count: 1 }]);
+    const assertActive = vi.fn();
+
+    await expect(reconcilePendingRbfForConfirmedTransactions(
+      'wallet-rbf',
+      [{ id: 'confirmed-row', txid: 'confirmed-txid' }],
+      mockPrismaClient as never,
+      assertActive,
+    )).resolves.toBe(ADDRESS_SYNC_IO_UPSERT_MAX_ROWS + 1);
+
+    expect(assertActive).toHaveBeenCalledTimes(4);
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(2);
+    for (const [statement] of mockPrismaClient.$queryRaw.mock.calls) {
+      const sql = (statement as { strings: string[] }).strings.join('');
+      expect(sql).toContain('INNER JOIN "transaction_inputs"');
+      expect(sql).toContain(`LIMIT `);
+      expect(sql).not.toContain(' OR ');
+      expect((statement as { values: unknown[] }).values).toEqual([
+        'confirmed-row',
+        'confirmed-txid',
+        'wallet-rbf',
+        'wallet-rbf',
+        ADDRESS_SYNC_IO_UPSERT_MAX_ROWS,
+      ]);
+    }
+  });
+
+  it('stops database-side RBF reconciliation immediately after cancellation', async () => {
+    mockPrismaClient.$queryRaw.mockResolvedValueOnce([{
+      count: ADDRESS_SYNC_IO_UPSERT_MAX_ROWS,
+    }]);
+    const cancellation = new Error('RBF reconciliation expired');
+    const assertActive = vi.fn()
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => { throw cancellation; });
+
+    await expect(reconcilePendingRbfForConfirmedTransactions(
+      'wallet-rbf',
+      [{ id: 'confirmed-row', txid: 'confirmed-txid' }],
+      mockPrismaClient as never,
+      assertActive,
+    )).rejects.toBe(cancellation);
+
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledOnce();
+  });
+
+  it('returns without querying when no confirmed RBF transactions are supplied', async () => {
+    await expect(reconcilePendingRbfForConfirmedTransactions(
+      'wallet-rbf',
+      [],
+    )).resolves.toBe(0);
+
+    expect(mockPrismaClient.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('uses the default repository client and activity guard for RBF queries', async () => {
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(reconcilePendingRbfForConfirmedTransactions(
+      'wallet-rbf',
+      [{ id: 'confirmed-row', txid: 'confirmed-txid' }],
+    )).resolves.toBe(0);
+    await expect(findWalletRbfReplacements(
+      'wallet-rbf',
+      'active',
+    )).resolves.toEqual([]);
+
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('revalidates active and unlinked RBF cleanup targets with exact outcomes', async () => {
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([{ id: 'active-row' }])
+      .mockResolvedValueOnce([]);
+
+    await expect(reconcileWalletRbfReplacement(
+      'wallet-rbf',
+      'active-row',
+      'replacement-txid',
+      'active',
+    )).resolves.toBe(true);
+    await expect(reconcileWalletRbfReplacement(
+      'wallet-rbf',
+      'unlinked-row',
+      'replacement-txid',
+      'unlinked',
+    )).resolves.toBe(false);
+
+    const [activeStatement] = mockPrismaClient.$queryRaw.mock.calls[0] as [{ strings: string[] }];
+    const [unlinkedStatement] = mockPrismaClient.$queryRaw.mock.calls[1] as [{ strings: string[] }];
+    expect(activeStatement.strings.join('')).toContain('"rbfStatus" = \'replaced\'');
+    expect(unlinkedStatement.strings.join('')).toContain('"replacedByTxid" IS NULL');
+  });
+
   it('completes coinbase/no-input I/O atomically without changing updatedAt', async () => {
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       { id: 'coinbase-row', txid: 'a'.repeat(64), type: 'received' },
@@ -1970,7 +2185,11 @@ describe('Blockchain syncAddress branch coverage', () => {
     );
 
     expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalled();
-    expect(mockPrismaClient.$executeRaw).not.toHaveBeenCalled();
+    expect(mockPrismaClient.$executeRaw.mock.calls.some(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes(
+        'SET "ioComplete" = true'
+      )
+    ))).toBe(false);
   });
 
   it.each([
@@ -2028,7 +2247,11 @@ describe('Blockchain syncAddress branch coverage', () => {
       }],
       skipDuplicates: true,
     });
-    const completion = mockPrismaClient.$executeRaw.mock.calls[0][0] as { strings: string[] };
+    const completion = mockPrismaClient.$executeRaw.mock.calls.find(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes(
+        'SET "ioComplete" = true'
+      )
+    ))?.[0] as { strings: string[] };
     expect(completion.strings.join('')).toContain('SET "ioComplete" = true');
   });
 
@@ -2077,7 +2300,12 @@ describe('Blockchain syncAddress branch coverage', () => {
       })],
       skipDuplicates: true,
     });
-    expect(mockPrismaClient.$executeRaw).toHaveBeenCalledOnce();
+    expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.$executeRaw.mock.calls.some(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes(
+        'SET "ioComplete" = true'
+      )
+    ))).toBe(true);
   });
 
   it('skips history rows whose authenticated details are absent or unrelated', async () => {

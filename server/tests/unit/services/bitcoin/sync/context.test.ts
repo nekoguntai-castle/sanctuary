@@ -123,6 +123,9 @@ describe('Sync context factory', () => {
 
     expect(ctx.addressMap.get('tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl')?.scriptPubKey).toBe(stored);
     expect(ctx.walletScriptToAddress.get(stored)?.id).toBe('canonical-1');
+    expect(ctx.authenticatedTransactionEvidence).toEqual(new Map());
+    expect(ctx.authenticatedOutpointEvidence).toEqual(new Map());
+    expect(ctx.authenticatedOutpointCoverage).toEqual(new Map());
   });
 
   it('applies overrides in test context while preserving defaults', () => {

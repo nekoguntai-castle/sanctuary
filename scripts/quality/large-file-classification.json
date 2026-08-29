@@ -122,6 +122,20 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-11"
     },
+    "server/tests/unit/services/bitcoin/sync/phases.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-phases",
+      "reason": "Wallet-sync phase proof harness sharing one hoisted Electrum, Prisma, evidence-authentication, and mutation boundary across the ordered small-phase contracts.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-28"
+    },
+    "server/tests/unit/services/bitcoin/sync/receiveEvidenceAuthentication.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-evidence",
+      "reason": "Adversarial authenticated-evidence proof harness sharing one projector and complexity-control boundary across raw-byte, count, weight, cache, cancellation, and history membership contracts.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-28"
+    },
     "server/tests/unit/services/featureFlagService.test.ts": {
       "category": "proof-harness",
       "owner": "feature-runtime",
@@ -163,6 +177,13 @@
       "reason": "Real PostgreSQL lifecycle proof sharing one migrated database boundary across request, claim, reclaim, reset, generation, lease, rollback, and concurrent former-owner behavior.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-23"
+    },
+    "server/tests/integration/repositories/transactionSyncReconciliation.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-persistence",
+      "reason": "Real PostgreSQL persistence proof sharing one migrated database, immutable mutation fence, injected middle-chunk rollback, retry, and idempotency fixture across the complete address-sync transaction boundary.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-28"
     },
     "server/tests/unit/repositories/networkHeaderReconciliationRepository.test.ts": {
       "category": "proof-harness",

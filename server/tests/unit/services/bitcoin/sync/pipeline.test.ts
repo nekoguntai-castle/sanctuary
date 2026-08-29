@@ -99,6 +99,9 @@ describe("Sync Pipeline", () => {
       expect(ctx.network).toBe("mainnet");
       expect(ctx.addresses).toEqual([]);
       expect(ctx.historyResults).toBeInstanceOf(Map);
+      expect(ctx.authenticatedTransactionEvidence).toBeInstanceOf(Map);
+      expect(ctx.authenticatedOutpointEvidence).toBeInstanceOf(Map);
+      expect(ctx.authenticatedOutpointCoverage).toBeInstanceOf(Map);
       expect(ctx.txDetailsCache).toBeInstanceOf(Map);
       expect(ctx.allUtxoKeys).toBeInstanceOf(Set);
     });

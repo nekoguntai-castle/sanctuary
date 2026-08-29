@@ -26,6 +26,25 @@ export function registerBlockchainRbfTests(): void {
       );
     };
 
+    const mockRbfCleanupResults = (
+      active: Array<{ id: string; txid: string; replacementTxid: string }>,
+      unlinked: Array<{ id: string; txid: string; replacementTxid: string }>,
+    ): void => {
+      mockPrismaClient.$queryRaw.mockImplementation(async (query: any) => {
+        const sql = query?.strings?.join('') ?? '';
+        if (sql.includes('UPDATE "transactions" AS target')) {
+          return [{ id: query.values?.[1] ?? 'updated-rbf-row' }];
+        }
+        if (sql.includes('FROM "transactions" AS target')) {
+          return sql.includes(`target."rbfStatus" = 'active'`) ? active : unlinked;
+        }
+        if (sql.includes('FROM "wallets"') && sql.includes('FOR UPDATE')) {
+          return [{ id: query.values?.[0] ?? walletId }];
+        }
+        return [];
+      });
+    };
+
     beforeEach(() => {
       resetPrismaMocks();
     });
@@ -34,8 +53,6 @@ export function registerBlockchainRbfTests(): void {
       it('should mark pending transaction as replaced when confirmed tx shares same input', async () => {
         const pendingTxid = 'pending_' + 'a'.repeat(56);
         const confirmedTxid = 'confirmed_' + 'b'.repeat(53);
-        const sharedInputTxid = 'input_' + 'c'.repeat(58);
-        const sharedInputVout = 0;
 
         // Setup wallet mock
         mockPrismaClient.wallet.findUnique.mockResolvedValue({
@@ -49,36 +66,11 @@ export function registerBlockchainRbfTests(): void {
           { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
-        // Mock pending transactions with inputs (for RBF cleanup)
-        mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
-          // First call: pending txs for RBF cleanup
-          if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
-            return [{
-              id: 'pending-tx-id',
-              txid: pendingTxid,
-              inputs: [{ txid: sharedInputTxid, vout: sharedInputVout }],
-            }];
-          }
-          // Batch query: confirmed txs sharing inputs with pending txs
-          if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
-            return [{
-              txid: confirmedTxid,
-              inputs: [{ txid: sharedInputTxid, vout: sharedInputVout }],
-            }];
-          }
-          // Call for unlinked replaced txs
-          if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
-            return [];
-          }
-          return [];
-        });
-
-        // Track update calls
-        const updateCalls: any[] = [];
-        mockPrismaClient.transaction.update.mockImplementation(async (args) => {
-          updateCalls.push(args);
-          return { id: 'pending-tx-id', txid: pendingTxid, rbfStatus: 'replaced' };
-        });
+        mockRbfCleanupResults([{
+          id: 'pending-tx-id',
+          txid: pendingTxid,
+          replacementTxid: confirmedTxid,
+        }], []);
 
         // Mock empty address history (no new transactions to process)
         mockEmptyAddressEvidence();
@@ -87,16 +79,17 @@ export function registerBlockchainRbfTests(): void {
         await getBlockchainService().syncWallet(walletId);
 
         // Verify the pending transaction was marked as replaced
-        const rbfUpdateCall = updateCalls.find(
-          call => call.data?.rbfStatus === 'replaced' && call.data?.replacedByTxid === confirmedTxid
-        );
+        const rbfUpdateCall = mockPrismaClient.$queryRaw.mock.calls.find(([statement]) => (
+          (statement as { strings?: string[] }).strings?.join('')
+            .includes('UPDATE "transactions" AS target')
+        ));
         expect(rbfUpdateCall).toBeDefined();
-        expect(rbfUpdateCall?.where?.id).toBe('pending-tx-id');
+        expect((rbfUpdateCall?.[0] as { values: unknown[] }).values).toEqual(
+          expect.arrayContaining(['pending-tx-id', confirmedTxid])
+        );
       });
 
       it('should not mark pending transaction if no confirmed tx shares input', async () => {
-        const pendingTxid = 'pending_' + 'a'.repeat(56);
-
         mockPrismaClient.wallet.findUnique.mockResolvedValue({
           id: walletId,
           network: 'testnet',
@@ -107,37 +100,17 @@ export function registerBlockchainRbfTests(): void {
           { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
-        // Pending transaction with inputs
-        mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
-          if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
-            return [{
-              id: 'pending-tx-id',
-              txid: pendingTxid,
-              inputs: [{ txid: 'input_txid', vout: 0 }],
-            }];
-          }
-          // Batch query: no confirmed txs share inputs
-          if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
-            return [];
-          }
-          if (args?.where?.rbfStatus === 'replaced') {
-            return [];
-          }
-          return [];
-        });
-
-        const updateCalls: any[] = [];
-        mockPrismaClient.transaction.update.mockImplementation(async (args) => {
-          updateCalls.push(args);
-          return args;
-        });
+        mockRbfCleanupResults([], []);
 
         mockEmptyAddressEvidence();
 
         await getBlockchainService().syncWallet(walletId);
 
         // Should not have updated the pending transaction with rbfStatus
-        const rbfUpdateCall = updateCalls.find(call => call.data?.rbfStatus === 'replaced');
+        const rbfUpdateCall = mockPrismaClient.$queryRaw.mock.calls.find(([statement]) => (
+          (statement as { strings?: string[] }).strings?.join('')
+            .includes('UPDATE "transactions" AS target')
+        ));
         expect(rbfUpdateCall).toBeUndefined();
       });
     });
@@ -146,7 +119,6 @@ export function registerBlockchainRbfTests(): void {
       it('should link replaced transactions that have no replacedByTxid', async () => {
         const replacedTxid = 'replaced_' + 'a'.repeat(55);
         const replacementTxid = 'replacement_' + 'b'.repeat(52);
-        const sharedInputTxid = 'input_' + 'c'.repeat(58);
 
         mockPrismaClient.wallet.findUnique.mockResolvedValue({
           id: walletId,
@@ -158,49 +130,28 @@ export function registerBlockchainRbfTests(): void {
           { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
-        mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
-          // First call: pending txs for RBF cleanup
-          if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
-            return [];
-          }
-          // Second call: unlinked replaced txs (retroactive linking)
-          if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
-            return [{
-              id: 'unlinked-tx-id',
-              txid: replacedTxid,
-              inputs: [{ txid: sharedInputTxid, vout: 0 }],
-            }];
-          }
-          // Batch query: confirmed txs sharing inputs with unlinked txs
-          if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
-            return [{
-              txid: replacementTxid,
-              inputs: [{ txid: sharedInputTxid, vout: 0 }],
-            }];
-          }
-          return [];
-        });
-
-        const updateCalls: any[] = [];
-        mockPrismaClient.transaction.update.mockImplementation(async (args) => {
-          updateCalls.push(args);
-          return args;
-        });
+        mockRbfCleanupResults([], [{
+          id: 'unlinked-tx-id',
+          txid: replacedTxid,
+          replacementTxid,
+        }]);
 
         mockEmptyAddressEvidence();
 
         await getBlockchainService().syncWallet(walletId);
 
         // Verify retroactive linking occurred
-        const linkUpdateCall = updateCalls.find(
-          call => call.where?.id === 'unlinked-tx-id' && call.data?.replacedByTxid === replacementTxid
-        );
+        const linkUpdateCall = mockPrismaClient.$queryRaw.mock.calls.find(([statement]) => (
+          (statement as { strings?: string[] }).strings?.join('')
+            .includes('UPDATE "transactions" AS target')
+        ));
         expect(linkUpdateCall).toBeDefined();
+        expect((linkUpdateCall?.[0] as { values: unknown[] }).values).toEqual(
+          expect.arrayContaining(['unlinked-tx-id', replacementTxid])
+        );
       });
 
       it('should skip replaced transactions with no inputs', async () => {
-        const replacedTxid = 'replaced_' + 'a'.repeat(55);
-
         mockPrismaClient.wallet.findUnique.mockResolvedValue({
           id: walletId,
           network: 'testnet',
@@ -211,35 +162,18 @@ export function registerBlockchainRbfTests(): void {
           { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
-        mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
-          if (args?.where?.confirmations === 0) {
-            return [];
-          }
-          if (args?.where?.rbfStatus === 'replaced') {
-            // Replaced transaction with no inputs - can't link
-            return [{
-              id: 'unlinked-tx-id',
-              txid: replacedTxid,
-              inputs: [],
-            }];
-          }
-          return [];
-        });
-
-        const updateCalls: any[] = [];
-        mockPrismaClient.transaction.update.mockImplementation(async (args) => {
-          updateCalls.push(args);
-          return args;
-        });
+        // A row without stored inputs cannot appear in the database-side join.
+        mockRbfCleanupResults([], []);
 
         mockEmptyAddressEvidence();
 
         await getBlockchainService().syncWallet(walletId);
 
         // Should not update transaction without inputs
-        const linkUpdateCall = updateCalls.find(
-          call => call.where?.id === 'unlinked-tx-id' && call.data?.replacedByTxid
-        );
+        const linkUpdateCall = mockPrismaClient.$queryRaw.mock.calls.find(([statement]) => (
+          (statement as { strings?: string[] }).strings?.join('')
+            .includes('UPDATE "transactions" AS target')
+        ));
         expect(linkUpdateCall).toBeUndefined();
       });
     });

@@ -1,4 +1,5 @@
 import * as bitcoin from 'bitcoinjs-lib';
+import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -9,16 +10,25 @@ import {
 } from '../../../../../src/services/bitcoin/sync';
 import type { RawTransaction } from '../../../../../src/services/bitcoin/sync';
 import {
-  authenticateHistoryResults,
   fetchAuthenticatedTransactions,
   MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT,
+  MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION,
   MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT,
+  MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION,
   MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT,
   MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT,
 } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
-import { projectAuthenticatedTransaction } from '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection';
+import { authenticateHistoryResults } from '../../../../../src/services/bitcoin/sync/historyEvidenceAuthentication';
+import {
+  internProjectedTransactionOutputScripts,
+  projectAuthenticatedTransaction,
+  projectAuthenticatedTransactionWithComplexity,
+  transactionEvidenceFitsProjectionLimits,
+} from '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection';
 import { SyncRemoteStageBudgetError } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
 import { ElectrumFrameTooLargeError } from '../../../../../src/services/bitcoin/electrum/protocol';
+import { MAX_AUTHENTICATED_TRANSACTION_WEIGHT } from '../../../../../src/services/bitcoin/rawTransactionEvidence';
+import { classifyTransactions } from '../../../../../src/services/bitcoin/sync/phases/processTransactions/classification';
 
 const projectionComplexity = vi.hoisted(() => new WeakMap<RawTransaction, {
   rawHexChars: number;
@@ -33,7 +43,10 @@ const projectionControl = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../../src/services/bitcoin/sync/transactionEvidenceThread', async () => {
-  const { projectAuthenticatedTransactionWithComplexity } = await import(
+  const actual = await vi.importActual<typeof import(
+    '../../../../../src/services/bitcoin/sync/transactionEvidenceThread'
+  )>('../../../../../src/services/bitcoin/sync/transactionEvidenceThread');
+  const projection = await import(
     '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection'
   );
   const project = async (
@@ -44,15 +57,67 @@ vi.mock('../../../../../src/services/bitcoin/sync/transactionEvidenceThread', as
     await new Promise<void>(resolve => setImmediate(resolve));
     projectionControl.beforeProject?.();
     signal?.throwIfAborted();
-    const projected = projectAuthenticatedTransactionWithComplexity(input);
+    const projected = projection.projectAuthenticatedTransactionWithComplexity(input);
     projectionComplexity.set(projected.value, projected.complexity);
     return projected.value;
   };
   return {
+    ...actual,
     createTransactionEvidenceProjector: () => {
       projectionControl.projectorCreations++;
       return {
         project,
+        close: async () => undefined,
+      };
+    },
+    createCompactTransactionEvidenceProjector: (walletScripts: readonly string[]) => {
+      projectionControl.projectorCreations++;
+      return {
+        project,
+        projectCompact: async (
+          input: Parameters<typeof projection.projectAuthenticatedTransactionWithComplexity>[0],
+          signal?: AbortSignal,
+        ) => {
+          await project(input, signal);
+          return projection.projectCompactAuthenticatedTransaction({
+            expectedTxid: input.expectedTxid,
+            remoteTxid: input.details.txid,
+            canonicalBytes: Uint8Array.from(Buffer.from(input.details.hex ?? '', 'hex')),
+            metadata: {
+              time: input.details.time,
+              blocktime: input.details.blocktime,
+              blockheight: input.details.blockheight,
+              confirmations: input.details.confirmations,
+              blockhash: input.details.blockhash,
+            },
+            limits: input.limits,
+          }, walletScripts);
+        },
+        projectFull: async (envelope: any) => projection.reprojectFullAuthenticatedTransaction({
+          expectedTxid: envelope.txid,
+          canonicalBytes: envelope.canonicalBytes,
+          digest: envelope.digest,
+          complexity: envelope.complexity,
+          metadata: envelope.metadata,
+        }),
+        extractOutput: async (envelope: any, vout: number) => (
+          projection.extractExactAuthenticatedTransactionOutput({
+            expectedTxid: envelope.txid,
+            canonicalBytes: envelope.canonicalBytes,
+            digest: envelope.digest,
+            complexity: envelope.complexity,
+            metadata: envelope.metadata,
+          }, vout)
+        ),
+        extractOutputs: async (envelope: any, vouts: readonly number[]) => (
+          projection.extractExactAuthenticatedTransactionOutputs({
+            expectedTxid: envelope.txid,
+            canonicalBytes: envelope.canonicalBytes,
+            digest: envelope.digest,
+            complexity: envelope.complexity,
+            metadata: envelope.metadata,
+          }, vouts)
+        ),
         close: async () => undefined,
       };
     },
@@ -85,6 +150,22 @@ const spendingTransaction = (previous: bitcoin.Transaction, outputScript: Uint8A
   return transaction;
 };
 
+const impossibleCombinedTransaction = (): { rawHex: string; txid: string } => {
+  const itemCount = 25_000;
+  const compactSizeCount = 'fda861';
+  const input = `${'00'.repeat(32)}0000000000ffffffff`;
+  const output = '000000000000000000';
+  const rawHex = `02000000${compactSizeCount}${input.repeat(itemCount)}`
+    + `${compactSizeCount}${output.repeat(itemCount)}00000000`;
+  const rawBytes = Buffer.from(rawHex, 'hex');
+  const firstHash = createHash('sha256').update(rawBytes).digest();
+  const txid = Buffer.from(createHash('sha256').update(firstHash).digest())
+    .reverse()
+    .toString('hex');
+  expect(rawBytes.byteLength * 4).toBeGreaterThan(MAX_AUTHENTICATED_TRANSACTION_WEIGHT);
+  return { rawHex, txid };
+};
+
 const addressRecord = (script: Uint8Array, address: string) => ({
   id: 'address-id',
   walletId: 'wallet-id',
@@ -112,6 +193,99 @@ const clientFor = (transactions: Map<string, RawTransaction>) => ({
 });
 
 describe('full-wallet receive evidence authentication', () => {
+  it('retains canonical value and script without a duplicate decoded output address', () => {
+    const payment = bitcoin.payments.p2wpkh({
+      hash: Buffer.alloc(20, 9),
+      network: bitcoin.networks.bitcoin,
+    });
+    const transaction = makeRawTransaction(payment.output!, 1n);
+
+    const projected = projectAuthenticatedTransaction({
+      expectedTxid: transaction.getId(),
+      details: details(transaction),
+      network: 'mainnet',
+      limits: { maxInputs: 1, maxOutputs: 1, maxScriptHexChars: 100 },
+    });
+
+    expect(projected.vout).toEqual([{
+      value: 0.00000001,
+      scriptHex: Buffer.from(payment.output!).toString('hex'),
+    }]);
+    expect(projected.raw).toBeUndefined();
+  });
+
+  it('bounds projected script interning without changing any transaction evidence', () => {
+    const repeatedScript = '51';
+    const vout = Array.from({ length: 600 }, (_, index) => ({
+      value: index / 100_000_000,
+      scriptHex: index % 2 === 0 ? repeatedScript : index.toString(16).padStart(4, '0'),
+    }));
+    const projected: RawTransaction = {
+      txid: '12'.repeat(32),
+      vin: [{ txid: '34'.repeat(32), vout: 7 }],
+      vout: [{ value: 0 }, ...structuredClone(vout)],
+    };
+
+    expect(internProjectedTransactionOutputScripts(projected, 32)).toBe(32);
+    expect(projected).toEqual({
+      txid: '12'.repeat(32),
+      vin: [{ txid: '34'.repeat(32), vout: 7 }],
+      vout: [{ value: 0 }, ...vout],
+    });
+  });
+
+  it('replaces pooled repeats but leaves repeats first seen beyond the cap untouched', () => {
+    const vout = Array.from({ length: 32 }, (_, index) => ({
+      value: index,
+      scriptHex: index.toString(16).padStart(4, '0'),
+    }));
+    const pooledSetter = vi.fn();
+    const beyondCapSetter = vi.fn();
+    vout.push({ value: 32, scriptHex: '0000' });
+    Object.defineProperty(vout.at(-1), 'scriptHex', {
+      enumerable: true,
+      get: () => '0000',
+      set: pooledSetter,
+    });
+    vout.push({ value: 33, scriptHex: 'ffff' });
+    vout.push({ value: 34, scriptHex: 'ffff' });
+    Object.defineProperty(vout.at(-1), 'scriptHex', {
+      enumerable: true,
+      get: () => 'ffff',
+      set: beyondCapSetter,
+    });
+
+    const projected: RawTransaction = { txid: '56'.repeat(32), vin: [], vout };
+    expect(internProjectedTransactionOutputScripts(projected, 32)).toBe(32);
+    expect(pooledSetter).toHaveBeenCalledOnce();
+    expect(pooledSetter).toHaveBeenCalledWith('0000');
+    expect(beyondCapSetter).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['input below', MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION - 1, 1, true],
+    ['input at', MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION, 1, true],
+    ['input above', MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION + 1, 1, false],
+    ['output below', 1, MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION - 1, true],
+    ['output at', 1, MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION, true],
+    ['output above', 1, MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION + 1, false],
+  ] as const)('enforces the independent %s transaction-count boundary', (
+    _boundary,
+    inputs,
+    outputs,
+    accepted,
+  ) => {
+    expect(transactionEvidenceFitsProjectionLimits({
+      inputs,
+      outputs,
+      scriptHexChars: 0,
+    }, {
+      maxInputs: MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION,
+      maxOutputs: MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION,
+      maxScriptHexChars: MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT,
+    })).toBe(accepted);
+  });
+
   it.each([
     [{ maxInputs: 0, maxOutputs: 1, maxScriptHexChars: 2 }, 'input'],
     [{ maxInputs: 1, maxOutputs: 0, maxScriptHexChars: 2 }, 'output'],
@@ -126,6 +300,24 @@ describe('full-wallet receive evidence authentication', () => {
       limits,
     })).toThrow(expect.objectContaining({ reason: 'transaction_complexity_exceeded' }));
   });
+
+  it('rejects the impossible combined count shape before projecting any evidence', () => {
+    const transaction = impossibleCombinedTransaction();
+    const projectionLimitRead = vi.fn(() => 25_000);
+    const limits = {
+      get maxInputs() { return projectionLimitRead(); },
+      get maxOutputs() { return projectionLimitRead(); },
+      get maxScriptHexChars() { return projectionLimitRead(); },
+    };
+
+    expect(() => projectAuthenticatedTransaction({
+      expectedTxid: transaction.txid,
+      details: { txid: transaction.txid, hex: transaction.rawHex, vin: [], vout: [] },
+      network: 'mainnet',
+      limits,
+    })).toThrow(expect.objectContaining({ reason: 'transaction_complexity_exceeded' }));
+    expect(projectionLimitRead).not.toHaveBeenCalled();
+  }, 20_000);
 
   it('yields the event loop while projecting a high-fanout authenticated transaction', async () => {
     const transaction = new bitcoin.Transaction();
@@ -694,11 +886,21 @@ describe('full-wallet receive evidence authentication', () => {
       { tx_hash: transaction.getId(), height: 10 },
     ]);
     expect(ctx.allTxids).toEqual(new Set([transaction.getId()]));
-    expect(ctx.txDetailsCache.get(transaction.getId())?.vout[0]).toMatchObject({
-      value: 0.00042,
-      scriptHex: address.scriptPubKey,
-      address: address.address,
-    });
+    expect(ctx.authenticatedTransactionEvidence.has(transaction.getId())).toBe(true);
+    expect(ctx.txDetailsCache.size).toBe(0);
+    await fetchAuthenticatedTransactions(ctx, [transaction.getId()]);
+    await expect(classifyTransactions(
+      ctx,
+      new Set([transaction.getId()]),
+      undefined,
+      new Map([[10, new Date('2026-08-29T00:00:00.000Z')]]),
+    )).resolves.toEqual([
+      expect.objectContaining({
+        txid: transaction.getId(),
+        type: 'received',
+        amount: 42_000n,
+      }),
+    ]);
     expect(ctx.rejectedEvidenceCount).toBe(3);
     await expect(receiveEvidenceGatePhase(ctx)).rejects.toMatchObject({
       name: 'ReceiveEvidenceRetryableError', rejectedCount: 3,
@@ -787,11 +989,14 @@ describe('full-wallet receive evidence authentication', () => {
 
     expect(ctx.historyResults.get(address.address)).toEqual([historyEntry]);
     expect(ctx.authenticatedSpentOutpointKeys).toEqual(new Set([`${previous.getId()}:0`]));
-    expect(ctx.txDetailsCache.get(spend.getId())?.vin).toEqual([{
-      txid: previous.getId(),
-      vout: 0,
-    }]);
-    expect(client.getTransactionsBatch).toHaveBeenNthCalledWith(2, [previous.getId()], false);
+    expect(ctx.authenticatedTransactionEvidence.has(spend.getId())).toBe(true);
+    expect(ctx.txDetailsCache.size).toBe(0);
+    expect(client.getTransactionsBatch).toHaveBeenNthCalledWith(
+      2,
+      [previous.getId()],
+      false,
+      { evidenceRole: 'parent' },
+    );
   });
 
   it('yields to worker timers during transaction evidence authentication', async () => {
@@ -908,7 +1113,29 @@ describe('full-wallet receive evidence authentication', () => {
     expect(ctx.allTxids.size).toBe(0);
   });
 
-  it('rejects cached history when previous outputs are missing or mismatch its script', async () => {
+  it('withholds history and spend authority from an inconsistent compact cache', async () => {
+    const txid = 'aa'.repeat(32);
+    const address = {
+      ...addressRecord(Uint8Array.from([0x51]), 'inconsistent-compact-address'),
+      scriptPubKey: '51',
+    };
+    const ctx = createTestContext({
+      addresses: [address] as any,
+      historyResults: new Map([[address.address, [{ tx_hash: txid, height: 1 }]]]),
+      walletScriptToAddress: new Map([['51', address]]) as any,
+      client: clientFor(new Map()) as any,
+    });
+    vi.spyOn(ctx.authenticatedTransactionEvidence, 'has').mockReturnValue(true);
+    vi.spyOn(ctx.authenticatedTransactionEvidence, 'get').mockReturnValue(undefined);
+
+    await authenticateHistoryResults(ctx);
+
+    expect(ctx.historyResults.get(address.address)).toEqual([]);
+    expect(ctx.authenticatedSpentOutpointKeys).toEqual(new Set());
+    expect(ctx.allTxids).toEqual(new Set());
+  });
+
+  it('does not trust legacy full-cache history without compact authentication', async () => {
     const currentTxid = '11'.repeat(32);
     const missingScriptTxid = '22'.repeat(32);
     const mismatchedScriptTxid = '33'.repeat(32);
@@ -953,7 +1180,7 @@ describe('full-wallet receive evidence authentication', () => {
 
     expect(ctx.historyResults.get(address.address)).toEqual([]);
     expect(ctx.authenticatedSpentOutpointKeys.size).toBe(0);
-    expect(ctx.rejectedEvidenceReasons.get('history_script_mismatch')).toBe(1);
+    expect(ctx.rejectedEvidenceReasons.get('missing_result')).toBe(1);
   });
 
   it('filters missing histories and addresses without canonical scripts without inventing failures', async () => {

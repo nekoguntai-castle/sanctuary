@@ -7,13 +7,11 @@
 
 import { utxoRepository } from '../../../../repositories';
 import { createLogger } from '../../../../utils/logger';
-import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import { getConfig } from '../../../../config';
 import type { SyncContext, UTXOCreateData } from '../types';
 import { runWalletSyncMutation } from '../mutationBoundary';
-import { createSyncStageRuntime } from '../attemptRuntime';
-import { transactionOutputScriptHex } from '../transactionOutputEvidence';
+import { releaseAuthenticatedEvidence } from '../evidenceAuthentication';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXO_INSERT');
 
@@ -23,18 +21,13 @@ const log = createLogger('BITCOIN:SVC_SYNC_UTXO_INSERT');
  * Takes the prepared UTXO data from fetchUtxoDetails phase and
  * performs a batch insert into the database.
  */
-export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
+async function insertAuthenticatedUtxos(ctx: SyncContext): Promise<SyncContext> {
   const { walletId } = ctx;
+  ctx.attemptRuntime?.signal.throwIfAborted();
 
   // Collect UTXOs to create from context
   // This data is prepared by fetchUtxoDetails phase
   const utxosToCreate: UTXOCreateData[] = [];
-  const stage = ctx.attemptRuntime
-    ? createSyncStageRuntime(ctx.attemptRuntime, 'utxo_details')
-    : undefined;
-  const requestOptions = stage
-    ? { signal: stage.signal, deadlineAt: stage.deadlineAt }
-    : undefined;
 
   // Check which UTXOs already exist using targeted queries (avoids loading all wallet UTXOs)
   const keysToCheck = [...ctx.allUtxoKeys].map(key => {
@@ -45,9 +38,8 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
   const existingUtxoSet = await utxoRepository.findExistingByOutpoints(walletId, keysToCheck);
 
   // Process UTXO data from context
-  try {
-    for (const key of ctx.allUtxoKeys) {
-      requestOptions?.signal.throwIfAborted();
+  for (const key of ctx.allUtxoKeys) {
+      ctx.attemptRuntime?.signal.throwIfAborted();
       if (existingUtxoSet.has(key)) continue;
 
       const data = ctx.utxoDataMap.get(key);
@@ -55,28 +47,7 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
 
       const { address, utxo } = data;
 
-      // Get tx details from cache or fetch
-      let txDetails = ctx.txDetailsCache.get(utxo.tx_hash);
-      if (!txDetails) {
-        try {
-          const fetched = requestOptions
-            ? await ctx.client.getTransaction(utxo.tx_hash, false, requestOptions)
-            : await ctx.client.getTransaction(utxo.tx_hash);
-          if (!fetched) {
-            log.warn(`[SYNC] Transaction ${utxo.tx_hash} not found for UTXO`);
-            continue;
-          }
-          ctx.txDetailsCache.set(utxo.tx_hash, fetched);
-          txDetails = fetched;
-        } catch (error) {
-          requestOptions?.signal.throwIfAborted();
-          log.warn(`[SYNC] Failed to get tx ${utxo.tx_hash} for UTXO`, { error: getErrorMessage(error) });
-          continue;
-        }
-      }
-
-      // TypeScript narrowing: txDetails is now guaranteed to be defined
-      const output = txDetails!.vout?.[utxo.tx_pos];
+      const output = ctx.authenticatedOutpointEvidence.get(key);
       if (!output) continue;
 
       const confirmations = utxo.height > 0
@@ -89,14 +60,11 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
         vout: utxo.tx_pos,
         address,
         amount: BigInt(utxo.value),
-        scriptPubKey: transactionOutputScriptHex(output) || '',
+        scriptPubKey: output.scriptHex,
         confirmations,
         blockHeight: utxo.height > 0 ? utxo.height : null,
         spent: false,
       });
-    }
-  } finally {
-    stage?.dispose();
   }
 
   // Insert in bounded chunks. Each chunk revalidates the immutable fence and
@@ -107,6 +75,7 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
     ctx.stats.utxosCreated = 0;
 
     for (let offset = 0; offset < utxosToCreate.length; offset += batchSize) {
+      ctx.attemptRuntime?.signal.throwIfAborted();
       const chunk = utxosToCreate.slice(offset, offset + batchSize);
       await runWalletSyncMutation(ctx, 'utxo_insert', async (tx, deferPostCommit) => {
         const inserted = await utxoRepository.createMany(
@@ -129,4 +98,12 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
   }
 
   return ctx;
+}
+
+export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
+  try {
+    return await insertAuthenticatedUtxos(ctx);
+  } finally {
+    releaseAuthenticatedEvidence(ctx, 'attempt');
+  }
 }

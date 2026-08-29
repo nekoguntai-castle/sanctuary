@@ -406,7 +406,7 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
 
       await processTransactionsPhase(ctx);
 
-      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(2);
+      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(3);
       expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
       expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
     });

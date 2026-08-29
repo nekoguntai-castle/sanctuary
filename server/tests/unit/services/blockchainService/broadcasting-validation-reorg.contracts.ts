@@ -214,6 +214,13 @@ describe('Blockchain Service - Address Validation', () => {
 describe('Blockchain Service - Reorg Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.$queryRaw.mockImplementation(async (query: any) => {
+      const sql = query?.strings?.join('') ?? '';
+      if (sql.includes('FROM "wallets"') && sql.includes('FOR UPDATE')) {
+        return [{ id: query.values?.[0] ?? 'wallet-1' }];
+      }
+      return [];
+    });
   });
 
   describe('block reorganization', () => {
@@ -245,15 +252,18 @@ describe('Blockchain Service - Reorg Handling', () => {
         { id: 'addr-1', address: 'bc1qwallet', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: true },
       ];
 
+      const reorgedTxid = 'reorged-tx'.padEnd(64, 'b');
       // UTXO that was marked spent but now appears on blockchain again
       const existingUtxo = {
         id: 'utxo-1',
-        txid: 'reorged-tx',
+        txid: reorgedTxid,
         vout: 0,
         spent: true, // Was marked spent
         confirmations: 0,
         blockHeight: null,
         address: 'bc1qwallet',
+        amount: BigInt(10000000),
+        scriptPubKey: `0014${'00'.repeat(20)}`,
       };
 
       mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
@@ -272,9 +282,23 @@ describe('Blockchain Service - Reorg Handling', () => {
       );
       mockNodeClient.getAddressUTXOsBatch.mockResolvedValue(
         new Map([
-          ['bc1qwallet', [{ tx_hash: 'reorged-tx', tx_pos: 0, height: 799998, value: 10000000 }]],
+          ['bc1qwallet', [{ tx_hash: reorgedTxid, tx_pos: 0, height: 799998, value: 10000000 }]],
         ])
       );
+      mockNodeClient.getTransactionsBatch.mockResolvedValue(new Map([[
+        reorgedTxid,
+        {
+          txid: reorgedTxid,
+          vin: [],
+          vout: [{
+            value: 0.1,
+            scriptPubKey: {
+              address: 'bc1qwallet',
+              hex: `0014${'00'.repeat(20)}`,
+            },
+          }],
+        },
+      ]]));
 
       await syncWallet('wallet-1');
 

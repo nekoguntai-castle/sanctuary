@@ -1,7 +1,7 @@
 # Sanctuary Release Gates
 
-Date: 2026-04-24 (Pacific/Honolulu)
-Status: Phase 4 release-gate baseline; upgrade matrix promoted to release-blocking; Phase 3 generated capacity proof is current; PR-first CI/CD strategy active; merge-queue ready but blocked by current user-owned repository eligibility
+Date: 2026-08-28 (Pacific/Honolulu)
+Status: Phase 4 release-gate baseline; RC11 wallet-sync persistence replay is release-blocking; upgrade matrix promoted to release-blocking; Phase 3 generated capacity proof is current; PR-first CI/CD strategy active; merge-queue ready but blocked by current user-owned repository eligibility
 
 This document records the checks that should protect the A-grade engineering goals in `docs/plans/codebase-health-assessment.md`. A release should not claim an A grade in a domain unless the matching gate has passed or the plan explicitly marks the gate as pending with an owner and date.
 
@@ -57,9 +57,39 @@ baseline and at least 95% observer availability.
 | Release provenance | Stable release artifacts must be covered by a manifest, signed `SHA256SUMS`, local checksums, SBOM/provenance references, and offline bundle metadata | `npm run release:verify-artifacts -- --manifest release-manifest.json --strict-stable --public-key scripts/offline/keys/sanctuary-offline-release-public.pem`; `npm run test:release-artifacts` when verifier code changes | Required for stable releases; keep release objects draft/prerelease when required manifest material is missing |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
 | Upgrade preservation | Historical ref-to-ref upgrade matrix with fixture-backed user-visible smoke | Release-tag `.github/workflows/install-test.yml` runs `tests/install/e2e/upgrade-install.test.sh --mode core` across `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, `latest-stable/notification-delivery`, `latest-stable/optional-profiles`, and the pinned `v0.8.66/wallet-sync-retirement` lane; the retirement lane retains the exact v0.8.66 scheduler, proves marker-gated selective cleanup, briefly executes the captured below-floor worker image to demonstrate why rollback is unsupported, and then proves floor-2 restart recovery; RC tags trigger this canonical workflow on the same tag push, while `.github/workflows/release-candidate.yml` is a SHA-bound preflight and deliberately does not duplicate health, auth, or upgrade jobs; failed upgrade lanes upload redacted artifacts | Required for release candidates/releases |
+| Wallet-sync persistence safety | Exact production-path PostgreSQL replay of the rejected RC10 and candidate RC11, plus independently reachable maximum input/output and joint-weight boundaries | `.github/workflows/release-candidate.yml` builds immutable RC10 and exact-head RC11 server images once, exports digest-addressed OCI archives, and makes the serialized `wallet-sync-live-shape` and `wallet-sync-maximum-shapes` jobs load and reverify those bytes. The revision-independent controller runs `fetchHistories -> checkExisting -> processTransactions -> fetchUtxos`, seals database/cgroup/health/timing receipts, requires the RC10 failure to reach persistence, proves RC11's 100/69/no-op repair passes, and exercises accepted-axis success/rollback/idempotency plus combined over-weight rejection. The measured worker is fixed at 1 CPU, 1 GiB memory, and 1280 MiB memory+swap; PostgreSQL is fixed at 2 CPUs, 1 GiB memory, 1280 MiB memory+swap, and a 30-second statement timeout. | **Required and release-blocking for RC11 and later wallet-sync persistence changes** |
 | Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, alert receiver delivery, and monitoring stack behavior | `docs/how-to/operations-runbooks.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or in-process gateway audit paths are touched; `npm run ops:gateway-audit:phase2` when backend/gateway containers or gateway audit delivery paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched; `npm run ops:alert-receiver:phase2` when Alertmanager routing or receiver config is touched | Required when touched |
 | AI, Console, and MCP | Provider profile redaction, Console tool execution, prompt history, MCP transport/auth, and admin key management | Focused frontend Console/AI Settings/MCP tests; focused backend Console/MCP/admin route tests; LLM egress proxy Console tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run typecheck:server:tests`; `npm run lint:app`; `npm run lint:server`; `npm run check:openapi-route-coverage`; MCP/Console docs updated when behavior changes | Required when touched |
 | Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated generated-data capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with operator-owned testnet/regtest or approved non-production scenario inputs for target-environment calibration | Generated proof complete; target-environment rerun required when topology/hardware differs |
+
+### Wallet-sync persistence replay policy
+
+The replay-image job requires at least two host CPUs, 4 GiB RAM, and 15 GiB
+free disk before building. It builds each RC10/RC11 subject once, exports a
+Docker-loadable OCI-layout archive containing `oci-layout`, `index.json`, and
+content-addressed blobs, records the OCI manifest and archive SHA-256 digests
+plus revision and image-lock labels, and uploads the archives. Replay jobs may
+only download, digest-check, load, and
+reverify those artifacts; rebuilding or retagging a subject downstream
+invalidates the gate.
+
+The live-shape job has a 120-minute hard limit and stops its controller at 100
+minutes, retaining at least 20 minutes less setup time for cleanup and evidence
+upload. Each of the first two repair passes is limited to 15 minutes and the
+third no-op pass to two minutes. The maximum-shape job runs only after the live
+job, has a 60-minute hard limit, and stops its controller at 45 minutes. Every
+accepted-axis success, rollback, and idempotency case has its own five-minute
+watchdog; the combined over-weight rejection has a two-minute watchdog and the
+controller stops on the first failed case.
+
+Redacted ordered phase/mutation traces, pass-by-pass database receipts, SQL and
+fenced-transaction timings, external `/live`, `/ready`, and
+`/metrics/prometheus` samples, sampled memory, authoritative cgroup-v2
+`memory.peak`, container exit/restart state, fixture digests, and cleanup results
+are retained for 90 days on success and failure. Accepted maximum-axis cases
+require every SQL statement below 20 seconds and every fenced transaction below
+45 seconds. The exact live shape retains the production 30-second statement and
+60-second fenced-transaction ceilings.
 
 Upgrade-path policy: upgrade regressions can lock operators out of existing nodes, so the ref-to-ref upgrade matrix is a release-blocking Install Tests gate. The core lane preserves encrypted admin 2FA, encrypted secondary-user 2FA, legacy plaintext 2FA, backup-code state, representative app data, runtime secrets, legacy `.env` compatibility, browser/proxy login and refresh, CSRF-protected support-package generation, worker health, notification worker DLQ diagnostics, optional monitoring/Tor/MCP profile enablement, and migration completion. The script's `--mode full` path remains available for deliberate operator rehearsal, but the RC preflight does not claim that evidence.
 

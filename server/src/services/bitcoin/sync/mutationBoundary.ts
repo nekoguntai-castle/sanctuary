@@ -52,13 +52,19 @@ export async function runWalletSyncMutation<T>(
     ctx.attemptRuntime?.signal.throwIfAborted();
     assertAuthority();
   };
-  const execute = (tx: PrismaTxClient): Promise<T> => {
+  const execute = async (tx: PrismaTxClient): Promise<T> => {
     assertActive();
-    return callback(tx, deferPostCommit);
+    const value = await callback(tx, deferPostCommit);
+    // This is the final process-local authority check before Prisma commits the
+    // surrounding transaction when this callback returns.
+    assertActive();
+    return value;
   };
-  const executeUnfenced = (): Promise<T> => {
+  const executeUnfenced = async (): Promise<T> => {
     assertActive();
-    return callback(undefined, deferPostCommit);
+    const value = await callback(undefined, deferPostCommit);
+    assertActive();
+    return value;
   };
   const result = ctx.mutationFence
     ? await withWalletSyncMutationFence(ctx.mutationFence, execute)
@@ -66,7 +72,7 @@ export async function runWalletSyncMutation<T>(
       ? await withWalletSyncMutationLock(
           ctx.walletId,
           assertActive,
-          tx => callback(tx, deferPostCommit),
+          execute,
         )
       : await executeUnfenced();
 

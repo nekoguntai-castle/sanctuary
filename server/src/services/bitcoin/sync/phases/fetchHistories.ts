@@ -10,7 +10,7 @@ import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
 import type { NodeRequestOptions } from '../../nodeClient';
-import { authenticateHistoryResults } from '../evidenceAuthentication';
+import { authenticateHistoryResults } from '../historyEvidenceAuthentication';
 import { recordRejectedEvidence } from '../rejectedEvidence';
 import {
   createSyncStageRuntime,

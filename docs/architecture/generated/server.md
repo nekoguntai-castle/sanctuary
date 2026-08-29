@@ -68,9 +68,6 @@ end
 subgraph n_src_observability["observability"]
 n_src_observability__collapsed[" "]
 end
-subgraph n_src_perf["perf"]
-n_src_perf__collapsed[" "]
-end
 subgraph n_src_providers["providers"]
 n_src_providers__collapsed[" "]
 end
@@ -176,8 +173,6 @@ n_src_middleware__collapsed-->n_src_utils__collapsed
 n_src_models__collapsed-->n_src_observability__collapsed
 n_src_models__collapsed-->n_src_utils__collapsed
 n_src_observability__collapsed-->n_src_utils__collapsed
-n_src_perf__collapsed-->n_src_services__collapsed
-n_src_perf__collapsed-->n_src_worker__collapsed
 n_src_providers__collapsed-->n_src_utils__collapsed
 n_src_repositories__collapsed-->n_src_constants__collapsed
 n_src_repositories__collapsed-->n_src_errors__collapsed

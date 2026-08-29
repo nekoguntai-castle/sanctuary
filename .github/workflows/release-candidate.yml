@@ -214,6 +214,245 @@ jobs:
         run: scripts/ci/run-install-unit-tests.sh
 
   # ============================================
+  # Wallet-sync persistence replay images
+  # ============================================
+  wallet-sync-replay-images:
+    name: Build Wallet Sync Replay Images
+    runs-on: [ubuntu-22.04, docker-socket]
+    needs: validation-info
+    timeout-minutes: 90
+    env:
+      RC10_REVISION: 5c1d1909f177b7bbd7c8f470da375b2de6bd0de3
+      RC10_IMAGE: sanctuary-wallet-sync-replay:rc10-5c1d1909f177
+      RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
+      IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/wallet-sync-replay-images
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.validation-info.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Check replay host capacity
+        run: |
+          mkdir -p "$JOB_LOG_DIR"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/host-capacity.log" \
+            scripts/ci/check-wallet-sync-replay-host.sh
+
+      - name: Check Docker
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Build each immutable replay image once
+        env:
+          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$JOB_LOG_DIR" "$IMAGE_DIR" .tmp/wallet-sync-replay/rc10-source
+          git archive "$RC10_REVISION" | tar -x -C .tmp/wallet-sync-replay/rc10-source
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/build-images.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "wallet sync replay image build" \
+            bash -c '
+              set -euo pipefail
+              scripts/ci/wallet-sync-replay-image.sh build \
+                .tmp/wallet-sync-replay/rc10-source "$RC10_REVISION" "$RC10_IMAGE" "$IMAGE_DIR/rc10"
+              scripts/ci/wallet-sync-replay-image.sh build \
+                . "$RC11_REVISION" "$RC11_IMAGE" "$IMAGE_DIR/rc11"
+            '
+
+      - name: Upload digest-addressed replay images
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/wallet-sync-replay/images/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove job-owned replay images
+        if: always()
+        run: docker image rm "$RC10_IMAGE" "$RC11_IMAGE" 2>/dev/null || true
+
+      - name: Upload replay image diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.JOB_LOG_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # This exact-production-shape job owns both the immutable RC10 negative
+  # control and the RC11 100/69/no-op proof. The external controller creates a
+  # fresh PostgreSQL database for each subject and mounts its driver read-only.
+  wallet-sync-live-shape:
+    name: Wallet Sync Live Shape Replay
+    runs-on: [ubuntu-22.04, docker-socket]
+    needs: [validation-info, wallet-sync-replay-images]
+    timeout-minutes: 120
+    env:
+      RC10_REVISION: 5c1d1909f177b7bbd7c8f470da375b2de6bd0de3
+      RC10_IMAGE: sanctuary-wallet-sync-replay:rc10-5c1d1909f177
+      RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
+      IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
+      EVIDENCE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/evidence-live
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/wallet-sync-live-shape
+
+    steps:
+      - name: Checkout exact candidate controller
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.validation-info.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Check replay host capacity
+        run: |
+          mkdir -p "$JOB_LOG_DIR"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/host-capacity.log" \
+            scripts/ci/check-wallet-sync-replay-host.sh
+
+      - name: Check Docker
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
+
+      - name: Download build-once replay images
+        uses: ./.github/actions/download-artifact
+        with:
+          name: wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/wallet-sync-replay/images
+
+      - name: Load and reverify exact OCI bytes
+        env:
+          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/load-images.log" bash -c '
+            set -euo pipefail
+            scripts/ci/wallet-sync-replay-image.sh load \
+              "$IMAGE_DIR/rc10/image-receipt.json" "$RC10_IMAGE" "$RC10_REVISION"
+            scripts/ci/wallet-sync-replay-image.sh load \
+              "$IMAGE_DIR/rc11/image-receipt.json" "$RC11_IMAGE" "$RC11_REVISION"
+          '
+
+      - name: Run live-shape replay and RC10 negative control
+        env:
+          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          mkdir -p "$(dirname "$EVIDENCE_DIR")"
+          scripts/ci/run-with-log.sh "${EVIDENCE_DIR}.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "wallet sync live-shape replay" \
+            timeout --foreground --signal=TERM --kill-after=60s 6000s \
+            node scripts/perf/wallet-sync-high-fanout-replay.mjs \
+              --mode live \
+              --rc10-image "$RC10_IMAGE" \
+              --rc10-revision "$RC10_REVISION" \
+              --rc11-image "$RC11_IMAGE" \
+              --rc11-revision "$RC11_REVISION" \
+              --fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json \
+              --evidence-dir "$EVIDENCE_DIR"
+
+      - name: Remove job-owned replay images
+        if: always()
+        run: docker image rm "$RC10_IMAGE" "$RC11_IMAGE" 2>/dev/null || true
+
+      - name: Upload live-shape replay evidence
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wallet-sync-live-shape-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/wallet-sync-replay/evidence-live/
+            .tmp/wallet-sync-replay/evidence-live.log
+            .tmp/job-logs/wallet-sync-live-shape/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
+  # Depend on the live-shape gate to serialize these high-load jobs on the
+  # shared runner. The controller stops at the first failed boundary case.
+  wallet-sync-maximum-shapes:
+    name: Wallet Sync Maximum Shape Replay
+    runs-on: [ubuntu-22.04, docker-socket]
+    needs: [validation-info, wallet-sync-replay-images, wallet-sync-live-shape]
+    timeout-minutes: 60
+    env:
+      RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
+      IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
+      EVIDENCE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/evidence-max
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/wallet-sync-maximum-shapes
+
+    steps:
+      - name: Checkout exact candidate controller
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.validation-info.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Check replay host capacity
+        run: |
+          mkdir -p "$JOB_LOG_DIR"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/host-capacity.log" \
+            scripts/ci/check-wallet-sync-replay-host.sh
+
+      - name: Check Docker
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
+
+      - name: Download build-once replay images
+        uses: ./.github/actions/download-artifact
+        with:
+          name: wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/wallet-sync-replay/images
+
+      - name: Load and reverify exact OCI bytes
+        env:
+          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/load-images.log" \
+            scripts/ci/wallet-sync-replay-image.sh load \
+              "$IMAGE_DIR/rc11/image-receipt.json" "$RC11_IMAGE" "$RC11_REVISION"
+
+      - name: Run maximum-shape boundary cases
+        env:
+          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          mkdir -p "$(dirname "$EVIDENCE_DIR")"
+          scripts/ci/run-with-log.sh "${EVIDENCE_DIR}.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "wallet sync maximum-shape replay" \
+            timeout --foreground --signal=TERM --kill-after=60s 2700s \
+            node scripts/perf/wallet-sync-high-fanout-replay.mjs \
+              --mode max \
+              --rc11-image "$RC11_IMAGE" \
+              --rc11-revision "$RC11_REVISION" \
+              --fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json \
+              --evidence-dir "$EVIDENCE_DIR"
+
+      - name: Remove job-owned replay image
+        if: always()
+        run: docker image rm "$RC11_IMAGE" 2>/dev/null || true
+
+      - name: Upload maximum-shape replay evidence
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wallet-sync-maximum-shape-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/wallet-sync-replay/evidence-max/
+            .tmp/wallet-sync-replay/evidence-max.log
+            .tmp/job-logs/wallet-sync-maximum-shapes/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
+  # ============================================
   # Fresh Install E2E Test
   # ============================================
   fresh-install-test:
@@ -408,7 +647,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-22.04
-    needs: [validation-info, hardware-compatibility-evidence, unit-tests, fresh-install-test]
+    needs: [validation-info, hardware-compatibility-evidence, unit-tests, fresh-install-test, wallet-sync-replay-images, wallet-sync-live-shape, wallet-sync-maximum-shapes]
     if: always()
 
     steps:
@@ -418,6 +657,9 @@ jobs:
           FRESH_INSTALL_RESULT: ${{ needs.fresh-install-test.result }}
           HARDWARE_EVIDENCE_RESULT: ${{ needs.hardware-compatibility-evidence.result }}
           UNIT_TEST_RESULT: ${{ needs.unit-tests.result }}
+          WALLET_SYNC_IMAGE_RESULT: ${{ needs.wallet-sync-replay-images.result }}
+          WALLET_SYNC_LIVE_RESULT: ${{ needs.wallet-sync-live-shape.result }}
+          WALLET_SYNC_MAX_RESULT: ${{ needs.wallet-sync-maximum-shapes.result }}
         run: |
           echo "## Validation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -445,6 +687,24 @@ jobs:
             echo "| Hardware Compatibility Evidence | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
           fi
 
+          if [ "$WALLET_SYNC_IMAGE_RESULT" = "success" ]; then
+            echo "| Wallet Sync Build-once OCI Images | :white_check_mark: Passed | - |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Wallet Sync Build-once OCI Images | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$WALLET_SYNC_LIVE_RESULT" = "success" ]; then
+            echo "| Wallet Sync Live Shape + RC10 Control | :white_check_mark: Passed | - |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Wallet Sync Live Shape + RC10 Control | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$WALLET_SYNC_MAX_RESULT" = "success" ]; then
+            echo "| Wallet Sync Maximum Shapes | :white_check_mark: Passed | - |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Wallet Sync Maximum Shapes | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "| Canonical Install/Health/Auth/Upgrade Gate | :hourglass_flowing_sand: Pending same-commit Install Tests | - |" >> $GITHUB_STEP_SUMMARY
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -454,7 +714,10 @@ jobs:
           PREFLIGHT_PASSED=true
           if [ "$UNIT_TEST_RESULT" != "success" ] || \
              [ "$FRESH_INSTALL_RESULT" != "success" ] || \
-             [ "$HARDWARE_EVIDENCE_RESULT" != "success" ]; then
+             [ "$HARDWARE_EVIDENCE_RESULT" != "success" ] || \
+             [ "$WALLET_SYNC_IMAGE_RESULT" != "success" ] || \
+             [ "$WALLET_SYNC_LIVE_RESULT" != "success" ] || \
+             [ "$WALLET_SYNC_MAX_RESULT" != "success" ]; then
             PREFLIGHT_PASSED=false
           fi
 
@@ -482,10 +745,16 @@ jobs:
           FRESH_INSTALL_RESULT: ${{ needs.fresh-install-test.result }}
           HARDWARE_EVIDENCE_RESULT: ${{ needs.hardware-compatibility-evidence.result }}
           UNIT_TEST_RESULT: ${{ needs.unit-tests.result }}
+          WALLET_SYNC_IMAGE_RESULT: ${{ needs.wallet-sync-replay-images.result }}
+          WALLET_SYNC_LIVE_RESULT: ${{ needs.wallet-sync-live-shape.result }}
+          WALLET_SYNC_MAX_RESULT: ${{ needs.wallet-sync-maximum-shapes.result }}
         run: |
           if [ "$UNIT_TEST_RESULT" != "success" ] || \
              [ "$FRESH_INSTALL_RESULT" != "success" ] || \
-             [ "$HARDWARE_EVIDENCE_RESULT" != "success" ]; then
+             [ "$HARDWARE_EVIDENCE_RESULT" != "success" ] || \
+             [ "$WALLET_SYNC_IMAGE_RESULT" != "success" ] || \
+             [ "$WALLET_SYNC_LIVE_RESULT" != "success" ] || \
+             [ "$WALLET_SYNC_MAX_RESULT" != "success" ]; then
             echo "::error::Release candidate preflight failed for $CANDIDATE_SHA."
             exit 1
           fi

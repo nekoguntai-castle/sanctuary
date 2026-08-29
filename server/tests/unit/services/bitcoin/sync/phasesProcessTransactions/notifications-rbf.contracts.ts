@@ -24,24 +24,13 @@ import { detectRBFReplacements } from '../../../../../../src/services/bitcoin/sy
 export function registerProcessTransactionNotificationsRbfTests(walletId: string): void {
     it('defers fenced RBF publication until after commit', async () => {
       const publishEffects: Array<() => void | Promise<void>> = [];
-      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([{
-        id: 'pending-row',
-        txid: 'pending-tx',
-        inputs: [{ txid: 'shared-input', vout: 0 }],
-      }]);
+      mockPrismaClient.$queryRaw.mockResolvedValueOnce([{ count: 1 }]);
 
       await detectRBFReplacements(
         walletId,
         [{ id: 'confirmed-row', txid: 'confirmed-tx', type: 'received' }],
         new Set(['confirmed-tx']),
-        [{
-          transactionId: 'confirmed-row',
-          inputIndex: 0,
-          txid: 'shared-input',
-          vout: 0,
-          address: 'external',
-          amount: BigInt(1),
-        }],
+        ['confirmed-row'],
         mockPrismaClient as never,
         effect => publishEffects.push(effect),
       );
@@ -53,7 +42,7 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
         walletId,
         'info',
         'RBF',
-        expect.stringContaining('Linked pending tx'),
+        expect.stringContaining('Linked 1 pending transaction'),
       );
     });
 
@@ -68,12 +57,11 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
         inputs: [{ txid: sharedInputTxid, vout: 0, value: 0.001, address: 'external' }],
         outputs: [{ value: 0.0009, address: walletAddress }],
       })]]));
-
-      const updateCalls: any[] = [];
-      mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {
-        updateCalls.push(args);
-        return args;
+      mockPrismaClient.$queryRaw.mockImplementation(async (statement: any) => {
+        const sql = statement?.strings?.join('') ?? '';
+        return sql.includes('replacement_candidates') ? [{ count: 1 }] : [];
       });
+
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
         // Step 3 existing tx check
         if (args?.select?.txid && !args?.select?.id) {
@@ -82,14 +70,6 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
         // storeTransactionIO fetch of created tx rows
         if (args?.select?.id && args?.select?.txid && args?.select?.type) {
           return [{ id: 'confirmed-row-id', txid, type: 'received' }];
-        }
-        // detectRBFReplacements pending tx query
-        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
-          return [{
-            id: 'pending-row-id',
-            txid: pendingTxid,
-            inputs: [{ txid: sharedInputTxid, vout: 0 }],
-          }];
         }
         // applyAddressLabels tx lookup
         if (args?.select?.id && args?.select?.txid && args?.select?.addressId) {
@@ -112,24 +92,27 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
 
       await processTransactionsPhase(ctx);
 
-      const pendingLookupIndex = mockPrismaClient.transaction.findMany.mock.calls.findIndex(
-        ([args]) => args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active'
+      const rbfLookupIndex = mockPrismaClient.$queryRaw.mock.calls.findIndex(
+        ([statement]) => (statement as { strings: string[] }).strings
+          .join('').includes('replacement_candidates')
       );
-      expect(pendingLookupIndex).toBeGreaterThanOrEqual(0);
+      expect(rbfLookupIndex).toBeGreaterThanOrEqual(0);
       expect(mockPrismaClient.transactionInput.createMany.mock.invocationCallOrder[0]).toBeLessThan(
-        mockPrismaClient.transaction.findMany.mock.invocationCallOrder[pendingLookupIndex]
+        mockPrismaClient.$queryRaw.mock.invocationCallOrder[rbfLookupIndex]
       );
 
-      expect(updateCalls).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            where: { id: 'pending-row-id' },
-            data: expect.objectContaining({
-              rbfStatus: 'replaced',
-              replacedByTxid: txid,
-            }),
-          }),
-        ])
+      const rbfUpdate = mockPrismaClient.$queryRaw.mock.calls
+        .map(([statement]) => statement as { strings: string[]; values: unknown[] })
+        .find(statement => statement.strings.join('').includes('replacement_candidates'));
+      expect(rbfUpdate).toBeDefined();
+      expect(rbfUpdate?.values).toEqual(expect.arrayContaining([
+        'confirmed-row-id',
+      ]));
+      expect(mockPrismaClient.$queryRaw.mock.invocationCallOrder[rbfLookupIndex]).toBeLessThan(
+        mockPrismaClient.$executeRaw.mock.invocationCallOrder.find((_, index) => (
+          (mockPrismaClient.$executeRaw.mock.calls[index][0] as { strings: string[] })
+            .strings.join('').includes('SET "ioComplete" = true')
+        )) as number
       );
     });
 

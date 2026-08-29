@@ -9,13 +9,10 @@ import { createLogger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
-import {
-  authenticateProjectedTransactionOutput,
-  RawTransactionEvidenceError,
-} from '../../rawTransactionEvidence';
-import { fetchAuthenticatedTransactions } from '../evidenceAuthentication';
+import { fetchAuthenticatedOutpoints } from '../evidenceAuthentication';
 import { recordRejectedEvidence } from '../rejectedEvidence';
 import type { NodeRequestOptions } from '../../nodeClient';
+import { UtxoItemSchema } from '../../electrum/types';
 import {
   createSyncStageRuntime,
   isSyncStageBudgetError,
@@ -23,7 +20,6 @@ import {
   SYNC_REMOTE_FALLBACK_CONCURRENCY,
   type SyncStageRuntime,
 } from '../attemptRuntime';
-import { transactionOutputScriptHex } from '../transactionOutputEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXOS');
 
@@ -170,35 +166,32 @@ const authenticateAddressUtxos = async (
     return;
   }
 
-  const authenticatedTxids = await fetchAuthenticatedTransactions(
-    ctx,
-    utxos.map(utxo => utxo.tx_hash),
-    options,
-  );
+  const requests = new Map<string, Set<number>>();
+  const validatedUtxos = [] as typeof utxos;
+  for (const rawUtxo of utxos) {
+    const parsed = UtxoItemSchema.safeParse(rawUtxo);
+    if (!parsed.success) {
+      recordFailClosed(ctx, 'invalid_utxo_result');
+      continue;
+    }
+    const utxo = parsed.data;
+    validatedUtxos.push(utxo);
+    const vouts = requests.get(utxo.tx_hash) ?? new Set<number>();
+    vouts.add(utxo.tx_pos);
+    requests.set(utxo.tx_hash, vouts);
+  }
+  await fetchAuthenticatedOutpoints(ctx, requests, { ...options, evidenceRole: 'utxo' });
   const accepted = [] as typeof utxos;
-  for (const utxo of utxos) {
-    if (!authenticatedTxids.has(utxo.tx_hash)) continue;
-    try {
-      const cached = ctx.txDetailsCache.get(utxo.tx_hash);
-      if (!cached) throw new Error('missing_raw_transaction');
-      const output = cached.vout[utxo.tx_pos];
-      authenticateProjectedTransactionOutput({
-        expectedTxid: utxo.tx_hash,
-        authenticatedTxid: cached.txid,
-        vout: utxo.tx_pos,
-        output: output ? {
-          value: output.value,
-          scriptPubKeyHex: transactionOutputScriptHex(output),
-        } : undefined,
-        expectedValueSats: BigInt(utxo.value),
-        expectedScriptPubKeyHex: expectedScript,
-      });
+  for (const utxo of validatedUtxos) {
+    const output = ctx.authenticatedOutpointEvidence.get(`${utxo.tx_hash}:${utxo.tx_pos}`);
+    if (output
+      && output.valueSats === BigInt(utxo.value)
+      && output.scriptHex === expectedScript) {
       accepted.push(utxo);
-    } catch (error) {
-      recordFailClosed(
-        ctx,
-        error instanceof RawTransactionEvidenceError ? error.reason : 'missing_raw_transaction',
-      );
+    } else if (output) {
+      recordFailClosed(ctx, output.valueSats !== BigInt(utxo.value)
+        ? 'amount_mismatch'
+        : 'script_mismatch');
     }
   }
 

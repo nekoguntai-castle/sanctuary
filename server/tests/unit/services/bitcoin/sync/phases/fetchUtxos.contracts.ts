@@ -8,14 +8,17 @@ import {
   fetchUtxosPhase,
   type SyncContext,
 } from '../../../../../../src/services/bitcoin/sync';
-import { fetchAuthenticatedTransactions } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { fetchAuthenticatedOutpoints } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
 
 export function registerFetchUtxosPhaseTests(): void {
   it('rejects an accepted UTXO when its authenticated cache entry is absent', async () => {
     const address = 'utxo-missing-authenticated-cache';
     const utxo = createMockUTXO({ txid: 'a'.repeat(64), vout: 0, value: 100_000 });
     mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[address, [utxo]]]));
-    vi.mocked(fetchAuthenticatedTransactions).mockResolvedValueOnce(new Set([utxo.tx_hash]));
+    vi.mocked(fetchAuthenticatedOutpoints).mockImplementationOnce(async (ctx) => {
+      ctx.rejectedEvidenceCount += 1;
+      ctx.rejectedEvidenceReasons.set('missing_output', 1);
+    });
     const addressRecord = { id: '1', address, scriptPubKey: '0014' };
     const ctx = createTestContext({
       addresses: [addressRecord] as any,
@@ -27,7 +30,7 @@ export function registerFetchUtxosPhaseTests(): void {
 
     expect(result.utxoResults).toEqual([{ address, utxos: [] }]);
     expect(result.rejectedEvidenceReasons).toEqual(new Map([
-      ['missing_raw_transaction', 1],
+      ['missing_output', 1],
     ]));
   });
 
@@ -42,13 +45,15 @@ export function registerFetchUtxosPhaseTests(): void {
     mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(
       new Map([[address, [acceptedUtxo, unresolvedUtxo]]]),
     );
-    vi.mocked(fetchAuthenticatedTransactions).mockImplementationOnce(async (ctx) => {
-      ctx.txDetailsCache.set(acceptedUtxo.tx_hash, {
-        txid: acceptedUtxo.tx_hash, hex: '00', vin: [], vout: [],
+    vi.mocked(fetchAuthenticatedOutpoints).mockImplementationOnce(async (ctx) => {
+      ctx.authenticatedOutpointEvidence.set(`${acceptedUtxo.tx_hash}:${acceptedUtxo.tx_pos}`, {
+        txid: acceptedUtxo.tx_hash,
+        vout: acceptedUtxo.tx_pos,
+        valueSats: BigInt(acceptedUtxo.value),
+        scriptHex: '0014',
       });
       ctx.rejectedEvidenceCount++;
       ctx.rejectedEvidenceReasons.set('fetch_budget_exhausted', 1);
-      return new Set([acceptedUtxo.tx_hash]);
     });
     const addressRecord = { id: '1', address, scriptPubKey: '0014' };
     const ctx = createTestContext({
@@ -171,7 +176,7 @@ export function registerFetchUtxosPhaseTests(): void {
     expect(result.utxoResults).toEqual([]);
     expect(result.allUtxoKeys.size).toBe(0);
     expect(result.rejectedEvidenceCount).toBe(1);
-    expect(fetchAuthenticatedTransactions).not.toHaveBeenCalled();
+    expect(fetchAuthenticatedOutpoints).not.toHaveBeenCalled();
   });
 
   it('makes an omitted batch address retryable', async () => {
@@ -181,7 +186,6 @@ export function registerFetchUtxosPhaseTests(): void {
       addressMap: new Map([['addr1', { id: '1', address: 'addr1', scriptPubKey: '0014' }]]) as any,
       client: mockElectrumClient as any,
     });
-
     const result = await fetchUtxosPhase(ctx);
 
     expect(result.utxoResults).toEqual([]);
@@ -232,6 +236,11 @@ export function registerFetchUtxosPhaseTests(): void {
       addresses: [{ id: '1', address: 'addr1', scriptPubKey: '0014' } as any],
       addressMap: new Map([['addr1', { id: '1', address: 'addr1', scriptPubKey: '0014' }]]) as any,
       client: mockElectrumClient as any,
+    });
+    vi.mocked(fetchAuthenticatedOutpoints).mockImplementationOnce(async (context) => {
+      context.authenticatedOutpointEvidence.set(`${txid}:${vout}`, {
+        txid, vout, valueSats: 50_000n, scriptHex: '0014',
+      });
     });
 
     const result = await fetchUtxosPhase(ctx);

@@ -231,11 +231,36 @@ export function registerProcessTransactionProgressTimestampTests(
         ],
       ]),
       txDetailsCache: new Map() as any,
+      authenticatedTransactionEvidence: new Map([[
+        timed,
+        { metadata: { time: 1_700_000_000 } } as any,
+      ]]),
     });
 
     await processTransactionsPhase(ctx);
 
     expect(getBlockTimestamp).not.toHaveBeenCalled();
+  });
+
+  it('propagates a non-budget page timestamp failure before candidate mutation', async () => {
+    const txid = 'timestamp_failure'.padEnd(64, 'f');
+    const walletAddress = 'tb1q_timestamp_failure';
+    const failure = new Error('header lookup failed');
+    vi.mocked(getBlockTimestamp).mockRejectedValueOnce(failure);
+    const ctx = createTestContext({
+      walletId,
+      client: mockElectrumClient as any,
+      newTxids: [txid],
+      historyResults: new Map([
+        [walletAddress, [{ tx_hash: txid, height: 800000 }]],
+      ]),
+      txDetailsCache: new Map() as any,
+    });
+
+    await expect(processTransactionsPhase(ctx)).rejects.toBe(failure);
+
+    expect(fetchAuthenticatedTransactions).not.toHaveBeenCalled();
+    expect(withWalletSyncMutationFence).not.toHaveBeenCalled();
   });
 
   it("emits fixed stage order and waits for the fenced batch mutation before durable completion", async () => {

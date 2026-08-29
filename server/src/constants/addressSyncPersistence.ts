@@ -1,0 +1,8 @@
+/** Maximum row count retained and bound by one address-sync persistence statement. */
+export const ADDRESS_SYNC_IO_UPSERT_MAX_ROWS = 512;
+export const ADDRESS_SYNC_INPUT_UPSERT_BIND_COLUMNS = 8;
+export const ADDRESS_SYNC_OUTPUT_UPSERT_BIND_COLUMNS = 8;
+export const ADDRESS_SYNC_IO_UPSERT_MAX_BINDS = ADDRESS_SYNC_IO_UPSERT_MAX_ROWS * Math.max(
+  ADDRESS_SYNC_INPUT_UPSERT_BIND_COLUMNS,
+  ADDRESS_SYNC_OUTPUT_UPSERT_BIND_COLUMNS,
+);

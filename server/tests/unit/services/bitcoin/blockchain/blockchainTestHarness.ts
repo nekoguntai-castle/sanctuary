@@ -98,32 +98,90 @@ vi.mock('../../../../../src/services/bitcoin/blockchain/receiveEvidenceAuthentic
   }),
 }));
 
-vi.mock('../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
-  authenticateHistoryResults: vi.fn(),
-  fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
-    const accepted = new Set<string>();
-    let results: Map<string, any>;
-    try {
-      results = await ctx.client.getTransactionsBatch(txids, false);
-    } catch {
-      results = new Map();
-      for (const txid of txids) {
-        try {
-          const details = await ctx.client.getTransaction(txid, false);
-          if (details) results.set(txid, details);
-        } catch { /* legacy fallback-error contracts */ }
+vi.mock('../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => {
+  const legacyOutputScript = (ctx: any, output: any): string => (
+    ctx.addressMap.get(output.scriptPubKey?.address)?.scriptPubKey
+      ?? output.scriptHex
+      ?? output.scriptPubKey?.hex
+      ?? ''
+  );
+  const publishLegacyOutpoint = (
+    ctx: any,
+    txid: string,
+    vout: number,
+    output: any,
+    coverage: Set<number>,
+  ): void => {
+    ctx.authenticatedOutpointEvidence.set(`${txid}:${vout}`, {
+      txid,
+      vout,
+      valueSats: BigInt(Math.round(output.value * 100_000_000)),
+      scriptHex: legacyOutputScript(ctx, output),
+    });
+    coverage.add(vout);
+  };
+  const publishLegacyRequestedOutpoints = (
+    ctx: any,
+    txid: string,
+    vouts: ReadonlySet<number>,
+    details: any,
+  ): void => {
+    const coverage = ctx.authenticatedOutpointCoverage.get(txid) ?? new Set<number>();
+    for (const vout of vouts) {
+      const output = details?.vout?.[vout];
+      if (output) publishLegacyOutpoint(ctx, txid, vout, output, coverage);
+    }
+    if (coverage.size > 0) ctx.authenticatedOutpointCoverage.set(txid, coverage);
+  };
+  const fetchLegacyAuthenticatedOutpoints = async (
+    ctx: any,
+    requests: ReadonlyMap<string, ReadonlySet<number>>,
+  ): Promise<void> => {
+    for (const [txid, vouts] of requests) {
+      const details = legacyReceiveEvidence.transactions.get(txid)
+        ?? ctx.txDetailsCache.get(txid);
+      publishLegacyRequestedOutpoints(ctx, txid, vouts, details);
+    }
+  };
+  return {
+    releaseAuthenticatedEvidence: vi.fn((ctx) => {
+      ctx.txDetailsCache.clear();
+      ctx.authenticatedTransactionEvidence.clear();
+      ctx.authenticatedOutpointEvidence.clear();
+      ctx.authenticatedOutpointCoverage.clear();
+      ctx.authenticatedSpentOutpointKeys.clear();
+    }),
+    releaseAuthenticatedTransactionDetails: vi.fn((ctx) => ctx.txDetailsCache.clear()),
+    fetchAuthenticatedOutpoints: vi.fn(fetchLegacyAuthenticatedOutpoints),
+    fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
+      const accepted = new Set<string>();
+      let results: Map<string, any>;
+      try {
+        results = await ctx.client.getTransactionsBatch(txids, false);
+      } catch {
+        results = new Map();
+        for (const txid of txids) {
+          try {
+            const details = await ctx.client.getTransaction(txid, false);
+            if (details) results.set(txid, details);
+          } catch { /* legacy fallback-error contracts */ }
+        }
       }
-    }
-    for (const txid of txids) {
-      const details = results.get(txid)
-        ?? await ctx.client.getTransaction(txid, false).catch(() => undefined);
-      if (!details) continue;
-      ctx.txDetailsCache.set(txid, details);
-      legacyReceiveEvidence.transactions.set(txid, details);
-      accepted.add(txid);
-    }
-    return accepted;
-  }),
+      for (const txid of txids) {
+        const details = results.get(txid)
+          ?? await ctx.client.getTransaction(txid, false).catch(() => undefined);
+        if (!details) continue;
+        ctx.txDetailsCache.set(txid, details);
+        legacyReceiveEvidence.transactions.set(txid, details);
+        accepted.add(txid);
+      }
+      return accepted;
+    }),
+  };
+});
+
+vi.mock('../../../../../src/services/bitcoin/sync/historyEvidenceAuthentication', () => ({
+  authenticateHistoryResults: vi.fn(),
 }));
 
 vi.mock('../../../../../src/services/bitcoin/rawTransactionEvidence', async importOriginal => {

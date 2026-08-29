@@ -39,11 +39,25 @@ vi.mock('../../../../../src/services/bitcoin/nodeClient', () => ({
 }));
 
 vi.mock('../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
-  authenticateHistoryResults: vi.fn(),
   fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
     for (const txid of txids) ctx.txDetailsCache.set(txid, { txid, hex: '00', vin: [], vout: [] });
     return new Set(txids);
   }),
+  fetchAuthenticatedOutpoints: vi.fn(async (ctx, requests) => {
+    const scriptHex = ctx.addresses[0]?.scriptPubKey?.toLowerCase() ?? '';
+    for (const [txid, vouts] of requests) {
+      for (const vout of vouts) {
+        ctx.authenticatedOutpointEvidence.set(`${txid}:${vout}`, {
+          txid, vout, valueSats: 100_000n, scriptHex,
+        });
+      }
+    }
+  }),
+  releaseAuthenticatedTransactionDetails: vi.fn((ctx) => ctx.txDetailsCache.clear()),
+}));
+
+vi.mock('../../../../../src/services/bitcoin/sync/historyEvidenceAuthentication', () => ({
+  authenticateHistoryResults: vi.fn(),
 }));
 
 vi.mock('../../../../../src/services/bitcoin/rawTransactionEvidence', () => ({
@@ -129,7 +143,10 @@ import {
 import { getBlockTimestamp } from '../../../../../src/services/bitcoin/utils/blockHeight';
 import { getNotificationService, walletLog } from '../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../src/services/notifications/notificationService';
-import { fetchAuthenticatedTransactions } from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import {
+  fetchAuthenticatedOutpoints,
+  fetchAuthenticatedTransactions,
+} from '../../../../../src/services/bitcoin/sync/evidenceAuthentication';
 import { ElectrumFrameTooLargeError } from '../../../../../src/services/bitcoin/electrum/protocol';
 
 describe('Sync Phases', () => {
@@ -142,6 +159,16 @@ describe('Sync Phases', () => {
       }
       return new Set(txids);
     });
+    vi.mocked(fetchAuthenticatedOutpoints).mockImplementation(async (ctx, requests) => {
+      const scriptHex = ctx.addresses[0]?.scriptPubKey?.toLowerCase() ?? '';
+      for (const [txid, vouts] of requests) {
+        for (const vout of vouts) {
+          ctx.authenticatedOutpointEvidence.set(`${txid}:${vout}`, {
+            txid, vout, valueSats: 100_000n, scriptHex,
+          });
+        }
+      }
+    });
   });
 
   describe('rbfCleanupPhase', () => {
@@ -149,110 +176,107 @@ describe('Sync Phases', () => {
       const pendingTxid = 'pending_' + 'a'.repeat(56);
       const confirmedTxid = 'confirmed_' + 'b'.repeat(53);
 
-      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        // Pending txs with active RBF status
-        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
-          return [{
-            id: 'pending-tx-id',
-            txid: pendingTxid,
-            inputs: [{ txid: 'input_txid', vout: 0 }],
-          }];
-        }
-        // Batch query: confirmed txs sharing inputs with pending txs
-        if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
-          return [{
-            txid: confirmedTxid,
-            inputs: [{ txid: 'input_txid', vout: 0 }],
-          }];
-        }
-        // Unlinked replaced txs
-        if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
-          return [];
-        }
-        return [];
-      });
-
-      const updateCalls: any[] = [];
-      mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {
-        updateCalls.push(args);
-        return args;
-      });
+      mockPrismaClient.$queryRaw
+        .mockResolvedValueOnce([{
+          id: 'pending-tx-id',
+          txid: pendingTxid,
+          replacementTxid: confirmedTxid,
+        }])
+        .mockResolvedValueOnce([{ id: 'pending-tx-id' }])
+        .mockResolvedValueOnce([]);
 
       const ctx = createTestContext({ walletId: 'test-wallet' });
       await rbfCleanupPhase(ctx);
 
       // Verify the pending tx was marked as replaced
-      const rbfUpdate = updateCalls.find(
-        (call) => call.data?.rbfStatus === 'replaced' && call.data?.replacedByTxid === confirmedTxid
-      );
-      expect(rbfUpdate).toBeDefined();
+      const rbfUpdate = mockPrismaClient.$queryRaw.mock.calls[1][0] as {
+        strings: string[];
+        values: unknown[];
+      };
+      expect(rbfUpdate.strings.join('')).toContain('UPDATE "transactions" AS target');
+      expect(rbfUpdate.values).toEqual(expect.arrayContaining([
+        'pending-tx-id',
+        confirmedTxid,
+      ]));
     });
 
     it('should not mark pending transaction if no confirmed replacement found', async () => {
-      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
-          return [{
-            id: 'pending-tx-id',
-            txid: 'pending_txid',
-            inputs: [{ txid: 'input_txid', vout: 0 }],
-          }];
-        }
-        // No confirmed replacement found
-        if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
-          return [];
-        }
-        return [];
-      });
-
-      const updateCalls: any[] = [];
-      mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {
-        updateCalls.push(args);
-        return args;
-      });
+      mockPrismaClient.$queryRaw.mockResolvedValue([]);
 
       const ctx = createTestContext({ walletId: 'test-wallet' });
       await rbfCleanupPhase(ctx);
 
-      const rbfUpdate = updateCalls.find((call) => call.data?.rbfStatus === 'replaced');
+      const rbfUpdate = mockPrismaClient.$queryRaw.mock.calls.find(([statement]) => (
+        (statement as { strings?: string[] }).strings?.join('')
+          .includes('UPDATE "transactions" AS target')
+      ));
       expect(rbfUpdate).toBeUndefined();
+    });
+
+    it('does not emit a cleanup receipt when guarded revalidation finds no change', async () => {
+      mockPrismaClient.$queryRaw
+        .mockResolvedValueOnce([{
+          id: 'stale-rbf-row',
+          txid: 'stale-rbf-txid',
+          replacementTxid: 'confirmed-rbf-txid',
+        }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await rbfCleanupPhase(createTestContext({ walletId: 'test-wallet' }));
+
+      expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(3);
+      expect(vi.mocked(walletLog)).not.toHaveBeenCalled();
     });
 
     it('should link unlinked replaced transactions retroactively', async () => {
       const replacedTxid = 'replaced_' + 'a'.repeat(55);
       const replacementTxid = 'replacement_' + 'b'.repeat(52);
 
-      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') return [];
-        if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
-          return [{
-            id: 'unlinked-tx-id',
-            txid: replacedTxid,
-            inputs: [{ txid: 'shared_input', vout: 0 }],
-          }];
-        }
-        // Batch query: confirmed txs sharing inputs with unlinked txs
-        if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
-          return [{
-            txid: replacementTxid,
-            inputs: [{ txid: 'shared_input', vout: 0 }],
-          }];
-        }
-        return [];
-      });
-
-      const updateCalls: any[] = [];
-      mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {
-        updateCalls.push(args);
-        return args;
-      });
+      mockPrismaClient.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          id: 'unlinked-tx-id',
+          txid: replacedTxid,
+          replacementTxid,
+        }])
+        .mockResolvedValueOnce([{ id: 'unlinked-tx-id' }]);
 
       const ctx = createTestContext({ walletId: 'test-wallet' });
       await rbfCleanupPhase(ctx);
 
-      const linkUpdate = updateCalls.find(
-        (call) => call.where?.id === 'unlinked-tx-id' && call.data?.replacedByTxid === replacementTxid
-      );
-      expect(linkUpdate).toBeDefined();
+      const linkUpdate = mockPrismaClient.$queryRaw.mock.calls[2][0] as {
+        strings: string[];
+        values: unknown[];
+      };
+      expect(linkUpdate.strings.join('')).toContain('UPDATE "transactions" AS target');
+      expect(linkUpdate.values).toEqual(expect.arrayContaining([
+        'unlinked-tx-id',
+        replacementTxid,
+      ]));
+    });
+
+    it('processes an exact cleanup page before requesting the next bounded page', async () => {
+      const replacements = Array.from({ length: 512 }, (_, index) => ({
+        id: `pending-${index}`,
+        txid: `pending-txid-${index}`,
+        replacementTxid: `confirmed-txid-${index}`,
+      }));
+      let selectionCount = 0;
+      mockPrismaClient.$queryRaw.mockImplementation(async (statement: any) => {
+        const sql = statement?.strings?.join('') ?? '';
+        if (sql.includes('UPDATE "transactions" AS target')) return [{ id: 'changed' }];
+        selectionCount += 1;
+        return selectionCount === 1 ? replacements : [];
+      });
+
+      await rbfCleanupPhase(createTestContext({ walletId: 'test-wallet' }));
+
+      expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(515);
+      expect(mockPrismaClient.$queryRaw.mock.calls.filter(([statement]) => (
+        (statement as { strings: string[] }).strings.join('')
+          .includes('UPDATE "transactions" AS target')
+      ))).toHaveLength(512);
     });
   });
 

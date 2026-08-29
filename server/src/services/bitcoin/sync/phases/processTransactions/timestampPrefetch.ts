@@ -27,7 +27,8 @@ const uniqueCandidateHeights = (
   for (const history of ctx.historyResults.values()) {
     for (const item of history) {
       if (!batchTxidSet.has(item.tx_hash) || item.height <= 0) continue;
-      if (ctx.txDetailsCache.get(item.tx_hash)?.time) continue;
+      if (ctx.txDetailsCache.get(item.tx_hash)?.time
+        || ctx.authenticatedTransactionEvidence.get(item.tx_hash)?.metadata.time) continue;
       heights.add(item.height);
     }
   }

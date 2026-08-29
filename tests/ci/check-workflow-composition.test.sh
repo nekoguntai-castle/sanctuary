@@ -624,6 +624,8 @@ assert_runner_parser_rejects_post_comment_drift() {
 
 # --- release-candidate.yml --------------------------------------------------
 RC="$REPO_ROOT/.github/workflows/release-candidate.yml"
+REPLAY_HOST_CHECK="$REPO_ROOT/scripts/ci/check-wallet-sync-replay-host.sh"
+REPLAY_IMAGE_HELPER="$REPO_ROOT/scripts/ci/wallet-sync-replay-image.sh"
 PHASE_RUNNER="$REPO_ROOT/scripts/ci/run-e2e-lane-phases.sh"
 RELEASE_GATES="$REPO_ROOT/docs/reference/release-gates.md"
 UPGRADE_ROADMAP="$REPO_ROOT/docs/plans/upgrade-testing-roadmap.md"
@@ -737,7 +739,103 @@ assert_contains_in_order "$RC" \
 assert_occurrence_count "$RC" \
   "every retained release-candidate evidence job checks out the immutable SHA" \
   'ref: ${{ needs.validation-info.outputs.candidate_sha }}' \
-  3
+  6
+
+assert_contains_in_order "$RC" \
+  "release-candidate builds immutable RC10 and exact-head RC11 replay images once" \
+  "wallet-sync-replay-images:" \
+  "timeout-minutes: 90" \
+  "git archive \"\$RC10_REVISION\"" \
+  'wallet-sync-replay-image.sh build' \
+  '"$IMAGE_DIR/rc10"' \
+  'wallet-sync-replay-image.sh build' \
+  '"$IMAGE_DIR/rc11"' \
+  "Upload digest-addressed replay images"
+
+assert_contains_in_order "$RC" \
+  "live-shape gate loads build-once bytes and drives RC10 plus RC11 through one controller" \
+  "wallet-sync-live-shape:" \
+  "timeout-minutes: 120" \
+  "Download build-once replay images" \
+  'wallet-sync-replay-image.sh load' \
+  'timeout --foreground --signal=TERM --kill-after=60s 6000s' \
+  'node scripts/perf/wallet-sync-high-fanout-replay.mjs' \
+  '--mode live' \
+  '--rc10-revision "$RC10_REVISION"' \
+  '--rc11-revision "$RC11_REVISION"' \
+  '--fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json' \
+  '--evidence-dir "$EVIDENCE_DIR"'
+
+assert_contains_in_order "$RC" \
+  "maximum-shape gate is serialized after live shape and cannot rebuild" \
+  "wallet-sync-maximum-shapes:" \
+  "needs: [validation-info, wallet-sync-replay-images, wallet-sync-live-shape]" \
+  "timeout-minutes: 60" \
+  "Download build-once replay images" \
+  'wallet-sync-replay-image.sh load' \
+  'timeout --foreground --signal=TERM --kill-after=60s 2700s' \
+  '--mode max'
+
+for replay_job in wallet-sync-live-shape wallet-sync-maximum-shapes; do
+  assert_named_job_not_contains "$RC" "$replay_job" \
+    "release-candidate $replay_job never rebuilds subject images" \
+    'wallet-sync-replay-image.sh build'
+  assert_named_job_step_contains "$RC" "$replay_job" "Check replay host capacity" \
+    "release-candidate $replay_job preflights production-shaped host capacity" \
+    'scripts/ci/check-wallet-sync-replay-host.sh'
+done
+
+assert_named_job_step_contains "$RC" \
+  "wallet-sync-live-shape" \
+  "Remove job-owned replay images" \
+  "live-shape gate tears down only its exact loaded subjects" \
+  "if: always()" \
+  'docker image rm "$RC10_IMAGE" "$RC11_IMAGE"'
+
+assert_named_job_step_contains "$RC" \
+  "wallet-sync-maximum-shapes" \
+  "Remove job-owned replay image" \
+  "maximum-shape gate tears down only its exact loaded subject" \
+  "if: always()" \
+  'docker image rm "$RC11_IMAGE"'
+
+assert_named_job_step_contains "$RC" \
+  "wallet-sync-replay-images" \
+  "Check replay host capacity" \
+  "replay image build preflights production-shaped host capacity" \
+  'scripts/ci/check-wallet-sync-replay-host.sh'
+
+assert_contains_in_order "$REPLAY_HOST_CHECK" \
+  "wallet-sync replay host preflight pins the minimum runner shape" \
+  "minimum_cpus=2" \
+  'minimum_memory_kib=$((4 * 1024 * 1024))' \
+  'minimum_disk_kib=$((15 * 1024 * 1024))'
+
+assert_contains_in_order "$REPLAY_IMAGE_HELPER" \
+  "wallet-sync replay helper exports and reverifies digest-addressed OCI bytes" \
+  'docker buildx build' \
+  '--output "type=docker,dest=$temporary_archive"' \
+  'required_entry in oci-layout index.json manifest.json' \
+  'manifest_digest="$(tar -xOf "$temporary_archive" index.json' \
+  'archive_sha256="$(sha256sum "$archive"' \
+  'docker load --input "$archive"' \
+  'verify_loaded_image "$image_ref" "$revision" "$image_lock_sha256"'
+
+assert_named_job_step_contains "$RC" \
+  "wallet-sync-live-shape" \
+  "Upload live-shape replay evidence" \
+  "live-shape evidence survives success and failure" \
+  "if: always()" \
+  "if-no-files-found: error" \
+  "retention-days: 90"
+
+assert_named_job_step_contains "$RC" \
+  "wallet-sync-maximum-shapes" \
+  "Upload maximum-shape replay evidence" \
+  "maximum-shape evidence survives success and failure" \
+  "if: always()" \
+  "if-no-files-found: error" \
+  "retention-days: 90"
 
 for stale_rc_input in "version:" "upgrade_source_ref:" "include_full_upgrade_recovery:"; do
   assert_occurrence_count "$RC" \
@@ -820,7 +918,13 @@ assert_contains_in_order "$RC" \
 assert_contains_in_order "$RC" \
   "release-candidate requires hardware compatibility evidence" \
   "needs: [validation-info, hardware-compatibility-evidence" \
-  'needs.hardware-compatibility-evidence.result'
+  "wallet-sync-replay-images" \
+  "wallet-sync-live-shape" \
+  "wallet-sync-maximum-shapes" \
+  'needs.hardware-compatibility-evidence.result' \
+  'needs.wallet-sync-replay-images.result' \
+  'needs.wallet-sync-live-shape.result' \
+  'needs.wallet-sync-maximum-shapes.result'
 
 assert_contains_in_order "$RC" \
   "release-candidate diagnostic summaries publishable" \
@@ -1208,19 +1312,28 @@ assert_contains_in_order "$IT" \
   'sanctuary-ci-upgrade-${{ github.run_id }}' \
   'diag-docker-resource-cleanup-${{ github.run_id }}'
 
-# --- buildx-action removal regression ---------------------------------------
-# Plan requires removing docker/setup-buildx-action from the five
-# Docker-backed release-candidate install/upgrade jobs. Comments referring
-# to the removal are allowed; an actual `uses:` line is not.
+# --- buildx-action ownership regression -------------------------------------
+# Fresh-install does not own image construction. The one build-once replay job
+# is now the only release-candidate job allowed to initialize Buildx.
 buildx_uses_lines="$(grep -nE '^\s*uses:\s*docker/setup-buildx-action' "$RC" || true)"
-if [ -n "$buildx_uses_lines" ]; then
+if [ "$(printf '%s\n' "$buildx_uses_lines" | grep -c .)" -ne 1 ]; then
   FAIL=$((FAIL + 1))
-  FAILURES+=("release-candidate.yml still references docker/setup-buildx-action: $buildx_uses_lines")
-  echo "FAIL: docker/setup-buildx-action must be removed from release-candidate.yml" >&2
+  FAILURES+=("release-candidate.yml must have exactly one replay-image Buildx owner: $buildx_uses_lines")
+  echo "FAIL: docker/setup-buildx-action ownership drifted in release-candidate.yml" >&2
 else
   PASS=$((PASS + 1))
-  echo "PASS: docker/setup-buildx-action removed from release-candidate.yml"
+  echo "PASS: docker/setup-buildx-action has one replay-image owner"
 fi
+
+assert_named_job_contains "$RC" \
+  "wallet-sync-replay-images" \
+  "replay-image build owns the only Buildx setup" \
+  "uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd"
+
+assert_named_job_not_contains "$RC" \
+  "fresh-install-test" \
+  "release-candidate fresh install remains buildx-free" \
+  "uses: docker/setup-buildx-action"
 
 # --- verify-vectors Vitest worker stability ---------------------------------
 # Forgejo runner containers have previously failed server Vitest slices with

@@ -11,6 +11,7 @@ import type { RbfStatus } from '@sanctuary/shared/constants/transactions';
 import type { WalletSyncMutationFence } from '../../../repositories/types';
 import type { SyncAttemptRuntime } from './attemptRuntime';
 import type { SyncExecutionStage } from '@sanctuary/shared/schemas/syncProgress';
+import type { CompactTransactionEvidenceEnvelope } from './transactionEvidenceProjection';
 
 // ============================================
 // Core Types
@@ -79,6 +80,80 @@ export interface TransactionOutput {
   };
 }
 
+/** Exact output authenticated from the canonical bytes owned by a compact envelope. */
+export interface AuthenticatedOutpointEvidence {
+  txid: string;
+  vout: number;
+  valueSats: bigint;
+  scriptHex: string;
+}
+
+/** Why a canonical projection exists; receipts must distinguish current graphs from exact-only use. */
+export type EvidenceProjectionRole = 'current' | 'parent' | 'utxo' | 'unspecified';
+
+/**
+ * Compiled architecture receipts for the high-fanout replay.
+ *
+ * This is deliberately a synchronous, optional callback rather than a retained
+ * event buffer: production attempts that do not install an observer allocate
+ * no receipt history, while the replay can reduce these events into counters.
+ */
+export type SyncEvidenceArchitectureEvent =
+  | {
+    type: 'remote_fetch';
+    txids: readonly string[];
+    transport: 'batch' | 'single';
+    refetchTxids: readonly string[];
+  }
+  | {
+    type: 'compact_project';
+    txid: string;
+    digest: string;
+    canonicalBytes: number;
+  }
+  | {
+    type: 'full_project';
+    txid: string;
+    digest: string;
+    canonicalBytes: number;
+    source: 'compact';
+    role: EvidenceProjectionRole;
+    txDetailsCacheSize: number;
+  }
+  | {
+    type: 'compact_to_full_reuse';
+    txid: string;
+    digest: string;
+  }
+  | {
+    type: 'exact_output_project';
+    txid: string;
+    vout: number;
+    digest: string;
+    role: EvidenceProjectionRole;
+  }
+  | {
+    type: 'exact_output_batch_project';
+    txid: string;
+    vouts: readonly number[];
+    missingVouts: readonly number[];
+    invalidVouts: readonly number[];
+    digest: string;
+    role: EvidenceProjectionRole;
+  }
+  | {
+    type: 'cache_state';
+    reason: 'full_project' | 'release';
+    scope?: 'candidate' | 'batch' | 'rollback' | 'attempt';
+    txid?: string;
+    txDetailsCacheSize: number;
+    fullCurrentCount: number;
+  };
+
+export type SyncEvidenceArchitectureObserver = (
+  event: SyncEvidenceArchitectureEvent,
+) => void;
+
 // ============================================
 // Sync Context
 // ============================================
@@ -109,6 +184,8 @@ export interface SyncContext {
 
   // Services
   client: NodeClientInterface;
+  /** Optional zero-retention receipt sink used by compiled replay validation. */
+  evidenceObserver?: SyncEvidenceArchitectureObserver;
 
   // Input data
   addresses: Address[];
@@ -127,6 +204,12 @@ export interface SyncContext {
   ioRepairTxids: Set<string>;
   newTxids: string[];
   txDetailsCache: Map<string, RawTransaction>;
+  /** Compact canonical evidence is never interchangeable with a full projection. */
+  authenticatedTransactionEvidence: Map<string, CompactTransactionEvidenceEnvelope>;
+  /** Exact parent/UTXO output proofs keyed by lowercase `txid:vout`. */
+  authenticatedOutpointEvidence: Map<string, AuthenticatedOutpointEvidence>;
+  /** Vouts already resolved (including proven-missing outputs) for each txid. */
+  authenticatedOutpointCoverage: Map<string, Set<number>>;
   txHeightMap: Map<string, number>;
 
   // UTXO phase data

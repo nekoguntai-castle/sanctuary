@@ -735,6 +735,8 @@ jobs:
           bash -n scripts/ci/write-preflight-diagnostics.sh
           bash -n scripts/ci/write-empty-diagnostic-breadcrumb.sh
           bash -n scripts/ci/write-diagnostic-summary.sh
+          bash -n scripts/ci/check-wallet-sync-replay-host.sh
+          bash -n scripts/ci/wallet-sync-replay-image.sh
           bash -n scripts/verify-addresses/verify-repeatable.sh
           # Test files — bash -n syntax sweep.
           bash -n tests/ci/provider-context.test.sh

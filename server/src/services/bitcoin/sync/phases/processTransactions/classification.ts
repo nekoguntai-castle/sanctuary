@@ -16,11 +16,15 @@ import type {
   TransactionOutput,
   TxHistoryEntry,
 } from '../../types';
-import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
+import {
+  fetchAuthenticatedOutpoints,
+  fetchAuthenticatedTransactions,
+} from '../../evidenceAuthentication';
 import type { NodeRequestOptions } from '../../../nodeClient';
 import { resolveTransactionBlockTime } from './timestampPrefetch';
 import {
   transactionOutputAddress,
+  transactionOutputAddressForNetwork,
   transactionOutputAddresses,
   transactionOutputScriptHex,
 } from '../../transactionOutputEvidence';
@@ -71,6 +75,15 @@ type InputScriptPubKey = NonNullable<
 export function outputMatchesAddress(out: TransactionOutput, address: string): boolean {
   return transactionOutputAddresses(out).includes(address);
 }
+
+const outputMatchesCanonicalAddress = (
+  output: TransactionOutput,
+  address: string,
+  canonicalScriptHex: string | null | undefined,
+): boolean => outputMatchesAddress(output, address)
+  || (canonicalScriptHex !== null
+    && canonicalScriptHex !== undefined
+    && transactionOutputScriptHex(output)?.toLowerCase() === canonicalScriptHex.toLowerCase());
 
 /**
  * Classify and create transaction records from a batch of fetched transactions.
@@ -178,7 +191,11 @@ const classifyHistoryItem = async (
     outputTotals,
     fee,
     inputClassification,
-    isReceived: outputs.some((out) => outputMatchesAddress(out, addressStr)),
+    isReceived: outputs.some(out => outputMatchesCanonicalAddress(
+      out,
+      addressStr,
+      ctx.addressMap.get(addressStr)?.scriptPubKey,
+    )),
     blockTime: await resolveTransactionBlockTime(
       txDetails,
       item.height,
@@ -237,7 +254,7 @@ const resolveInputEvidence = async (
   }
 
   const previousOutput = await resolvePreviousOutput(ctx, input, options);
-  const previousEvidence = getOutputEvidence(previousOutput);
+  const previousEvidence = getOutputEvidence(previousOutput, ctx.network);
   return combineInputEvidence(inlineEvidence, previousEvidence);
 };
 
@@ -263,7 +280,8 @@ const hasCompleteLocalInputEvidence = (
   if (inlineEvidence.address !== undefined && inlineEvidence.value !== undefined) return true;
   if (!input.txid || input.vout === undefined) return false;
   const previousEvidence = getOutputEvidence(
-    getCachedPreviousOutput(ctx.txDetailsCache, input.txid, input.vout),
+    getCachedPreviousOutput(ctx, input.txid, input.vout),
+    ctx.network,
   );
   const combined = combineInputEvidence(inlineEvidence, previousEvidence);
   return combined.address !== undefined && combined.value !== undefined;
@@ -285,14 +303,15 @@ const resolvePreviousOutput = async (
   options?: NodeRequestOptions,
 ): Promise<TransactionOutput | undefined> => {
   if (!input.txid || input.vout === undefined) return undefined;
-  return getCachedPreviousOutput(ctx.txDetailsCache, input.txid, input.vout)
+  return getCachedPreviousOutput(ctx, input.txid, input.vout)
     ?? fetchPreviousOutput(ctx, input.txid, input.vout, options);
 };
 
 const getOutputEvidence = (
-  output: TransactionOutput | undefined
+  output: TransactionOutput | undefined,
+  network: SyncContext['network'],
 ): InputEvidence => ({
-  address: transactionOutputAddress(output),
+  address: transactionOutputAddressForNetwork(output, network),
   value: output ? Math.round(output.value * 100000000) : undefined,
   scriptPubKey: transactionOutputScriptHex(output)?.toLowerCase(),
 });
@@ -313,20 +332,20 @@ const fetchPreviousOutput = async (
   vout: number,
   options?: NodeRequestOptions,
 ): Promise<TransactionOutput | undefined> => {
-  if (ctx.txDetailsCache.has(txid)) {
-    return undefined;
-  }
-
   log.debug(`[SYNC] Cache miss for prev tx ${txid.slice(0, 8)}..., fetching individually`);
-  await fetchAuthenticatedTransactions(ctx, [txid], options);
-  return getCachedPreviousOutput(ctx.txDetailsCache, txid, vout);
+  await fetchAuthenticatedOutpoints(ctx, new Map([[txid, new Set([vout])]]), options);
+  return getCachedPreviousOutput(ctx, txid, vout);
 };
 
 const getCachedPreviousOutput = (
-  txDetailsCache: SyncContext['txDetailsCache'],
+  ctx: SyncContext,
   txid: string,
   vout: number
-): TransactionOutput | undefined => txDetailsCache.get(txid)?.vout?.[vout];
+): TransactionOutput | undefined => {
+  const exact = ctx.authenticatedOutpointEvidence.get(`${txid}:${vout}`);
+  if (exact) return { value: Number(exact.valueSats) / 100_000_000, scriptHex: exact.scriptHex };
+  return ctx.txDetailsCache.get(txid)?.vout?.[vout];
+};
 
 const calculateOutputTotals = (
   outputs: TransactionOutput[],

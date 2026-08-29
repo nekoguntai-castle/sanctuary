@@ -1,9 +1,12 @@
 import * as bitcoin from 'bitcoinjs-lib';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   authenticateProjectedTransactionOutput,
   authenticateRawTransactionOutput,
+  MAX_AUTHENTICATED_TRANSACTION_WEIGHT,
+  parseAuthenticatedRawTransactionBytes,
   parseAuthenticatedRawTransaction,
+  rawTransactionBytesFromHex,
   RawTransactionEvidenceError,
   type RawTransactionEvidenceReason,
 } from '../../../../src/services/bitcoin/rawTransactionEvidence';
@@ -47,6 +50,102 @@ describe('raw transaction evidence', () => {
     expect(result.txid).toBe(transaction.getId());
     expect(result.canonicalHex).toBe(rawHex);
     expect(result.transaction.toHex()).toBe(rawHex);
+  });
+
+  it('authenticates an owned canonical byte view without hex amplification', () => {
+    const transaction = makeTransaction();
+    const canonicalBytes = rawTransactionBytesFromHex(transaction.toHex().toUpperCase());
+
+    const result = parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId().toUpperCase(),
+      rawBytes: canonicalBytes,
+    });
+
+    expect(result.txid).toBe(transaction.getId());
+    expect(result.canonicalBytes).toBe(canonicalBytes);
+    expect(result.transaction.toHex()).toBe(transaction.toHex());
+  });
+
+  it('rejects invalid and mismatched txids for canonical byte evidence', () => {
+    const transaction = makeTransaction();
+    const rawBytes = Uint8Array.from(transaction.toBuffer());
+
+    expectReason(() => parseAuthenticatedRawTransactionBytes({
+      expectedTxid: 'invalid',
+      rawBytes,
+    }), 'invalid_expected_txid');
+    expectReason(() => parseAuthenticatedRawTransactionBytes({
+      expectedTxid: '11'.repeat(32),
+      rawBytes,
+    }), 'txid_mismatch');
+  });
+
+  it('rejects malformed and non-canonical byte evidence', () => {
+    const transaction = makeTransaction();
+    const canonical = transaction.toBuffer();
+    const nonCanonical = Buffer.concat([
+      canonical.subarray(0, 4),
+      Buffer.from('fd0100', 'hex'),
+      canonical.subarray(5),
+    ]);
+
+    expectReason(() => parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId(),
+      rawBytes: new Uint8Array(),
+    }), 'malformed_raw_transaction');
+    expectReason(() => parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId(),
+      rawBytes: Uint8Array.from(nonCanonical),
+    }), 'non_canonical_raw_transaction');
+  });
+
+  it.each([
+    ['at', MAX_AUTHENTICATED_TRANSACTION_WEIGHT, true],
+    ['above', MAX_AUTHENTICATED_TRANSACTION_WEIGHT + 1, false],
+  ] as const)('%s the byte-authenticated transaction-weight ceiling', (_boundary, weight, accepted) => {
+    const transaction = makeTransaction();
+    const measuredWeight = vi.spyOn(bitcoin.Transaction.prototype, 'weight')
+      .mockReturnValue(weight);
+    try {
+      const operation = () => parseAuthenticatedRawTransactionBytes({
+        expectedTxid: transaction.getId(),
+        rawBytes: Uint8Array.from(transaction.toBuffer()),
+      });
+      if (accepted) expect(operation()).toMatchObject({ txid: transaction.getId() });
+      else expectReason(operation, 'transaction_complexity_exceeded');
+    } finally {
+      measuredWeight.mockRestore();
+    }
+  });
+
+  it.each(['0', 'zz'])(
+    'rejects malformed raw source hex before creating a transferable buffer: %s',
+    (rawHex) => {
+      expectReason(() => rawTransactionBytesFromHex(rawHex), 'malformed_raw_transaction');
+    },
+  );
+
+  it.each([
+    ['below', MAX_AUTHENTICATED_TRANSACTION_WEIGHT - 1, true],
+    ['at', MAX_AUTHENTICATED_TRANSACTION_WEIGHT, true],
+    ['above', MAX_AUTHENTICATED_TRANSACTION_WEIGHT + 1, false],
+  ] as const)('%s the authenticated transaction-weight ceiling', (_boundary, weight, accepted) => {
+    const transaction = makeTransaction();
+    const rawHex = transaction.toHex();
+    const measuredWeight = vi.spyOn(bitcoin.Transaction.prototype, 'weight')
+      .mockReturnValue(weight);
+
+    try {
+      const operation = () => parseAuthenticatedRawTransaction({
+        expectedTxid: transaction.getId(),
+        rawHex,
+      });
+      if (accepted) expect(operation()).toMatchObject({ txid: transaction.getId() });
+      else expectReason(operation, 'transaction_complexity_exceeded');
+      expect(measuredWeight).toHaveBeenCalledOnce();
+    } finally {
+      measuredWeight.mockRestore();
+    }
   });
 
   it.each([

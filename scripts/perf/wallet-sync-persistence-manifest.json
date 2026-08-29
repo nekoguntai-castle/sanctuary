@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "driverSha256": "9be98f61944d466655f95019f0ae5a197d52a16f7fdefe7231d2e6417cf19f45",
+  "driverHelperSha256": "64b7e2a703dde831662a900b2b6ad527cd2b5e47c003c5687a112658be6a849a",
+  "fixtureBuilderSha256": "c684c4bfa162471d2feaa777d313a26f9711457f9aababcb0a8aa502b00beedd",
+  "fixtureDefinitionSha256": "2e0dcdbb47307276dde53fef71ea1bca13c463a4180630cfa327332d1172cef1",
+  "migrationTreeSha256": "6bb7b3e284e229778e0a0584b7f80be062c21d3237135b1e5daa79670ff62fd2",
+  "firstPageUnionSha256": "ca6ea535235f06ca5acb7b4b153c9d6354bb7714c11db428bfec723812260539",
+  "firstPage": {
+    "transactions": 100,
+    "inputs": 47,
+    "outputs": 279153
+  },
+  "finalReceipt": {
+    "transactions": 169,
+    "inputs": 47,
+    "outputs": 471732,
+    "complete": 169,
+    "validUtxos": 47,
+    "rejectedUtxoListings": 5,
+    "utxos": 53
+  },
+  "architecture": {
+    "fullCurrentCounts": [100, 69, 0]
+  },
+  "maxAxes": {
+    "outputBelow": { "inputs": 0, "outputs": 24999, "weight": 3100096, "scriptBytes": 0 },
+    "outputAt": { "inputs": 0, "outputs": 25000, "weight": 3100220, "scriptBytes": 0 },
+    "inputBelow": { "inputs": 24389, "outputs": 1, "weight": 3999996, "scriptBytes": 7 },
+    "inputAt": { "inputs": 24389, "outputs": 1, "weight": 4000000, "scriptBytes": 8 },
+    "outputAboveCount": 25001,
+    "inputLimit": 25000,
+    "inputCounts": [24999, 25000, 25001],
+    "outputLimit": 25000,
+    "outputCounts": [24999, 25000, 25001],
+    "weightAbove": 4000004,
+    "combined": { "inputs": 25000, "outputs": 25000, "weight": 7200056 }
+  },
+  "limits": {
+    "probeTimeoutMs": 1000,
+    "probeP99Ms": 250,
+    "sampledAndKernelPeakBytes": 805306368,
+    "growthBytes": 536870912,
+    "maxFixtureStageBytes": 100663296,
+    "passMs": 900000,
+    "noopPassMs": 120000,
+    "addressHistoryMs": 300000,
+    "liveOuterMs": 6000000,
+    "transactionMutationMs": 60000,
+    "maxCaseMs": 300000,
+    "maxOuterMs": 3600000,
+    "maxCaseStatementMs": 20000,
+    "maxCaseMutationMs": 45000
+  }
+}

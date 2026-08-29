@@ -86,6 +86,13 @@ import { getNotificationService, walletLog } from '../../../../../src/websocket/
 import { notifyNewTransactions } from '../../../../../src/services/notifications/notificationService';
 
 describe('Sync Phases', () => {
+  const exactEvidence = (
+    txid: string,
+    vout = 0,
+    valueSats = 100_000n,
+    scriptHex = '0014aa',
+  ) => ({ txid, vout, valueSats, scriptHex });
+
   beforeEach(() => {
     resetPrismaMocks();
     resetElectrumMocks();
@@ -141,7 +148,9 @@ describe('Sync Phases', () => {
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        txDetailsCache: new Map([[txid, evidence.details]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
         ]),
@@ -217,7 +226,9 @@ describe('Sync Phases', () => {
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        txDetailsCache: new Map([[txid, evidence.details]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 0 } }],
         ]),
@@ -247,7 +258,9 @@ describe('Sync Phases', () => {
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        txDetailsCache: new Map([[txid, evidence.details]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
         ]),
@@ -267,13 +280,9 @@ describe('Sync Phases', () => {
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        txDetailsCache: new Map([[txid, {
-          ...evidence.details,
-          vout: [{
-            ...evidence.details.vout[0],
-            scriptPubKey: { hex: '0014bb', address: 'addr1' },
-          }],
-        }]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014bb'),
+        ]]),
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
         ]),
@@ -339,15 +348,12 @@ describe('Sync Phases', () => {
       vi.clearAllMocks();
     });
 
-    it('does not swallow attempt cancellation while fetching transaction details', async () => {
+    it('does not swallow attempt cancellation before sealed UTXO insertion', async () => {
       const txid = 'cancelled_utxo'.padEnd(64, 'a');
       const controller = new AbortController();
       const reason = new Error('attempt cancelled');
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
-      mockElectrumClient.getTransaction.mockImplementation(async () => {
-        controller.abort(reason);
-        throw reason;
-      });
+      controller.abort(reason);
       const ctx = createTestContext({
         walletId,
         client: mockElectrumClient as any,
@@ -355,12 +361,17 @@ describe('Sync Phases', () => {
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 800000 } }],
         ]),
-        txDetailsCache: new Map() as any,
         attemptRuntime: { signal: controller.signal, deadlineAt: Date.now() + 5_000 },
       });
+      ctx.authenticatedOutpointEvidence.set(`${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014'));
+      ctx.authenticatedOutpointCoverage.set(txid, new Set([0]));
+      ctx.authenticatedSpentOutpointKeys.add(`${txid}:0`);
 
       await expect(insertUtxosPhase(ctx)).rejects.toBe(reason);
       expect(mockPrismaClient.uTXO.createMany).not.toHaveBeenCalled();
+      expect(ctx.authenticatedOutpointEvidence.size).toBe(0);
+      expect(ctx.authenticatedOutpointCoverage.size).toBe(0);
+      expect(ctx.authenticatedSpentOutpointKeys.size).toBe(0);
     });
 
     it('should insert new UTXOs not in database', async () => {
@@ -371,12 +382,6 @@ describe('Sync Phases', () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.createMany.mockResolvedValue({ count: 1 });
 
-      // Mock tx details for UTXO
-      const mockTx = createMockTransaction({
-        txid,
-        outputs: [{ value: 0.001, address: utxoAddress }],
-      });
-
       const ctx = createTestContext({
         walletId,
         client: mockElectrumClient as any,
@@ -384,7 +389,9 @@ describe('Sync Phases', () => {
         utxoDataMap: new Map([
           [`${txid}:0`, { address: utxoAddress, utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 800000 } }],
         ]),
-        txDetailsCache: new Map([[txid, mockTx]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014'),
+        ]]),
         currentBlockHeight: 800100,
       });
 
@@ -433,7 +440,10 @@ describe('Sync Phases', () => {
         walletId,
         allUtxoKeys: new Set(entries.map(entry => entry.key)),
         utxoDataMap: new Map(entries.map(entry => [entry.key, entry.data])),
-        txDetailsCache: new Map(entries.map(entry => [entry.data.utxo.tx_hash, entry.transaction])) as any,
+        authenticatedOutpointEvidence: new Map(entries.map(entry => [
+          entry.key,
+          exactEvidence(entry.data.utxo.tx_hash, 0, 1_000n, '0014'),
+        ])),
         currentBlockHeight: 800100,
       });
 
@@ -477,11 +487,6 @@ describe('Sync Phases', () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.createMany.mockResolvedValue({ count: 1 });
 
-      const mockTx = createMockTransaction({
-        txid,
-        outputs: [{ value: 0.001, address: 'addr' }],
-      });
-
       const ctx = createTestContext({
         walletId,
         client: mockElectrumClient as any,
@@ -489,7 +494,9 @@ describe('Sync Phases', () => {
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: blockHeight } }],
         ]),
-        txDetailsCache: new Map([[txid, mockTx]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014'),
+        ]]),
         currentBlockHeight: currentHeight,
       });
 
@@ -513,11 +520,6 @@ describe('Sync Phases', () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.createMany.mockResolvedValue({ count: 1 });
 
-      const mockTx = createMockTransaction({
-        txid,
-        outputs: [{ value: 0.001, address: 'addr' }],
-      });
-
       const ctx = createTestContext({
         walletId,
         client: mockElectrumClient as any,
@@ -525,7 +527,9 @@ describe('Sync Phases', () => {
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 0 } }], // Unconfirmed
         ]),
-        txDetailsCache: new Map([[txid, mockTx]]) as any,
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014'),
+        ]]),
         currentBlockHeight: 800100,
       });
 
@@ -543,17 +547,11 @@ describe('Sync Phases', () => {
       );
     });
 
-    it('should fetch transaction details if not in cache', async () => {
+    it('uses sealed output evidence without fetching transaction details', async () => {
       const txid = 'fetch_tx_utxo'.padEnd(64, 'a');
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.createMany.mockResolvedValue({ count: 1 });
-
-      const mockTx = createMockTransaction({
-        txid,
-        outputs: [{ value: 0.001, address: 'addr' }],
-      });
-      mockElectrumClient.getTransaction.mockResolvedValue(mockTx);
 
       const ctx = createTestContext({
         walletId,
@@ -562,13 +560,16 @@ describe('Sync Phases', () => {
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 800000 } }],
         ]),
-        txDetailsCache: new Map() as any, // Empty cache
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014'),
+        ]]),
         currentBlockHeight: 800100,
       });
 
       await insertUtxosPhase(ctx);
 
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(txid);
+      expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
+      expect(mockPrismaClient.uTXO.createMany).toHaveBeenCalled();
     });
 
     it('should skip UTXO when fetched transaction details are null', async () => {
@@ -663,15 +664,10 @@ describe('Sync Phases', () => {
       expect(mockPrismaClient.uTXO.createMany).not.toHaveBeenCalled();
     });
 
-    it('should default scriptPubKey to empty string when output script is missing', async () => {
+    it('skips a UTXO when no sealed script evidence exists', async () => {
       const txid = 'missing_script_utxo'.padEnd(64, 'a');
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.createMany.mockResolvedValue({ count: 1 });
-      const txWithNoScript = {
-        txid,
-        vout: [{ n: 0, value: 0.001 }],
-      };
-
       const ctx = createTestContext({
         walletId,
         client: mockElectrumClient as any,
@@ -679,21 +675,12 @@ describe('Sync Phases', () => {
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 800000 } }],
         ]),
-        txDetailsCache: new Map([[txid, txWithNoScript]]) as any,
         currentBlockHeight: 800100,
       });
 
       await insertUtxosPhase(ctx);
 
-      expect(mockPrismaClient.uTXO.createMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.arrayContaining([
-            expect.objectContaining({
-              scriptPubKey: '',
-            }),
-          ]),
-        })
-      );
+      expect(mockPrismaClient.uTXO.createMany).not.toHaveBeenCalled();
     });
   });
 });

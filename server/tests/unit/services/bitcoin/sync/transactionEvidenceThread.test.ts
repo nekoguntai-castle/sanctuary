@@ -4,7 +4,12 @@ import type { RawTransaction } from '../../../../../src/services/bitcoin/sync';
 
 const workerMock = vi.hoisted(() => ({
   created: [] as Array<{ filename: string; options: unknown; worker: unknown }>,
-  dispatch: undefined as undefined | ((worker: any, message?: unknown) => void),
+  posted: [] as Array<{ message: unknown; transferList?: readonly ArrayBuffer[] }>,
+  dispatch: undefined as undefined | ((
+    worker: any,
+    message?: unknown,
+    transferList?: readonly ArrayBuffer[],
+  ) => void),
 }));
 
 vi.mock('node:worker_threads', () => ({
@@ -41,8 +46,9 @@ vi.mock('node:worker_threads', () => ({
       return this;
     }
 
-    postMessage(message: unknown): void {
-      queueMicrotask(() => workerMock.dispatch?.(this, message));
+    postMessage(message: unknown, transferList?: readonly ArrayBuffer[]): void {
+      workerMock.posted.push({ message, transferList });
+      queueMicrotask(() => workerMock.dispatch?.(this, message, transferList));
     }
 
     emit(event: string, value: any): void {
@@ -72,11 +78,14 @@ vi.mock('node:worker_threads', () => ({
 }));
 
 import {
+  createCompactTransactionEvidenceProjector,
   createTransactionEvidenceProjector,
+  DetachedTransactionEvidenceError,
   projectTransactionEvidenceOffThread,
   projectedTransactionEvidenceComplexity,
   resolveTransactionEvidenceWorkerEntrypoint,
 } from '../../../../../src/services/bitcoin/sync/transactionEvidenceThread';
+import type { CompactTransactionEvidenceEnvelope } from '../../../../../src/services/bitcoin/sync/transactionEvidenceProjection';
 
 const txid = '11'.repeat(32);
 const details: RawTransaction = { txid, hex: '00', vin: [], vout: [] };
@@ -87,8 +96,202 @@ const input = {
   limits: { maxInputs: 25_000, maxOutputs: 25_000, maxScriptHexChars: 1024 * 1024 },
 };
 const projected: RawTransaction = { txid, hex: '00', vin: [], vout: [] };
+const compactEnvelope = (): CompactTransactionEvidenceEnvelope => ({
+  txid,
+  canonicalBytes: Uint8Array.from([1, 2, 3]),
+  digest: 'sealed-digest',
+  complexity: { rawHexChars: 6, inputs: 0, outputs: 0, scriptHexChars: 0 },
+  metadata: {},
+  inputTxids: new Uint8Array(),
+  inputVouts: new Uint32Array(),
+  paidWalletScriptIndexes: new Uint32Array(),
+});
 
 describe('transaction evidence worker-thread transport', () => {
+  it('rejects protocol responses on the legacy one-shot transport', async () => {
+    workerMock.dispatch = worker => worker.emit('message', {
+      operation: 'compact',
+      ok: false,
+      reason: 'txid_mismatch',
+    });
+
+    await expect(projectTransactionEvidenceOffThread(input))
+      .rejects.toThrow('Unexpected transaction evidence response');
+  });
+
+  it('initializes immutable lowercase wallet scripts and transfers one compact byte buffer', async () => {
+    workerMock.created.length = 0;
+    workerMock.posted.length = 0;
+    workerMock.dispatch = (worker, message) => {
+      const request = message as {
+        operation: 'compact';
+        input: { canonicalBytes: Uint8Array; expectedTxid: string; metadata: unknown };
+      };
+      worker.emit('message', {
+        operation: 'compact',
+        ok: true,
+        envelope: {
+          txid: request.input.expectedTxid,
+          canonicalBytes: request.input.canonicalBytes,
+          digest: 'sealed-digest',
+          complexity: { rawHexChars: 2, inputs: 0, outputs: 0, scriptHexChars: 0 },
+          metadata: request.input.metadata,
+          inputTxids: new Uint8Array(),
+          inputVouts: new Uint32Array(),
+          paidWalletScriptIndexes: new Uint32Array(),
+        },
+      });
+    };
+    const projector = createCompactTransactionEvidenceProjector(['AA', 'bb']);
+
+    const envelope = await projector.projectCompact(input);
+
+    expect(workerMock.created[0].options).toMatchObject({
+      workerData: { persistent: true, walletScripts: ['aa', 'bb'] },
+      resourceLimits: { maxOldGenerationSizeMb: 32 },
+    });
+    expect(workerMock.posted).toHaveLength(1);
+    expect(workerMock.posted[0].message).toMatchObject({ operation: 'compact' });
+    expect(workerMock.posted[0].transferList).toHaveLength(1);
+    expect(workerMock.posted[0].transferList?.[0]).toBe(envelope.canonicalBytes.buffer);
+    expect(envelope.metadata).toEqual({
+      time: undefined,
+      blocktime: undefined,
+      blockheight: undefined,
+      confirmations: undefined,
+      blockhash: undefined,
+    });
+    await projector.close();
+  });
+
+  it('transfers and restores the same sealed envelope for full and exact-output work', async () => {
+    workerMock.posted.length = 0;
+    const envelope: CompactTransactionEvidenceEnvelope = {
+      txid,
+      canonicalBytes: Uint8Array.from([1, 2, 3]),
+      digest: 'sealed-digest',
+      complexity: { rawHexChars: 6, inputs: 0, outputs: 0, scriptHexChars: 0 },
+      metadata: { time: 7 },
+      inputTxids: new Uint8Array(),
+      inputVouts: new Uint32Array(),
+      paidWalletScriptIndexes: new Uint32Array(),
+    };
+    let call = 0;
+    workerMock.dispatch = (worker, message) => {
+      const request = message as {
+        operation: 'full' | 'output' | 'outputs';
+        input: { canonicalBytes: Uint8Array; digest: string };
+      };
+      call += 1;
+      if (request.operation === 'full') {
+        worker.emit('message', {
+          operation: 'full',
+          ok: true,
+          result: {
+            value: { txid, vin: [], vout: [] },
+            canonicalBytes: request.input.canonicalBytes,
+            digest: request.input.digest,
+          },
+        });
+      } else if (request.operation === 'output') {
+        worker.emit('message', {
+          operation: 'output',
+          ok: true,
+          result: {
+            output: { vout: 0, valueSats: 5n, scriptPubKeyHex: '51' },
+            canonicalBytes: request.input.canonicalBytes,
+            digest: request.input.digest,
+          },
+        });
+      } else {
+        worker.emit('message', {
+          operation: 'outputs',
+          ok: true,
+          result: {
+            outputs: [{ vout: 0, valueSats: 5n, scriptPubKeyHex: '51' }],
+            missingVouts: [9],
+            invalidVouts: [],
+            canonicalBytes: request.input.canonicalBytes,
+            digest: request.input.digest,
+          },
+        });
+      }
+    };
+    const projector = createCompactTransactionEvidenceProjector([]);
+
+    const full = await projector.projectFull(envelope);
+    const exact = await projector.extractOutput(envelope, 0);
+    const exactSet = await projector.extractOutputs(envelope, [0, 9]);
+
+    expect(call).toBe(3);
+    expect(full.value).toEqual({ txid, vin: [], vout: [] });
+    expect(exact.output).toEqual({ vout: 0, valueSats: 5n, scriptPubKeyHex: '51' });
+    expect(exactSet.outputs).toEqual([{ vout: 0, valueSats: 5n, scriptPubKeyHex: '51' }]);
+    expect(exactSet.missingVouts).toEqual([9]);
+    expect(exactSet.invalidVouts).toEqual([]);
+    expect(workerMock.posted.map(item => item.transferList?.length)).toEqual([1, 1, 1]);
+    expect(envelope.canonicalBytes).toBe(exactSet.canonicalBytes);
+    await projector.close();
+  });
+
+  it('restores ownership on a classified exact-output failure and remains usable', async () => {
+    const envelope: CompactTransactionEvidenceEnvelope = {
+      txid,
+      canonicalBytes: Uint8Array.from([1]),
+      digest: 'sealed-digest',
+      complexity: { rawHexChars: 2, inputs: 0, outputs: 0, scriptHexChars: 0 },
+      metadata: {},
+      inputTxids: new Uint8Array(),
+      inputVouts: new Uint32Array(),
+      paidWalletScriptIndexes: new Uint32Array(),
+    };
+    workerMock.dispatch = (worker, message) => {
+      const request = message as { operation: string; input: { canonicalBytes: Uint8Array } };
+      worker.emit('message', request.operation === 'output'
+        ? {
+            operation: 'output',
+            ok: false,
+            reason: 'missing_output',
+            canonicalBytes: request.input.canonicalBytes,
+            digest: envelope.digest,
+          }
+        : { ok: true, value: projected });
+    };
+    const projector = createCompactTransactionEvidenceProjector([]);
+
+    await expect(projector.extractOutput(envelope, 9)).rejects.toMatchObject({
+      reason: 'missing_output',
+    });
+    expect(envelope.canonicalBytes).toEqual(Uint8Array.from([1]));
+    await expect(projector.project(input)).resolves.toBe(projected);
+    await projector.close();
+  });
+
+  it('marks worker failure while ownership is detached as non-refetchable', async () => {
+    const envelope: CompactTransactionEvidenceEnvelope = {
+      txid,
+      canonicalBytes: Uint8Array.from([1, 2, 3]),
+      digest: 'sealed-digest',
+      complexity: { rawHexChars: 6, inputs: 0, outputs: 0, scriptHexChars: 0 },
+      metadata: {},
+      inputTxids: new Uint8Array(),
+      inputVouts: new Uint32Array(),
+      paidWalletScriptIndexes: new Uint32Array(),
+    };
+    workerMock.dispatch = (worker, _message, transferList) => {
+      structuredClone(null, { transfer: [...(transferList ?? [])] });
+      worker.emit('error', new Error('worker crashed'));
+    };
+    const projector = createCompactTransactionEvidenceProjector([]);
+
+    await expect(projector.projectFull(envelope)).rejects.toMatchObject({
+      name: 'DetachedTransactionEvidenceError',
+      noRemoteFallback: true,
+    } satisfies Partial<DetachedTransactionEvidenceError>);
+    expect(envelope.canonicalBytes.byteLength).toBe(0);
+    await projector.close();
+  });
+
   it('reuses one queue-depth-one worker and awaits its final teardown', async () => {
     workerMock.created.length = 0;
     workerMock.dispatch = worker => worker.emit('message', { ok: true, value: projected });
@@ -100,7 +303,7 @@ describe('transaction evidence worker-thread transport', () => {
     expect(workerMock.created).toHaveLength(1);
     expect(workerMock.created[0].options).toMatchObject({
       workerData: { persistent: true },
-      resourceLimits: { maxOldGenerationSizeMb: 128 },
+      resourceLimits: { maxOldGenerationSizeMb: 32 },
     });
     const worker = workerMock.created[0].worker as { terminate: ReturnType<typeof vi.fn> };
     expect(worker.terminate).not.toHaveBeenCalled();
@@ -158,6 +361,123 @@ describe('transaction evidence worker-thread transport', () => {
       name: 'RawTransactionEvidenceError',
       reason: 'txid_mismatch',
     } satisfies Partial<RawTransactionEvidenceError>);
+    await projector.close();
+  });
+
+  it('rejects protocol responses on the persistent legacy projection path', async () => {
+    workerMock.dispatch = worker => worker.emit('message', {
+      operation: 'compact',
+      ok: false,
+      reason: 'txid_mismatch',
+    });
+    const projector = createTransactionEvidenceProjector();
+
+    await expect(projector.project(input))
+      .rejects.toThrow('Unexpected transaction evidence response');
+    await projector.close();
+  });
+
+  it('uses an empty compact encoding when legacy details omit raw hex', async () => {
+    workerMock.dispatch = worker => worker.emit('message', {
+      operation: 'compact',
+      ok: false,
+      reason: 'missing_result',
+    });
+    const projector = createCompactTransactionEvidenceProjector([]);
+
+    await expect(projector.projectCompact({
+      ...input,
+      details: { txid, vin: [], vout: [] },
+    })).rejects.toMatchObject({ reason: 'missing_result' });
+    expect(workerMock.posted.at(-1)?.message).toMatchObject({
+      operation: 'compact',
+      input: { canonicalBytes: new Uint8Array() },
+    });
+    await projector.close();
+  });
+
+  it.each([
+    ['compact', 'full'],
+    ['full', 'output'],
+    ['output', 'outputs'],
+    ['outputs', 'full'],
+  ] as const)('fails detached when %s receives a %s protocol response', async (request, response) => {
+    workerMock.dispatch = worker => worker.emit('message', {
+      operation: response,
+      ok: true,
+    });
+    const projector = createCompactTransactionEvidenceProjector([]);
+    const envelope = compactEnvelope();
+    const pending = request === 'compact'
+      ? projector.projectCompact(input)
+      : request === 'full'
+        ? projector.projectFull(envelope)
+        : request === 'output'
+          ? projector.extractOutput(envelope, 0)
+          : projector.extractOutputs(envelope, [0]);
+
+    await expect(pending).rejects.toMatchObject({
+      name: request === 'compact' ? 'Error' : 'DetachedTransactionEvidenceError',
+    });
+    await projector.close();
+  });
+
+  it('contains teardown rejection after a detached protocol response', async () => {
+    workerMock.dispatch = worker => worker.emit('message', {
+      operation: 'output',
+      ok: true,
+    });
+    const projector = createCompactTransactionEvidenceProjector([]);
+    const worker = workerMock.created.at(-1)?.worker as {
+      terminate: ReturnType<typeof vi.fn>;
+    };
+    worker.terminate.mockRejectedValueOnce(new Error('detached teardown failed'));
+
+    await expect(projector.projectFull(compactEnvelope())).rejects.toMatchObject({
+      name: 'DetachedTransactionEvidenceError',
+    });
+    await expect(projector.close()).rejects.toThrow('detached teardown failed');
+  });
+
+  it.each(['full', 'outputs'] as const)(
+    'restores transferred ownership on classified %s failure',
+    async (operation) => {
+      const envelope = compactEnvelope();
+      workerMock.dispatch = (worker, message) => {
+        const request = message as { input: { canonicalBytes: Uint8Array; digest: string } };
+        worker.emit('message', {
+          operation,
+          ok: false,
+          reason: 'evidence_digest_mismatch',
+          canonicalBytes: request.input.canonicalBytes,
+          digest: request.input.digest,
+        });
+      };
+      const projector = createCompactTransactionEvidenceProjector([]);
+      const pending = operation === 'full'
+        ? projector.projectFull(envelope)
+        : projector.extractOutputs(envelope, [0]);
+
+      await expect(pending).rejects.toMatchObject({ reason: 'evidence_digest_mismatch' });
+      expect(envelope.canonicalBytes).toEqual(Uint8Array.from([1, 2, 3]));
+      await projector.close();
+    },
+  );
+
+  it.each([
+    ['missing transferred bytes', undefined, undefined, 'DetachedTransactionEvidenceError'],
+    ['changed transferred digest', Uint8Array.from([1, 2, 3]), 'changed', 'RawTransactionEvidenceError'],
+  ] as const)('fails closed for %s', async (_label, canonicalBytes, digest, name) => {
+    workerMock.dispatch = worker => worker.emit('message', {
+      operation: 'full',
+      ok: false,
+      reason: 'txid_mismatch',
+      canonicalBytes,
+      digest,
+    });
+    const projector = createCompactTransactionEvidenceProjector([]);
+
+    await expect(projector.projectFull(compactEnvelope())).rejects.toMatchObject({ name });
     await projector.close();
   });
 
@@ -365,7 +685,7 @@ describe('transaction evidence worker-thread transport', () => {
     expect(workerMock.created[0].filename).toMatch(/transactionEvidenceWorker\.ts$/);
     expect(workerMock.created[0].options).toMatchObject({
       workerData: input,
-      resourceLimits: { maxOldGenerationSizeMb: 128 },
+      resourceLimits: { maxOldGenerationSizeMb: 32 },
       execArgv: process.execArgv,
     });
   });

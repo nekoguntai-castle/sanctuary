@@ -59,8 +59,8 @@ vi.mock('../../../../../../src/services/bitcoin/utils/blockHeight', () => ({
 // Classification contract suites isolate downstream behavior. Raw-byte
 // authentication has dedicated real-transaction tests; preserve the structured
 // fixtures here by making this boundary copy the mocked client response.
-vi.mock('../../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
-  fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
+vi.mock('../../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => {
+  const fetchAuthenticatedTransactions = vi.fn(async (ctx, txids) => {
     const accepted = new Set();
     let results;
     try {
@@ -81,5 +81,25 @@ vi.mock('../../../../../../src/services/bitcoin/sync/evidenceAuthentication', ()
       // dedicated evidence suite covers canonical script ownership.
     }
     return accepted;
-  }),
-}));
+  });
+  return {
+    fetchAuthenticatedTransactions,
+    fetchAuthenticatedOutpoints: vi.fn(async (ctx, requests) => {
+      await fetchAuthenticatedTransactions(ctx, [...requests.keys()]);
+      for (const [txid, vouts] of requests) {
+        for (const vout of vouts) {
+          const output = ctx.txDetailsCache.get(txid)?.vout?.[vout];
+          const scriptHex = output?.scriptHex ?? output?.scriptPubKey?.hex;
+          if (!output || !scriptHex || !/^(?:[0-9a-fA-F]{2})+$/.test(scriptHex)) continue;
+          ctx.authenticatedOutpointEvidence.set(`${txid}:${vout}`, {
+            txid,
+            vout,
+            valueSats: BigInt(Math.round(output.value * 100_000_000)),
+            scriptHex: scriptHex.toLowerCase(),
+          });
+        }
+      }
+    }),
+    releaseAuthenticatedTransactionDetails: vi.fn((ctx) => ctx.txDetailsCache.clear()),
+  };
+});

@@ -106,8 +106,8 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
 
       const result = await processTransactionsPhase(ctx);
 
-      expect(fetchAuthenticatedTransactions).toHaveBeenCalledOnce();
-      expect(mockElectrumClient.getTransactionsBatch).not.toHaveBeenCalled();
+      expect(fetchAuthenticatedTransactions).toHaveBeenCalledTimes(3);
+      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(2);
       expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
       expect(getBlockTimestamp).not.toHaveBeenCalled();
       expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
@@ -677,9 +677,60 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       // Should have processed all transactions across multiple batches
       expect(result.stats.transactionsProcessed).toBe(txCount);
 
-      // getTransactionsBatch should have been called multiple times (3 batches for 55 txs with batch size 25)
-      // No prev TX prefetch needed since we have verbose prevout
-      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(3);
+      // The selection page remains 25, while full evidence is materialized one
+      // current transaction at a time through all 55 candidate lifecycles.
+      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(txCount);
+    });
+
+    it('keeps the 25-candidate selection page but materializes and persists one at a time', async () => {
+      const walletAddress = 'tb1q_atomic_persistence_wallet';
+      const txids = [
+        'atomic_persistence_1'.padEnd(64, 'a'),
+        'atomic_persistence_2'.padEnd(64, 'b'),
+      ];
+      const transactions = new Map(txids.map((txid, index) => [txid, {
+        txid,
+        time: 1_700_000_000,
+        vin: [{
+          txid: `atomic_parent_${index}`.padEnd(64, 'c'),
+          vout: 0,
+          prevout: {
+            value: 0.001,
+            scriptPubKey: { address: 'tb1q_atomic_external' },
+          },
+        }],
+        vout: [{ value: 0.0009, scriptPubKey: { address: walletAddress } }],
+      }]));
+      mockElectrumClient.getTransactionsBatch.mockImplementation(async (batch: string[]) => (
+        new Map(batch.flatMap(txid => {
+          const transaction = transactions.get(txid);
+          return transaction ? [[txid, transaction] as const] : [];
+        }))
+      ));
+
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: txids,
+        historyResults: new Map([[walletAddress, txids.map(tx_hash => ({
+          tx_hash,
+          height: 800000,
+        }))]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, {
+          id: 'atomic-persistence-address',
+          address: walletAddress,
+        } as any]]),
+        currentBlockHeight: 800100,
+      });
+
+      await processTransactionsPhase(ctx);
+
+      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.transaction.createManyAndReturn.mock.calls.map(
+        ([args]) => args.data.map((transaction: { txid: string }) => transaction.txid),
+      )).toEqual([[txids[0]], [txids[1]]]);
     });
 
     it('should preserve partial results when batch fetch fails mid-processing', async () => {

@@ -1,6 +1,20 @@
 import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { Prisma } from '../../generated/prisma/client';
 import { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } from '../../constants/transactionClassification';
+import { ADDRESS_SYNC_IO_UPSERT_MAX_ROWS } from '../../constants/addressSyncPersistence';
+
+export {
+  ADDRESS_SYNC_INPUT_UPSERT_BIND_COLUMNS,
+  ADDRESS_SYNC_IO_UPSERT_MAX_BINDS,
+  ADDRESS_SYNC_IO_UPSERT_MAX_ROWS,
+  ADDRESS_SYNC_OUTPUT_UPSERT_BIND_COLUMNS,
+} from '../../constants/addressSyncPersistence';
+export {
+  findWalletRbfReplacements,
+  reconcilePendingRbfForConfirmedTransactions,
+  reconcileWalletRbfReplacement,
+  type WalletRbfCleanupTarget,
+} from './syncRbf';
 
 export type AddressSyncTransactionType = 'received' | 'consolidation' | 'sent';
 export type AddressSyncReconcileOutcome = 'created' | 'repaired' | 'unchanged';
@@ -217,50 +231,112 @@ const getAddressSyncOutputType = (transactionType: string, isOurs: boolean): str
   return 'unknown';
 };
 
+const forEachEligibleChunk = async <T extends { transactionId: string }>(
+  rows: readonly T[],
+  eligibleTransactionIds: ReadonlySet<string>,
+  callback: (chunk: T[]) => Promise<void>
+): Promise<void> => {
+  let chunk: T[] = [];
+  for (const row of rows) {
+    if (!eligibleTransactionIds.has(row.transactionId)) continue;
+    chunk.push(row);
+    if (chunk.length < ADDRESS_SYNC_IO_UPSERT_MAX_ROWS) continue;
+    await callback(chunk);
+    chunk = [];
+  }
+  if (chunk.length > 0) await callback(chunk);
+};
+
+const deduplicateChunk = <T>(
+  rows: readonly T[],
+  keyFor: (row: T) => string
+): T[] => {
+  const byKey = new Map<string, T>();
+  for (const row of rows) byKey.set(keyFor(row), row);
+  return [...byKey.values()];
+};
+
 const reconcileAddressSyncOutputRows = async (
   tx: PrismaTxClient,
   outputs: AddressSyncOutputRow[],
   typesById: ReadonlyMap<string, string>
 ): Promise<void> => {
-  for (const output of outputs) {
-    await tx.transactionOutput.updateMany({
-      where: {
-        transactionId: output.transactionId,
-        outputIndex: output.outputIndex,
-      },
-      data: {
-        address: output.address,
-        amount: output.amount,
-        scriptPubKey: output.scriptPubKey,
-        isOurs: output.isOurs,
-        outputType: getAddressSyncOutputType(
-          typesById.get(output.transactionId) ?? 'unknown',
-          output.isOurs
-        ),
-      },
-    });
-  }
+  const classified = deduplicateChunk(
+    outputs.map(output => ({
+      ...output,
+      outputType: getAddressSyncOutputType(
+        typesById.get(output.transactionId) ?? 'unknown',
+        output.isOurs
+      ),
+    })),
+    output => `${output.transactionId}\0${output.outputIndex}`
+  );
+  await tx.transactionOutput.createMany({ data: classified, skipDuplicates: true });
+  const values = classified.map(output => Prisma.sql`(
+    ${output.transactionId}::text,
+    ${output.outputIndex}::integer,
+    ${output.address}::text,
+    ${output.amount}::bigint,
+    ${output.scriptPubKey ?? null}::text,
+    ${output.scriptPubKey !== undefined}::boolean,
+    ${output.isOurs}::boolean,
+    ${output.outputType}::text
+  )`);
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE "transaction_outputs" AS stored
+    SET "address" = incoming."address",
+        "amount" = incoming."amount",
+        "scriptPubKey" = CASE
+          WHEN incoming."hasScriptPubKey" THEN incoming."scriptPubKey"
+          ELSE stored."scriptPubKey"
+        END,
+        "isOurs" = incoming."isOurs",
+        "outputType" = incoming."outputType"
+    FROM (VALUES ${Prisma.join(values)}) AS incoming(
+      "transactionId", "outputIndex", "address", "amount", "scriptPubKey",
+      "hasScriptPubKey", "isOurs", "outputType"
+    )
+    WHERE stored."transactionId" = incoming."transactionId"
+      AND stored."outputIndex" = incoming."outputIndex"
+  `);
 };
 
 const reconcileAddressSyncInputRows = async (
   tx: PrismaTxClient,
   inputs: AddressSyncInputRow[]
 ): Promise<void> => {
-  for (const input of inputs) {
-    await tx.transactionInput.updateMany({
-      where: {
-        transactionId: input.transactionId,
-        inputIndex: input.inputIndex,
-      },
-      data: {
-        txid: input.txid,
-        vout: input.vout,
-        address: input.address,
-        amount: input.amount,
-        derivationPath: input.derivationPath,
-      },
-    });
-  }
+  const deduplicated = deduplicateChunk(
+    inputs,
+    input => `${input.transactionId}\0${input.inputIndex}`
+  );
+  await tx.transactionInput.createMany({ data: deduplicated, skipDuplicates: true });
+  const values = deduplicated.map(input => Prisma.sql`(
+    ${input.transactionId}::text,
+    ${input.inputIndex}::integer,
+    ${input.txid}::text,
+    ${input.vout}::integer,
+    ${input.address}::text,
+    ${input.amount}::bigint,
+    ${input.derivationPath ?? null}::text,
+    ${input.derivationPath !== undefined}::boolean
+  )`);
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE "transaction_inputs" AS stored
+    SET "txid" = incoming."txid",
+        "vout" = incoming."vout",
+        "address" = incoming."address",
+        "amount" = incoming."amount",
+        "derivationPath" = CASE
+          WHEN incoming."hasDerivationPath" THEN incoming."derivationPath"
+          ELSE stored."derivationPath"
+        END
+    FROM (VALUES ${Prisma.join(values)}) AS incoming(
+      "transactionId", "inputIndex", "txid", "vout", "address", "amount",
+      "derivationPath", "hasDerivationPath"
+    )
+    WHERE stored."transactionId" = incoming."transactionId"
+      AND stored."inputIndex" = incoming."inputIndex"
+  `);
 };
 
 /**
@@ -305,35 +381,18 @@ export async function persistAddressSyncIORows(
         || classificationAddressCount === undefined
         || (transaction.classificationAddressCount ?? 0) <= classificationAddressCount;
     }));
-    const eligibleInputs = inputs.filter(input => eligibleTransactionIds.has(input.transactionId));
-    const eligibleOutputs = outputs.filter(output => eligibleTransactionIds.has(output.transactionId));
     const eligibleCompleteIds = completeTransactionIds.filter(id => eligibleTransactionIds.has(id));
     const typesById = new Map(transactions.map(transaction => [
       transaction.id,
       transaction.type,
     ]));
 
-    if (eligibleInputs.length > 0) {
-      await tx.transactionInput.createMany({
-        data: eligibleInputs,
-        skipDuplicates: true,
-      });
-      await reconcileAddressSyncInputRows(tx, eligibleInputs);
-    }
-    if (eligibleOutputs.length > 0) {
-      const classifiedOutputs = eligibleOutputs.map(output => ({
-          ...output,
-          outputType: getAddressSyncOutputType(
-            typesById.get(output.transactionId) ?? 'unknown',
-            output.isOurs
-          ),
-        }));
-      await tx.transactionOutput.createMany({
-        data: classifiedOutputs,
-        skipDuplicates: true,
-      });
-      await reconcileAddressSyncOutputRows(tx, eligibleOutputs, typesById);
-    }
+    await forEachEligibleChunk(inputs, eligibleTransactionIds, chunk =>
+      reconcileAddressSyncInputRows(tx, chunk)
+    );
+    await forEachEligibleChunk(outputs, eligibleTransactionIds, chunk =>
+      reconcileAddressSyncOutputRows(tx, chunk, typesById)
+    );
     if (eligibleCompleteIds.length > 0) {
       await tx.$executeRaw(Prisma.sql`
         UPDATE "transactions"
@@ -344,7 +403,7 @@ export async function persistAddressSyncIORows(
     }
   };
   if (client) return persist(client);
-  await prisma.$transaction(persist);
+  await prisma.$transaction(persist, { timeout: 60_000 });
 }
 
 type OwnershipRepairRow = {
@@ -592,100 +651,6 @@ export async function findByWalletIdAndTxids<T extends Prisma.TransactionSelect>
   });
 }
 
-export async function findPendingWithInputs(
-  walletId: string,
-  client: PrismaTxClient = prisma
-) {
-  return client.transaction.findMany({
-    where: {
-      walletId,
-      confirmations: 0,
-      rbfStatus: 'active',
-      inputs: { some: {} },
-    },
-    select: {
-      id: true,
-      txid: true,
-      inputs: { select: { txid: true, vout: true } },
-    },
-  });
-}
-
-export async function findConfirmedWithSharedInputs(
-  walletId: string,
-  inputPatterns: Array<{ txid: string; vout: number }>,
-  client: PrismaTxClient = prisma
-) {
-  return client.transaction.findMany({
-    where: {
-      walletId,
-      confirmations: { gt: 0 },
-      inputs: {
-        some: {
-          OR: inputPatterns.map(i => ({ txid: i.txid, vout: i.vout })),
-        },
-      },
-    },
-    select: {
-      txid: true,
-      inputs: { select: { txid: true, vout: true } },
-    },
-  });
-}
-
-export async function updateRbfStatus(
-  id: string,
-  data: { rbfStatus?: string; replacedByTxid?: string | null },
-  client: PrismaTxClient = prisma
-): Promise<void> {
-  await client.transaction.update({
-    where: { id },
-    data,
-  });
-}
-
-export async function findPendingWithSharedInputs(
-  walletId: string,
-  inputPatterns: Array<{ txid: string; vout: number }>,
-  client: PrismaTxClient = prisma
-) {
-  return client.transaction.findMany({
-    where: {
-      walletId,
-      confirmations: 0,
-      rbfStatus: 'active',
-      inputs: {
-        some: {
-          OR: inputPatterns.map(p => ({ txid: p.txid, vout: p.vout })),
-        },
-      },
-    },
-    select: {
-      id: true,
-      txid: true,
-      inputs: { select: { txid: true, vout: true } },
-    },
-  });
-}
-
-export async function findUnlinkedReplaced(
-  walletId: string,
-  client: PrismaTxClient = prisma
-) {
-  return client.transaction.findMany({
-    where: {
-      walletId,
-      rbfStatus: 'replaced',
-      replacedByTxid: null,
-    },
-    select: {
-      id: true,
-      txid: true,
-      inputs: { select: { txid: true, vout: true } },
-    },
-  });
-}
-
 export async function createManyTransactionLabels(
   data: Array<{ transactionId: string; labelId: string }>,
   options?: { skipDuplicates?: boolean },
@@ -721,31 +686,6 @@ export async function findWithoutIO(
     },
     select: { id: true, txid: true, type: true },
   });
-}
-
-export async function batchUpdateRbfStatus(
-  updates: Array<{ id: string; rbfStatus: string; replacedByTxid: string }>,
-  client?: PrismaTxClient
-): Promise<void> {
-  /* v8 ignore next -- sync pipeline avoids empty RBF update batches */
-  if (updates.length === 0) return;
-  const update = async (tx: PrismaTxClient): Promise<void> => {
-    for (const item of updates) {
-      await tx.transaction.update({
-        where: { id: item.id },
-        data: { rbfStatus: item.rbfStatus, replacedByTxid: item.replacedByTxid },
-      });
-    }
-  };
-  if (client) return update(client);
-  await prisma.$transaction(
-    updates.map(item =>
-      prisma.transaction.update({
-        where: { id: item.id },
-        data: { rbfStatus: item.rbfStatus, replacedByTxid: item.replacedByTxid },
-      })
-    )
-  );
 }
 
 export async function findSentWithOutputs(
