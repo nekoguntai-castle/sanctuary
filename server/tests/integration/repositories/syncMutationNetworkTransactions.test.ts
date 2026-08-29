@@ -105,6 +105,41 @@ describeWithDatabase('production wallet sync network transaction boundaries', ()
     await prisma.$disconnect();
   });
 
+  it('skips node work when nullable fields do not apply to the transaction type', async () => {
+    const identity = randomUUID();
+    const user = await createTestUser(factoryClient, {
+      username: `complete-fields-${identity}`,
+      email: `complete-fields-${identity}@example.com`,
+    });
+    userIds.push(user.id);
+    const wallet = await createTestWallet(factoryClient, user.id, { network: 'testnet3' });
+    walletIds.push(wallet.id);
+    const address = await createTestAddress(factoryClient, wallet.id, { address: ADDRESSES[0] });
+    const received = await createTestTransaction(factoryClient, wallet.id, { type: 'received' });
+    const consolidation = await createTestTransaction(factoryClient, wallet.id, {
+      type: 'consolidation',
+    });
+    await Promise.all([
+      prisma.transaction.update({
+        where: { id: received.id },
+        data: { addressId: address.id, fee: null, counterpartyAddress: address.address },
+      }),
+      prisma.transaction.update({
+        where: { id: consolidation.id },
+        data: { addressId: null, counterpartyAddress: null },
+      }),
+    ]);
+    vi.clearAllMocks();
+
+    await expect(populateMissingTransactionFields(wallet.id)).resolves.toEqual({
+      updated: 0,
+      confirmationUpdates: [],
+    });
+    expect(fakeNode.client.getBlockHeight).not.toHaveBeenCalled();
+    expect(fakeNode.client.getAddressHistory).not.toHaveBeenCalled();
+    expect(fakeNode.client.getTransaction).not.toHaveBeenCalled();
+  });
+
   it('runs five production syncWallet network waits without pinning PostgreSQL transactions', async () => {
     const fences = await Promise.all(ADDRESSES.map(async (address, index) => {
       const identity = randomUUID();

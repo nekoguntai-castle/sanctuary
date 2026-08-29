@@ -793,10 +793,19 @@ export async function findWithMissingFields(
       walletId,
       OR: [
         { blockHeight: null },
-        { addressId: null },
+        {
+          addressId: null,
+          type: { in: ['sent', 'send', 'received', 'receive'] },
+        },
         { blockTime: null },
-        { fee: null },
-        { counterpartyAddress: null },
+        {
+          fee: null,
+          type: { in: ['sent', 'send', 'consolidation'] },
+        },
+        {
+          counterpartyAddress: null,
+          type: { in: ['sent', 'send', 'received', 'receive'] },
+        },
       ],
     },
     select: {

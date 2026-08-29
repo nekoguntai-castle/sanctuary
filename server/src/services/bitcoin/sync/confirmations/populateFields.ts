@@ -83,6 +83,15 @@ export async function populateMissingTransactionFields(
   return populateSemaphore.run(async () => {
     signal?.throwIfAborted();
     const castNetwork = resolvePersistedBitcoinNetwork(network);
+
+    // Avoid opening the node path when every nullable field is either complete
+    // or intentionally not applicable to this transaction type.
+    const transactions = await transactionRepository.findWithMissingFields(walletId);
+    if (transactions.length === 0) {
+      walletLog(walletId, 'info', 'POPULATE', 'All transaction fields are complete');
+      return { updated: 0, confirmationUpdates: [] };
+    }
+
     const initialStage = attemptRuntime
       ? createSyncStageRuntime(attemptRuntime, 'missing_fields_initial')
       : undefined;
@@ -102,19 +111,11 @@ export async function populateMissingTransactionFields(
       initialStage?.dispose();
     }
 
-    // Find transactions with missing fields
-    const transactions = await transactionRepository.findWithMissingFields(walletId);
-
     // Fetch wallet addresses separately with only needed fields (more memory efficient)
     const walletAddresses = await addressRepository.findIdAndAddressByWalletId(walletId);
 
     const walletAddressLookup = new Map(walletAddresses.map(a => [a.address, a.id]));
     const walletAddressSet = new Set(walletAddresses.map(a => a.address));
-
-    if (transactions.length === 0) {
-      walletLog(walletId, 'info', 'POPULATE', 'All transaction fields are complete');
-      return { updated: 0, confirmationUpdates: [] };
-    }
 
     log.debug(`Populating missing fields for ${transactions.length} transactions in wallet ${walletId}`);
     walletLog(walletId, 'info', 'POPULATE', `Starting field population for ${transactions.length} transactions`, {

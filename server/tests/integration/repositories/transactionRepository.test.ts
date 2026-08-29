@@ -10,14 +10,62 @@ import {
   withTestTransaction,
   createTestUser,
   createTestWallet,
+  createTestAddress,
   createTestTransaction,
   TestScenarioBuilder,
   generateTxid,
   assertCount,
 } from './setup';
+import { transactionRepository } from '../../../src/repositories';
+import type { PrismaTxClient } from '../../../src/models/prisma';
 
 describeIfDatabase('TransactionRepository Integration Tests', () => {
   setupRepositoryTests();
+
+  describe('findWithMissingFields', () => {
+    it('ignores null fields that do not apply to the transaction type', async () => {
+      await withTestTransaction(async (tx) => {
+        const user = await createTestUser(tx);
+        const wallet = await createTestWallet(tx, user.id);
+        const address = await createTestAddress(tx, wallet.id);
+        const received = await createTestTransaction(tx, wallet.id, { type: 'received' });
+        const consolidation = await createTestTransaction(tx, wallet.id, { type: 'consolidation' });
+        const receivedMissingCounterparty = await createTestTransaction(tx, wallet.id, {
+          type: 'received',
+        });
+        const sentMissingFee = await createTestTransaction(tx, wallet.id, { type: 'sent' });
+
+        await Promise.all([
+          tx.transaction.update({
+            where: { id: received.id },
+            data: { addressId: address.id, fee: null, counterpartyAddress: address.address },
+          }),
+          tx.transaction.update({
+            where: { id: consolidation.id },
+            data: { addressId: null, counterpartyAddress: null },
+          }),
+          tx.transaction.update({
+            where: { id: receivedMissingCounterparty.id },
+            data: { addressId: address.id, counterpartyAddress: null },
+          }),
+          tx.transaction.update({
+            where: { id: sentMissingFee.id },
+            data: { addressId: address.id, fee: null, counterpartyAddress: address.address },
+          }),
+        ]);
+
+        const result = await transactionRepository.findWithMissingFields(
+          wallet.id,
+          tx as unknown as PrismaTxClient,
+        );
+
+        expect(result.map(transaction => transaction.id).sort()).toEqual([
+          receivedMissingCounterparty.id,
+          sentMissingFee.id,
+        ].sort());
+      });
+    });
+  });
 
   describe('deleteByWalletId', () => {
     it('should delete all transactions for a wallet', async () => {
