@@ -98,6 +98,7 @@ function validV2Receipt(rawEvidence) {
     boundedErrorEvidence: {
       ...validReceipt().boundedErrorEvidence,
       candidateBatch: { startCompleted: 1, endCompleted: 25, total: 69 },
+      noCandidateWorkObserved: false,
     },
     remoteEvidence: {
       probeWindowMs: 600_000,
@@ -117,6 +118,18 @@ function validV2Receipt(rawEvidence) {
       rawEvidence,
     },
   };
+}
+
+function validNoCandidateV2Receipt(rawEvidence) {
+  const receipt = validV2Receipt(rawEvidence);
+  receipt.boundedErrorEvidence = {
+    candidateBatch: null,
+    outcome: 'not_applicable',
+    noCandidateWorkObserved: true,
+    withinBudgetAndGrace: true,
+    silentHang: false,
+  };
+  return receipt;
 }
 
 function validate(receipt) {
@@ -158,6 +171,30 @@ test('accepts a bounded first candidate batch for the observed positive total', 
     assert.deepEqual(validateCanaryReceipt(receipt, {
       tag: V2_TAG, commit: COMMIT, now: NOW,
     }), receipt);
+  }
+});
+
+test('accepts durable transaction completion when a current wallet has no candidate work', () => {
+  const receipt = validNoCandidateV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+  assert.deepEqual(validateCanaryReceipt(receipt, {
+    tag: V2_TAG, commit: COMMIT, now: NOW,
+  }), receipt);
+});
+
+test('rejects ambiguous or contradictory no-candidate evidence', () => {
+  const valid = validNoCandidateV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+  for (const mutate of [
+    value => { value.boundedErrorEvidence.outcome = 'advanced'; },
+    value => { value.boundedErrorEvidence.noCandidateWorkObserved = false; },
+    value => {
+      value.boundedErrorEvidence.candidateBatch = { startCompleted: 1, endCompleted: 10, total: 10 };
+    },
+  ]) {
+    const receipt = structuredClone(valid);
+    mutate(receipt);
+    assert.throws(() => validateCanaryReceipt(receipt, {
+      tag: V2_TAG, commit: COMMIT, now: NOW,
+    }), /no-candidate|bounded-error/);
   }
 });
 

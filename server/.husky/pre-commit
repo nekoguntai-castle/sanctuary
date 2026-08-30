@@ -30,6 +30,10 @@ fi
 # Get the repository root
 REPO_ROOT=$(git rev-parse --show-toplevel)
 GIT_DIR=$(git rev-parse --git-dir)
+# Reuse the same path predicates as CI so local hooks cannot drift into broad,
+# unrelated test lanes.
+# shellcheck source=/dev/null
+. "$REPO_ROOT/scripts/ci/classify-files-lib.sh"
 # Cache Git's authoritative repository-local environment list once so the
 # agent boundary cannot drift when Git adds or removes a variable.
 HOOK_GIT_LOCAL_ENV_VARS=$(git rev-parse --local-env-vars)
@@ -555,6 +559,21 @@ Return ONLY one JSON object matching the schema above. No markdown fences. No pr
     rm -f "$temp_output" 2>/dev/null || true
 }
 
+is_precommit_release_path() {
+    case "$1" in
+        scripts/release/*|tests/release/*) return 0 ;;
+    esac
+    return 1
+}
+
+is_precommit_backend_path() {
+    is_backend_file "$1"
+}
+
+is_precommit_frontend_path() {
+    is_frontend_file "$1"
+}
+
 if [ "${SANCTUARY_PRE_COMMIT_LIBRARY_ONLY:-0}" = "1" ]; then
     case "$0" in
         */pre-commit|pre-commit)
@@ -929,9 +948,24 @@ if [ "$TEST_COVERAGE_STOP" = "1" ] || [ "$UI_CONSISTENCY_STOP" = "1" ] || [ "$BA
     exit 1
 fi
 
-# Check for staged files in different areas
-BACKEND_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^server/' || true)
-FRONTEND_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(src/|tests/)' || true)
+# Check for staged files in different areas. Release tests own their canonical
+# distribution suite and must not select the unrelated frontend suite.
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+BACKEND_CHANGED=$(printf '%s\n' "$STAGED_FILES" | while IFS= read -r path; do
+    if is_precommit_backend_path "$path"; then
+        printf '%s\n' "$path"
+    fi
+done)
+RELEASE_CHANGED=$(printf '%s\n' "$STAGED_FILES" | while IFS= read -r path; do
+    if is_precommit_release_path "$path"; then
+        printf '%s\n' "$path"
+    fi
+done)
+FRONTEND_CHANGED=$(printf '%s\n' "$STAGED_FILES" | while IFS= read -r path; do
+    if is_precommit_frontend_path "$path"; then
+        printf '%s\n' "$path"
+    fi
+done)
 
 # Timeout for test runs (2 minutes)
 TEST_TIMEOUT=120
@@ -941,7 +975,7 @@ SCHEMA_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^se
 if [ -n "$SCHEMA_CHANGED" ]; then
     echo "${YELLOW}Prisma schema changed - regenerating client...${NC}"
     cd "$REPO_ROOT/server"
-    npx prisma generate
+    run_without_git_env npx prisma generate
     echo "${GREEN}Prisma client regenerated${NC}"
 fi
 
@@ -950,7 +984,7 @@ if [ -n "$BACKEND_CHANGED" ]; then
     echo "${YELLOW}Backend files changed - running server tests...${NC}"
     cd "$REPO_ROOT/server"
 
-    if timeout $TEST_TIMEOUT npm run test:fast 2>/dev/null; then
+    if run_without_git_env timeout $TEST_TIMEOUT npm run test:fast 2>/dev/null; then
         echo "${GREEN}Backend tests passed${NC}"
     elif [ $? -eq 124 ]; then
         echo "${RED}Backend tests timed out after ${TEST_TIMEOUT}s. Commit aborted.${NC}"
@@ -962,12 +996,29 @@ if [ -n "$BACKEND_CHANGED" ]; then
     fi
 fi
 
+# Run release-distribution tests for release contract changes.
+if [ -n "$RELEASE_CHANGED" ]; then
+    echo "${YELLOW}Release contract files changed - running release distribution tests...${NC}"
+    cd "$REPO_ROOT"
+
+    if run_without_git_env timeout $TEST_TIMEOUT npm run test:release-distribution 2>/dev/null; then
+        echo "${GREEN}Release distribution tests passed${NC}"
+    elif [ $? -eq 124 ]; then
+        echo "${RED}Release distribution tests timed out after ${TEST_TIMEOUT}s. Commit aborted.${NC}"
+        exit 1
+    else
+        echo "${RED}Release distribution tests failed. Commit aborted.${NC}"
+        echo "Run 'npm run test:release-distribution' for full output."
+        exit 1
+    fi
+fi
+
 # Run frontend tests if frontend files changed
 if [ -n "$FRONTEND_CHANGED" ]; then
     echo "${YELLOW}Frontend files changed - running frontend tests...${NC}"
     cd "$REPO_ROOT"
 
-    if timeout $TEST_TIMEOUT npm run test:run 2>/dev/null; then
+    if run_without_git_env timeout $TEST_TIMEOUT npm run test:run 2>/dev/null; then
         echo "${GREEN}Frontend tests passed${NC}"
     elif [ $? -eq 124 ]; then
         echo "${RED}Frontend tests timed out after ${TEST_TIMEOUT}s. Commit aborted.${NC}"
@@ -980,7 +1031,7 @@ if [ -n "$FRONTEND_CHANGED" ]; then
 fi
 
 # If no relevant files changed, skip tests
-if [ -z "$BACKEND_CHANGED" ] && [ -z "$FRONTEND_CHANGED" ]; then
+if [ -z "$BACKEND_CHANGED" ] && [ -z "$RELEASE_CHANGED" ] && [ -z "$FRONTEND_CHANGED" ]; then
     echo "${GREEN}No test-relevant files changed, skipping tests.${NC}"
 fi
 

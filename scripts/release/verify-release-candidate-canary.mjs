@@ -257,7 +257,19 @@ function validateCandidateBatch(batch, v2) {
 
 function validateBoundedError(evidence, v2) {
   const batch = evidence.candidateBatch;
+  if (v2 && batch === null) {
+    if (evidence.outcome !== 'not_applicable') {
+      throw new Error('no-candidate evidence requires the not_applicable outcome');
+    }
+    requireTrue(evidence.noCandidateWorkObserved, 'no-candidate work evidence');
+    requireTrue(evidence.withinBudgetAndGrace, 'bounded budget/grace evidence');
+    if (evidence.silentHang !== false) throw new Error('canary observed a silent hang');
+    return;
+  }
   validateCandidateBatch(batch, v2);
+  if (v2 && evidence.noCandidateWorkObserved !== false) {
+    throw new Error('bounded-error candidate evidence contradicts no-candidate evidence');
+  }
   if (!['advanced', 'retryable', 'fatal'].includes(evidence.outcome)) {
     throw new Error('bounded-error outcome is invalid');
   }
@@ -275,6 +287,42 @@ function validateSignoff(signoff) {
   }
 }
 
+function validateReleaseCandidateShape(releaseCandidate, v2) {
+  exactKeys(releaseCandidate, [
+    'tag', 'commit', ...(v2 ? ['imageIds'] : []),
+  ], 'release candidate identity');
+  if (v2 && (!Array.isArray(releaseCandidate.imageIds)
+    || releaseCandidate.imageIds.length === 0
+    || releaseCandidate.imageIds.some(id => !IMAGE_ID_PATTERN.test(id))
+    || new Set(releaseCandidate.imageIds).size !== releaseCandidate.imageIds.length)) {
+    throw new Error('release candidate image IDs are invalid');
+  }
+}
+
+function validateRemoteEvidenceShape(remoteEvidence) {
+  exactKeys(remoteEvidence, [
+    'probeWindowMs', 'postTerminalWindowMs', 'endpoints', 'runtime',
+    'lifecycle', 'rawEvidence',
+  ], 'remote evidence');
+  exactKeys(remoteEvidence.endpoints, [
+    'live', 'ready', 'metricsPrometheus',
+  ], 'remote endpoints');
+  for (const endpoint of Object.values(remoteEvidence.endpoints)) {
+    exactKeys(endpoint, [
+      'samples', 'postTerminalSamples', 'failures', 'p99Ms', 'maxMs',
+    ], 'remote endpoint summary');
+  }
+  exactKeys(remoteEvidence.runtime, [
+    'peakBytes', 'memoryLimitBytes', 'oomKilled', 'restartCount', 'exitCode',
+    'fallbackCount',
+  ], 'remote runtime summary');
+  exactKeys(remoteEvidence.lifecycle, [
+    'leaseLockAgreement', 'leasesAndLocksCleared', 'generationsConverged',
+    'formerlyStaleRepeatConverged', 'uiHealthyThroughoutPostTerminal',
+  ], 'remote lifecycle summary');
+  exactKeys(remoteEvidence.rawEvidence, ['sha256', 'bytes'], 'raw evidence identity');
+}
+
 function validateShape(receipt) {
   const v2 = receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION;
   exactKeys(receipt, [
@@ -282,15 +330,7 @@ function validateShape(receipt) {
     'progressEvidence', 'diagnosticsEvidence', 'metricEvidence',
     'boundedErrorEvidence', 'signoff', ...(v2 ? ['remoteEvidence'] : []),
   ], 'canary receipt');
-  exactKeys(receipt.releaseCandidate, [
-    'tag', 'commit', ...(v2 ? ['imageIds'] : []),
-  ], 'release candidate identity');
-  if (v2 && (!Array.isArray(receipt.releaseCandidate.imageIds)
-    || receipt.releaseCandidate.imageIds.length === 0
-    || receipt.releaseCandidate.imageIds.some(id => !IMAGE_ID_PATTERN.test(id))
-    || new Set(receipt.releaseCandidate.imageIds).size !== receipt.releaseCandidate.imageIds.length)) {
-    throw new Error('release candidate image IDs are invalid');
-  }
+  validateReleaseCandidateShape(receipt.releaseCandidate, v2);
   exactKeys(receipt.canaryWindow, ['startedAt', 'completedAt'], 'canary window');
   exactKeys(receipt.fleet, [
     'total', 'outcomes', 'actionRequiredWithExplicitReason', 'previouslyStaleRepeat',
@@ -313,35 +353,19 @@ function validateShape(receipt) {
     'activeStageAgeObserved', 'counterFamiliesObserved',
   ], 'metric evidence');
   exactKeys(receipt.boundedErrorEvidence, [
-    'candidateBatch', 'outcome', 'withinBudgetAndGrace', 'silentHang',
+    'candidateBatch', 'outcome', ...(v2 ? ['noCandidateWorkObserved'] : []),
+    'withinBudgetAndGrace', 'silentHang',
   ], 'bounded-error evidence');
-  exactKeys(receipt.boundedErrorEvidence.candidateBatch, [
-    'startCompleted', 'endCompleted', 'total',
-  ], 'candidate batch evidence');
-  exactKeys(receipt.signoff, ['decision', 'signedAt', 'operatorId'], 'canary signoff');
-  if (v2) {
-    exactKeys(receipt.remoteEvidence, [
-      'probeWindowMs', 'postTerminalWindowMs', 'endpoints', 'runtime',
-      'lifecycle', 'rawEvidence',
-    ], 'remote evidence');
-    exactKeys(receipt.remoteEvidence.endpoints, [
-      'live', 'ready', 'metricsPrometheus',
-    ], 'remote endpoints');
-    for (const endpoint of Object.values(receipt.remoteEvidence.endpoints)) {
-      exactKeys(endpoint, [
-        'samples', 'postTerminalSamples', 'failures', 'p99Ms', 'maxMs',
-      ], 'remote endpoint summary');
-    }
-    exactKeys(receipt.remoteEvidence.runtime, [
-      'peakBytes', 'memoryLimitBytes', 'oomKilled', 'restartCount', 'exitCode',
-      'fallbackCount',
-    ], 'remote runtime summary');
-    exactKeys(receipt.remoteEvidence.lifecycle, [
-      'leaseLockAgreement', 'leasesAndLocksCleared', 'generationsConverged',
-      'formerlyStaleRepeatConverged', 'uiHealthyThroughoutPostTerminal',
-    ], 'remote lifecycle summary');
-    exactKeys(receipt.remoteEvidence.rawEvidence, ['sha256', 'bytes'], 'raw evidence identity');
+  if (receipt.boundedErrorEvidence.candidateBatch === null && !v2) {
+    throw new Error('candidate batch evidence has an invalid schema');
   }
+  if (receipt.boundedErrorEvidence.candidateBatch !== null) {
+    exactKeys(receipt.boundedErrorEvidence.candidateBatch, [
+      'startCompleted', 'endCompleted', 'total',
+    ], 'candidate batch evidence');
+  }
+  exactKeys(receipt.signoff, ['decision', 'signedAt', 'operatorId'], 'canary signoff');
+  if (v2) validateRemoteEvidenceShape(receipt.remoteEvidence);
 }
 
 export function validateCanaryReceipt(receipt, options) {

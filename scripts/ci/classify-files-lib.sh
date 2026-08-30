@@ -14,7 +14,7 @@ SANCTUARY_CI_CLASSIFY_FILES_LIB_LOADED=1
 
 is_frontend_file() {
   case "$1" in
-    tests/e2e/*)
+    tests/e2e/*|tests/release/*)
       return 1
       ;;
   esac
@@ -27,6 +27,11 @@ is_frontend_file() {
 }
 
 is_backend_file() {
+  case "$1" in
+    server/.husky/*)
+      return 1
+      ;;
+  esac
   case "$1" in
     server/*)
       return 0
@@ -156,6 +161,11 @@ is_build_file() {
 }
 
 is_test_file() {
+  case "$1" in
+    tests/release/*)
+      return 1
+      ;;
+  esac
   case "$1" in
     tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|tests/llm-egress-proxy/*.test.ts|tests/llm-egress-proxy/*.spec.ts|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts)
       return 0

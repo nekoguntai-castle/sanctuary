@@ -32,6 +32,18 @@ assert_contains_output() {
   esac
 }
 
+assert_not_contains_output() {
+  local output_file="$1"
+  local key="$2"
+  local unexpected_substring="$3"
+  local actual
+
+  actual="$(sed -n "s/^${key}=//p" "$output_file")"
+  case "$actual" in
+    *"$unexpected_substring"*) fail "expected ${key} not to contain ${unexpected_substring}, got ${actual}" ;;
+  esac
+}
+
 create_repo() {
   local repo_dir="$1"
 
@@ -93,6 +105,45 @@ EOF_DOC
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
   assert_exact_output "$output_file" "test_files" ""
+
+  base_sha="$head_sha"
+  local release_base_sha="$base_sha"
+  mkdir -p "$repo_dir/tests/release"
+  printf 'export const releaseContract = true;\n' > "$repo_dir/tests/release/contract.test.ts"
+  git -C "$repo_dir" add tests/release/contract.test.ts
+  git -C "$repo_dir" commit -qm "release contract test"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "pull_request"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "frontend_files" ""
+  assert_exact_output "$output_file" "full_scan" "false"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
+  assert_exact_output "$output_file" "test_files" ""
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/server/.husky"
+  printf '#!/bin/sh\n' > "$repo_dir/server/.husky/pre-commit"
+  git -C "$repo_dir" add server/.husky/pre-commit
+  git -C "$repo_dir" commit -qm "pre-commit hook only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "pull_request"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_files" ""
+  assert_exact_output "$output_file" "full_scan" "false"
+
+  mkdir -p "$repo_dir/src/components/ReleaseMixed"
+  printf 'export const ReleaseMixed = () => null;\n' > "$repo_dir/src/components/ReleaseMixed/ReleaseMixed.tsx"
+  git -C "$repo_dir" add src/components/ReleaseMixed/ReleaseMixed.tsx
+  git -C "$repo_dir" commit -qm "mixed release and frontend range"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$release_base_sha" "$head_sha" "$output_file" "pull_request"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_contains_output "$output_file" "frontend_files" "src/components/ReleaseMixed/ReleaseMixed.tsx"
+  assert_not_contains_output "$output_file" "frontend_files" "tests/release/contract.test.ts"
+  base_sha="$head_sha"
 
   mkdir -p "$repo_dir/src/components/ForcePush"
   printf 'export const ForcePushed = () => null;\n' > "$repo_dir/src/components/ForcePush/ForcePushed.tsx"

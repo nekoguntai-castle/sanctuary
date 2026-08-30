@@ -2991,6 +2991,12 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "node tests/ci/provider-context-node.test.mjs"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality classifier owns the canonical release distribution suite" \
+  "Run CI classifier tests" \
+  "npm run test:release-distribution" \
+  "QUALITY_CI_CLASSIFIER_TESTS"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality validates the Redis service resolver" \
   "bash -n scripts/ci/resolve-redis-service.sh" \
   "bash -n tests/ci/resolve-redis-service.test.sh" \

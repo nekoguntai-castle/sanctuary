@@ -99,6 +99,39 @@ main() {
   assert_eq "frontend_unit files" '["src/components/X.tsx"]' "$(json_query "$plan" lanes.frontend_unit.files)"
   assert_eq "backend_unit not run" "false" "$(json_query "$plan" lanes.backend_unit.run)"
 
+  # ---- Release contract tests are not frontend tests ----------------------
+  base="$head"
+  local release_base="$base"
+  mkdir -p "$repo/tests/release"
+  printf 'import test from "node:test"; test("release", () => {});\n' > "$repo/tests/release/contract.test.mjs"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'release contract test'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "release-only frontend_unit" "false" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "release-only full_scan" "false" "$(json_query "$plan" full_scan)"
+
+  base="$head"
+  mkdir -p "$repo/server/.husky"
+  printf '#!/bin/sh\n' > "$repo/server/.husky/pre-commit"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'pre-commit hook only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "hook-only backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "hook-only full_scan" "false" "$(json_query "$plan" full_scan)"
+
+  printf 'export const ReleaseMixed = 1\n' > "$repo/src/components/ReleaseMixed.tsx"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'mixed release and frontend range'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$release_base" "$head")"
+  assert_eq "mixed release/frontend frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "mixed release/frontend files" '["src/components/ReleaseMixed.tsx"]' "$(json_query "$plan" lanes.frontend_unit.files)"
+
   # ---- Push to main: tier=full + coverage required -------------------------
   plan="$(EVENT_NAME=push run_planner "$repo" "$base" "$head")"
   assert_eq "push tier=full" "full" "$(json_query "$plan" tier)"

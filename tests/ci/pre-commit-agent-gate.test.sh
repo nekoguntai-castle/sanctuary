@@ -133,6 +133,34 @@ main() {
   unset SANCTUARY_AGENT_TMP_DIR
   trap cleanup EXIT
 
+  is_precommit_release_path "tests/release/release-candidate-canary.test.mjs" \
+    || fail "release contract path was not classified for the release suite"
+  is_precommit_release_path "scripts/release/verify-release-candidate-canary.mjs" \
+    || fail "release implementation path was not classified for the release suite"
+  if is_precommit_backend_path "server/.husky/pre-commit"; then
+    fail "pre-commit hook was incorrectly classified as backend"
+  fi
+  is_precommit_backend_path "server/src/index.ts" \
+    || fail "backend source path was not classified as backend"
+  if is_precommit_frontend_path "tests/release/release-candidate-canary.test.mjs"; then
+    fail "release contract path was incorrectly classified as frontend"
+  fi
+  is_precommit_frontend_path "tests/components/Wallet.test.tsx" \
+    || fail "frontend test path was not classified as frontend"
+  is_precommit_frontend_path "src/components/Wallet.tsx" \
+    || fail "frontend source path was not classified as frontend"
+  if is_precommit_frontend_path "tests/ci/classify-test-changes.test.sh"; then
+    fail "CI shell test was incorrectly classified as frontend"
+  fi
+  for guarded_command in \
+    'run_without_git_env npx prisma generate' \
+    'run_without_git_env timeout $TEST_TIMEOUT npm run test:fast' \
+    'run_without_git_env timeout $TEST_TIMEOUT npm run test:release-distribution' \
+    'run_without_git_env timeout $TEST_TIMEOUT npm run test:run'; do
+    grep -Fq "$guarded_command" "$PRE_COMMIT_HOOK" \
+      || fail "pre-commit subprocess does not clear Git hook state: $guarded_command"
+  done
+
   local proceed_json='{"rubric":{"format":"OK"},"verdict":"PROCEED","issues":[]}'
   local output cache_file agent_env leaked_var
 
