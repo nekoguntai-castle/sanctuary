@@ -868,6 +868,17 @@ assert_contains_in_order "$RC" \
   "pending a successful install-test.yml push run for the exact same commit"
 
 assert_contains_in_order "$RC" \
+  "release-candidate summary routes stable mutation through evidence-bound promotion" \
+  "Create an RC tag on this exact commit" \
+  "release-candidate.yml and install-test.yml push runs" \
+  "release:promote -- --rc-tag <rc> --stable-tag <stable> --receipt <abs> --evidence <abs>" \
+  "release:publish -- <stable> --candidate <rc> --receipt <abs> --evidence <abs> --rehearsal-manifest <abs>"
+
+assert_not_contains "$RC" \
+  "release-candidate summary omits the obsolete bare publisher command" \
+  "release:publish -- <tag>"
+
+assert_contains_in_order "$RC" \
   "release-candidate preserves the stable validation summary context" \
   "validation-summary:" \
   "name: Validation Summary"
@@ -963,6 +974,17 @@ done
 
 # --- install-test.yml -------------------------------------------------------
 IT="$REPO_ROOT/.github/workflows/install-test.yml"
+
+assert_not_contains "$IT" \
+  "stable tags do not launch a duplicate install matrix" \
+  "      - 'v*.*.*'"
+
+for prerelease_pattern in "v*.*.*-rc*" "v*.*.*-alpha*" "v*.*.*-beta*" "v*.*.*-dev*"; do
+  assert_occurrence_count "$IT" \
+    "install-test retains $prerelease_pattern tag coverage" \
+    "      - '$prerelease_pattern'" \
+    1
+done
 
 assert_occurrence_count "$IT" \
   "install-test disables restart for CI-created Compose stacks" \

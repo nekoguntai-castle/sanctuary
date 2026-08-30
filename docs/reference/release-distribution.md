@@ -89,15 +89,37 @@ matching tag or Release object when reconciliation is needed.
 4. Run the affected-fleet
    [release-candidate canary](../how-to/release-candidate-canary.md) against the
    exact accepted RC tag and commit. Keep its receipt outside the checkout.
-5. Validate that receipt and complete credential, signing-key, and new external
-   output-directory readiness checks. Create the stable tag on the exact accepted
-   RC commit only after every pre-tag check succeeds, then wait for the stable
-   tag's own `install-test.yml` run.
-6. Check out the immutable stable tag in a clean worktree.
-7. Rehearse without API writes:
+5. Promote only through the fail-closed operator command. It revalidates the
+   exact RC tag and commit, successful push runs for both
+   `release-candidate.yml` and `install-test.yml`, the strict canary receipt and
+   raw evidence, the signing-key pair, and a complete signed RC asset rehearsal
+   before it pushes the sole exact stable tag ref:
 
    ```bash
-   npm run release:publish -- v0.8.57 --dry-run
+   npm run release:promote -- \
+     --rc-tag v0.8.57-rc1 \
+     --stable-tag v0.8.57 \
+     --receipt /secure/release-receipts/v0.8.57-rc1.json \
+     --evidence /secure/release-receipts/v0.8.57-rc1.raw \
+     --output-dir /secure/release-assets/v0.8.57-rc1-rehearsal \
+     --signing-key /secure/sanctuary-offline-release-private.pem \
+     --public-key /secure/sanctuary-offline-release-public.pem
+   ```
+
+   The stable tag does not rerun `install-test.yml`: it points to the accepted
+   RC's exact commit and bytes, and the promotion and publication commands both
+   require that exact RC push-run evidence. This removes a duplicate matrix
+   without weakening the release gate.
+6. Check out the immutable stable tag in a clean worktree.
+7. Rehearse publication without API writes, reusing the accepted RC evidence:
+
+   ```bash
+   npm run release:publish -- v0.8.57 --dry-run \
+     --candidate v0.8.57-rc1 \
+     --receipt /secure/release-receipts/v0.8.57-rc1.json \
+     --evidence /secure/release-receipts/v0.8.57-rc1.raw \
+     --rehearsal-manifest /secure/release-assets/v0.8.57-rc1-rehearsal/release-manifest.json \
+     --public-key /secure/sanctuary-offline-release-public.pem
    ```
 
 8. Prepare the complete signed release asset set outside the checkout. The
@@ -108,14 +130,19 @@ matching tag or Release object when reconciliation is needed.
      --tag v0.8.57 \
      --output-dir /secure/release-assets/v0.8.57 \
      --signing-key /secure/sanctuary-offline-release-private.pem \
-     --public-key scripts/offline/keys/sanctuary-offline-release-public.pem \
+     --public-key /secure/sanctuary-offline-release-public.pem \
      --run-id operator-20260731-01
    ```
 
 9. Publish the stable Release objects:
 
    ```bash
-   npm run release:publish -- v0.8.57
+   npm run release:publish -- v0.8.57 \
+     --candidate v0.8.57-rc1 \
+     --receipt /secure/release-receipts/v0.8.57-rc1.json \
+     --evidence /secure/release-receipts/v0.8.57-rc1.raw \
+     --rehearsal-manifest /secure/release-assets/v0.8.57-rc1-rehearsal/release-manifest.json \
+     --public-key /secure/sanctuary-offline-release-public.pem
    ```
 
 10. Attach and byte-verify the exact signed asset inventory on both providers:
@@ -127,14 +154,16 @@ matching tag or Release object when reconciliation is needed.
      --commit "$COMMIT" \
      --asset-dir /secure/release-assets/v0.8.57 \
      --manifest /secure/release-assets/v0.8.57/release-manifest.json \
-     --public-key scripts/offline/keys/sanctuary-offline-release-public.pem \
+     --public-key /secure/sanctuary-offline-release-public.pem \
      --config ~/.config/sanctuary/forge-tokens.env \
      --receipt /secure/release-receipts/v0.8.57.json
    ```
 
-The command fails closed unless the local tag, Forgejo tag commit, and exact
-successful Forgejo tag run agree. It also rechecks that GitHub Actions is
-disabled immediately before any GitHub mutation. For a real release it then:
+The command fails closed unless the local stable tag, accepted RC tag, exact
+successful RC workflow runs, canary evidence, signed rehearsal, and Forgejo tag
+commits agree. Promotion rechecks that GitHub Actions is disabled immediately
+before the stable tag push, and publication checks it again before any GitHub
+mutation. For a real release it then:
 
 - verifies the automatically mirrored GitHub tag, or idempotently creates it
   after its commit is mirrored if reconciliation lag left it missing;

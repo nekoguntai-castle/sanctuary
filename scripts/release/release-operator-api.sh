@@ -68,6 +68,35 @@ verify_forgejo_release_gate() {
   fail "no successful install-test.yml push run matches tag $TAG (or $TAG-rc<N>) at $RELEASE_COMMIT"
 }
 
+verify_forgejo_exact_workflow_gate() {
+  local workflow="$1"
+  local expected_ref="$2"
+  local expected_sha="$3"
+  local response="$TEMP_DIR/forgejo-${workflow}-runs.json"
+  local base="${FORGEJO_URL%/}/api/v1/repos/${FORGEJO_OWNER}/${FORGEJO_REPO}"
+  local code
+  code="$(api_request GET "$base/actions/runs?event=push&head_sha=${expected_sha}&limit=50" \
+    "$FORGEJO_TOKEN" "$response")" || fail "Forgejo $workflow lookup transport failure"
+  [[ "$code" == "200" ]] || fail "Forgejo $workflow lookup returned HTTP $code"
+
+  local run_id details
+  while IFS= read -r run_id; do
+    [[ -n "$run_id" ]] || continue
+    details="$TEMP_DIR/forgejo-${workflow}-${run_id}.json"
+    code="$(api_request GET "$base/actions/runs/$run_id" "$FORGEJO_TOKEN" "$details")" || continue
+    [[ "$code" == "200" ]] || continue
+    if jq -e --arg workflow "$workflow" --arg ref "$expected_ref" --arg sha "$expected_sha" \
+      '.workflow_id == $workflow and .event == "push" and .status == "success"
+        and .prettyref == $ref and .commit_sha == $sha' "$details" >/dev/null; then
+      echo "Forgejo $workflow gate is green for $expected_ref (run $run_id)"
+      return
+    fi
+  done < <(jq -r --arg workflow "$workflow" \
+    '.workflow_runs[]? | select(.workflow_id == $workflow and .event == "push" and .status == "success") | .id' \
+    "$response")
+  fail "no successful $workflow push run matches exact tag $expected_ref at $expected_sha"
+}
+
 forgejo_run_is_green_tag_gate() {
   local base="$1"
   local run_id="$2"
@@ -76,8 +105,8 @@ forgejo_run_is_green_tag_gate() {
   code="$(api_request GET "$base/actions/runs/$run_id" "$FORGEJO_TOKEN" "$response")" || return 1
   [[ "$code" == "200" ]] || return 1
   # The stable tag and its release candidates are validated by the SAME workflow, at the same
-  # commit, with the same scope: install-test.yml fires on every refs/tags/v* and
-  # classify-install-scope.sh gives them all `release-critical`. Accepting <tag>-rc<N> therefore
+  # commit, with the same scope: install-test.yml fires on prerelease tags and
+  # classify-install-scope.sh gives them `release-critical`. Accepting <tag>-rc<N> therefore
   # adds no new trust -- it recognises validation that already happened on identical bytes -- and
   # removes a duplicate ~2h matrix that v0.8.64 lost to infrastructure three times (issue #837).
   #

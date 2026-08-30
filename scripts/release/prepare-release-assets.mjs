@@ -65,7 +65,7 @@ export function prepareReleaseAssets(input) {
     manifestPath,
     baseDir: options.outputDir,
     publicKeyPath: options.publicKey,
-    strictStable: true,
+    strictComplete: true,
   });
   verifySignature(manifestPath, `${manifestPath}.sig`, options.publicKey);
   return { commit, manifestPath, bundlePath };

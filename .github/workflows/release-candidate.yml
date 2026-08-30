@@ -14,8 +14,9 @@ name: Release Candidate Validation
 
 on:
   # Fire automatically on RC / pre-release tag pushes so RC validation
-  # happens BEFORE the operator promotes to a final tag. Final stable tags
-  # (e.g. v0.8.50) are validated by install-test.yml, not this workflow.
+  # happens BEFORE the operator promotes to a final tag. Final stable tags reuse
+  # the accepted RC's exact same-commit Install Tests evidence through the
+  # fail-closed promotion and publication commands.
   # Forgejo Actions doesn't honor negative `!` globs, so use positive-only
   # patterns covering the prerelease shapes used in this repo
   # (-rc1, -rc.1, -alpha1, -beta.1, -dev*).
@@ -633,7 +634,7 @@ jobs:
   # Canonical release evidence note
   # ============================================
   # release-candidate.yml deliberately does NOT duplicate container-health,
-  # auth-flow, or upgrade jobs. On tag pushes, install-test.yml owns those
+  # auth-flow, or upgrade jobs. On prerelease tag pushes, install-test.yml owns those
   # blocking checks and the trusted publisher requires its successful push run
   # at the exact release commit. Manual RC runs are preflight evidence only.
 
@@ -729,9 +730,11 @@ jobs:
             echo "Release remains pending a successful install-test.yml push run for the exact same commit and the trusted publication gate." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
-            echo "1. Create a release tag on this commit" >> $GITHUB_STEP_SUMMARY
-            echo "2. Wait for same-commit install-test.yml validation" >> $GITHUB_STEP_SUMMARY
-            echo "3. Run npm run release:publish -- <tag> from a trusted operator checkout" >> $GITHUB_STEP_SUMMARY
+            echo "1. Create an RC tag on this exact commit" >> $GITHUB_STEP_SUMMARY
+            echo "2. Wait for its release-candidate.yml and install-test.yml push runs" >> $GITHUB_STEP_SUMMARY
+            echo "3. Capture and validate the production canary evidence" >> $GITHUB_STEP_SUMMARY
+            echo "4. Run npm run release:promote -- --rc-tag <rc> --stable-tag <stable> --receipt <abs> --evidence <abs> --output-dir <abs> --signing-key <abs> --public-key <abs>" >> $GITHUB_STEP_SUMMARY
+            echo "5. Run npm run release:publish -- <stable> --candidate <rc> --receipt <abs> --evidence <abs> --rehearsal-manifest <abs> --public-key <abs>" >> $GITHUB_STEP_SUMMARY
           else
             echo "## :stop_sign: Release Candidate Preflight Failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

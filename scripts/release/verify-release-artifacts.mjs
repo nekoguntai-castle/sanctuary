@@ -9,6 +9,7 @@ export function parseCliArgs(argv) {
     baseDir: '',
     publicKeyPath: '',
     strictStable: false,
+    strictComplete: false,
     strictImages: false,
     verifyImageDigests: false,
   };
@@ -26,6 +27,8 @@ export function parseCliArgs(argv) {
       index += 1;
     } else if (arg === '--strict-stable') {
       options.strictStable = true;
+    } else if (arg === '--strict-complete') {
+      options.strictComplete = true;
     } else if (arg === '--strict-images') {
       options.strictImages = true;
     } else if (arg === '--verify-image-digests') {
@@ -57,6 +60,7 @@ Options:
   --base-dir DIR              Directory containing local release assets (default: manifest directory)
   --public-key FILE           Public key for openssl-rsa-sha256 signatures
   --strict-stable             Enforce stable-release required artifact classes and evidence
+  --strict-complete           Enforce the complete signed inventory for stable or prerelease tags
   --strict-images             Validate legacy frontend/backend container evidence locally
   --verify-image-digests      Retired compatibility flag; always fails closed
   --help, -h                  Show this help text`);

@@ -96,9 +96,15 @@ Repository workflow permissions are intentionally read-only:
 - Diagnostic log-sink credentials and Forgejo artifact/cache uploads are allowed
   because they retain test evidence rather than publishing product artifacts.
 - `scripts/ci/check-workflows-test-only.sh` enforces this boundary.
-- After green Forgejo stable-tag gates, a trusted operator runs
-  `npm run release:publish -- <tag>` to verify mirror/tag parity and create
-  matching Forgejo/GitHub Release objects.
+- After both exact accepted-RC Forgejo gates and the production canary pass, a
+  trusted operator runs `npm run release:promote -- ...` with explicit RC,
+  stable, receipt, raw-evidence, rehearsal-output, and key paths. Only that
+  command may push the stable tag. The operator then runs
+  `npm run release:publish -- <stable> --candidate <rc> --receipt <abs>
+  --evidence <abs> --rehearsal-manifest <abs> --public-key <abs>` to revalidate
+  the same evidence, verify mirror/tag parity, and create matching
+  Forgejo/GitHub Release objects. The complete command sequence is in
+  [Release distribution](release-distribution.md#release-sequence).
 
 ## Lizard Remediation PR Loop
 

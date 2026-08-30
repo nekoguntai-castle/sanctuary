@@ -188,6 +188,44 @@ function expectStrictImagesFailure(fixture, messagePattern) {
   );
 }
 
+function expectCompleteFailure(fixture, messagePattern) {
+  assert.throws(
+    () => verifyReleaseArtifacts({
+      manifestPath: fixture.manifestPath,
+      publicKeyPath: fixture.publicKeyPath,
+      strictComplete: true,
+    }),
+    (error) => error instanceof ReleaseArtifactVerificationError
+      && messagePattern.test(error.message),
+  );
+}
+
+function testPrereleaseCompleteManifestRequiresFullInventory() {
+  withFixture((fixture) => {
+    rewriteManifest(fixture, (manifest) => {
+      manifest.release.tag = 'v1.2.3-rc1';
+      manifest.release.version = '1.2.3-rc1';
+      manifest.release.stability = 'prerelease';
+      manifest.artifacts = manifest.artifacts.filter((artifact) => artifact.type !== 'release-notes');
+    });
+    expectCompleteFailure(fixture, /release-notes/);
+  });
+}
+
+function testPrereleaseCompleteManifestRejectsDuplicateRequiredType() {
+  withFixture((fixture) => {
+    rewriteManifest(fixture, (manifest) => {
+      manifest.release.tag = 'v1.2.3-rc1';
+      manifest.release.version = '1.2.3-rc1';
+      manifest.release.stability = 'prerelease';
+      manifest.artifacts.push(structuredClone(
+        manifest.artifacts.find((artifact) => artifact.type === 'release-notes'),
+      ));
+    });
+    expectCompleteFailure(fixture, /exactly one release-notes/);
+  });
+}
+
 function useContainerOnlyManifest(fixture) {
   rewriteManifest(fixture, (manifest) => {
     manifest.artifacts = manifest.artifacts.filter((artifact) => artifact.type === 'container-image');
@@ -409,6 +447,8 @@ runTest('stable release manifest passes without containers', testStableManifestW
 runTest('stable release requires signed checksum file', testStableManifestRequiresSignedChecksumFile);
 runTest('stable offline bundle requires provenance', testStableOfflineBundleRequiresProvenance);
 runTest('stable release validates optional legacy container evidence', testStableManifestValidatesOptionalLegacyContainerEvidence);
+runTest('complete prerelease requires the full inventory', testPrereleaseCompleteManifestRequiresFullInventory);
+runTest('complete prerelease rejects duplicate required types', testPrereleaseCompleteManifestRejectsDuplicateRequiredType);
 runTest('live registry digest verification is retired', testLiveRegistryVerificationIsRetired);
 runTest('strict images accepts a complete container-only manifest', testStrictImagesContainerOnlyManifestPasses);
 runTest('strict images rejects null platform evidence', testStrictImagesRejectsNullPlatforms);

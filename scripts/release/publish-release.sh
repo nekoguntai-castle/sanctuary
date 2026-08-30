@@ -20,13 +20,20 @@ CREATE_RELEASE_SCRIPT="${SANCTUARY_CREATE_RELEASE_SCRIPT:-$ROOT_DIR/scripts/crea
 TAG=""
 DRY_RUN=false
 TEMP_DIR=""
+CANDIDATE_TAG=""
+CANARY_RECEIPT=""
+CANARY_EVIDENCE=""
+REHEARSAL_MANIFEST=""
+RELEASE_PUBLIC_KEY=""
 
 usage() {
   cat <<'EOF'
-Usage: scripts/release/publish-release.sh <tag> [--dry-run]
+Usage: scripts/release/publish-release.sh <tag> [--dry-run] [promotion evidence]
 
 Real publication accepts stable vX.Y.Z tags only. --dry-run also accepts
-prerelease tags and verifies release readiness without API mutations.
+prerelease tags and verifies release readiness without API mutations. Stable
+publication requires --candidate, --receipt, --evidence, --rehearsal-manifest,
+and --public-key from the accepted pre-stable promotion.
 EOF
 }
 
@@ -39,21 +46,65 @@ fail() {
 source "$SCRIPT_DIR/release-operator-api.sh"
 
 parse_args() {
-  if [[ $# -lt 1 || $# -gt 2 ]]; then
+  if [[ $# -lt 1 ]]; then
     usage >&2
     exit 2
   fi
-  TAG="$1"
-  if [[ $# -eq 2 ]]; then
-    [[ "$2" == "--dry-run" ]] || { usage >&2; exit 2; }
-    DRY_RUN=true
-  fi
+  TAG="$1"; shift
+  DRY_RUN=false
+  CANDIDATE_TAG=""; CANARY_RECEIPT=""; CANARY_EVIDENCE=""
+  REHEARSAL_MANIFEST=""; RELEASE_PUBLIC_KEY=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --dry-run) DRY_RUN=true; shift ;;
+      --candidate) CANDIDATE_TAG="${2:-}"; shift 2 ;;
+      --receipt) CANARY_RECEIPT="${2:-}"; shift 2 ;;
+      --evidence) CANARY_EVIDENCE="${2:-}"; shift 2 ;;
+      --rehearsal-manifest) REHEARSAL_MANIFEST="${2:-}"; shift 2 ;;
+      --public-key) RELEASE_PUBLIC_KEY="${2:-}"; shift 2 ;;
+      *) usage >&2; exit 2 ;;
+    esac
+  done
 
   [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] \
     || fail "tag must be a v-prefixed semantic version"
   if [[ "$DRY_RUN" == "false" && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     fail "only stable tags may be published; use --dry-run for prereleases"
   fi
+  if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    local candidate_number="${CANDIDATE_TAG#"$TAG-rc"}"
+    [[ "$CANDIDATE_TAG" == "$TAG-rc"* && "$candidate_number" =~ ^[1-9][0-9]*$ \
+      && "$CANARY_RECEIPT" == /* && "$CANARY_EVIDENCE" == /* \
+      && "$REHEARSAL_MANIFEST" == /* && "$RELEASE_PUBLIC_KEY" == /* ]] \
+      || fail "stable publication requires explicit accepted RC, canary, rehearsal manifest, and public key paths"
+  fi
+}
+
+verify_promotion_evidence() {
+  if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    return 0
+  fi
+  local stable_tag="$TAG"
+  local candidate_commit
+  candidate_commit="$(git rev-parse --verify "refs/tags/${CANDIDATE_TAG}^{commit}")" \
+    || fail "accepted RC tag does not exist locally"
+  [[ "$candidate_commit" == "$RELEASE_COMMIT" ]] \
+    || fail "accepted RC does not match stable release commit"
+  git fetch origin main >/dev/null
+  git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main \
+    || fail "stable release commit is not an ancestor of fresh origin/main"
+
+  TAG="$CANDIDATE_TAG"
+  verify_forgejo_tag
+  verify_forgejo_exact_workflow_gate release-candidate.yml "$CANDIDATE_TAG" "$RELEASE_COMMIT"
+  verify_forgejo_exact_workflow_gate install-test.yml "$CANDIDATE_TAG" "$RELEASE_COMMIT"
+  node "$SCRIPT_DIR/verify-release-candidate-canary.mjs" \
+    --repo "$ROOT_DIR" --receipt "$CANARY_RECEIPT" --evidence "$CANARY_EVIDENCE" \
+    --tag "$CANDIDATE_TAG" --commit "$RELEASE_COMMIT"
+  node "$SCRIPT_DIR/verify-prestable-rehearsal.mjs" \
+    --repo "$ROOT_DIR" --manifest "$REHEARSAL_MANIFEST" --public-key "$RELEASE_PUBLIC_KEY" \
+    --tag "$CANDIDATE_TAG" --commit "$RELEASE_COMMIT"
+  TAG="$stable_tag"
 }
 
 load_config() {
@@ -153,10 +204,17 @@ create_release_objects() {
 
 main() {
   parse_args "$@"
+  local parsed_tag="$TAG" parsed_dry_run="$DRY_RUN" parsed_candidate="$CANDIDATE_TAG"
+  local parsed_receipt="$CANARY_RECEIPT" parsed_evidence="$CANARY_EVIDENCE"
+  local parsed_manifest="$REHEARSAL_MANIFEST" parsed_public_key="$RELEASE_PUBLIC_KEY"
   load_config
+  TAG="$parsed_tag"; DRY_RUN="$parsed_dry_run"; CANDIDATE_TAG="$parsed_candidate"
+  CANARY_RECEIPT="$parsed_receipt"; CANARY_EVIDENCE="$parsed_evidence"
+  REHEARSAL_MANIFEST="$parsed_manifest"; RELEASE_PUBLIC_KEY="$parsed_public_key"
   TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-publish-release.XXXXXX")"
   trap on_exit EXIT
   validate_checkout
+  verify_promotion_evidence
   verify_forgejo_tag
   verify_forgejo_release_gate
   verify_github_actions_disabled

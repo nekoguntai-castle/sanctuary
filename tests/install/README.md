@@ -274,7 +274,7 @@ This workflow runs automatically on:
 |---------|------------|---------------|--------------|
 | Push to main (install paths) | Scoped install lanes | Path-scoped | No |
 | PR to main (install paths) | Scoped install lanes | Path-scoped | No |
-| Release tag (`v*.*.*`) | Release-critical + blocking upgrade matrix | Baseline + extended | **Yes** |
+| Prerelease tag (`v*.*.*-rc*`, alpha/beta/dev) | Release-critical + blocking upgrade matrix | Baseline + extended | **Yes** |
 | Nightly schedule | Unit/static install checks | None | No |
 | Manual dispatch | Configurable | Configurable | No |
 
@@ -321,7 +321,7 @@ workflow_dispatch:
 
 ### Release Blocking
 
-When a release tag (`v*.*.*`) is pushed:
+When a prerelease tag (`v*.*.*-rc*`, alpha/beta/dev) is pushed:
 - Install tests automatically run the `release-critical` suite and blocking upgrade matrix
 - Failed tests will block the release (workflow fails)
 - The test summary clearly indicates pass/fail status

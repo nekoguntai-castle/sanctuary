@@ -56,7 +56,7 @@ export function verifyReleaseArtifacts(inputOptions = {}) {
   }
 
   validateChecksumCoverage(localRefs, checksumCoverage, errors);
-  validateStrictStable(manifest, artifacts, checksumCoverage, context, errors);
+  validateStrictComplete(manifest, artifacts, checksumCoverage, context, errors);
   validateStrictImages(artifacts, context.strictImages, errors);
 
   if (options.verifyImageDigests) {
@@ -82,6 +82,7 @@ function normalizeOptions(options) {
     baseDir,
     publicKeyPath: options.publicKeyPath ? path.resolve(options.publicKeyPath) : '',
     strictStable: Boolean(options.strictStable),
+    strictComplete: Boolean(options.strictComplete),
     strictImages: Boolean(options.strictImages),
     verifyImageDigests: Boolean(options.verifyImageDigests),
   };
@@ -306,22 +307,28 @@ function validateChecksumCoverage(localRefs, checksumCoverage, errors) {
   }
 }
 
-function validateStrictStable(manifest, artifacts, checksumCoverage, context, errors) {
-  if (!context.strictStable || !isStableTag(manifest.release?.tag ?? '')) {
+function validateStrictComplete(manifest, artifacts, checksumCoverage, context, errors) {
+  const enforce = context.strictComplete
+    || (context.strictStable && isStableTag(manifest.release?.tag ?? ''));
+  if (!enforce) {
     return;
   }
 
   for (const requiredType of REQUIRED_STABLE_TYPES) {
     requireArtifactType(artifacts, requiredType, errors);
+    if (context.strictComplete
+      && artifacts.filter((artifact) => artifact.type === requiredType).length !== 1) {
+      errors.push(`complete releases require exactly one ${requiredType} artifact`);
+    }
   }
   if (checksumCoverage.signedChecksumFiles < 1) {
-    errors.push('stable releases require at least one signed checksum-file artifact');
+    errors.push('complete releases require at least one signed checksum-file artifact');
   }
   if (!hasVerifiableChecksumSignature(artifacts)) {
-    errors.push('stable releases require an openssl-rsa-sha256 signature on a checksum-file artifact');
+    errors.push('complete releases require an openssl-rsa-sha256 signature on a checksum-file artifact');
   }
   if (!manifest.builder) {
-    errors.push('stable releases require manifest.builder workflow/runId evidence');
+    errors.push('complete releases require manifest.builder workflow/runId evidence');
   }
   for (const artifact of artifacts) {
     validateStrictStableArtifact(artifact, errors);

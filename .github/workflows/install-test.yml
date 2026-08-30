@@ -5,7 +5,13 @@ on:
     branches:
       - main
     tags:
-      - 'v*.*.*'
+      # The accepted RC is the canonical install/upgrade evidence for the exact
+      # commit promoted to stable. Do not rerun the identical two-hour matrix
+      # after the immutable stable tag is pushed.
+      - 'v*.*.*-rc*'
+      - 'v*.*.*-alpha*'
+      - 'v*.*.*-beta*'
+      - 'v*.*.*-dev*'
     paths:
       - 'install.sh'
       - 'start.sh'

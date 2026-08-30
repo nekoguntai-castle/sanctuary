@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_UNDER_TEST="$REPO_ROOT/scripts/release/publish-release.sh"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-publish-release-test.XXXXXX")"
-trap 'find "$TEST_ROOT" -type f -delete; find "$TEST_ROOT" -depth -type d -empty -delete' EXIT
+trap 'status=$?; if (( status != 0 )); then find "$TEST_ROOT" -name output.log -type f -exec sh -c '\''echo "--- $1" >&2; cat "$1" >&2'\'' _ {} \;; fi; find "$TEST_ROOT" -type f -delete; find "$TEST_ROOT" -depth -type d -empty -delete' EXIT
 
 fail() {
   echo "FAIL: $*" >&2
@@ -63,11 +63,28 @@ body='{}'
 if [[ "$url" == *"/actions/permissions" ]]; then
   body="$(jq -cn --argjson enabled "${RELEASE_TEST_ACTIONS_ENABLED:-false}" '{enabled:$enabled}')"
 elif [[ "$url" == *"/actions/runs?"* ]]; then
-  body='{"workflow_runs":[{"id":42,"workflow_id":"install-test.yml","event":"push","status":"success"}]}'
+  body='{"workflow_runs":[{"id":41,"workflow_id":"release-candidate.yml","event":"push","status":"success"},{"id":42,"workflow_id":"install-test.yml","event":"push","status":"success"}]}'
+elif [[ "$url" == *"/actions/runs/41" ]]; then
+  body="$(jq -cn \
+    --arg status "${RELEASE_TEST_RC_GATE_STATUS:-success}" \
+    --arg tag "${RELEASE_TEST_TAG}-rc1" \
+    --arg sha "$RELEASE_TEST_SHA" \
+    '{workflow_id:"release-candidate.yml",event:"push",status:$status,prettyref:$tag,commit_sha:$sha}')"
 elif [[ "$url" == *"/actions/runs/42" ]]; then
+  default_gate_ref="$RELEASE_TEST_TAG"
+  gate_count_file="$RELEASE_TEST_STATE/install-gate-count"
+  gate_count=0
+  [[ ! -f "$gate_count_file" ]] || gate_count="$(cat "$gate_count_file")"
+  gate_count=$((gate_count + 1))
+  printf '%s\n' "$gate_count" > "$gate_count_file"
+  if [[ "$RELEASE_TEST_TAG" != *-* && "$gate_count" -eq 1 ]]; then
+    default_gate_ref="${RELEASE_TEST_TAG}-rc1"
+  else
+    default_gate_ref="${RELEASE_TEST_GATE_REF:-$default_gate_ref}"
+  fi
   body="$(jq -cn \
     --arg status "${RELEASE_TEST_GATE_STATUS:-success}" \
-    --arg tag "${RELEASE_TEST_GATE_REF:-$RELEASE_TEST_TAG}" \
+    --arg tag "$default_gate_ref" \
     --arg sha "$RELEASE_TEST_SHA" \
     '{workflow_id:"install-test.yml",event:"push",status:$status,prettyref:$tag,commit_sha:$sha}')"
 elif [[ "$url" == *"forgejo.test"*"/git/commits/"* ]]; then
@@ -116,12 +133,27 @@ printf 'create-release %s\n' "$*" >> "$TRACE_FILE"
 EOF
 }
 
+write_node_command_stub() {
+  cat > "$1" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$(basename "$1")" in
+  verify-release-candidate-canary.mjs|verify-prestable-rehearsal.mjs)
+    printf 'evidence %s\n' "$*" >> "$TRACE_FILE"
+    [[ "${RELEASE_TEST_EVIDENCE_FAIL:-false}" != true ]] || exit 9
+    ;;
+  *) exec /usr/bin/node "$@" ;;
+esac
+EOF
+  chmod +x "$1"
+}
+
 new_fixture() {
   local name="$1"
   local tag="$2"
   local fixture="$TEST_ROOT/$name"
   mkdir -p "$fixture/config" "$fixture/scripts/ci" "$fixture/scripts/release" \
-    "$fixture/bin" "$fixture/state" "$fixture/tmp"
+    "$fixture/bin" "$fixture/state" "$fixture/tmp" "$fixture/external/assets"
   cp "$SCRIPT_UNDER_TEST" "$fixture/scripts/release/publish-release.sh"
   cp "$REPO_ROOT/scripts/release/release-operator-api.sh" \
     "$fixture/scripts/release/release-operator-api.sh"
@@ -133,10 +165,15 @@ new_fixture() {
     "$fixture/scripts/ci/check-wallet-safety-classifier.mjs"
   cp "$REPO_ROOT/config/wallet-safety-critical-paths.json" \
     "$fixture/config/wallet-safety-critical-paths.json"
-  printf '%s\n' 'trace.log' 'output.log' 'review.json' 'state/' 'tmp/' > "$fixture/.gitignore"
+  printf '%s\n' 'trace.log' 'output.log' 'review.json' 'missing.env' 'origin.git/' 'state/' 'tmp/' > "$fixture/.gitignore"
   write_curl_stub "$fixture/bin/curl"
   write_forbidden_docker_stub "$fixture/bin/docker"
+  write_node_command_stub "$fixture/bin/node"
   write_release_stub "$fixture/scripts/create-forge-release.sh"
+  printf 'receipt\n' > "$fixture/external/receipt.json"
+  printf 'evidence\n' > "$fixture/external/evidence.log"
+  printf '{}\n' > "$fixture/external/assets/release-manifest.json"
+  printf 'public\n' > "$fixture/external/public.pem"
   chmod +x "$fixture/scripts/release/publish-release.sh" \
     "$fixture/scripts/release/previous-release-tag.sh" \
     "$fixture/scripts/create-forge-release.sh" \
@@ -146,7 +183,14 @@ new_fixture() {
   git -C "$fixture" config user.email "release-test@example.invalid"
   git -C "$fixture" add .
   git -C "$fixture" commit -qm "fixture"
+  git -C "$fixture" branch -M main
+  git init -q --bare "$fixture/origin.git"
+  git -C "$fixture" remote add origin "$fixture/origin.git"
+  git -C "$fixture" push -q origin main
   git -C "$fixture" tag "$tag"
+  if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    git -C "$fixture" tag "${tag}-rc1"
+  fi
   printf '%s\n' "$fixture"
 }
 
@@ -155,7 +199,18 @@ run_publish() {
   local tag="$2"
   shift 2
   local sha
+  local promotion_args=()
   sha="$(git -C "$fixture" rev-parse HEAD)"
+  if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ \
+    && "${RELEASE_TEST_WITHOUT_PROMOTION:-false}" != true ]]; then
+    promotion_args=(
+      --candidate "${tag}-rc1"
+      --receipt "$fixture/external/receipt.json"
+      --evidence "$fixture/external/evidence.log"
+      --rehearsal-manifest "$fixture/external/assets/release-manifest.json"
+      --public-key "$fixture/external/public.pem"
+    )
+  fi
   # publish-release.sh no longer reads SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW: the
   # release-time attestation gate is suspended (see the runbook). This generator
   # is kept rather than deleted so reinstating the gate is wiring, not a rewrite
@@ -211,7 +266,7 @@ run_publish() {
     UMBREL_REPO="retired-repo" \
     SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW="$evidence_path" \
     TMPDIR="$fixture/tmp" \
-    "$fixture/scripts/release/publish-release.sh" "$tag" "$@"
+    "$fixture/scripts/release/publish-release.sh" "$tag" "${promotion_args[@]}" "$@"
   )
 }
 
@@ -272,6 +327,7 @@ test_real_publish_orders_release_gates() {
   local tag="v1.2.3"
   local fixture
   fixture="$(new_fixture publish "$tag")"
+  printf '%s\n' 'TAG=v9.9.9' 'CANDIDATE_TAG=v9.9.9-rc9' 'DRY_RUN=true' > "$fixture/missing.env"
   run_publish "$fixture" "$tag" > "$fixture/output.log"
   assert_contains "$fixture/trace.log" "curl POST https://api.github.test/repos/nekoguntai-castle/sanctuary/git/refs"
   assert_contains "$fixture/trace.log" "create-release $tag"
@@ -384,6 +440,72 @@ test_exact_tag_lookup_ignores_branch_name_collision() {
   assert_not_contains "$fixture/trace.log" "api.github.test/repos/nekoguntai-castle/sanctuary/commits/$tag"
 }
 
+test_manual_stable_tag_without_promotion_evidence_fails_before_network() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture missing-promotion "$tag")"
+  if RELEASE_TEST_WITHOUT_PROMOTION=true run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "stable publication without promotion evidence unexpectedly passed"
+  fi
+  assert_contains "$fixture/output.log" "requires explicit accepted RC"
+  [[ ! -f "$fixture/trace.log" ]] || fail "missing promotion evidence reached the network"
+}
+
+test_failed_promotion_evidence_blocks_publication() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture failed-promotion "$tag")"
+  if RELEASE_TEST_EVIDENCE_FAIL=true run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "failed promotion evidence unexpectedly published"
+  fi
+  assert_not_contains "$fixture/trace.log" "curl POST"
+  assert_not_contains "$fixture/trace.log" "create-release"
+}
+
+test_similar_but_nonmatching_candidate_is_rejected() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture mismatched-candidate-spelling "$tag")"
+  local receipt="$fixture/external/receipt.json"
+  if (
+    cd "$fixture"
+    SANCTUARY_RELEASE_CONFIG="$fixture/missing.env" \
+    FORGEJO_URL=https://forgejo.test FORGEJO_TOKEN=token \
+    GITHUB_API_URL=https://api.github.test GITHUB_RELEASE_TOKEN=token \
+    "$fixture/scripts/release/publish-release.sh" "$tag" \
+      --candidate v1x2x3-rc1 --receipt "$receipt" --evidence "$receipt" \
+      --rehearsal-manifest "$receipt" --public-key "$receipt"
+  ) > "$fixture/output.log" 2>&1; then
+    fail "similar nonmatching candidate spelling unexpectedly passed"
+  fi
+  assert_contains "$fixture/output.log" "requires explicit accepted RC"
+  [[ ! -f "$fixture/trace.log" ]] || fail "bad candidate spelling reached the network"
+}
+
+test_non_main_release_commit_fails_before_publication_apis() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture non-main-release "$tag")"
+  git -C "$fixture" tag -d "$tag" "${tag}-rc1" >/dev/null
+  printf 'not landed\n' > "$fixture/not-landed.txt"
+  git -C "$fixture" add not-landed.txt
+  git -C "$fixture" commit -qm 'unlanded release commit'
+  git -C "$fixture" tag "$tag"
+  git -C "$fixture" tag "${tag}-rc1"
+  if run_publish "$fixture" "$tag" > "$fixture/output.log" 2>&1; then
+    fail "non-main release commit unexpectedly published"
+  fi
+  assert_contains "$fixture/output.log" "not an ancestor of fresh origin/main"
+  [[ ! -f "$fixture/trace.log" ]] || fail "non-main release reached publication APIs"
+}
+
+test_operator_script_has_no_verifier_override_seam() {
+  assert_not_contains "$SCRIPT_UNDER_TEST" "SANCTUARY_CANARY_VERIFIER"
+  assert_not_contains "$SCRIPT_UNDER_TEST" "SANCTUARY_REHEARSAL_VERIFIER"
+}
+
 test_dry_run_verifies_without_mutation
 test_rc_tag_run_at_same_commit_satisfies_gate
 test_non_numeric_rc_suffix_does_not_satisfy_gate
@@ -396,4 +518,9 @@ test_github_actions_drift_blocks_tag_creation
 test_mismatched_github_tag_blocks_release
 test_dry_run_requires_existing_github_tag
 test_exact_tag_lookup_ignores_branch_name_collision
+test_manual_stable_tag_without_promotion_evidence_fails_before_network
+test_failed_promotion_evidence_blocks_publication
+test_similar_but_nonmatching_candidate_is_rejected
+test_non_main_release_commit_fails_before_publication_apis
+test_operator_script_has_no_verifier_override_seam
 echo "publish-release operator tests passed"
