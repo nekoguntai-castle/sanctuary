@@ -1,7 +1,14 @@
 import * as bitcoin from 'bitcoinjs-lib';
-
+// Stryker disable all: module constants initialize before per-test mutant activation.
 const TXID_PATTERN = /^[0-9a-fA-F]{64}$/;
 const SCRIPT_BYTES_PATTERN = /^(?:[0-9a-fA-F]{2})*$/;
+const TRANSACTION_HEADER_BYTES = 4;
+const TRANSACTION_LOCKTIME_BYTES = 4;
+const INPUT_OUTPOINT_BYTES = 32 + 4;
+const INPUT_SEQUENCE_BYTES = 4;
+const OUTPUT_VALUE_BYTES = 8;
+const WITNESS_MARKER = 0x00;
+const WITNESS_FLAG = 0x01;
 
 /** A transaction above Bitcoin's block-weight ceiling cannot be confirmed. */
 export const MAX_AUTHENTICATED_TRANSACTION_WEIGHT = 4_000_000;
@@ -74,10 +81,115 @@ export interface AuthenticatedProjectedTransactionOutput {
   valueSats: bigint;
   scriptPubKeyHex: string;
 }
-
+// Stryker restore all
 const evidenceError = (
   reason: RawTransactionEvidenceReason,
 ): RawTransactionEvidenceError => new RawTransactionEvidenceError(reason);
+
+class RawTransactionCursor {
+  offset = 0;
+
+  constructor(private readonly bytes: Uint8Array) {}
+
+  get length(): number {
+    return this.bytes.byteLength;
+  }
+
+  byteAt(offset: number): number | undefined {
+    return this.bytes[offset];
+  }
+
+  skip(byteLength: number): boolean {
+    if (!Number.isSafeInteger(byteLength) || byteLength < 0
+      || byteLength > this.length - this.offset) return false;
+    this.offset += byteLength;
+    return true;
+  }
+
+  readCompactSize(): number | undefined {
+    const prefix = this.bytes[this.offset];
+    if (prefix === undefined) return undefined;
+    this.offset += 1;
+    if (prefix < 0xfd) return prefix;
+    // A canonical 64-bit CompactSize value is at least 2^32, which cannot be
+    // fulfilled by a JavaScript-backed transaction buffer. Leave those frames
+    // to bitcoinjs for authoritative malformed/non-canonical classification.
+    if (prefix === 0xff) return undefined;
+
+    const payloadBytes = prefix === 0xfd ? 2 : 4;
+    if (!this.skip(payloadBytes)) return undefined;
+    const start = this.offset - payloadBytes;
+    const value = this.readUint32At(start, payloadBytes);
+    const minimumCanonicalValue = prefix === 0xfd ? 0xfd : 0x1_0000;
+    return value >= minimumCanonicalValue ? value : undefined;
+  }
+
+  private readUint32At(start: number, byteLength: number): number {
+    let value = 0;
+    for (let index = 0; index < byteLength; index += 1) {
+      value += this.bytes[start + index]! * (2 ** (index * 8));
+    }
+    return value;
+  }
+}
+
+const skipInputs = (cursor: RawTransactionCursor, count: number): boolean => {
+  for (let index = 0; index < count; index += 1) {
+    if (!cursor.skip(INPUT_OUTPOINT_BYTES)) return false;
+    const scriptBytes = cursor.readCompactSize();
+    if (scriptBytes === undefined || !cursor.skip(scriptBytes + INPUT_SEQUENCE_BYTES)) return false;
+  }
+  return true;
+};
+
+const skipOutputs = (cursor: RawTransactionCursor, count: number): boolean => {
+  for (let index = 0; index < count; index += 1) {
+    if (!cursor.skip(OUTPUT_VALUE_BYTES)) return false;
+    const scriptBytes = cursor.readCompactSize();
+    if (scriptBytes === undefined || !cursor.skip(scriptBytes)) return false;
+  }
+  return true;
+};
+
+const skipWitnesses = (cursor: RawTransactionCursor, inputCount: number): boolean => {
+  let hasWitness = false;
+  for (let inputIndex = 0; inputIndex < inputCount; inputIndex += 1) {
+    const itemCount = cursor.readCompactSize();
+    if (itemCount === undefined) return false;
+    hasWitness ||= itemCount > 0;
+    for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
+      const itemBytes = cursor.readCompactSize();
+      if (itemBytes === undefined || !cursor.skip(itemBytes)) return false;
+    }
+  }
+  return hasWitness;
+};
+
+/**
+ * Measures canonical transaction framing without allocating input, output, or
+ * witness objects. Undefined deliberately delegates malformed/non-canonical
+ * classification to bitcoinjs, which remains the authoritative parser.
+ */
+export function measureCanonicalRawTransactionWeight(rawBytes: Uint8Array): number | undefined {
+  const cursor = new RawTransactionCursor(rawBytes);
+  if (!cursor.skip(TRANSACTION_HEADER_BYTES)) return undefined;
+  const hasWitness = cursor.byteAt(cursor.offset) === WITNESS_MARKER
+    && cursor.byteAt(cursor.offset + 1) === WITNESS_FLAG;
+  if (hasWitness) cursor.skip(2);
+  const bodyStart = cursor.offset;
+  const inputCount = cursor.readCompactSize();
+  if (inputCount === undefined || !skipInputs(cursor, inputCount)) return undefined;
+  const outputCount = cursor.readCompactSize();
+  if (outputCount === undefined || !skipOutputs(cursor, outputCount)) return undefined;
+  const witnessStart = cursor.offset;
+  if (hasWitness && !skipWitnesses(cursor, inputCount)) return undefined;
+  if (!cursor.skip(TRANSACTION_LOCKTIME_BYTES) || cursor.offset !== cursor.length) return undefined;
+  if (!hasWitness) return cursor.length * 4;
+  const strippedBytes = TRANSACTION_HEADER_BYTES
+    + (witnessStart - bodyStart)
+    + TRANSACTION_LOCKTIME_BYTES;
+  return strippedBytes * 3 + cursor.length;
+}
 
 const authenticateParsedTransaction = (
   expectedTxid: string,
@@ -101,6 +213,11 @@ export function parseAuthenticatedRawTransactionBytes(input: {
   expectedTxid: string;
   rawBytes: Uint8Array;
 }): AuthenticatedRawTransactionBytes {
+  const preflightWeight = measureCanonicalRawTransactionWeight(input.rawBytes);
+  if (preflightWeight !== undefined
+    && preflightWeight > MAX_AUTHENTICATED_TRANSACTION_WEIGHT) {
+    throw evidenceError('transaction_complexity_exceeded');
+  }
   let transaction: bitcoin.Transaction;
   try {
     transaction = bitcoin.Transaction.fromBuffer(Buffer.from(

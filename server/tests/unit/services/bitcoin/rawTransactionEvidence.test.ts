@@ -4,6 +4,7 @@ import {
   authenticateProjectedTransactionOutput,
   authenticateRawTransactionOutput,
   MAX_AUTHENTICATED_TRANSACTION_WEIGHT,
+  measureCanonicalRawTransactionWeight,
   parseAuthenticatedRawTransactionBytes,
   parseAuthenticatedRawTransaction,
   rawTransactionBytesFromHex,
@@ -12,6 +13,20 @@ import {
 } from '../../../../src/services/bitcoin/rawTransactionEvidence';
 
 const SCRIPT = Uint8Array.from([0x00, 0x14, ...new Uint8Array(20).fill(0xab)]);
+
+const EXPECTED_ERROR_MESSAGES: Record<RawTransactionEvidenceReason, string> = {
+  invalid_expected_txid: 'Expected transaction id is invalid',
+  malformed_raw_transaction: 'Raw transaction is malformed',
+  non_canonical_raw_transaction: 'Raw transaction encoding is not canonical',
+  txid_mismatch: 'Raw transaction id does not match the expected transaction id',
+  invalid_vout: 'Transaction output index is invalid',
+  missing_output: 'Transaction output does not exist',
+  invalid_expected_script: 'Expected output script is invalid',
+  amount_mismatch: 'Transaction output amount does not match expected evidence',
+  script_mismatch: 'Transaction output script does not match expected evidence',
+  transaction_complexity_exceeded: 'Transaction evidence exceeds the safe sync complexity limit',
+  evidence_digest_mismatch: 'Transaction evidence digest does not match the sealed bytes',
+};
 
 const makeTransaction = (): bitcoin.Transaction => {
   const transaction = new bitcoin.Transaction();
@@ -22,6 +37,31 @@ const makeTransaction = (): bitcoin.Transaction => {
   transaction.addOutput(new Uint8Array(0), 1n);
   return transaction;
 };
+
+const makeLargeLegacyTransaction = (scriptBytes: number): bitcoin.Transaction => {
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  transaction.addInput(new Uint8Array(32), 0xffffffff);
+  transaction.addOutput(new Uint8Array(scriptBytes), 1n);
+  return transaction;
+};
+
+const makeLargeWitnessTransaction = (witnessBytes: number): bitcoin.Transaction => {
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  transaction.addInput(new Uint8Array(32), 0xffffffff);
+  transaction.addOutput(new Uint8Array(0), 1n);
+  transaction.setWitness(0, [new Uint8Array(witnessBytes)]);
+  return transaction;
+};
+
+const VERSION = Buffer.alloc(4);
+const MINIMAL_INPUT = Buffer.concat([
+  Buffer.from([0x01]), Buffer.alloc(36), Buffer.from([0x00]), Buffer.alloc(4),
+]);
+const MINIMAL_OUTPUT = Buffer.concat([
+  Buffer.from([0x01]), Buffer.alloc(8), Buffer.from([0x00]),
+]);
 
 const expectReason = (
   operation: () => unknown,
@@ -38,6 +78,16 @@ const expectReason = (
 };
 
 describe('raw transaction evidence', () => {
+  it.each(Object.entries(EXPECTED_ERROR_MESSAGES) as [RawTransactionEvidenceReason, string][])(
+    'keeps the %s error contract static and reason-bound',
+    (reason, message) => {
+      const error = new RawTransactionEvidenceError(reason);
+      expect(error.name).toBe('RawTransactionEvidenceError');
+      expect(error.reason).toBe(reason);
+      expect(error.message).toBe(message);
+    },
+  );
+
   it('parses canonical bytes and binds them to a case-insensitive expected txid', () => {
     const transaction = makeTransaction();
     const rawHex = transaction.toHex();
@@ -89,30 +139,206 @@ describe('raw transaction evidence', () => {
       canonical.subarray(5),
     ]);
 
+    expect(measureCanonicalRawTransactionWeight(new Uint8Array())).toBeUndefined();
     expectReason(() => parseAuthenticatedRawTransactionBytes({
       expectedTxid: transaction.getId(),
       rawBytes: new Uint8Array(),
     }), 'malformed_raw_transaction');
+    expect(measureCanonicalRawTransactionWeight(nonCanonical)).toBeUndefined();
     expectReason(() => parseAuthenticatedRawTransactionBytes({
       expectedTxid: transaction.getId(),
       rawBytes: Uint8Array.from(nonCanonical),
     }), 'non_canonical_raw_transaction');
   });
 
+  it('matches bitcoinjs framing across CompactSize legacy and witness boundaries', () => {
+    for (const payloadBytes of [0, 1, 252, 253, 65_535, 65_536]) {
+      const legacy = makeLargeLegacyTransaction(payloadBytes);
+      const witness = makeLargeWitnessTransaction(payloadBytes);
+      expect(measureCanonicalRawTransactionWeight(legacy.toBuffer())).toBe(legacy.weight());
+      expect(measureCanonicalRawTransactionWeight(witness.toBuffer())).toBe(witness.weight());
+    }
+  });
+
+  it('distinguishes legacy framing from witness marker and flag lookalikes', () => {
+    const markerLikeHash = new Uint8Array(32);
+    markerLikeHash[0] = 0x01;
+    const markerLikeInput = new bitcoin.Transaction();
+    markerLikeInput.addInput(markerLikeHash, 0);
+    markerLikeInput.addOutput(SCRIPT, 1n);
+    const zeroInput = new bitcoin.Transaction();
+    zeroInput.addOutput(SCRIPT, 1n);
+    zeroInput.addOutput(new Uint8Array(0), 1n);
+
+    expect(measureCanonicalRawTransactionWeight(markerLikeInput.toBuffer()))
+      .toBe(markerLikeInput.weight());
+    expect(measureCanonicalRawTransactionWeight(zeroInput.toBuffer()))
+      .toBe(zeroInput.weight());
+  });
+
+  it('reads CompactSize payload bytes without consuming adjacent script bytes', () => {
+    const transaction = makeLargeLegacyTransaction(253);
+    transaction.outs[0].script.fill(0xab);
+
+    expect(measureCanonicalRawTransactionWeight(transaction.toBuffer()))
+      .toBe(transaction.weight());
+  });
+
   it.each([
-    ['at', MAX_AUTHENTICATED_TRANSACTION_WEIGHT, true],
-    ['above', MAX_AUTHENTICATED_TRANSACTION_WEIGHT + 1, false],
-  ] as const)('%s the byte-authenticated transaction-weight ceiling', (_boundary, weight, accepted) => {
+    ['legacy', makeLargeLegacyTransaction(999_936)],
+    ['witness', makeLargeWitnessTransaction(3_999_752)],
+  ] as const)('matches bitcoinjs weight for canonical %s framing', (_encoding, transaction) => {
+    const rawBytes = Uint8Array.from(transaction.toBuffer());
+
+    expect(transaction.weight()).toBe(MAX_AUTHENTICATED_TRANSACTION_WEIGHT);
+    expect(measureCanonicalRawTransactionWeight(rawBytes)).toBe(transaction.weight());
+    expect(parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId(),
+      rawBytes,
+    })).toMatchObject({ txid: transaction.getId() });
+  });
+
+  it.each([
+    ['legacy', makeLargeLegacyTransaction(999_937)],
+    ['witness', makeLargeWitnessTransaction(3_999_753)],
+  ] as const)('rejects over-limit canonical %s framing before bitcoinjs allocation', (_encoding, transaction) => {
+    const rawBytes = Uint8Array.from(transaction.toBuffer());
+    const parser = vi.spyOn(bitcoin.Transaction, 'fromBuffer');
+
+    try {
+      expect(transaction.weight()).toBeGreaterThan(MAX_AUTHENTICATED_TRANSACTION_WEIGHT);
+      expect(measureCanonicalRawTransactionWeight(rawBytes)).toBe(transaction.weight());
+      expectReason(() => parseAuthenticatedRawTransactionBytes({
+        expectedTxid: transaction.getId(),
+        rawBytes,
+      }), 'transaction_complexity_exceeded');
+      expect(parser).not.toHaveBeenCalled();
+    } finally {
+      parser.mockRestore();
+    }
+  });
+
+  it('rejects the combined 25,000-input and 25,000-output shape before bitcoinjs parsing', () => {
+    const transaction = new bitcoin.Transaction();
+    transaction.version = 2;
+    for (let index = 0; index < 25_000; index += 1) {
+      transaction.addInput(new Uint8Array(32), index);
+      transaction.addOutput(SCRIPT, 1n);
+    }
+    const rawBytes = transaction.toBuffer();
+    const parser = vi.spyOn(bitcoin.Transaction, 'fromBuffer');
+
+    try {
+      expect(transaction.weight()).toBe(7_200_056);
+      expect(measureCanonicalRawTransactionWeight(rawBytes)).toBe(transaction.weight());
+      expectReason(() => parseAuthenticatedRawTransactionBytes({
+        expectedTxid: '00'.repeat(32),
+        rawBytes,
+      }), 'transaction_complexity_exceeded');
+      expect(parser).not.toHaveBeenCalled();
+    } finally {
+      parser.mockRestore();
+    }
+  });
+
+  it.each([
+    ['empty', new Uint8Array()],
+    ['version only', VERSION],
+    ['truncated input', Uint8Array.from(Buffer.from('0200000001', 'hex'))],
+    ['truncated input before a complete empty tail', Buffer.concat([
+      VERSION, Buffer.from([0x01, 0x00]), Buffer.alloc(4),
+    ])],
+    ['non-canonical input count', Uint8Array.from(Buffer.from('02000000fd0100', 'hex'))],
+    ['truncated 16-bit CompactSize', Buffer.concat([VERSION, Buffer.from([0xfd, 0x01])])],
+    ['truncated 32-bit CompactSize', Buffer.concat([VERSION, Buffer.from([0xfe, 0x00, 0x00])])],
+    ['truncated 64-bit CompactSize', Buffer.concat([VERSION, Buffer.from([0xff]), Buffer.alloc(7)])],
+    ['non-canonical 32-bit CompactSize', Buffer.concat([VERSION, Buffer.from('feffff0000', 'hex')])],
+    ['non-canonical 32-bit count with a fulfillable 16-bit payload', Buffer.concat([
+      VERSION, Buffer.from('fefd000000', 'hex'), Buffer.alloc(253 * 41),
+      MINIMAL_OUTPUT, Buffer.alloc(4),
+    ])],
+    ['non-canonical 64-bit CompactSize', Buffer.concat([VERSION, Buffer.from('ffffffffff00000000', 'hex')])],
+    ['unsafe 64-bit CompactSize', Buffer.concat([VERSION, Buffer.from('ffffffffffffffff', 'hex')])],
+    ['64-bit count masquerading as a 32-bit count and input prefix', Buffer.concat([
+      VERSION, Buffer.from('ff0100000000000000', 'hex'), Buffer.alloc(32),
+      Buffer.from([0x00]), Buffer.alloc(4), MINIMAL_OUTPUT, Buffer.alloc(4),
+    ])],
+    ['unfulfillable 32-bit input count', Buffer.concat([VERSION, Buffer.from('fe00000100', 'hex')])],
+    ['unfulfillable 64-bit input count', Buffer.concat([VERSION, Buffer.from('ff0000000001000000', 'hex')])],
+    ['missing input script size', Buffer.concat([VERSION, Buffer.from([0x01]), Buffer.alloc(36)])],
+    ['truncated input script', Buffer.concat([
+      VERSION, Buffer.from([0x01]), Buffer.alloc(36), Buffer.from([0x01]),
+    ])],
+    ['oversized input script before a complete empty tail', Buffer.concat([
+      VERSION, Buffer.from([0x01]), Buffer.alloc(36),
+      Buffer.from([0x05, 0x00]), Buffer.alloc(4),
+    ])],
+    ['missing output count', Buffer.concat([VERSION, MINIMAL_INPUT])],
+    ['truncated output value', Buffer.concat([VERSION, MINIMAL_INPUT, Buffer.from([0x01]), Buffer.alloc(7)])],
+    ['truncated output value before a complete empty tail', Buffer.concat([
+      VERSION, MINIMAL_INPUT, Buffer.from([0x01, 0x00]), Buffer.alloc(4),
+    ])],
+    ['truncated output value before an exact locktime-sized tail', Buffer.concat([
+      VERSION, MINIMAL_INPUT, Buffer.from([0x01]), Buffer.alloc(4),
+    ])],
+    ['missing output script size', Buffer.concat([
+      VERSION, MINIMAL_INPUT, Buffer.from([0x01]), Buffer.alloc(8),
+    ])],
+    ['truncated output script', Buffer.concat([
+      VERSION, MINIMAL_INPUT, Buffer.from([0x01]), Buffer.alloc(8), Buffer.from([0x01]),
+    ])],
+    ['oversized output script before a complete locktime', Buffer.concat([
+      VERSION, MINIMAL_INPUT, Buffer.from([0x01]), Buffer.alloc(8), Buffer.from([0x05]),
+      Buffer.alloc(4),
+    ])],
+    ['missing witness item count', Buffer.concat([
+      VERSION, Buffer.from([0x00, 0x01]), MINIMAL_INPUT, MINIMAL_OUTPUT,
+    ])],
+    ['missing witness item size', Buffer.concat([
+      VERSION, Buffer.from([0x00, 0x01]), MINIMAL_INPUT, MINIMAL_OUTPUT, Buffer.from([0x01]),
+    ])],
+    ['truncated witness item', Buffer.concat([
+      VERSION, Buffer.from([0x00, 0x01]), MINIMAL_INPUT, MINIMAL_OUTPUT,
+      Buffer.from([0x01, 0x01]),
+    ])],
+    ['oversized witness item before a complete locktime', Buffer.concat([
+      VERSION, Buffer.from([0x00, 0x01]), MINIMAL_INPUT, MINIMAL_OUTPUT,
+      Buffer.from([0x01, 0x05]), Buffer.alloc(4),
+    ])],
+    ['missing locktime', Buffer.concat([VERSION, MINIMAL_INPUT, MINIMAL_OUTPUT])],
+    ['trailing byte', Buffer.concat([makeTransaction().toBuffer(), Buffer.from([0x00])])],
+  ] as const)('defers malformed or non-canonical %s framing to the authoritative parser', (_case, rawBytes) => {
+    expect(measureCanonicalRawTransactionWeight(rawBytes)).toBeUndefined();
+  });
+
+  it('defers structurally superfluous witness framing to the authoritative parser', () => {
+    const transaction = makeTransaction();
+    const legacy = transaction.toBuffer();
+    const superfluousWitness = Buffer.concat([
+      legacy.subarray(0, 4),
+      Buffer.from([0x00, 0x01]),
+      legacy.subarray(4, -4),
+      Buffer.from([0x00]),
+      legacy.subarray(-4),
+    ]);
+
+    expect(measureCanonicalRawTransactionWeight(superfluousWitness)).toBeUndefined();
+    expectReason(() => parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId(),
+      rawBytes: superfluousWitness,
+    }), 'malformed_raw_transaction');
+  });
+
+  it('retains the authoritative parsed-weight defense below the preflight ceiling', () => {
     const transaction = makeTransaction();
     const measuredWeight = vi.spyOn(bitcoin.Transaction.prototype, 'weight')
-      .mockReturnValue(weight);
+      .mockReturnValue(MAX_AUTHENTICATED_TRANSACTION_WEIGHT + 1);
+
     try {
-      const operation = () => parseAuthenticatedRawTransactionBytes({
+      expectReason(() => parseAuthenticatedRawTransactionBytes({
         expectedTxid: transaction.getId(),
-        rawBytes: Uint8Array.from(transaction.toBuffer()),
-      });
-      if (accepted) expect(operation()).toMatchObject({ txid: transaction.getId() });
-      else expectReason(operation, 'transaction_complexity_exceeded');
+        rawBytes: transaction.toBuffer(),
+      }), 'transaction_complexity_exceeded');
     } finally {
       measuredWeight.mockRestore();
     }

@@ -98,6 +98,49 @@ export function registerProcessTransactionClassificationTests(walletId: string):
       expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
     });
 
+    it('yields to worker timers while classifying a maximum-input transaction', async () => {
+      const txid = 'maximum_input_classification'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_maximum_input_wallet';
+      const externalAddress = 'tb1q_maximum_input_external';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{
+          txid: 'maximum_input_parent'.padEnd(64, 'b'),
+          vout: 0,
+          value: 0.001,
+          address: externalAddress,
+        }],
+        outputs: [{ value: 0.0009, address: walletAddress }],
+      });
+      transaction.vin = Array.from({ length: 24_389 }, (_, index) => ({
+        ...transaction.vin[0],
+        txid: index.toString(16).padStart(64, '0'),
+      }));
+      transaction.time = 1_700_000_000;
+      const ctx = createTestContext({
+        walletId,
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        addressMap: new Map([[walletAddress, { id: 'maximum-input-address' } as any]]),
+        walletAddressSet: new Set([walletAddress]),
+        txDetailsCache: new Map([[txid, transaction]]) as any,
+      });
+      let clock = 0;
+      const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+        clock += 30;
+        return clock;
+      });
+      let heartbeatRan = false;
+      setImmediate(() => { heartbeatRan = true; });
+
+      try {
+        await classifyTransactions(ctx, new Set([txid]));
+      } finally {
+        now.mockRestore();
+      }
+
+      expect(heartbeatRan).toBe(true);
+    });
+
     it('uses canonical script evidence instead of a conflicting decoded input address', async () => {
       const txid = 'canonical_script_input'.padEnd(64, 'a');
       const walletAddress = 'tb1q_canonical_script_wallet';

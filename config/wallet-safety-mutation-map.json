@@ -1271,8 +1271,8 @@
         {
           "id": "receive-raw-transaction-txid-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 146,
-          "lineEnd": 146,
+          "lineStart": 263,
+          "lineEnd": 263,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects invalid and mismatched expected transaction ids without exposing raw bytes"
@@ -1280,8 +1280,8 @@
           "canaries": [{
             "id": "receive-txid-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 146, "column": 7 },
-              "end": { "line": 146, "column": 48 }
+              "start": { "line": 263, "column": 7 },
+              "end": { "line": 263, "column": 48 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1294,8 +1294,8 @@
         {
           "id": "receive-raw-transaction-weight-boundary",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 147,
-          "lineEnd": 149,
+          "lineStart": 264,
+          "lineEnd": 266,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence at the authenticated transaction-weight ceiling"
@@ -1303,8 +1303,8 @@
           "canaries": [{
             "id": "receive-transaction-weight-cannot-be-bypassed",
             "location": {
-              "start": { "line": 147, "column": 7 },
-              "end": { "line": 147, "column": 63 }
+              "start": { "line": 264, "column": 7 },
+              "end": { "line": 264, "column": 63 }
             },
             "mutatorName": "EqualityOperator",
             "replacement": "transactionWeight >= MAX_AUTHENTICATED_TRANSACTION_WEIGHT",
@@ -1317,8 +1317,8 @@
         {
           "id": "receive-output-amount-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 173,
-          "lineEnd": 175,
+          "lineStart": 290,
+          "lineEnd": 292,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects exact amount and script mismatches independently"
@@ -1326,8 +1326,8 @@
           "canaries": [{
             "id": "receive-amount-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 173, "column": 7 },
-              "end": { "line": 173, "column": 85 }
+              "start": { "line": 290, "column": 7 },
+              "end": { "line": 290, "column": 85 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1340,8 +1340,8 @@
         {
           "id": "receive-output-script-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 177,
-          "lineEnd": 180,
+          "lineStart": 294,
+          "lineEnd": 297,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects exact amount and script mismatches independently"
@@ -1349,8 +1349,8 @@
           "canaries": [{
             "id": "receive-script-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 178, "column": 73 },
-              "end": { "line": 180, "column": 4 }
+              "start": { "line": 295, "column": 73 },
+              "end": { "line": 297, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1363,8 +1363,8 @@
         {
           "id": "receive-projected-transaction-txid-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 200,
-          "lineEnd": 202,
+          "lineStart": 317,
+          "lineEnd": 319,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects compact projected output evidence: txid_mismatch"
@@ -1372,8 +1372,8 @@
           "canaries": [{
             "id": "receive-projected-txid-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 200, "column": 7 },
-              "end": { "line": 200, "column": 81 }
+              "start": { "line": 317, "column": 7 },
+              "end": { "line": 317, "column": 81 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1386,8 +1386,8 @@
         {
           "id": "receive-projected-output-index-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 203,
-          "lineEnd": 203,
+          "lineStart": 320,
+          "lineEnd": 320,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects compact projected output evidence: invalid_vout"
@@ -1395,8 +1395,8 @@
           "canaries": [{
             "id": "receive-projected-vout-cannot-be-bypassed",
             "location": {
-              "start": { "line": 203, "column": 7 },
-              "end": { "line": 203, "column": 58 }
+              "start": { "line": 320, "column": 7 },
+              "end": { "line": 320, "column": 58 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1409,8 +1409,8 @@
         {
           "id": "receive-projected-output-presence-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 208,
-          "lineEnd": 208,
+          "lineStart": 325,
+          "lineEnd": 325,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects compact projected output evidence: missing_output"
@@ -1418,8 +1418,8 @@
           "canaries": [{
             "id": "receive-projected-missing-output-cannot-be-accepted",
             "location": {
-              "start": { "line": 208, "column": 7 },
-              "end": { "line": 208, "column": 20 }
+              "start": { "line": 325, "column": 7 },
+              "end": { "line": 325, "column": 20 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1432,8 +1432,8 @@
         {
           "id": "receive-projected-output-amount-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 210,
-          "lineEnd": 212,
+          "lineStart": 327,
+          "lineEnd": 329,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects compact projected output evidence: amount_mismatch"
@@ -1441,8 +1441,8 @@
           "canaries": [{
             "id": "receive-projected-amount-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 210, "column": 7 },
-              "end": { "line": 210, "column": 85 }
+              "start": { "line": 327, "column": 7 },
+              "end": { "line": 327, "column": 85 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -1455,8 +1455,8 @@
         {
           "id": "receive-projected-output-script-binding",
           "productionFile": "src/services/bitcoin/rawTransactionEvidence.ts",
-          "lineStart": 214,
-          "lineEnd": 217,
+          "lineStart": 331,
+          "lineEnd": 334,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/rawTransactionEvidence.test.ts",
             "name": "raw transaction evidence rejects compact projected output evidence: script_mismatch"
@@ -1464,8 +1464,8 @@
           "canaries": [{
             "id": "receive-projected-script-mismatch-cannot-be-accepted",
             "location": {
-              "start": { "line": 215, "column": 73 },
-              "end": { "line": 217, "column": 4 }
+              "start": { "line": 332, "column": 73 },
+              "end": { "line": 334, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",

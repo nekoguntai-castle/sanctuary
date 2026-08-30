@@ -7,6 +7,7 @@
  */
 
 import { createLogger } from '../../../../../utils/logger';
+import { createCooperativeScheduler } from '../../../../../utils/cooperativeScheduler';
 import { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } from '../../../../../constants/transactionClassification';
 import type {
   RawTransaction,
@@ -215,9 +216,11 @@ const classifyInputs = async (
   let classificationInputsComplete = true;
   let totalInputs = 0;
   let totalFromWallet = 0;
+  const checkpoint = createCooperativeScheduler(options?.signal);
 
   for (const input of inputs) {
     options?.signal?.throwIfAborted();
+    await checkpoint();
     if (input.coinbase) continue;
 
     const evidence = await resolveInputEvidence(ctx, input, options);
