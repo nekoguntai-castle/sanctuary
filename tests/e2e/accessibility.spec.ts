@@ -7,7 +7,13 @@
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { balanceHistory, emptyBalanceHistory } from './fixtures/balanceHistory';
-import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
+import {
+  getFailClosedWalletRemediationResponse,
+  json,
+  unmocked,
+  registerApiRoutes,
+  waitForThemeUtilityPaint,
+} from './helpers';
 
 const WALLET_ID = 'wallet-a11y-1';
 const DEVICE_ID = 'device-a11y-1';
@@ -524,12 +530,25 @@ test.describe('Accessibility', () => {
 
     // Wait for dashboard content to render
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
+    await waitForThemeUtilityPaint(page);
 
     // Check for horizontal overflow
-    const hasOverflow = await page.evaluate(() => {
-      return document.documentElement.scrollWidth > document.documentElement.clientWidth;
+    const overflow = await page.evaluate(() => {
+      const { clientWidth, scrollWidth } = document.documentElement;
+      const offenders = Array.from(document.querySelectorAll('body *'))
+        .filter(element => {
+          const rect = element.getBoundingClientRect();
+          return rect.left < -0.5 || rect.right > clientWidth + 0.5;
+        })
+        .slice(0, 10)
+        .map(element => ({
+          className: element.getAttribute('class'),
+          tagName: element.tagName.toLowerCase(),
+          text: element.textContent?.trim().slice(0, 80) ?? '',
+        }));
+      return { clientWidth, offenders, scrollWidth };
     });
-    expect(hasOverflow).toBe(false);
+    expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.clientWidth);
 
     expect(unhandledRequests).toEqual([]);
   });

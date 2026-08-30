@@ -8,6 +8,11 @@
 import type { Page, Route } from "@playwright/test";
 import { getSharedApiResponse } from "./fixtures/apiBaseline";
 
+const THEME_UTILITY_PROBE_ATTRIBUTE = "data-theme-utility-probe";
+const THEME_UTILITY_PROBE_CLASS = "bg-primary-800";
+const THEME_UTILITY_TIMEOUT_MS = 15_000;
+const REQUIRED_THEME_VARIABLES = ["--color-primary-800", "--color-primary-600", "--color-bg-50"];
+
 type CommonApiResponse = {
   status?: number;
   body: unknown;
@@ -49,6 +54,51 @@ const API_ORIGIN = (() => {
     return null;
   }
 })();
+
+/** Wait until Tailwind's asynchronous runtime has generated and painted theme utilities. */
+export async function waitForThemeUtilityPaint(page: Page): Promise<void> {
+  await page.evaluate(({ attributeName, probeClass }) => {
+    if (!document.body || document.querySelector(`[${attributeName}="true"]`)) return;
+
+    const probe = document.createElement("span");
+    probe.setAttribute(attributeName, "true");
+    probe.setAttribute("aria-hidden", "true");
+    probe.className = probeClass;
+    probe.style.cssText =
+      "position: fixed; top: -100px; left: 0; width: 1px; height: 1px; pointer-events: none;";
+    document.body.appendChild(probe);
+  }, { attributeName: THEME_UTILITY_PROBE_ATTRIBUTE, probeClass: THEME_UTILITY_PROBE_CLASS });
+
+  try {
+    await page.waitForFunction(
+      ({ attributeName, requiredVariables }) => {
+        const probe = document.querySelector(`[${attributeName}="true"]`);
+        if (!(probe instanceof HTMLElement)) return false;
+
+        const rootStyles = getComputedStyle(document.documentElement);
+        const variablesReady = requiredVariables.every(
+          variableName => rootStyles.getPropertyValue(variableName).trim() !== "",
+        );
+        const themeReady = Array.from(document.body.classList).some(className =>
+          className.startsWith("theme-"),
+        );
+        const probeColor = getComputedStyle(probe).backgroundColor;
+        return variablesReady && themeReady && !["", "transparent", "rgba(0, 0, 0, 0)"].includes(probeColor);
+      },
+      { attributeName: THEME_UTILITY_PROBE_ATTRIBUTE, requiredVariables: REQUIRED_THEME_VARIABLES },
+      { timeout: THEME_UTILITY_TIMEOUT_MS },
+    );
+  } finally {
+    await page
+      .evaluate(attributeName => document.querySelector(`[${attributeName}="true"]`)?.remove(),
+        THEME_UTILITY_PROBE_ATTRIBUTE)
+      .catch(() => undefined);
+  }
+
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
 
 /** Fulfill a route with a JSON response. */
 export function json(route: Route, data: unknown, status = 200) {
