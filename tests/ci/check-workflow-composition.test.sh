@@ -2794,6 +2794,12 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "node tests/ci/check-npm-ci-callsites.test.mjs"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality executes wallet-sync database readiness regressions" \
+  "node --test tests/ci/check-critical-mutation-config.test.mjs" \
+  "node --test tests/ci/wallet-sync-database-readiness.test.mjs" \
+  "node tests/ci/check-npm-ci-callsites.test.mjs"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality runs on direct main pushes" \
   "on:" \
   "push:" \

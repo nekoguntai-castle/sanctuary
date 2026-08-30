@@ -4,9 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { waitForDatabaseReadiness } from './wallet-sync-database-readiness.mjs';
 import { collectHealthProbe, healthProbeUrl } from './wallet-sync-health-probe.mjs';
 
-export { collectHealthProbe, healthProbeUrl };
+export { collectHealthProbe, healthProbeUrl, waitForDatabaseReadiness };
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
@@ -623,17 +624,18 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-async function startDatabase(names, password, image, mode) {
+export async function startDatabase(names, password, image, mode, runtime = {}) {
+  const {
+    operation = run,
+    waitUntilReady = waitForDatabaseReadiness,
+    readinessRuntime = {},
+  } = runtime;
   const statementTimeoutMs = mode === 'max' ? 20000 : 30000;
-  run(['docker', 'network', 'create', names.network]);
-  run(postgresRunArgs(names, password, mode));
-  for (let count = 0; count < 300; count++) {
-    throwIfTerminated();
-    try { run(['docker', 'exec', names.postgres, 'pg_isready', '-U', 'sanctuary', '-d', 'sanctuary_replay']); break; }
-    catch { if (count === 299) throw new Error('PostgreSQL readiness timeout'); await new Promise(r => setTimeout(r, 100)); }
-  }
+  operation(['docker', 'network', 'create', names.network]);
+  operation(postgresRunArgs(names, password, mode));
+  await waitUntilReady(names, password, { ...readinessRuntime, throwIfTerminated });
   const url = `postgresql://sanctuary:${password}@postgres:5432/sanctuary_replay?schema=public&connection_limit=30&pool_timeout=30&connect_timeout=10&statement_timeout=${statementTimeoutMs}`;
-  run(['docker', 'run', '--rm', '--network', names.network, '--env', `DATABASE_URL=${url}`, image,
+  operation(['docker', 'run', '--rm', '--network', names.network, '--env', `DATABASE_URL=${url}`, image,
     'npx', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma'], { stdio: 'inherit' });
   return url;
 }
