@@ -78,6 +78,10 @@ function validReceipt() {
 }
 
 function validV2Receipt(rawEvidence) {
+  const {
+    preflightActiveObserved: _legacyPreflightActiveObserved,
+    ...diagnosticsEvidence
+  } = validReceipt().diagnosticsEvidence;
   return {
     ...validReceipt(),
     schemaVersion: CANARY_RECEIPT_V2_SCHEMA_VERSION,
@@ -85,6 +89,15 @@ function validV2Receipt(rawEvidence) {
       tag: V2_TAG,
       commit: COMMIT,
       imageIds: [`sha256:${'b'.repeat(64)}`],
+    },
+    progressEvidence: {
+      ...validReceipt().progressEvidence,
+      preflightObserved: true,
+    },
+    diagnosticsEvidence,
+    boundedErrorEvidence: {
+      ...validReceipt().boundedErrorEvidence,
+      candidateBatch: { startCompleted: 1, endCompleted: 25, total: 69 },
     },
     remoteEvidence: {
       probeWindowMs: 600_000,
@@ -133,12 +146,48 @@ test('accepts a complete strict receipt for the exact RC identity', () => {
   assert.deepEqual(validate(receipt), receipt);
 });
 
+test('accepts a bounded first candidate batch for the observed positive total', () => {
+  for (const batch of [
+    { startCompleted: 1, endCompleted: 10, total: 10 },
+    { startCompleted: 1, endCompleted: 25, total: 69 },
+    { startCompleted: 1, endCompleted: 25, total: 100 },
+    { startCompleted: 1, endCompleted: 25, total: 1_000_000 },
+  ]) {
+    const receipt = validV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+    receipt.boundedErrorEvidence.candidateBatch = batch;
+    assert.deepEqual(validateCanaryReceipt(receipt, {
+      tag: V2_TAG, commit: COMMIT, now: NOW,
+    }), receipt);
+  }
+});
+
+test('rejects v2 candidate progress outside the observed bounded first batch', () => {
+  for (const batch of [
+    { startCompleted: 0, endCompleted: 1, total: 10 },
+    { startCompleted: 2, endCompleted: 2, total: 10 },
+    { startCompleted: 1, endCompleted: 0, total: 10 },
+    { startCompleted: 11, endCompleted: 11, total: 10 },
+    { startCompleted: 1, endCompleted: 11, total: 10 },
+    { startCompleted: 1, endCompleted: 26, total: 69 },
+    { startCompleted: 1, endCompleted: 1, total: 0 },
+    { startCompleted: 1, endCompleted: 25, total: 24 },
+    { startCompleted: 1, endCompleted: 25, total: 1_000_001 },
+  ]) {
+    const receipt = validV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+    receipt.boundedErrorEvidence.candidateBatch = batch;
+    assert.throws(() => validateCanaryReceipt(receipt, {
+      tag: V2_TAG, commit: COMMIT, now: NOW,
+    }), /bounded first batch/);
+  }
+});
+
 test('v2 requires strict remote summaries and rejects v1 for v0.8.69', () => {
   const receipt = validV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
   assert.deepEqual(validateCanaryReceipt(receipt, {
     tag: V2_TAG, commit: COMMIT, now: NOW,
   }), receipt);
   for (const mutate of [
+    value => { value.progressEvidence.preflightObserved = false; },
     value => { value.remoteEvidence.endpoints.live.failures = 1; },
     value => { value.remoteEvidence.endpoints.ready.p99Ms = 251; },
     value => { value.remoteEvidence.endpoints.metricsPrometheus.postTerminalSamples = 299; },
@@ -282,8 +331,15 @@ test('rejects incomplete metrics and bounded-error evidence', () => {
     (value) => { value.metricEvidence.counterFamiliesObserved.pop(); },
     (value) => { value.metricEvidence.counterFamiliesObserved[0] = 'terminal'; },
     (value) => { value.boundedErrorEvidence.candidateBatch.startCompleted = 0; },
+    (value) => { value.boundedErrorEvidence.candidateBatch.total = 0; },
+    (value) => {
+      value.boundedErrorEvidence.candidateBatch = { startCompleted: 11, endCompleted: 11, total: 10 };
+    },
+    (value) => {
+      value.boundedErrorEvidence.candidateBatch = { startCompleted: 1, endCompleted: 11, total: 10 };
+    },
     (value) => { value.boundedErrorEvidence.candidateBatch.endCompleted = 26; },
-    (value) => { value.boundedErrorEvidence.candidateBatch.total = 99; },
+    (value) => { value.boundedErrorEvidence.candidateBatch.total = 24; },
     (value) => { value.boundedErrorEvidence.outcome = 'silent'; },
     (value) => { value.boundedErrorEvidence.candidateBatch.endCompleted = 1; },
     (value) => { value.boundedErrorEvidence.withinBudgetAndGrace = false; },

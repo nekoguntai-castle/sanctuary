@@ -29,11 +29,15 @@ symlinked, relative, oversized, or in-checkout receipt paths.
    wallet.
 4. Observe phase names, live stage time, known address/candidate/batch counts,
    and live Sync Log rows.
-5. Observe worker diagnostics during `preflight` and `address_history`, confirm
-   Redis lock agreement, and confirm the terminal active total returns to zero.
+5. Observe the durable live progress event for `preflight`, observe worker
+   diagnostics during `address_history`, confirm Redis lock agreement, and
+   confirm the terminal active total returns to zero. `preflight` is synchronous
+   and can complete between diagnostics samples, so its live progress event is
+   the deterministic evidence boundary.
 6. Confirm active-stage age and every wallet-sync counter family is exposed.
-7. Observe a candidate batch in the `1-25/100` range advance or reach an explicit
-   retryable/fatal outcome inside its budget and grace. A silent hang fails.
+7. Observe the bounded first candidate batch advance from `1` through at most
+   `25` of the positive observed total, or reach an explicit retryable/fatal
+   outcome inside its budget and grace. A silent hang fails.
 8. Reconcile every wallet to success, retrying, or action required. Record a
    concrete reason for every action-required wallet in the private operational
    evidence, but put only the reconciled reason count in the receipt. Confirm the
@@ -74,11 +78,11 @@ cannot authorize v0.8.69.
       "candidates": true,
       "batches": true
     },
-    "liveSyncLogObserved": true
+    "liveSyncLogObserved": true,
+    "preflightObserved": true
   },
   "diagnosticsEvidence": {
     "versionsObserved": [1, 2],
-    "preflightActiveObserved": true,
     "addressHistoryActiveObserved": true,
     "redisLockAgreementObserved": true,
     "terminalActiveTotal": 0
@@ -96,7 +100,7 @@ cannot authorize v0.8.69.
     ]
   },
   "boundedErrorEvidence": {
-    "candidateBatch": { "startCompleted": 1, "endCompleted": 25, "total": 100 },
+    "candidateBatch": { "startCompleted": 1, "endCompleted": 25, "total": 69 },
     "outcome": "advanced",
     "withinBudgetAndGrace": true,
     "silentHang": false
@@ -143,6 +147,10 @@ cannot authorize v0.8.69.
 mandatory. Fleet outcome counts must equal `fleet.total`.
 `actionRequiredWithExplicitReason` must exactly equal the action-required
 outcome count; free-form reasons remain only in the private evidence.
+For v2 receipts, `preflightObserved` comes from the live
+`sync_phase_progress` event. The candidate total is the actual positive total
+reported by that fleet, capped by the runtime progress contract at 1,000,000;
+the first bounded batch starts at 1 and cannot exceed 25 or that total.
 Each endpoint needs at least 60 pre-terminal samples plus 300 post-terminal
 samples, zero failures, p99 no greater than 250 ms, and maximum latency no
 greater than the one-second timeout. The post-terminal window must be at least

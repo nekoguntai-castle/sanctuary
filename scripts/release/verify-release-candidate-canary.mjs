@@ -26,6 +26,9 @@ const METRIC_FAMILIES = [
   'lock_loss',
   'terminal',
 ];
+// Mirrors the externally emitted sync-progress count ceiling without requiring
+// this standalone Node release tool to load TypeScript sources.
+const SYNC_PROGRESS_MAX_COUNT = 1_000_000;
 const RC_TAG_PATTERN = /^v\d+\.\d+\.\d+-rc[1-9]\d*$/;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -186,16 +189,17 @@ function validateFleet(fleet) {
   }
 }
 
-function validateProgress(progress) {
+function validateProgress(progress, v2) {
   requireTrue(progress.phaseObserved, 'phase evidence');
   requireTrue(progress.liveElapsedObserved, 'live elapsed evidence');
   requireTrue(progress.knownCountsObserved.addresses, 'known address-count evidence');
   requireTrue(progress.knownCountsObserved.candidates, 'known candidate-count evidence');
   requireTrue(progress.knownCountsObserved.batches, 'known batch-count evidence');
   requireTrue(progress.liveSyncLogObserved, 'live sync-log evidence');
+  if (v2) requireTrue(progress.preflightObserved, 'preflight progress evidence');
 }
 
-function validateDiagnostics(diagnostics) {
+function validateDiagnostics(diagnostics, v2) {
   if (!Array.isArray(diagnostics.versionsObserved)
     || diagnostics.versionsObserved.length === 0
     || diagnostics.versionsObserved.some((version) => version !== 1 && version !== 2)
@@ -203,7 +207,7 @@ function validateDiagnostics(diagnostics) {
     || !diagnostics.versionsObserved.includes(2)) {
     throw new Error('diagnostics versions evidence is incomplete');
   }
-  requireTrue(diagnostics.preflightActiveObserved, 'preflight diagnostics evidence');
+  if (!v2) requireTrue(diagnostics.preflightActiveObserved, 'preflight diagnostics evidence');
   requireTrue(diagnostics.addressHistoryActiveObserved, 'address-history diagnostics evidence');
   requireTrue(diagnostics.redisLockAgreementObserved, 'Redis lock agreement evidence');
   if (diagnostics.terminalActiveTotal !== 0) {
@@ -222,11 +226,7 @@ function validateMetrics(metrics) {
   }
 }
 
-function validateBoundedError(evidence) {
-  const batch = evidence.candidateBatch;
-  requireSafeCount(batch.startCompleted, 'candidate batch start');
-  requireSafeCount(batch.endCompleted, 'candidate batch end');
-  requireSafeCount(batch.total, 'candidate batch total');
+function validateLegacyCandidateBatch(batch) {
   if (batch.total !== 100
     || batch.startCompleted < 1
     || batch.startCompleted > 25
@@ -234,6 +234,30 @@ function validateBoundedError(evidence) {
     || batch.endCompleted > 25) {
     throw new Error('candidate batch evidence is outside the required 1-25/100 range');
   }
+}
+
+function validateV2CandidateBatch(batch) {
+  const boundedFirstBatchEnd = Math.min(25, batch.total);
+  if (batch.total < 1
+    || batch.total > SYNC_PROGRESS_MAX_COUNT
+    || batch.startCompleted !== 1
+    || batch.endCompleted < batch.startCompleted
+    || batch.endCompleted > boundedFirstBatchEnd) {
+    throw new Error('candidate batch evidence is outside the required bounded first batch');
+  }
+}
+
+function validateCandidateBatch(batch, v2) {
+  requireSafeCount(batch.startCompleted, 'candidate batch start');
+  requireSafeCount(batch.endCompleted, 'candidate batch end');
+  requireSafeCount(batch.total, 'candidate batch total');
+  if (v2) validateV2CandidateBatch(batch);
+  else validateLegacyCandidateBatch(batch);
+}
+
+function validateBoundedError(evidence, v2) {
+  const batch = evidence.candidateBatch;
+  validateCandidateBatch(batch, v2);
   if (!['advanced', 'retryable', 'fatal'].includes(evidence.outcome)) {
     throw new Error('bounded-error outcome is invalid');
   }
@@ -275,12 +299,14 @@ function validateShape(receipt) {
   exactKeys(receipt.fleet.previouslyStaleRepeat, ['outcome', 'stranded'], 'stale-wallet repeat');
   exactKeys(receipt.progressEvidence, [
     'phaseObserved', 'liveElapsedObserved', 'knownCountsObserved', 'liveSyncLogObserved',
+    ...(v2 ? ['preflightObserved'] : []),
   ], 'progress evidence');
   exactKeys(receipt.progressEvidence.knownCountsObserved, [
     'addresses', 'candidates', 'batches',
   ], 'known-count evidence');
   exactKeys(receipt.diagnosticsEvidence, [
-    'versionsObserved', 'preflightActiveObserved', 'addressHistoryActiveObserved',
+    'versionsObserved', ...(!v2 ? ['preflightActiveObserved'] : []),
+    'addressHistoryActiveObserved',
     'redisLockAgreementObserved', 'terminalActiveTotal',
   ], 'diagnostics evidence');
   exactKeys(receipt.metricEvidence, [
@@ -319,14 +345,15 @@ function validateShape(receipt) {
 }
 
 export function validateCanaryReceipt(receipt, options) {
+  const v2 = receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION;
   validateShape(receipt);
   validateIdentity(receipt, options);
   validateFleet(receipt.fleet);
-  validateProgress(receipt.progressEvidence);
-  validateDiagnostics(receipt.diagnosticsEvidence);
+  validateProgress(receipt.progressEvidence, v2);
+  validateDiagnostics(receipt.diagnosticsEvidence, v2);
   validateMetrics(receipt.metricEvidence);
-  validateBoundedError(receipt.boundedErrorEvidence);
-  if (receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION) {
+  validateBoundedError(receipt.boundedErrorEvidence, v2);
+  if (v2) {
     validateRemoteEvidence(receipt.remoteEvidence);
   }
   validateSignoff(receipt.signoff);
