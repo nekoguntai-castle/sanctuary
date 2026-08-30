@@ -4,6 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { collectHealthProbe, healthProbeUrl } from './wallet-sync-health-probe.mjs';
+
+export { collectHealthProbe, healthProbeUrl };
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
@@ -556,22 +559,6 @@ async function hostPort(name) {
   throw new Error('Replay health port was not published');
 }
 
-export function healthProbeUrl(port, path, environment = process.env) {
-  const host = environment.SANCTUARY_DOCKER_PUBLISHED_HOST || '127.0.0.1';
-  if (!/^[A-Za-z0-9._:[\]-]+$/.test(host)) throw new Error('Invalid Docker published host');
-  const hostname = host.includes(':') ? `[${host.replace(/^\[|\]$/g, '')}]` : host;
-  return new URL(`http://${hostname}:${port}${path}`);
-}
-
-async function probe(port, path) {
-  const started = performance.now();
-  try {
-    const response = await fetch(healthProbeUrl(port, path), { signal: AbortSignal.timeout(1000) });
-    await response.arrayBuffer();
-    return { path, ok: response.status === 200, elapsedMs: performance.now() - started };
-  } catch { return { path, ok: false, elapsedMs: performance.now() - started }; }
-}
-
 export function cleanup(names, operations = { inspect: containerInspect, run }) {
   const failures = [];
   [names.worker, names.postgres].forEach(name => {
@@ -712,7 +699,10 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
         containerInspect(names.worker, '{{.State.Running}}'),
       )) break;
       throwIfTerminated();
-      const probeSample = await probe(port, PROBE_PATHS[samples.length % 3]);
+      const probeSample = await collectHealthProbe(port, PROBE_PATHS[samples.length % 3], {
+        running: () => containerInspect(names.worker, '{{.State.Running}}'),
+      });
+      if (probeSample.subjectStopped) break;
       const resourceSample = await collectResourceSample({
         sample: () => ({
           sampled: memory(names.worker),
@@ -730,6 +720,9 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
         probePath: probeSample.path,
         probeOk: probeSample.ok,
         probeElapsedMs: probeSample.elapsedMs,
+        probeAttempts: probeSample.attempts.length > 1 || !probeSample.ok
+          ? probeSample.attempts
+          : undefined,
       });
       sampledPeakBytes = Math.max(sampledPeakBytes, resourceSample.sampled);
       currentPeakBytes = Math.max(currentPeakBytes, resourceSample.current);
