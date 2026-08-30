@@ -644,6 +644,34 @@ test('architecture receipts require fresh compact authentication and one-current
   assert.throws(() => validateArchitectureReceipts([...receipts.map((receipt, index) => (
     index === 1 ? { ...receipt, maxTxDetailsCacheSize: 2 } : receipt
   )), ...cleanup, ...releases], {}), /Architecture receipt/);
+
+  const transientMiddleGrowth = cleanup.map((receipt, index) => (
+    index === 1 ? { ...receipt, currentBytes: 40 * 1024 * 1024 } : receipt
+  ));
+  assert.doesNotThrow(() => validateArchitectureReceipts(
+    [...receipts, ...transientMiddleGrowth, ...releases],
+    { architecture: { fullCurrentCounts: [100, 69, 0] } },
+  ));
+
+  const retainedAtLimit = cleanup.map((receipt, index) => (
+    index === 2 ? { ...receipt, currentBytes: cleanup[0].currentBytes + 32 * 1024 * 1024 } : receipt
+  ));
+  assert.doesNotThrow(() => validateArchitectureReceipts(
+    [...receipts, ...retainedAtLimit, ...releases],
+    { architecture: { fullCurrentCounts: [100, 69, 0] } },
+  ));
+
+  const retainedOverLimit = retainedAtLimit.map((receipt, index) => (
+    index === 2 ? { ...receipt, currentBytes: receipt.currentBytes + 1 } : receipt
+  ));
+  assert.throws(() => validateArchitectureReceipts(
+    [...receipts, ...retainedOverLimit, ...releases],
+    { architecture: { fullCurrentCounts: [100, 69, 0] } },
+  ), /Final post-context cgroup growth exceeded 32 MiB/);
+  assert.throws(() => validateArchitectureReceipts(
+    [...receipts, ...cleanup.slice(0, 2), ...releases],
+    { architecture: { fullCurrentCounts: [100, 69, 0] } },
+  ), /Post-context cgroup receipt sequence is incomplete/);
 });
 
 test('production evidence release receipts require every evidence map to be empty', () => {

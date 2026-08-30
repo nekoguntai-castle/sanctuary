@@ -153,10 +153,8 @@ export function validateArchitectureReceipts(events, manifest) {
   const cleanup = [1, 2, 3].map(pass => events.find(event => event.event === 'resource_checkpoint'
     && event.pass === pass && event.stage === 'pass_context_released'));
   if (cleanup.some(receipt => !receipt)) throw new Error('Post-context cgroup receipt sequence is incomplete');
-  for (let index = 1; index < cleanup.length; index += 1) {
-    if (cleanup[index].currentBytes - cleanup[index - 1].currentBytes > 32 * 1024 * 1024) {
-      throw new Error('Post-context cgroup growth exceeded 32 MiB');
-    }
+  if (cleanup.at(-1).currentBytes - cleanup[0].currentBytes > 32 * 1024 * 1024) {
+    throw new Error('Final post-context cgroup growth exceeded 32 MiB');
   }
   validateProductionEvidenceReleaseReceipts(events, [1, 2, 3]);
   return receipts;
