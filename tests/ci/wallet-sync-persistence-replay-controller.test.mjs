@@ -108,6 +108,7 @@ const replayDriverHelperSource = readFileSync(
 const fixtureRequire = createRequire(import.meta.url);
 const {
   buildCombinedMaxFixture,
+  buildMaxFixture,
   createDriverHelpers,
   createMaxCombinedFixtureProgressSequence,
   createMaxFixtureSequence,
@@ -734,9 +735,15 @@ test('sealed fixture deterministically matches its manifest union and counts', (
 test('combined maximum fixture has one coherent transaction identity and shape', () => {
   const require = createRequire(new URL('../../server/package.json', import.meta.url));
   const bitcoin = require('bitcoinjs-lib');
+  class TransactionWithoutBuilderReparse extends bitcoin.Transaction {
+    static fromHex() {
+      throw new Error('maximum fixture builder transaction reparse forbidden');
+    }
+  }
+  const builderBitcoin = { ...bitcoin, Transaction: TransactionWithoutBuilderReparse };
   const progress = [];
   const fixture = buildCombinedMaxFixture(
-    bitcoin,
+    builderBitcoin,
     { inputs: 3, outputs: 4 },
     label => progress.push(label),
   );
@@ -756,6 +763,29 @@ test('combined maximum fixture has one coherent transaction identity and shape',
   assert.equal(fixture.rawTransactions.get(details.txid), details);
   assert.equal(fixture.weight, parsed.weight());
   assert.deepEqual(progress, MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE);
+});
+
+test('maximum fixture axes retain serialized weight without builder reparsing', () => {
+  const require = createRequire(new URL('../../server/package.json', import.meta.url));
+  const bitcoin = require('bitcoinjs-lib');
+  class TransactionWithoutBuilderReparse extends bitcoin.Transaction {
+    static fromHex() {
+      throw new Error('maximum fixture builder transaction reparse forbidden');
+    }
+  }
+  const builderBitcoin = { ...bitcoin, Transaction: TransactionWithoutBuilderReparse };
+  const fixtures = [
+    buildMaxFixture(builderBitcoin, 'output', 1, 0, 4, true),
+    buildMaxFixture(builderBitcoin, 'input', 2, 0, 3, true),
+    buildMaxFixture(builderBitcoin, 'input', 3, 0, 3, false),
+  ];
+
+  for (const fixture of fixtures) {
+    const details = fixture.transactions[0].details;
+    const parsed = bitcoin.Transaction.fromHex(details.hex);
+    assert.equal(fixture.weight, parsed.weight());
+    assert.equal(details.txid, parsed.getId());
+  }
 });
 
 test('TERM during setup preserves failure receipts and exact owned cleanup', async () => {

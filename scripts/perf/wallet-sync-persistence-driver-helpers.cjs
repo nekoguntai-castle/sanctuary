@@ -132,7 +132,9 @@ function buildMaxTransaction(
   progress?.('transaction-outputs-built');
   const details = rawTransactionDetails(transaction);
   progress?.('transaction-serialized');
-  return details;
+  const weight = transaction.weight();
+  progress?.('weight-measured');
+  return { details, weight };
 }
 
 function buildMaxFixture(
@@ -162,7 +164,7 @@ function buildMaxFixture(
     ? Array.from({ length: inputCount }, (_, vout) => ({ txid: previous[0].txid, vout }))
     : Array.from({ length: inputCount }, () => ({ txid: '11'.repeat(32) }));
   progress?.('input-references-built');
-  const details = buildMaxTransaction(
+  const { details, weight } = buildMaxTransaction(
     bitcoin, externalScript, addressItem.output, inputReferences, outputCount, scriptBytes, progress,
   );
   const walletId = `00000000-0000-4000-8000-${String(100000000000 + walletOrdinal).slice(-12)}`;
@@ -173,8 +175,6 @@ function buildMaxFixture(
     canonicalPolicyId: 'single_sig_native_segwit', canonicalPolicyVersion: 1,
     scriptPubKey: Buffer.from(addressItem.output).toString('hex'), used: false, createdAt: new Date(0),
   };
-  const weight = bitcoin.Transaction.fromHex(details.hex).weight();
-  progress?.('weight-measured');
   return {
     definition: { walletId, leaseToken, leaseGeneration: 1, network: 'mainnet', addressCount: 1, seededOutputs: [] },
     addresses: [address],
