@@ -75,6 +75,27 @@ export function classifyResourceSample(sampled, current, kernel, subjectRunningS
   throw new Error('Required memory evidence became unavailable');
 }
 
+export async function collectResourceSample({
+  sample,
+  running,
+  wait = milliseconds => new Promise(resolvePromise => setTimeout(resolvePromise, milliseconds)),
+}) {
+  const maxAttempts = 3;
+  let missing = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const values = sample();
+    missing = ['sampled', 'current', 'kernel'].filter(name => values[name] === undefined);
+    if (missing.length === 0) {
+      return { subjectStopped: false, ...values };
+    }
+    if (!classifyContainerRunningState(running())) return { subjectStopped: true };
+    if (attempt < maxAttempts) await wait(100);
+  }
+  throw new Error(
+    `Required memory evidence became unavailable after ${maxAttempts} attempts (missing: ${missing.join(', ')})`,
+  );
+}
+
 export function calculateMemoryEvidence({
   baselineBytes,
   baselineCurrentBytes,
@@ -692,15 +713,14 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
       )) break;
       throwIfTerminated();
       const probeSample = await probe(port, PROBE_PATHS[samples.length % 3]);
-      const sampled = memory(names.worker);
-      const current = kernelCurrent(names.worker);
-      const kernel = kernelPeak(names.worker);
-      const resourceSample = classifyResourceSample(
-        sampled,
-        current,
-        kernel,
-        containerInspect(names.worker, '{{.State.Running}}'),
-      );
+      const resourceSample = await collectResourceSample({
+        sample: () => ({
+          sampled: memory(names.worker),
+          current: kernelCurrent(names.worker),
+          kernel: kernelPeak(names.worker),
+        }),
+        running: () => containerInspect(names.worker, '{{.State.Running}}'),
+      });
       if (resourceSample.subjectStopped) break;
       samples.push(probeSample);
       resourceSamples.push({

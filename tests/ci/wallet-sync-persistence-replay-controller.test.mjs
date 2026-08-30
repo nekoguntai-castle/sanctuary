@@ -12,6 +12,7 @@ import {
   createResourceSnapshot,
   classifyContainerRunningState,
   classifyResourceSample,
+  collectResourceSample,
   cleanup,
   healthProbeUrl,
   ownedResourceNames,
@@ -403,6 +404,55 @@ test('resource sampling accepts subject exit races but fails closed while runnin
   assert.throws(() => classifyResourceSample(128, undefined, 256, 'true'), /memory evidence/);
   assert.throws(() => classifyResourceSample(128, 192, undefined, 'true'), /memory evidence/);
   assert.throws(() => classifyResourceSample(undefined, undefined, undefined, ''), /running state/);
+});
+
+test('resource sampling retries one transient miss and returns only a complete sample', async () => {
+  const samples = [
+    { sampled: 128, current: undefined, kernel: 256 },
+    { sampled: 144, current: 208, kernel: 272 },
+  ];
+  let runningReads = 0;
+  let waits = 0;
+
+  assert.deepEqual(await collectResourceSample({
+    sample: () => samples.shift(),
+    running: () => { runningReads += 1; return 'true'; },
+    wait: async () => { waits += 1; },
+  }), {
+    subjectStopped: false,
+    sampled: 144,
+    current: 208,
+    kernel: 272,
+  });
+  assert.equal(runningReads, 1);
+  assert.equal(waits, 1);
+});
+
+test('resource sampling fails closed after bounded persistent loss', async () => {
+  let sampleReads = 0;
+  let waits = 0;
+  await assert.rejects(collectResourceSample({
+    sample: () => { sampleReads += 1; return { sampled: 128, current: undefined, kernel: 256 }; },
+    running: () => 'true',
+    wait: async () => { waits += 1; },
+  }), /memory evidence/);
+  assert.equal(sampleReads, 3);
+  assert.equal(waits, 2);
+});
+
+test('resource sampling reports a subject that stops during retry and rejects unknown state', async () => {
+  let runningReads = 0;
+  assert.deepEqual(await collectResourceSample({
+    sample: () => ({ sampled: undefined, current: undefined, kernel: undefined }),
+    running: () => { runningReads += 1; return runningReads === 1 ? 'true' : 'false'; },
+    wait: async () => {},
+  }), { subjectStopped: true });
+
+  await assert.rejects(collectResourceSample({
+    sample: () => ({ sampled: undefined, current: undefined, kernel: undefined }),
+    running: () => '',
+    wait: async () => assert.fail('unknown running state must not retry'),
+  }), /running state/);
 });
 
 test('memory growth pairs Docker and cgroup counters without mixing baselines', () => {
