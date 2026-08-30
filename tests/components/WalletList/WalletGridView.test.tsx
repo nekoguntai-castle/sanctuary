@@ -175,7 +175,7 @@ describe('WalletGridView', () => {
             deviceCount: 2,
             isShared: false,
             lastSyncStatus: 'success',
-            lastSyncedAt: '2026-01-01T00:00:00.000Z',
+            lastSyncedAt: 'not-a-date',
             syncInProgress: false,
           } as any,
           {

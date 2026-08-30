@@ -33,7 +33,6 @@ export type {
   WalletSyncSubject,
   WalletSyncTone,
 } from './walletSyncPresentationTypes';
-export { STALE_SYNC_THRESHOLD_MS } from './walletSyncSettledStates';
 
 function resyncingPresentation(
   wallet: WalletSyncSubject,
@@ -201,7 +200,7 @@ function legacyActivePresentation(
  * `syncInProgress` flag because both are strictly more specific than "Syncing"
  * and both still convey activity.
  *
- * `now` is injectable so callers and tests can pin the staleness clock.
+ * `now` is injectable so callers and tests can pin lease and retry timing.
  */
 export function getWalletSyncPresentation(
   wallet: WalletSyncSubject,
@@ -227,7 +226,7 @@ export function getWalletSyncPresentation(
     return pendingPresentation(lifecycle.fullResyncPending);
   }
   if (lifecycle.state === 'attention') return attentionPresentation(wallet, lifecycle);
-  if (status === 'success') return successPresentation(wallet, now);
+  if (status === 'success') return successPresentation(wallet);
   if (!status) return idlePresentation(wallet);
 
   const terminal = TERMINAL_PRESENTATIONS[status];

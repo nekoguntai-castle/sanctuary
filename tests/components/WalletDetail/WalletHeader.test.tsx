@@ -257,14 +257,14 @@ describe("WalletHeader", () => {
     expect(screen.getByText("Synced")).toBeInTheDocument();
   });
 
-  it("does not show a green success badge for a sync that is hours old", () => {
+  it("keeps an old activity-driven success badge green", () => {
     renderHeader({
       lastSyncStatus: "success",
       lastSyncedAt: "2026-02-02T00:00:00.000Z",
     });
 
-    expect(screen.queryByText("Synced")).not.toBeInTheDocument();
-    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText("Synced")).toBeInTheDocument();
+    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
   });
 
   it("renders success status without last-synced timestamp and supports custom network badge", () => {

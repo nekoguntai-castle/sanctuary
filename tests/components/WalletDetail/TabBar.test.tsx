@@ -23,6 +23,34 @@ describe('TabBar', () => {
     expect(onTabChange).toHaveBeenCalledWith('utxo');
   });
 
+  it('keeps the active background intrinsic to the selected tab', () => {
+    const { rerender } = render(
+      <TabBar
+        activeTab="tx"
+        onTabChange={vi.fn()}
+        userRole="viewer"
+        draftsCount={0}
+      />
+    );
+    const transactions = screen.getByRole('tab', { name: 'Transactions' });
+    const utxos = screen.getByRole('tab', { name: 'UTXOs' });
+
+    expect(transactions).toHaveClass('bg-white', 'dark:bg-sanctuary-600', 'shadow-sm');
+    expect(utxos).not.toHaveClass('bg-white', 'dark:bg-sanctuary-600', 'shadow-sm');
+
+    rerender(
+      <TabBar
+        activeTab="utxo"
+        onTabChange={vi.fn()}
+        userRole="viewer"
+        draftsCount={0}
+      />
+    );
+
+    expect(transactions).not.toHaveClass('bg-white', 'dark:bg-sanctuary-600', 'shadow-sm');
+    expect(utxos).toHaveClass('bg-white', 'dark:bg-sanctuary-600', 'shadow-sm');
+  });
+
   it('renders owner-only tabs and hides draft badge at zero', () => {
     render(
       <TabBar

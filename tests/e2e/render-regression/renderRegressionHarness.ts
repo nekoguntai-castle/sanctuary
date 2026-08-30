@@ -2,13 +2,9 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { flatBalanceHistory } from '../fixtures/balanceHistory';
 import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from '../helpers';
 
-/**
- * Relative on purpose. The sync badge demotes a "success" whose timestamp is
- * older than `STALE_SYNC_THRESHOLD_MS` to a Stale tone, so a fixed date in the
- * past would flip these screenshots to the stale styling the day it aged out.
- * No screenshot in this suite renders the timestamp itself.
- */
-const RECENT_SYNCED_AT = new Date(Date.now() - 60_000).toISOString();
+// Fixed on purpose: elapsed time does not demote an activity-driven settled
+// success, so render fixtures must not drift with the wall clock.
+const SETTLED_SYNCED_AT = '2024-01-01T00:00:00.000Z';
 
 export const MAINNET_WALLET_ID = 'wallet-mainnet-1';
 export const TESTNET_WALLET_ID = 'wallet-testnet-1';
@@ -144,7 +140,7 @@ export const MAINNET_WALLET = {
   isShared: false,
   sharedWith: [],
   syncInProgress: false,
-  lastSyncedAt: RECENT_SYNCED_AT,
+  lastSyncedAt: SETTLED_SYNCED_AT,
   lastSyncStatus: 'success',
 };
 
@@ -164,7 +160,7 @@ export const TESTNET_WALLET = {
   isShared: false,
   sharedWith: [],
   syncInProgress: false,
-  lastSyncedAt: RECENT_SYNCED_AT,
+  lastSyncedAt: SETTLED_SYNCED_AT,
   lastSyncStatus: 'success',
 };
 

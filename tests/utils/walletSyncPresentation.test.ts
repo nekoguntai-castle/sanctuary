@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  STALE_SYNC_THRESHOLD_MS,
   getWalletSyncPresentation,
   isSyncGenerationPending,
 } from '../../src/utils/walletSyncPresentation';
 
 const NOW = Date.parse('2026-08-19T12:00:00.000Z');
 const FRESH = new Date(NOW - 60_000).toISOString();
-const ANCIENT = new Date(NOW - STALE_SYNC_THRESHOLD_MS - 1).toISOString();
+const ANCIENT = '2023-01-01T00:00:00.000Z';
 const PENDING = {
   requestedIncrementalSyncGeneration: 2,
   claimedIncrementalSyncGeneration: 1,
@@ -66,16 +65,24 @@ describe('getWalletSyncPresentation', () => {
     expect(presentation.description).toBe('Synced');
   });
 
-  it('demotes a success whose timestamp is older than the stale threshold', () => {
+  it('keeps an old settled success healthy under the activity-driven lifecycle', () => {
     const presentation = getWalletSyncPresentation(
-      { lastSyncStatus: 'success', lastSyncedAt: ANCIENT },
+      {
+        lastSyncStatus: 'success',
+        lastSyncedAt: ANCIENT,
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 1,
+        syncInProgress: false,
+      },
       null,
       NOW,
     );
 
-    expect(presentation.tone).toBe('stale');
-    expect(presentation.label).toBe('Stale');
-    expect(presentation.reason).toContain('no sync has succeeded since');
+    expect(presentation.tone).toBe('success');
+    expect(presentation.label).toBe('Synced');
+    expect(presentation.reason).toBeNull();
+    expect(presentation.description).toContain('Last synced');
   });
 
   it('treats an unparseable timestamp as stale rather than fresh', () => {

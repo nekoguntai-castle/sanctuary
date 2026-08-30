@@ -10,16 +10,6 @@ import type {
  * `walletSyncPresentation.ts` alongside the dispatcher.
  */
 
-/**
- * How old a successful sync may be before its green check becomes a lie.
- *
- * The server re-queues any wallet whose last sync is older than
- * `SYNC_STALE_THRESHOLD_MS` (10 minutes by default), so an hour without a
- * successful sync means six consecutive cycles did not run for this wallet —
- * exactly the state that used to render as a healthy "Synced".
- */
-export const STALE_SYNC_THRESHOLD_MS = 60 * 60 * 1000;
-
 function parsedTime(lastSyncedAt: string | null | undefined): number | null {
   if (!lastSyncedAt) return null;
   const parsed = new Date(lastSyncedAt).getTime();
@@ -32,22 +22,20 @@ export function localTime(lastSyncedAt: string): string {
 }
 
 /**
- * A wallet whose last sync succeeded — demoted to a `stale` tone once that
- * success is old enough that the green check would be misleading.
+ * A wallet whose last sync succeeded.
+ *
+ * Wallet history sync is activity-driven, so elapsed time alone is not evidence
+ * that a settled success is stale. Lifecycle drift, leases, retries, and
+ * action-required state are classified before this presentation is reached.
  */
-export function successPresentation(
-  wallet: WalletSyncSubject,
-  now: number,
-): WalletSyncPresentation {
+export function successPresentation(wallet: WalletSyncSubject): WalletSyncPresentation {
   const syncedAt = parsedTime(wallet.lastSyncedAt);
 
-  // A missing timestamp is not evidence of staleness — a wallet can report a
-  // successful sync before the column is populated. Only a timestamp we can
-  // read and that is genuinely old demotes the badge.
-  if (wallet.lastSyncedAt && (syncedAt === null || now - syncedAt > STALE_SYNC_THRESHOLD_MS)) {
-    const reason = syncedAt === null
-      ? 'The last recorded sync time cannot be read, and no sync has succeeded since.'
-      : `Last synced ${localTime(wallet.lastSyncedAt)}, and no sync has succeeded since.`;
+  // A malformed recorded timestamp is inconsistent evidence. A missing
+  // timestamp is permitted because completion state can be observed before the
+  // timestamp column is populated.
+  if (wallet.lastSyncedAt && syncedAt === null) {
+    const reason = 'The last recorded sync time cannot be read.';
     return {
       tone: 'stale',
       label: 'Stale',
