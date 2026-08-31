@@ -12,6 +12,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/ownership/producer-hooks.sh"
+ownership_prepare_operator_compose "$PROJECT_DIR"
 
 # Determine output file
 if [ -n "${1:-}" ]; then
@@ -23,7 +26,8 @@ fi
 
 echo "Generating support package..."
 
-docker compose -f "$PROJECT_DIR/docker-compose.yml" exec -T backend node --input-type=module - \
+docker compose --project-directory "$PROJECT_DIR" --env-file "$SANCTUARY_ENV_FILE" \
+  -p "$SANCTUARY_PROJECT" -f "$PROJECT_DIR/docker-compose.yml" exec -T backend node --input-type=module - \
   < "$SCRIPT_DIR/support-package-runner.mjs" > "$OUTPUT_FILE"
 
 echo "Support package written to: $OUTPUT_FILE"

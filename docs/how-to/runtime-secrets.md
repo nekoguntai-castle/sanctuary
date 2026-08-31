@@ -67,13 +67,10 @@ Normal start:
 ./start.sh
 ```
 
-Raw Docker Compose:
+Ownership-aware Docker Compose:
 
 ```bash
-set -a
-source "${SANCTUARY_ENV_FILE:-$HOME/.config/sanctuary/sanctuary.env}"
-set +a
-SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-$HOME/.config/sanctuary/ssl}" docker compose up -d
+SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-$HOME/.config/sanctuary/ssl}" ./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 ## TLS Certificates

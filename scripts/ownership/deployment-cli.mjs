@@ -8,6 +8,7 @@ import {
   acquireDeploymentLock, heartbeatDeploymentLock, inspectDeploymentLock, recoverStaleDeploymentLock, releaseDeploymentLock,
 } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
+import { assertLegacyUpgradePostconditions } from './legacy-docker-inspection.mjs';
 
 const EXIT = Object.freeze({ invalid: 2, conflict: 3, ambiguous: 4, runtime: 5 });
 
@@ -117,7 +118,21 @@ function beginRollbackCommand(request) {
 
 function completeRollbackCommand(request) {
   exact(request, ['runtimeDirectory', 'deploymentId', 'operationRunId', 'lockToken', 'expectedPendingDigest']);
-  output(storeFrom(request).completeRollback(request));
+  const store = storeFrom(request);
+  const pending = store.inspect().pending;
+  if (!pending || pending.digest !== request.expectedPendingDigest || pending.value.mode !== 'rollback') {
+    throw new Error('pending rollback compare-and-swap failed');
+  }
+  const revision = store.readManifest(pending.value.generation, { verifySnapshots: true });
+  assertLegacyUpgradePostconditions({
+    definition: revision.manifest,
+    composeArgs: composeArguments(revision.manifest, { snapshotRoot: revision.revisionRoot }),
+    deploymentId: revision.manifest.deploymentId,
+    ownerId: revision.manifest.ownerId,
+    projectLabel: revision.manifest.composeProjectName,
+    legacyResources: revision.manifest.legacyResources,
+  });
+  output(store.completeRollback(request));
 }
 
 function inspectCommand(request) {

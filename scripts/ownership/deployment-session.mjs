@@ -6,7 +6,12 @@ import { sha256 } from './crypto.mjs';
 import { composeArguments, resolveDeploymentDefinition } from './deployment-definition.mjs';
 import { acquireDeploymentLock, assertDeploymentLock, releaseDeploymentLock } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
-import { assertFirstManifestDockerResources } from './legacy-docker-inspection.mjs';
+import {
+  assertFirstManifestDockerResources,
+  assertLegacyDurablePreconditions,
+  assertLegacyUpgradePostconditions,
+  resolveLegacyDurableComposeOverlay,
+} from './legacy-docker-inspection.mjs';
 
 function required(name) {
   const value = process.env[name];
@@ -48,6 +53,24 @@ function definitionOptions() {
   };
 }
 
+function resolveDefinition(options, baseBundle, legacyResources = []) {
+  assertLegacyDurablePreconditions({ legacyResources, definition: baseBundle.definition });
+  const compatibility = resolveLegacyDurableComposeOverlay({
+    composeArgs: composeArguments(baseBundle.definition), legacyResources,
+  });
+  return resolveDeploymentDefinition({
+    ...options,
+    generatedOverlays: compatibility ? [{ name: 'legacy-durable-resources', bytes: compatibility }] : [],
+  });
+}
+
+function existingRevisionLegacyResources(store, inspection) {
+  for (const pointer of [inspection.pending, inspection.prepared, inspection.active]) {
+    if (pointer) return store.readManifest(pointer.value.generation, { verifySnapshots: true }).manifest.legacyResources;
+  }
+  return [];
+}
+
 function lock(store, operationRunId) {
   const inherited = process.env.SANCTUARY_DEPLOYMENT_LOCK_TOKEN;
   if (inherited) {
@@ -66,9 +89,12 @@ function begin() {
   const operationRunId = required('SANCTUARY_OPERATION_RUN_ID');
   const held = lock(store, operationRunId);
   try {
-    const bundle = resolveDeploymentDefinition(definitionOptions());
-    store.initialize({ projectDirectory: bundle.definition.projectDirectory, composeProjectName: bundle.definition.composeProjectName });
-    const inspection = store.inspect();
+    const options = definitionOptions();
+    const baseBundle = resolveDeploymentDefinition(options);
+    store.initialize({ projectDirectory: baseBundle.definition.projectDirectory, composeProjectName: baseBundle.definition.composeProjectName });
+    const inspection = store.reconcilePointers({ operationRunId, lockToken: held.token });
+    const existingLegacyResources = existingRevisionLegacyResources(store, inspection);
+    let bundle = resolveDefinition(options, baseBundle, existingLegacyResources);
     if (inspection.pending) {
       const resumed = store.resumePending({
         operationRunId, lockToken: held.token, expectedPendingDigest: inspection.pending.digest,
@@ -78,27 +104,42 @@ function begin() {
         held.owned ? 'owned' : 'inherited', resumed.pending.stage]);
       return;
     }
+    if (inspection.prepared) {
+      const resumed = store.resumePreparedRevision({
+        operationRunId, lockToken: held.token, expectedPreparedDigest: inspection.prepared.digest,
+        expectedDefinitionDigest: bundle.definition.definitionDigest,
+      });
+      output(['pending', resumed.pending.generation, resumed.pendingDigest, held.token,
+        held.owned ? 'owned' : 'inherited', resumed.pending.stage]);
+      return;
+    }
+    let legacyResources = existingLegacyResources.filter((entry) => entry.resourceClass !== 'compose_container');
     if (inspection.active) {
       const active = store.readManifest(inspection.active.value.generation, { verifySnapshots: true });
       if (active.manifest.definitionDigest === bundle.definition.definitionDigest) {
         output(['active', inspection.active.value.generation, '-', held.token, held.owned ? 'owned' : 'inherited', 'active']);
         return;
       }
+      legacyResources = active.manifest.legacyResources.filter((entry) => entry.resourceClass !== 'compose_container');
     }
     if (!inspection.active) {
-      assertFirstManifestDockerResources({
+      const legacyInspection = assertFirstManifestDockerResources({
         definition: bundle.definition,
-        composeArgs: composeArguments(bundle.definition),
+        composeArgs: composeArguments(baseBundle.definition),
         deploymentId: required('SANCTUARY_DEPLOYMENT_ID'),
         ownerId: required('SANCTUARY_OWNER_ID'),
         projectLabel: required('SANCTUARY_PROJECT'),
+        allowUnlabeledUpgrade: flag('SANCTUARY_UPGRADE_MODE'),
       });
+      legacyResources = legacyInspection.legacyResources;
+      bundle = resolveDefinition(options, baseBundle, legacyResources);
     }
     const prepared = store.prepareRevision({
       bundle,
       expectedActiveDigest: inspection.active?.value.manifestDigest ?? null,
       operationRunId,
       lockToken: held.token,
+      legacyResources,
     });
     output(['pending', prepared.manifest.generation, prepared.pendingDigest, held.token,
       held.owned ? 'owned' : 'inherited', prepared.pending.stage]);
@@ -106,6 +147,43 @@ function begin() {
     if (held.owned) releaseDeploymentLock(store.lockPath, held.token, operationRunId);
     throw error;
   }
+}
+
+function verifyLegacyUpgrade() {
+  const { store } = state();
+  assertDeploymentLock(
+    store.lockPath,
+    required('SANCTUARY_DEPLOYMENT_LOCK_TOKEN'),
+    required('SANCTUARY_OPERATION_RUN_ID'),
+  );
+  const inspection = store.inspect();
+  const pointer = inspection.pending ?? inspection.active;
+  if (!pointer) throw new Error('deployment has no revision to verify');
+  const revision = store.readManifest(pointer.value.generation, { verifySnapshots: true });
+  assertLegacyUpgradePostconditions({
+    definition: revision.manifest,
+    composeArgs: composeArguments(revision.manifest, { snapshotRoot: revision.revisionRoot }),
+    deploymentId: required('SANCTUARY_DEPLOYMENT_ID'),
+    ownerId: required('SANCTUARY_OWNER_ID'),
+    projectLabel: required('SANCTUARY_PROJECT'),
+    legacyResources: revision.manifest.legacyResources,
+  });
+  output(['verified']);
+}
+
+function verifyLegacyPreconditions() {
+  const { store } = state();
+  assertDeploymentLock(
+    store.lockPath,
+    required('SANCTUARY_DEPLOYMENT_LOCK_TOKEN'),
+    required('SANCTUARY_OPERATION_RUN_ID'),
+  );
+  const inspection = store.inspect();
+  const pointer = inspection.pending ?? inspection.active;
+  if (!pointer) throw new Error('deployment has no revision to verify');
+  const revision = store.readManifest(pointer.value.generation, { verifySnapshots: true });
+  assertLegacyDurablePreconditions({ legacyResources: revision.manifest.legacyResources, definition: revision.manifest });
+  output(['verified']);
 }
 
 function useActive() {
@@ -192,9 +270,11 @@ async function main([command, argument]) {
   else if (command === 'transition' && argument) transition(argument);
   else if (command === 'activate') activate();
   else if (command === 'finalize-prepared') finalizePrepared();
+  else if (command === 'verify-legacy-preconditions') verifyLegacyPreconditions();
+  else if (command === 'verify-legacy-upgrade') verifyLegacyUpgrade();
   else if (command === 'compose-args' && argument) composeArgs(argument);
   else if (command === 'release') release();
-  else throw new Error('usage: deployment-session.mjs begin|lock-only|assert-lock|use-active|transition STAGE|activate|finalize-prepared|compose-args GENERATION|release');
+  else throw new Error('usage: deployment-session.mjs begin|lock-only|assert-lock|use-active|transition STAGE|activate|finalize-prepared|verify-legacy-preconditions|verify-legacy-upgrade|compose-args GENERATION|release');
 }
 
 main(process.argv.slice(2)).catch((error) => {

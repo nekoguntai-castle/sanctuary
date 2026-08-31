@@ -7,6 +7,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/ownership/producer-hooks.sh"
 
 ENV_LOAD_FAILED=0
 if [ -z "${SANCTUARY_DIAGNOSE_SKIP_ENV:-}" ]; then
@@ -28,6 +30,15 @@ if [ -z "${SANCTUARY_DIAGNOSE_SKIP_ENV:-}" ]; then
     echo "# environment file: NOT FOUND"
     echo "# docker compose may fail to interpolate required secrets."
   fi
+fi
+
+if [ -n "${SANCTUARY_DIAGNOSE_SKIP_ENV:-}" ]; then
+  SANCTUARY_PROJECT_DIR="$REPO_DIR"
+  SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+  export SANCTUARY_PROJECT_DIR SANCTUARY_PROJECT
+  ownership_initialize_build_identity
+else
+  ownership_prepare_operator_compose "$REPO_DIR"
 fi
 
 PG_SERVICE="${PG_SERVICE:-postgres}"

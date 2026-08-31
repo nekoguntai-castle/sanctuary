@@ -85,6 +85,22 @@ test('definition digest covers raw overlay bytes but excludes env contents', () 
   assert.notEqual(first.definition.definitionDigest, third.definition.definitionDigest);
 });
 
+test('generated overlays have deterministic virtual identity and are snapshotted last', () => {
+  const fixture = projectFixture();
+  const generated = { name: 'legacy-durable-resources', bytes: Buffer.from('volumes:\n  data: !override\n    external: true\n') };
+  const first = resolveDeploymentDefinition(options(fixture, { generatedOverlays: [generated] }));
+  const second = resolveDeploymentDefinition(options(fixture, { generatedOverlays: [generated] }));
+  const overlay = first.definition.overlays.at(-1);
+  assert.equal(overlay.kind, 'generated');
+  assert.match(overlay.sourcePath, /^generated\/legacy-durable-resources-[a-f0-9]{64}\.yml$/);
+  assert.match(overlay.sourceIdentity, /^generated:[a-f0-9]{64}$/);
+  assert.deepEqual(first.definition, second.definition);
+  assert.deepEqual(first.snapshots.at(-1).bytes, generated.bytes);
+  assert.throws(() => resolveDeploymentDefinition(options(fixture, {
+    generatedOverlays: [{ name: 'unsafe', bytes: Buffer.from('API_TOKEN: literal\n') }],
+  })), /literal secret/);
+});
+
 test('custom overlays are opt-in, raw-scanned, and reject secret/config bypasses', () => {
   const fixture = projectFixture();
   const custom = path.join(fixture.root, 'custom.yml');

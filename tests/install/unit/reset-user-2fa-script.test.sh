@@ -104,7 +104,7 @@ setup_fake_docker() {
   FAKE_BIN="$TEST_TMP_DIR/bin"
   BACKUP_DIR="$TEST_TMP_DIR/backups"
   DOCKER_LOG="$TEST_TMP_DIR/docker.log"
-  mkdir -p "$FAKE_BIN" "$BACKUP_DIR"
+  mkdir -p "$FAKE_BIN" "$BACKUP_DIR" "$TEST_TMP_DIR/runtime"
 
   cat > "$FAKE_BIN/docker" <<'EOF'
 #!/bin/bash
@@ -148,6 +148,7 @@ run_reset_script() {
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_2FA_RESET_BACKUP_DIR="$BACKUP_DIR" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     "$RESET_SCRIPT" "$@"
 }
 
@@ -206,6 +207,7 @@ test_empty_backup_aborts_before_update() {
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_FAKE_EMPTY_BACKUP=true \
     SANCTUARY_2FA_RESET_BACKUP_DIR="$BACKUP_DIR" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     "$RESET_SCRIPT" --username admin --yes 2>&1)"
   local exit_code=$?
   set -e
@@ -232,6 +234,7 @@ test_missing_user_fails_before_update() {
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_FAKE_USER_COUNT=0 \
     SANCTUARY_2FA_RESET_BACKUP_DIR="$BACKUP_DIR" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     "$RESET_SCRIPT" --username missing --yes 2>&1)"
   local exit_code=$?
   set -e

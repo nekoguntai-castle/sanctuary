@@ -42,6 +42,11 @@ if [ -x "$RUNNER" ]; then
 else
   bad 'run-e2e-lane-phases.sh is missing or not executable'
 fi
+if grep -q 'ownership_initialize_build_identity' "$RUNNER"; then
+  ok 'phase runner initializes strict Compose identity before stack phases'
+else
+  bad 'phase runner does not initialize strict Compose identity'
+fi
 
 # ----- 3. every phase-runner call is wrapped in a lock ----------------------
 # A call that is not preceded by with-runner-lock.sh reintroduces the gap.

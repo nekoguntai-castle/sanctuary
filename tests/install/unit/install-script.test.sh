@@ -1839,6 +1839,120 @@ test_setup_script_exists() {
     assert_file_exists "$SETUP_SCRIPT" "scripts/setup.sh should exist"
 }
 
+test_setup_threads_upgrade_mode_into_first_manifest_inspection() {
+    local resolve_start_body
+    grep -qF 'deployment_begin "$OPT_ENABLE_MONITORING" "$OPT_ENABLE_TOR" "$OPT_ENABLE_MCP" "$LEGACY_UPGRADE_COMPATIBILITY"' \
+        "$SETUP_SCRIPT" || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh must pass bounded legacy-upgrade authorization into first-manifest inspection"
+        return 1
+    }
+    grep -qF '[ "$OPT_FROM_INSTALL" = true ]' "$SETUP_SCRIPT" \
+        && grep -qF '[ "$PREEXISTING_RUNTIME_IDENTITY" = true ]' "$SETUP_SCRIPT" || {
+        echo -e "${RED}ASSERTION FAILED:${NC} bare --upgrade must not authorize attachment to legacy resources"
+        return 1
+    }
+    grep -qF 'deployment_verify_legacy_upgrade' "$SETUP_SCRIPT" || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh must verify preserved legacy resources before activation"
+        return 1
+    }
+    grep -qF 'deployment_verify_legacy_upgrade' "$START_SCRIPT" || {
+        echo -e "${RED}ASSERTION FAILED:${NC} start.sh must verify a resumed prepared upgrade before activation"
+        return 1
+    }
+    resolve_start_body="$(sed -n '/^resolve_start_deployment()/,/^}/p' "$START_SCRIPT")"
+    assert_contains "$resolve_start_body" 'deployment_verify_legacy_preconditions' \
+        "start.sh must revalidate legacy identities after every deployment resume" || return 1
+}
+
+test_setup_refuses_legacy_attachment_with_invalid_runtime_identity() {
+    local fakebin="$TEST_TMP_DIR/empty-upgrade-collision-bin"
+    local env_file runtime_dir output fixture
+    make_empty_ownership_docker "$fakebin"
+    cat > "$fakebin/docker" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in
+    *" compose "*" config --format json "*) printf '%s\n' '{"services":{},"networks":{},"volumes":{"data":{"name":"sanctuary_data"}}}' ;;
+    " volume ls "*) printf '%s\n' 'sanctuary_data' ;;
+    " network ls "*|" container ls "*) ;;
+    " volume inspect sanctuary_data ")
+        printf '%s\n' '[{"Name":"sanctuary_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/docker/volumes/sanctuary_data/_data","CreatedAt":"2026-08-30T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"data"}}]' ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$fakebin/docker"
+    for fixture in empty expansion whitespace; do
+        env_file="$TEST_TMP_DIR/${fixture}-upgrade-collision.env"
+        runtime_dir="$TEST_TMP_DIR/${fixture}-upgrade-collision-runtime"
+        case "$fixture" in
+            empty) : > "$env_file" ;;
+            expansion) cat > "$env_file" <<'EOF'
+JWT_SECRET=$MISSING
+ENCRYPTION_KEY=$MISSING
+ENCRYPTION_SALT=$MISSING
+GATEWAY_SECRET=$MISSING
+POSTGRES_PASSWORD=$MISSING
+EOF
+                ;;
+            whitespace) cat > "$env_file" <<'EOF'
+JWT_SECRET='   '
+ENCRYPTION_KEY='   '
+ENCRYPTION_SALT='   '
+GATEWAY_SECRET='   '
+POSTGRES_PASSWORD='   '
+EOF
+                ;;
+        esac
+        output=$(
+            PATH="$fakebin:$PATH" SANCTUARY_ENV_FILE="$env_file" SANCTUARY_RUNTIME_DIR="$runtime_dir" \
+            SANCTUARY_SSL_DIR="$TEST_TMP_DIR/${fixture}-upgrade-collision-ssl" \
+            HTTPS_PORT=58449 HTTP_PORT=58086 GATEWAY_PORT=54006 \
+            bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs \
+                --from-install --upgrade 2>&1
+        ) && {
+            echo -e "${RED}ASSERTION FAILED:${NC} $fixture runtime identity unexpectedly authorized legacy resource attachment"
+            return 1
+        }
+        assert_contains "$output" "first deployment manifest refused existing legacy Docker resources" \
+            "$fixture runtime identity must not authorize legacy attachment" || return 1
+    done
+}
+
+test_setup_refuses_legacy_attachment_without_preexisting_runtime_env() {
+    local fakebin="$TEST_TMP_DIR/fresh-upgrade-collision-bin"
+    local env_file="$TEST_TMP_DIR/fresh-upgrade-collision.env"
+    local runtime_dir="$TEST_TMP_DIR/fresh-upgrade-collision-runtime"
+    local output=""
+    mkdir -p "$fakebin"
+    cat > "$fakebin/docker" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in
+    *" compose "*" config --format json "*)
+        printf '%s\n' '{"services":{},"networks":{},"volumes":{"data":{"name":"sanctuary_data"}}}' ;;
+    " volume ls "*) printf '%s\n' 'sanctuary_data' ;;
+    " network ls "*|" container ls "*) ;;
+    " volume inspect sanctuary_data ")
+        printf '%s\n' '[{"Name":"sanctuary_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/docker/volumes/sanctuary_data/_data","CreatedAt":"2026-08-30T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"data"}}]' ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$fakebin/docker"
+
+    output=$(
+        PATH="$fakebin:$PATH" \
+        SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_RUNTIME_DIR="$runtime_dir" \
+        SANCTUARY_SSL_DIR="$TEST_TMP_DIR/fresh-upgrade-collision-ssl" \
+        HTTPS_PORT=58448 HTTP_PORT=58085 GATEWAY_PORT=54005 \
+        bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs \
+            --from-install --upgrade 2>&1
+    ) && {
+        echo -e "${RED}ASSERTION FAILED:${NC} fresh runtime env unexpectedly authorized legacy resource attachment"
+        return 1
+    }
+    assert_contains "$output" "first deployment manifest refused existing legacy Docker resources" \
+        "fresh --upgrade must refuse colliding legacy resources"
+}
+
 test_setup_script_has_secret_fallbacks() {
     # setup.sh should have fallback methods like install.sh (not just openssl)
     if grep -q "/dev/urandom\|sha256sum" "$SETUP_SCRIPT"; then
@@ -2103,6 +2217,76 @@ test_setup_script_persists_llm_egress_policy_env() {
         "setup.sh should preserve explicit LLM public HTTPS policy"
 }
 
+test_setup_refreshes_provenance_after_runtime_env_load() {
+    local load_line refresh_line write_line
+    load_line="$(grep -n '^[[:space:]]*load_or_generate_secrets$' "$SETUP_SCRIPT" | cut -d: -f1)"
+    refresh_line="$(grep -n '^[[:space:]]*ownership_refresh_checkout_build_identity$' "$SETUP_SCRIPT" | cut -d: -f1)"
+    write_line="$(grep -n '^[[:space:]]*write_env_file$' "$SETUP_SCRIPT" | cut -d: -f1)"
+    if [ -z "$load_line" ] || [ -z "$refresh_line" ] || [ -z "$write_line" ] \
+        || [ "$refresh_line" -le "$load_line" ] || [ "$refresh_line" -ge "$write_line" ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} setup must refresh checkout provenance after loading old runtime metadata and before persisting/building"
+        return 1
+    fi
+    for name in SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID \
+        SANCTUARY_RELEASE SANCTUARY_COMMIT SANCTUARY_SOURCE_COMMIT \
+        SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID; do
+        grep -q "^${name}=\$${name}$" "$SETUP_SCRIPT" || {
+            echo -e "${RED}ASSERTION FAILED:${NC} setup runtime env omits $name"
+            return 1
+        }
+    done
+}
+
+test_setup_replaces_stale_runtime_provenance() {
+    local env_file="$TEST_TMP_DIR/stale-provenance.env"
+    local runtime_dir="$TEST_TMP_DIR/stale-provenance-runtime"
+    local fakebin="$TEST_TMP_DIR/stale-provenance-bin"
+    local expected_commit expected_lock expected_version contents output=""
+    make_empty_ownership_docker "$fakebin"
+    cat > "$env_file" <<'EOF'
+JWT_SECRET=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+ENCRYPTION_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+ENCRYPTION_SALT=non-legacy-test-salt
+GATEWAY_SECRET=cccccccccccccccccccccccccccccccccccccccccccccccc
+WORKER_DIAGNOSTICS_SECRET=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+POSTGRES_PASSWORD=test-postgres-password
+GRAFANA_PASSWORD=test-grafana-password
+LLM_EGRESS_PROXY_SECRET=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+REDIS_PASSWORD=test-redis-password
+SANCTUARY_PROJECT=sanctuary
+SANCTUARY_DEPLOYMENT_ID=deploy-sanctuary
+SANCTUARY_OWNER_ID=owner-test
+SANCTUARY_RELEASE=v0.0.1
+SANCTUARY_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+SANCTUARY_SOURCE_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+SANCTUARY_IMAGE_LOCK_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+SANCTUARY_VERSION=0.0.1
+SANCTUARY_BUILD_ID=stale-build
+EOF
+    output=$(
+        PATH="$fakebin:$PATH" \
+        SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_RUNTIME_DIR="$runtime_dir" \
+        SANCTUARY_SSL_DIR="$TEST_TMP_DIR/stale-provenance-ssl" \
+        SANCTUARY_OPERATION_RUN_ID=target-upgrade-run \
+        bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs 2>&1
+    ) || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup should replace stale runtime provenance"
+        echo "$output"
+        return 1
+    }
+
+    expected_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
+    expected_lock="$(sha256sum "$PROJECT_ROOT/config/container-image-lock.json" | awk '{print $1}')"
+    expected_version="$(awk -F'"' '/"version":/{print $4; exit}' "$PROJECT_ROOT/package.json")"
+    contents="$(cat "$env_file")"
+    assert_contains "$contents" "SANCTUARY_COMMIT=$expected_commit" "setup should replace the source commit" || return 1
+    assert_contains "$contents" "SANCTUARY_SOURCE_COMMIT=$expected_commit" "setup should replace build source" || return 1
+    assert_contains "$contents" "SANCTUARY_IMAGE_LOCK_SHA256=$expected_lock" "setup should replace the image-lock digest" || return 1
+    assert_contains "$contents" "SANCTUARY_VERSION=$expected_version" "setup should replace the source version" || return 1
+    assert_contains "$contents" "SANCTUARY_BUILD_ID=target-upgrade-run" "setup should replace the prior build ID" || return 1
+}
+
 # ============================================
 # Unit Tests: .env.example
 # ============================================
@@ -2142,6 +2326,22 @@ test_fresh_install_supplies_worker_diagnostics_secret() {
         "fresh-install build and up should each generate a worker diagnostics secret"
     assert_equals "2" "$compose_count" \
         "fresh-install build and up should each supply the worker diagnostics secret"
+}
+
+test_fresh_install_initializes_ownership_identity() {
+    if ! grep -qFx 'initialize_install_test_ownership' "$FRESH_INSTALL_TEST"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} fresh-install must initialize strict Compose ownership variables"
+        return 1
+    fi
+
+    for e2e_script in \
+        "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh" \
+        "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"; do
+        if ! grep -qFx 'initialize_install_test_ownership' "$e2e_script"; then
+            echo -e "${RED}ASSERTION FAILED:${NC} $(basename "$e2e_script") must retain parent-shell ownership identity"
+            return 1
+        fi
+    done
 }
 
 test_env_example_has_setup_instructions() {
@@ -2327,6 +2527,9 @@ main() {
 
     echo -e "${YELLOW}Test Suite: scripts/setup.sh${NC}"
     run_test "setup script exists" test_setup_script_exists
+    run_test "setup threads upgrade mode into ownership inspection" test_setup_threads_upgrade_mode_into_first_manifest_inspection
+    run_test "setup refuses legacy attachment without existing runtime env" test_setup_refuses_legacy_attachment_without_preexisting_runtime_env
+    run_test "setup refuses legacy attachment with invalid runtime identity" test_setup_refuses_legacy_attachment_with_invalid_runtime_identity
     run_test "setup script has secret fallbacks" test_setup_script_has_secret_fallbacks
     run_test "setup script generates 48-char secrets" test_setup_script_generates_48_char_secrets
     run_test "setup script defaults to external runtime env" test_setup_script_defaults_to_external_runtime_env
@@ -2338,6 +2541,8 @@ main() {
     run_test "setup script rejects legacy default salt" test_setup_script_rejects_legacy_default_salt
     run_test "setup script generates unique salt for fresh install" test_setup_script_generates_unique_salt_for_fresh_install
     run_test "setup script persists LLM egress policy env" test_setup_script_persists_llm_egress_policy_env
+    run_test "setup refreshes provenance after runtime env load" test_setup_refreshes_provenance_after_runtime_env_load
+    run_test "setup replaces stale runtime provenance" test_setup_replaces_stale_runtime_provenance
     run_test "setup script requires routed API readiness" test_setup_script_requires_routed_api_readiness
     run_test "nginx entrypoint selects runtime DNS resolver" test_nginx_entrypoint_selects_runtime_dns_resolver
     echo ""
@@ -2345,6 +2550,7 @@ main() {
     echo -e "${YELLOW}Test Suite: .env.example${NC}"
     run_test ".env.example exists" test_env_example_exists
     run_test ".env.example has all required secrets" test_env_example_has_all_required_secrets
+    run_test "fresh install initializes ownership identity" test_fresh_install_initializes_ownership_identity
     run_test ".env.example has setup instructions" test_env_example_has_setup_instructions
     echo ""
 

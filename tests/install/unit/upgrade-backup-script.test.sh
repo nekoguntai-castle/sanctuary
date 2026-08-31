@@ -103,6 +103,17 @@ ENCRYPTION_KEY=enc-key
 ENCRYPTION_SALT=enc-salt
 ENABLE_MONITORING=yes
 ENABLE_TOR=no
+SANCTUARY_PROJECT=sanctuary
+SANCTUARY_DEPLOYMENT_ID=deploy-sanctuary
+SANCTUARY_OWNER_ID=owner-test
+SANCTUARY_OPERATION_RUN_ID=run-test
+SANCTUARY_RELEASE=v9.9.8
+SANCTUARY_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+SANCTUARY_CLEANUP_CREATED_AT=2026-08-30T00:00:00.000Z
+SANCTUARY_SOURCE_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+SANCTUARY_IMAGE_LOCK_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+SANCTUARY_VERSION=9.9.8
+SANCTUARY_BUILD_ID=build-test
 EOF
   printf 'cert\n' > "$SSL_DIR/fullchain.pem"
   printf 'key\n' > "$SSL_DIR/privkey.pem"
@@ -114,6 +125,9 @@ EOF
 } >> "$SANCTUARY_FAKE_DOCKER_LOG"
 
 if [ "$1" = "compose" ]; then
+  for name in SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT SANCTUARY_CLEANUP_CREATED_AT SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID; do
+    [ -n "${!name:-}" ] || exit 97
+  done
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -243,6 +257,20 @@ test_sidecar_checksum_is_explicit() {
   return "$failures"
 }
 
+test_strict_compose_receives_persisted_identity() {
+  setup_fake_project
+  cat > "$INSTALL_DIR/docker-compose.yml" <<'EOF'
+services:
+  postgres:
+    image: postgres:16-alpine
+    labels:
+      io.sanctuary.source-commit: ${SANCTUARY_SOURCE_COMMIT:?required}
+EOF
+
+  run_backup_script >/dev/null
+  teardown_fake_project
+}
+
 main() {
   echo "Upgrade Backup Script Unit Tests"
   echo "================================"
@@ -251,6 +279,7 @@ main() {
   run_test "help describes single archive" test_help_describes_single_archive
   run_test "backup creates single valid archive" test_backup_creates_single_valid_archive
   run_test "sidecar checksum is explicit" test_sidecar_checksum_is_explicit
+  run_test "strict Compose receives persisted identity" test_strict_compose_receives_persisted_identity
 
   echo ""
   echo "Tests run:    $TESTS_RUN"

@@ -141,6 +141,7 @@ fi
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-${TEST_ID}}"
+initialize_install_test_ownership
 # Per-lane image tag, derived from the project name so concurrent lanes on one
 # daemon cannot alias each other's images (#719).
 export_lane_image_tag
@@ -168,6 +169,12 @@ if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ] && [ -z "${SANCTUARY_ENV_FILE:
 else
     TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$TEST_RUNTIME_DIR/sanctuary.env}"
 fi
+# Keep the operator-facing runtime selection available after the installer
+# subshell exits. Manifest-backed commands (including account recovery and
+# targeted service replacement) must resolve the retained active Compose
+# snapshots instead of falling back to the checkout's current base file.
+export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"
+export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
 UPGRADE_SOURCE_CREATED=false
 UPGRADE_CREATED_TARGET_LEGACY_ENV=false
 UPGRADE_SOURCE_LABEL=""
@@ -175,6 +182,7 @@ UPGRADE_TARGET_LABEL="$(git -C "$TARGET_PROJECT_ROOT" describe --tags --always 2
 UPGRADE_ALLOW_RESTART_FALLBACK="${SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK:-false}"
 UPGRADE_ARTIFACT_DIR="${SANCTUARY_UPGRADE_ARTIFACT_DIR:-$TARGET_PROJECT_ROOT/.tmp/upgrade-artifacts/${TEST_ID}}"
 TEARDOWN_RAN=false
+LEGACY_DOCKER_SNAPSHOT="$TEST_RUNTIME_DIR/legacy-docker-resources.tsv"
 
 # State variables for testing
 ORIGINAL_JWT_SECRET=""
@@ -255,6 +263,79 @@ load_runtime_env() {
     export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
 }
 
+snapshot_legacy_docker_resources() {
+    local output_file="$1"
+    local names_file="$TEST_RUNTIME_DIR/legacy-docker-resource-names.txt"
+    local name inspected identity sanctuary_labels resource_count=0
+
+    : > "$output_file"
+    docker volume ls --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" --format '{{.Name}}' \
+        | LC_ALL=C sort > "$names_file"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        inspected="$(docker volume inspect "$name")" || return 1
+        sanctuary_labels="$(printf '%s' "$inspected" | jq '[.[0].Labels // {} | keys[] | select(startswith("io.sanctuary."))] | length')" || return 1
+        [ "$sanctuary_labels" -eq 0 ] || {
+            log_error "Legacy volume unexpectedly has Sanctuary ownership labels: $name"
+            return 1
+        }
+        identity="$(printf '%s' "$inspected" | jq -cS '.[0] | {Name,Driver,Scope,Mountpoint,CreatedAt,Options}' | sha256sum | awk '{print $1}')" || return 1
+        printf 'compose_volume\t%s\t%s\n' "$name" "$identity" >> "$output_file"
+        resource_count=$((resource_count + 1))
+    done < "$names_file"
+
+    docker network ls --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" --format '{{.Name}}' \
+        | LC_ALL=C sort > "$names_file"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        inspected="$(docker network inspect "$name")" || return 1
+        sanctuary_labels="$(printf '%s' "$inspected" | jq '[.[0].Labels // {} | keys[] | select(startswith("io.sanctuary."))] | length')" || return 1
+        [ "$sanctuary_labels" -eq 0 ] || {
+            log_error "Legacy network unexpectedly has Sanctuary ownership labels: $name"
+            return 1
+        }
+        identity="$(printf '%s' "$inspected" | jq -er '.[0].Id | select(type == "string" and length > 0)')" || return 1
+        printf 'compose_network\t%s\t%s\n' "$name" "$identity" >> "$output_file"
+        resource_count=$((resource_count + 1))
+    done < "$names_file"
+
+    [ "$resource_count" -gt 0 ] || {
+        log_error "Source installation exposed no legacy Compose volumes or networks"
+        return 1
+    }
+}
+
+verify_legacy_docker_resources_preserved() {
+    local current_snapshot="$TEST_RUNTIME_DIR/legacy-docker-resources-after.tsv"
+    local active_pointer manifest generation
+
+    snapshot_legacy_docker_resources "$current_snapshot" || return 1
+    if ! cmp -s "$LEGACY_DOCKER_SNAPSHOT" "$current_snapshot"; then
+        log_error "Legacy volume or network identity changed during upgrade"
+        diff -u "$LEGACY_DOCKER_SNAPSHOT" "$current_snapshot" || true
+        return 1
+    fi
+
+    active_pointer="$TEST_RUNTIME_DIR/ownership/deployments/$SANCTUARY_DEPLOYMENT_ID/active-revision.json"
+    [ -f "$active_pointer" ] || {
+        log_error "Target upgrade did not activate a deployment manifest"
+        return 1
+    }
+    generation="$(jq -r '.generation' "$active_pointer")"
+    manifest="$TEST_RUNTIME_DIR/ownership/deployments/$SANCTUARY_DEPLOYMENT_ID/revisions/$generation/deployment-manifest.json"
+    while IFS=$'\t' read -r resource_class locator _identity; do
+        jq -e --arg class "$resource_class" --arg locator "$locator" '
+            .legacyResources[] | select(
+                .resourceClass == $class and .locator == $locator and
+                .cleanupPolicy == "preserve_ambiguous" and .ownershipState == "unlabeled"
+            )
+        ' "$manifest" >/dev/null || {
+            log_error "Deployment manifest did not preserve legacy resource evidence: $resource_class $locator"
+            return 1
+        }
+    done < "$LEGACY_DOCKER_SNAPSHOT"
+}
+
 # Extract the sanctuary_csrf cookie value from the Netscape-format cookie
 # jar. Fields are tab-separated: domain, HttpOnly, path, Secure, expiry,
 # name, value. Sets CSRF_TOKEN (empty string if the cookie isn't set).
@@ -333,6 +414,7 @@ run_install_script_command() {
     local project_dir="$1"
 
     (
+        initialize_install_test_ownership_for_root "$project_dir"
         export HTTPS_PORT
         export HTTP_PORT
         export GATEWAY_PORT
@@ -730,6 +812,8 @@ test_ensure_existing_installation() {
     fi
 
     persist_source_mcp_preference || return 1
+
+    snapshot_legacy_docker_resources "$LEGACY_DOCKER_SNAPSHOT" || return 1
 
     if ! assert_installed_image_matches_checkout "$PROJECT_ROOT"; then
         log_error "Source installation is running code from the wrong ref"
@@ -1381,6 +1465,7 @@ test_restart_containers_after_upgrade() {
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
+    verify_legacy_docker_resources_preserved || return 1
     disable_compose_project_restart_policy "$COMPOSE_PROJECT_NAME"
 
     # Wait for containers to be healthy

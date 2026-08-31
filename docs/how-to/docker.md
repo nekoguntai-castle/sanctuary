@@ -98,10 +98,10 @@ nano .env
 ./start.sh --rebuild
 
 # Watch the logs
-docker compose logs -f
+./scripts/ownership/run-operator-compose.sh logs -f
 
 # Check service status
-docker compose ps
+./scripts/ownership/run-operator-compose.sh ps
 ```
 
 > **Note**: Always use `./start.sh` for starting Sanctuary. This ensures proper environment setup and certificate generation.
@@ -125,39 +125,39 @@ docker compose ps
 # Stop services
 ./start.sh --stop
 
-# Or using docker compose directly
-docker compose down
+# Or using the ownership-aware Compose wrapper directly
+./scripts/ownership/run-operator-compose.sh down
 
 # Stop and remove volumes (CAUTION: deletes database!)
-docker compose down -v
+./scripts/ownership/run-operator-compose.sh down -v
 ```
 
 ### View Logs
 
 ```bash
 # All services
-docker compose logs -f
+./scripts/ownership/run-operator-compose.sh logs -f
 
 # Specific service
-docker compose logs -f backend
-docker compose logs -f frontend
-docker compose logs -f postgres
+./scripts/ownership/run-operator-compose.sh logs -f backend
+./scripts/ownership/run-operator-compose.sh logs -f frontend
+./scripts/ownership/run-operator-compose.sh logs -f postgres
 ```
 
 ### Database Operations
 
 ```bash
 # Run migrations manually
-docker compose run --rm migrate
+./scripts/ownership/run-operator-compose.sh run --rm migrate
 
 # Access PostgreSQL directly
-docker compose exec postgres psql -U sanctuary -d sanctuary
+./scripts/ownership/run-operator-compose.sh exec postgres psql -U sanctuary -d sanctuary
 
 # Create a database backup
-docker compose exec postgres pg_dump -U sanctuary sanctuary > backup.sql
+./scripts/ownership/run-operator-compose.sh exec postgres pg_dump -U sanctuary sanctuary > backup.sql
 
 # Restore from backup
-cat backup.sql | docker compose exec -T postgres psql -U sanctuary sanctuary
+cat backup.sql | ./scripts/ownership/run-operator-compose.sh exec -T postgres psql -U sanctuary sanctuary
 ```
 
 ### Rebuild Services
@@ -166,11 +166,11 @@ cat backup.sql | docker compose exec -T postgres psql -U sanctuary sanctuary
 # Rebuild all services (recommended)
 ./start.sh --rebuild
 
-# Or using docker compose directly
-docker compose build --no-cache
+# Or using the ownership-aware Compose wrapper directly
+./scripts/ownership/run-operator-compose.sh build --no-cache
 
 # Rebuild specific service
-docker compose build --no-cache backend
+./scripts/ownership/run-operator-compose.sh build --no-cache backend
 ```
 
 ## Production Deployment
@@ -178,7 +178,7 @@ docker compose build --no-cache backend
 For production, use the production override file:
 
 ```bash
-docker compose --project-directory . -f docker-compose.yml -f docker/compose/prod.yml up -d
+./scripts/ownership/run-operator-compose.sh -f docker-compose.yml -f docker/compose/prod.yml up -d
 ```
 
 This adds:
@@ -211,7 +211,7 @@ labels:
 
 ```bash
 # Check logs
-docker compose logs backend
+./scripts/ownership/run-operator-compose.sh logs backend
 
 # Common issues:
 # - Database not ready: Wait for postgres healthcheck
@@ -223,23 +223,23 @@ docker compose logs backend
 
 ```bash
 # Verify postgres is running
-docker compose ps postgres
+./scripts/ownership/run-operator-compose.sh ps postgres
 
 # Test connection from backend
-docker compose exec backend wget -q -O- http://localhost:3001/health
+./scripts/ownership/run-operator-compose.sh exec backend wget -q -O- http://localhost:3001/health
 ```
 
 ### Reset everything
 
 ```bash
 # Stop all containers and remove volumes
-docker compose down -v
+./scripts/ownership/run-operator-compose.sh down -v
 
 # Remove all images
-docker compose down --rmi all
+./scripts/ownership/run-operator-compose.sh down --rmi all
 
 # Start fresh
-docker compose up -d --build
+./scripts/ownership/run-operator-compose.sh up -d --build
 ```
 
 ## Environment Variables
@@ -275,8 +275,8 @@ docker compose up -d --build
 git pull
 
 # Rebuild and restart
-docker compose up -d --build
+./scripts/ownership/run-operator-compose.sh up -d --build
 
 # Run any new migrations
-docker compose run --rm migrate
+./scripts/ownership/run-operator-compose.sh run --rm migrate
 ```

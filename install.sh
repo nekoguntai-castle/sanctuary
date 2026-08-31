@@ -447,7 +447,7 @@ create_upgrade_backup_or_prompt() {
         else
             echo -e "${YELLOW}Warning: automatic backup helper is not available.${NC}"
             echo "Before upgrading, we recommend backing up your database:"
-            echo -e "  ${GREEN}docker exec \$(docker compose ps -q postgres) pg_dump -U sanctuary sanctuary > backup-\$(date +%Y%m%d).sql${NC}"
+            echo -e "  ${GREEN}docker exec \$(cd \"$INSTALL_DIR\" && docker compose ps -q postgres) pg_dump -U sanctuary sanctuary > backup-\$(date +%Y%m%d).sql${NC}"
             if [ -t 0 ]; then
                 read -p "Continue with upgrade? [Y/n] " -n 1 -r
                 echo ""

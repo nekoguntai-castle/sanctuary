@@ -26,13 +26,7 @@ cd "$SCRIPT_DIR"
 SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
 SANCTUARY_PROJECT_DIR="$SCRIPT_DIR"
 export SANCTUARY_PROJECT_DIR
-ownership_initialize
-ownership_require_identity
-SANCTUARY_SOURCE_COMMIT="${SANCTUARY_SOURCE_COMMIT:-$SANCTUARY_COMMIT}"
-SANCTUARY_IMAGE_LOCK_SHA256="${SANCTUARY_IMAGE_LOCK_SHA256:-$(ownership_sha256 < "$SCRIPT_DIR/config/container-image-lock.json")}"
-SANCTUARY_VERSION="${SANCTUARY_VERSION:-$(awk -F'"' '/"version":/{print $4; exit}' "$SCRIPT_DIR/package.json")}"
-SANCTUARY_BUILD_ID="${SANCTUARY_BUILD_ID:-$SANCTUARY_OPERATION_RUN_ID}"
-export SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+ownership_initialize_build_identity
 
 DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
 SANCTUARY_RUNTIME_DIR="$DEFAULT_RUNTIME_DIR"
@@ -70,6 +64,7 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
     set +a
 fi
+ownership_refresh_checkout_build_identity
 
 persist_runtime_env_value() {
     local key="$1"
@@ -414,6 +409,7 @@ start_compose_stack() {
     fi
 
     if deployment_stage_before postgres_started; then
+        deployment_verify_legacy_preconditions
         if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
             bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
                 "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
@@ -433,6 +429,7 @@ start_compose_stack() {
         wait_for_routed_api
         deployment_transition health_verified
     fi
+    deployment_verify_legacy_upgrade
     deployment_activate
 }
 
@@ -445,6 +442,7 @@ prepare_start_lock() {
 
 resolve_start_deployment() {
     deployment_begin "$HAS_MONITORING" "$HAS_TOR" "$HAS_MCP"
+    deployment_verify_legacy_preconditions
     MCP_PROFILE=""
 }
 

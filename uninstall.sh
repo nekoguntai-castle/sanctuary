@@ -17,6 +17,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/scripts/ownership/producer-hooks.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -57,6 +59,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+ownership_prepare_operator_compose "$SCRIPT_DIR"
+
 echo ""
 echo -e "${RED}╔═══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${RED}║              SANCTUARY UNINSTALL                          ║${NC}"
@@ -85,7 +89,7 @@ else
     echo -e "${RED}YOUR WALLET DATA WILL BE PERMANENTLY LOST!${NC}"
     echo ""
     echo "Consider backing up first:"
-    echo -e "  ${GREEN}docker exec \$(docker compose ps -q postgres) pg_dump -U sanctuary sanctuary > backup.sql${NC}"
+    echo -e "  ${GREEN}docker exec \$(./scripts/ownership/run-operator-compose.sh ps -q postgres) pg_dump -U sanctuary sanctuary > backup.sql${NC}"
     echo ""
 fi
 
@@ -115,10 +119,14 @@ echo "Stopping and removing containers..."
 
 # Stop the main and optional stacks as one Compose project. Explicitly pinning
 # the project directory preserves relative paths in the nested overlays.
-COMPOSE_FILE_ARGS=(--project-directory "$SCRIPT_DIR" -f "$SCRIPT_DIR/docker-compose.yml")
+COMPOSE_FILE_ARGS=(--project-directory "$SCRIPT_DIR" --env-file "$SANCTUARY_ENV_FILE" \
+    -p "$SANCTUARY_PROJECT" -f "$SCRIPT_DIR/docker-compose.yml")
 [ -f "$SCRIPT_DIR/docker/compose/monitoring.yml" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/monitoring.yml")
 [ -f "$SCRIPT_DIR/docker/compose/tor.yml" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/tor.yml")
-docker compose "${COMPOSE_FILE_ARGS[@]}" down --remove-orphans 2>/dev/null || true
+if ! docker compose "${COMPOSE_FILE_ARGS[@]}" down --remove-orphans; then
+    echo -e "${RED}Failed to stop the Sanctuary Compose project; uninstall aborted before data removal.${NC}" >&2
+    exit 1
+fi
 
 if [ "$KEEP_DATA" = false ]; then
     echo "Removing Docker volumes..."

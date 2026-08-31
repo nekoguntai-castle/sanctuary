@@ -78,7 +78,7 @@ function validateDeployment(value) {
     'definitionVersion', 'ownerId', 'release', 'commit', 'projectDirectory',
     'projectDirectoryIdentity', 'composeProjectName', 'envFile', 'envFileIdentity',
     'installMode', 'profiles', 'overlays', 'policyDigest', 'contextFingerprint',
-    'definitionDigest',
+    'definitionDigest', 'legacyResources',
   ]);
   identifier(value.deploymentId, '$.deploymentId');
   integer(value.generation, '$.generation', { min: 1 });
@@ -103,13 +103,27 @@ function validateDeployment(value) {
     identifier(entry.sourceIdentity, `${overlayPath}.sourceIdentity`);
     canonicalRelativePath(entry.snapshotPath, `${overlayPath}.snapshotPath`);
     digest(entry.sha256, `${overlayPath}.sha256`);
-    enumeration(entry.kind, `${overlayPath}.kind`, ['tracked', 'custom']);
+    enumeration(entry.kind, `${overlayPath}.kind`, ['tracked', 'custom', 'generated']);
   });
   unique(value.overlays.map((entry) => entry.sourcePath), '$.overlays.sourcePath');
   unique(value.overlays.map((entry) => entry.snapshotPath), '$.overlays.snapshotPath');
   digest(value.policyDigest, '$.policyDigest');
   digest(value.contextFingerprint, '$.contextFingerprint');
   digest(value.definitionDigest, '$.definitionDigest');
+  const legacyResources = array(value.legacyResources, '$.legacyResources', { max: 512 });
+  legacyResources.forEach((entry, index) => {
+    const entryPath = `$.legacyResources[${index}]`;
+    object(entry, entryPath, [
+      'resourceClass', 'locator', 'composeResource', 'immutableIdentity', 'cleanupPolicy', 'ownershipState',
+    ]);
+    enumeration(entry.resourceClass, `${entryPath}.resourceClass`, ['compose_container', 'compose_network', 'compose_volume']);
+    string(entry.locator, `${entryPath}.locator`, { max: 256 });
+    identifier(entry.composeResource, `${entryPath}.composeResource`);
+    identifier(entry.immutableIdentity, `${entryPath}.immutableIdentity`);
+    if (entry.cleanupPolicy !== 'preserve_ambiguous') throw new Error(`${entryPath}.cleanupPolicy must equal preserve_ambiguous`);
+    if (entry.ownershipState !== 'unlabeled') throw new Error(`${entryPath}.ownershipState must equal unlabeled`);
+  });
+  unique(legacyResources.map((entry) => `${entry.resourceClass}:${entry.locator}`), '$.legacyResources');
 }
 
 function validateRun(value) {

@@ -10,10 +10,10 @@ deployment_lifecycle_initialize() {
 }
 
 deployment_begin() {
-  local monitoring="$1" tor="$2" mcp="$3" result args_file lock_ownership_result
+  local monitoring="$1" tor="$2" mcp="$3" upgrade="${4:-false}" result args_file lock_ownership_result
   deployment_lifecycle_initialize
   result="$(SANCTUARY_INCLUDE_MONITORING="$monitoring" SANCTUARY_INCLUDE_TOR="$tor" \
-    SANCTUARY_INCLUDE_MCP="$mcp" node "$DEPLOYMENT_SESSION_SCRIPT" begin)"
+    SANCTUARY_INCLUDE_MCP="$mcp" SANCTUARY_UPGRADE_MODE="$upgrade" node "$DEPLOYMENT_SESSION_SCRIPT" begin)"
   IFS=$'\t' read -r SANCTUARY_DEPLOYMENT_STATE SANCTUARY_DEPLOYMENT_GENERATION \
     SANCTUARY_PENDING_DIGEST SANCTUARY_DEPLOYMENT_LOCK_TOKEN lock_ownership_result \
     SANCTUARY_DEPLOYMENT_STAGE <<< "$result"
@@ -32,6 +32,16 @@ deployment_begin() {
   mapfile -d '' -t COMPOSE_FILE_ARGS < "$args_file"
   rm -f "$args_file"
   [ "${#COMPOSE_FILE_ARGS[@]}" -gt 0 ]
+}
+
+deployment_verify_legacy_upgrade() {
+  deployment_lifecycle_initialize
+  node "$DEPLOYMENT_SESSION_SCRIPT" verify-legacy-upgrade >/dev/null
+}
+
+deployment_verify_legacy_preconditions() {
+  deployment_lifecycle_initialize
+  node "$DEPLOYMENT_SESSION_SCRIPT" verify-legacy-preconditions >/dev/null
 }
 
 deployment_lock_only_acquire() {

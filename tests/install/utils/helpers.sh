@@ -69,8 +69,16 @@ resolve_compose_overlay() {
 
 run_project_compose() {
     local project_dir="${1:-.}"
-    local overlay_file
+    local deployment_root overlay_file
     shift
+
+    deployment_root="${SANCTUARY_RUNTIME_DIR:-${HOME:-}/.config/sanctuary}/ownership/deployments/${SANCTUARY_DEPLOYMENT_ID:-deploy-${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}}"
+    if [ -x "$project_dir/scripts/ownership/run-operator-compose.sh" ] \
+        && { [ -e "$deployment_root/identity.json" ] || [ -e "$deployment_root/active-revision.json" ] \
+          || [ -e "$deployment_root/pending-revision.json" ] || [ -e "$deployment_root/prepared-revision.json" ]; }; then
+        "$project_dir/scripts/ownership/run-operator-compose.sh" "$@"
+        return
+    fi
 
     local -a compose_cmd=(docker compose --project-directory "$project_dir")
     if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
@@ -634,6 +642,37 @@ export_lane_image_tag() {
     esac
 
     export SANCTUARY_IMAGE_TAG="$tag"
+}
+
+initialize_install_test_ownership() {
+    local identity_root="${TARGET_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
+    if [ -z "$identity_root" ] || [ ! -f "$identity_root/scripts/ownership/producer-hooks.sh" ]; then
+        log_error "Current checkout ownership producer hook is unavailable"
+        return 1
+    fi
+
+    # Source the current harness even while an upgrade fixture temporarily
+    # points PROJECT_ROOT at a historical checkout that predates ownership.
+    # shellcheck source=scripts/ownership/producer-hooks.sh
+    source "$identity_root/scripts/ownership/producer-hooks.sh"
+    SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary-install-test}}"
+    SANCTUARY_PROJECT_DIR="$identity_root"
+    export SANCTUARY_PROJECT SANCTUARY_PROJECT_DIR
+    ownership_initialize_build_identity
+}
+
+initialize_install_test_ownership_for_root() {
+    local checkout_root="$1"
+    local identity_root="${TARGET_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
+    # Always use the current harness implementation, including when the source
+    # checkout predates ownership support.
+    # shellcheck source=scripts/ownership/producer-hooks.sh
+    source "$identity_root/scripts/ownership/producer-hooks.sh"
+    unset SANCTUARY_RELEASE SANCTUARY_COMMIT SANCTUARY_SOURCE_COMMIT
+    unset SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+    SANCTUARY_PROJECT_DIR="$checkout_root"
+    export SANCTUARY_PROJECT_DIR
+    ownership_initialize_build_identity
 }
 
 # Drop this lane's images before installing a checkout so its build cannot be

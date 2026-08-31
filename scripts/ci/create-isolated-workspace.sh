@@ -106,6 +106,30 @@ main() {
   git clone --quiet --no-hardlinks "$source_workspace" "$repo"
   git -C "$repo" checkout --quiet "$source_head"
 
+  if [ "$docker_visible" = true ]; then
+    SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-${source_workspace##*/}}}"
+    SANCTUARY_PROJECT_DIR="$repo"
+    export SANCTUARY_PROJECT SANCTUARY_PROJECT_DIR
+    ownership_initialize_build_identity
+
+    if [ "$(ci_env_file)" != /dev/stdout ]; then
+      local identity_name identity_value
+      local -a identity_names=(
+        SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID
+        SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT
+        SANCTUARY_CLEANUP_CREATED_AT SANCTUARY_SOURCE_COMMIT
+        SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+      )
+      for identity_name in "${identity_names[@]}"; do
+        identity_value="${!identity_name}"
+        if [[ "$identity_value" == *$'\n'* || "$identity_value" == *$'\r'* ]]; then
+          fail "ownership identity contains a line break: $identity_name"
+        fi
+        ci_emit_env "$identity_name=$identity_value"
+      done
+    fi
+  fi
+
   local path_identity parent_identity
   path_identity="path-$(stat -c '%d-%i' "$workdir" 2>/dev/null || stat -f '%d-%i' "$workdir")"
   parent_identity="parent-$(printf '%s' "$(cd "$parent" && pwd -P)" | ownership_sha256)"

@@ -52,13 +52,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
 SANCTUARY_PROJECT_DIR="$PROJECT_DIR"
 export SANCTUARY_PROJECT_DIR
-ownership_initialize
-ownership_require_identity
-SANCTUARY_SOURCE_COMMIT="${SANCTUARY_SOURCE_COMMIT:-$SANCTUARY_COMMIT}"
-SANCTUARY_IMAGE_LOCK_SHA256="${SANCTUARY_IMAGE_LOCK_SHA256:-$(ownership_sha256 < "$PROJECT_DIR/config/container-image-lock.json")}"
-SANCTUARY_VERSION="${SANCTUARY_VERSION:-$(awk -F'"' '/"version":/{print $4; exit}' "$PROJECT_DIR/package.json")}"
-SANCTUARY_BUILD_ID="${SANCTUARY_BUILD_ID:-$SANCTUARY_OPERATION_RUN_ID}"
-export SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+ownership_initialize_build_identity
 DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
 SANCTUARY_RUNTIME_DIR="$DEFAULT_RUNTIME_DIR"
 export SANCTUARY_RUNTIME_DIR
@@ -74,6 +68,25 @@ ENV_FILE_IS_LEGACY=false
 if [ -z "${SANCTUARY_ENV_FILE:-}" ] && [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
     ENV_FILE="$LEGACY_ENV_FILE"
     ENV_FILE_IS_LEGACY=true
+fi
+PREEXISTING_RUNTIME_IDENTITY=false
+legacy_upgrade_identity_file="$ENV_FILE"
+[ -f "$legacy_upgrade_identity_file" ] || legacy_upgrade_identity_file="$LEGACY_LOCAL_ENV_FILE"
+if [ -f "$legacy_upgrade_identity_file" ]; then
+    legacy_upgrade_identity_valid=true
+    for required_name in JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD; do
+        if ! awk -F= -v name="$required_name" '
+            $1 == name {
+                definitions++
+                value = substr($0, length(name) + 2)
+                if (value ~ /^[A-Za-z0-9._:+\/@%=-]+$/) literal_values++
+            }
+            END { exit !(definitions == 1 && literal_values == 1) }
+        ' "$legacy_upgrade_identity_file"; then
+            legacy_upgrade_identity_valid=false
+        fi
+    done
+    PREEXISTING_RUNTIME_IDENTITY="$legacy_upgrade_identity_valid"
 fi
 
 SSL_DIR="${SANCTUARY_SSL_DIR:-$DEFAULT_SSL_DIR}"
@@ -828,6 +841,17 @@ ENABLE_MCP=${OPT_ENABLE_MCP:-no}
 SANCTUARY_INSTALL_MODE=${SANCTUARY_INSTALL_MODE:-$([ "$OPT_OFFLINE" = true ] && echo offline || echo online)}
 SANCTUARY_OFFLINE_VERSION=${SANCTUARY_OFFLINE_VERSION:-}
 
+# Ownership and immutable build provenance used by every later Compose command.
+SANCTUARY_PROJECT=$SANCTUARY_PROJECT
+SANCTUARY_DEPLOYMENT_ID=$SANCTUARY_DEPLOYMENT_ID
+SANCTUARY_OWNER_ID=$SANCTUARY_OWNER_ID
+SANCTUARY_RELEASE=$SANCTUARY_RELEASE
+SANCTUARY_COMMIT=$SANCTUARY_COMMIT
+SANCTUARY_SOURCE_COMMIT=$SANCTUARY_SOURCE_COMMIT
+SANCTUARY_IMAGE_LOCK_SHA256=$SANCTUARY_IMAGE_LOCK_SHA256
+SANCTUARY_VERSION=$SANCTUARY_VERSION
+SANCTUARY_BUILD_ID=$SANCTUARY_BUILD_ID
+
 # LLM egress proxy endpoint policy. Host-local and .local provider endpoints are
 # allowed by default; numeric LAN IP endpoints such as LM Studio on :1234 need a
 # CIDR allowlist.
@@ -1106,6 +1130,7 @@ start_services() {
     echo ""
     echo "Starting containers..."
     if deployment_stage_before postgres_started; then
+        deployment_verify_legacy_preconditions
         run_grafana_credential_migration
         if [ "$OPT_OFFLINE" = true ]; then
             docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
@@ -1203,8 +1228,8 @@ wait_for_healthy() {
 
     if [ $WAITED -ge $MAX_WAIT ] && { [ "$FRONTEND_RUNNING" = false ] || [ "$WORKER_RUNNING" = false ]; }; then
         echo -e "${YELLOW}Timeout waiting for services. They may still be starting.${NC}"
-        echo "  Check status with: docker compose ps"
-        echo "  View logs with: docker compose logs -f"
+        echo "  Check status with: ./scripts/ownership/run-operator-compose.sh ps"
+        echo "  View logs with: ./scripts/ownership/run-operator-compose.sh logs -f"
     fi
 
     echo ""
@@ -1235,7 +1260,7 @@ wait_for_routed_api() {
 
     echo -e "${RED}Backend containers started, but the browser-routed API is unavailable.${NC}"
     echo "  Checked: $api_url"
-    echo "  Inspect: docker compose logs frontend backend"
+    echo "  Inspect: ./scripts/ownership/run-operator-compose.sh logs frontend backend"
     return 1
 }
 
@@ -1332,7 +1357,7 @@ show_completion_banner() {
     echo -e "  ${GREEN}./start.sh${NC}           Start Sanctuary"
     echo -e "  ${GREEN}./start.sh --stop${NC}    Stop Sanctuary"
     echo -e "  ${GREEN}./start.sh --logs${NC}    View logs"
-    echo -e "  ${GREEN}docker compose logs -f${NC}  Follow all container logs"
+    echo -e "  ${GREEN}./scripts/ownership/run-operator-compose.sh logs -f${NC}  Follow all container logs"
     echo ""
 }
 
@@ -1411,6 +1436,7 @@ main() {
 
     # Load existing secrets or generate new ones
     load_or_generate_secrets
+    ownership_refresh_checkout_build_identity
 
     # Prompt for optional features
     prompt_optional_features
@@ -1429,7 +1455,13 @@ main() {
 
     SANCTUARY_OFFLINE_MODE="$OPT_OFFLINE"
     export SANCTUARY_OFFLINE_MODE
-    deployment_begin "$OPT_ENABLE_MONITORING" "$OPT_ENABLE_TOR" "$OPT_ENABLE_MCP"
+    LEGACY_UPGRADE_COMPATIBILITY=false
+    if [ "$OPT_UPGRADE" = true ] && [ "$OPT_FROM_INSTALL" = true ] \
+        && [ "$PREEXISTING_RUNTIME_IDENTITY" = true ]; then
+        LEGACY_UPGRADE_COMPATIBILITY=true
+    fi
+    deployment_begin "$OPT_ENABLE_MONITORING" "$OPT_ENABLE_TOR" "$OPT_ENABLE_MCP" "$LEGACY_UPGRADE_COMPATIBILITY"
+    deployment_verify_legacy_preconditions
     if [ "$OPT_NO_START" = false ]; then
         reconcile_postgres_password_with_running_database
     fi
@@ -1460,6 +1492,7 @@ main() {
     fi
 
     if [ "$STARTED" = true ]; then
+        deployment_verify_legacy_upgrade
         deployment_transition health_verified
         deployment_activate
     else

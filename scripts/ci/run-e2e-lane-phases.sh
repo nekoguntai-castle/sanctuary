@@ -34,6 +34,12 @@ shift 3
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$REPO_ROOT/scripts/ownership/producer-hooks.sh"
+SANCTUARY_PROJECT_DIR="$WORKSPACE"
+SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary-e2e}}"
+export SANCTUARY_PROJECT_DIR SANCTUARY_PROJECT
+ownership_initialize_build_identity
 
 mkdir -p "$LOG_DIR"
 

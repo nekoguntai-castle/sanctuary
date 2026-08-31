@@ -10,6 +10,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/ownership/producer-hooks.sh"
+# shellcheck source=scripts/ownership/deployment-lifecycle.sh
+. "$SCRIPT_DIR/ownership/deployment-lifecycle.sh"
 
 USERNAME="admin"
 BACKUP_DIR="${SANCTUARY_2FA_RESET_BACKUP_DIR:-$HOME/.config/sanctuary/recovery}"
@@ -77,7 +81,24 @@ validate_input() {
 }
 
 compose() {
-  docker compose -f "$PROJECT_DIR/docker-compose.yml" "$@"
+  docker compose "${RESET_COMPOSE_ARGS[@]}" "$@"
+}
+
+prepare_compose() {
+  local deployment_root
+
+  ownership_prepare_operator_compose "$PROJECT_DIR"
+  ownership_refresh_checkout_build_identity
+  deployment_root="$SANCTUARY_RUNTIME_DIR/ownership/deployments/$SANCTUARY_DEPLOYMENT_ID"
+  if [ -e "$deployment_root/identity.json" ] || [ -e "$deployment_root/active-revision.json" ] \
+      || [ -e "$deployment_root/pending-revision.json" ] || [ -e "$deployment_root/prepared-revision.json" ]; then
+    trap deployment_lock_release EXIT
+    deployment_use_active
+    RESET_COMPOSE_ARGS=("${COMPOSE_FILE_ARGS[@]}")
+  else
+    RESET_COMPOSE_ARGS=(--project-directory "$PROJECT_DIR" --env-file "$SANCTUARY_ENV_FILE" \
+      -p "$SANCTUARY_PROJECT" -f "$PROJECT_DIR/docker-compose.yml")
+  fi
 }
 
 run_psql() {
@@ -183,6 +204,7 @@ reset_two_factor() {
 
 main() {
   parse_args "$@"
+  prepare_compose
   validate_input
 
   [ "$(get_user_count)" = "1" ] || fail "user not found: $USERNAME"

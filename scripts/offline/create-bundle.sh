@@ -149,10 +149,13 @@ validate_release_checkout() {
 }
 
 build_sanctuary_images() {
+  local commit="$1"
   if [ "$SKIP_BUILD" = "true" ]; then
     offline_log "Skipping Sanctuary image build."
     return
   fi
+
+  initialize_bundle_build_identity "$commit"
 
   offline_log "Building Sanctuary images for $PLATFORM..."
   # Compose interpolates required runtime secrets before it selects the build
@@ -184,6 +187,25 @@ build_sanctuary_images() {
         -f "$OFFLINE_REPO_ROOT/docker/compose/monitoring.yml" build \
         grafana-password-migration
   fi
+}
+
+initialize_bundle_build_identity() {
+  local commit="$1"
+  # shellcheck source=scripts/ownership/producer-hooks.sh
+  source "$OFFLINE_REPO_ROOT/scripts/ownership/producer-hooks.sh"
+  SANCTUARY_PROJECT="offline-bundle-${TAG#v}"
+  SANCTUARY_PROJECT_DIR="$OFFLINE_REPO_ROOT"
+  SANCTUARY_RELEASE="$TAG"
+  SANCTUARY_COMMIT="$commit"
+  SANCTUARY_OPERATION_RUN_ID="offline-${commit:0:12}"
+  SANCTUARY_SOURCE_COMMIT="$commit"
+  SANCTUARY_IMAGE_LOCK_SHA256="$(ownership_sha256 < "$OFFLINE_REPO_ROOT/config/container-image-lock.json")"
+  SANCTUARY_VERSION="$(awk -F'"' '/"version":/{print $4; exit}' "$OFFLINE_REPO_ROOT/package.json")"
+  SANCTUARY_BUILD_ID="$SANCTUARY_OPERATION_RUN_ID"
+  export SANCTUARY_PROJECT SANCTUARY_PROJECT_DIR SANCTUARY_RELEASE
+  export SANCTUARY_COMMIT SANCTUARY_OPERATION_RUN_ID
+  export SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+  ownership_initialize_build_identity
 }
 
 external_images() {
@@ -619,7 +641,7 @@ main() {
   mkdir -p "$stage_dir"
   trap cleanup_create_tmp EXIT
 
-  build_sanctuary_images
+  build_sanctuary_images "$commit"
   pull_external_images
   save_images "$stage_dir"
   write_image_inventory "$stage_dir"

@@ -27,6 +27,11 @@ ok()  { PASS=$((PASS + 1)); echo "PASS: $1"; }
 bad() { FAIL=$((FAIL + 1)); FAILURES+=("$1"); echo "FAIL: $1" >&2; }
 
 bash -n "$SCRIPT" || bad 'wait-for-migration.sh does not parse'
+if grep -q 'ownership_initialize_build_identity' "$SCRIPT"; then
+  ok 'standalone migration wait initializes strict Compose identity when the checkout supports it'
+else
+  bad 'standalone migration wait does not initialize strict Compose identity'
+fi
 
 # Build a fake `docker` whose `compose ps` answers from a fixture file, and which
 # records every argv it was called with.

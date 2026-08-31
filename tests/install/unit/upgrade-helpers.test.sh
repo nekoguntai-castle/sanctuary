@@ -499,11 +499,13 @@ test_active_extended_fixture_selection_contract() {
   local expected_records
   local expected_csv
   local runner_records
+  local runner_contents
   local failures=0
 
   expected_records=$'browser-origin-ip 21\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 30\nwallet-sync-retirement 33'
   expected_csv='browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles,wallet-sync-retirement'
   runner_records="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
+  runner_contents="$(cat "$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh")"
 
   assert_equals "$expected_records" "$(upgrade_active_extended_fixture_records)" \
     "active extended fixture registry should be stable" || failures=1
@@ -511,6 +513,8 @@ test_active_extended_fixture_selection_contract() {
     "active extended fixture CSV should be stable" || failures=1
   assert_equals "$expected_records" "$runner_records" \
     "extended fixture runner should use the shared registry" || failures=1
+  assert_contains "$runner_contents" 'ownership_initialize_build_identity' \
+    "extended fixture parent should initialize strict Compose identity for failure diagnostics" || failures=1
   assert_equals "24" "$(upgrade_extended_fixture_port_offset legacy-runtime-env)" \
     "fixture port offsets should be table lookups, not selected-list positions" || failures=1
   assert_equals "33" "$(upgrade_extended_fixture_port_offset wallet-sync-retirement)" \
@@ -1919,6 +1923,16 @@ test_upgrade_harness_covers_backend_address_replacement() {
     "regression cleanup should fail closed if backend restoration fails"
 }
 
+test_upgrade_harness_exports_operator_runtime_state() {
+  local lane
+  lane="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_contains "$lane" 'export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"' \
+    "upgrade lane should retain the manifest runtime root for operator commands" || return 1
+  assert_contains "$lane" 'export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"' \
+    "upgrade lane should retain the selected runtime environment for operator commands"
+}
+
 test_backend_replacement_failure_restores_backend() {
   local call_log="$TEST_TMP_DIR/backend-replacement-cleanup.log"
   local exit_code
@@ -2033,6 +2047,7 @@ main() {
   run_test "upgrade cleanup preserves failure when cleanup fails" test_upgrade_finish_preserves_failure_when_cleanup_fails
   run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
   run_test "upgrade harness covers backend address replacement" test_upgrade_harness_covers_backend_address_replacement
+  run_test "upgrade harness exports operator runtime state" test_upgrade_harness_exports_operator_runtime_state
   run_test "backend replacement failure restores backend" test_backend_replacement_failure_restores_backend
   run_test "backend replacement selects shared frontend network" test_backend_replacement_selects_shared_frontend_network
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header

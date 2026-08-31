@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { canonicalSha256 } from './canonical-json.mjs';
 import { sha256 } from './crypto.mjs';
-import { validateOverlay } from './overlay-policy.mjs';
+import { assertSecretFreeOverlay, validateOverlay } from './overlay-policy.mjs';
 
 const INSTALL_MODES = new Set(['online', 'offline']);
 const PROFILE_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -77,6 +77,25 @@ function selectedComposeFiles(projectDirectory, { installMode, monitoring, tor, 
   return [...files, ...customOverlays.map((entry) => path.resolve(projectDirectory, entry))];
 }
 
+function generatedSnapshot(entry, index) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('generated overlay must be an object');
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(entry.name ?? '')) throw new Error('generated overlay name has an invalid format');
+  if (!Buffer.isBuffer(entry.bytes) || entry.bytes.length === 0 || entry.bytes.length > 2 * 1024 * 1024) {
+    throw new Error('generated overlay bytes are invalid');
+  }
+  const digest = sha256(entry.bytes);
+  const sourcePath = `generated/${entry.name}-${digest}.yml`;
+  assertSecretFreeOverlay(entry.bytes, { displayPath: sourcePath });
+  return {
+    sourcePath,
+    sourceIdentity: `generated:${digest}`,
+    snapshotPath: snapshotName(index, sourcePath),
+    sha256: digest,
+    kind: 'generated',
+    bytes: entry.bytes,
+  };
+}
+
 function assertIdentityFields({ ownerId, release, commit, policyDigest, contextFingerprint }) {
   if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/.test(ownerId)) throw new Error('ownerId has an invalid format');
   if (typeof release !== 'string' || release.length === 0 || release.length > 128) throw new Error('release has an invalid format');
@@ -101,6 +120,7 @@ export function resolveDeploymentDefinition({
   tor = false,
   mcp = false,
   customOverlays = [],
+  generatedOverlays = [],
   customOverlayPolicy = {},
   ownerId,
   release,
@@ -111,6 +131,7 @@ export function resolveDeploymentDefinition({
   if (!INSTALL_MODES.has(installMode)) throw new Error('installMode must be online or offline');
   if (![monitoring, tor, mcp].every((entry) => typeof entry === 'boolean')) throw new Error('feature selections must be booleans');
   if (!Array.isArray(customOverlays)) throw new Error('customOverlays must be an array');
+  if (!Array.isArray(generatedOverlays)) throw new Error('generatedOverlays must be an array');
   assertIdentityFields({ ownerId, release, commit, policyDigest, contextFingerprint });
 
   const projectRoot = realpathSync(path.resolve(projectDirectory));
@@ -120,7 +141,7 @@ export function resolveDeploymentDefinition({
   const files = selectedComposeFiles(projectRoot, { installMode, monitoring, tor, customOverlays });
   const resolvedFiles = files.map((candidate) => resolveExistingFile(candidate, 'Compose definition'));
   if (new Set(resolvedFiles).size !== resolvedFiles.length) throw new Error('Compose definition files must not contain duplicates');
-  const snapshots = resolvedFiles.map((sourcePath, index) => {
+  const fileSnapshots = resolvedFiles.map((sourcePath, index) => {
     const { bytes, identity } = stableRead(sourcePath);
     const classification = validateOverlay(projectRoot, sourcePath, bytes, {
       ...customOverlayPolicy,
@@ -135,6 +156,10 @@ export function resolveDeploymentDefinition({
       bytes,
     };
   });
+  const snapshots = [
+    ...fileSnapshots,
+    ...generatedOverlays.map((entry, index) => generatedSnapshot(entry, fileSnapshots.length + index)),
+  ];
   const profiles = mcp ? ['mcp'] : [];
   for (const profile of profiles) if (!PROFILE_NAME.test(profile)) throw new Error(`invalid Compose profile: ${profile}`);
   const definition = {

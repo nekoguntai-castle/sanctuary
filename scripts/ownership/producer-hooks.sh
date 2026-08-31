@@ -54,6 +54,70 @@ ownership_require_identity() {
   return 1
 }
 
+ownership_initialize_build_identity() {
+  ownership_initialize
+  ownership_require_identity
+  local checkout_root="${SANCTUARY_PROJECT_DIR:-$(pwd -P)}"
+  SANCTUARY_SOURCE_COMMIT="${SANCTUARY_SOURCE_COMMIT:-$SANCTUARY_COMMIT}"
+  SANCTUARY_IMAGE_LOCK_SHA256="${SANCTUARY_IMAGE_LOCK_SHA256:-$(ownership_sha256 < "$checkout_root/config/container-image-lock.json")}"
+  SANCTUARY_VERSION="${SANCTUARY_VERSION:-$(awk -F'"' '/"version":/{print $4; exit}' "$checkout_root/package.json")}"
+  SANCTUARY_BUILD_ID="${SANCTUARY_BUILD_ID:-$SANCTUARY_OPERATION_RUN_ID}"
+  export SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+}
+
+# Recompute artifact provenance after an existing runtime env has been loaded.
+# Stable deployment identity may come from that file, but a rebuild must never
+# inherit the previous checkout's commit, lock digest, version, or build ID.
+ownership_refresh_checkout_build_identity() {
+  ownership_initialize
+  local checkout_root="${SANCTUARY_PROJECT_DIR:-$(pwd -P)}"
+  local checkout_commit checkout_release
+  if checkout_commit="$(git -C "$checkout_root" rev-parse HEAD 2>/dev/null)"; then
+    SANCTUARY_COMMIT="$checkout_commit"
+    checkout_release="$(git -C "$checkout_root" describe --tags --always 2>/dev/null || true)"
+    [ -z "$checkout_release" ] || SANCTUARY_RELEASE="$checkout_release"
+  fi
+  ownership_require_identity
+  SANCTUARY_SOURCE_COMMIT="$SANCTUARY_COMMIT"
+  SANCTUARY_IMAGE_LOCK_SHA256="$(ownership_sha256 < "$checkout_root/config/container-image-lock.json")"
+  SANCTUARY_VERSION="$(awk -F'"' '/"version":/{print $4; exit}' "$checkout_root/package.json")"
+  SANCTUARY_BUILD_ID="$SANCTUARY_OPERATION_RUN_ID"
+  export SANCTUARY_RELEASE SANCTUARY_COMMIT SANCTUARY_SOURCE_COMMIT
+  export SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
+}
+
+# Load the operator-owned runtime environment and export the complete identity
+# required by the strict Compose contract. Read-only/operator commands do not
+# create a deployment generation, so checkout-derived build metadata is the
+# only canonical source available to Compose interpolation.
+ownership_prepare_operator_compose() {
+  local checkout_root="${1:-${SANCTUARY_PROJECT_DIR:-$(pwd -P)}}"
+  local runtime_dir="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+  local env_file="${SANCTUARY_ENV_FILE:-$runtime_dir/sanctuary.env}"
+
+  if [ ! -f "$env_file" ]; then
+    if [ -f "$checkout_root/.env" ]; then env_file="$checkout_root/.env"
+    elif [ -f "$checkout_root/.env.local" ]; then env_file="$checkout_root/.env.local"
+    fi
+  fi
+  if [ -f "$env_file" ]; then
+    set -a
+    # shellcheck disable=SC1090 -- operator-selected runtime environment
+    source "$env_file"
+    set +a
+  fi
+
+  SANCTUARY_PROJECT_DIR="$checkout_root"
+  SANCTUARY_RUNTIME_DIR="$runtime_dir"
+  SANCTUARY_ENV_FILE="$env_file"
+  SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-$runtime_dir/ssl}"
+  SANCTUARY_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$SANCTUARY_SSL_DIR}"
+  SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+  export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
+  export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
+  ownership_initialize_build_identity
+}
+
 ownership_label_args() {
   local resource_class="$1" cleanup_policy="$2"
   ownership_initialize

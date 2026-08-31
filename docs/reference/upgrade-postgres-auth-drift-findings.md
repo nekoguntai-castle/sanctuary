@@ -39,7 +39,7 @@ Two details mattered:
 Do not treat this as authoritative:
 
 ```bash
-docker exec "$(docker compose ps -q postgres)" \
+docker exec "$(./scripts/ownership/run-operator-compose.sh ps -q postgres)" \
   psql -h 127.0.0.1 -U sanctuary -d sanctuary -tAc 'SELECT 1'
 ```
 
@@ -50,7 +50,7 @@ That validates localhost auth inside the database container, not the real bridge
 Validate from the same Compose network and hostname the app uses:
 
 ```bash
-POSTGRES_CONTAINER="$(docker compose ps -q postgres)"
+POSTGRES_CONTAINER="$(./scripts/ownership/run-operator-compose.sh ps -q postgres)"
 POSTGRES_NETWORK="$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$POSTGRES_CONTAINER" | head -n1)"
 
 docker run --rm \
@@ -63,7 +63,7 @@ docker run --rm \
 Also validate from the live backend container if needed:
 
 ```bash
-printf 'SELECT 1;\n' | docker exec -i "$(docker compose ps -q backend)" npx prisma db execute --stdin
+printf 'SELECT 1;\n' | docker exec -i "$(./scripts/ownership/run-operator-compose.sh ps -q backend)" npx prisma db execute --stdin
 ```
 
 ## Manual Recovery
@@ -74,13 +74,13 @@ If an upgrade has already failed, repair the DB user password to match the curre
 cd ~/sanctuary
 set -a; source ~/.config/sanctuary/sanctuary.env; set +a
 
-P="$(docker compose ps -q postgres)"
+P="$(./scripts/ownership/run-operator-compose.sh ps -q postgres)"
 DB_USER="${POSTGRES_USER:-sanctuary}"
 DB_NAME="${POSTGRES_DB:-sanctuary}"
 PW_ESCAPED="$(printf "%s" "$POSTGRES_PASSWORD" | sed "s/'/''/g")"
 
 docker exec "$P" sh -lc "psql -w -h 127.0.0.1 -U \"$DB_USER\" -d \"$DB_NAME\" -v ON_ERROR_STOP=1 -c \"ALTER USER \\\"$DB_USER\\\" WITH PASSWORD '$PW_ESCAPED';\""
-docker compose up -d migrate worker backend frontend gateway llm-egress-proxy
+./scripts/ownership/run-operator-compose.sh up -d migrate worker backend frontend gateway llm-egress-proxy
 ```
 
 ## Hotfix Included In This Patch

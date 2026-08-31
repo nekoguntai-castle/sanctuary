@@ -64,6 +64,7 @@ done
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-fresh-${TEST_ID}}"
+initialize_install_test_ownership
 # Per-lane image tag, derived from the project name so concurrent lanes on one
 # daemon cannot alias each other's images (#719).
 export_lane_image_tag

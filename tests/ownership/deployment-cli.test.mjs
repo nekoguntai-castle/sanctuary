@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { canonicalJson, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
+import { canonicalJson, canonicalSha256, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
 import { resolveDeploymentDefinition } from '../../scripts/ownership/deployment-definition.mjs';
 import { acquireDeploymentLock, releaseDeploymentLock } from '../../scripts/ownership/deployment-lock.mjs';
 import { DeploymentStore } from '../../scripts/ownership/deployment-store.mjs';
@@ -28,6 +28,16 @@ function fixture() {
     commit: 'a'.repeat(40), policyDigest: 'b'.repeat(64), contextFingerprint: 'c'.repeat(64),
   };
   return { projectDirectory, runtimeDirectory, definitionOptions };
+}
+
+function advance(store, operationRunId, lockToken, prepared) {
+  let current = prepared;
+  for (const nextStage of ['build_started', 'build_completed', 'postgres_started', 'password_reconciled', 'stack_started', 'health_verified']) {
+    current = store.transitionPending({
+      operationRunId, lockToken, expectedPendingDigest: current.pendingDigest, nextStage,
+    });
+  }
+  return current;
 }
 
 test('CLI emits canonical local definition JSON and rejects unknown request keys without stdout', () => {
@@ -73,4 +83,82 @@ test('CLI lock acquisition binds the long-lived controller PID from the environm
     runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1', operationRunId: 'run-shell', lockToken: owner.token,
   });
   assert.equal(released.status, 0, released.stderr.toString());
+});
+
+test('CLI rollback completion refuses changed or retroactively claimed legacy resources', () => {
+  const state = fixture();
+  const store = new DeploymentStore({ runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1' });
+  store.initialize({ projectDirectory: state.projectDirectory, composeProjectName: 'sanctuary' });
+  const volume = {
+    Name: 'sanctuary_data', Driver: 'local', Scope: 'local', Mountpoint: '/legacy/data',
+    CreatedAt: '2026-08-30T00:00:00Z', Options: {},
+  };
+  const legacyResources = [{
+    resourceClass: 'compose_volume', locator: 'sanctuary_data', composeResource: 'data',
+    immutableIdentity: canonicalSha256(volume), cleanupPolicy: 'preserve_ambiguous', ownershipState: 'unlabeled',
+  }];
+  const bundle = resolveDeploymentDefinition({ ...state.definitionOptions, composeProjectName: 'sanctuary' });
+
+  let owner = acquireDeploymentLock(store.lockPath, { operationRunId: 'run-1' });
+  let pending = store.prepareRevision({
+    bundle, legacyResources, expectedActiveDigest: null, operationRunId: 'run-1', lockToken: owner.token,
+  });
+  pending = advance(store, 'run-1', owner.token, pending);
+  store.activateRevision({ operationRunId: 'run-1', lockToken: owner.token, expectedPendingDigest: pending.pendingDigest });
+  releaseDeploymentLock(store.lockPath, owner.token, 'run-1');
+
+  owner = acquireDeploymentLock(store.lockPath, { operationRunId: 'run-2' });
+  pending = store.prepareRevision({
+    bundle, legacyResources, expectedActiveDigest: store.inspect().active.value.manifestDigest,
+    operationRunId: 'run-2', lockToken: owner.token,
+  });
+  pending = advance(store, 'run-2', owner.token, pending);
+  store.activateRevision({ operationRunId: 'run-2', lockToken: owner.token, expectedPendingDigest: pending.pendingDigest });
+  releaseDeploymentLock(store.lockPath, owner.token, 'run-2');
+
+  owner = acquireDeploymentLock(store.lockPath, { operationRunId: 'run-rollback' });
+  let rollback = store.beginRollback({
+    targetGeneration: 1, expectedActiveDigest: store.inspect().active.value.manifestDigest,
+    operationRunId: 'run-rollback', lockToken: owner.token,
+  });
+  for (const nextStage of ['rollback_stack_started', 'rollback_health_verified']) {
+    rollback = store.transitionPending({
+      operationRunId: 'run-rollback', lockToken: owner.token,
+      expectedPendingDigest: rollback.pendingDigest, nextStage,
+    });
+  }
+
+  const fakeDirectory = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-rollback-docker-'));
+  const fakeDocker = path.join(fakeDirectory, 'docker');
+  writeFileSync(fakeDocker, `#!/bin/sh
+case " $* " in
+  *" compose "*" config --format json "*) printf '%s\\n' '{"services":{},"networks":{},"volumes":{}}' ;;
+  " container ls "*) ;;
+  " volume inspect sanctuary_data ")
+    mount=/legacy/data
+    labels='{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"data"}'
+    [ "$FAKE_ROLLBACK_RESOURCE" = changed ] && mount=/replacement/data
+    [ "$FAKE_ROLLBACK_RESOURCE" = claimed ] && labels='{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"data","io.sanctuary.project":"sanctuary"}'
+    printf '[{"Name":"sanctuary_data","Driver":"local","Scope":"local","Mountpoint":"%s","CreatedAt":"2026-08-30T00:00:00Z","Options":{},"Labels":%s}]\\n' "$mount" "$labels" ;;
+  *) exit 64 ;;
+esac
+`);
+  chmodSync(fakeDocker, 0o755);
+  const request = {
+    runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1', operationRunId: 'run-rollback',
+    lockToken: owner.token, expectedPendingDigest: rollback.pendingDigest,
+  };
+  const baseEnv = { ...process.env, PATH: `${fakeDirectory}:${process.env.PATH}` };
+  const changed = run('complete-rollback', request, { env: { ...baseEnv, FAKE_ROLLBACK_RESOURCE: 'changed' } });
+  assert.equal(changed.status, 5);
+  assert.match(changed.stderr.toString(), /immutable identity changed/);
+  assert.equal(store.inspect().active.value.generation, 2);
+  const claimed = run('complete-rollback', request, { env: { ...baseEnv, FAKE_ROLLBACK_RESOURCE: 'claimed' } });
+  assert.equal(claimed.status, 5);
+  assert.match(claimed.stderr.toString(), /retroactively claimed/);
+  assert.equal(store.inspect().active.value.generation, 2);
+  const completed = run('complete-rollback', request, { env: { ...baseEnv, FAKE_ROLLBACK_RESOURCE: 'preserved' } });
+  assert.equal(completed.status, 0, completed.stderr.toString());
+  assert.equal(store.inspect().active.value.generation, 1);
+  releaseDeploymentLock(store.lockPath, owner.token, 'run-rollback');
 });

@@ -329,7 +329,7 @@ The gateway container provides a secure API for iOS and Android mobile apps:
 - Node configuration
 - Backup/restore operations
 
-The gateway runs on port 4000 by default and starts automatically with Sanctuary (`./start.sh` or `docker compose up`).
+The gateway runs on port 4000 by default and starts automatically with Sanctuary (`./start.sh` or `./scripts/ownership/run-operator-compose.sh up`).
 
 ## Network Ports
 
@@ -628,16 +628,16 @@ Sanctuary uses a structured logging system with configurable verbosity levels:
 
 ```bash
 # Verbose debugging (see all WebSocket subscriptions, sync operations, etc.)
-LOG_LEVEL=debug docker compose up
+LOG_LEVEL=debug ./scripts/ownership/run-operator-compose.sh up
 
 # Normal operation (default)
-LOG_LEVEL=info docker compose up
+LOG_LEVEL=info ./scripts/ownership/run-operator-compose.sh up
 
 # Quiet mode (warnings and errors only)
-LOG_LEVEL=warn docker compose up
+LOG_LEVEL=warn ./scripts/ownership/run-operator-compose.sh up
 
 # Minimal output (errors only)
-LOG_LEVEL=error docker compose up
+LOG_LEVEL=error ./scripts/ownership/run-operator-compose.sh up
 ```
 
 **Log format:**
@@ -691,14 +691,14 @@ chmod +x generate-certs.sh
 cd ../../..
 
 # Run with HTTPS (port 8443) + HTTP redirect (port 8080)
-HTTPS_PORT=8443 HTTP_PORT=8080 docker compose up -d --build
+HTTPS_PORT=8443 HTTP_PORT=8080 ./scripts/ownership/run-operator-compose.sh up -d --build
 ```
 
 Access at `https://localhost:8443` (or `http://localhost:8080` which redirects to HTTPS). Your browser will warn about the self-signed certificate—click "Advanced" and proceed.
 
 For standard ports (requires root/admin):
 ```bash
-HTTPS_PORT=443 HTTP_PORT=80 docker compose up -d --build
+HTTPS_PORT=443 HTTP_PORT=80 ./scripts/ownership/run-operator-compose.sh up -d --build
 ```
 
 **Option 2: mkcert (Locally-Trusted Certificates)**
@@ -718,7 +718,7 @@ mkcert -install
 mkcert -key-file docker/nginx/ssl/privkey.pem -cert-file docker/nginx/ssl/fullchain.pem localhost 127.0.0.1
 
 # Run with HTTPS
-HTTPS_PORT=8443 HTTP_PORT=8080 docker compose up -d --build
+HTTPS_PORT=8443 HTTP_PORT=8080 ./scripts/ownership/run-operator-compose.sh up -d --build
 ```
 
 **Option 3: Let's Encrypt (Production)**
@@ -1055,9 +1055,9 @@ LATEST=$(git tag --sort=-v:refname | head -1)
 git checkout "$LATEST"
 
 # Rebuild and restart
-docker compose down
-docker compose build
-docker compose up -d
+./scripts/ownership/run-operator-compose.sh down
+./scripts/ownership/run-operator-compose.sh build
+./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 > **Note:** Both `./install.sh` and the manual upgrade check out a release **tag**, which puts Git in "detached HEAD" state. This is normal — it pins you to a specific release. However, it means `git pull` will not work afterward. Always use `./install.sh` or the manual steps above to upgrade, not `git pull`.
@@ -1080,9 +1080,9 @@ cd ~/sanctuary
 git fetch --tags
 git tag --sort=-v:refname  # List available versions
 git checkout v0.8.7        # Replace with desired version
-docker compose down
-docker compose build
-docker compose up -d
+./scripts/ownership/run-operator-compose.sh down
+./scripts/ownership/run-operator-compose.sh build
+./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 ## Backup & Restore
@@ -1134,10 +1134,10 @@ For scripted or automated backups:
 
 ```bash
 # Full database backup
-docker compose exec postgres pg_dump -U sanctuary sanctuary > backup.sql
+./scripts/ownership/run-operator-compose.sh exec postgres pg_dump -U sanctuary sanctuary > backup.sql
 
 # Restore from backup
-cat backup.sql | docker compose exec -T postgres psql -U sanctuary sanctuary
+cat backup.sql | ./scripts/ownership/run-operator-compose.sh exec -T postgres psql -U sanctuary sanctuary
 ```
 
 ### What's Stored
@@ -1223,12 +1223,12 @@ This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanct
 ### Container won't start
 ```bash
 # Check logs
-docker compose logs -f
+./scripts/ownership/run-operator-compose.sh logs -f
 
 # Rebuild from scratch
-docker compose down -v
-docker compose build --no-cache
-docker compose up -d
+./scripts/ownership/run-operator-compose.sh down -v
+./scripts/ownership/run-operator-compose.sh build --no-cache
+./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 ### Can't connect to hardware wallet
@@ -1241,8 +1241,8 @@ docker compose up -d
 ### Database connection errors
 ```bash
 # Reset the database
-docker compose down -v
-docker compose up -d
+./scripts/ownership/run-operator-compose.sh down -v
+./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 ### Port already in use
@@ -1250,7 +1250,7 @@ docker compose up -d
 # Change the port in .env
 HTTPS_PORT=9443
 HTTP_PORT=9080
-docker compose up -d
+./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 ## Development
@@ -1259,7 +1259,7 @@ docker compose up -d
 
 ```bash
 # Start backend dependencies
-docker compose up -d postgres redis
+./scripts/ownership/run-operator-compose.sh up -d postgres redis
 
 # Run backend with hot reload (Node.js 22.x)
 cd server

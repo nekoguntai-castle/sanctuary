@@ -172,6 +172,15 @@ case "$1" in
     [ "$ENCRYPTION_SALT" = "offline-build-encryption-salt" ] || exit 1
     [ "$WORKER_DIAGNOSTICS_SECRET" = "0000000000000000000000000000000000000000000000000000000000000000" ] || exit 1
     [ "$LLM_EGRESS_PROXY_SECRET" = "0000000000000000000000000000000000000000000000000000000000000000" ] || exit 1
+    for name in SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT SANCTUARY_CLEANUP_CREATED_AT SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID; do
+      [ -n "${!name:-}" ] || exit 1
+    done
+    [ -z "${SANCTUARY_EXPECTED_COMMIT:-}" ] || [ "$SANCTUARY_COMMIT" = "$SANCTUARY_EXPECTED_COMMIT" ] || exit 1
+    [ -z "${SANCTUARY_EXPECTED_COMMIT:-}" ] || [ "$SANCTUARY_SOURCE_COMMIT" = "$SANCTUARY_EXPECTED_COMMIT" ] || exit 1
+    [ -z "${SANCTUARY_EXPECTED_RELEASE:-}" ] || [ "$SANCTUARY_RELEASE" = "$SANCTUARY_EXPECTED_RELEASE" ] || exit 1
+    [ -z "${SANCTUARY_EXPECTED_LOCK:-}" ] || [ "$SANCTUARY_IMAGE_LOCK_SHA256" = "$SANCTUARY_EXPECTED_LOCK" ] || exit 1
+    [ -z "${SANCTUARY_EXPECTED_VERSION:-}" ] || [ "$SANCTUARY_VERSION" = "$SANCTUARY_EXPECTED_VERSION" ] || exit 1
+    [ -z "${SANCTUARY_EXPECTED_BUILD_ID:-}" ] || [ "$SANCTUARY_BUILD_ID" = "$SANCTUARY_EXPECTED_BUILD_ID" ] || exit 1
     exit 0
     ;;
   pull)
@@ -405,7 +414,7 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
   TEST_TMP_DIR="$(mktemp -d)"
   setup_fake_docker
 
-  local tag output list manifest failures=0
+  local tag output list manifest expected_commit expected_lock expected_version failures=0
   tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
   if [ -z "$tag" ]; then
     teardown_bundle_workspace
@@ -413,8 +422,19 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
   fi
 
   output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
+  expected_commit="$(git -C "$PROJECT_ROOT" rev-list -n 1 "$tag")"
+  expected_lock="$(sha256sum "$PROJECT_ROOT/config/container-image-lock.json" | awk '{print $1}')"
+  expected_version="$(awk -F'"' '/"version":/{print $4; exit}' "$PROJECT_ROOT/package.json")"
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_EXPECTED_COMMIT="$expected_commit" \
+    SANCTUARY_EXPECTED_RELEASE="$tag" \
+    SANCTUARY_EXPECTED_LOCK="$expected_lock" \
+    SANCTUARY_EXPECTED_VERSION="$expected_version" \
+    SANCTUARY_EXPECTED_BUILD_ID="offline-${expected_commit:0:12}" \
+    SANCTUARY_RELEASE=poison-release SANCTUARY_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    SANCTUARY_SOURCE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+    SANCTUARY_IMAGE_LOCK_SHA256=poison-lock SANCTUARY_VERSION=poison-version SANCTUARY_BUILD_ID=poison-build \
     POSTGRES_PASSWORD="operator-postgres-secret" \
     ENCRYPTION_KEY="operator-encryption-secret" \
     "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null || failures=1

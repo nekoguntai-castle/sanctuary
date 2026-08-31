@@ -163,6 +163,26 @@ test_run_project_compose_passes_explicit_project_flag() {
     "run_project_compose must forward arguments unchanged" || return 1
 }
 
+test_run_project_compose_uses_manifest_operator_path() {
+  local fixture output
+  fixture="$(mktemp -d)"
+  mkdir -p "$fixture/project/scripts/ownership" \
+    "$fixture/runtime/ownership/deployments/deploy-fixture"
+  touch "$fixture/runtime/ownership/deployments/deploy-fixture/active-revision.json"
+  cat > "$fixture/project/scripts/ownership/run-operator-compose.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'operator:%s\n' "$*"
+EOF
+  chmod +x "$fixture/project/scripts/ownership/run-operator-compose.sh"
+
+  output="$(SANCTUARY_RUNTIME_DIR="$fixture/runtime" \
+    SANCTUARY_DEPLOYMENT_ID=deploy-fixture \
+    bash -c "source '$HELPERS'; run_project_compose '$fixture/project' up -d --no-deps backend")"
+
+  assert_contains "$output" "operator:up -d --no-deps backend" \
+    "manifest-backed Compose must use the canonical operator path" || return 1
+}
+
 test_compose_file_has_explicit_name() {
   local content
   content="$(grep -E '^name:' "$PROJECT_ROOT/docker-compose.yml" || true)"
@@ -228,6 +248,7 @@ main() {
   run_test "refuses COMPOSE_PROJECT_NAME=sanctuary (protected)" test_refuses_protected_sanctuary_project_name
   run_test "refuses empty COMPOSE_PROJECT_NAME" test_refuses_empty_project_name
   run_test "run_project_compose passes -p when env is set" test_run_project_compose_passes_explicit_project_flag
+  run_test "run_project_compose uses active manifest operator path" test_run_project_compose_uses_manifest_operator_path
   run_test "docker-compose.yml declares name: sanctuary explicitly" test_compose_file_has_explicit_name
   run_test "cleanup removes out-of-band grafana containers" test_cleanup_removes_out_of_band_grafana_containers
 

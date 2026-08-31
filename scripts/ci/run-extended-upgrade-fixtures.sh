@@ -83,6 +83,11 @@ run_fixture() {
       source tests/install/utils/upgrade-selection.sh
 
       export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${run_id}-${source_label}-${fixture}"
+      source scripts/ownership/producer-hooks.sh
+      SANCTUARY_PROJECT="$COMPOSE_PROJECT_NAME"
+      SANCTUARY_PROJECT_DIR="$PWD"
+      export SANCTUARY_PROJECT SANCTUARY_PROJECT_DIR
+      ownership_initialize_build_identity
       export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
       export SANCTUARY_UPGRADE_FIXTURE="$fixture"
       export SANCTUARY_UPGRADE_ARTIFACT_DIR="$original_workspace/.tmp/upgrade-artifacts/${source_label}-${fixture}"

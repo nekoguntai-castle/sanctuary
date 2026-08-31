@@ -215,6 +215,70 @@ test('no-start finalizes prepared state without changing active', () => {
   releaseDeploymentLock(fixtureState.store.lockPath, owner.token, 'run-no-start');
 });
 
+test('pointer reconciliation closes finalize, resume, and activation crash windows', () => {
+  const fixtureState = fixture();
+  const owner = acquireDeploymentLock(fixtureState.store.lockPath, { operationRunId: 'run-reconcile' });
+  const initial = fixtureState.store.prepareRevision({
+    bundle: resolveDeploymentDefinition(fixtureState.definitionOptions), expectedActiveDigest: null,
+    operationRunId: 'run-reconcile', lockToken: owner.token,
+  });
+  fixtureState.store.finalizePreparedRevision({
+    operationRunId: 'run-reconcile', lockToken: owner.token, expectedPendingDigest: initial.pendingDigest,
+  });
+
+  // Crash after prepared write but before pending unlink.
+  writeFileSync(fixtureState.store.pendingPath, canonicalJson(initial.pending));
+  let reconciled = fixtureState.store.reconcilePointers({ operationRunId: 'run-reconcile', lockToken: owner.token });
+  assert.equal(reconciled.pending.value.generation, 1);
+  assert.equal(reconciled.prepared, null);
+  const finalizedAgain = fixtureState.store.finalizePreparedRevision({
+    operationRunId: 'run-reconcile', lockToken: owner.token, expectedPendingDigest: initial.pendingDigest,
+  });
+
+  const resumed = fixtureState.store.resumePreparedRevision({
+    operationRunId: 'run-reconcile', lockToken: owner.token,
+    expectedPreparedDigest: finalizedAgain.preparedDigest,
+    expectedDefinitionDigest: resolveDeploymentDefinition(fixtureState.definitionOptions).definition.definitionDigest,
+  });
+  // Crash after pending write but before prepared unlink.
+  writeFileSync(fixtureState.store.preparedPath, canonicalJson(finalizedAgain.prepared));
+  reconciled = fixtureState.store.reconcilePointers({ operationRunId: 'run-reconcile', lockToken: owner.token });
+  assert.equal(reconciled.pending.value.generation, 1);
+  assert.equal(reconciled.prepared, null);
+
+  const healthy = advanceDeployment(fixtureState.store, owner, resumed);
+  fixtureState.store.activateRevision({
+    operationRunId: 'run-reconcile', lockToken: owner.token, expectedPendingDigest: healthy.pendingDigest,
+  });
+  // Crash after active write but before activating-pending unlink.
+  writeFileSync(fixtureState.store.pendingPath, canonicalJson({
+    ...healthy.pending, stage: 'activating', sequence: healthy.pending.sequence + 1,
+  }));
+  reconciled = fixtureState.store.reconcilePointers({ operationRunId: 'run-reconcile', lockToken: owner.token });
+  assert.equal(reconciled.active.value.generation, 1);
+  assert.equal(reconciled.pending, null);
+  releaseDeploymentLock(fixtureState.store.lockPath, owner.token, 'run-reconcile');
+});
+
+test('pointer reconciliation refuses nonmatching dual pointers', () => {
+  const fixtureState = fixture();
+  const owner = acquireDeploymentLock(fixtureState.store.lockPath, { operationRunId: 'run-ambiguous' });
+  const initial = fixtureState.store.prepareRevision({
+    bundle: resolveDeploymentDefinition(fixtureState.definitionOptions), expectedActiveDigest: null,
+    operationRunId: 'run-ambiguous', lockToken: owner.token,
+  });
+  writeFileSync(fixtureState.store.preparedPath, canonicalJson({
+    pointerVersion: 1, deploymentId: 'deployment-1', generation: 2,
+    manifestDigest: initial.manifestDigest, priorActiveDigest: null,
+    preparedAt: '2026-08-31T00:00:00.000Z',
+  }));
+  assert.throws(
+    () => fixtureState.store.reconcilePointers({ operationRunId: 'run-ambiguous', lockToken: owner.token }),
+    /ambiguous pending and prepared deployment pointers/,
+  );
+  releaseDeploymentLock(fixtureState.store.lockPath, owner.token, 'run-ambiguous');
+});
+
 test('rollback points active only after target snapshots and rollback health verify', () => {
   const fixtureState = fixture();
   let owner = acquireDeploymentLock(fixtureState.store.lockPath, { operationRunId: 'run-1' });

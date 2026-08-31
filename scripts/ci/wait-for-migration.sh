@@ -33,6 +33,14 @@ BACKEND_ATTEMPTS="${SANCTUARY_BACKEND_ATTEMPTS:-30}"
 BACKEND_INTERVAL="${SANCTUARY_BACKEND_INTERVAL:-2}"
 
 cd "$WORKSPACE"
+if [ -f "$WORKSPACE/scripts/ownership/producer-hooks.sh" ]; then
+    # shellcheck source=scripts/ownership/producer-hooks.sh
+    . "$WORKSPACE/scripts/ownership/producer-hooks.sh"
+    SANCTUARY_PROJECT_DIR="$WORKSPACE"
+    SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary-e2e}}"
+    export SANCTUARY_PROJECT_DIR SANCTUARY_PROJECT
+    ownership_initialize_build_identity
+fi
 
 # --all is load-bearing: without it an exited one-shot is invisible.
 migrate_status() {

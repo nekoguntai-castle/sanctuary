@@ -101,6 +101,18 @@ function withoutDigest(definition) {
   return unsigned;
 }
 
+function preparedMatchesPending(prepared, pending) {
+  return pending.mode === 'deploy'
+    && pending.generation === prepared.generation
+    && pending.manifestDigest === prepared.manifestDigest
+    && pending.priorActiveDigest === prepared.priorActiveDigest;
+}
+
+function pendingIsActivating(pending) {
+  return (pending.mode === 'deploy' && pending.stage === 'activating')
+    || (pending.mode === 'rollback' && pending.stage === 'rollback_activating');
+}
+
 function validateDefinitionBundle({ definition, snapshots }) {
   assertDigest(definition.definitionDigest, 'definitionDigest');
   if (canonicalSha256(withoutDigest(definition)) !== definition.definitionDigest) throw new Error('definitionDigest does not match definition');
@@ -168,6 +180,34 @@ export class DeploymentStore {
     return pending;
   }
 
+  reconcilePointers({ operationRunId, lockToken }) {
+    this.assertLocked(lockToken, operationRunId);
+    const active = this.readActive();
+    let pending = this.readPending();
+    let prepared = readOptional(this.preparedPath);
+    let changed = false;
+    if (pending && prepared) {
+      if (!preparedMatchesPending(prepared.value, pending.value)) {
+        throw new Error('ambiguous pending and prepared deployment pointers');
+      }
+      unlinkSync(this.preparedPath);
+      prepared = null;
+      changed = true;
+    }
+    if (pending && active && active.value.manifestDigest === pending.value.manifestDigest) {
+      if (!pendingIsActivating(pending.value)) throw new Error('ambiguous active and pending deployment pointers');
+      unlinkSync(this.pendingPath);
+      pending = null;
+      changed = true;
+    }
+    if (prepared && active && active.value.manifestDigest === prepared.value.manifestDigest) {
+      unlinkSync(this.preparedPath);
+      changed = true;
+    }
+    if (changed) fsyncDirectory(this.root);
+    return this.inspect();
+  }
+
   nextGeneration() {
     const generations = readdirSync(this.revisions, { withFileTypes: true }).map((entry) => {
       if (!entry.isDirectory() || !/^[1-9][0-9]*$/.test(entry.name)) throw new Error(`ambiguous revision entry: ${entry.name}`);
@@ -177,7 +217,7 @@ export class DeploymentStore {
     return (generations.length === 0 ? 0 : Math.max(...generations)) + 1;
   }
 
-  prepareRevision({ bundle, expectedActiveDigest = null, operationRunId, lockToken, now = () => new Date() }) {
+  prepareRevision({ bundle, expectedActiveDigest = null, operationRunId, lockToken, legacyResources = [], now = () => new Date() }) {
     this.assertLocked(lockToken, operationRunId);
     validateDefinitionBundle(bundle);
     const identity = this.readIdentity();
@@ -199,7 +239,7 @@ export class DeploymentStore {
     const createdAt = now().toISOString();
     const manifest = {
       schemaVersion: '1.0.0', artifactType: 'deployment_manifest', deploymentId: this.deploymentId,
-      generation, createdAt, priorActiveDigest: expectedActiveDigest, ...bundle.definition,
+      generation, createdAt, priorActiveDigest: expectedActiveDigest, ...bundle.definition, legacyResources,
     };
     const manifestDigest = canonicalSha256(manifest);
     writeCreateOnly(path.join(revisionRoot, 'deployment-manifest.json'), canonicalJson(manifest));
@@ -316,6 +356,31 @@ export class DeploymentStore {
     return { prepared, preparedDigest: canonicalSha256(prepared) };
   }
 
+  resumePreparedRevision({ operationRunId, lockToken, expectedPreparedDigest, expectedDefinitionDigest, now = () => new Date() }) {
+    this.assertLocked(lockToken, operationRunId);
+    if (this.readPending()) throw new Error('a deployment revision is already pending');
+    const prepared = readOptional(this.preparedPath);
+    if (!prepared || prepared.digest !== expectedPreparedDigest) throw new Error('prepared revision compare-and-swap failed');
+    const revision = this.readManifest(prepared.value.generation, { verifySnapshots: true });
+    if (revision.manifestDigest !== prepared.value.manifestDigest
+      || revision.manifest.definitionDigest !== expectedDefinitionDigest) {
+      throw new Error('prepared revision definition does not match the requested deployment');
+    }
+    const activeDigest = this.readActive()?.value.manifestDigest ?? null;
+    if (activeDigest !== prepared.value.priorActiveDigest) throw new Error('active revision changed before prepared resume');
+    const timestamp = now().toISOString();
+    const pending = {
+      pointerVersion: 1, mode: 'deploy', deploymentId: this.deploymentId, operationRunId,
+      generation: prepared.value.generation, manifestDigest: prepared.value.manifestDigest,
+      priorActiveDigest: prepared.value.priorActiveDigest, stage: 'prepared', sequence: 0,
+      createdAt: timestamp, updatedAt: timestamp,
+    };
+    writeCreateOnly(this.pendingPath, canonicalJson(pending));
+    unlinkSync(this.preparedPath);
+    fsyncDirectory(this.root);
+    return { pending, pendingDigest: canonicalSha256(pending) };
+  }
+
   beginRollback({ targetGeneration, expectedActiveDigest, operationRunId, lockToken, now = () => new Date() }) {
     this.assertLocked(lockToken, operationRunId);
     if (this.readPending()) throw new Error('a deployment revision is already pending');
@@ -359,6 +424,7 @@ export class DeploymentStore {
     const {
       schemaVersion: _schemaVersion, artifactType: _artifactType, deploymentId: _deploymentId,
       generation: _generation, createdAt: _createdAt, priorActiveDigest: _priorActiveDigest,
+      legacyResources: _legacyResources,
       ...definition
     } = manifest;
     if (canonicalSha256(withoutDigest(definition)) !== definition.definitionDigest) throw new Error('stored definition digest mismatch');

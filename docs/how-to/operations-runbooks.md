@@ -127,19 +127,19 @@ This proves Alertmanager receiver routing and webhook delivery in a disposable l
 Run these before drilling into a specific alert:
 
 ```bash
-docker compose ps
-docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml ps
-docker compose logs --tail=200 backend
-docker compose logs --tail=200 worker
-docker compose logs --tail=200 gateway
+./scripts/ownership/run-operator-compose.sh ps
+./scripts/ownership/run-operator-compose.sh -f docker-compose.yml -f docker/compose/monitoring.yml ps
+./scripts/ownership/run-operator-compose.sh logs --tail=200 backend
+./scripts/ownership/run-operator-compose.sh logs --tail=200 worker
+./scripts/ownership/run-operator-compose.sh logs --tail=200 gateway
 ```
 
 Confirm the metrics endpoints from inside the Compose network when possible:
 
 ```bash
-docker compose exec backend wget -qO- http://localhost:3001/health
-docker compose exec backend wget -qO- http://localhost:3001/metrics
-docker compose exec worker wget -qO- http://localhost:3002/metrics/prometheus
+./scripts/ownership/run-operator-compose.sh exec backend wget -qO- http://localhost:3001/health
+./scripts/ownership/run-operator-compose.sh exec backend wget -qO- http://localhost:3001/metrics
+./scripts/ownership/run-operator-compose.sh exec worker wget -qO- http://localhost:3002/metrics/prometheus
 ```
 
 ## HTTP Errors And Latency

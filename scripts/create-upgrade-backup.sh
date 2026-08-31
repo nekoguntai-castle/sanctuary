@@ -183,7 +183,12 @@ initialize_backup_ownership() {
   SANCTUARY_ENV_FILE="$(resolve_env_file)"
   SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
   export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
-  ownership_initialize
+  load_runtime_env "$SANCTUARY_ENV_FILE"
+  if grep -q 'SANCTUARY_SOURCE_COMMIT' "$INSTALL_DIR/docker-compose.yml"; then
+    ownership_initialize_build_identity
+  else
+    ownership_initialize
+  fi
   if [ -z "${SANCTUARY_DEPLOYMENT_LOCK_TOKEN:-}" ]; then
     deployment_lock_only_acquire
     BACKUP_LOCK_OWNED=true

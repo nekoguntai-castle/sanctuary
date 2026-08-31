@@ -7,20 +7,20 @@
 #
 # Usage:
 #   # Run all tests
-#   docker compose --project-directory . -f docker/compose/test.yml run --rm test-all
+#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm test-all
 #
 #   # Run backend tests only
-#   docker compose --project-directory . -f docker/compose/test.yml run --rm backend-test
+#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm backend-test
 #
 #   # Run frontend tests only
-#   docker compose --project-directory . -f docker/compose/test.yml run --rm frontend-test
+#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm frontend-test
 #
 #   # Run with coverage
-#   docker compose --project-directory . -f docker/compose/test.yml run --rm backend-coverage
-#   docker compose --project-directory . -f docker/compose/test.yml run --rm frontend-coverage
+#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm backend-coverage
+#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm frontend-coverage
 #
 #   # Clean up
-#   docker compose --project-directory . -f docker/compose/test.yml down -v
+#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml down -v
 #
 # =============================================
 

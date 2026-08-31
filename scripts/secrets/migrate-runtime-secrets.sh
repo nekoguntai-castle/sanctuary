@@ -59,10 +59,8 @@ For start.sh:
   ./start.sh
 
 For raw docker compose:
-  set -a
-  source "$ENV_DEST"
-  set +a
-  SANCTUARY_ENV_FILE="$ENV_DEST" SANCTUARY_SSL_DIR="$SSL_DEST_DIR" docker compose up -d
+  SANCTUARY_ENV_FILE="$ENV_DEST" SANCTUARY_SSL_DIR="$SSL_DEST_DIR" \
+    ./scripts/ownership/run-operator-compose.sh up -d
 
 Persist these exports in your shell profile if you do not use start.sh:
   export SANCTUARY_ENV_FILE="$ENV_DEST"

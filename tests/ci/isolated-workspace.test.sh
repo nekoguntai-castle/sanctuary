@@ -37,7 +37,10 @@ make_source_repo() {
   git -C "$repo" config user.name 'Test User'
   printf 'tracked\n' >"$repo/tracked.txt"
   printf '.tmp/\n' >"$repo/.gitignore"
-  git -C "$repo" add tracked.txt .gitignore
+  mkdir -p "$repo/config"
+  printf '{"schemaVersion":1}\n' >"$repo/config/container-image-lock.json"
+  printf '{"version":"0.0.0-test"}\n' >"$repo/package.json"
+  git -C "$repo" add tracked.txt .gitignore config/container-image-lock.json package.json
   git -C "$repo" commit --quiet -m 'initial'
   printf 'dirty\n' >"$repo/dirty.txt"
   printf '%s\n' "$repo"
@@ -75,10 +78,13 @@ main() {
     fail 'expected successful isolated workspace to be cleaned'
 
   local docker_workspace="$TEST_TEMP_DIR/docker-workspace"
+  local ownership_env="$TEST_TEMP_DIR/ownership.env"
   mkdir -p "$docker_workspace"
   local docker_clone
   docker_clone="$(
     SANCTUARY_CI_SOURCE_WORKSPACE="$source_repo" \
+      SANCTUARY_CI_ENV_FILE="$ownership_env" \
+      COMPOSE_PROJECT_NAME=ci-isolated-project \
       GITHUB_WORKSPACE="$docker_workspace" \
       bash "$CREATE_SCRIPT" --docker-visible docker
   )"
@@ -89,6 +95,23 @@ main() {
       fail 'expected docker-visible clone under workspace .tmp'
       ;;
   esac
+  for required_name in \
+    SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID \
+    SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT \
+    SANCTUARY_CLEANUP_CREATED_AT SANCTUARY_SOURCE_COMMIT \
+    SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID; do
+    grep -q "^${required_name}=.\+" "$ownership_env" || \
+      fail "expected docker-visible ownership env: ${required_name}"
+  done
+  grep -qx 'SANCTUARY_PROJECT=ci-isolated-project' "$ownership_env" || \
+    fail 'expected Compose project to become the persisted ownership project'
+
+  assert_fails_with 'ownership identity contains a line break: SANCTUARY_RELEASE' env \
+    SANCTUARY_CI_SOURCE_WORKSPACE="$source_repo" \
+    SANCTUARY_CI_WORKSPACE_PARENT="$TEST_TEMP_DIR/rejected-workspace" \
+    SANCTUARY_CI_ENV_FILE="$TEST_TEMP_DIR/rejected.env" \
+    SANCTUARY_RELEASE=$'bad\nINJECTED=value' \
+    bash "$CREATE_SCRIPT" --docker-visible rejected
 
   if SANCTUARY_CI_SOURCE_WORKSPACE="$source_repo" \
     SANCTUARY_CI_WORKSPACE_PARENT="$workspace_parent" \

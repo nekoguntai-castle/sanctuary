@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/docker/compose/test.yml"
+COMPOSE_COMMAND=("$PROJECT_ROOT/scripts/ownership/run-compose.sh")
 
 # Derive a Compose project name unique to this checkout.
 #
@@ -70,7 +71,7 @@ cleanup() {
     return
   fi
 
-  docker compose "${COMPOSE_ARGS[@]}" down --remove-orphans >/dev/null 2>&1 || true
+  "${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" down --remove-orphans >/dev/null 2>&1 || true
 }
 
 require_command() {
@@ -91,15 +92,15 @@ fi
 trap cleanup EXIT INT TERM
 
 echo "Starting integration test database (project: ${COMPOSE_PROJECT_NAME})..."
-docker compose "${COMPOSE_ARGS[@]}" up -d test-db >/dev/null
+"${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" up -d test-db >/dev/null
 
 # Resolve the container by project rather than by a fixed name. With
 # container_name gone this is the only way to find it, and it is what keeps
 # two checkouts from inspecting each other's database.
-TEST_DB_CONTAINER="$(docker compose "${COMPOSE_ARGS[@]}" ps -q test-db)"
+TEST_DB_CONTAINER="$("${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" ps -q test-db)"
 if [ -z "$TEST_DB_CONTAINER" ]; then
   echo "Could not resolve the test-db container for project ${COMPOSE_PROJECT_NAME}."
-  docker compose "${COMPOSE_ARGS[@]}" ps || true
+  "${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" ps || true
   exit 1
 fi
 
@@ -107,12 +108,12 @@ fi
 # Compose reports the mapping as host:port, and the host half may be 0.0.0.0 or
 # an IPv6 form, so take the last colon-separated field rather than splitting.
 if [ -z "$PORT_WAS_PINNED" ]; then
-  port_mapping="$(docker compose "${COMPOSE_ARGS[@]}" port test-db 5432 2>/dev/null | tail -1)"
+  port_mapping="$("${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" port test-db 5432 2>/dev/null | tail -1)"
   resolved_port="${port_mapping##*:}"
 
   if [[ ! "$resolved_port" =~ ^[1-9][0-9]*$ ]]; then
     echo "Could not resolve the published port for test-db (got '${port_mapping}')."
-    docker compose "${COMPOSE_ARGS[@]}" ps || true
+    "${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" ps || true
     exit 1
   fi
 
@@ -147,7 +148,7 @@ while true; do
 
   if [[ "$elapsed_seconds" -ge "$DB_HEALTH_TIMEOUT_SECONDS" ]]; then
     echo "Timed out waiting for test-db health after ${DB_HEALTH_TIMEOUT_SECONDS}s."
-    docker compose "${COMPOSE_ARGS[@]}" logs --no-color --tail 120 test-db || true
+    "${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" logs --no-color --tail 120 test-db || true
     exit 1
   fi
 

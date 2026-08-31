@@ -8,7 +8,7 @@
 #
 # Usage:
 #   set -a; source "${SANCTUARY_ENV_FILE:-.env}"; set +a
-#   SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}" HTTPS_PORT=8443 docker compose up -d
+#   SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}" HTTPS_PORT=8443 ./scripts/ownership/run-operator-compose.sh up -d
 #
 # Environment Variables:
 #   - HTTPS_PORT: HTTPS port (default: 443, use 8443 for non-root)
