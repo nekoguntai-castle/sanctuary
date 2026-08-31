@@ -177,6 +177,16 @@ main() {
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    scripts/ownership/schemas.mjs 'export {};' \
+    'ownership protocol change' true true false false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    docs/reference/resource-ownership-cleanup.md '# Ownership' \
+    'ownership operator contract change' false false false false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
     tests/release/release-policy.test.mjs 'export {};' \
     'release policy contract change' true true false false true)"
 

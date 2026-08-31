@@ -41,6 +41,13 @@ assert_scope "wallet lifecycle schema and contract fail closed into both scopes"
 assert_scope "wallet lifecycle ADR remains a contract input" \
   $'core=true\ndocs=true' \
   "docs/adr/0004-wallet-sync-lifecycle.md"
+assert_scope "ownership policy, implementation, tests, and docs select both scopes" \
+  $'core=true\ndocs=true' \
+  "config/resource-ownership-contract.json" \
+  "config/resource-lifecycle-callsites.json" \
+  "scripts/ownership/schemas.mjs" \
+  "tests/ownership/ownership-core.test.mjs" \
+  "docs/adr/0005-resource-ownership-and-cleanup-receipts.md"
 assert_scope "docs content selects docs only" \
   $'core=false\ndocs=true' \
   "docs/reference/ci-cd-strategy.md"

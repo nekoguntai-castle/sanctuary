@@ -683,6 +683,9 @@ jobs:
           node --check scripts/ci/vendor/forgejo-artifact-v4/verify-vendor.mjs
           node --check scripts/ci/vendor/forgejo-artifact-v4/write-provenance.mjs
           node --check scripts/quality/check-root-layout.mjs
+          for ownership_script in scripts/ownership/*.mjs; do node --check "$ownership_script"; done
+          npm run check:resource-ownership-contract
+          npm run test:ownership
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/install-test-ports.sh

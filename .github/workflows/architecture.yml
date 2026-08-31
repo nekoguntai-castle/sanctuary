@@ -19,6 +19,8 @@ on:
       - 'config/tooling/tsconfig.app.json'
       - 'config/wallet-sync-lifecycle-contract.json'
       - 'config/wallet-sync-mutation-boundaries.json'
+      - 'config/resource-ownership-contract.json'
+      - 'config/resource-lifecycle-callsites.json'
       - 'server/prisma/schema.prisma'
       - 'server/prisma/migrations/**'
       - 'server/tsconfig.json'
@@ -28,6 +30,8 @@ on:
       - 'scripts/quality/server-cycle-baseline.json'
       - 'scripts/check-wallet-sync-lifecycle-contract.mjs'
       - 'scripts/check-wallet-sync-mutation-boundaries.mjs'
+      - 'scripts/ownership/**'
+      - 'tests/ownership/**'
       - 'package.json'
       - 'package-lock.json'
       - 'server/package.json'
@@ -63,6 +67,8 @@ on:
       - 'config/tooling/tsconfig.app.json'
       - 'config/wallet-sync-lifecycle-contract.json'
       - 'config/wallet-sync-mutation-boundaries.json'
+      - 'config/resource-ownership-contract.json'
+      - 'config/resource-lifecycle-callsites.json'
       - 'server/prisma/schema.prisma'
       - 'server/prisma/migrations/**'
       - 'server/tsconfig.json'
@@ -72,6 +78,8 @@ on:
       - 'scripts/quality/server-cycle-baseline.json'
       - 'scripts/check-wallet-sync-lifecycle-contract.mjs'
       - 'scripts/check-wallet-sync-mutation-boundaries.mjs'
+      - 'scripts/ownership/**'
+      - 'tests/ownership/**'
       - 'package.json'
       - 'package-lock.json'
       - 'server/package.json'
@@ -205,6 +213,16 @@ jobs:
           cd "$ARCH_WORKDIR"
           npm run check:wallet-sync-mutation-boundaries
           node --test tests/ci/check-wallet-sync-mutation-boundaries.test.mjs
+          INNER
+
+      - name: Enforce resource ownership contract
+        if: steps.scope.outputs.core == 'true'
+        run: |
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/resource-ownership-contract.log" \
+            bash -euo pipefail <<'INNER'
+          cd "$ARCH_WORKDIR"
+          npm run check:resource-ownership-contract
+          npm run test:ownership
           INNER
 
       - name: Enforce repository-owned Prisma access

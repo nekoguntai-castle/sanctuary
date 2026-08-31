@@ -11,6 +11,11 @@ classify_path() {
 
   case "$path" in
     docs/architecture/* | docs/adr/0004-wallet-sync-lifecycle.md | \
+      docs/adr/0005-resource-ownership-and-cleanup-receipts.md | \
+      docs/reference/resource-ownership-cleanup.md | \
+      config/resource-ownership-contract.json | \
+      config/resource-lifecycle-callsites.json | \
+      scripts/ownership/* | tests/ownership/* | \
       ARCHITECTURE.md | */ARCHITECTURE.md)
       core=true
       docs=true

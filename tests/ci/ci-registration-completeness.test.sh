@@ -195,6 +195,17 @@ else
   bad "not syntax-checked:${missing_sweep[*]/#/ }"
 fi
 
+# Ownership protocol modules and focused tests are an architecture/CI contract.
+# Keep their bounded registration explicit instead of silently relying on a
+# generic source glob.
+if grep -qF 'for ownership_script in scripts/ownership/*.mjs' "$QUALITY" && \
+   grep -qF 'npm run check:resource-ownership-contract' "$QUALITY" && \
+   grep -qF 'npm run test:ownership' "$QUALITY"; then
+  ok 'ownership protocol syntax, contract, and focused tests are registered'
+else
+  bad 'ownership protocol checks are not fully registered in quality.yml'
+fi
+
 # ----- 3. no dangling workflow references -----------------------------------
 # The mirror image: a workflow naming a file that no longer exists fails the
 # lane for a reason unrelated to the change that triggered it.

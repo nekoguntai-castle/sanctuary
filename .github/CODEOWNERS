@@ -16,5 +16,9 @@ docs/adr/**                     @nekoguntai
 # The tools that enforce diagram drift — changing them changes what CI
 # catches, so warrant the same review.
 scripts/architecture/**         @nekoguntai
+scripts/ownership/**            @nekoguntai
+tests/ownership/**              @nekoguntai
+config/resource-ownership-contract.json @nekoguntai
+config/resource-lifecycle-callsites.json @nekoguntai
 .github/workflows/architecture.yml  @nekoguntai
 docs/site/                      @nekoguntai

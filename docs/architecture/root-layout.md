@@ -68,3 +68,10 @@ surfaces before committing the atomic cutover:
 After each move, run a negative search for the retired path. Historical records
 may retain it only when clearly marked as historical; live forwarding files or
 compatibility directories are not an acceptable way to satisfy the target.
+
+Resource lifecycle policy remains under `config/`, its dependency-light operator
+implementation under `scripts/ownership/`, and focused protocol tests under
+`tests/ownership/`. These use existing classified root owners and do not add a
+new root entry. Changes to any of them select both architecture and documentation
+validation because the machine contract, implementation, and operator guidance
+must move together.

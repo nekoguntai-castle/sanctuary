@@ -12,6 +12,7 @@ This is a [C4-model](https://c4model.com/) view of the system, layered from broa
 | **4. Generated module graphs** | [`frontend`](generated/frontend.md), [`server`](generated/server.md), [`gateway`](generated/gateway.md) | Auto-derived from imports by `npm run arch:graphs` |
 | **5. Function-level call graphs (opt-in)** | [`notifications`](generated/calls/notifications.md) | Auto-derived from TypeScript ASTs by `npm run arch:calls` for subsystems listed in [`calls.config.json`](calls.config.json) |
 | **Repository layout** | [`root-layout.md`](root-layout.md) | Tracked-root classification, bounded convergence target, and path-migration checklist |
+| **Resource ownership** | [`ADR 0005`](../adr/0005-resource-ownership-and-cleanup-receipts.md) | Fail-closed ownership, cleanup state machine, trust, privacy, and crash semantics |
 
 Per-service architecture docs ([`server/ARCHITECTURE.md`](../../server/ARCHITECTURE.md), [`gateway/ARCHITECTURE.md`](../../gateway/ARCHITECTURE.md), [`llm-egress-proxy/ARCHITECTURE.md`](../../llm-egress-proxy/ARCHITECTURE.md)) act as Component-level views for their service.
 

@@ -1410,6 +1410,15 @@ for wallet_lifecycle_input in \
     "architecture triggers for $wallet_lifecycle_input on PR and main push" \
     "$wallet_lifecycle_input" 2
 done
+for ownership_input in \
+  "config/resource-ownership-contract.json" \
+  "config/resource-lifecycle-callsites.json" \
+  "scripts/ownership/**" \
+  "tests/ownership/**"; do
+  assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+    "architecture triggers for $ownership_input on PR and main push" \
+    "$ownership_input" 2
+done
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture scope classifier composition" \
@@ -1455,6 +1464,14 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "if: steps.scope.outputs.core == 'true'" \
   ".tmp/ci-diagnostics/architecture/wallet-sync-lifecycle-contract.log" \
   "npm run check:wallet-sync-lifecycle-contract"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "resource ownership contract gate composition" \
+  "Enforce resource ownership contract" \
+  "if: steps.scope.outputs.core == 'true'" \
+  ".tmp/ci-diagnostics/architecture/resource-ownership-contract.log" \
+  "npm run check:resource-ownership-contract" \
+  "npm run test:ownership"
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture Prisma boundary gate composition" \
