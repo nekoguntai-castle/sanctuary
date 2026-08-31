@@ -107,7 +107,7 @@ cleanup_docker_resources() {
     cleanup_script="$project_root/scripts/ci/cleanup-docker-resources.sh"
 
     [ -x "$cleanup_script" ] || return 127
-    bash "$cleanup_script" "$@"
+    SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true bash "$cleanup_script" "$@"
 }
 
 # Get container name for a service (supports dynamic project names)
@@ -655,9 +655,13 @@ initialize_install_test_ownership() {
     # points PROJECT_ROOT at a historical checkout that predates ownership.
     # shellcheck source=scripts/ownership/producer-hooks.sh
     source "$identity_root/scripts/ownership/producer-hooks.sh"
-    SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary-install-test}}"
+    # A Docker-visible workspace seeds a checkout-scoped identity into GITHUB_ENV
+    # before an E2E lane chooses its unique Compose project. The lane is the
+    # resource authority, so replace both dependent stable identities together.
+    SANCTUARY_PROJECT="${COMPOSE_PROJECT_NAME:-sanctuary-install-test}"
+    SANCTUARY_DEPLOYMENT_ID="deploy-$SANCTUARY_PROJECT"
     SANCTUARY_PROJECT_DIR="$identity_root"
-    export SANCTUARY_PROJECT SANCTUARY_PROJECT_DIR
+    export SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_PROJECT_DIR
     ownership_initialize_build_identity
 }
 

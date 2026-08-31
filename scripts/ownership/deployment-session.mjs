@@ -2,10 +2,15 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { canonicalSha256 } from './canonical-json.mjs';
+import { assertLegacyCleanupProjectNotCurrent } from './cleanup-legacy-guard.mjs';
 import { sha256 } from './crypto.mjs';
 import { composeArguments, resolveDeploymentDefinition } from './deployment-definition.mjs';
 import { acquireDeploymentLock, assertDeploymentLock, releaseDeploymentLock } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
+import {
+  acquireProjectMutationLock, assertProjectMutationLock, releaseProjectMutationLock,
+} from './project-lock.mjs';
+import { resolveProjectIdentity } from './project-identity.mjs';
 import {
   assertFirstManifestDockerResources,
   assertLegacyDurablePreconditions,
@@ -39,7 +44,7 @@ function definitionOptions() {
     projectDirectory,
     envFile: required('SANCTUARY_ENV_FILE'),
     runtimeDirectory: required('SANCTUARY_RUNTIME_DIR'),
-    composeProjectName: process.env.COMPOSE_PROJECT_NAME || required('SANCTUARY_PROJECT'),
+    composeProjectName: resolveProjectIdentity(),
     installMode: flag('SANCTUARY_OFFLINE_MODE') || process.env.SANCTUARY_INSTALL_MODE === 'offline' ? 'offline' : 'online',
     monitoring: flag('SANCTUARY_INCLUDE_MONITORING'),
     tor: flag('SANCTUARY_INCLUDE_TOR'),
@@ -71,15 +76,65 @@ function existingRevisionLegacyResources(store, inspection) {
   return [];
 }
 
-function lock(store, operationRunId) {
+function projectFromStore(store) {
+  return store.readIdentity().composeProjectName;
+}
+
+function projectForSession(store) {
+  if (process.env.COMPOSE_PROJECT_NAME || process.env.SANCTUARY_PROJECT) {
+    return resolveProjectIdentity();
+  }
+  return resolveProjectIdentity({}, projectFromStore(store));
+}
+
+function lock(store, operationRunId, project = projectForSession(store)) {
+  const runtimeDirectory = required('SANCTUARY_RUNTIME_DIR');
   const inherited = process.env.SANCTUARY_DEPLOYMENT_LOCK_TOKEN;
+  const inheritedProject = process.env.SANCTUARY_PROJECT_LOCK_TOKEN;
   if (inherited) {
+    if (inheritedProject !== inherited) {
+      throw new Error('deployment and project lock tokens must be inherited together');
+    }
+    assertProjectMutationLock(runtimeDirectory, project, inherited, operationRunId);
     assertDeploymentLock(store.lockPath, inherited, operationRunId);
-    return { token: inherited, owned: false };
+    return { token: inherited, owned: false, projectOwned: false, project };
   }
   const controllerPid = Number(required('SANCTUARY_LOCK_CONTROLLER_PID'));
-  const owner = acquireDeploymentLock(store.lockPath, { operationRunId, controllerPid });
-  return { token: owner.token, owned: true };
+  const acquiredAt = new Date();
+  const projectOwner = inheritedProject
+    ? assertProjectMutationLock(runtimeDirectory, project, inheritedProject, operationRunId)
+    : acquireProjectMutationLock(runtimeDirectory, project, {
+      operationRunId, controllerPid, now: () => acquiredAt,
+    });
+  try {
+    const owner = acquireDeploymentLock(store.lockPath, {
+      operationRunId, controllerPid, token: projectOwner.token, now: () => acquiredAt,
+    });
+    return { token: owner.token, owned: true, projectOwned: !inheritedProject, project };
+  } catch (error) {
+    if (!inheritedProject) {
+      releaseProjectMutationLock(runtimeDirectory, project, projectOwner.token, operationRunId);
+    }
+    throw error;
+  }
+}
+
+function releaseLocks(store, held, operationRunId, { releaseProject = true } = {}) {
+  releaseDeploymentLock(store.lockPath, held.token, operationRunId);
+  if (releaseProject) {
+    releaseProjectMutationLock(
+      required('SANCTUARY_RUNTIME_DIR'), held.project, held.token, operationRunId,
+    );
+  }
+}
+
+function assertLocks(store, project = projectForSession(store)) {
+  const token = required('SANCTUARY_DEPLOYMENT_LOCK_TOKEN');
+  const projectToken = required('SANCTUARY_PROJECT_LOCK_TOKEN');
+  const operationRunId = required('SANCTUARY_OPERATION_RUN_ID');
+  if (token !== projectToken) throw new Error('deployment and project lock tokens differ');
+  assertProjectMutationLock(required('SANCTUARY_RUNTIME_DIR'), project, token, operationRunId);
+  assertDeploymentLock(store.lockPath, token, operationRunId);
 }
 
 function output(fields) { process.stdout.write(`${fields.join('\t')}\n`); }
@@ -87,9 +142,9 @@ function output(fields) { process.stdout.write(`${fields.join('\t')}\n`); }
 function begin() {
   const { store } = state();
   const operationRunId = required('SANCTUARY_OPERATION_RUN_ID');
-  const held = lock(store, operationRunId);
+  const options = definitionOptions();
+  const held = lock(store, operationRunId, options.composeProjectName);
   try {
-    const options = definitionOptions();
     const baseBundle = resolveDeploymentDefinition(options);
     store.initialize({ projectDirectory: baseBundle.definition.projectDirectory, composeProjectName: baseBundle.definition.composeProjectName });
     const inspection = store.reconcilePointers({ operationRunId, lockToken: held.token });
@@ -144,7 +199,7 @@ function begin() {
     output(['pending', prepared.manifest.generation, prepared.pendingDigest, held.token,
       held.owned ? 'owned' : 'inherited', prepared.pending.stage]);
   } catch (error) {
-    if (held.owned) releaseDeploymentLock(store.lockPath, held.token, operationRunId);
+    if (held.owned) releaseLocks(store, held, operationRunId, { releaseProject: held.projectOwned });
     throw error;
   }
 }
@@ -197,7 +252,7 @@ function useActive() {
     store.readManifest(inspection.active.value.generation, { verifySnapshots: true });
     output(['active', inspection.active.value.generation, '-', held.token, held.owned ? 'owned' : 'inherited', 'active']);
   } catch (error) {
-    if (held.owned) releaseDeploymentLock(store.lockPath, held.token, operationRunId);
+    if (held.owned) releaseLocks(store, held, operationRunId, { releaseProject: held.projectOwned });
     throw error;
   }
 }
@@ -211,12 +266,15 @@ function lockOnly() {
 
 function assertLock() {
   const { store } = state();
-  assertDeploymentLock(
-    store.lockPath,
-    required('SANCTUARY_DEPLOYMENT_LOCK_TOKEN'),
-    required('SANCTUARY_OPERATION_RUN_ID'),
-  );
+  assertLocks(store);
   output(['locked']);
+}
+
+function guardLegacyCleanup(project) {
+  const { store } = state();
+  assertLocks(store, project);
+  assertLegacyCleanupProjectNotCurrent(store, project);
+  output(['guarded', project]);
 }
 
 function transition(nextStage) {
@@ -259,22 +317,29 @@ function composeArgs(generation) {
 
 function release() {
   const { store } = state();
-  releaseDeploymentLock(store.lockPath, required('SANCTUARY_DEPLOYMENT_LOCK_TOKEN'), required('SANCTUARY_OPERATION_RUN_ID'));
+  releaseLocks(store, {
+    token: required('SANCTUARY_DEPLOYMENT_LOCK_TOKEN'), project: projectForSession(store),
+  }, required('SANCTUARY_OPERATION_RUN_ID'), {
+    releaseProject: process.env.SANCTUARY_PROJECT_LOCK_OWNERSHIP !== 'inherited',
+  });
 }
 
-async function main([command, argument]) {
-  if (command === 'begin') begin();
-  else if (command === 'lock-only') lockOnly();
-  else if (command === 'assert-lock') assertLock();
-  else if (command === 'use-active') useActive();
-  else if (command === 'transition' && argument) transition(argument);
-  else if (command === 'activate') activate();
-  else if (command === 'finalize-prepared') finalizePrepared();
-  else if (command === 'verify-legacy-preconditions') verifyLegacyPreconditions();
-  else if (command === 'verify-legacy-upgrade') verifyLegacyUpgrade();
-  else if (command === 'compose-args' && argument) composeArgs(argument);
-  else if (command === 'release') release();
-  else throw new Error('usage: deployment-session.mjs begin|lock-only|assert-lock|use-active|transition STAGE|activate|finalize-prepared|verify-legacy-preconditions|verify-legacy-upgrade|compose-args GENERATION|release');
+const COMMANDS = new Map([
+  ['begin', [begin, 0]], ['lock-only', [lockOnly, 0]], ['assert-lock', [assertLock, 0]],
+  ['guard-legacy-cleanup', [guardLegacyCleanup, 1]], ['use-active', [useActive, 0]],
+  ['transition', [transition, 1]], ['activate', [activate, 0]],
+  ['finalize-prepared', [finalizePrepared, 0]],
+  ['verify-legacy-preconditions', [verifyLegacyPreconditions, 0]],
+  ['verify-legacy-upgrade', [verifyLegacyUpgrade, 0]], ['compose-args', [composeArgs, 1]],
+  ['release', [release, 0]],
+]);
+
+async function main([command, ...args]) {
+  const entry = COMMANDS.get(command);
+  if (!entry || args.length !== entry[1]) {
+    throw new Error('usage: deployment-session.mjs begin|lock-only|assert-lock|guard-legacy-cleanup PROJECT|use-active|transition STAGE|activate|finalize-prepared|verify-legacy-preconditions|verify-legacy-upgrade|compose-args GENERATION|release');
+  }
+  entry[0](...args);
 }
 
 main(process.argv.slice(2)).catch((error) => {

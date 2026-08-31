@@ -196,6 +196,8 @@ setup() {
     # Create temporary test directory
     TEST_TMP_DIR=$(mktemp -d)
     export TEST_TMP_DIR
+    export SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true
+    export SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime
 }
 
 teardown() {
@@ -655,7 +657,10 @@ setup_forge_installer_fixture() {
 if [ -n "${FAKE_INSTALL_EVENT_LOG:-}" ]; then
     if [ -n "${SANCTUARY_DEPLOYMENT_LOCK_TOKEN:-}" ] \
         && [ -f "${FAKE_EXPECTED_LOCK_OWNER:-/missing}" ]; then
-        node "$FAKE_DEPLOYMENT_SESSION_SCRIPT" assert-lock >/dev/null || exit 96
+        # Exercise the freshly updated lifecycle bridge at the streamed-installer
+        # handoff, rather than duplicating its inherited-lock behavior here.
+        . "$FAKE_DEPLOYMENT_LIFECYCLE_SCRIPT"
+        deployment_assert_lock || exit 96
         echo "setup:lock-present" >> "$FAKE_INSTALL_EVENT_LOG"
     else
         echo "setup:lock-missing" >> "$FAKE_INSTALL_EVENT_LOG"
@@ -839,9 +844,11 @@ run_forge_installer() {
             SANCTUARY_SKIP_UPGRADE_BACKUP=true \
             SANCTUARY_ENV_FILE="$FORGE_STATE_DIR/runtime.env" \
             SANCTUARY_RUNTIME_DIR="$FORGE_STATE_DIR/runtime" \
+            SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true \
+            SANCTUARY_TEST_PROJECT_LOCK_ROOT="$FORGE_STATE_DIR/project-locks" \
             FAKE_INSTALL_EVENT_LOG="${FAKE_INSTALL_EVENT_LOG:-}" \
             FAKE_EXPECTED_LOCK_OWNER="${FAKE_EXPECTED_LOCK_OWNER:-}" \
-            FAKE_DEPLOYMENT_SESSION_SCRIPT="$PROJECT_ROOT/scripts/ownership/deployment-session.mjs" \
+            FAKE_DEPLOYMENT_LIFECYCLE_SCRIPT="$PROJECT_ROOT/scripts/ownership/deployment-lifecycle.sh" \
             bash "$INSTALL_SCRIPT" "$@" > "$output_file" 2>&1
     )
 }
@@ -894,6 +901,10 @@ EOF
         echo -e "${RED}ASSERTION FAILED:${NC} installer lock should be released at exit"
         return 1
     }
+    [ -z "$(find "$FORGE_STATE_DIR/project-locks" -type d -name mutation-lock -print 2>/dev/null)" ] || {
+        echo -e "${RED}ASSERTION FAILED:${NC} installer project lock should be released at exit"
+        return 1
+    }
     if grep -Eq '^docker:(compose down|volume rm|network rm|rm )' "$event_log"; then
         echo -e "${RED}ASSERTION FAILED:${NC} legacy upgrade performed destructive Docker cleanup"
         cat "$event_log"
@@ -927,6 +938,51 @@ test_streamed_installer_preserves_legacy_upgrade_on_lock_conflict() {
         "lock conflict must preserve legacy application state" || return 1
     assert_equals "preexisting-lock" "$(cat "$lock_dir/owner.json")" \
         "installer must not alter a competing lock" || return 1
+}
+
+test_streamed_installer_refuses_divergent_project_identity_before_lock() {
+    setup_forge_installer_fixture "project-identity-mismatch"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    if COMPOSE_PROJECT_NAME=lane-project SANCTUARY_PROJECT=workspace-project \
+        run_forge_installer "$output"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} divergent project identities should be refused"
+        return 1
+    fi
+
+    assert_contains "$(cat "$output")" \
+        "SANCTUARY_PROJECT and COMPOSE_PROJECT_NAME must match" \
+        "project identity disagreement must fail before mutation" || return 1
+    [ -z "$(find "$FORGE_STATE_DIR/runtime" "$FORGE_STATE_DIR/project-locks" \
+        -type d -name mutation-lock -print 2>/dev/null)" ] || {
+        echo -e "${RED}ASSERTION FAILED:${NC} identity mismatch must not acquire a mutation lock"
+        return 1
+    }
+}
+
+test_streamed_installer_locks_persisted_custom_project_identity() {
+    setup_forge_installer_fixture "persisted-project-identity"
+    local output="$FORGE_STATE_DIR/output.log"
+    local event_log="$FORGE_STATE_DIR/events.log"
+    local lock_owner="$FORGE_STATE_DIR/runtime/ownership/deployments/custom-deployment/mutation-lock/owner.json"
+
+    cat > "$FORGE_STATE_DIR/runtime.env" <<'EOF'
+SANCTUARY_PROJECT=CustomProject-
+SANCTUARY_DEPLOYMENT_ID=custom-deployment
+EOF
+
+    FAKE_INSTALL_EVENT_LOG="$event_log" FAKE_EXPECTED_LOCK_OWNER="$lock_owner" \
+        run_forge_installer "$output" || {
+        cat "$output"
+        return 1
+    }
+
+    assert_contains "$(cat "$event_log")" "setup:lock-present" \
+        "setup must inherit the lock for the persisted custom identity" || return 1
+    [ ! -e "$lock_owner" ] || {
+        echo -e "${RED}ASSERTION FAILED:${NC} persisted custom identity lock should be released at exit"
+        return 1
+    }
 }
 
 test_existing_installation_rewrites_stale_origin_to_github() {
@@ -2455,6 +2511,8 @@ main() {
     echo -e "${YELLOW}Test Suite: Installer GitHub Distribution Behavior${NC}"
     run_test "streamed installer safely locks a legacy upgrade" test_streamed_installer_locks_legacy_upgrade_without_sourcing_checkout_helpers
     run_test "streamed installer preserves legacy upgrade on lock conflict" test_streamed_installer_preserves_legacy_upgrade_on_lock_conflict
+    run_test "streamed installer refuses divergent project identity" test_streamed_installer_refuses_divergent_project_identity_before_lock
+    run_test "streamed installer locks persisted custom project identity" test_streamed_installer_locks_persisted_custom_project_identity
     run_test "existing installation rewrites stale origin to GitHub" test_existing_installation_rewrites_stale_origin_to_github
     run_test "online Codeberg source is rejected" test_online_codeberg_source_is_rejected
     run_test "explicit GitHub source remains compatible" test_explicit_github_source_remains_compatible

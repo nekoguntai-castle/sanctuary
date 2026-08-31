@@ -615,7 +615,8 @@ jobs:
           SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS=120 \
             "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
             docker builder prune -f || true
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Post-cleanup diagnostics
         if: always()

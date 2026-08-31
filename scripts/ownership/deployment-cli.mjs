@@ -8,6 +8,10 @@ import {
   acquireDeploymentLock, heartbeatDeploymentLock, inspectDeploymentLock, recoverStaleDeploymentLock, releaseDeploymentLock,
 } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
+import {
+  acquireProjectMutationLock, heartbeatProjectMutationLock, inspectProjectMutationLock,
+  recoverProjectMutationLock, releaseProjectMutationLock,
+} from './project-lock.mjs';
 import { assertLegacyUpgradePostconditions } from './legacy-docker-inspection.mjs';
 
 const EXIT = Object.freeze({ invalid: 2, conflict: 3, ambiguous: 4, runtime: 5 });
@@ -45,6 +49,19 @@ function storeFrom(request) {
   return new DeploymentStore({ runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId });
 }
 
+function projectFor(store, requestedProject) {
+  try {
+    const stored = store.readIdentity().composeProjectName;
+    if (requestedProject !== undefined && requestedProject !== stored) {
+      throw new Error('requested Compose project does not match deployment identity');
+    }
+    return stored;
+  } catch (error) {
+    if (requestedProject === undefined || error.code !== 'ENOENT') throw error;
+    return requestedProject;
+  }
+}
+
 function resolveCommand(request) {
   exact(request, ['definitionOptions']);
   const { definition } = resolveDeploymentDefinition(request.definitionOptions);
@@ -58,33 +75,95 @@ function diagnoseCommand(request) {
 
 function lockAcquireCommand(request) {
   const required = ['runtimeDirectory', 'deploymentId', 'operationRunId', 'journalPath', 'generation'];
-  exactWithOptional(request, required, ['controllerPid']);
+  exactWithOptional(request, required, ['controllerPid', 'composeProjectName']);
   const store = storeFrom(request);
+  const project = projectFor(store, request.composeProjectName);
   const fromEnvironment = process.env.SANCTUARY_LOCK_CONTROLLER_PID;
   const controllerPid = request.controllerPid ?? (fromEnvironment === undefined ? process.ppid : Number(fromEnvironment));
-  const owner = acquireDeploymentLock(store.lockPath, { ...request, controllerPid });
-  output(owner);
+  const acquiredAt = new Date();
+  const projectOwner = acquireProjectMutationLock(request.runtimeDirectory, project, {
+    operationRunId: request.operationRunId, journalPath: request.journalPath,
+    generation: request.generation, controllerPid, now: () => acquiredAt,
+  });
+  try {
+    const owner = acquireDeploymentLock(store.lockPath, {
+      operationRunId: request.operationRunId, journalPath: request.journalPath,
+      generation: request.generation, controllerPid, token: projectOwner.token, now: () => acquiredAt,
+    });
+    output(owner);
+  } catch (error) {
+    releaseProjectMutationLock(request.runtimeDirectory, project, projectOwner.token, request.operationRunId);
+    throw error;
+  }
 }
 
 function lockInspectCommand(request) {
-  exact(request, ['runtimeDirectory', 'deploymentId']);
-  output(inspectDeploymentLock(storeFrom(request).lockPath));
+  exactWithOptional(request, ['runtimeDirectory', 'deploymentId'], ['composeProjectName']);
+  const store = storeFrom(request);
+  const deployment = inspectDeploymentLock(store.lockPath);
+  const project = inspectProjectMutationLock(
+    request.runtimeDirectory, projectFor(store, request.composeProjectName),
+  );
+  output({ ...deployment, projectLock: project });
 }
 
 function lockReleaseCommand(request) {
-  exact(request, ['runtimeDirectory', 'deploymentId', 'operationRunId', 'lockToken']);
-  releaseDeploymentLock(storeFrom(request).lockPath, request.lockToken, request.operationRunId);
+  exactWithOptional(
+    request, ['runtimeDirectory', 'deploymentId', 'operationRunId', 'lockToken'], ['composeProjectName'],
+  );
+  const store = storeFrom(request);
+  const project = projectFor(store, request.composeProjectName);
+  releaseDeploymentLock(store.lockPath, request.lockToken, request.operationRunId);
+  releaseProjectMutationLock(request.runtimeDirectory, project, request.lockToken, request.operationRunId);
   output({ released: true });
 }
 
 function lockHeartbeatCommand(request) {
-  exact(request, ['runtimeDirectory', 'deploymentId', 'operationRunId', 'lockToken', 'journalPath', 'generation']);
-  output(heartbeatDeploymentLock(storeFrom(request).lockPath, request.lockToken, request.operationRunId, request));
+  exactWithOptional(
+    request,
+    ['runtimeDirectory', 'deploymentId', 'operationRunId', 'lockToken', 'journalPath', 'generation'],
+    ['composeProjectName'],
+  );
+  const store = storeFrom(request);
+  const project = projectFor(store, request.composeProjectName);
+  const heartbeatAt = new Date();
+  const heartbeat = { ...request, now: () => heartbeatAt };
+  heartbeatProjectMutationLock(request.runtimeDirectory, project, request.lockToken, request.operationRunId, heartbeat);
+  output(heartbeatDeploymentLock(store.lockPath, request.lockToken, request.operationRunId, heartbeat));
 }
 
 function lockRecoverCommand(request) {
-  exact(request, ['runtimeDirectory', 'deploymentId', 'expectedOwnerDigest']);
-  recoverStaleDeploymentLock(storeFrom(request).lockPath, request.expectedOwnerDigest);
+  exactWithOptional(
+    request,
+    ['runtimeDirectory', 'deploymentId', 'expectedDeploymentOwnerDigest', 'expectedProjectOwnerDigest'],
+    ['composeProjectName'],
+  );
+  const store = storeFrom(request);
+  const project = projectFor(store, request.composeProjectName);
+  const projectState = inspectProjectMutationLock(request.runtimeDirectory, project);
+  const deploymentState = inspectDeploymentLock(store.lockPath);
+  if (projectState.state === 'unlocked' && deploymentState.state === 'unlocked') {
+    throw new Error('deployment lock is not held');
+  }
+  if (projectState.state !== 'unlocked'
+      && projectState.ownerDigest !== request.expectedProjectOwnerDigest) {
+    throw new Error('project mutation lock changed before recovery');
+  }
+  if (deploymentState.state !== 'unlocked'
+      && deploymentState.ownerDigest !== request.expectedDeploymentOwnerDigest) {
+    throw new Error('deployment mutation lock changed before recovery');
+  }
+  if (projectState.owner && deploymentState.owner
+      && (projectState.owner.token !== deploymentState.owner.token
+        || projectState.owner.operationRunId !== deploymentState.owner.operationRunId)) {
+    throw new Error('project and deployment mutation locks do not have one owner');
+  }
+  if (projectState.state !== 'unlocked') {
+    recoverProjectMutationLock(request.runtimeDirectory, project, request.expectedProjectOwnerDigest);
+  }
+  if (deploymentState.state !== 'unlocked') {
+    recoverStaleDeploymentLock(store.lockPath, request.expectedDeploymentOwnerDigest);
+  }
   output({ recovered: true });
 }
 

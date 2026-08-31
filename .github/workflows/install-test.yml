@@ -403,7 +403,8 @@ jobs:
             echo "::error::COMPOSE_PROJECT_NAME is required for fresh-install cleanup"
             exit 1
           fi
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated install workspace
         if: always() && github.event_name != 'pull_request'
@@ -619,7 +620,8 @@ jobs:
             echo "::error::COMPOSE_PROJECT_NAME is required for stack cleanup"
             exit 1
           fi
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated stack workspace
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
@@ -760,7 +762,8 @@ jobs:
             echo "::error::COMPOSE_PROJECT_NAME is required for health cleanup"
             exit 1
           fi
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated health workspace
         if: always()
@@ -905,7 +908,8 @@ jobs:
             echo "::error::COMPOSE_PROJECT_NAME is required for auth cleanup"
             exit 1
           fi
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated auth workspace
         if: always()
@@ -1021,7 +1025,8 @@ jobs:
             rm -f "$port_env"
 
             cleanup() {
-              bash "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
+              SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+                bash "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
             }
             trap cleanup EXIT
 
@@ -1264,13 +1269,15 @@ jobs:
 
       - name: Sweep runner leftovers
         run: |
-          bash scripts/ci/cleanup-docker-resources.sh --runner-leftovers || \
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash scripts/ci/cleanup-docker-resources.sh --runner-leftovers || \
             echo "::warning::Runner leftover cleanup did not complete"
 
       - name: Verify current-run Docker cleanup
         if: github.event.inputs.keep_containers != 'true'
         run: |
-          bash scripts/ci/cleanup-docker-resources.sh \
+          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+            bash scripts/ci/cleanup-docker-resources.sh \
             --verify-empty \
             --prefix sanctuary-ci-fresh-${{ github.run_id }} \
             --prefix sanctuary-ci-stack-${{ github.run_id }} \

@@ -102,7 +102,8 @@ run_fixture() {
       rm -f "$port_env"
 
       cleanup() {
-        bash "$original_workspace/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
+        SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
+          bash "$original_workspace/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
       }
       trap cleanup EXIT
 

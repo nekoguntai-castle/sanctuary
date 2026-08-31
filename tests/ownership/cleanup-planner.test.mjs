@@ -1,0 +1,97 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { canonicalSha256 } from '../../scripts/ownership/canonical-json.mjs';
+import { buildCleanupApproval, verifyCleanupApproval } from '../../scripts/ownership/cleanup-approval.mjs';
+import { buildCleanupPlan, buildPlanningReceipt } from '../../scripts/ownership/cleanup-planner.mjs';
+
+const HASH = 'a'.repeat(64);
+const KEY = 'b'.repeat(64);
+const NOW = new Date('2026-08-30T00:00:10.000Z');
+
+function resource(resourceClass, immutableIdentity, overrides = {}) {
+  const ownership = {
+    project: 'sanctuary-ci-1', deploymentId: 'deploy-1', ownerId: 'owner-1',
+    resourceClass, lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
+    createdAt: '2026-08-30T00:00:00.000Z', createdByRelease: 'v0.8.69',
+    createdByCommit: 'c'.repeat(40), creationRunId: 'creator-1', immutableIdentity,
+  };
+  return {
+    resourceClass, locatorKind: 'engine_id', locator: immutableIdentity, immutableIdentity,
+    ownership, ownershipDigest: canonicalSha256(ownership), observationDigest: HASH,
+    disposition: 'eligible', failureClasses: [], references: [], contentDigests: [],
+    active: false, protected: false, data: false, ...overrides,
+  };
+}
+
+function inventory(overrides = {}) {
+  return {
+    schemaVersion: '1.1.0', artifactType: 'inventory', deploymentId: 'deploy-1',
+    operationRunId: 'cleanup-1', generation: 2, observedAt: '2026-08-30T00:00:01.000Z',
+    complete: true, policyDigest: HASH, deploymentManifestDigest: HASH,
+    runManifestDigest: HASH, contextFingerprint: HASH,
+    resources: [resource('compose_network', 'network-1'), resource('compose_container', 'container-1')],
+    ambiguities: [], ...overrides,
+  };
+}
+
+const contract = { resourceClasses: [
+  { classId: 'compose_container', dependsOn: [] },
+  { classId: 'compose_network', dependsOn: ['compose_container'] },
+] };
+
+test('planner emits stable dependency and action order with a signed-receipt-ready binding', () => {
+  const first = buildCleanupPlan(inventory(), contract, { policyDigest: HASH });
+  const second = buildCleanupPlan(inventory(), contract, { policyDigest: HASH });
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.actions.map((entry) => `${entry.resourceClass}:${entry.action}`), [
+    'compose_container:stop', 'compose_container:remove', 'compose_network:remove',
+  ]);
+  const receipt = buildPlanningReceipt(inventory(), first, { signerKeyId: KEY, now: () => NOW });
+  assert.equal(receipt.state, 'dry_run');
+  assert.equal(receipt.planDigest, canonicalSha256(first));
+  assert.deepEqual(receipt.results.map((entry) => entry.result), ['pending', 'pending', 'pending']);
+});
+
+test('ambiguity suppresses every action while refusals remain categorical', () => {
+  const ambiguousInventory = inventory({
+    complete: false,
+    resources: [],
+    ambiguities: [{ adapter: 'docker', resourceClass: null, failureClass: 'query_failed', scope: 'container-list' }],
+  });
+  const plan = buildCleanupPlan(ambiguousInventory, contract, { policyDigest: HASH, now: () => NOW });
+  const receipt = buildPlanningReceipt(ambiguousInventory, plan, { signerKeyId: KEY, now: () => NOW });
+  assert.deepEqual(plan.actions, []);
+  assert.equal(receipt.state, 'ambiguous');
+  assert.deepEqual(receipt.refusals.map((entry) => entry.failureClass), ['query_failed']);
+});
+
+test('approval copies the exact plan and enforces expiry, context, and dry-run scope', () => {
+  const plan = buildCleanupPlan(inventory(), contract, { policyDigest: HASH, now: () => NOW });
+  const receipt = buildPlanningReceipt(inventory(), plan, { signerKeyId: KEY, now: () => NOW });
+  const approval = buildCleanupApproval(plan, receipt, {
+    signerKeyId: 'd'.repeat(64), nonce: 'nonce-1',
+    expiresAt: '2026-08-30T01:00:10.000Z', now: () => NOW,
+  });
+  assert.deepEqual(approval.actions, plan.actions);
+  assert.deepEqual(approval.permittedClasses, ['compose_container', 'compose_network']);
+  assert.doesNotThrow(() => verifyCleanupApproval(approval, plan, receipt, {
+    now: new Date('2026-08-30T00:30:00.000Z'), expectedContextFingerprint: HASH,
+  }));
+  assert.throws(() => verifyCleanupApproval(approval, plan, receipt, {
+    now: new Date('2026-08-30T02:00:00.000Z'),
+  }), /expired/);
+  assert.throws(() => verifyCleanupApproval(approval, plan, receipt, {
+    now: new Date('2026-08-30T00:00:09.000Z'),
+  }), /not yet valid/);
+});
+
+test('a known policy mismatch produces a signed-receipt-ready refusal instead of ambiguity', () => {
+  const refusedResource = resource('compose_container', 'container-1', {
+    disposition: 'refused', failureClasses: ['policy_mismatch'],
+  });
+  const refusedInventory = inventory({ resources: [refusedResource] });
+  const plan = buildCleanupPlan(refusedInventory, contract, { policyDigest: HASH });
+  const receipt = buildPlanningReceipt(refusedInventory, plan, { signerKeyId: KEY, now: () => NOW });
+  assert.equal(receipt.state, 'refused');
+  assert.deepEqual(receipt.refusals.map((entry) => entry.failureClass), ['policy_mismatch']);
+});

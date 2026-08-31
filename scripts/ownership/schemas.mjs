@@ -1,11 +1,6 @@
 import {
-  array,
-  boolean,
-  canonicalRelativePath,
-  commit,
-  digest,
-  enumeration,
-  identifier,
+  array, boolean, commit,
+  digest, enumeration, identifier,
   integer,
   object,
   string,
@@ -13,24 +8,48 @@ import {
   unique,
 } from './validation.mjs';
 import { CLEANUP_POLICIES, RESOURCE_CLASSES } from './contracts.mjs';
+import { canonicalSha256 } from './canonical-json.mjs';
+import {
+  validateDeployment, validateRegistration, validateRun,
+} from './manifest-schema-validators.mjs';
 
 export const ARTIFACT_TYPES = [
   'deployment_manifest', 'run_manifest', 'resource_registration', 'inventory', 'cleanup_plan',
   'cleanup_approval', 'approval_state', 'journal_record', 'cleanup_receipt', 'cleanup_receipt_upload',
 ];
+const CLEANUP_SCHEMA_VERSION = '1.1.0';
+const CLEANUP_V11_TYPES = new Set(['inventory', 'cleanup_plan', 'cleanup_approval', 'cleanup_receipt']);
 export const ARTIFACT_SCHEMA_VERSIONS = Object.freeze(Object.fromEntries(
-  ARTIFACT_TYPES.map((artifactType) => [artifactType, '1.0.0']),
+  ARTIFACT_TYPES.map((artifactType) => [artifactType, CLEANUP_V11_TYPES.has(artifactType) ? CLEANUP_SCHEMA_VERSION : '1.0.0']),
 ));
 const STATES = ['dry_run', 'no_op', 'cleaned', 'partial', 'cancelled', 'refused', 'ambiguous', 'recovered'];
 const RESULTS = ['pending', 'cleaned', 'absent', 'retained', 'refused', 'ambiguous', 'failed'];
 const ACTIONS = ['stop', 'remove', 'reconcile', 'retain'];
-const FAILURE_CLASSES = ['none', 'identity_changed', 'active', 'shared', 'unlabeled', 'malformed', 'query_failed', 'mutation_failed', 'postcondition_failed', 'cancelled'];
+export const CLEANUP_FAILURE_CLASSES = [
+  'none', 'identity_changed', 'active', 'current', 'shared', 'protected', 'data', 'unlabeled',
+  'unregistered', 'referenced', 'default_builder', 'policy_retained', 'policy_mismatch', 'malformed',
+  'query_failed', 'unsupported', 'mutation_failed', 'postcondition_failed', 'cancelled',
+];
+const FAILURE_CLASSES = CLEANUP_FAILURE_CLASSES;
+const LOCATOR_KINDS = ['authority', 'engine_id', 'name', 'path', 'provider_id', 'reference'];
+const DISPOSITIONS = ['eligible', 'retain', 'refused', 'ambiguous'];
+const PLANNING_STATES = ['dry_run', 'no_op', 'refused', 'ambiguous'];
+const MAX_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
-function base(value, type, extraKeys) {
+function base(value, type, extraKeys, expectedVersion = ARTIFACT_SCHEMA_VERSIONS[type]) {
   object(value, '$', ['schemaVersion', 'artifactType', ...extraKeys]);
-  const expectedVersion = ARTIFACT_SCHEMA_VERSIONS[type];
   if (value.schemaVersion !== expectedVersion) throw new Error(`$.schemaVersion must equal ${expectedVersion} for ${type}`);
   if (value.artifactType !== type) throw new Error(`$.artifactType must equal ${type}`);
+}
+
+function nullableResourceClass(value, path) { if (value !== null) enumeration(value, path, RESOURCE_CLASSES); }
+
+function sortedUniqueStrings(values, path, validator) {
+  values.forEach((value, index) => validator(value, `${path}[${index}]`));
+  unique(values, path);
+  if (values.some((value, index) => index > 0 && values[index - 1].localeCompare(value) > 0)) {
+    throw new Error(`${path} must be sorted`);
+  }
 }
 
 function ownership(value, path) {
@@ -58,9 +77,30 @@ function action(value, path) {
   digest(value.ownershipDigest, `${path}.ownershipDigest`);
 }
 
+function cleanupAction(value, path) {
+  object(value, path, ['sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind', 'locator', 'ownershipDigest', 'observationDigest']);
+  integer(value.sequence, `${path}.sequence`, { min: 1 });
+  enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
+  identifier(value.immutableIdentity, `${path}.immutableIdentity`);
+  enumeration(value.action, `${path}.action`, ACTIONS);
+  enumeration(value.locatorKind, `${path}.locatorKind`, LOCATOR_KINDS);
+  string(value.locator, `${path}.locator`, { max: 1024 });
+  digest(value.ownershipDigest, `${path}.ownershipDigest`);
+  digest(value.observationDigest, `${path}.observationDigest`);
+}
+
 function result(value, path) {
   object(value, path, ['sequence', 'immutableIdentity', 'result', 'failureClass']);
   integer(value.sequence, `${path}.sequence`, { min: 1 });
+  identifier(value.immutableIdentity, `${path}.immutableIdentity`);
+  enumeration(value.result, `${path}.result`, RESULTS);
+  enumeration(value.failureClass, `${path}.failureClass`, FAILURE_CLASSES);
+}
+
+function cleanupResult(value, path) {
+  object(value, path, ['sequence', 'resourceClass', 'immutableIdentity', 'result', 'failureClass']);
+  integer(value.sequence, `${path}.sequence`, { min: 1 });
+  enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
   identifier(value.immutableIdentity, `${path}.immutableIdentity`);
   enumeration(value.result, `${path}.result`, RESULTS);
   enumeration(value.failureClass, `${path}.failureClass`, FAILURE_CLASSES);
@@ -72,106 +112,8 @@ function ordered(items, path) {
   });
 }
 
-function validateDeployment(value) {
-  base(value, 'deployment_manifest', [
-    'deploymentId', 'generation', 'createdAt', 'priorActiveDigest',
-    'definitionVersion', 'ownerId', 'release', 'commit', 'projectDirectory',
-    'projectDirectoryIdentity', 'composeProjectName', 'envFile', 'envFileIdentity',
-    'installMode', 'profiles', 'overlays', 'policyDigest', 'contextFingerprint',
-    'definitionDigest', 'legacyResources',
-  ]);
-  identifier(value.deploymentId, '$.deploymentId');
-  integer(value.generation, '$.generation', { min: 1 });
-  timestamp(value.createdAt, '$.createdAt');
-  if (value.priorActiveDigest !== null) digest(value.priorActiveDigest, '$.priorActiveDigest');
-  if (value.definitionVersion !== 1) throw new Error('$.definitionVersion must equal 1');
-  identifier(value.ownerId, '$.ownerId');
-  string(value.release, '$.release', { max: 128 });
-  commit(value.commit, '$.commit');
-  string(value.projectDirectory, '$.projectDirectory', { max: 1024 });
-  identifier(value.projectDirectoryIdentity, '$.projectDirectoryIdentity');
-  identifier(value.composeProjectName, '$.composeProjectName');
-  string(value.envFile, '$.envFile', { max: 1024 });
-  identifier(value.envFileIdentity, '$.envFileIdentity');
-  enumeration(value.installMode, '$.installMode', ['online', 'offline']);
-  array(value.profiles, '$.profiles', { max: 16 }).forEach((entry, index) => identifier(entry, `$.profiles[${index}]`));
-  unique(value.profiles, '$.profiles');
-  array(value.overlays, '$.overlays', { min: 1, max: 32 }).forEach((entry, index) => {
-    const overlayPath = `$.overlays[${index}]`;
-    object(entry, overlayPath, ['sourcePath', 'sourceIdentity', 'snapshotPath', 'sha256', 'kind']);
-    string(entry.sourcePath, `${overlayPath}.sourcePath`, { max: 1024 });
-    identifier(entry.sourceIdentity, `${overlayPath}.sourceIdentity`);
-    canonicalRelativePath(entry.snapshotPath, `${overlayPath}.snapshotPath`);
-    digest(entry.sha256, `${overlayPath}.sha256`);
-    enumeration(entry.kind, `${overlayPath}.kind`, ['tracked', 'custom', 'generated']);
-  });
-  unique(value.overlays.map((entry) => entry.sourcePath), '$.overlays.sourcePath');
-  unique(value.overlays.map((entry) => entry.snapshotPath), '$.overlays.snapshotPath');
-  digest(value.policyDigest, '$.policyDigest');
-  digest(value.contextFingerprint, '$.contextFingerprint');
-  digest(value.definitionDigest, '$.definitionDigest');
-  const legacyResources = array(value.legacyResources, '$.legacyResources', { max: 512 });
-  legacyResources.forEach((entry, index) => {
-    const entryPath = `$.legacyResources[${index}]`;
-    object(entry, entryPath, [
-      'resourceClass', 'locator', 'composeResource', 'immutableIdentity', 'cleanupPolicy', 'ownershipState',
-    ]);
-    enumeration(entry.resourceClass, `${entryPath}.resourceClass`, ['compose_container', 'compose_network', 'compose_volume']);
-    string(entry.locator, `${entryPath}.locator`, { max: 256 });
-    identifier(entry.composeResource, `${entryPath}.composeResource`);
-    identifier(entry.immutableIdentity, `${entryPath}.immutableIdentity`);
-    if (entry.cleanupPolicy !== 'preserve_ambiguous') throw new Error(`${entryPath}.cleanupPolicy must equal preserve_ambiguous`);
-    if (entry.ownershipState !== 'unlabeled') throw new Error(`${entryPath}.ownershipState must equal unlabeled`);
-  });
-  unique(legacyResources.map((entry) => `${entry.resourceClass}:${entry.locator}`), '$.legacyResources');
-}
-
-function validateRun(value) {
-  base(value, 'run_manifest', ['deploymentId', 'operationRunId', 'ownerId', 'generation', 'startedAt', 'heartbeatAt', 'terminalAt', 'controllerIdentity', 'deploymentDigest']);
-  identifier(value.deploymentId, '$.deploymentId');
-  identifier(value.operationRunId, '$.operationRunId');
-  identifier(value.ownerId, '$.ownerId');
-  integer(value.generation, '$.generation', { min: 1 });
-  const started = timestamp(value.startedAt, '$.startedAt');
-  const heartbeat = timestamp(value.heartbeatAt, '$.heartbeatAt');
-  if (heartbeat < started) throw new Error('$.heartbeatAt must not precede startedAt');
-  if (value.terminalAt !== null) {
-    const terminal = timestamp(value.terminalAt, '$.terminalAt');
-    if (terminal < heartbeat) throw new Error('$.terminalAt must not precede heartbeatAt');
-  }
-  identifier(value.controllerIdentity, '$.controllerIdentity');
-  digest(value.deploymentDigest, '$.deploymentDigest');
-}
-
-function validateRegistration(value) {
-  base(value, 'resource_registration', [
-    'registrationId', 'deploymentId', 'operationRunId', 'ownerId',
-    'resourceClass', 'lifecycle', 'cleanupPolicy', 'createdAt',
-    'createdByRelease', 'createdByCommit', 'locatorKind', 'locator',
-    'immutableIdentity', 'metadataDigest', 'referenceIds', 'signerKeyId',
-  ]);
-  digest(value.registrationId, '$.registrationId');
-  identifier(value.deploymentId, '$.deploymentId');
-  identifier(value.operationRunId, '$.operationRunId');
-  identifier(value.ownerId, '$.ownerId');
-  enumeration(value.resourceClass, '$.resourceClass', RESOURCE_CLASSES);
-  identifier(value.lifecycle, '$.lifecycle');
-  enumeration(value.cleanupPolicy, '$.cleanupPolicy', CLEANUP_POLICIES);
-  timestamp(value.createdAt, '$.createdAt');
-  string(value.createdByRelease, '$.createdByRelease', { max: 128 });
-  if (value.createdByRelease !== 'unreleased') identifier(value.createdByRelease, '$.createdByRelease');
-  commit(value.createdByCommit, '$.createdByCommit');
-  enumeration(value.locatorKind, '$.locatorKind', ['authority', 'engine_id', 'name', 'path', 'provider_id', 'reference']);
-  string(value.locator, '$.locator', { max: 1024 });
-  identifier(value.immutableIdentity, '$.immutableIdentity');
-  digest(value.metadataDigest, '$.metadataDigest');
-  array(value.referenceIds, '$.referenceIds', { max: 128 }).forEach((entry, index) => identifier(entry, `$.referenceIds[${index}]`));
-  unique(value.referenceIds, '$.referenceIds');
-  digest(value.signerKeyId, '$.signerKeyId');
-}
-
 function validateInventory(value) {
-  base(value, 'inventory', ['deploymentId', 'operationRunId', 'observedAt', 'complete', 'policyDigest', 'resources', 'ambiguities']);
+  base(value, 'inventory', ['deploymentId', 'operationRunId', 'observedAt', 'complete', 'policyDigest', 'resources', 'ambiguities'], '1.0.0');
   identifier(value.deploymentId, '$.deploymentId');
   identifier(value.operationRunId, '$.operationRunId');
   timestamp(value.observedAt, '$.observedAt');
@@ -183,7 +125,7 @@ function validateInventory(value) {
 }
 
 function validatePlan(value) {
-  base(value, 'cleanup_plan', ['deploymentId', 'operationRunId', 'createdAt', 'inventoryDigest', 'policyDigest', 'actions']);
+  base(value, 'cleanup_plan', ['deploymentId', 'operationRunId', 'createdAt', 'inventoryDigest', 'policyDigest', 'actions'], '1.0.0');
   identifier(value.deploymentId, '$.deploymentId');
   identifier(value.operationRunId, '$.operationRunId');
   timestamp(value.createdAt, '$.createdAt');
@@ -194,7 +136,7 @@ function validatePlan(value) {
 }
 
 function validateApproval(value) {
-  base(value, 'cleanup_approval', ['deploymentId', 'operationRunId', 'issuedAt', 'expiresAt', 'nonce', 'planDigest', 'policyDigest', 'contextFingerprint', 'permittedClasses', 'permittedActionCount', 'decommission']);
+  base(value, 'cleanup_approval', ['deploymentId', 'operationRunId', 'issuedAt', 'expiresAt', 'nonce', 'planDigest', 'policyDigest', 'contextFingerprint', 'permittedClasses', 'permittedActionCount', 'decommission'], '1.0.0');
   identifier(value.deploymentId, '$.deploymentId');
   identifier(value.operationRunId, '$.operationRunId');
   const issued = timestamp(value.issuedAt, '$.issuedAt');
@@ -238,7 +180,7 @@ function validateJournal(value) {
 }
 
 function validateReceipt(value, now) {
-  base(value, 'cleanup_receipt', ['deploymentId', 'operationRunId', 'state', 'operationStartedAt', 'operationEndedAt', 'receiptCoreFinalizedAt', 'policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'planDigest', 'approvalDigest', 'approvalStateDigest', 'inventoryBeforeDigest', 'inventoryAfterDigest', 'journalDigest', 'journalBytes', 'journalRecords', 'actions', 'results', 'refusals', 'signerKeyId']);
+  base(value, 'cleanup_receipt', ['deploymentId', 'operationRunId', 'state', 'operationStartedAt', 'operationEndedAt', 'receiptCoreFinalizedAt', 'policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'planDigest', 'approvalDigest', 'approvalStateDigest', 'inventoryBeforeDigest', 'inventoryAfterDigest', 'journalDigest', 'journalBytes', 'journalRecords', 'actions', 'results', 'refusals', 'signerKeyId'], '1.0.0');
   identifier(value.deploymentId, '$.deploymentId');
   identifier(value.operationRunId, '$.operationRunId');
   enumeration(value.state, '$.state', STATES);
@@ -256,6 +198,199 @@ function validateReceipt(value, now) {
   ordered(value.results, '$.results');
   array(value.refusals, '$.refusals').forEach((entry, index) => enumeration(entry, `$.refusals[${index}]`, FAILURE_CLASSES));
   digest(value.signerKeyId, '$.signerKeyId');
+}
+
+function validateInventoryResource(value, path) {
+  object(value, path, [
+    'resourceClass', 'locatorKind', 'locator', 'immutableIdentity', 'ownership',
+    'ownershipDigest', 'observationDigest', 'disposition', 'failureClasses',
+    'references', 'contentDigests', 'active', 'protected', 'data',
+  ]);
+  enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
+  enumeration(value.locatorKind, `${path}.locatorKind`, LOCATOR_KINDS);
+  string(value.locator, `${path}.locator`, { max: 1024 });
+  identifier(value.immutableIdentity, `${path}.immutableIdentity`);
+  if (value.ownership === null) {
+    if (value.ownershipDigest !== null) throw new Error(`${path}.ownershipDigest must be null without ownership`);
+  } else {
+    ownership(value.ownership, `${path}.ownership`);
+    if (value.ownership.resourceClass !== value.resourceClass
+      || value.ownership.immutableIdentity !== value.immutableIdentity) {
+      throw new Error(`${path}.ownership must match the resource class and immutable identity`);
+    }
+    digest(value.ownershipDigest, `${path}.ownershipDigest`);
+    if (value.ownershipDigest !== canonicalSha256(value.ownership)) {
+      throw new Error(`${path}.ownershipDigest must match canonical ownership`);
+    }
+  }
+  digest(value.observationDigest, `${path}.observationDigest`);
+  enumeration(value.disposition, `${path}.disposition`, DISPOSITIONS);
+  const failures = array(value.failureClasses, `${path}.failureClasses`, { max: FAILURE_CLASSES.length });
+  sortedUniqueStrings(failures, `${path}.failureClasses`, (entry, entryPath) => (
+    enumeration(entry, entryPath, FAILURE_CLASSES)
+  ));
+  if (failures.includes('none')) throw new Error(`${path}.failureClasses cannot contain none`);
+  if (value.disposition === 'eligible' && (failures.length > 0 || value.ownership === null)) {
+    throw new Error(`${path} eligible resources require ownership and no failures`);
+  }
+  if (value.disposition !== 'eligible' && failures.length === 0) {
+    throw new Error(`${path} non-eligible resources require a failure class`);
+  }
+  const references = array(value.references, `${path}.references`, { max: 512 });
+  sortedUniqueStrings(references, `${path}.references`, (entry, entryPath) => string(entry, entryPath, { max: 512 }));
+  const contentDigests = array(value.contentDigests, `${path}.contentDigests`, { max: 128 });
+  sortedUniqueStrings(contentDigests, `${path}.contentDigests`, digest);
+  boolean(value.active, `${path}.active`);
+  boolean(value.protected, `${path}.protected`);
+  boolean(value.data, `${path}.data`);
+}
+
+function validateAmbiguity(value, path) {
+  object(value, path, ['adapter', 'resourceClass', 'failureClass', 'scope']);
+  identifier(value.adapter, `${path}.adapter`);
+  nullableResourceClass(value.resourceClass, `${path}.resourceClass`);
+  enumeration(value.failureClass, `${path}.failureClass`, FAILURE_CLASSES);
+  if (!['identity_changed', 'malformed', 'query_failed', 'unsupported'].includes(value.failureClass)) throw new Error(`${path}.failureClass is not an ambiguity class`);
+  identifier(value.scope, `${path}.scope`);
+}
+
+function validateInventoryV11(value) {
+  base(value, 'inventory', [
+    'deploymentId', 'operationRunId', 'generation', 'observedAt', 'complete',
+    'policyDigest', 'deploymentManifestDigest', 'runManifestDigest',
+    'contextFingerprint', 'resources', 'ambiguities',
+  ], CLEANUP_SCHEMA_VERSION);
+  identifier(value.deploymentId, '$.deploymentId');
+  identifier(value.operationRunId, '$.operationRunId');
+  integer(value.generation, '$.generation', { min: 1 });
+  timestamp(value.observedAt, '$.observedAt');
+  boolean(value.complete, '$.complete');
+  for (const key of ['policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint']) digest(value[key], `$.${key}`);
+  const resources = array(value.resources, '$.resources', { max: 10_000 });
+  resources.forEach((entry, index) => validateInventoryResource(entry, `$.resources[${index}]`));
+  unique(resources.map((entry) => `${entry.resourceClass}:${entry.immutableIdentity}`), '$.resources identity');
+  const ambiguities = array(value.ambiguities, '$.ambiguities', { max: 10_000 });
+  ambiguities.forEach((entry, index) => validateAmbiguity(entry, `$.ambiguities[${index}]`));
+  if (value.complete !== (ambiguities.length === 0)) throw new Error('$.complete must reflect whether ambiguities are empty');
+}
+
+function validateCleanupActions(actions, path) {
+  actions.forEach((entry, index) => cleanupAction(entry, `${path}[${index}]`));
+  ordered(actions, path);
+  unique(actions.map((entry) => `${entry.resourceClass}:${entry.immutableIdentity}:${entry.action}`), `${path} identity`);
+}
+
+function validatePlanV11(value) {
+  base(value, 'cleanup_plan', [
+    'deploymentId', 'operationRunId', 'createdAt', 'inventoryDigest', 'policyDigest',
+    'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint', 'actions',
+  ], CLEANUP_SCHEMA_VERSION);
+  identifier(value.deploymentId, '$.deploymentId');
+  identifier(value.operationRunId, '$.operationRunId');
+  timestamp(value.createdAt, '$.createdAt');
+  for (const key of ['inventoryDigest', 'policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint']) digest(value[key], `$.${key}`);
+  const actions = array(value.actions, '$.actions', { max: 10_000 });
+  validateCleanupActions(actions, '$.actions');
+}
+
+function validateApprovalV11(value) {
+  base(value, 'cleanup_approval', [
+    'deploymentId', 'operationRunId', 'issuedAt', 'expiresAt', 'nonce',
+    'dryRunReceiptDigest', 'planDigest', 'policyDigest', 'deploymentManifestDigest',
+    'runManifestDigest', 'contextFingerprint', 'actions', 'permittedClasses',
+    'permittedActionCount', 'decommission', 'signerKeyId',
+  ], CLEANUP_SCHEMA_VERSION);
+  identifier(value.deploymentId, '$.deploymentId');
+  identifier(value.operationRunId, '$.operationRunId');
+  const issued = timestamp(value.issuedAt, '$.issuedAt');
+  const expires = timestamp(value.expiresAt, '$.expiresAt');
+  if (expires <= issued) throw new Error('$.expiresAt must follow issuedAt');
+  if (expires - issued > MAX_APPROVAL_TTL_MS) throw new Error('$.expiresAt exceeds the maximum approval lifetime');
+  identifier(value.nonce, '$.nonce');
+  for (const key of ['dryRunReceiptDigest', 'planDigest', 'policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint', 'signerKeyId']) digest(value[key], `$.${key}`);
+  const actions = array(value.actions, '$.actions', { min: 1, max: 10_000 });
+  validateCleanupActions(actions, '$.actions');
+  const permittedClasses = array(value.permittedClasses, '$.permittedClasses', { min: 1, max: RESOURCE_CLASSES.length });
+  sortedUniqueStrings(permittedClasses, '$.permittedClasses', (entry, entryPath) => (
+    enumeration(entry, entryPath, RESOURCE_CLASSES)
+  ));
+  const actionClasses = [...new Set(actions.map((entry) => entry.resourceClass))].sort();
+  if (actionClasses.length !== permittedClasses.length
+    || actionClasses.some((entry, index) => entry !== permittedClasses[index])) {
+    throw new Error('$.permittedClasses must exactly match action resource classes');
+  }
+  integer(value.permittedActionCount, '$.permittedActionCount', { min: 1 });
+  if (value.permittedActionCount !== actions.length) throw new Error('$.permittedActionCount must equal actions length');
+  boolean(value.decommission, '$.decommission');
+}
+
+function validateRefusal(value, path) {
+  object(value, path, ['resourceClass', 'immutableIdentity', 'failureClass']);
+  enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
+  identifier(value.immutableIdentity, `${path}.immutableIdentity`);
+  enumeration(value.failureClass, `${path}.failureClass`, FAILURE_CLASSES);
+  if (value.failureClass === 'none') throw new Error(`${path}.failureClass must describe a refusal`);
+}
+
+function validatePlanningReceiptState(value) {
+  if (value.results.length !== value.actions.length) throw new Error('$.results must correspond one-to-one with actions');
+  value.results.forEach((entry, index) => {
+    const target = value.actions[index];
+    if (entry.sequence !== target.sequence || entry.resourceClass !== target.resourceClass
+      || entry.immutableIdentity !== target.immutableIdentity
+      || entry.result !== 'pending' || entry.failureClass !== 'none') {
+      throw new Error(`$.results[${index}] must be the pending result for its action`);
+    }
+  });
+  if (value.state === 'dry_run' && (value.actions.length === 0 || value.refusals.length > 0)) {
+    throw new Error('dry_run receipts require actions and no refusals');
+  }
+  if (value.state === 'no_op' && (value.actions.length > 0 || value.refusals.length > 0)) {
+    throw new Error('no_op receipts cannot contain actions or refusals');
+  }
+  if (value.state === 'refused' && value.refusals.length === 0) throw new Error('refused receipts require refusals');
+  if (value.state === 'ambiguous') {
+    if (value.actions.length > 0 || value.refusals.length === 0) throw new Error('ambiguous receipts require refusals and no actions');
+    if (!value.refusals.some((entry) => (
+      ['identity_changed', 'malformed', 'query_failed', 'unsupported'].includes(entry.failureClass)
+    ))) throw new Error('ambiguous receipts require an ambiguity failure class');
+  }
+}
+
+function validatePlanningReceipt(value, now) {
+  base(value, 'cleanup_receipt', [
+    'phase', 'deploymentId', 'operationRunId', 'state', 'operationStartedAt',
+    'operationEndedAt', 'receiptCoreFinalizedAt', 'policyDigest',
+    'deploymentManifestDigest', 'runManifestDigest', 'planDigest', 'approvalDigest',
+    'approvalStateDigest', 'inventoryBeforeDigest', 'inventoryAfterDigest',
+    'journalDigest', 'journalBytes', 'journalRecords', 'actions', 'results',
+    'refusals', 'signerKeyId',
+  ], CLEANUP_SCHEMA_VERSION);
+  if (value.phase !== 'planning') throw new Error('$.phase must equal planning');
+  identifier(value.deploymentId, '$.deploymentId');
+  identifier(value.operationRunId, '$.operationRunId');
+  enumeration(value.state, '$.state', PLANNING_STATES);
+  const started = timestamp(value.operationStartedAt, '$.operationStartedAt');
+  const ended = timestamp(value.operationEndedAt, '$.operationEndedAt');
+  const finalized = timestamp(value.receiptCoreFinalizedAt, '$.receiptCoreFinalizedAt');
+  if (started > ended || ended > finalized) throw new Error('receipt timestamps are out of order');
+  if (finalized > now.getTime()) throw new Error('receipt finalization timestamp is in the future');
+  for (const key of ['policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'planDigest', 'inventoryBeforeDigest', 'signerKeyId']) digest(value[key], `$.${key}`);
+  for (const key of ['approvalDigest', 'approvalStateDigest', 'inventoryAfterDigest', 'journalDigest']) {
+    if (value[key] !== null) throw new Error(`$.${key} must be null during planning`);
+  }
+  integer(value.journalBytes, '$.journalBytes');
+  integer(value.journalRecords, '$.journalRecords');
+  if (value.journalBytes !== 0 || value.journalRecords !== 0) throw new Error('planning receipts cannot contain a journal');
+  const actions = array(value.actions, '$.actions', { max: 10_000 });
+  validateCleanupActions(actions, '$.actions');
+  const results = array(value.results, '$.results', { max: 10_000 });
+  results.forEach((entry, index) => cleanupResult(entry, `$.results[${index}]`));
+  ordered(results, '$.results');
+  const refusals = array(value.refusals, '$.refusals', { max: 10_000 });
+  refusals.forEach((entry, index) => validateRefusal(entry, `$.refusals[${index}]`));
+  unique(refusals.map((entry) => `${entry.resourceClass}:${entry.immutableIdentity}:${entry.failureClass}`), '$.refusals identity');
+  validatePlanningReceiptState({ ...value, actions, results, refusals });
 }
 
 function validateUploadReceipt(value) {
@@ -285,9 +420,20 @@ const VALIDATORS = {
   cleanup_receipt_upload: validateUploadReceipt,
 };
 
+const CLEANUP_V11_VALIDATORS = {
+  inventory: validateInventoryV11,
+  cleanup_plan: validatePlanV11,
+  cleanup_approval: validateApprovalV11,
+  cleanup_receipt: validatePlanningReceipt,
+};
+
 export function validateArtifact(value, { now = new Date() } = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('$ must be an object');
   enumeration(value.artifactType, '$.artifactType', ARTIFACT_TYPES);
-  VALIDATORS[value.artifactType](value, now);
+  const validator = value.schemaVersion === CLEANUP_SCHEMA_VERSION
+    ? CLEANUP_V11_VALIDATORS[value.artifactType]
+    : VALIDATORS[value.artifactType];
+  if (!validator) throw new Error(`$.schemaVersion is not supported for ${value.artifactType}`);
+  validator(value, now);
   return value;
 }

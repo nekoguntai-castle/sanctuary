@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
 PROJECT="$TEST_ROOT/project"
 RUNTIME="$TEST_ROOT/runtime"
+export SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true
+export SANCTUARY_TEST_PROJECT_LOCK_ROOT="$TEST_ROOT/project-locks"
 mkdir -p "$PROJECT/config" "$RUNTIME"
 mkdir -p "$TEST_ROOT/bin"
 cat > "$TEST_ROOT/bin/docker" <<'EOF'
@@ -84,6 +86,7 @@ fi
 grep -q 'first deployment manifest refused existing legacy Docker resources' "$TEST_ROOT/legacy.err"
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/pending-revision.json" ]
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/mutation-lock" ]
+[ -z "$(find "$SANCTUARY_TEST_PROJECT_LOCK_ROOT" -type d -name mutation-lock -print 2>/dev/null)" ]
 
 export FAKE_DOCKER_OVERRIDE_UNSUPPORTED=yes
 if deployment_begin no no no true 2>"$TEST_ROOT/unsupported.err"; then
@@ -97,11 +100,13 @@ unset FAKE_DOCKER_OVERRIDE_UNSUPPORTED
 
 deployment_begin no no no true
 [ "$SANCTUARY_DEPLOYMENT_STATE" = pending ]
+[ -n "$(find "$SANCTUARY_TEST_PROJECT_LOCK_ROOT" -type d -name mutation-lock -print 2>/dev/null)" ]
 [ "${#COMPOSE_FILE_ARGS[@]}" -ge 8 ]
 grep -q '"resourceClass":"compose_volume"' "$RUNTIME/ownership/deployments/deployment-test/revisions/1/deployment-manifest.json"
 grep -q '"resourceClass":"compose_network"' "$RUNTIME/ownership/deployments/deployment-test/revisions/1/deployment-manifest.json"
 deployment_finalize_prepared
 deployment_lock_release
+[ -z "$(find "$SANCTUARY_TEST_PROJECT_LOCK_ROOT" -type d -name mutation-lock -print 2>/dev/null)" ]
 
 unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP SANCTUARY_PENDING_DIGEST
 export SANCTUARY_OPERATION_RUN_ID=run-prepared-resume

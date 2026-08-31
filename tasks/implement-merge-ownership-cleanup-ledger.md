@@ -8,8 +8,8 @@ Created by loop: 2026-08-30
 | Phase | Task branch | Worktree path | Created by loop | Converted to next phase | Cleanup status | PR | Merge commit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 | `codex/implement-merge/ownership-contract-pr1` | `/home/nekoguntai/sanctuary-ownership-contract-pr1` | yes | no | cleaned | [#989](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/989) | `65a3ba81d35e8ace2eeb8dd2a78d7f4a7b21934a` |
-| PR 2 | `codex/implement-merge/ownership-manifests-pr2` | `/home/nekoguntai/sanctuary-ownership-manifests-pr2` | yes | no | active | pending | pending |
-| PR 3 | pending | pending | yes | no | pending | pending | pending |
+| PR 2 | `codex/implement-merge/ownership-manifests-pr2` | `/home/nekoguntai/sanctuary-ownership-manifests-pr2` | yes | no | active | [#990](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/990) | `cdf3de0d7d` |
+| PR 3 | `codex/implement-merge/ownership-inventory-dry-run` | `/home/nekoguntai/sanctuary-ownership-inventory-dry-run` | yes | no | active | pending | pending |
 | PR 4 | pending | pending | yes | no | pending | pending | pending |
 | PR 5 | pending | pending | yes | no | pending | pending | pending |
 | PR 6 | pending | pending | yes | no | pending | pending | pending |
@@ -17,7 +17,7 @@ Created by loop: 2026-08-30
 ## Execution checklist
 
 - [x] PR 1 — policy, schemas, verifier, and architecture contract (PR #989; exact-head and landed-main CI green)
-- [ ] PR 2 — deployment/run manifests and producer stamping
+- [x] PR 2 — deployment/run manifests and producer stamping (PR #990; exact-head and landed-main CI green)
 - [ ] PR 3 — read-only inventory and signed dry-run
 - [ ] PR 4 — exact execution, journal/recovery, and cleanup receipts
 - [ ] PR 5 — callsite convergence and real-resource proof
@@ -36,3 +36,10 @@ Created by loop: 2026-08-30
   release suites, interruption/resume shell fixtures, workflow composition,
   docs, typecheck, lint, lizard, duplication, large-file classification, and
   focused replay-controller coverage.
+- PR 2 required a landed-main compatibility correction after merge. PR #991
+  initialized the strict Compose identity at the legacy entry point; its exact-head
+  and landed-main CI both passed before PR 3 resumed.
+- PR 3 pre-delivery review closed lock-domain, partial-release, mutation-race,
+  Docker observation-drift, and pre-manifest opt-in gaps. Local verification covers
+  all ownership tests, installer unit tests, cleanup wrapper regressions, workflow
+  composition, syntax, diff hygiene, and complexity limits.

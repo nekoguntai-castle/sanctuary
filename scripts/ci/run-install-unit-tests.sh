@@ -31,6 +31,12 @@ set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Unit suites deliberately interrupt controllers and reuse common Compose project
+# names. Keep their project locks inside each suite's runtime fixture so one
+# intentional crash cannot poison a later suite or a persistent CI runner.
+export SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true
+export SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime
+
 # The workflow-composition guard is also part of the install/release unit lane,
 # whose clean checkout deliberately has no root dependency install. Install its
 # one-package, lifecycle-disabled parser boundary instead of the monorepo tree.

@@ -1,6 +1,6 @@
 # Post-v0.8.69 P0 Ownership Manifest and Cleanup-Receipt Plan
 
-Status: implementation in progress; PR 1 and PR 2 landed, with the PR 2 post-merge Compose compatibility hotfix in delivery
+Status: implementation in progress; PRs 1 and 2 plus the Compose compatibility hotfix have landed; PR 3 is in protected-check remediation
 Date: 2026-08-30
 Planning baseline: `origin/main` at `ee8baab03c4113c50f80183ff3aea068bc3c1ddc`
 Backlog source: `tasks/todo.md`, “P0 — telemetry, overload protection, and ownership”

@@ -282,10 +282,13 @@ SCRIPT
 test_setup_generates_and_preserves_password() {
     local runtime="$TEST_ROOT/runtime"
     local env_file="$runtime/sanctuary.env"
+    local compose_project="sanctuary-grafana-migration-test-$$"
     mkdir "$runtime"
 
     env -u GRAFANA_PASSWORD \
         SANCTUARY_RUNTIME_DIR="$runtime" SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime \
+        COMPOSE_PROJECT_NAME="$compose_project" \
         HTTPS_PORT=59343 HTTP_PORT=59080 GATEWAY_PORT=59400 \
         bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive \
         --no-start --skip-ssl --skip-prereqs >/dev/null
@@ -296,6 +299,8 @@ test_setup_generates_and_preserves_password() {
 
     env -u GRAFANA_PASSWORD \
         SANCTUARY_RUNTIME_DIR="$runtime" SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime \
+        COMPOSE_PROJECT_NAME="$compose_project" \
         HTTPS_PORT=59343 HTTP_PORT=59080 GATEWAY_PORT=59400 \
         bash "$PROJECT_ROOT/scripts/setup.sh" --force --upgrade --non-interactive \
         --no-start --skip-ssl --skip-prereqs >/dev/null

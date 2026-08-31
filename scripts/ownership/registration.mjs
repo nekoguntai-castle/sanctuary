@@ -92,6 +92,25 @@ function readPrivateFile(file) {
   }
 }
 
+function assertExistingPrivateDirectory(directory) {
+  const before = lstatSync(directory);
+  if (!before.isDirectory() || before.isSymbolicLink()) throw new Error(`private directory must not be a symlink: ${directory}`);
+  if (realpathSync(directory) !== path.resolve(directory)) throw new Error(`private directory must not traverse a symlink: ${directory}`);
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) throw new Error(`private directory has a different owner: ${directory}`);
+  if ((before.mode & 0o077) !== 0) throw new Error(`private directory permissions are too broad: ${directory}`);
+  return before;
+}
+
+function readStableDirectory(directory) {
+  const before = assertExistingPrivateDirectory(directory);
+  const entries = readdirSync(directory).sort();
+  const after = lstatSync(directory);
+  if (before.dev !== after.dev || before.ino !== after.ino || before.mtimeMs !== after.mtimeMs) {
+    throw new Error(`private directory identity changed while reading: ${directory}`);
+  }
+  return entries;
+}
+
 function writeGeneratedKeys(staging) {
   const pair = generateKeyPairSync('rsa', { modulusLength: 3072 });
   const privatePem = pair.privateKey.export({ type: 'pkcs8', format: 'pem' });
@@ -221,27 +240,57 @@ function registerResourceLocked(input, { root, checkoutRoot, keys }) {
 }
 
 function readOneRegistration(file, publicKey, fingerprint) {
-  const bytes = readFileSync(file);
-  const signature = Buffer.from(readFileSync(file.replace(/\.json$/, '.sig'), 'utf8'), 'base64');
+  const bytes = readPrivateFile(file);
+  const signature = Buffer.from(readPrivateFile(file.replace(/\.json$/, '.sig')).toString('utf8'), 'base64');
   verifyDetached(bytes, signature, publicKey, fingerprint);
-  return validateRegistrationIdentity(parseStrictJson(bytes));
+  const registration = validateRegistrationIdentity(parseStrictJson(bytes));
+  if (registration.signerKeyId !== fingerprint) throw new Error('registration signerKeyId does not match public key');
+  return registration;
 }
 
-export function listRegistrations(root, { resourceClass, immutableIdentity } = {}) {
-  ensurePrivateDirectory(root);
-  ensurePrivateDirectory(path.join(root, 'keys'));
+function readRegistrationClass(directory, className, publicKey, fingerprint) {
+  const entries = readStableDirectory(directory);
+  if (entries.some((entry) => !entry.endsWith('.json') && !entry.endsWith('.sig'))) {
+    throw new Error(`registration directory contains an unexpected entry: ${directory}`);
+  }
+  const jsonBases = new Set(entries.filter((entry) => entry.endsWith('.json')).map((entry) => entry.slice(0, -5)));
+  const signatureBases = new Set(entries.filter((entry) => entry.endsWith('.sig')).map((entry) => entry.slice(0, -4)));
+  if ([...jsonBases].some((entry) => !signatureBases.has(entry))
+      || [...signatureBases].some((entry) => !jsonBases.has(entry))) {
+    throw new Error(`registration directory contains an incomplete signed pair: ${directory}`);
+  }
+  return [...jsonBases].sort().map((base) => {
+    const registration = readOneRegistration(path.join(directory, `${base}.json`), publicKey, fingerprint);
+    if (registration.registrationId !== base || registration.resourceClass !== className) {
+      throw new Error(`registration storage identity does not match signed payload: ${base}`);
+    }
+    return registration;
+  });
+}
+
+function readRegistrationsFromExistingRoot(root, { resourceClass, immutableIdentity } = {}) {
+  assertExistingPrivateDirectory(root);
+  readStableDirectory(path.join(root, 'keys'));
   const publicKey = readPrivateFile(path.join(root, 'keys', 'public.pem'));
   const fingerprint = publicKeyFingerprint(publicKey);
   const classesRoot = path.join(root, 'registrations');
   if (!existsSync(classesRoot)) return [];
-  const classes = resourceClass ? [resourceClass] : readdirSync(classesRoot);
+  const classes = resourceClass ? [resourceClass] : readStableDirectory(classesRoot);
   return classes.flatMap((className) => {
     const directory = path.join(classesRoot, className);
     if (!existsSync(directory)) return [];
-    return readdirSync(directory)
-      .filter((entry) => entry.endsWith('.json'))
-      .map((entry) => readOneRegistration(path.join(directory, entry), publicKey, fingerprint));
+    return readRegistrationClass(directory, className, publicKey, fingerprint);
   }).filter((entry) => immutableIdentity === undefined || entry.immutableIdentity === immutableIdentity);
+}
+
+export function readRegistrations(root, options = {}) {
+  return readRegistrationsFromExistingRoot(path.resolve(root), options);
+}
+
+export function listRegistrations(root, options = {}) {
+  ensurePrivateDirectory(root);
+  ensurePrivateDirectory(path.join(root, 'keys'));
+  return readRegistrationsFromExistingRoot(path.resolve(root), options);
 }
 
 export function inspectRegisteredLocator(registration) {

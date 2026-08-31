@@ -1933,6 +1933,27 @@ test_upgrade_harness_exports_operator_runtime_state() {
     "upgrade lane should retain the selected runtime environment for operator commands"
 }
 
+test_install_ownership_rebinds_workspace_identity_to_compose_lane() {
+  local expected_commit
+  expected_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
+
+  (
+    export COMPOSE_PROJECT_NAME=upgrade-lane-project
+    export SANCTUARY_PROJECT=workspace-project
+    export SANCTUARY_DEPLOYMENT_ID=deploy-workspace-project
+    export SANCTUARY_COMMIT="$expected_commit"
+    export SANCTUARY_SOURCE_COMMIT="$expected_commit"
+    export SANCTUARY_IMAGE_LOCK_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    export SANCTUARY_VERSION=0.8.69
+    export SANCTUARY_BUILD_ID=workspace-build
+    initialize_install_test_ownership
+    assert_equals "upgrade-lane-project" "$SANCTUARY_PROJECT" \
+      "the explicit Compose lane must replace a persisted workspace project" || return 1
+    assert_equals "deploy-upgrade-lane-project" "$SANCTUARY_DEPLOYMENT_ID" \
+      "the deployment identity must follow the rebound Compose project"
+  )
+}
+
 test_backend_replacement_failure_restores_backend() {
   local call_log="$TEST_TMP_DIR/backend-replacement-cleanup.log"
   local exit_code
@@ -2048,6 +2069,7 @@ main() {
   run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
   run_test "upgrade harness covers backend address replacement" test_upgrade_harness_covers_backend_address_replacement
   run_test "upgrade harness exports operator runtime state" test_upgrade_harness_exports_operator_runtime_state
+  run_test "install ownership rebinds workspace identity" test_install_ownership_rebinds_workspace_identity_to_compose_lane
   run_test "backend replacement failure restores backend" test_backend_replacement_failure_restores_backend
   run_test "backend replacement selects shared frontend network" test_backend_replacement_selects_shared_frontend_network
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header

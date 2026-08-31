@@ -3,13 +3,22 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { canonicalJson, canonicalSha256, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
 import { resolveDeploymentDefinition } from '../../scripts/ownership/deployment-definition.mjs';
-import { acquireDeploymentLock, releaseDeploymentLock } from '../../scripts/ownership/deployment-lock.mjs';
+import {
+  acquireDeploymentLock, inspectDeploymentLock, releaseDeploymentLock,
+} from '../../scripts/ownership/deployment-lock.mjs';
 import { DeploymentStore } from '../../scripts/ownership/deployment-store.mjs';
+import {
+  acquireProjectMutationLock, inspectProjectMutationLock, recoverProjectMutationLock,
+  releaseProjectMutationLock,
+} from '../../scripts/ownership/project-lock.mjs';
 
 const cli = path.resolve('scripts/ownership/deployment-cli.mjs');
+process.env.SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT = 'true';
+process.env.SANCTUARY_TEST_PROJECT_LOCK_ROOT = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-project-locks-'));
 
 function run(command, request, options = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-cli-request-'));
@@ -69,6 +78,11 @@ test('CLI compose-args output is NUL-delimited and uses retained snapshots', () 
 
 test('CLI lock acquisition binds the long-lived controller PID from the environment', () => {
   const state = fixture();
+  const store = new DeploymentStore({ runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1' });
+  store.initialize({
+    projectDirectory: state.projectDirectory,
+    composeProjectName: path.basename(state.projectDirectory).toLowerCase(),
+  });
   const request = {
     runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1', operationRunId: 'run-shell',
     journalPath: null, generation: null,
@@ -78,11 +92,85 @@ test('CLI lock acquisition binds the long-lived controller PID from the environm
   const owner = parseStrictJson(acquired.stdout);
   assert.equal(owner.pid, process.pid);
   const inspected = run('lock-inspect', { runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1' });
-  assert.equal(parseStrictJson(inspected.stdout).processMatches, true);
+  const inspection = parseStrictJson(inspected.stdout);
+  assert.equal(inspection.processMatches, true);
+  assert.equal(inspection.projectLock.processMatches, true);
+  assert.equal(inspection.projectLock.owner.token, owner.token);
   const released = run('lock-release', {
     runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1', operationRunId: 'run-shell', lockToken: owner.token,
   });
   assert.equal(released.status, 0, released.stderr.toString());
+});
+
+test('project lock identity is shared across distinct deployment runtime directories', () => {
+  const firstRuntime = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-project-runtime-a-'));
+  const secondRuntime = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-project-runtime-b-'));
+  const owner = acquireProjectMutationLock(firstRuntime, 'same-daemon-project', {
+    operationRunId: 'runtime-a', controllerPid: process.pid,
+  });
+  assert.throws(
+    () => acquireProjectMutationLock(secondRuntime, 'same-daemon-project', {
+      operationRunId: 'runtime-b', controllerPid: process.pid,
+    }),
+    (error) => error.code === 'DEPLOYMENT_LOCK_CONFLICT',
+  );
+  releaseProjectMutationLock(firstRuntime, 'same-daemon-project', owner.token, 'runtime-a');
+});
+
+test('CLI recovery prevalidates distinct project and deployment lock owners and resumes partial recovery', async () => {
+  const state = fixture();
+  const store = new DeploymentStore({ runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1' });
+  const project = 'recovery-project';
+  store.initialize({ projectDirectory: state.projectDirectory, composeProjectName: project });
+
+  async function stalePair(operationRunId) {
+    const controller = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
+    await once(controller, 'spawn');
+    const projectOwner = acquireProjectMutationLock(state.runtimeDirectory, project, {
+      operationRunId, controllerPid: controller.pid,
+      now: () => new Date('2026-08-31T00:00:00.000Z'),
+    });
+    acquireDeploymentLock(store.lockPath, {
+      operationRunId, controllerPid: controller.pid, token: projectOwner.token,
+      now: () => new Date('2026-08-31T00:00:01.000Z'),
+    });
+    controller.kill('SIGKILL');
+    await once(controller, 'exit');
+    return {
+      deployment: inspectDeploymentLock(store.lockPath),
+      project: inspectProjectMutationLock(state.runtimeDirectory, project),
+    };
+  }
+
+  let stale = await stalePair('recovery-one');
+  assert.notEqual(stale.deployment.ownerDigest, stale.project.ownerDigest);
+  const mismatched = run('lock-recover', {
+    runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1',
+    expectedDeploymentOwnerDigest: stale.project.ownerDigest,
+    expectedProjectOwnerDigest: stale.deployment.ownerDigest,
+  });
+  assert.notEqual(mismatched.status, 0);
+  assert.equal(inspectDeploymentLock(store.lockPath).state, 'locked');
+  assert.equal(inspectProjectMutationLock(state.runtimeDirectory, project).state, 'locked');
+
+  const recovered = run('lock-recover', {
+    runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1',
+    expectedDeploymentOwnerDigest: stale.deployment.ownerDigest,
+    expectedProjectOwnerDigest: stale.project.ownerDigest,
+  });
+  assert.equal(recovered.status, 0, recovered.stderr.toString());
+  assert.equal(inspectDeploymentLock(store.lockPath).state, 'unlocked');
+  assert.equal(inspectProjectMutationLock(state.runtimeDirectory, project).state, 'unlocked');
+
+  stale = await stalePair('recovery-two');
+  recoverProjectMutationLock(state.runtimeDirectory, project, stale.project.ownerDigest);
+  const resumed = run('lock-recover', {
+    runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1',
+    expectedDeploymentOwnerDigest: stale.deployment.ownerDigest,
+    expectedProjectOwnerDigest: stale.project.ownerDigest,
+  });
+  assert.equal(resumed.status, 0, resumed.stderr.toString());
+  assert.equal(inspectDeploymentLock(store.lockPath).state, 'unlocked');
 });
 
 test('CLI rollback completion refuses changed or retroactively claimed legacy resources', () => {

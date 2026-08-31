@@ -61,17 +61,81 @@ install_cleanup() {
 }
 trap install_cleanup EXIT
 
-install_lock_sanitize_id() {
-    local value="${1,,}"
-    value="${value//[^a-z0-9._:-]/-}"
-    [[ "$value" =~ ^[a-z0-9] ]] || value="x-$value"
-    while [ "${value%-}" != "$value" ]; do value="${value%-}"; done
-    printf '%s' "$value"
+resolve_install_project_identity() {
+    local compose_project="${COMPOSE_PROJECT_NAME:-}"
+    local sanctuary_project="${SANCTUARY_PROJECT:-}"
+    if [ -n "$compose_project" ] && [ -n "$sanctuary_project" ] \
+        && [ "$compose_project" != "$sanctuary_project" ]; then
+        echo "SANCTUARY_PROJECT and COMPOSE_PROJECT_NAME must match" >&2
+        return 1
+    fi
+    local selected="${compose_project:-${sanctuary_project:-sanctuary}}"
+    if [[ ! "$selected" =~ ^[A-Za-z0-9_.-]{1,128}$ ]] \
+        || [ "$selected" = . ] || [ "$selected" = .. ]; then
+        echo "project identity has an invalid format" >&2
+        return 1
+    fi
+    SANCTUARY_PROJECT="$selected"
+}
+
+load_persisted_install_ownership_identity() {
+    local env_file="$1"
+    [ -f "$env_file" ] || return 0
+    local identity_output persisted_project persisted_deployment
+    identity_output="$(node --input-type=module - "$env_file" <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const values = new Map();
+for (const line of readFileSync(process.argv[2], 'utf8').split(/\r?\n/u)) {
+  const match = line.match(/^\s*(?:export\s+)?(SANCTUARY_PROJECT|SANCTUARY_DEPLOYMENT_ID)=(.*?)\s*$/u);
+  if (!match) {
+    if (/^\s*(?:export\s+)?(?:SANCTUARY_PROJECT|SANCTUARY_DEPLOYMENT_ID)\s*=/u.test(line)) {
+      throw new Error('persisted ownership identity has an invalid assignment');
+    }
+    continue;
+  }
+  let value = match[2];
+  if ((value.startsWith('"') && value.endsWith('"'))
+    || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+  const prior = values.get(match[1]);
+  if (prior !== undefined && prior !== value) {
+    throw new Error(`persisted ${match[1]} has conflicting assignments`);
+  }
+  values.set(match[1], value);
+}
+const project = values.get('SANCTUARY_PROJECT') ?? '';
+const deployment = values.get('SANCTUARY_DEPLOYMENT_ID') ?? '';
+if (project && (!/^[A-Za-z0-9_.-]{1,128}$/u.test(project) || ['.', '..'].includes(project))) {
+  throw new Error('persisted SANCTUARY_PROJECT has an invalid format');
+}
+if (deployment && !/^[a-z0-9][a-z0-9._:-]{0,127}$/u.test(deployment)) {
+  throw new Error('persisted SANCTUARY_DEPLOYMENT_ID has an invalid format');
+}
+process.stdout.write(`${project}|${deployment}`);
+NODE
+)"
+    IFS='|' read -r persisted_project persisted_deployment <<< "$identity_output"
+    if [ -n "$persisted_project" ]; then
+        if { [ -n "${SANCTUARY_PROJECT:-}" ] && [ "$SANCTUARY_PROJECT" != "$persisted_project" ]; } \
+            || { [ -n "${COMPOSE_PROJECT_NAME:-}" ] && [ "$COMPOSE_PROJECT_NAME" != "$persisted_project" ]; }; then
+            echo "persisted and requested project identities must match" >&2
+            return 1
+        fi
+        SANCTUARY_PROJECT="$persisted_project"
+    fi
+    if [ -n "$persisted_deployment" ]; then
+        if [ -n "${SANCTUARY_DEPLOYMENT_ID:-}" ] \
+            && [ "$SANCTUARY_DEPLOYMENT_ID" != "$persisted_deployment" ]; then
+            echo "persisted and requested deployment identities must match" >&2
+            return 1
+        fi
+        SANCTUARY_DEPLOYMENT_ID="$persisted_deployment"
+    fi
 }
 
 install_deployment_lock_runtime() {
     node --input-type=module - "$1" <<'NODE'
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync, constants, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   realpathSync, rmdirSync, unlinkSync, writeFileSync,
@@ -83,16 +147,32 @@ const action = process.argv[2];
 const runtimeDirectory = process.env.SANCTUARY_RUNTIME_DIR;
 const deploymentId = process.env.SANCTUARY_DEPLOYMENT_ID;
 const operationRunId = process.env.SANCTUARY_OPERATION_RUN_ID;
+const project = process.env.SANCTUARY_PROJECT;
 const controllerPid = Number(process.env.SANCTUARY_LOCK_CONTROLLER_PID);
 if (!runtimeDirectory || !/^[a-z0-9][a-z0-9._:-]{0,127}$/.test(deploymentId ?? '')
   || !/^[a-z0-9][a-z0-9._:-]{0,127}$/.test(operationRunId ?? '')
+  || !/^[A-Za-z0-9_.-]{1,128}$/.test(project ?? '') || ['.', '..'].includes(project)
   || !Number.isSafeInteger(controllerPid) || controllerPid < 1) {
   throw new Error('installer deployment lock identity is invalid');
 }
 
-const root = path.join(path.resolve(runtimeDirectory), 'ownership', 'deployments', deploymentId);
-const lockPath = path.join(root, 'mutation-lock');
-const ownerPath = path.join(lockPath, 'owner.json');
+const deploymentRoot = path.join(path.resolve(runtimeDirectory), 'ownership', 'deployments', deploymentId);
+const testRoot = process.env.SANCTUARY_TEST_PROJECT_LOCK_ROOT;
+if (testRoot && process.env.SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT !== 'true') {
+  throw new Error('test project lock root requires an explicit test-only guard');
+}
+const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+if (uid === null) throw new Error('project mutation locks require a stable numeric user identity');
+const projectLockRoot = testRoot
+  ? (testRoot === '@runtime'
+      ? path.join(path.resolve(runtimeDirectory), 'ownership', 'test-project-locks')
+      : path.resolve(testRoot))
+  : path.join('/tmp', `sanctuary-ownership-${uid}`, 'project-locks');
+const projectDigest = createHash('sha256')
+  .update(JSON.stringify({ composeProjectName: project })).digest('hex');
+const projectRoot = path.join(projectLockRoot, projectDigest);
+const deploymentLockPath = path.join(deploymentRoot, 'mutation-lock');
+const projectLockPath = path.join(projectRoot, 'mutation-lock');
 const processStartIdentity = (pid) => {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
@@ -110,20 +190,52 @@ const fsyncDirectory = (directory) => {
   const descriptor = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY);
   try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
 };
-
-if (action === 'acquire') {
-  mkdirSync(root, { recursive: true, mode: 0o700 });
-  if (realpathSync(root) !== path.resolve(root)) throw new Error('deployment lock path traverses a symlink');
-  const rootInfo = lstatSync(root);
-  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()
-    || (typeof process.getuid === 'function' && rootInfo.uid !== process.getuid())
-    || (rootInfo.mode & 0o077) !== 0) {
-    throw new Error('deployment lock directory must be owner-only');
+const ensureOwnerDirectory = (directory, label) => {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  if (realpathSync(directory) !== path.resolve(directory)) throw new Error(`${label} path traverses a symlink`);
+  const info = lstatSync(directory);
+  if (!info.isDirectory() || info.isSymbolicLink()
+    || (typeof process.getuid === 'function' && info.uid !== process.getuid())
+    || (info.mode & 0o077) !== 0) {
+    throw new Error(`${label} directory must be owner-only`);
   }
+};
+const writeLock = (lockPath, owner) => {
+  const parent = path.dirname(lockPath);
+  ensureOwnerDirectory(parent, 'installer mutation lock');
   try { mkdirSync(lockPath, { mode: 0o700 }); } catch (error) {
     if (error.code === 'EEXIST') throw new Error('deployment mutation lock is already held');
     throw error;
   }
+  const ownerPath = path.join(lockPath, 'owner.json');
+  try {
+    writeFileSync(ownerPath, canonical(owner), { flag: 'wx', mode: 0o600 });
+    const descriptor = openSync(ownerPath, constants.O_RDONLY);
+    try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+    fsyncDirectory(lockPath);
+    fsyncDirectory(parent);
+  } catch (error) {
+    try { unlinkSync(ownerPath); } catch {}
+    try { rmdirSync(lockPath); } catch {}
+    throw error;
+  }
+};
+const assertOwned = (lockPath, token) => {
+  const owner = JSON.parse(readFileSync(path.join(lockPath, 'owner.json'), 'utf8'));
+  if (owner.token !== token || owner.operationRunId !== operationRunId || owner.pid !== controllerPid
+    || owner.processStartIdentity !== processStartIdentity(controllerPid)) {
+    throw new Error('installer mutation lock ownership changed');
+  }
+};
+const removeLock = (lockPath) => {
+  const ownerPath = path.join(lockPath, 'owner.json');
+  unlinkSync(ownerPath);
+  fsyncDirectory(lockPath);
+  rmdirSync(lockPath);
+  fsyncDirectory(path.dirname(lockPath));
+};
+
+if (action === 'acquire') {
   const now = new Date().toISOString();
   const owner = {
     acquiredAt: now,
@@ -136,29 +248,24 @@ if (action === 'acquire') {
     processStartIdentity: processStartIdentity(controllerPid),
     token: randomUUID(),
   };
+  writeLock(projectLockPath, owner);
   try {
-    writeFileSync(ownerPath, canonical(owner), { flag: 'wx', mode: 0o600 });
-    const descriptor = openSync(ownerPath, constants.O_RDONLY);
-    try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
-    fsyncDirectory(lockPath);
-    fsyncDirectory(root);
+    writeLock(deploymentLockPath, owner);
   } catch (error) {
-    try { unlinkSync(ownerPath); } catch {}
-    try { rmdirSync(lockPath); } catch {}
+    removeLock(projectLockPath);
     throw error;
   }
   process.stdout.write(owner.token);
 } else if (action === 'release') {
-  const owner = JSON.parse(readFileSync(ownerPath, 'utf8'));
-  if (owner.token !== process.env.SANCTUARY_DEPLOYMENT_LOCK_TOKEN
-    || owner.operationRunId !== operationRunId || owner.pid !== controllerPid
-    || owner.processStartIdentity !== processStartIdentity(controllerPid)) {
-    throw new Error('installer deployment lock ownership changed');
+  const deploymentToken = process.env.SANCTUARY_DEPLOYMENT_LOCK_TOKEN;
+  const projectToken = process.env.SANCTUARY_PROJECT_LOCK_TOKEN;
+  if (!deploymentToken || deploymentToken !== projectToken) {
+    throw new Error('installer deployment and project lock tokens differ');
   }
-  unlinkSync(ownerPath);
-  fsyncDirectory(lockPath);
-  rmdirSync(lockPath);
-  fsyncDirectory(root);
+  assertOwned(deploymentLockPath, deploymentToken);
+  assertOwned(projectLockPath, projectToken);
+  removeLock(deploymentLockPath);
+  removeLock(projectLockPath);
 } else {
   throw new Error('installer deployment lock action is invalid');
 }
@@ -170,6 +277,7 @@ install_deployment_lock_release() {
     [ -n "${SANCTUARY_DEPLOYMENT_LOCK_TOKEN:-}" ] || return 0
     install_deployment_lock_runtime release
     DEPLOYMENT_LOCK_OWNERSHIP=released
+    SANCTUARY_PROJECT_LOCK_OWNERSHIP=released
     INSTALL_DEPLOYMENT_LOCK_ACTIVE=false
 }
 
@@ -184,15 +292,19 @@ ensure_install_deployment_lock() {
     SANCTUARY_PROJECT_DIR="$INSTALL_DIR"
     SANCTUARY_RUNTIME_DIR="$DEFAULT_RUNTIME_DIR"
     SANCTUARY_ENV_FILE="$(resolve_runtime_env_file)"
-    SANCTUARY_PROJECT="$(install_lock_sanitize_id "${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}")"
+    load_persisted_install_ownership_identity "$SANCTUARY_ENV_FILE"
+    resolve_install_project_identity
     SANCTUARY_DEPLOYMENT_ID="${SANCTUARY_DEPLOYMENT_ID:-deploy-$SANCTUARY_PROJECT}"
     SANCTUARY_OPERATION_RUN_ID="${SANCTUARY_OPERATION_RUN_ID:-run-$$}"
     SANCTUARY_LOCK_CONTROLLER_PID="${SANCTUARY_LOCK_CONTROLLER_PID:-$$}"
     export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
     export SANCTUARY_DEPLOYMENT_ID SANCTUARY_OPERATION_RUN_ID SANCTUARY_LOCK_CONTROLLER_PID
     SANCTUARY_DEPLOYMENT_LOCK_TOKEN="$(install_deployment_lock_runtime acquire)"
+    SANCTUARY_PROJECT_LOCK_TOKEN="$SANCTUARY_DEPLOYMENT_LOCK_TOKEN"
+    SANCTUARY_PROJECT_LOCK_OWNERSHIP=owned
     DEPLOYMENT_LOCK_OWNERSHIP=owned
-    export SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP
+    export SANCTUARY_DEPLOYMENT_LOCK_TOKEN SANCTUARY_PROJECT_LOCK_TOKEN
+    export SANCTUARY_PROJECT_LOCK_OWNERSHIP DEPLOYMENT_LOCK_OWNERSHIP
     INSTALL_DEPLOYMENT_LOCK_ACTIVE=true
 }
 
