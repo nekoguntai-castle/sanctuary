@@ -11,6 +11,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/ownership/producer-hooks.sh"
+# shellcheck source=scripts/ownership/deployment-lifecycle.sh
+. "$SCRIPT_DIR/ownership/deployment-lifecycle.sh"
 
 INSTALL_DIR="$PROJECT_DIR"
 TARGET_VERSION="${SANCTUARY_UPGRADE_TARGET_VERSION:-unknown-target}"
@@ -20,6 +24,8 @@ SSL_DIR_OVERRIDE="${SANCTUARY_SSL_DIR:-}"
 WRITE_SIDECAR_CHECKSUM=false
 START_POSTGRES=true
 BACKUP_TMP_ROOT=""
+BACKUP_LOCK_OWNED=false
+MANIFEST_BACKED_COMPOSE=false
 
 usage() {
   cat <<'EOF'
@@ -54,6 +60,9 @@ log() {
 cleanup_backup_tmp() {
   if [ -n "${BACKUP_TMP_ROOT:-}" ] && [ -d "$BACKUP_TMP_ROOT" ]; then
     rm -rf "$BACKUP_TMP_ROOT"
+  fi
+  if [ "$BACKUP_LOCK_OWNED" = true ]; then
+    deployment_lock_release || true
   fi
 }
 
@@ -165,7 +174,30 @@ current_version() {
 }
 
 compose() {
-  docker compose -f "$INSTALL_DIR/docker-compose.yml" "$@"
+  docker compose "${COMPOSE_FILE_ARGS[@]}" "$@"
+}
+
+initialize_backup_ownership() {
+  SANCTUARY_PROJECT_DIR="$INSTALL_DIR"
+  SANCTUARY_RUNTIME_DIR="$(resolve_runtime_dir)"
+  SANCTUARY_ENV_FILE="$(resolve_env_file)"
+  SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+  export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
+  ownership_initialize
+  if [ -z "${SANCTUARY_DEPLOYMENT_LOCK_TOKEN:-}" ]; then
+    deployment_lock_only_acquire
+    BACKUP_LOCK_OWNED=true
+  else
+    deployment_assert_lock
+  fi
+  if deployment_use_active 2>/dev/null; then
+    MANIFEST_BACKED_COMPOSE=true
+  else
+    COMPOSE_FILE_ARGS=(--project-directory "$INSTALL_DIR" --env-file "$SANCTUARY_ENV_FILE" \
+      -p "$SANCTUARY_PROJECT" -f "$INSTALL_DIR/docker-compose.yml")
+    START_POSTGRES=false
+    log "No active deployment manifest; backup may inspect an already-running exact project but will not create containers."
+  fi
 }
 
 load_runtime_env() {
@@ -368,6 +400,9 @@ create_backup() {
   archive_file="$backup_dir/$archive_name"
 
   BACKUP_TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-upgrade-backup.XXXXXX")"
+  register_owned_resource temporary_artifact active exact_delete path "$BACKUP_TMP_ROOT" \
+    "path-$(stat -c '%d-%i' "$BACKUP_TMP_ROOT" 2>/dev/null || stat -f '%d-%i' "$BACKUP_TMP_ROOT")" \
+    "$SANCTUARY_OPERATION_RUN_ID"
   staging_dir="$BACKUP_TMP_ROOT/staging"
   validation_dir="$BACKUP_TMP_ROOT/validate"
   mkdir -p "$staging_dir/database"
@@ -386,6 +421,8 @@ create_backup() {
   chmod 600 "$archive_file" 2>/dev/null || true
 
   validate_archive "$archive_file" "$validation_dir"
+  register_owned_resource cleanup_evidence retained retain path "$archive_file" \
+    "sha256:$(sha256sum "$archive_file" | awk '{print $1}')" "$SANCTUARY_OPERATION_RUN_ID"
 
   if [ "$WRITE_SIDECAR_CHECKSUM" = "true" ]; then
     (cd "$backup_dir" && sha256sum "$archive_name" > "$archive_name.sha256")
@@ -401,6 +438,8 @@ create_backup() {
 main() {
   parse_args "$@"
   validate_prerequisites
+  initialize_backup_ownership
+  trap cleanup_backup_tmp EXIT
   create_backup
 }
 

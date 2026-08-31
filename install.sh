@@ -47,6 +47,154 @@ SOURCE_OPTION=""
 REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
 RELEASE_API_URL="https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest"
 PLATFORM_NAME="GitHub"
+INSTALL_DEPLOYMENT_LOCK_ACTIVE=false
+
+install_cleanup() {
+    local status=$?
+    if [ "$INSTALL_DEPLOYMENT_LOCK_ACTIVE" = true ]; then
+        install_deployment_lock_release || true
+    fi
+    if [ -n "$OFFLINE_STAGE_DIR" ] && [ -d "$OFFLINE_STAGE_DIR" ]; then
+        rm -rf -- "$OFFLINE_STAGE_DIR"
+    fi
+    return "$status"
+}
+trap install_cleanup EXIT
+
+install_lock_sanitize_id() {
+    local value="${1,,}"
+    value="${value//[^a-z0-9._:-]/-}"
+    [[ "$value" =~ ^[a-z0-9] ]] || value="x-$value"
+    while [ "${value%-}" != "$value" ]; do value="${value%-}"; done
+    printf '%s' "$value"
+}
+
+install_deployment_lock_runtime() {
+    node --input-type=module - "$1" <<'NODE'
+import { randomUUID } from 'node:crypto';
+import {
+  closeSync, constants, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
+  realpathSync, rmdirSync, unlinkSync, writeFileSync,
+} from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+
+const action = process.argv[2];
+const runtimeDirectory = process.env.SANCTUARY_RUNTIME_DIR;
+const deploymentId = process.env.SANCTUARY_DEPLOYMENT_ID;
+const operationRunId = process.env.SANCTUARY_OPERATION_RUN_ID;
+const controllerPid = Number(process.env.SANCTUARY_LOCK_CONTROLLER_PID);
+if (!runtimeDirectory || !/^[a-z0-9][a-z0-9._:-]{0,127}$/.test(deploymentId ?? '')
+  || !/^[a-z0-9][a-z0-9._:-]{0,127}$/.test(operationRunId ?? '')
+  || !Number.isSafeInteger(controllerPid) || controllerPid < 1) {
+  throw new Error('installer deployment lock identity is invalid');
+}
+
+const root = path.join(path.resolve(runtimeDirectory), 'ownership', 'deployments', deploymentId);
+const lockPath = path.join(root, 'mutation-lock');
+const ownerPath = path.join(lockPath, 'owner.json');
+const processStartIdentity = (pid) => {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const close = stat.lastIndexOf(')');
+    const fields = stat.slice(close + 2).split(' ');
+    if (fields[19]) return `linux-boot-ticks:${fields[19]}`;
+  } catch {}
+  const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' });
+  const start = result.status === 0 ? result.stdout.trim() : '';
+  if (!start) throw new Error(`cannot determine process start identity for PID ${pid}`);
+  return `ps-lstart:${start}`;
+};
+const canonical = (value) => JSON.stringify(value, Object.keys(value).sort());
+const fsyncDirectory = (directory) => {
+  const descriptor = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY);
+  try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+};
+
+if (action === 'acquire') {
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (realpathSync(root) !== path.resolve(root)) throw new Error('deployment lock path traverses a symlink');
+  const rootInfo = lstatSync(root);
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()
+    || (typeof process.getuid === 'function' && rootInfo.uid !== process.getuid())
+    || (rootInfo.mode & 0o077) !== 0) {
+    throw new Error('deployment lock directory must be owner-only');
+  }
+  try { mkdirSync(lockPath, { mode: 0o700 }); } catch (error) {
+    if (error.code === 'EEXIST') throw new Error('deployment mutation lock is already held');
+    throw error;
+  }
+  const now = new Date().toISOString();
+  const owner = {
+    acquiredAt: now,
+    generation: null,
+    heartbeatAt: now,
+    journalPath: null,
+    lockVersion: 1,
+    operationRunId,
+    pid: controllerPid,
+    processStartIdentity: processStartIdentity(controllerPid),
+    token: randomUUID(),
+  };
+  try {
+    writeFileSync(ownerPath, canonical(owner), { flag: 'wx', mode: 0o600 });
+    const descriptor = openSync(ownerPath, constants.O_RDONLY);
+    try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+    fsyncDirectory(lockPath);
+    fsyncDirectory(root);
+  } catch (error) {
+    try { unlinkSync(ownerPath); } catch {}
+    try { rmdirSync(lockPath); } catch {}
+    throw error;
+  }
+  process.stdout.write(owner.token);
+} else if (action === 'release') {
+  const owner = JSON.parse(readFileSync(ownerPath, 'utf8'));
+  if (owner.token !== process.env.SANCTUARY_DEPLOYMENT_LOCK_TOKEN
+    || owner.operationRunId !== operationRunId || owner.pid !== controllerPid
+    || owner.processStartIdentity !== processStartIdentity(controllerPid)) {
+    throw new Error('installer deployment lock ownership changed');
+  }
+  unlinkSync(ownerPath);
+  fsyncDirectory(lockPath);
+  rmdirSync(lockPath);
+  fsyncDirectory(root);
+} else {
+  throw new Error('installer deployment lock action is invalid');
+}
+NODE
+}
+
+install_deployment_lock_release() {
+    [ "${DEPLOYMENT_LOCK_OWNERSHIP:-}" = owned ] || return 0
+    [ -n "${SANCTUARY_DEPLOYMENT_LOCK_TOKEN:-}" ] || return 0
+    install_deployment_lock_runtime release
+    DEPLOYMENT_LOCK_OWNERSHIP=released
+    INSTALL_DEPLOYMENT_LOCK_ACTIVE=false
+}
+
+ensure_install_deployment_lock() {
+    [ "$INSTALL_DEPLOYMENT_LOCK_ACTIVE" = true ] && return 0
+    local node_major
+    node_major="$(node --version 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$node_major" ] || [ "$node_major" -lt 24 ]; then
+        echo -e "${RED}✗${NC} Node.js 24 or newer is required before upgrading Sanctuary."
+        return 1
+    fi
+    SANCTUARY_PROJECT_DIR="$INSTALL_DIR"
+    SANCTUARY_RUNTIME_DIR="$DEFAULT_RUNTIME_DIR"
+    SANCTUARY_ENV_FILE="$(resolve_runtime_env_file)"
+    SANCTUARY_PROJECT="$(install_lock_sanitize_id "${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}")"
+    SANCTUARY_DEPLOYMENT_ID="${SANCTUARY_DEPLOYMENT_ID:-deploy-$SANCTUARY_PROJECT}"
+    SANCTUARY_OPERATION_RUN_ID="${SANCTUARY_OPERATION_RUN_ID:-run-$$}"
+    SANCTUARY_LOCK_CONTROLLER_PID="${SANCTUARY_LOCK_CONTROLLER_PID:-$$}"
+    export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
+    export SANCTUARY_DEPLOYMENT_ID SANCTUARY_OPERATION_RUN_ID SANCTUARY_LOCK_CONTROLLER_PID
+    SANCTUARY_DEPLOYMENT_LOCK_TOKEN="$(install_deployment_lock_runtime acquire)"
+    DEPLOYMENT_LOCK_OWNERSHIP=owned
+    export SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP
+    INSTALL_DEPLOYMENT_LOCK_ACTIVE=true
+}
 
 resolve_runtime_env_file() {
     local candidate="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
@@ -159,8 +307,6 @@ prepare_offline_bundle() {
     }
 
     OFFLINE_STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-bundle.XXXXXX")"
-    trap 'rm -rf "$OFFLINE_STAGE_DIR"' EXIT
-
     local args=(--bundle "$OFFLINE_BUNDLE" --stage-dir "$OFFLINE_STAGE_DIR" --prepare-only)
     [ -n "$OFFLINE_PUBLIC_KEY" ] && args+=(--public-key "$OFFLINE_PUBLIC_KEY")
     [ "$ALLOW_UNSIGNED_DEV_BUNDLE" = true ] && args+=(--allow-unsigned-dev-bundle)
@@ -557,6 +703,7 @@ main() {
 
         if [ -d "$INSTALL_DIR" ] || [ -f "$UPGRADE_ENV_FILE" ]; then
             IS_UPGRADE=true
+            ensure_install_deployment_lock
             echo -e "${YELLOW}Existing installation detected.${NC}"
             if [ -d "$INSTALL_DIR/.git" ]; then
                 CURRENT_VERSION=$(git -C "$INSTALL_DIR" describe --tags 2>/dev/null || git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -578,6 +725,7 @@ main() {
         cd "$INSTALL_DIR"
         if [ -f "$UPGRADE_ENV_FILE" ]; then
             IS_UPGRADE=true
+            ensure_install_deployment_lock
             echo -e "${GREEN}✓${NC} Existing runtime env detected: $UPGRADE_ENV_FILE"
         fi
     else
@@ -592,6 +740,7 @@ main() {
         # Clone or update repository
         if [ -d "$INSTALL_DIR" ]; then
             IS_UPGRADE=true
+            ensure_install_deployment_lock
             echo -e "${YELLOW}Directory $INSTALL_DIR already exists.${NC}"
 
             # Show version information
@@ -663,6 +812,7 @@ main() {
     if [ "$OFFLINE_MODE" = true ]; then
         export SANCTUARY_INSTALL_MODE=offline
         export SANCTUARY_OFFLINE_VERSION="${OFFLINE_TARGET_VERSION:-${SANCTUARY_OFFLINE_VERSION:-$RELEASE_TAG}}"
+        export SANCTUARY_COMMIT="${SANCTUARY_GIT_COMMIT:-${SANCTUARY_COMMIT:-}}"
     fi
 
     # Run setup.sh

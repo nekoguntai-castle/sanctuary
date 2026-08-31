@@ -30,9 +30,9 @@
   ],
   "localImagePrefixes": ["sanctuary-", "sanctuary/verify-addresses-python:"],
   "reviewedOsPackageAcquisition": [
-    { "file": "docker/frontend/Dockerfile", "sha256": "f8799e57a6c5ccd13a82f7a7f0a55244f674cbbe90a09a7e50c05dc76249bcc7", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
-    { "file": "gateway/Dockerfile", "sha256": "07eb38afdcb3e9e67156c6f58633175399d91fddf7161cd8f19976f6819092d9", "review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },
+    { "file": "docker/frontend/Dockerfile", "sha256": "8ff3bd326371407c06a9fe52a44cae2d7d7dc2063af482b72f5880d3fbc78cc4", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
+    { "file": "gateway/Dockerfile", "sha256": "e540e4cf5ec122ed8f877371fbca576a8286de42e84db7d3bdb477790961f1b8", "review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },
     { "file": "scripts/bitcoin-core-docker/Dockerfile", "sha256": "54ee66000aa25a1b76beef6fc522b550b92cfb8054bf2c74441350254d320687", "review": "apt repositories are transitively fixed by the digest-locked Debian base and Core source is separately checksum-verified; any Dockerfile change requires an explicit lock review" },
-    { "file": "server/Dockerfile", "sha256": "b238a623528fdd2de48f7d30287234845667b4ee69fc9ba1a2c5d25e10baab09", "review": "apk repositories are transitively fixed by digest-locked Node Alpine bases; any Dockerfile change requires an explicit lock review" }
+    { "file": "server/Dockerfile", "sha256": "fed7a6c4e6cfa89dcdff6c22fc894378d7361dfe83c5dbcb0604799def104c6b", "review": "apk repositories are transitively fixed by digest-locked Node Alpine bases; any Dockerfile change requires an explicit lock review" }
   ]
 }

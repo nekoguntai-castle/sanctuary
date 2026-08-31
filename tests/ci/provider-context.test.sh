@@ -127,6 +127,13 @@ main() {
   local_run_id="$(fresh_eval 'ci_run_id')"
   [ -n "$local_run_id" ] || fail "local ci_run_id was empty"
 
+  # ---- ci_run_attempt -------------------------------------------------------
+  assert_eq "GITHUB_RUN_ATTEMPT wins" "3" \
+    "$(fresh_eval 'export GITHUB_RUN_ATTEMPT=3; ci_run_attempt')"
+  assert_eq "run attempt override wins" "7" \
+    "$(fresh_eval 'export GITHUB_RUN_ATTEMPT=3; export SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE=7; ci_run_attempt')"
+  assert_eq "run attempt defaults to one" "1" "$(fresh_eval 'ci_run_attempt')"
+
   # ---- ci_temp_dir ----------------------------------------------------------
   assert_eq "RUNNER_TEMP wins" "/runner/tmp" \
     "$(fresh_eval 'export RUNNER_TEMP=/runner/tmp; ci_temp_dir')"
@@ -135,6 +142,13 @@ main() {
   assert_eq "temp dir override wins" "/test-tmp" \
     "$(fresh_eval 'export RUNNER_TEMP=ignored; export SANCTUARY_CI_TEMP_DIR_OVERRIDE=/test-tmp; ci_temp_dir')"
   assert_eq "default temp dir is /tmp" "/tmp" "$(fresh_eval 'ci_temp_dir')"
+  if fresh_eval 'ci_temp_is_ephemeral'; then
+    fail "local default temp must not be treated as durable ownership storage"
+  fi
+  fresh_eval 'export RUNNER_TEMP=/runner/tmp; ci_temp_is_ephemeral' || \
+    fail "runner temp should be treated as ephemeral CI storage"
+  fresh_eval 'export SANCTUARY_CI_TEMP_DIR_OVERRIDE=/test-tmp; ci_temp_is_ephemeral' || \
+    fail "explicit CI temp should be treated as ephemeral CI storage"
 
   # ---- ci_output_file -------------------------------------------------------
   assert_eq "GITHUB_OUTPUT wins" "/gh/output" \

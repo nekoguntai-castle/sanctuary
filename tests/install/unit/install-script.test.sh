@@ -119,6 +119,16 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local message="${3:-unexpected content found}"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} $message"
+        return 1
+    fi
+}
+
 extract_shell_function() {
     local function_name="$1"
     local source_file="$2"
@@ -642,13 +652,34 @@ setup_forge_installer_fixture() {
 
     cat > "$FORGE_INSTALL_DIR/scripts/setup.sh" <<'EOF'
 #!/bin/bash
+if [ -n "${FAKE_INSTALL_EVENT_LOG:-}" ]; then
+    if [ -n "${SANCTUARY_DEPLOYMENT_LOCK_TOKEN:-}" ] \
+        && [ -f "${FAKE_EXPECTED_LOCK_OWNER:-/missing}" ]; then
+        node "$FAKE_DEPLOYMENT_SESSION_SCRIPT" assert-lock >/dev/null || exit 96
+        echo "setup:lock-present" >> "$FAKE_INSTALL_EVENT_LOG"
+    else
+        echo "setup:lock-missing" >> "$FAKE_INSTALL_EVENT_LOG"
+        exit 98
+    fi
+fi
 exit 0
 EOF
     chmod +x "$FORGE_INSTALL_DIR/scripts/setup.sh"
 
     cat > "$FORGE_FAKEBIN/docker" <<'EOF'
 #!/bin/bash
+if [ -n "${FAKE_INSTALL_EVENT_LOG:-}" ]; then
+    printf 'docker:%s\n' "$*" >> "$FAKE_INSTALL_EVENT_LOG"
+fi
 if [ "$1" = "volume" ] && [ "$2" = "ls" ]; then
+    if [ -n "${FAKE_EXPECTED_LOCK_OWNER:-}" ]; then
+        if [ -f "$FAKE_EXPECTED_LOCK_OWNER" ]; then
+            echo "database-inspection:lock-present" >> "$FAKE_INSTALL_EVENT_LOG"
+        else
+            echo "database-inspection:lock-missing" >> "$FAKE_INSTALL_EVENT_LOG"
+            exit 95
+        fi
+    fi
     exit 0
 fi
 exit 0
@@ -707,7 +738,7 @@ case "$1" in
         fi
         ;;
     describe)
-        echo "v0.8.50"
+        echo "${FAKE_GIT_DESCRIBE:-v0.8.50}"
         exit 0
         ;;
     rev-parse)
@@ -729,6 +760,14 @@ case "$1" in
         esac
         ;;
     fetch)
+        if [ -n "${FAKE_EXPECTED_LOCK_OWNER:-}" ]; then
+            if [ -f "$FAKE_EXPECTED_LOCK_OWNER" ]; then
+                echo "fetch:lock-present" >> "$FAKE_INSTALL_EVENT_LOG"
+            else
+                echo "fetch:lock-missing" >> "$FAKE_INSTALL_EVENT_LOG"
+                exit 97
+            fi
+        fi
         current_source="$(cat "$remote_file" 2>/dev/null || echo github)"
         fetch_args=" $* "
         if [[ "$fetch_args" == *" --force "* ]]; then
@@ -794,12 +833,100 @@ run_forge_installer() {
             FAKE_GIT_FETCH_CLOBBER_GITHUB="${FAKE_GIT_FETCH_CLOBBER_GITHUB:-false}" \
             FAKE_GIT_LS_REMOTE_FAIL_GITHUB="${FAKE_GIT_LS_REMOTE_FAIL_GITHUB:-false}" \
             FAKE_GIT_CLONE_FAIL_GITHUB="${FAKE_GIT_CLONE_FAIL_GITHUB:-false}" \
+            FAKE_GIT_DESCRIBE="${FAKE_GIT_DESCRIBE:-v0.8.50}" \
             SANCTUARY_DIR="$FORGE_INSTALL_DIR" \
             SANCTUARY_ASSUME_YES=true \
             SANCTUARY_SKIP_UPGRADE_BACKUP=true \
             SANCTUARY_ENV_FILE="$FORGE_STATE_DIR/runtime.env" \
+            SANCTUARY_RUNTIME_DIR="$FORGE_STATE_DIR/runtime" \
+            FAKE_INSTALL_EVENT_LOG="${FAKE_INSTALL_EVENT_LOG:-}" \
+            FAKE_EXPECTED_LOCK_OWNER="${FAKE_EXPECTED_LOCK_OWNER:-}" \
+            FAKE_DEPLOYMENT_SESSION_SCRIPT="$PROJECT_ROOT/scripts/ownership/deployment-session.mjs" \
             bash "$INSTALL_SCRIPT" "$@" > "$output_file" 2>&1
     )
+}
+
+test_streamed_installer_locks_legacy_upgrade_without_sourcing_checkout_helpers() {
+    setup_forge_installer_fixture "legacy-lock-bootstrap"
+    local output="$FORGE_STATE_DIR/output.log"
+    local event_log="$FORGE_STATE_DIR/events.log"
+    local marker="$FORGE_STATE_DIR/untrusted-helper-ran"
+    local lock_owner="$FORGE_STATE_DIR/runtime/ownership/deployments/deploy-sanctuary/mutation-lock/owner.json"
+    local legacy_state="$FORGE_INSTALL_DIR/legacy-wallet-state"
+
+    mkdir -p "$FORGE_INSTALL_DIR/scripts/ownership"
+    printf 'wallet-state-must-survive\n' > "$legacy_state"
+    cat > "$FORGE_INSTALL_DIR/scripts/ownership/producer-hooks.sh" <<EOF
+#!/bin/bash
+touch "$marker"
+exit 99
+EOF
+    cat > "$FORGE_INSTALL_DIR/scripts/ownership/deployment-lifecycle.sh" <<EOF
+#!/bin/bash
+touch "$marker"
+exit 99
+EOF
+    : > "$event_log"
+
+    FAKE_GIT_DESCRIBE=v0.8.69 \
+    FAKE_INSTALL_EVENT_LOG="$event_log" \
+    FAKE_EXPECTED_LOCK_OWNER="$lock_owner" \
+        run_forge_installer "$output" || {
+        cat "$output"
+        return 1
+    }
+
+    [ ! -e "$marker" ] || {
+        echo -e "${RED}ASSERTION FAILED:${NC} streamed installer sourced unverified legacy checkout code"
+        return 1
+    }
+    assert_equals "wallet-state-must-survive" "$(cat "$legacy_state")" \
+        "legacy application state should be preserved" || return 1
+    assert_contains "$(cat "$event_log")" "fetch:lock-present" \
+        "upgrade fetch must run under the deployment lock" || return 1
+    assert_contains "$(cat "$event_log")" "database-inspection:lock-present" \
+        "upgrade backup discovery must run under the deployment lock" || return 1
+    assert_contains "$(cat "$event_log")" "setup:lock-present" \
+        "updated setup must inherit the installer lock" || return 1
+    assert_not_contains "$(cat "$event_log")" "lock-missing" \
+        "no upgrade mutation may precede lock acquisition" || return 1
+    [ ! -e "$lock_owner" ] || {
+        echo -e "${RED}ASSERTION FAILED:${NC} installer lock should be released at exit"
+        return 1
+    }
+    if grep -Eq '^docker:(compose down|volume rm|network rm|rm )' "$event_log"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} legacy upgrade performed destructive Docker cleanup"
+        cat "$event_log"
+        return 1
+    fi
+}
+
+test_streamed_installer_preserves_legacy_upgrade_on_lock_conflict() {
+    setup_forge_installer_fixture "legacy-lock-conflict"
+    local output="$FORGE_STATE_DIR/output.log"
+    local lock_dir="$FORGE_STATE_DIR/runtime/ownership/deployments/deploy-sanctuary/mutation-lock"
+    local legacy_state="$FORGE_INSTALL_DIR/legacy-wallet-state"
+
+    mkdir -p "$lock_dir"
+    chmod 700 "$FORGE_STATE_DIR/runtime/ownership/deployments/deploy-sanctuary" "$lock_dir"
+    printf 'preexisting-lock\n' > "$lock_dir/owner.json"
+    printf 'wallet-state-must-survive\n' > "$legacy_state"
+
+    if FAKE_GIT_DESCRIBE=v0.8.69 run_forge_installer "$output"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} conflicting legacy upgrade lock should be refused"
+        return 1
+    fi
+
+    assert_contains "$(cat "$output")" "deployment mutation lock is already held" \
+        "lock conflict should be explicit" || return 1
+    assert_not_contains "$(cat "$FORGE_STATE_DIR/git.log")" "fetch:" \
+        "lock conflict must precede repository mutation" || return 1
+    assert_not_contains "$(cat "$FORGE_STATE_DIR/git.log")" "checkout:" \
+        "lock conflict must precede checkout mutation" || return 1
+    assert_equals "wallet-state-must-survive" "$(cat "$legacy_state")" \
+        "lock conflict must preserve legacy application state" || return 1
+    assert_equals "preexisting-lock" "$(cat "$lock_dir/owner.json")" \
+        "installer must not alter a competing lock" || return 1
 }
 
 test_existing_installation_rewrites_stale_origin_to_github() {
@@ -1092,7 +1219,7 @@ test_start_script_env_has_set_a() {
     fi
 }
 
-test_start_script_persists_generated_llm_egress_secret() {
+test_start_script_help_is_mutation_free() {
     local fixture_dir="$TEST_TMP_DIR/start-llm-secret"
     local env_file="$fixture_dir/sanctuary.env"
     local output=""
@@ -1121,18 +1248,19 @@ EOF
 
     output=$(
         SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_RUNTIME_DIR="$fixture_dir/runtime" \
         LLM_EGRESS_PROXY_SECRET= \
         PATH="$fixture_dir/bin:$PATH" \
         bash "$START_SCRIPT" --help 2>&1
     ) || {
-        echo -e "${RED}ASSERTION FAILED:${NC} start.sh should persist generated LLM egress secret"
+        echo -e "${RED}ASSERTION FAILED:${NC} start.sh --help should remain available"
         echo "$output"
         return 1
     }
 
     contents="$(cat "$env_file")"
-    assert_contains "$contents" "LLM_EGRESS_PROXY_SECRET=" \
-        "start.sh should persist generated LLM egress proxy secret for future docker compose/start invocations"
+    assert_not_contains "$contents" "LLM_EGRESS_PROXY_SECRET=" \
+        "start.sh --help must not mutate the runtime environment"
 }
 
 test_backend_compose_exposes_auth_rate_limit_overrides() {
@@ -1418,7 +1546,7 @@ if [ "$1" = "compose" ]; then
     shift
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            -f|--file|--project-directory)
+            -f|--file|--project-directory|--env-file|-p)
                 shift 2
                 ;;
             *)
@@ -1427,6 +1555,14 @@ if [ "$1" = "compose" ]; then
         esac
     done
     case "$1" in
+        config)
+            if [ "${2:-}" = "--format" ] && [ "${3:-}" = "json" ]; then
+                echo '{"services":{},"networks":{},"volumes":{}}'
+            else
+                printf '%s\n' backend frontend worker postgres
+            fi
+            exit 0
+            ;;
         version)
             echo "Docker Compose version v5.1.3"
             exit 0
@@ -1499,6 +1635,10 @@ if [ "$1" = "ps" ]; then
     exit 0
 fi
 
+if [[ "$1" =~ ^(volume|network|container)$ ]] && [ "${2:-}" = "ls" ]; then
+    exit 0
+fi
+
 printf 'unexpected docker command:%s\n' "$*" >> "$log_file"
 exit 1
 EOF
@@ -1509,6 +1649,7 @@ EOF
             FAKE_DOCKER_LOG="$log_file" \
             FAKE_DOCKER_BUILD_COUNT="$count_file" \
             SANCTUARY_ENV_FILE="$env_file" \
+            SANCTUARY_RUNTIME_DIR="$fixture_dir/runtime" \
             SANCTUARY_SSL_DIR="$ssl_dir" \
             HTTPS_PORT=58445 \
             HTTP_PORT=58082 \
@@ -1793,6 +1934,7 @@ EOF
     set +e
     output=$(
         export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime-fresh-salt"
         export SANCTUARY_SSL_DIR="$ssl_dir"
         export HTTPS_PORT=58443
         export HTTP_PORT=58080
@@ -1845,6 +1987,7 @@ EOF
     set +e
     output=$(
         export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime-egress-policy"
         export SANCTUARY_SSL_DIR="$ssl_dir"
         export HTTPS_PORT=58445
         export HTTP_PORT=58082
@@ -1868,14 +2011,31 @@ EOF
         "setup.sh should align with production config validation"
 }
 
+make_empty_ownership_docker() {
+    local fakebin="$1"
+    mkdir -p "$fakebin"
+    cat > "$fakebin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = compose ] && [[ " $* " == *" config --format json "* ]]; then
+    echo '{"services":{},"networks":{},"volumes":{}}'
+fi
+exit 0
+EOF
+    chmod +x "$fakebin/docker"
+}
+
 test_setup_script_generates_unique_salt_for_fresh_install() {
     local env_file="$TEST_TMP_DIR/fresh-random-salt.env"
     local ssl_dir="$TEST_TMP_DIR/fresh-ssl"
+    local fakebin="$TEST_TMP_DIR/fresh-random-salt-bin"
     local output=""
     local generated_salt=""
 
+    make_empty_ownership_docker "$fakebin"
     output=$(
+        export PATH="$fakebin:$PATH"
         export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime-fresh-salt"
         export SANCTUARY_SSL_DIR="$ssl_dir"
         export HTTPS_PORT=58444
         export HTTP_PORT=58081
@@ -1911,9 +2071,13 @@ test_setup_script_persists_llm_egress_policy_env() {
     local ssl_dir="$TEST_TMP_DIR/llm-egress-policy-ssl"
     local output=""
     local contents=""
+    local fakebin="$TEST_TMP_DIR/llm-egress-policy-bin"
 
+    make_empty_ownership_docker "$fakebin"
     output=$(
+        export PATH="$fakebin:$PATH"
         export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime-egress-policy"
         export SANCTUARY_SSL_DIR="$ssl_dir"
         export HTTPS_PORT=58446
         export HTTP_PORT=58083
@@ -2089,6 +2253,8 @@ main() {
     echo ""
 
     echo -e "${YELLOW}Test Suite: Installer GitHub Distribution Behavior${NC}"
+    run_test "streamed installer safely locks a legacy upgrade" test_streamed_installer_locks_legacy_upgrade_without_sourcing_checkout_helpers
+    run_test "streamed installer preserves legacy upgrade on lock conflict" test_streamed_installer_preserves_legacy_upgrade_on_lock_conflict
     run_test "existing installation rewrites stale origin to GitHub" test_existing_installation_rewrites_stale_origin_to_github
     run_test "online Codeberg source is rejected" test_online_codeberg_source_is_rejected
     run_test "explicit GitHub source remains compatible" test_explicit_github_source_remains_compatible
@@ -2114,7 +2280,7 @@ main() {
     run_test "start script has .env.local fallback" test_start_script_has_env_local_fallback
     run_test "start script .env has set -a" test_start_script_env_has_set_a
     run_test "start script .env.local has set -a" test_start_script_env_local_has_set_a
-    run_test "start script persists generated LLM egress secret" test_start_script_persists_generated_llm_egress_secret
+    run_test "start script help is mutation-free" test_start_script_help_is_mutation_free
     run_test "backend compose exposes auth rate-limit overrides" test_backend_compose_exposes_auth_rate_limit_overrides
     run_test "llm egress proxy maps host gateway for host providers" test_llm_egress_proxy_maps_host_gateway_for_host_providers
     run_test "worker compose command matches backend dist layout" test_worker_compose_command_matches_backend_dist_layout

@@ -19,6 +19,7 @@ scripts/architecture/**         @nekoguntai
 scripts/ownership/**            @nekoguntai
 tests/ownership/**              @nekoguntai
 config/resource-ownership-contract.json @nekoguntai
+config/application-lifecycle-authorities.json @nekoguntai
 config/resource-lifecycle-callsites.json @nekoguntai
 .github/workflows/architecture.yml  @nekoguntai
 docs/site/                      @nekoguntai

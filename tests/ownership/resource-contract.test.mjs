@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
-import { validateCallsiteInventory, validateOwnershipContract } from '../../scripts/ownership/contracts.mjs';
+import { validateApplicationAuthorities, validateCallsiteInventory, validateOwnershipContract } from '../../scripts/ownership/contracts.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const load = (name) => parseStrictJson(readFileSync(path.join(root, 'config', name)));
@@ -12,6 +12,7 @@ test('tracked ownership and callsite contracts validate', () => {
   const contract = validateOwnershipContract(load('resource-ownership-contract.json'));
   assert.equal(contract.resourceClasses.length, 14);
   assert.doesNotThrow(() => validateCallsiteInventory(load('resource-lifecycle-callsites.json'), contract));
+  assert.doesNotThrow(() => validateApplicationAuthorities(load('application-lifecycle-authorities.json')));
 });
 
 test('ownership contract rejects unknown fields, duplicates, cycles, and unsafe paths', () => {

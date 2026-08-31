@@ -141,6 +141,28 @@ export function validateCallsiteInventory(inventory, contract) {
   return inventory;
 }
 
+export function validateApplicationAuthorities(authorities) {
+  object(authorities, '$', ['schemaVersion', 'authorities']);
+  if (authorities.schemaVersion !== '1.0.0') throw new Error('$.schemaVersion must equal 1.0.0');
+  array(authorities.authorities, '$.authorities', { min: 4, max: 4 });
+  const applicationClasses = RESOURCE_CLASSES.slice(0, 4);
+  authorities.authorities.forEach((entry, index) => {
+    const entryPath = `$.authorities[${index}]`;
+    object(entry, entryPath, ['classId', 'authority', 'canonicalPaths', 'cleanupPolicy', 'genericCleanupAllowed']);
+    enumeration(entry.classId, `${entryPath}.classId`, applicationClasses);
+    identifier(entry.authority, `${entryPath}.authority`);
+    array(entry.canonicalPaths, `${entryPath}.canonicalPaths`, { min: 1, max: 8 }).forEach((value, pathIndex) => canonicalRelativePath(value, `${entryPath}.canonicalPaths[${pathIndex}]`));
+    unique(entry.canonicalPaths, `${entryPath}.canonicalPaths`);
+    if (entry.cleanupPolicy !== 'application_managed') throw new Error(`${entryPath}.cleanupPolicy must equal application_managed`);
+    if (entry.genericCleanupAllowed !== false) throw new Error(`${entryPath}.genericCleanupAllowed must be false`);
+  });
+  unique(authorities.authorities.map((entry) => entry.classId), '$.authorities.classId');
+  applicationClasses.forEach((classId) => {
+    if (!authorities.authorities.some((entry) => entry.classId === classId)) throw new Error(`$.authorities is missing ${classId}`);
+  });
+  return authorities;
+}
+
 export function loadAndValidateContracts(ownershipPath, callsitesPath) {
   const ownership = validateOwnershipContract(parseStrictJson(readFileSync(ownershipPath)));
   const callsites = validateCallsiteInventory(parseStrictJson(readFileSync(callsitesPath)), ownership);

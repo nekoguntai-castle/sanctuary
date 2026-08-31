@@ -8,6 +8,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${SANCTUARY_PROJECT_DIR:-$(dirname "$SCRIPT_DIR")}"
+# shellcheck source=scripts/ownership/deployment-lifecycle.sh
+. "$SCRIPT_DIR/ownership/deployment-lifecycle.sh"
+deployment_assert_lock
 
 GREEN="${GREEN:-\\033[0;32m}"
 YELLOW="${YELLOW:-\\033[1;33m}"
@@ -187,7 +190,7 @@ reconcile_postgres_password_with_running_database() {
         echo -e "${YELLOW}Warning: PostgreSQL did not become ready for password reconciliation.${NC}"
         echo "  Startup may still fail if the database credentials are out of sync."
         echo ""
-        return 0
+        return 1
     fi
 
     if validate_postgres_password "$container_id" "$POSTGRES_PASSWORD"; then
@@ -203,6 +206,7 @@ reconcile_postgres_password_with_running_database() {
     else
         echo -e "${YELLOW}Warning: could not synchronize the PostgreSQL password automatically.${NC}"
         echo "  Startup may still fail if the database credentials are out of sync."
+        return 1
     fi
 
     echo ""

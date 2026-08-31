@@ -45,7 +45,23 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/ownership/producer-hooks.sh"
+# shellcheck source=scripts/ownership/deployment-lifecycle.sh
+. "$SCRIPT_DIR/ownership/deployment-lifecycle.sh"
+SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+SANCTUARY_PROJECT_DIR="$PROJECT_DIR"
+export SANCTUARY_PROJECT_DIR
+ownership_initialize
+ownership_require_identity
+SANCTUARY_SOURCE_COMMIT="${SANCTUARY_SOURCE_COMMIT:-$SANCTUARY_COMMIT}"
+SANCTUARY_IMAGE_LOCK_SHA256="${SANCTUARY_IMAGE_LOCK_SHA256:-$(ownership_sha256 < "$PROJECT_DIR/config/container-image-lock.json")}"
+SANCTUARY_VERSION="${SANCTUARY_VERSION:-$(awk -F'"' '/"version":/{print $4; exit}' "$PROJECT_DIR/package.json")}"
+SANCTUARY_BUILD_ID="${SANCTUARY_BUILD_ID:-$SANCTUARY_OPERATION_RUN_ID}"
+export SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
 DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+SANCTUARY_RUNTIME_DIR="$DEFAULT_RUNTIME_DIR"
+export SANCTUARY_RUNTIME_DIR
 DEFAULT_ENV_FILE="$DEFAULT_RUNTIME_DIR/sanctuary.env"
 LEGACY_ENV_FILE="$PROJECT_DIR/.env"
 LEGACY_LOCAL_ENV_FILE="$PROJECT_DIR/.env.local"
@@ -273,6 +289,21 @@ check_openssl() {
     fi
 }
 
+check_node_runtime() {
+    local major
+    major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || true)"
+    if [ "$major" = "24" ]; then
+        echo -e "${GREEN}✓${NC} Node.js 24 ownership runtime is available"
+        return 0
+    fi
+    echo -e "${RED}✗${NC} Node.js 24 is required for deployment ownership evidence"
+    PREREQ_ERRORS="${PREREQ_ERRORS}
+  ${RED}Node.js 24 not installed${NC}
+    Install the repository-pinned Node.js 24 runtime before setup.
+"
+    return 1
+}
+
 run_prerequisite_checks() {
     echo "Checking prerequisites..."
     echo ""
@@ -283,6 +314,7 @@ run_prerequisite_checks() {
     check_docker_access || true
     check_docker_compose || true
     check_openssl || true
+    check_node_runtime || true
 
     echo ""
 
@@ -737,10 +769,6 @@ load_or_generate_secrets() {
         echo "  - REDIS_PASSWORD: generated"
     fi
 
-    if [ "$OPT_NO_START" = false ]; then
-        reconcile_postgres_password_with_running_database
-    fi
-
     echo ""
 }
 
@@ -1045,61 +1073,56 @@ start_services() {
     cd "$PROJECT_DIR"
     export_runtime_environment
 
-    # Build compose file arguments with an explicit project root so relative
-    # paths inside nested overlays retain their repository-root meaning.
-    COMPOSE_FILE_ARGS=(--project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
-    [ "$OPT_OFFLINE" = true ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/offline-core.yml")
-    if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
-        COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/monitoring.yml")
-        [ "$OPT_OFFLINE" = true ] \
-            && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/offline-monitoring.yml")
-    fi
-    if [ "$OPT_ENABLE_TOR" = "yes" ]; then
-        COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/tor.yml")
-        [ "$OPT_OFFLINE" = true ] \
-            && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/offline-tor.yml")
-    fi
-    [ "$OPT_ENABLE_MCP" = "yes" ] && COMPOSE_FILE_ARGS+=(--profile mcp)
-
-    if [ "$OPT_OFFLINE" = true ]; then
-        validate_offline_images
-    else
+    if deployment_stage_before build_completed; then
+        deployment_transition build_started
+        if [ "$OPT_OFFLINE" = true ]; then
+            validate_offline_images
+        else
         # Compose implementations do not all pull a missing digest-pinned image
         # during `up --no-build`. Pull external runtime images explicitly so a
         # clean Docker or Podman-compatible daemon behaves deterministically.
-        pull_external_runtime_images
+            pull_external_runtime_images
 
         # Step 1: Build all images first (ensures all build output completes before continuing)
-        BUILD_ARGS=""
-        if [ "$OPT_UPGRADE" = true ]; then
-            echo "Upgrading — rebuilding containers from scratch..."
-            echo -e "${YELLOW}This ensures all code changes are included in the new images.${NC}"
-            BUILD_ARGS="--no-cache"
-        else
-            echo "Building containers..."
+            BUILD_ARGS=""
+            if [ "$OPT_UPGRADE" = true ]; then
+                echo "Upgrading — rebuilding containers from scratch..."
+                echo -e "${YELLOW}This ensures all code changes are included in the new images.${NC}"
+                BUILD_ARGS="--no-cache"
+            else
+                echo "Building containers..."
+            fi
+            if ! run_compose_build $BUILD_ARGS; then
+                echo ""
+                echo -e "${RED}Error: Docker image build failed.${NC}"
+                echo "Resolve the build error above and rerun setup."
+                exit 1
+            fi
         fi
-        if ! run_compose_build $BUILD_ARGS; then
-            echo ""
-            echo -e "${RED}Error: Docker image build failed.${NC}"
-            echo "Resolve the build error above and rerun setup."
-            exit 1
-        fi
+        deployment_transition build_completed
     fi
 
     # Step 2: Start containers
     echo ""
     echo "Starting containers..."
-    run_grafana_credential_migration
-
-    if [ "$OPT_OFFLINE" = true ]; then
-        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
-    else
-        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres
+    if deployment_stage_before postgres_started; then
+        run_grafana_credential_migration
+        if [ "$OPT_OFFLINE" = true ]; then
+            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
+        else
+            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres
+        fi
+        deployment_transition postgres_started
     fi
-    SANCTUARY_PROJECT_DIR="$PROJECT_DIR" bash "$PROJECT_DIR/scripts/reconcile-postgres-password.sh"
+    if deployment_stage_before password_reconciled; then
+        SANCTUARY_PROJECT_DIR="$PROJECT_DIR" bash "$PROJECT_DIR/scripts/reconcile-postgres-password.sh"
+        deployment_transition password_reconciled
+    fi
 
     # Check if --wait flag is supported (docker compose v2.1+)
-    if docker compose up --help 2>&1 | grep -q -- '--wait'; then
+    if ! deployment_stage_before stack_started; then
+        USED_WAIT_FLAG=false
+    elif docker compose up --help 2>&1 | grep -q -- '--wait'; then
         UP_ARGS="-d --wait"
         if [ "$OPT_OFFLINE" = true ]; then
             UP_ARGS="$(compose_up_no_build_args) --wait"
@@ -1133,6 +1156,7 @@ start_services() {
         fi
         USED_WAIT_FLAG=false
     fi
+    deployment_transition stack_started
 }
 
 wait_for_healthy() {
@@ -1379,6 +1403,12 @@ main() {
         fi
     fi
 
+    # Secret loading can reconcile a running PostgreSQL role. Serialize before
+    # that first possible mutation, while leaving prompts and prerequisites
+    # lock-free.
+    deployment_lock_only_acquire
+    trap deployment_lock_release EXIT
+
     # Load existing secrets or generate new ones
     load_or_generate_secrets
 
@@ -1395,6 +1425,13 @@ main() {
     # Generate SSL certificates
     if [ "$OPT_SKIP_SSL" != true ]; then
         generate_ssl_certificates
+    fi
+
+    SANCTUARY_OFFLINE_MODE="$OPT_OFFLINE"
+    export SANCTUARY_OFFLINE_MODE
+    deployment_begin "$OPT_ENABLE_MONITORING" "$OPT_ENABLE_TOR" "$OPT_ENABLE_MCP"
+    if [ "$OPT_NO_START" = false ]; then
+        reconcile_postgres_password_with_running_database
     fi
 
     # Start services
@@ -1421,6 +1458,14 @@ main() {
             fi
         fi
     fi
+
+    if [ "$STARTED" = true ]; then
+        deployment_transition health_verified
+        deployment_activate
+    else
+        deployment_finalize_prepared
+    fi
+    deployment_lock_release
 
     # Show completion banner
     show_completion_banner

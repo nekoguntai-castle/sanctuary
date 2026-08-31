@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ci/provider-context.sh
 . "$SCRIPT_DIR/provider-context.sh"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -103,6 +105,13 @@ main() {
 
   git clone --quiet --no-hardlinks "$source_workspace" "$repo"
   git -C "$repo" checkout --quiet "$source_head"
+
+  local path_identity parent_identity
+  path_identity="path-$(stat -c '%d-%i' "$workdir" 2>/dev/null || stat -f '%d-%i' "$workdir")"
+  parent_identity="parent-$(printf '%s' "$(cd "$parent" && pwd -P)" | ownership_sha256)"
+  SANCTUARY_PROJECT_DIR="$source_workspace" \
+    register_owned_resource temporary_artifact active exact_delete path "$workdir" "$path_identity" \
+      "$run_id" "$parent_identity"
 
   printf '%s\n' "$repo"
 }

@@ -16,6 +16,41 @@ ALLOW_UNSIGNED_DEV=false
 PREPARE_ONLY=false
 APPLY_ONLY=false
 VERIFY_ONLY=false
+APPLY_LOCK_ACTIVE=false
+GENERATED_STAGE=false
+
+cleanup_apply() {
+  local status=$?
+  if [ "$APPLY_LOCK_ACTIVE" = true ]; then
+    deployment_lock_release || true
+  fi
+  if [ "$GENERATED_STAGE" = true ] && [ -d "$STAGE_DIR" ]; then
+    find "$STAGE_DIR" -type f -delete
+    find "$STAGE_DIR" -type l -delete
+    find "$STAGE_DIR" -depth -type d -empty -delete
+  fi
+  return "$status"
+}
+trap cleanup_apply EXIT
+
+ensure_apply_lock() {
+  [ "$APPLY_LOCK_ACTIVE" = true ] && return 0
+  # shellcheck source=scripts/ownership/producer-hooks.sh
+  . "$SCRIPT_DIR/../ownership/producer-hooks.sh"
+  # shellcheck source=scripts/ownership/deployment-lifecycle.sh
+  . "$SCRIPT_DIR/../ownership/deployment-lifecycle.sh"
+  SANCTUARY_PROJECT_DIR="$INSTALL_DIR"
+  SANCTUARY_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+  SANCTUARY_ENV_FILE="$(resolve_runtime_env_file)"
+  SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+  SANCTUARY_COMMIT="${SANCTUARY_GIT_COMMIT:-${SANCTUARY_COMMIT:-}}"
+  SANCTUARY_RELEASE="${SANCTUARY_OFFLINE_VERSION:-${SANCTUARY_GIT_TAG:-${SANCTUARY_RELEASE:-unreleased}}}"
+  export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
+  export SANCTUARY_COMMIT SANCTUARY_RELEASE
+  ownership_initialize
+  deployment_lock_only_acquire
+  APPLY_LOCK_ACTIVE=true
+}
 
 usage() {
   cat <<'EOF'
@@ -265,6 +300,18 @@ verify_loaded_images() {
   done < <(bundle_expected_images)
 }
 
+register_loaded_images() {
+  local inventory="$STAGE_DIR/image-inventory.tsv"
+  local image archive_ref image_id
+  while IFS= read -r image; do
+    [ -n "$image" ] || continue
+    archive_ref="$(offline_archive_image_ref "$image")"
+    image_id="$(awk -F '\t' -v image="$image" '$1 == image { print $3 }' "$inventory")"
+    register_owned_resource oci_image active exact_delete engine_id "$archive_ref" "$image_id" \
+      "$SANCTUARY_OPERATION_RUN_ID"
+  done < <(bundle_expected_images)
+}
+
 checkout_bundle_source() {
   local git_bundle="$STAGE_DIR/repo/sanctuary.git.bundle"
   local target_tag="${SANCTUARY_GIT_TAG:-}"
@@ -304,9 +351,11 @@ verify_staged_bundle() {
 apply_prepared_bundle() {
   verify_staged_bundle
   validate_profile_coverage
+  ensure_apply_lock
   load_bundle_images
   verify_loaded_images
   checkout_bundle_source
+  register_loaded_images
 }
 
 main() {
@@ -339,7 +388,7 @@ main() {
   [ -n "$BUNDLE_PATH" ] || offline_fail "--bundle is required"
   if [ -z "$STAGE_DIR" ]; then
     STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-bundle.XXXXXX")"
-    trap 'find "$STAGE_DIR" -type f -delete; find "$STAGE_DIR" -type l -delete; find "$STAGE_DIR" -depth -type d -empty -delete' EXIT
+    GENERATED_STAGE=true
   fi
 
   prepare_bundle

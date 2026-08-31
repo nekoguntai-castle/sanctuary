@@ -103,6 +103,17 @@ trusted public keys follow the configured evidence retention policy. An active
 operation cannot delete its own evidence. Publication records remain available
 for reconciliation for as long as the corresponding provider object is retained.
 
+Deployment mutations use the same canonical lock before env, certificate,
+checkout, image, database, or Compose changes. Ordered Compose inputs are copied
+into immutable generation directories; manifests bind their hashes and source
+identities but never env contents. A compare-and-swap pending pointer records
+each completed stage, and the active pointer changes only after routed health.
+After a crash, a new controller may resume that exact generation under the lock
+only when its definition digest and prior-active compare-and-swap still match;
+the handoff is recorded and completed stages are skipped.
+Retained generations are the sole rollback definitions. Legacy or unlabeled
+resources are diagnostic-only and are never adopted from names or topology.
+
 ## Consequences and non-goals
 
 Legacy resources are reported but never adopted by inference. Persistent data

@@ -12,6 +12,9 @@ and validators are available before destructive execution is enabled.
 - `config/resource-lifecycle-callsites.json` identifies current creation,
   mutation, registration, cleanup, and publication sites and their required
   migration or narrow exemption.
+- `config/application-lifecycle-authorities.json` records the existing wallet,
+  lease, subscription, and schedule fencing authorities. These entries are
+  reference-only: host cleanup evidence does not replace application fencing.
 - Production requires separate operator authorization and controller evidence
   RSA keys. Configure accepted DER-SPKI SHA-256 fingerprints by role. Never use
   the offline release key or put private keys in a checkout, env file, manifest,
@@ -24,6 +27,32 @@ Run the contract check with:
 ```bash
 npm run check:resource-ownership-contract
 ```
+
+The ownership controller requires the repository-pinned Node.js 24 runtime.
+Registration signing keys are generated locally under the owner-only evidence
+root. They attest producer metadata but never grant cleanup authorization.
+
+## Deployment generations
+
+Setup, start, upgrade backup, offline apply, and stop share one deployment lock.
+Each selected Compose definition is resolved to canonical real paths, copied to
+an immutable generation, and hashed without reading or hashing environment-file
+contents. The active pointer advances only after Postgres startup, password
+reconciliation, full-stack startup, and browser-routed API health succeed.
+
+Interrupted work remains pending. A later controller may take it over only while
+holding the canonical lock and only when the requested definition exactly
+matches the retained pending generation; completed stages are not replayed. An
+operator may instead explicitly roll back to a retained prior generation. A
+fresh process may not infer or adopt an unlabeled legacy stack; first-manifest
+inspection reports exact conflicting resources without mutating them.
+Stop and backup use the retained snapshots rather than reconstructing overlays
+from live container names. Persistent data volumes remain preserve-only.
+
+External registrations are signed and owner-only. Path registrations bind the
+observed device/inode identity, key roots refuse symlinks, and a second image
+consumer produces a shared/retain registration so deleting one consumer record
+cannot turn the remaining shared evidence into deletion authority.
 
 ## Operator rules
 

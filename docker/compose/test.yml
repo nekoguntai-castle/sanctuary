@@ -24,11 +24,28 @@
 #
 # =============================================
 
+x-sanctuary-container-ownership: &sanctuary-container-ownership
+  io.sanctuary.project: ${SANCTUARY_PROJECT:?SANCTUARY_PROJECT is required}
+  io.sanctuary.deployment-id: ${SANCTUARY_DEPLOYMENT_ID:?SANCTUARY_DEPLOYMENT_ID is required}
+  io.sanctuary.owner-id: ${SANCTUARY_OWNER_ID:?SANCTUARY_OWNER_ID is required}
+  io.sanctuary.resource-class: compose_container
+  io.sanctuary.lifecycle: test
+  io.sanctuary.cleanup-policy: exact_delete
+  io.sanctuary.created-at: ${SANCTUARY_CLEANUP_CREATED_AT:?SANCTUARY_CLEANUP_CREATED_AT is required}
+  io.sanctuary.created-by-release: ${SANCTUARY_RELEASE:?SANCTUARY_RELEASE is required}
+  io.sanctuary.created-by-commit: ${SANCTUARY_COMMIT:?SANCTUARY_COMMIT is required}
+  io.sanctuary.creation-run-id: ${SANCTUARY_OPERATION_RUN_ID:?SANCTUARY_OPERATION_RUN_ID is required}
+
+x-sanctuary-network-ownership: &sanctuary-network-ownership
+  <<: *sanctuary-container-ownership
+  io.sanctuary.resource-class: compose_network
+
 services:
   # ============================================
   # Test Database
   # ============================================
   test-db:
+    labels: *sanctuary-container-ownership
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       POSTGRES_USER: test
@@ -51,6 +68,7 @@ services:
   # Backend Tests
   # ============================================
   backend-test:
+    labels: *sanctuary-container-ownership
     build:
       context: .
       dockerfile: server/Dockerfile
@@ -84,6 +102,7 @@ services:
   # Backend Tests with Coverage
   # ============================================
   backend-coverage:
+    labels: *sanctuary-container-ownership
     build:
       context: .
       dockerfile: server/Dockerfile
@@ -118,6 +137,7 @@ services:
   # Frontend Tests
   # ============================================
   frontend-test:
+    labels: *sanctuary-container-ownership
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
@@ -134,6 +154,7 @@ services:
   # Frontend Tests with Coverage
   # ============================================
   frontend-coverage:
+    labels: *sanctuary-container-ownership
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
@@ -150,6 +171,7 @@ services:
   # Run All Tests
   # ============================================
   test-all:
+    labels: *sanctuary-container-ownership
     image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
     depends_on:
       backend-test:
@@ -162,4 +184,5 @@ services:
 
 networks:
   test-network:
+    labels: *sanctuary-network-ownership
     driver: bridge

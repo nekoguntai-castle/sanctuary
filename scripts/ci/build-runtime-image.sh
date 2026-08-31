@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/provider-context.sh"
+
 if [ "$#" -ne 4 ]; then
   echo "Usage: $0 ROLE DOCKERFILE CONTEXT IMAGE" >&2
   exit 2
@@ -19,6 +21,8 @@ if ! printf '%s' "$source_commit" | grep -Eq '^[0-9a-f]{40}$'; then
 fi
 
 image_lock_sha256="$(sha256sum "$image_lock" | cut -d ' ' -f 1)"
+build_version="$(node -p 'require("./package.json").version')"
+build_id="$(ci_run_id)-$(ci_run_attempt)-$role"
 cache_args=()
 if [ "${SANCTUARY_IMAGE_CACHE:-true}" = true ]; then
   cache_args+=(--cache-from "type=gha,scope=$role")
@@ -31,6 +35,8 @@ docker buildx build \
   --tag "$image" \
   --build-arg "SANCTUARY_SOURCE_COMMIT=$source_commit" \
   --build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha256" \
+  --build-arg "SANCTUARY_BUILD_VERSION=$build_version" \
+  --build-arg "SANCTUARY_BUILD_ID=$build_id" \
   "${cache_args[@]}" \
   "$context"
 

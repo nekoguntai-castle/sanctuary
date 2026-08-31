@@ -515,16 +515,18 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  workflow-lint:
-    name: Workflow lint (actionlint)
+  workflow-action-runtime-guard:
+    name: Workflow policy guards
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint
+      ACTIONLINT_DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint
+      RUNTIME_DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-action-runtime-guard
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
@@ -532,7 +534,7 @@ jobs:
       - name: Install actionlint + shellcheck
         timeout-minutes: 4
         run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-actionlint-shellcheck.log" bash -euo pipefail <<'QUALITY_INSTALL_ACTIONLINT'
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/install-actionlint-shellcheck.log" bash -euo pipefail <<'QUALITY_INSTALL_ACTIONLINT'
           curl -sSL \
             -o /tmp/actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -540,22 +542,20 @@ jobs:
           sha256sum -c /tmp/actionlint.sha256
           tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           /tmp/actionlint -version
-          # Phase G2 retro: shellcheck on `run:` blocks catches the quoting class
-          # that hit us in PR #410 (apostrophe inside `bash -c '...'`).
           sudo apt-get -qq update
           sudo apt-get -qq install -y shellcheck
           shellcheck --version
           QUALITY_INSTALL_ACTIONLINT
 
       - name: Run actionlint
+        id: actionlint
         timeout-minutes: 3
         run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/actionlint.log" bash -euo pipefail <<'QUALITY_ACTIONLINT'
-          # Filter shellcheck to error severity only — captures the shell
-          # syntax class that hit PR #410 (apostrophe inside bash -c '...')
-          # without churning on pre-existing SC2086 quote-style suggestions.
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/actionlint.log" bash -euo pipefail <<'QUALITY_ACTIONLINT'
+          # Keep ShellCheck error-level analysis while serializing actionlint's
+          # stdin consumers for the pinned Forgejo Podman runner.
           /tmp/actionlint -color \
-            -shellcheck='/usr/bin/shellcheck --severity=error' \
+            -shellcheck='scripts/ci/actionlint-shellcheck.sh --severity=error' \
             -ignore 'specifying action "https://data\.forgejo\.org/forgejo/(upload|download)-artifact@v4" in invalid format'
           QUALITY_ACTIONLINT
 
@@ -564,14 +564,14 @@ jobs:
         continue-on-error: true
         run: >
           ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
-          "$DIAGNOSTIC_DIR"
+          "$ACTIONLINT_DIAGNOSTIC_DIR"
           "quality-workflow-lint-failure.log"
           "Quality Workflow Lint"
 
       - name: Write workflow lint diagnostic summary
         if: always()
         continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Lint"
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$ACTIONLINT_DIAGNOSTIC_DIR" "Quality Workflow Lint"
 
       - name: Upload workflow lint diagnostics
         if: failure()
@@ -584,46 +584,36 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  workflow-action-runtime-guard:
-    name: Workflow action runtime guard
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    needs: [determine-scope]
-    if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
-    env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-action-runtime-guard
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          clean: false
-
       - name: Verify Node.js toolchain
+        id: node_toolchain
+        if: always() && steps.checkout.outcome == 'success'
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Check action runtimes
+        id: action_runtime
+        if: always() && steps.node_toolchain.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/action-runtime-guard.log"
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$RUNTIME_DIAGNOSTIC_DIR/action-runtime-guard.log"
           npm run check:github-action-runtimes
 
       - name: Write workflow action runtime guard failure breadcrumb
-        if: failure()
+        if: failure() && steps.checkout.outcome == 'success' && (steps.node_toolchain.outcome == 'failure' || steps.action_runtime.outcome == 'failure')
         continue-on-error: true
         run: >
           ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
-          "$DIAGNOSTIC_DIR"
+          "$RUNTIME_DIAGNOSTIC_DIR"
           "quality-workflow-action-runtime-guard-failure.log"
           "Quality Workflow Action Runtime Guard"
 
       - name: Write workflow action runtime guard diagnostic summary
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$RUNTIME_DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"
 
       - name: Upload workflow action runtime guard diagnostics
-        if: failure()
+        if: failure() && steps.checkout.outcome == 'success' && (steps.node_toolchain.outcome == 'failure' || steps.action_runtime.outcome == 'failure')
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -684,6 +674,7 @@ jobs:
           node --check scripts/ci/vendor/forgejo-artifact-v4/write-provenance.mjs
           node --check scripts/quality/check-root-layout.mjs
           for ownership_script in scripts/ownership/*.mjs; do node --check "$ownership_script"; done
+          for ownership_script in scripts/ownership/*.sh; do bash -n "$ownership_script"; done
           npm run check:resource-ownership-contract
           npm run test:ownership
           bash -n scripts/ci/frontend-coverage-shard.sh
@@ -727,6 +718,7 @@ jobs:
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
           bash -n scripts/ci/retry-command.sh
+          bash -n scripts/ci/actionlint-shellcheck.sh
           bash -n scripts/ci/download-verified-source.sh
           bash -n scripts/ci/related-test-args.sh
           bash -n scripts/ci/resolve-postgres-service.sh
@@ -743,6 +735,7 @@ jobs:
           bash -n scripts/verify-addresses/verify-repeatable.sh
           # Test files — bash -n syntax sweep.
           bash -n tests/ci/provider-context.test.sh
+          bash -n tests/ci/actionlint-shellcheck.test.sh
           bash -n tests/ci/measure-wallclock.test.sh
           bash -n tests/ci/plan-test-run.test.sh
           bash -n tests/ci/run-lane.test.sh
@@ -833,6 +826,7 @@ jobs:
           node tests/ci/provider-context-node.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
+          bash tests/ci/actionlint-shellcheck.test.sh
           bash tests/ci/measure-wallclock.test.sh
           bash tests/ci/plan-test-run.test.sh
           bash tests/ci/run-lane.test.sh
@@ -1106,7 +1100,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     if: always()
-    needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-lint, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]
+    needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-required-checks
     steps:
@@ -1127,7 +1121,6 @@ jobs:
           DEPENDENCY_AUDIT: ${{ needs.dependency-audit.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
           SEMGREP_SAST: ${{ needs.semgrep-sast.result }}
-          WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
           WORKFLOW_ACTION_RUNTIME_GUARD: ${{ needs.workflow-action-runtime-guard.result }}
           CI_CLASSIFIER_TESTS: ${{ needs.ci-classifier-tests.result }}
           LIZARD: ${{ needs.lizard.result }}
@@ -1148,7 +1141,6 @@ jobs:
           echo "DEPENDENCY_AUDIT=$DEPENDENCY_AUDIT"
           echo "GITLEAKS=$GITLEAKS"
           echo "SEMGREP_SAST=$SEMGREP_SAST"
-          echo "WORKFLOW_LINT=$WORKFLOW_LINT"
           echo "WORKFLOW_ACTION_RUNTIME_GUARD=$WORKFLOW_ACTION_RUNTIME_GUARD"
           echo "CI_CLASSIFIER_TESTS=$CI_CLASSIFIER_TESTS"
           echo "LIZARD=$LIZARD"
@@ -1213,11 +1205,9 @@ jobs:
           fi
 
           if [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then
-            require_success "Workflow lint (actionlint)" "$WORKFLOW_LINT"
-            require_success "Workflow action runtime guard" "$WORKFLOW_ACTION_RUNTIME_GUARD"
+            require_success "Workflow policy guards" "$WORKFLOW_ACTION_RUNTIME_GUARD"
           else
-            allow_success_or_skipped "Workflow lint (actionlint)" "$WORKFLOW_LINT"
-            allow_success_or_skipped "Workflow action runtime guard" "$WORKFLOW_ACTION_RUNTIME_GUARD"
+            allow_success_or_skipped "Workflow policy guards" "$WORKFLOW_ACTION_RUNTIME_GUARD"
           fi
 
           if [ "$RUN_CI_CLASSIFIER_TESTS" = "true" ]; then

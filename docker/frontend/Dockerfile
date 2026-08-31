@@ -51,7 +51,20 @@ RUN npm run build
 FROM nginx:alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752 AS runner
 ARG SANCTUARY_SOURCE_COMMIT
 ARG SANCTUARY_IMAGE_LOCK_SHA256
-LABEL org.opencontainers.image.revision="$SANCTUARY_SOURCE_COMMIT" \
+ARG SANCTUARY_BUILD_VERSION
+ARG SANCTUARY_BUILD_ID
+RUN test -n "$SANCTUARY_SOURCE_COMMIT" \
+    && test "$SANCTUARY_SOURCE_COMMIT" != unknown \
+    && test -n "$SANCTUARY_IMAGE_LOCK_SHA256" \
+    && test "$SANCTUARY_IMAGE_LOCK_SHA256" != unknown \
+    && test -n "$SANCTUARY_BUILD_VERSION" \
+    && test "$SANCTUARY_BUILD_VERSION" != unknown \
+    && test -n "$SANCTUARY_BUILD_ID" \
+    && test "$SANCTUARY_BUILD_ID" != unknown
+LABEL org.opencontainers.image.source="https://github.com/nekoguntai-castle/sanctuary" \
+      org.opencontainers.image.version="$SANCTUARY_BUILD_VERSION" \
+      org.opencontainers.image.revision="$SANCTUARY_SOURCE_COMMIT" \
+      io.sanctuary.build-id="$SANCTUARY_BUILD_ID" \
       dev.sanctuary.image-lock-sha256="$SANCTUARY_IMAGE_LOCK_SHA256"
 
 # Install envsubst for runtime environment variable substitution

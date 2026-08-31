@@ -1412,6 +1412,7 @@ for wallet_lifecycle_input in \
 done
 for ownership_input in \
   "config/resource-ownership-contract.json" \
+  "config/application-lifecycle-authorities.json" \
   "config/resource-lifecycle-callsites.json" \
   "scripts/ownership/**" \
   "tests/ownership/**"; do
@@ -3125,24 +3126,43 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality workflow lint diagnostics" \
-  "workflow-lint:" \
-  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-actionlint-shellcheck.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/actionlint.log"' \
+  "workflow-action-runtime-guard:" \
+  'ACTIONLINT_DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint' \
+  'scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/install-actionlint-shellcheck.log"' \
+  'scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/actionlint.log"' \
   "/tmp/actionlint -color" \
+  "scripts/ci/actionlint-shellcheck.sh --severity=error" \
   "Write workflow lint diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Lint"' \
+  'scripts/ci/write-diagnostic-summary.sh "$ACTIONLINT_DIAGNOSTIC_DIR" "Quality Workflow Lint"' \
   "ci-diagnostics-quality-workflow-lint"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality action runtime diagnostics" \
   "workflow-action-runtime-guard:" \
-  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-action-runtime-guard' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/action-runtime-guard.log"' \
+  'RUNTIME_DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-action-runtime-guard' \
+  'scripts/ci/run-with-log.sh "$RUNTIME_DIAGNOSTIC_DIR/action-runtime-guard.log"' \
   "npm run check:github-action-runtimes" \
   "Write workflow action runtime guard diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"' \
+  'scripts/ci/write-diagnostic-summary.sh "$RUNTIME_DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"' \
   "ci-diagnostics-quality-workflow-action-runtime-guard"
+
+assert_named_job_step_contains "$QUALITY_WORKFLOW" \
+  "workflow-action-runtime-guard" \
+  "Verify Node.js toolchain" \
+  "workflow runtime toolchain runs independently after actionlint failure" \
+  "if: always() && steps.checkout.outcome == 'success'"
+
+assert_named_job_step_contains "$QUALITY_WORKFLOW" \
+  "workflow-action-runtime-guard" \
+  "Check action runtimes" \
+  "workflow runtime guard runs after an independently successful toolchain" \
+  "if: always() && steps.node_toolchain.outcome == 'success'"
+
+assert_named_job_step_contains "$QUALITY_WORKFLOW" \
+  "workflow-action-runtime-guard" \
+  "Upload workflow action runtime guard diagnostics" \
+  "workflow runtime diagnostics are keyed to runtime failures" \
+  "steps.action_runtime.outcome == 'failure'"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality ci-classifier diagnostics" \
@@ -3320,7 +3340,7 @@ quality_failure_diagnostic_steps=(
   "dependency-audit|Upload dependency audit diagnostics|Write dependency audit diagnostic summary"
   "gitleaks|Upload gitleaks diagnostics|Write gitleaks diagnostic summary"
   "semgrep-sast|Upload Semgrep diagnostics|Write Semgrep diagnostic summary"
-  "workflow-lint|Upload workflow lint diagnostics|Write workflow lint diagnostic summary"
+  "workflow-action-runtime-guard|Upload workflow lint diagnostics|Write workflow lint diagnostic summary"
   "workflow-action-runtime-guard|Upload workflow action runtime guard diagnostics|Write workflow action runtime guard diagnostic summary"
   "ci-classifier-tests|Upload CI classifier diagnostics|Write CI classifier diagnostic summary"
   "lizard|Upload lizard diagnostics|Write lizard diagnostic summary"
@@ -3373,7 +3393,7 @@ done
 assert_jobs_use_node24_runners \
   "$QUALITY_WORKFLOW" \
   "quality jobs select Node 24-capable runners" \
-  14
+  13
 
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \

@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added immutable deployment generations, canonical mutation locking, signed
+  producer registrations, and application lifecycle authority references.
+
 ### Changed
+
+- Routed setup, start, stop, upgrade backup, and offline apply through retained
+  Compose definitions and stamped Compose/OCI resources with ownership metadata.
 
 ### Fixed
 

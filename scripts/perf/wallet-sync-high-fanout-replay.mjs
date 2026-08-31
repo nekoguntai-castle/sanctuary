@@ -6,8 +6,12 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { waitForDatabaseReadiness } from './wallet-sync-database-readiness.mjs';
 import { collectHealthProbe, healthProbeUrl } from './wallet-sync-health-probe.mjs';
+import {
+  inspectOwnedId, registerReplayResource, replayOwnershipLabels,
+} from './wallet-sync-replay-ownership.mjs';
 
 export { collectHealthProbe, healthProbeUrl, waitForDatabaseReadiness };
+export { replayOwnershipLabels };
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
@@ -584,6 +588,7 @@ export function ownedResourceNames(role, suffix) {
 export function postgresRunArgs(names, password, mode) {
   const statementTimeoutMs = mode === 'max' ? 20000 : 30000;
   return ['docker', 'run', '--detach', '--name', names.postgres, '--network', names.network, '--network-alias', 'postgres',
+    ...replayOwnershipLabels('compose_container'),
     '--cpus', '2', '--memory', '1g', '--memory-swap', '1280m', '--env', 'POSTGRES_USER=sanctuary',
     '--env', `POSTGRES_PASSWORD=${password}`, '--env', 'POSTGRES_DB=sanctuary_replay', POSTGRES_IMAGE,
     '-c', `statement_timeout=${statementTimeoutMs}`, '-c', 'log_min_duration_statement=0'];
@@ -591,7 +596,8 @@ export function postgresRunArgs(names, password, mode) {
 
 export function workerCreateArgs(subject, names, databaseUrl) {
   return ['docker', 'create', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
-    '--memory-swap', '1280m', '--publish', '3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
+    '--memory-swap', '1280m', ...replayOwnershipLabels('collector_process'),
+    '--publish', '3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
     '--env', `DATABASE_URL=${databaseUrl}`,
     '--env', `WALLET_SYNC_MUTATION_TIMEOUT_MS=${subject.mode === 'max' ? 45000 : 60000}`,
     '--env', 'REDIS_URL=redis://127.0.0.1:1',
@@ -614,6 +620,9 @@ export function workerFileCopyArgs(subject, names) {
 
 export function stageAndStartWorker(subject, names, databaseUrl, operation = run) {
   operation(workerCreateArgs(subject, names, databaseUrl));
+  if (process.env.SANCTUARY_OWNERSHIP_ROOT) {
+    registerReplayResource('collector_process', names.worker, inspectOwnedId('container', names.worker, run));
+  }
   workerFileCopyArgs(subject, names).forEach(args => operation(args));
   operation(['docker', 'start', names.worker]);
 }
@@ -631,8 +640,14 @@ export async function startDatabase(names, password, image, mode, runtime = {}) 
     readinessRuntime = {},
   } = runtime;
   const statementTimeoutMs = mode === 'max' ? 20000 : 30000;
-  operation(['docker', 'network', 'create', names.network]);
+  operation(['docker', 'network', 'create', ...replayOwnershipLabels('compose_network'), names.network]);
+  if (process.env.SANCTUARY_OWNERSHIP_ROOT) {
+    registerReplayResource('compose_network', names.network, inspectOwnedId('network', names.network, run));
+  }
   operation(postgresRunArgs(names, password, mode));
+  if (process.env.SANCTUARY_OWNERSHIP_ROOT) {
+    registerReplayResource('compose_container', names.postgres, inspectOwnedId('container', names.postgres, run));
+  }
   await waitUntilReady(names, password, { ...readinessRuntime, throwIfTerminated });
   const url = `postgresql://sanctuary:${password}@postgres:5432/sanctuary_replay?schema=public&connection_limit=30&pool_timeout=30&connect_timeout=10&statement_timeout=${statementTimeoutMs}`;
   operation(['docker', 'run', '--rm', '--network', names.network, '--env', `DATABASE_URL=${url}`, image,

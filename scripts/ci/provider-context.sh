@@ -118,6 +118,18 @@ ci_run_id() {
   printf '%s-%s' "$$" "$(date +%s)"
 }
 
+ci_run_attempt() {
+  if [ -n "${SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE:-}" ]; then
+    printf '%s' "$SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE"
+    return 0
+  fi
+  if [ -n "${GITHUB_RUN_ATTEMPT:-}" ]; then
+    printf '%s' "$GITHUB_RUN_ATTEMPT"
+    return 0
+  fi
+  printf '1'
+}
+
 ci_temp_dir() {
   if [ -n "${SANCTUARY_CI_TEMP_DIR_OVERRIDE:-}" ]; then
     printf '%s' "$SANCTUARY_CI_TEMP_DIR_OVERRIDE"
@@ -128,6 +140,13 @@ ci_temp_dir() {
     return 0
   fi
   printf '%s' "${TMPDIR:-/tmp}"
+}
+
+ci_temp_is_ephemeral() {
+  if [ -n "${SANCTUARY_CI_TEMP_DIR_OVERRIDE:-}" ] || [ -n "${RUNNER_TEMP:-}" ]; then
+    return 0
+  fi
+  [ "$(ci_provider)" != local ]
 }
 
 ci_output_file() {

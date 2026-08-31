@@ -28,6 +28,23 @@
 #
 # =============================================
 
+x-sanctuary-container-ownership: &sanctuary-container-ownership
+  io.sanctuary.project: ${SANCTUARY_PROJECT:?SANCTUARY_PROJECT is required}
+  io.sanctuary.deployment-id: ${SANCTUARY_DEPLOYMENT_ID:?SANCTUARY_DEPLOYMENT_ID is required}
+  io.sanctuary.owner-id: ${SANCTUARY_OWNER_ID:?SANCTUARY_OWNER_ID is required}
+  io.sanctuary.resource-class: compose_container
+  io.sanctuary.lifecycle: ${SANCTUARY_RESOURCE_LIFECYCLE:-deployment}
+  io.sanctuary.cleanup-policy: exact_delete
+  io.sanctuary.created-at: ${SANCTUARY_CLEANUP_CREATED_AT:?SANCTUARY_CLEANUP_CREATED_AT is required}
+  io.sanctuary.created-by-release: ${SANCTUARY_RELEASE:?SANCTUARY_RELEASE is required}
+  io.sanctuary.created-by-commit: ${SANCTUARY_COMMIT:?SANCTUARY_COMMIT is required}
+  io.sanctuary.creation-run-id: ${SANCTUARY_OPERATION_RUN_ID:?SANCTUARY_OPERATION_RUN_ID is required}
+
+x-sanctuary-volume-ownership: &sanctuary-volume-ownership
+  <<: *sanctuary-container-ownership
+  io.sanctuary.resource-class: compose_volume
+  io.sanctuary.cleanup-policy: preserve_ambiguous
+
 services:
   # ============================================
   # Tor - SOCKS5 Proxy + Hidden Service
@@ -39,6 +56,7 @@ services:
   #    Maps .onion:80 -> a Payjoin-only ingress for BIP78 receives.
   # ============================================
   tor-ingress:
+    labels: *sanctuary-container-ownership
     image: sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: never
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
@@ -64,6 +82,7 @@ services:
         max-file: "3"
 
   tor:
+    labels: *sanctuary-container-ownership
     image: dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53
     container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
@@ -119,3 +138,4 @@ services:
 
 volumes:
   tor_hidden_service:
+    labels: *sanctuary-volume-ownership

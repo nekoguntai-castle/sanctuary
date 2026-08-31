@@ -96,9 +96,11 @@ run_control_helper() {
     local operation="$1" command="$2"
     shift 2
     local nonce helper_name id identity state
+    ownership_label_args collector_process exact_delete
     nonce="$(openssl rand -hex 16)"
     helper_name="${resolved_project}-sanctuary-grafana-control-${nonce}"
     id="$(docker container create --pull never --name "$helper_name" \
+        "${OWNERSHIP_LABEL_ARGS[@]}" \
         --label sanctuary.grafana.role=control-helper \
         --label "sanctuary.grafana.project=$resolved_project" \
         --label "sanctuary.grafana.data-volume=$resolved_data_volume" \
@@ -114,6 +116,9 @@ run_control_helper() {
         || fail "created Grafana control helper identity is unavailable."
     validate_control_helper_identity "$identity" "$id" "$wrapper_owner_token" "$operation" "$nonce" \
         || fail "created Grafana control helper identity is invalid."
+    if [ "$ownership_registration_enabled" = true ]; then
+        register_owned_resource collector_process active exact_delete name "$helper_name" "$id" "$SANCTUARY_OPERATION_RUN_ID"
+    fi
     IFS='|' read -r _ _ state _ <<< "$identity"
     [ "$state" = "created" ] || fail "created Grafana control helper is not startable."
     complete_control_helper "$id" "$operation" "$nonce"

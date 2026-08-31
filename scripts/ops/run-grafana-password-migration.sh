@@ -11,6 +11,8 @@ project_dir="$1"
 shift
 compose_args=("$@")
 export SANCTUARY_PROJECT_DIR="$project_dir"
+ownership_registration_enabled=false
+[ -z "${SANCTUARY_OWNERSHIP_ROOT:-}" ] || ownership_registration_enabled=true
 
 readonly migration_script_sha256="499bcae312b11e1d66fbff0ca02ef02ce299505cbe93370de66aeda380115429"
 readonly canonical_lock_root="/tmp/sanctuary-grafana-quiescence-locks"
@@ -28,6 +30,8 @@ readonly wrapper_owner_token="$(openssl rand -hex 32)"
 script_path="${BASH_SOURCE[0]}"
 script_dir="${script_path%/*}"
 [ "$script_dir" != "$script_path" ] || script_dir="."
+# shellcheck source=scripts/ownership/producer-hooks.sh
+source "$script_dir/../ownership/producer-hooks.sh"
 source "$script_dir/grafana-quiescence-records.sh"
 
 fail() {
@@ -240,7 +244,9 @@ assert_stopped_identity() {
 
 create_migration_container() {
     local token="$1" grafana_container_id="$2" generation="$3"
+    ownership_label_args collector_process exact_delete
     docker container create --pull never --name "$migration_container" \
+        "${OWNERSHIP_LABEL_ARGS[@]}" \
         --label sanctuary.grafana.role=password-migration \
         --label "sanctuary.grafana.project=$resolved_project" \
         --label "sanctuary.grafana.data-volume=$resolved_data_volume" \
@@ -359,6 +365,9 @@ run_migration() {
         || fail "launched migration container identity is unavailable."
     assert_launched_migration "$identity" "$id" "$token" "$grafana_container_id" "$generation" \
         || fail "launched migration container identity does not match its lease."
+    if [ "$ownership_registration_enabled" = true ]; then
+        register_owned_resource collector_process active exact_delete name "$migration_container" "$id" "$SANCTUARY_OPERATION_RUN_ID"
+    fi
     if ! docker container start "$id" >/dev/null; then
         record_abandoned_start "$id" "$token" "$grafana_container_id" "$generation"
         fail "migration container start failed; reserved state requires reconciliation."

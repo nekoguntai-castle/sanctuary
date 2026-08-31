@@ -15,9 +15,12 @@ import {
 import { CLEANUP_POLICIES, RESOURCE_CLASSES } from './contracts.mjs';
 
 export const ARTIFACT_TYPES = [
-  'deployment_manifest', 'run_manifest', 'inventory', 'cleanup_plan',
+  'deployment_manifest', 'run_manifest', 'resource_registration', 'inventory', 'cleanup_plan',
   'cleanup_approval', 'approval_state', 'journal_record', 'cleanup_receipt', 'cleanup_receipt_upload',
 ];
+export const ARTIFACT_SCHEMA_VERSIONS = Object.freeze(Object.fromEntries(
+  ARTIFACT_TYPES.map((artifactType) => [artifactType, '1.0.0']),
+));
 const STATES = ['dry_run', 'no_op', 'cleaned', 'partial', 'cancelled', 'refused', 'ambiguous', 'recovered'];
 const RESULTS = ['pending', 'cleaned', 'absent', 'retained', 'refused', 'ambiguous', 'failed'];
 const ACTIONS = ['stop', 'remove', 'reconcile', 'retain'];
@@ -25,7 +28,8 @@ const FAILURE_CLASSES = ['none', 'identity_changed', 'active', 'shared', 'unlabe
 
 function base(value, type, extraKeys) {
   object(value, '$', ['schemaVersion', 'artifactType', ...extraKeys]);
-  if (value.schemaVersion !== '1.0.0') throw new Error('$.schemaVersion must equal 1.0.0');
+  const expectedVersion = ARTIFACT_SCHEMA_VERSIONS[type];
+  if (value.schemaVersion !== expectedVersion) throw new Error(`$.schemaVersion must equal ${expectedVersion} for ${type}`);
   if (value.artifactType !== type) throw new Error(`$.artifactType must equal ${type}`);
 }
 
@@ -69,19 +73,43 @@ function ordered(items, path) {
 }
 
 function validateDeployment(value) {
-  base(value, 'deployment_manifest', ['deploymentId', 'ownerId', 'release', 'commit', 'generation', 'createdAt', 'active', 'overlayPaths', 'overlayDigests', 'policyDigest', 'contextFingerprint']);
+  base(value, 'deployment_manifest', [
+    'deploymentId', 'generation', 'createdAt', 'priorActiveDigest',
+    'definitionVersion', 'ownerId', 'release', 'commit', 'projectDirectory',
+    'projectDirectoryIdentity', 'composeProjectName', 'envFile', 'envFileIdentity',
+    'installMode', 'profiles', 'overlays', 'policyDigest', 'contextFingerprint',
+    'definitionDigest',
+  ]);
   identifier(value.deploymentId, '$.deploymentId');
+  integer(value.generation, '$.generation', { min: 1 });
+  timestamp(value.createdAt, '$.createdAt');
+  if (value.priorActiveDigest !== null) digest(value.priorActiveDigest, '$.priorActiveDigest');
+  if (value.definitionVersion !== 1) throw new Error('$.definitionVersion must equal 1');
   identifier(value.ownerId, '$.ownerId');
   string(value.release, '$.release', { max: 128 });
   commit(value.commit, '$.commit');
-  integer(value.generation, '$.generation', { min: 1 });
-  timestamp(value.createdAt, '$.createdAt');
-  boolean(value.active, '$.active');
-  array(value.overlayPaths, '$.overlayPaths', { min: 1, max: 32 }).forEach((entry, index) => canonicalRelativePath(entry, `$.overlayPaths[${index}]`));
-  array(value.overlayDigests, '$.overlayDigests', { min: value.overlayPaths.length, max: value.overlayPaths.length }).forEach((entry, index) => digest(entry, `$.overlayDigests[${index}]`));
-  unique(value.overlayPaths, '$.overlayPaths');
+  string(value.projectDirectory, '$.projectDirectory', { max: 1024 });
+  identifier(value.projectDirectoryIdentity, '$.projectDirectoryIdentity');
+  identifier(value.composeProjectName, '$.composeProjectName');
+  string(value.envFile, '$.envFile', { max: 1024 });
+  identifier(value.envFileIdentity, '$.envFileIdentity');
+  enumeration(value.installMode, '$.installMode', ['online', 'offline']);
+  array(value.profiles, '$.profiles', { max: 16 }).forEach((entry, index) => identifier(entry, `$.profiles[${index}]`));
+  unique(value.profiles, '$.profiles');
+  array(value.overlays, '$.overlays', { min: 1, max: 32 }).forEach((entry, index) => {
+    const overlayPath = `$.overlays[${index}]`;
+    object(entry, overlayPath, ['sourcePath', 'sourceIdentity', 'snapshotPath', 'sha256', 'kind']);
+    string(entry.sourcePath, `${overlayPath}.sourcePath`, { max: 1024 });
+    identifier(entry.sourceIdentity, `${overlayPath}.sourceIdentity`);
+    canonicalRelativePath(entry.snapshotPath, `${overlayPath}.snapshotPath`);
+    digest(entry.sha256, `${overlayPath}.sha256`);
+    enumeration(entry.kind, `${overlayPath}.kind`, ['tracked', 'custom']);
+  });
+  unique(value.overlays.map((entry) => entry.sourcePath), '$.overlays.sourcePath');
+  unique(value.overlays.map((entry) => entry.snapshotPath), '$.overlays.snapshotPath');
   digest(value.policyDigest, '$.policyDigest');
   digest(value.contextFingerprint, '$.contextFingerprint');
+  digest(value.definitionDigest, '$.definitionDigest');
 }
 
 function validateRun(value) {
@@ -99,6 +127,33 @@ function validateRun(value) {
   }
   identifier(value.controllerIdentity, '$.controllerIdentity');
   digest(value.deploymentDigest, '$.deploymentDigest');
+}
+
+function validateRegistration(value) {
+  base(value, 'resource_registration', [
+    'registrationId', 'deploymentId', 'operationRunId', 'ownerId',
+    'resourceClass', 'lifecycle', 'cleanupPolicy', 'createdAt',
+    'createdByRelease', 'createdByCommit', 'locatorKind', 'locator',
+    'immutableIdentity', 'metadataDigest', 'referenceIds', 'signerKeyId',
+  ]);
+  digest(value.registrationId, '$.registrationId');
+  identifier(value.deploymentId, '$.deploymentId');
+  identifier(value.operationRunId, '$.operationRunId');
+  identifier(value.ownerId, '$.ownerId');
+  enumeration(value.resourceClass, '$.resourceClass', RESOURCE_CLASSES);
+  identifier(value.lifecycle, '$.lifecycle');
+  enumeration(value.cleanupPolicy, '$.cleanupPolicy', CLEANUP_POLICIES);
+  timestamp(value.createdAt, '$.createdAt');
+  string(value.createdByRelease, '$.createdByRelease', { max: 128 });
+  if (value.createdByRelease !== 'unreleased') identifier(value.createdByRelease, '$.createdByRelease');
+  commit(value.createdByCommit, '$.createdByCommit');
+  enumeration(value.locatorKind, '$.locatorKind', ['authority', 'engine_id', 'name', 'path', 'provider_id', 'reference']);
+  string(value.locator, '$.locator', { max: 1024 });
+  identifier(value.immutableIdentity, '$.immutableIdentity');
+  digest(value.metadataDigest, '$.metadataDigest');
+  array(value.referenceIds, '$.referenceIds', { max: 128 }).forEach((entry, index) => identifier(entry, `$.referenceIds[${index}]`));
+  unique(value.referenceIds, '$.referenceIds');
+  digest(value.signerKeyId, '$.signerKeyId');
 }
 
 function validateInventory(value) {
@@ -206,6 +261,7 @@ function validateUploadReceipt(value) {
 const VALIDATORS = {
   deployment_manifest: validateDeployment,
   run_manifest: validateRun,
+  resource_registration: validateRegistration,
   inventory: validateInventory,
   cleanup_plan: validatePlan,
   cleanup_approval: validateApproval,

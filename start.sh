@@ -19,8 +19,24 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/scripts/ownership/producer-hooks.sh"
+# shellcheck source=scripts/ownership/deployment-lifecycle.sh
+. "$SCRIPT_DIR/scripts/ownership/deployment-lifecycle.sh"
+SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+SANCTUARY_PROJECT_DIR="$SCRIPT_DIR"
+export SANCTUARY_PROJECT_DIR
+ownership_initialize
+ownership_require_identity
+SANCTUARY_SOURCE_COMMIT="${SANCTUARY_SOURCE_COMMIT:-$SANCTUARY_COMMIT}"
+SANCTUARY_IMAGE_LOCK_SHA256="${SANCTUARY_IMAGE_LOCK_SHA256:-$(ownership_sha256 < "$SCRIPT_DIR/config/container-image-lock.json")}"
+SANCTUARY_VERSION="${SANCTUARY_VERSION:-$(awk -F'"' '/"version":/{print $4; exit}' "$SCRIPT_DIR/package.json")}"
+SANCTUARY_BUILD_ID="${SANCTUARY_BUILD_ID:-$SANCTUARY_OPERATION_RUN_ID}"
+export SANCTUARY_SOURCE_COMMIT SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
 
 DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+SANCTUARY_RUNTIME_DIR="$DEFAULT_RUNTIME_DIR"
+export SANCTUARY_RUNTIME_DIR
 EXTERNAL_ENV_FILE="${SANCTUARY_ENV_FILE:-$DEFAULT_RUNTIME_DIR/sanctuary.env}"
 DEFAULT_SSL_DIR="$SCRIPT_DIR/docker/nginx/ssl"
 EXTERNAL_SSL_DIR="${SANCTUARY_SSL_DIR:-$DEFAULT_RUNTIME_DIR/ssl}"
@@ -105,21 +121,23 @@ if [ -n "$MISSING_SECRETS" ]; then
     exit 1
 fi
 
-# Auto-generate LLM_EGRESS_PROXY_SECRET if not set
-if [ -z "$LLM_EGRESS_PROXY_SECRET" ]; then
-    export LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
-    persist_runtime_env_value "LLM_EGRESS_PROXY_SECRET" "$LLM_EGRESS_PROXY_SECRET"
-fi
-
-if [ -z "$WORKER_DIAGNOSTICS_SECRET" ]; then
-    export WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
-    persist_runtime_env_value "WORKER_DIAGNOSTICS_SECRET" "$WORKER_DIAGNOSTICS_SECRET"
-fi
-
-if [ -z "$GRAFANA_PASSWORD" ]; then
-    export GRAFANA_PASSWORD=$(openssl rand -hex 24)
-    persist_runtime_env_value "GRAFANA_PASSWORD" "$GRAFANA_PASSWORD"
-fi
+ensure_runtime_generated_secrets() {
+    if [ -z "$LLM_EGRESS_PROXY_SECRET" ]; then
+        export LLM_EGRESS_PROXY_SECRET
+        LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
+        persist_runtime_env_value "LLM_EGRESS_PROXY_SECRET" "$LLM_EGRESS_PROXY_SECRET"
+    fi
+    if [ -z "$WORKER_DIAGNOSTICS_SECRET" ]; then
+        export WORKER_DIAGNOSTICS_SECRET
+        WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
+        persist_runtime_env_value "WORKER_DIAGNOSTICS_SECRET" "$WORKER_DIAGNOSTICS_SECRET"
+    fi
+    if [ -z "$GRAFANA_PASSWORD" ]; then
+        export GRAFANA_PASSWORD
+        GRAFANA_PASSWORD=$(openssl rand -hex 24)
+        persist_runtime_env_value "GRAFANA_PASSWORD" "$GRAFANA_PASSWORD"
+    fi
+}
 
 # Export for docker compose
 export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD GRAFANA_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
@@ -188,9 +206,6 @@ check_ssl_expiry() {
         fi
     fi
 }
-
-# Run SSL check (suppress errors for missing cert - handled at startup)
-check_ssl_expiry 2>/dev/null || true
 
 # Colors for output
 RED='\033[0;31m'
@@ -279,8 +294,8 @@ if ! docker image inspect sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local} &>/dev
 fi
 
 set_start_flags() {
-    BUILD_FLAG=""
-    UP_FLAGS="-d"
+    BUILD_MODE="none"
+    UP_FLAGS="-d --no-build"
 
     if [ "$NEED_BUILD" = "yes" ]; then
         if [ "$IS_OFFLINE_INSTALL" = true ]; then
@@ -289,16 +304,15 @@ set_start_flags() {
             exit 1
         fi
         echo "Local images not found - building..."
-        BUILD_FLAG="--build"
+        BUILD_MODE="build"
     fi
 
     if [ "$IS_OFFLINE_INSTALL" = true ]; then
-        UP_FLAGS="-d --no-build"
         if docker compose up --help 2>&1 | grep -q -- '--pull'; then
             UP_FLAGS="$UP_FLAGS --pull never"
         fi
     else
-        UP_FLAGS="-d $BUILD_FLAG"
+        UP_FLAGS="-d --no-build"
     fi
 }
 
@@ -377,21 +391,80 @@ ensure_grafana_migration_image() {
 start_compose_stack() {
     local profiles="$1"
     local up_flags="$2"
+    local build_mode="${3:-none}"
     local postgres_up_flags="-d"
 
     if [ "$IS_OFFLINE_INSTALL" = true ] && docker compose up --help 2>&1 | grep -q -- '--pull'; then
         postgres_up_flags="$postgres_up_flags --pull never"
     fi
 
-    if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
-        ensure_grafana_migration_image
-        bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
-            "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
+    if deployment_stage_before build_completed; then
+        deployment_transition build_started
+        if [ "$build_mode" = rebuild ]; then
+            echo "Building fresh images (no cache)..."
+            docker compose "${COMPOSE_FILE_ARGS[@]}" build --no-cache
+        elif [ "$build_mode" = build ]; then
+            docker compose "${COMPOSE_FILE_ARGS[@]}" build
+        fi
+
+        if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
+            ensure_grafana_migration_image
+        fi
+        deployment_transition build_completed
     fi
 
-    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
-    SANCTUARY_PROJECT_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/reconcile-postgres-password.sh"
-    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags
+    if deployment_stage_before postgres_started; then
+        if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
+            bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
+                "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
+        fi
+        docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
+        deployment_transition postgres_started
+    fi
+    if deployment_stage_before password_reconciled; then
+        SANCTUARY_PROJECT_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/reconcile-postgres-password.sh"
+        deployment_transition password_reconciled
+    fi
+    if deployment_stage_before stack_started; then
+        docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags
+        deployment_transition stack_started
+    fi
+    if deployment_stage_before health_verified; then
+        wait_for_routed_api
+        deployment_transition health_verified
+    fi
+    deployment_activate
+}
+
+prepare_start_lock() {
+    deployment_lock_only_acquire
+    trap deployment_lock_release EXIT
+    ensure_runtime_generated_secrets
+    check_ssl_expiry 2>/dev/null || true
+}
+
+resolve_start_deployment() {
+    deployment_begin "$HAS_MONITORING" "$HAS_TOR" "$HAS_MCP"
+    MCP_PROFILE=""
+}
+
+wait_for_routed_api() {
+    local deadline=$((SECONDS + 60)) api_url
+    if [ -f "$SSL_DIR/fullchain.pem" ]; then
+        api_url="https://localhost:${HTTPS_PORT}/api/v1/health"
+    else
+        api_url="http://localhost:${HTTP_PORT}/api/v1/health"
+    fi
+    echo "Verifying the browser-routed backend API..."
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if docker compose "${COMPOSE_FILE_ARGS[@]}" exec -T frontend \
+            wget -q -O /dev/null --no-check-certificate "$api_url" 2>/dev/null; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo "Error: browser-routed backend API is unavailable at $api_url" >&2
+    return 1
 }
 
 configure_compose_files
@@ -399,9 +472,10 @@ configure_compose_files
 case "${1:-}" in
     --stop)
         echo "Stopping Sanctuary..."
-        detect_enabled_stacks yes
-        configure_enabled_stacks
-        docker compose "${COMPOSE_FILE_ARGS[@]}" $MCP_PROFILE down
+        deployment_use_active
+        trap deployment_lock_release EXIT
+        docker compose "${COMPOSE_FILE_ARGS[@]}" down
+        deployment_lock_release
         echo "Sanctuary stopped."
         ;;
     --logs)
@@ -418,8 +492,10 @@ case "${1:-}" in
         echo ""
         detect_enabled_stacks
         configure_enabled_stacks
+        prepare_start_lock
+        resolve_start_deployment
         set_start_flags
-        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS" "$BUILD_MODE"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -440,10 +516,11 @@ case "${1:-}" in
         HAS_MCP="yes"
         ENABLE_MCP="yes"
         export ENABLE_MCP
+        prepare_start_lock
         persist_runtime_env_value "ENABLE_MCP" "yes"
-        configure_enabled_stacks
+        resolve_start_deployment
         set_start_flags
-        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS" "$BUILD_MODE"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo "MCP endpoint: http://${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}/mcp"
@@ -457,10 +534,11 @@ case "${1:-}" in
         HAS_MONITORING="yes"
         ENABLE_MONITORING="yes"
         export ENABLE_MONITORING
+        prepare_start_lock
         persist_runtime_env_value "ENABLE_MONITORING" "yes"
-        configure_enabled_stacks
+        resolve_start_deployment
         set_start_flags
-        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS" "$BUILD_MODE"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -480,10 +558,11 @@ case "${1:-}" in
         HAS_TOR="yes"
         ENABLE_TOR="yes"
         export ENABLE_TOR
+        prepare_start_lock
         persist_runtime_env_value "ENABLE_TOR" "yes"
-        configure_enabled_stacks
+        resolve_start_deployment
         set_start_flags
-        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS" "$BUILD_MODE"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -511,6 +590,10 @@ case "${1:-}" in
 
         echo "Rebuilding and starting Sanctuary..."
 
+        detect_enabled_stacks
+        prepare_start_lock
+        resolve_start_deployment
+
         # Generate SSL certificates if missing and openssl is available
         if [ ! -f "$SSL_DIR/fullchain.pem" ] || [ ! -f "$SSL_DIR/privkey.pem" ]; then
             if command -v openssl &>/dev/null; then
@@ -528,14 +611,7 @@ case "${1:-}" in
             fi
         fi
 
-        detect_enabled_stacks
-        configure_enabled_stacks
-
-        # Force clean rebuild to ensure all code changes are included
-        echo "Building fresh images (no cache)..."
-        docker compose "${COMPOSE_FILE_ARGS[@]}" build --no-cache
-
-        start_compose_stack "$MCP_PROFILE" "-d"
+        start_compose_stack "$MCP_PROFILE" "-d --no-build" rebuild
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;
@@ -579,10 +655,11 @@ case "${1:-}" in
     *)
         echo "Starting Sanctuary..."
         detect_enabled_stacks
-        configure_enabled_stacks
+        prepare_start_lock
+        resolve_start_deployment
 
         set_start_flags
-        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS" "$BUILD_MODE"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;

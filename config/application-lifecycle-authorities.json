@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0.0",
+  "authorities": [
+    {
+      "classId": "wallet_mutation",
+      "authority": "wallet-sync-intent-repository",
+      "canonicalPaths": ["server/src/repositories/syncIntentRepository.ts"],
+      "cleanupPolicy": "application_managed",
+      "genericCleanupAllowed": false
+    },
+    {
+      "classId": "application_lease_fence",
+      "authority": "distributed-lock-and-sync-intent-fences",
+      "canonicalPaths": [
+        "server/src/infrastructure/distributedLock.ts",
+        "server/src/repositories/syncIntentRepository.ts"
+      ],
+      "cleanupPolicy": "application_managed",
+      "genericCleanupAllowed": false
+    },
+    {
+      "classId": "electrum_subscription",
+      "authority": "electrum-checkpoint-coordinator",
+      "canonicalPaths": [
+        "server/src/repositories/subscriptionCheckpointRepository.ts",
+        "server/src/worker/electrumManager/lockCoordination.ts"
+      ],
+      "cleanupPolicy": "application_managed",
+      "genericCleanupAllowed": false
+    },
+    {
+      "classId": "scheduled_work",
+      "authority": "worker-recurring-schedule-registry",
+      "canonicalPaths": ["server/src/worker/workerJobQueue/recurringSchedules.ts"],
+      "cleanupPolicy": "application_managed",
+      "genericCleanupAllowed": false
+    }
+  ]
+}

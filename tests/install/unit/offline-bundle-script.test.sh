@@ -105,7 +105,7 @@ setup_bundle_workspace() {
 SANCTUARY_OFFLINE_BUNDLE_SCHEMA=1
 SANCTUARY_VERSION=9.9.9
 SANCTUARY_GIT_TAG=v9.9.9
-SANCTUARY_GIT_COMMIT=testcommit
+SANCTUARY_GIT_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 SANCTUARY_PLATFORM=$platform
 SANCTUARY_BUNDLE_FLAVOR=core-dev
 SANCTUARY_INCLUDED_PROFILES=core
@@ -490,6 +490,7 @@ test_create_bundle_rejects_unexpected_archive_repo_tag() {
   output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
   if PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     SANCTUARY_FAKE_SAVED_REPO_TAG="unexpected.invalid/image:wrong" \
     "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
       >/dev/null 2>&1; then
@@ -543,6 +544,7 @@ test_apply_validates_loaded_runtime_image_id() {
   local failures=0
   if PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     SANCTUARY_FAKE_IMAGE_ID="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
     "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
       --public-key "$PUBLIC_KEY" --apply >/dev/null 2>&1; then
@@ -557,12 +559,15 @@ test_apply_validates_loaded_runtime_image_id() {
 test_apply_accepts_signed_inventory_via_runtime_refs() {
   setup_inventory_bundle
 
-  local docker_log failures=0
-  PATH="$FAKE_BIN:$PATH" \
+  local apply_output docker_log failures=0
+  apply_output="$(PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
-      --public-key "$PUBLIC_KEY" --apply >/dev/null 2>&1 \
-    || failures=1
+      --public-key "$PUBLIC_KEY" --apply 2>&1)" || {
+    echo "$apply_output" >&2
+    failures=1
+  }
   docker_log="$(cat "$DOCKER_LOG")"
   if ! grep -Eq 'image inspect .* postgres:16-alpine$' "$DOCKER_LOG"; then
     echo "offline apply did not validate the tag-only runtime image reference" >&2
@@ -589,6 +594,7 @@ test_apply_validates_loaded_runtime_image_platform() {
   esac
   if PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     SANCTUARY_FAKE_IMAGE_ARCH="$wrong_arch" \
     "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
       --public-key "$PUBLIC_KEY" --apply >/dev/null 2>&1; then

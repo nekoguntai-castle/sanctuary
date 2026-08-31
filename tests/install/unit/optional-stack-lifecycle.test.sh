@@ -89,6 +89,12 @@ make_fake_docker() {
 set -e
 printf '%s\n' "$*" >> "${FAKE_DOCKER_LOG:?}"
 
+case "${FAKE_DOCKER_FAILURE_STAGE:-}:$*" in
+    postgres_started:*"ALTER USER"*) exit 97 ;;
+    password_reconciled:*"up -d --no-build"*) [[ "$*" == *" postgres" ]] || exit 98 ;;
+    stack_started:*"exec -T frontend"*) exit 99 ;;
+esac
+
 case "$*" in
     info|"compose version"|"image inspect "*)
         exit 0
@@ -131,6 +137,11 @@ if [ "${1:-}" = "exec" ]; then
         exit 0
     fi
     if [[ "$*" == *"ALTER USER"* ]]; then
+        if [ -n "${REQUIRE_DEPLOYMENT_LOCK:-}" ] \
+            && [ ! -f "$REQUIRE_DEPLOYMENT_LOCK/owner.json" ]; then
+            echo "PostgreSQL mutation occurred without the deployment lock" >&2
+            exit 96
+        fi
         printf '%s\n' synced > "${FAKE_POSTGRES_STATE:?}"
         exit 0
     fi
@@ -138,6 +149,10 @@ fi
 
 if [ "${1:-}" = "compose" ] && [[ "$*" == *" config --services"* ]]; then
     printf '%s\n' backend frontend worker postgres
+fi
+
+if [ "${1:-}" = "compose" ] && [[ "$*" == *" config --format json"* ]]; then
+    printf '%s\n' '{"services":{"backend":{},"frontend":{},"worker":{},"postgres":{}},"networks":{},"volumes":{}}'
 fi
 EOF
     chmod +x "$bin_dir/docker"
@@ -158,6 +173,8 @@ run_start() {
         -u POSTGRES_USER -u POSTGRES_DB \
         FAKE_DOCKER_LOG="$case_dir/docker.log" \
         FAKE_POSTGRES_STATE="$case_dir/postgres.state" \
+        REQUIRE_DEPLOYMENT_LOCK="$case_dir/runtime/ownership/deployments/deploy-sanctuary/mutation-lock" \
+        FAKE_DOCKER_FAILURE_STAGE="${FAKE_DOCKER_FAILURE_STAGE:-}" \
         COMPOSE_PROJECT_NAME="${START_COMPOSE_PROJECT_NAME:-sanctuary}" \
         SANCTUARY_RUNTIME_DIR="$case_dir/runtime" \
         SANCTUARY_ENV_FILE="$case_dir/sanctuary.env" \
@@ -173,9 +190,41 @@ run_start() {
     fi
 }
 
+test_interrupted_deployment_resumes_exact_pending_stage() {
+    local failure_stage case_dir first_calls second_calls
+    for failure_stage in postgres_started password_reconciled stack_started; do
+        case_dir="$TEST_TMP_DIR/recovery-$failure_stage"
+        mkdir -p "$case_dir"
+        write_runtime_env "$case_dir/sanctuary.env" no no no
+        if FAKE_DOCKER_FAILURE_STAGE="$failure_stage" run_start "$case_dir"; then
+            return 1
+        fi
+        first_calls="$(cat "$case_dir/docker.log")"
+        run_start "$case_dir" || return 1
+        second_calls="$(cat "$case_dir/docker.log")"
+
+        assert_contains "$first_calls" "/ownership/deployments/deploy-sanctuary/revisions/1/compose/00-" \
+            && assert_contains "$second_calls" "/ownership/deployments/deploy-sanctuary/revisions/1/compose/00-" \
+            && assert_not_contains "$second_calls" " build" \
+            && assert_not_contains "$second_calls" "up -d --no-build postgres" \
+            || return 1
+        if [ "$failure_stage" != postgres_started ]; then
+            assert_not_contains "$second_calls" "ALTER USER" || return 1
+        fi
+        if [ "$failure_stage" = stack_started ]; then
+            assert_not_contains "$second_calls" "up -d --no-build" || return 1
+        fi
+        [ -f "$case_dir/runtime/ownership/deployments/deploy-sanctuary/active-revision.json" ] \
+            && [ ! -e "$case_dir/runtime/ownership/deployments/deploy-sanctuary/pending-revision.json" ] \
+            || return 1
+    done
+}
+
 assert_postgres_start_and_reconciliation() {
     local calls="$1"
-    assert_line "$calls" "compose --project-directory $PROJECT_ROOT -f $PROJECT_ROOT/docker-compose.yml up -d postgres" \
+    assert_contains "$calls" "--project-directory $PROJECT_ROOT --env-file " \
+        && assert_contains "$calls" "/ownership/deployments/deploy-sanctuary/revisions/1/compose/00-" \
+        && assert_contains "$calls" "up -d postgres" \
         && assert_contains "$calls" "ps -q --filter label=com.docker.compose.project=sanctuary --filter label=com.docker.compose.service=postgres" \
         && assert_contains "$calls" "inspect --format {{.State.Running}} fake-postgres" \
         && assert_contains "$calls" "exec -e PGPASSWORD=test-postgres-password fake-postgres psql -w -h postgres" \
@@ -186,26 +235,35 @@ assert_postgres_start_and_reconciliation() {
 assert_mcp_disabled_start() {
     local calls="$1"
     assert_postgres_start_and_reconciliation "$calls" \
-        && assert_line "$calls" "compose --project-directory $PROJECT_ROOT -f $PROJECT_ROOT/docker-compose.yml up -d" \
+        && assert_contains "$calls" "up -d --no-build" \
         && assert_not_contains "$calls" "--profile mcp"
 }
 
 assert_mcp_enabled_start() {
     local calls="$1"
-    assert_line "$calls" "compose --project-directory $PROJECT_ROOT -f $PROJECT_ROOT/docker-compose.yml --profile mcp up -d postgres" \
+    assert_contains "$calls" "--profile mcp" \
+        && assert_contains "$calls" "up -d postgres" \
         && assert_contains "$calls" "ps -q --filter label=com.docker.compose.project=sanctuary --filter label=com.docker.compose.service=postgres" \
-        && assert_line "$calls" "compose --project-directory $PROJECT_ROOT -f $PROJECT_ROOT/docker-compose.yml --profile mcp up -d"
+        && assert_contains "$calls" "up -d --no-build"
 }
 
 test_setup_preserves_existing_optional_preferences() {
     local case_dir="$TEST_TMP_DIR/setup-preserve"
     local env_file="$case_dir/sanctuary.env"
     mkdir -p "$case_dir"
+    make_fake_docker "$case_dir/bin"
+    : > "$case_dir/docker.log"
+    : > "$case_dir/postgres.state"
     write_runtime_env "$env_file" yes yes yes
 
     env -u ENABLE_MONITORING -u ENABLE_TOR -u ENABLE_MCP \
         SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_RUNTIME_DIR="$case_dir/runtime" \
         SANCTUARY_SSL_DIR="$case_dir/ssl" \
+        FAKE_DOCKER_LOG="$case_dir/docker.log" \
+        FAKE_POSTGRES_STATE="$case_dir/postgres.state" \
+        REQUIRE_DEPLOYMENT_LOCK="$case_dir/runtime/ownership/deployments/deploy-sanctuary/mutation-lock" \
+        PATH="$case_dir/bin:$PATH" \
         bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs \
         >/dev/null 2>&1
 
@@ -220,43 +278,48 @@ test_setup_explicit_mcp_enable_wins() {
     local case_dir="$TEST_TMP_DIR/setup-mcp"
     local env_file="$case_dir/sanctuary.env"
     mkdir -p "$case_dir"
+    make_fake_docker "$case_dir/bin"
+    : > "$case_dir/docker.log"
+    : > "$case_dir/postgres.state"
     write_runtime_env "$env_file" no no no
 
     SANCTUARY_ENV_FILE="$env_file" \
+        SANCTUARY_RUNTIME_DIR="$case_dir/runtime" \
         SANCTUARY_SSL_DIR="$case_dir/ssl" \
+        FAKE_DOCKER_LOG="$case_dir/docker.log" \
+        FAKE_POSTGRES_STATE="$case_dir/postgres.state" \
+        PATH="$case_dir/bin:$PATH" \
         bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs --enable-mcp \
         >/dev/null 2>&1
 
     grep -qx 'ENABLE_MCP=yes' "$env_file"
 }
 
-test_stop_uses_running_project_services() {
+test_stop_uses_registered_definition() {
     local case_dir="$TEST_TMP_DIR/stop"
     mkdir -p "$case_dir"
     write_runtime_env "$case_dir/sanctuary.env" no no no
 
-    RUNNING_SERVICES=$'grafana\ntor\nmcp' run_start "$case_dir" --stop || return 1
+    RUNNING_SERVICES=$'grafana\ntor\nmcp' run_start "$case_dir" || return 1
+    RUNNING_SERVICES= run_start "$case_dir" --stop || return 1
 
     local calls
     calls="$(cat "$case_dir/docker.log")"
-    assert_contains "$calls" "ps -a --filter label=com.docker.compose.project=sanctuary" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/monitoring.yml" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/tor.yml" \
-        && assert_contains "$calls" "--profile mcp down"
+    assert_contains "$calls" "/ownership/deployments/deploy-sanctuary/revisions/1/compose/01-" \
+        && assert_contains "$calls" "/ownership/deployments/deploy-sanctuary/revisions/1/compose/02-" \
+        && assert_contains "$calls" "--profile mcp" \
+        && assert_contains "$calls" " down"
 }
 
-test_stop_includes_exited_optional_services() {
+test_stop_refuses_unregistered_definition() {
     local case_dir="$TEST_TMP_DIR/stop-exited"
     mkdir -p "$case_dir"
     write_runtime_env "$case_dir/sanctuary.env" no no no
 
-    RUNNING_SERVICES= EXISTING_SERVICES=$'tor\nmcp' run_start "$case_dir" --stop || return 1
-
-    local calls
-    calls="$(cat "$case_dir/docker.log")"
-    assert_contains "$calls" "ps -a --filter label=com.docker.compose.project=sanctuary" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/tor.yml" \
-        && assert_contains "$calls" "--profile mcp down"
+    if RUNNING_SERVICES= EXISTING_SERVICES=$'tor\nmcp' run_start "$case_dir" --stop; then
+        return 1
+    fi
+    ! grep -q ' compose .* down' "$case_dir/docker.log"
 }
 
 test_detection_ignores_foreign_and_exited_services() {
@@ -283,8 +346,8 @@ test_with_monitoring_is_additive_and_persistent() {
     local calls
     calls="$(cat "$case_dir/docker.log")"
     grep -qx 'ENABLE_MONITORING=yes' "$case_dir/sanctuary.env" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/monitoring.yml" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/tor.yml" \
+        && assert_contains "$calls" "/compose/01-" \
+        && assert_contains "$calls" "/compose/02-" \
         && assert_contains "$calls" "--profile mcp"
 }
 
@@ -298,8 +361,8 @@ test_with_tor_is_additive_and_persistent() {
     local calls
     calls="$(cat "$case_dir/docker.log")"
     grep -qx 'ENABLE_TOR=yes' "$case_dir/sanctuary.env" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/monitoring.yml" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/tor.yml" \
+        && assert_contains "$calls" "/compose/01-" \
+        && assert_contains "$calls" "/compose/02-" \
         && assert_contains "$calls" "--profile mcp"
 }
 
@@ -313,8 +376,8 @@ test_with_mcp_is_additive_and_persistent() {
     local calls
     calls="$(cat "$case_dir/docker.log")"
     grep -qx 'ENABLE_MCP=yes' "$case_dir/sanctuary.env" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/monitoring.yml" \
-        && assert_contains "$calls" "-f $PROJECT_ROOT/docker/compose/tor.yml" \
+        && assert_contains "$calls" "/compose/01-" \
+        && assert_contains "$calls" "/compose/02-" \
         && assert_contains "$calls" "--profile mcp"
 }
 
@@ -409,8 +472,8 @@ test_stopped_mcp_does_not_enable_profile() {
 
 run_test "setup preserves existing optional preferences" test_setup_preserves_existing_optional_preferences
 run_test "setup explicitly enables MCP" test_setup_explicit_mcp_enable_wins
-run_test "stop includes every running project stack" test_stop_uses_running_project_services
-run_test "stop includes exited optional services" test_stop_includes_exited_optional_services
+run_test "stop uses the registered immutable definition" test_stop_uses_registered_definition
+run_test "stop refuses an unregistered deployment" test_stop_refuses_unregistered_definition
 run_test "detection ignores foreign and exited services" test_detection_ignores_foreign_and_exited_services
 run_test "with-monitoring preserves peer stacks and persists" test_with_monitoring_is_additive_and_persistent
 run_test "with-tor preserves peer stacks and persists" test_with_tor_is_additive_and_persistent
@@ -420,6 +483,7 @@ run_test "ENABLE_MCP unset starts and rebuilds the core stack" test_mcp_unset_de
 run_test "ENABLE_MCP=no starts and rebuilds the core stack" test_mcp_no_default_and_rebuild_reach_core_up
 run_test "ENABLE_MCP=yes adds only the MCP profile" test_mcp_yes_adds_only_mcp_profile
 run_test "stopped MCP does not alter default start or rebuild" test_stopped_mcp_does_not_enable_profile
+run_test "interrupted deployment stages resume the exact pending revision" test_interrupted_deployment_resumes_exact_pending_stage
 
 printf '\n%s tests, %s failures\n' "$TESTS_RUN" "$TESTS_FAILED"
 [ "$TESTS_FAILED" -eq 0 ]

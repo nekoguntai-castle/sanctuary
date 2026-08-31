@@ -16,6 +16,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CREATE_RELEASE_SCRIPT="${SANCTUARY_CREATE_RELEASE_SCRIPT:-$ROOT_DIR/scripts/create-forge-release.sh}"
+if [[ -f "$ROOT_DIR/scripts/ownership/producer-hooks.sh" ]]; then
+  # shellcheck source=scripts/ownership/producer-hooks.sh
+  . "$ROOT_DIR/scripts/ownership/producer-hooks.sh"
+fi
 
 TAG=""
 DRY_RUN=false
@@ -188,6 +192,7 @@ validate_checkout() {
 }
 
 create_release_objects() {
+  local publication_result="$TEMP_DIR/publication-result.json"
   env -u GHCR_USER -u GHCR_TOKEN -u UMBREL_DISPATCH_TOKEN \
     -u UMBREL_OWNER -u UMBREL_REPO \
     SANCTUARY_FORGE_TOKENS=/dev/null \
@@ -199,7 +204,49 @@ create_release_objects() {
     GITHUB_OWNER="$GITHUB_OWNER" \
     GITHUB_REPO="$GITHUB_REPO" \
     GITHUB_RELEASE_TOKEN="$GITHUB_RELEASE_TOKEN" \
+    SANCTUARY_PUBLICATION_RESULT="$publication_result" \
     bash "$CREATE_RELEASE_SCRIPT" "$TAG"
+
+  if ! declare -F register_owned_resource >/dev/null; then
+    return 0
+  fi
+  [[ -f "$publication_result" ]] || fail 'release publisher did not write its required publication result'
+
+  SANCTUARY_PROJECT_DIR="$ROOT_DIR"
+  SANCTUARY_RELEASE="$TAG"
+  SANCTUARY_COMMIT="$RELEASE_COMMIT"
+  SANCTUARY_OPERATION_RUN_ID="${SANCTUARY_OPERATION_RUN_ID:-publish-${TAG#v}}"
+  ownership_initialize
+  local provider provider_id outcome identity
+  for provider in forgejo github; do
+    provider_id="$(jq -r ".providers.${provider}.id" "$publication_result")"
+    outcome="$(jq -r ".providers.${provider}.outcome" "$publication_result")"
+    identity="${provider}-${provider_id}"
+    register_owned_resource provider_publication retained retain_reconcile provider_id \
+      "$provider_id" "$identity" "$SANCTUARY_OPERATION_RUN_ID" "$outcome"
+  done
+  register_owned_resource temporary_artifact active exact_delete path "$publication_result" \
+    "path-$(stat -c '%d-%i' "$publication_result" 2>/dev/null || stat -f '%d-%i' "$publication_result")" \
+    "$SANCTUARY_OPERATION_RUN_ID"
+}
+
+register_publication_inputs() {
+  declare -F register_owned_resource >/dev/null || return 0
+  SANCTUARY_PROJECT_DIR="$ROOT_DIR"
+  SANCTUARY_RELEASE="$TAG"
+  SANCTUARY_COMMIT="$RELEASE_COMMIT"
+  SANCTUARY_OPERATION_RUN_ID="${SANCTUARY_OPERATION_RUN_ID:-publish-${TAG#v}}"
+  ownership_initialize
+  local input digest
+  for input in "$CANARY_RECEIPT" "$CANARY_EVIDENCE" "$REHEARSAL_MANIFEST" \
+    "${REHEARSAL_MANIFEST}.sig" "$RELEASE_PUBLIC_KEY"; do
+    digest="$(ownership_sha256 < "$input")"
+    register_owned_resource cleanup_evidence referenced retain path "$input" \
+      "sha256:$digest" "$SANCTUARY_OPERATION_RUN_ID"
+  done
+  register_owned_resource temporary_artifact active exact_delete path "$TEMP_DIR" \
+    "path-$(stat -c '%d-%i' "$TEMP_DIR" 2>/dev/null || stat -f '%d-%i' "$TEMP_DIR")" \
+    "$SANCTUARY_OPERATION_RUN_ID"
 }
 
 main() {
@@ -226,6 +273,7 @@ main() {
   fi
 
   ensure_github_tag
+  register_publication_inputs
   create_release_objects
   echo "Release $TAG published to Forgejo and GitHub."
 }

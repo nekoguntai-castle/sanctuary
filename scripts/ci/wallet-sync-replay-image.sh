@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/../ownership/producer-hooks.sh"
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -37,6 +41,23 @@ verify_loaded_image() {
   fi
 }
 
+register_loaded_image() {
+  local image_ref="$1" source_root="$2" image_id
+  SANCTUARY_PROJECT_DIR="$source_root"
+  ownership_initialize
+  image_id="$(docker image inspect --format '{{.Id}}' "$image_ref")"
+  SANCTUARY_PROJECT_DIR="$source_root" \
+    register_owned_resource oci_image active exact_delete name "$image_ref" "$image_id" "$SANCTUARY_OPERATION_RUN_ID"
+}
+
+register_replay_evidence() {
+  local source_root="$1" artifact_path="$2" artifact_sha="$3"
+  SANCTUARY_PROJECT_DIR="$source_root"
+  ownership_initialize
+  SANCTUARY_PROJECT_DIR="$source_root" \
+    register_owned_resource cleanup_evidence retained retain path "$artifact_path" "sha256:$artifact_sha" "$SANCTUARY_OPERATION_RUN_ID"
+}
+
 build_image() {
   [ "$#" -eq 4 ] || usage
   local source_root="$1"
@@ -44,7 +65,7 @@ build_image() {
   local image_ref="$3"
   local output_dir="$4"
   local image_lock="$source_root/config/container-image-lock.json"
-  local image_lock_sha256 temporary_archive manifest_digest digest_hex archive archive_sha256 receipt
+  local image_lock_sha256 temporary_archive manifest_digest digest_hex archive archive_sha256 receipt build_version build_id
 
   require_revision "$revision"
   [ -f "$source_root/server/Dockerfile" ] || { echo "missing server Dockerfile under $source_root" >&2; exit 1; }
@@ -56,6 +77,8 @@ build_image() {
   fi
 
   image_lock_sha256="$(sha256sum "$image_lock" | cut -d ' ' -f 1)"
+  build_version="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$source_root/package.json")"
+  build_id="${SANCTUARY_OPERATION_RUN_ID:-replay-${revision:0:12}}"
   temporary_archive="$output_dir/.wallet-sync-replay-$revision.oci.tar"
   # The Docker exporter emits an OCI layout (oci-layout/index.json/blobs) plus
   # manifest.json, allowing the exact archived bytes to be loaded by the
@@ -66,6 +89,8 @@ build_image() {
     --tag "$image_ref" \
     --build-arg "SANCTUARY_SOURCE_COMMIT=$revision" \
     --build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha256" \
+    --build-arg "SANCTUARY_BUILD_VERSION=$build_version" \
+    --build-arg "SANCTUARY_BUILD_ID=$build_id" \
     --provenance=false \
     --sbom=false \
     --output "type=docker,dest=$temporary_archive" \
@@ -95,6 +120,8 @@ build_image() {
 
   docker load --input "$archive"
   verify_loaded_image "$image_ref" "$revision" "$image_lock_sha256"
+  register_loaded_image "$image_ref" "$source_root"
+  register_replay_evidence "$source_root" "$archive" "$archive_sha256"
 
   receipt="$output_dir/image-receipt.json"
   node - "$receipt" "$archive" "$archive_sha256" "$manifest_digest" "$image_ref" "$revision" "$image_lock_sha256" <<'NODE'
@@ -157,6 +184,8 @@ NODE
 
   docker load --input "$archive"
   verify_loaded_image "$image_ref" "$revision" "$image_lock_sha256"
+  register_loaded_image "$image_ref" "$(git rev-parse --show-toplevel)"
+  register_replay_evidence "$(git rev-parse --show-toplevel)" "$archive" "$archive_sha256"
 }
 
 command="${1:-}"

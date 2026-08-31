@@ -186,6 +186,7 @@ accept_existing_release() {
   local expected_payload="$2"
   if release_matches_payload "$expected_payload"; then
     LAST_RELEASE_ID="$(jq -r '.id // empty' "$RESPONSE_FILE")"
+    LAST_RELEASE_OUTCOME=existing
     echo -e "  ${YELLOW}~${NC} $name: matching release already exists, skipping"
     return 0
   fi
@@ -228,6 +229,7 @@ create_release() {
 
   if [[ "$create_code" =~ ^2 ]]; then
     LAST_RELEASE_ID="$(jq -r '.id // empty' "$RESPONSE_FILE")"
+    LAST_RELEASE_OUTCOME=created
     echo -e "  ${GREEN}✓${NC} $name: created (HTTP $create_code)"
     return 0
   fi
@@ -282,6 +284,10 @@ echo "  body lines: $(printf '%s\n' "$BODY" | wc -l)"
 echo ""
 
 result=0
+FORGEJO_RELEASE_ID=""
+FORGEJO_RELEASE_OUTCOME=""
+GITHUB_RELEASE_ID=""
+GITHUB_RELEASE_OUTCOME=""
 if ! create_release \
   "Forgejo" \
   "${FORGEJO_URL%/}/api/v1/repos/${FORGEJO_OWNER}/${FORGEJO_REPO}/releases" \
@@ -289,6 +295,9 @@ if ! create_release \
   "$PAYLOAD" \
   -H "Accept: application/json"; then
   result=1
+else
+  FORGEJO_RELEASE_ID="$LAST_RELEASE_ID"
+  FORGEJO_RELEASE_OUTCOME="$LAST_RELEASE_OUTCOME"
 fi
 
 if ! create_release \
@@ -299,6 +308,9 @@ if ! create_release \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28"; then
   result=1
+else
+  GITHUB_RELEASE_ID="$LAST_RELEASE_ID"
+  GITHUB_RELEASE_OUTCOME="$LAST_RELEASE_OUTCOME"
 fi
 
 if (( result == 0 )) && ! promote_github_latest; then
@@ -308,6 +320,19 @@ fi
 if (( result != 0 )); then
   echo -e "\n${RED}Release creation failed.${NC}" >&2
   exit "$result"
+fi
+
+if [[ -n "${SANCTUARY_PUBLICATION_RESULT:-}" ]]; then
+  result_parent="$(dirname "$SANCTUARY_PUBLICATION_RESULT")"
+  [[ -d "$result_parent" ]] || { echo 'publication result parent does not exist' >&2; exit 1; }
+  result_tmp="$(mktemp "$result_parent/.publication-result.XXXXXX")"
+  chmod 600 "$result_tmp"
+  jq -n --arg tag "$TAG" \
+    --arg forgejo_id "$FORGEJO_RELEASE_ID" --arg forgejo_outcome "$FORGEJO_RELEASE_OUTCOME" \
+    --arg github_id "$GITHUB_RELEASE_ID" --arg github_outcome "$GITHUB_RELEASE_OUTCOME" \
+    '{schemaVersion:"sanctuary.publication-result.v1",tag:$tag,providers:{forgejo:{id:$forgejo_id,outcome:$forgejo_outcome},github:{id:$github_id,outcome:$github_outcome}}}' \
+    > "$result_tmp"
+  mv "$result_tmp" "$SANCTUARY_PUBLICATION_RESULT"
 fi
 
 echo -e "\n${GREEN}Done.${NC}"

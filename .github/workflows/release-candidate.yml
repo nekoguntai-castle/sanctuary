@@ -228,6 +228,13 @@ jobs:
       RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
       IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/wallet-sync-replay-images
+      SANCTUARY_PROJECT: wallet-sync-replay
+      SANCTUARY_DEPLOYMENT_ID: replay-${{ github.run_id }}-${{ github.run_attempt }}
+      SANCTUARY_OWNER_ID: release-candidate
+      SANCTUARY_OPERATION_RUN_ID: run-${{ github.run_id }}-${{ github.run_attempt }}-images
+      SANCTUARY_RELEASE: unreleased
+      SANCTUARY_COMMIT: ${{ needs.validation-info.outputs.candidate_sha }}
+      SANCTUARY_OWNERSHIP_ROOT: ${{ github.workspace }}/../sanctuary-ownership/${{ github.run_id }}-${{ github.run_attempt }}-images
 
     steps:
       - name: Checkout exact candidate
@@ -308,6 +315,13 @@ jobs:
       IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
       EVIDENCE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/evidence-live
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/wallet-sync-live-shape
+      SANCTUARY_PROJECT: wallet-sync-replay
+      SANCTUARY_DEPLOYMENT_ID: replay-${{ github.run_id }}-${{ github.run_attempt }}
+      SANCTUARY_OWNER_ID: release-candidate
+      SANCTUARY_OPERATION_RUN_ID: run-${{ github.run_id }}-${{ github.run_attempt }}-live
+      SANCTUARY_RELEASE: unreleased
+      SANCTUARY_COMMIT: ${{ needs.validation-info.outputs.candidate_sha }}
+      SANCTUARY_OWNERSHIP_ROOT: ${{ github.workspace }}/../sanctuary-ownership/${{ github.run_id }}-${{ github.run_attempt }}-live
 
     steps:
       - name: Checkout exact candidate controller
@@ -390,6 +404,13 @@ jobs:
       IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
       EVIDENCE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/evidence-max
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/wallet-sync-maximum-shapes
+      SANCTUARY_PROJECT: wallet-sync-replay
+      SANCTUARY_DEPLOYMENT_ID: replay-${{ github.run_id }}-${{ github.run_attempt }}
+      SANCTUARY_OWNER_ID: release-candidate
+      SANCTUARY_OPERATION_RUN_ID: run-${{ github.run_id }}-${{ github.run_attempt }}-max
+      SANCTUARY_RELEASE: unreleased
+      SANCTUARY_COMMIT: ${{ needs.validation-info.outputs.candidate_sha }}
+      SANCTUARY_OWNERSHIP_ROOT: ${{ github.workspace }}/../sanctuary-ownership/${{ github.run_id }}-${{ github.run_attempt }}-max
 
     steps:
       - name: Checkout exact candidate controller

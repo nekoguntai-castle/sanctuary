@@ -120,7 +120,7 @@
     "check:wallet-sync-lifecycle-contract": "node scripts/check-wallet-sync-lifecycle-contract.mjs",
     "check:wallet-sync-mutation-boundaries": "node scripts/check-wallet-sync-mutation-boundaries.mjs",
     "check:resource-ownership-contract": "node scripts/ownership/check-contracts.mjs",
-    "test:ownership": "node --test tests/ownership/*.test.mjs",
+    "test:ownership": "node --test tests/ownership/*.test.mjs && bash tests/ownership/producer-hooks.test.sh && bash tests/ownership/deployment-lifecycle.test.sh",
     "check:server-cycle-baseline": "node scripts/check-server-cycle-baseline.mjs",
     "check:openapi-route-coverage": "node scripts/check-openapi-route-coverage.mjs",
     "check:semgrep-baseline": "node scripts/quality/check-semgrep-baseline.mjs reports/semgrep/semgrep.json scripts/quality/semgrep-baseline.json",
