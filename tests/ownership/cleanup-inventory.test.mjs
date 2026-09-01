@@ -148,6 +148,77 @@ test('a held deployment mutation lock makes inventory ambiguous before any plan 
   assert.ok(inventory.ambiguities.some((entry) => entry.scope === 'deployment-lock-held'));
 });
 
+test('inventory admits only the exact cleanup controller lock owner', async () => {
+  const deployment = deploymentManifest();
+  const ownerDigest = 'e'.repeat(64);
+  const readDeploymentState = () => ({
+    registered: true,
+    active: { value: { generation: deployment.generation } },
+    pending: null,
+    prepared: null,
+    mutationLock: { state: 'locked', ownerDigest },
+  });
+  const inventory = await inventoryCleanupResources({
+    deploymentManifest: deployment, runManifest: runManifest(deployment), ownershipContract,
+    ownershipContractDigest: HASH, dockerAdapter: adapter(), readDeploymentState,
+    expectedMutationLockOwnerDigest: ownerDigest,
+  });
+  assert.equal(inventory.complete, true);
+  assert.equal(inventory.resources[0].disposition, 'eligible');
+
+  const foreign = await inventoryCleanupResources({
+    deploymentManifest: deployment, runManifest: runManifest(deployment), ownershipContract,
+    ownershipContractDigest: HASH, dockerAdapter: adapter(), readDeploymentState,
+    expectedMutationLockOwnerDigest: 'f'.repeat(64),
+  });
+  assert.equal(foreign.complete, false);
+  assert.ok(foreign.ambiguities.some((entry) => entry.scope === 'deployment-lock-held'));
+});
+
+test('same-generation state admits obsolete ownership while active lifecycle remains protected', async () => {
+  const deployment = deploymentManifest();
+  let currentDeploymentIds;
+  const obsoleteLabels = {
+    ...labels(), 'io.sanctuary.deployment-id': deployment.deploymentId,
+  };
+  const activeLabels = {
+    ...obsoleteLabels, 'io.sanctuary.lifecycle': 'active',
+    'io.sanctuary.creation-run-id': 'active-run',
+  };
+  const inventory = await inventoryCleanupResources({
+    deploymentManifest: deployment, runManifest: runManifest(deployment), ownershipContract,
+    ownershipContractDigest: HASH,
+    dockerAdapter: { inventory(options) {
+      currentDeploymentIds = options.currentDeploymentIds;
+      return { complete: true, ambiguities: [], resources: [
+        {
+          resourceClass: 'compose_container', locator: 'obsolete-container',
+          immutableIdentity: 'obsolete-container', labels: obsoleteLabels,
+          ownershipState: 'owned', classifications: ['owned'], runtime: { running: false },
+        },
+        {
+          resourceClass: 'compose_container', locator: 'active-container',
+          immutableIdentity: 'active-container', labels: activeLabels,
+          ownershipState: 'owned', classifications: ['current', 'owned', 'protected'],
+          runtime: { running: false },
+        },
+      ] };
+    } },
+    readDeploymentState: () => ({
+      registered: true,
+      active: { value: { generation: deployment.generation } },
+      pending: null, prepared: null,
+    }),
+  });
+  assert.deepEqual(currentDeploymentIds, []);
+  assert.equal(inventory.complete, true);
+  const obsolete = inventory.resources.find((entry) => entry.locator === 'obsolete-container');
+  const active = inventory.resources.find((entry) => entry.locator === 'active-container');
+  assert.equal(obsolete.disposition, 'eligible');
+  assert.equal(active.disposition, 'refused');
+  assert.ok(active.failureClasses.includes('current'));
+});
+
 test('recorded unlabeled resources add exact legacy selectors and volume replacement is ambiguous', async () => {
   const deployment = {
     ...deploymentManifest(),
@@ -182,12 +253,38 @@ test('recorded unlabeled resources add exact legacy selectors and volume replace
   assert.ok(inventory.ambiguities.some((entry) => entry.failureClass === 'identity_changed'));
 });
 
+test('a legacy locator cannot authorize a resource claimed by another ownership tuple', async () => {
+  const deployment = {
+    ...deploymentManifest(),
+    legacyResources: [{
+      resourceClass: 'compose_network', locator: 'old-network', composeResource: 'default',
+      immutableIdentity: '2'.repeat(64), cleanupPolicy: 'preserve_ambiguous', ownershipState: 'unlabeled',
+    }],
+  };
+  const foreignLabels = {
+    ...labels(), 'io.sanctuary.resource-class': 'compose_network',
+    'io.sanctuary.deployment-id': 'foreign-deployment', 'io.sanctuary.owner-id': 'foreign-owner',
+  };
+  const inventory = await inventoryCleanupResources({
+    deploymentManifest: deployment, runManifest: runManifest(deployment), ownershipContract,
+    ownershipContractDigest: HASH,
+    dockerAdapter: { inventory: () => ({ complete: true, ambiguities: [], resources: [{
+      resourceClass: 'compose_network', locator: '2'.repeat(64), immutableIdentity: '2'.repeat(64),
+      labels: foreignLabels, ownershipState: 'owned', classifications: ['owned'],
+      runtime: { endpointCount: 0 },
+    }] }) },
+    readDeploymentState: () => ({ active: { value: { generation: deployment.generation } } }),
+  });
+  assert.equal(inventory.complete, false);
+  assert.ok(inventory.ambiguities.some((entry) => entry.failureClass === 'identity_changed'));
+});
+
 test('OCI plans retain the exact inspected image ID as an engine locator', async () => {
   const deployment = deploymentManifest();
   const imageId = `sha256:${'5'.repeat(64)}`;
   const imageLabels = { ...labels(),
     'io.sanctuary.resource-class': 'oci_image',
-    'io.sanctuary.deployment-id': 'obsolete-deployment',
+    'io.sanctuary.deployment-id': deployment.deploymentId,
   };
   const inventory = await inventoryCleanupResources({
     deploymentManifest: deployment, runManifest: runManifest(deployment), ownershipContract,
@@ -195,6 +292,11 @@ test('OCI plans retain the exact inspected image ID as an engine locator', async
     dockerAdapter: { inventory: () => ({ complete: true, ambiguities: [], resources: [{
       resourceClass: 'oci_image', locator: imageId, immutableIdentity: imageId, labels: imageLabels,
       ownershipState: 'owned', classifications: ['owned'],
+      registration: {
+        registrationId: '6'.repeat(64), signerKeyId: '7'.repeat(64),
+        metadataDigest: '8'.repeat(64), resourceClass: 'oci_image', immutableIdentity: imageId,
+        deploymentId: deployment.deploymentId, ownerId: deployment.ownerId,
+      },
       runtime: { referenceCount: 0, references: [], contentDigests: ['5'.repeat(64)], tags: [] },
     }] }) },
     readDeploymentState: () => null,

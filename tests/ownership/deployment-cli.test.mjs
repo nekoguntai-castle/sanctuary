@@ -6,6 +6,9 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { canonicalJson, canonicalSha256, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
+import {
+  createCleanupLedger, initializeApprovalState, publishActiveCleanupPointer,
+} from '../../scripts/ownership/cleanup-approval-ledger.mjs';
 import { resolveDeploymentDefinition } from '../../scripts/ownership/deployment-definition.mjs';
 import {
   acquireDeploymentLock, inspectDeploymentLock, releaseDeploymentLock,
@@ -100,6 +103,62 @@ test('CLI lock acquisition binds the long-lived controller PID from the environm
     runtimeDirectory: state.runtimeDirectory, deploymentId: 'deployment-1', operationRunId: 'run-shell', lockToken: owner.token,
   });
   assert.equal(released.status, 0, released.stderr.toString());
+});
+
+test('CLI lock acquisition refuses active cleanup and releases both mutation locks', () => {
+  const state = fixture();
+  const deploymentId = 'deployment-cleanup-gate';
+  const store = new DeploymentStore({ runtimeDirectory: state.runtimeDirectory, deploymentId });
+  const composeProjectName = path.basename(state.projectDirectory).toLowerCase();
+  store.initialize({ projectDirectory: state.projectDirectory, composeProjectName });
+  const ledger = createCleanupLedger({
+    runtimeDirectory: state.runtimeDirectory, deploymentId, approvalDigest: 'a'.repeat(64),
+  });
+  initializeApprovalState(ledger, { transitionedAt: '2026-08-31T00:00:00.000Z' });
+  publishActiveCleanupPointer(ledger, {
+    expectedPointerDigest: null, operationRunId: 'cleanup-1',
+    journalGenesisDigest: 'b'.repeat(64), transitionedAt: '2026-08-31T00:00:01.000Z',
+  });
+
+  const request = {
+    runtimeDirectory: state.runtimeDirectory, deploymentId, operationRunId: 'run-blocked',
+    journalPath: null, generation: null,
+  };
+  const blocked = run('lock-acquire', request, {
+    env: { ...process.env, SANCTUARY_LOCK_CONTROLLER_PID: String(process.pid) },
+  });
+  assert.equal(blocked.status, 3, blocked.stderr.toString());
+  assert.match(blocked.stderr.toString(), /cleanup state is active/);
+  assert.equal(inspectDeploymentLock(store.lockPath).state, 'unlocked');
+  assert.equal(
+    inspectProjectMutationLock(state.runtimeDirectory, composeProjectName).state,
+    'unlocked',
+  );
+});
+
+test('CLI lock release still releases the project lock when deployment release fails', () => {
+  const state = fixture();
+  const deploymentId = 'deployment-release-failure';
+  const operationRunId = 'run-release-failure';
+  const composeProjectName = 'release-failure-project';
+  const store = new DeploymentStore({ runtimeDirectory: state.runtimeDirectory, deploymentId });
+  store.initialize({ projectDirectory: state.projectDirectory, composeProjectName });
+  const project = acquireProjectMutationLock(state.runtimeDirectory, composeProjectName, {
+    operationRunId, controllerPid: process.pid,
+  });
+  const deployment = acquireDeploymentLock(store.lockPath, {
+    operationRunId, controllerPid: process.pid,
+  });
+
+  const result = run('lock-release', {
+    runtimeDirectory: state.runtimeDirectory, deploymentId, operationRunId,
+    lockToken: project.token,
+  });
+  assert.equal(result.status, 5);
+  assert.match(result.stderr.toString(), /token mismatch/);
+  assert.equal(inspectProjectMutationLock(state.runtimeDirectory, composeProjectName).state, 'unlocked');
+  assert.equal(inspectDeploymentLock(store.lockPath).state, 'locked');
+  releaseDeploymentLock(store.lockPath, deployment.token, operationRunId);
 });
 
 test('project lock identity is shared across distinct deployment runtime directories', () => {

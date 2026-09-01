@@ -220,6 +220,13 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-23"
     },
+    "tests/ownership/cleanup-execution.test.mjs": {
+      "category": "proof-harness",
+      "owner": "ownership-cleanup",
+      "reason": "Stateful crash, recovery, and receipt proof harness sharing one signed-journal and approval-ledger boundary across the complete cleanup execution state machine.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-31"
+    },
     "tests/components/WalletDetail/hooks/useWalletData.test.ts": {
       "category": "proof-harness",
       "owner": "wallet-detail-state",

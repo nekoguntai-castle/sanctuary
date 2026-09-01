@@ -6,11 +6,13 @@ import {
   normalizeDockerSelectors,
   observeDockerResources,
 } from '../../scripts/ownership/docker-observation.mjs';
+import { resolveDockerDaemonContext } from '../../scripts/ownership/cleanup-execution-context.mjs';
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
 const N = 'c'.repeat(64);
 const IMAGE = `sha256:${'d'.repeat(64)}`;
+const withoutPinnedContext = (args) => (args[0] === '--host' ? args.slice(2) : args);
 const tuple = (resourceClass, extra = {}) => ({
   'io.sanctuary.project': 'sanctuary',
   'io.sanctuary.deployment-id': 'deploy-current',
@@ -25,7 +27,10 @@ const tuple = (resourceClass, extra = {}) => ({
   ...extra,
 });
 
-function fixtureRun({ drift = false, malformed = false, volumeIdentityDrift = false, safetyDrift = null } = {}) {
+function fixtureRun({
+  drift = false, malformed = false, volumeIdentityDrift = false,
+  safetyDrift = null, lifecycle = 'active',
+} = {}) {
   const calls = [];
   let containerLists = 0;
   let containerInspections = 0;
@@ -35,8 +40,15 @@ function fixtureRun({ drift = false, malformed = false, volumeIdentityDrift = fa
   let imageInspections = 0;
   let volumeInspections = 0;
   function run(engine, args) {
-    calls.push({ engine, args });
-    const joined = args.join(' ');
+    const effectiveArgs = withoutPinnedContext(args);
+    calls.push({ engine, args, effectiveArgs });
+    const joined = effectiveArgs.join(' ');
+    if (joined === 'context show') return 'default\n';
+    if (joined.startsWith('version --format') || joined.startsWith('info --format')) return '{"authority":"fixture"}\n';
+    if (joined.startsWith('context inspect default --format')) return JSON.stringify({
+      Name: 'default', Endpoints: { docker: { Host: 'unix:///run/docker-fixture.sock', SkipTLSVerify: false } },
+      TLSMaterial: {},
+    });
     if (joined.startsWith('container ls') && joined.includes('label=io.sanctuary.owner-id=one')) {
       containerLists += 1;
       return drift && containerLists > 1 ? `${A}\n${B}\n` : `${A}\n`;
@@ -59,8 +71,11 @@ function fixtureRun({ drift = false, malformed = false, volumeIdentityDrift = fa
     }
     if (joined === `container inspect ${A}`) {
       containerInspections += 1;
-      const labels = tuple('compose_container', safetyDrift === 'ownership_label' && containerInspections > 1
-        ? { 'io.sanctuary.cleanup-policy': 'retain' } : {});
+      const labels = tuple('compose_container', {
+        'io.sanctuary.lifecycle': lifecycle,
+        ...(safetyDrift === 'ownership_label' && containerInspections > 1
+          ? { 'io.sanctuary.cleanup-policy': 'retain' } : {}),
+      });
       return malformed ? '{' : JSON.stringify([{ Id: A, State: { Running: true }, Config: { Labels: labels } }]);
     }
     if (joined === `container inspect ${B}`) return JSON.stringify([{ Id: B, State: { Running: false }, Config: { Labels: { 'com.docker.compose.project': 'sanctuary', 'com.docker.compose.service': 'old' } } }]);
@@ -132,9 +147,11 @@ test('exact selectors are unioned, inspections retain immutable IDs, and safety 
   assert.deepEqual(image.runtime.contentDigests, ['d'.repeat(64)]);
   const builder = result.resources.find((row) => row.resourceClass === 'buildkit_cache');
   assert.deepEqual(builder.classifications, ['default_builder', 'protected', 'registered', 'shared']);
-  const firstList = fixture.calls.find((call) => call.args[0] === 'container' && call.args.includes('label=io.sanctuary.owner-id=one'));
-  assert.ok(firstList.args.includes('label=io.sanctuary.project=sanctuary'));
-  assert.ok(firstList.args.includes('label=io.sanctuary.resource-class=compose_container'));
+  const firstList = fixture.calls.find((call) => call.effectiveArgs[0] === 'container'
+    && call.effectiveArgs.includes('label=io.sanctuary.owner-id=one'));
+  assert.deepEqual(firstList.args.slice(0, 2), ['--host', 'unix:///run/docker-fixture.sock']);
+  assert.ok(firstList.effectiveArgs.includes('label=io.sanctuary.project=sanctuary'));
+  assert.ok(firstList.effectiveArgs.includes('label=io.sanctuary.resource-class=compose_container'));
 });
 
 test('list-inspect-relist drift and malformed output become categorical ambiguity', () => {
@@ -149,6 +166,75 @@ test('list-inspect-relist drift and malformed output become categorical ambiguit
   assert.equal(ambiguous.ambiguities[0].category, 'malformed_output');
 });
 
+test('daemon drift reports only the changed authority field name', () => {
+  let infoCalls = 0;
+  const result = observeDockerResources({
+    runCommand(_engine, args) {
+      const effectiveArgs = withoutPinnedContext(args);
+      const joined = effectiveArgs.join(' ');
+      if (joined === 'context show') return 'default\n';
+      if (joined.startsWith('context inspect default --format')) return JSON.stringify({
+        Name: 'default',
+        Endpoints: { docker: { Host: 'unix:///run/docker-fixture.sock', SkipTLSVerify: false } },
+        TLSMaterial: {},
+      });
+      if (joined.startsWith('version --format')) return JSON.stringify({ Server: { Version: '29.0.0' } });
+      if (joined.startsWith('info --format')) {
+        infoCalls += 1;
+        return JSON.stringify({ DockerRootDir: `/private/daemon-${infoCalls}` });
+      }
+      throw new Error(`unexpected command: ${joined}`);
+    },
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.ambiguities[0].operation, 'Docker daemon/context authority (info.DockerRootDir)');
+  assert.doesNotMatch(JSON.stringify(result), /private-daemon/);
+});
+
+test('top-level daemon ID churn is non-authoritative but stale authority policy is refused', () => {
+  const fixture = fixtureRun();
+  let infoCalls = 0;
+  const runCommand = (engine, args, options) => {
+    const effectiveArgs = withoutPinnedContext(args);
+    if (effectiveArgs[0] === 'info') {
+      infoCalls += 1;
+      return JSON.stringify({ ID: `request-${infoCalls}`, DockerRootDir: '/var/lib/docker' });
+    }
+    return fixture.run(engine, args, options);
+  };
+  const stable = observeDockerResources({ runCommand });
+  assert.equal(stable.complete, true);
+  assert.ok(infoCalls >= 3);
+  const authority = resolveDockerDaemonContext({ runCommand });
+  const stale = observeDockerResources({
+    runCommand, daemonAuthority: { ...authority, daemonAuthorityPolicy: 'legacy.v1' },
+  });
+  assert.equal(stale.complete, false);
+  assert.equal(stale.ambiguities[0].category, 'identity_changed');
+  assert.equal(stale.resources.length, 0);
+});
+
+test('container observations reject missing or non-boolean running state as malformed', () => {
+  for (const running of [undefined, 'false', null, 0]) {
+    const fixture = fixtureRun();
+    const result = observeDockerResources({
+      selectors: { compose_container: selectors.compose_container.slice(0, 1) },
+      runCommand(executable, args, options) {
+        const output = fixture.run(executable, args, options);
+        const effectiveArgs = withoutPinnedContext(args);
+        if (effectiveArgs[0] !== 'container' || effectiveArgs[1] !== 'inspect') return output;
+        const parsed = JSON.parse(output);
+        if (running === undefined) delete parsed[0].State.Running;
+        else parsed[0].State.Running = running;
+        return JSON.stringify(parsed);
+      },
+    });
+    assert.equal(result.complete, false, String(running));
+    assert.equal(result.resources.length, 0, String(running));
+    assert.ok(result.ambiguities.every((entry) => entry.category === 'malformed_output'), String(running));
+  }
+});
+
 test('query failures stay categorical instead of becoming empty inventories', () => {
   const result = observeDockerResources({
     selectors: { compose_network: [{ locator: N }] },
@@ -160,11 +246,27 @@ test('query failures stay categorical instead of becoming empty inventories', ()
 });
 
 test('a running container from a non-current exact-delete run remains observable as eligible', () => {
-  const fixture = fixtureRun();
+  const fixture = fixtureRun({ lifecycle: 'obsolete' });
   const result = observeDockerResources({
     selectors: { compose_container: selectors.compose_container.slice(0, 1) }, runCommand: fixture.run,
   });
   assert.deepEqual(result.resources[0].classifications, ['owned', 'running']);
+});
+
+test('active lifecycle ownership is current even without a coarse deployment selector', () => {
+  const fixture = fixtureRun();
+  const result = observeDockerResources({
+    selectors: { compose_container: selectors.compose_container.slice(0, 1) }, runCommand: fixture.run,
+  });
+  assert.deepEqual(result.resources[0].classifications, ['current', 'owned', 'protected', 'running']);
+});
+
+test('shared lifecycle ownership is protected without relying on registration fanout', () => {
+  const fixture = fixtureRun({ lifecycle: 'shared' });
+  const result = observeDockerResources({
+    selectors: { compose_container: selectors.compose_container.slice(0, 1) }, runCommand: fixture.run,
+  });
+  assert.deepEqual(result.resources[0].classifications, ['owned', 'protected', 'running', 'shared']);
 });
 
 test('invalid ownership label values are categorical malformed rows, not schema crashes', () => {
@@ -174,7 +276,8 @@ test('invalid ownership label values are categorical malformed rows, not schema 
     selectors: { compose_container: selectors.compose_container.slice(0, 1) },
     runCommand(executable, args, options) {
       const output = originalRun(executable, args, options);
-      if (args[0] !== 'container' || args[1] !== 'inspect') return output;
+      const effectiveArgs = withoutPinnedContext(args);
+      if (effectiveArgs[0] !== 'container' || effectiveArgs[1] !== 'inspect') return output;
       const parsed = JSON.parse(output);
       parsed[0].Config.Labels['io.sanctuary.created-by-commit'] = 'not-a-commit';
       return JSON.stringify(parsed);
@@ -191,7 +294,8 @@ test('JSON-valid malformed image reference fields become categorical ambiguity',
     registrations: [{ resourceClass: 'oci_image', immutableIdentity: IMAGE, locator: IMAGE, operationRunId: 'run' }],
     runCommand(executable, args, options) {
       const output = fixture.run(executable, args, options);
-      if (args[0] !== 'image' || args[1] !== 'inspect') return output;
+      const effectiveArgs = withoutPinnedContext(args);
+      if (effectiveArgs[0] !== 'image' || effectiveArgs[1] !== 'inspect') return output;
       const parsed = JSON.parse(output);
       parsed[0].RepoDigests = 'not-an-array';
       return JSON.stringify(parsed);

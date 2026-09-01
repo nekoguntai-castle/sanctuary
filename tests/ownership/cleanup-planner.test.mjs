@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalSha256 } from '../../scripts/ownership/canonical-json.mjs';
-import { buildCleanupApproval, verifyCleanupApproval } from '../../scripts/ownership/cleanup-approval.mjs';
+import {
+  buildCleanupApproval, verifyCleanupApproval, verifyReservedCleanupApproval,
+} from '../../scripts/ownership/cleanup-approval.mjs';
 import { buildCleanupPlan, buildPlanningReceipt } from '../../scripts/ownership/cleanup-planner.mjs';
 
 const HASH = 'a'.repeat(64);
@@ -19,13 +21,14 @@ function resource(resourceClass, immutableIdentity, overrides = {}) {
     resourceClass, locatorKind: 'engine_id', locator: immutableIdentity, immutableIdentity,
     ownership, ownershipDigest: canonicalSha256(ownership), observationDigest: HASH,
     disposition: 'eligible', failureClasses: [], references: [], contentDigests: [],
+    running: resourceClass === 'compose_container' ? true : null,
     active: false, protected: false, data: false, ...overrides,
   };
 }
 
 function inventory(overrides = {}) {
   return {
-    schemaVersion: '1.1.0', artifactType: 'inventory', deploymentId: 'deploy-1',
+    schemaVersion: '1.2.0', artifactType: 'inventory', deploymentId: 'deploy-1',
     operationRunId: 'cleanup-1', generation: 2, observedAt: '2026-08-30T00:00:01.000Z',
     complete: true, policyDigest: HASH, deploymentManifestDigest: HASH,
     runManifestDigest: HASH, contextFingerprint: HASH,
@@ -35,8 +38,8 @@ function inventory(overrides = {}) {
 }
 
 const contract = { resourceClasses: [
-  { classId: 'compose_container', dependsOn: [] },
-  { classId: 'compose_network', dependsOn: ['compose_container'] },
+  { classId: 'compose_container', dependsOn: [], cleanupPolicies: ['exact_delete'] },
+  { classId: 'compose_network', dependsOn: ['compose_container'], cleanupPolicies: ['exact_delete'] },
 ] };
 
 test('planner emits stable dependency and action order with a signed-receipt-ready binding', () => {
@@ -83,6 +86,9 @@ test('approval copies the exact plan and enforces expiry, context, and dry-run s
   assert.throws(() => verifyCleanupApproval(approval, plan, receipt, {
     now: new Date('2026-08-30T00:00:09.000Z'),
   }), /not yet valid/);
+  assert.doesNotThrow(() => verifyReservedCleanupApproval(approval, plan, receipt, {
+    expectedContextFingerprint: HASH,
+  }));
 });
 
 test('a known policy mismatch produces a signed-receipt-ready refusal instead of ambiguity', () => {
@@ -94,4 +100,27 @@ test('a known policy mismatch produces a signed-receipt-ready refusal instead of
   const receipt = buildPlanningReceipt(refusedInventory, plan, { signerKeyId: KEY, now: () => NOW });
   assert.equal(receipt.state, 'refused');
   assert.deepEqual(receipt.refusals.map((entry) => entry.failureClass), ['policy_mismatch']);
+});
+
+test('planner never turns self-evidence or provider publication into delete actions', () => {
+  for (const [resourceClass, locatorKind] of [
+    ['cleanup_evidence', 'path'],
+    ['provider_publication', 'provider_id'],
+  ]) {
+    const identity = `${resourceClass}-1`;
+    const ownership = {
+      ...resource(resourceClass, identity).ownership, cleanupPolicy: 'exact_delete',
+    };
+    const unsafe = resource(resourceClass, identity, {
+      locatorKind, locator: identity, ownership,
+      ownershipDigest: canonicalSha256(ownership),
+    });
+    const policyContract = { resourceClasses: [{
+      classId: resourceClass, dependsOn: [], cleanupPolicies: ['exact_delete'],
+    }] };
+    assert.throws(
+      () => buildCleanupPlan(inventory({ resources: [unsafe] }), policyContract, { policyDigest: HASH }),
+      new RegExp(`${resourceClass} is a protected cleanup artifact and cannot be deleted`),
+    );
+  }
 });

@@ -2,6 +2,7 @@ import { canonicalSha256 } from './canonical-json.mjs';
 import { ARTIFACT_SCHEMA_VERSIONS, validateArtifact } from './schemas.mjs';
 
 const ACTION_ORDER = Object.freeze({ stop: 0, remove: 1, reconcile: 2, retain: 3 });
+const SELF_CLEANUP_PROHIBITED = new Set(['cleanup_evidence', 'provider_publication']);
 
 function classOrder(resourceClasses) {
   const byId = new Map(resourceClasses.map((entry) => [entry.classId, entry]));
@@ -23,8 +24,14 @@ function classOrder(resourceClasses) {
   return new Map(ordered.map((classId, index) => [classId, index]));
 }
 
-function plannedActions(resource) {
+function plannedActions(resource, policy) {
   if (resource.disposition !== 'eligible') return [];
+  if (SELF_CLEANUP_PROHIBITED.has(resource.resourceClass)) {
+    throw new Error(`${resource.resourceClass} is a protected cleanup artifact and cannot be deleted`);
+  }
+  if (!Array.isArray(policy.cleanupPolicies) || !policy.cleanupPolicies.includes('exact_delete')) {
+    throw new Error(`eligible ${resource.resourceClass} cannot be deleted by its ownership policy`);
+  }
   if (resource.resourceClass === 'compose_container') return ['stop', 'remove'];
   if (resource.resourceClass === 'collector_process') return ['stop'];
   return ['remove'];
@@ -66,11 +73,13 @@ export function buildCleanupPlan(inventory, ownershipContract, {
   validateArtifact(inventory);
   if (policyDigest !== inventory.policyDigest) throw new Error('ownership contract digest does not match inventory policy');
   const order = classOrder(ownershipContract.resourceClasses);
+  const policies = new Map(ownershipContract.resourceClasses.map((entry) => [entry.classId, entry]));
   const hasAmbiguity = !inventory.complete
     || inventory.ambiguities.length > 0
     || inventory.resources.some((entry) => entry.disposition === 'ambiguous');
   const candidates = hasAmbiguity ? [] : inventory.resources
-    .flatMap((resource) => plannedActions(resource).map((action) => actionFrom(resource, action)))
+    .flatMap((resource) => plannedActions(resource, policies.get(resource.resourceClass))
+      .map((action) => actionFrom(resource, action)))
     .sort((left, right) => compareActions(order, left, right));
   const actions = candidates.map((action, index) => ({ sequence: index + 1, ...action }));
   const plan = {

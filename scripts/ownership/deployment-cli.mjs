@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, parseStrictJson } from './canonical-json.mjs';
+import { assertNoActiveCleanup } from './deployment-cleanup-gate.mjs';
 import { composeArguments, diagnoseLegacyDeployment, resolveDeploymentDefinition } from './deployment-definition.mjs';
 import {
   acquireDeploymentLock, heartbeatDeploymentLock, inspectDeploymentLock, recoverStaleDeploymentLock, releaseDeploymentLock,
@@ -85,16 +86,40 @@ function lockAcquireCommand(request) {
     operationRunId: request.operationRunId, journalPath: request.journalPath,
     generation: request.generation, controllerPid, now: () => acquiredAt,
   });
+  let deploymentOwner = null;
   try {
-    const owner = acquireDeploymentLock(store.lockPath, {
+    deploymentOwner = acquireDeploymentLock(store.lockPath, {
       operationRunId: request.operationRunId, journalPath: request.journalPath,
       generation: request.generation, controllerPid, token: projectOwner.token, now: () => acquiredAt,
     });
-    output(owner);
+    assertNoActiveCleanup(request);
+    output(deploymentOwner);
   } catch (error) {
-    releaseProjectMutationLock(request.runtimeDirectory, project, projectOwner.token, request.operationRunId);
+    try {
+      releaseMutationLocks({
+        store, runtimeDirectory: request.runtimeDirectory, project,
+        token: projectOwner.token, operationRunId: request.operationRunId,
+        releaseDeployment: deploymentOwner !== null,
+      });
+    } catch (releaseError) {
+      throw new AggregateError([error, releaseError], 'lock acquisition failed and lock release was incomplete');
+    }
     throw error;
   }
+}
+
+function releaseMutationLocks({
+  store, runtimeDirectory, project, token, operationRunId, releaseDeployment = true,
+}) {
+  const errors = [];
+  if (releaseDeployment) {
+    try { releaseDeploymentLock(store.lockPath, token, operationRunId); } catch (error) { errors.push(error); }
+  }
+  try {
+    releaseProjectMutationLock(runtimeDirectory, project, token, operationRunId);
+  } catch (error) { errors.push(error); }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'failed to release deployment mutation locks');
 }
 
 function lockInspectCommand(request) {
@@ -113,8 +138,10 @@ function lockReleaseCommand(request) {
   );
   const store = storeFrom(request);
   const project = projectFor(store, request.composeProjectName);
-  releaseDeploymentLock(store.lockPath, request.lockToken, request.operationRunId);
-  releaseProjectMutationLock(request.runtimeDirectory, project, request.lockToken, request.operationRunId);
+  releaseMutationLocks({
+    store, runtimeDirectory: request.runtimeDirectory, project,
+    token: request.lockToken, operationRunId: request.operationRunId,
+  });
   output({ released: true });
 }
 

@@ -54,14 +54,11 @@ export function buildCleanupApproval(plan, dryRunReceipt, {
   return approval;
 }
 
-export function verifyCleanupApproval(approval, plan, dryRunReceipt, {
-  now = new Date(),
+export function verifyCleanupApprovalScope(approval, plan, dryRunReceipt, {
   expectedContextFingerprint,
 } = {}) {
-  validateArtifact(approval, { now });
+  validateArtifact(approval, { now: new Date(approval.issuedAt) });
   assertPlanReceipt(plan, dryRunReceipt);
-  if (new Date(approval.issuedAt) > now) throw new Error('cleanup approval is not yet valid');
-  if (new Date(approval.expiresAt) <= now) throw new Error('cleanup approval has expired');
   const expected = buildCleanupApproval(plan, dryRunReceipt, {
     signerKeyId: approval.signerKeyId,
     nonce: approval.nonce,
@@ -75,3 +72,18 @@ export function verifyCleanupApproval(approval, plan, dryRunReceipt, {
   }
   return approval;
 }
+
+export function verifyUnusedCleanupApproval(approval, plan, dryRunReceipt, {
+  now = new Date(), expectedContextFingerprint,
+} = {}) {
+  verifyCleanupApprovalScope(approval, plan, dryRunReceipt, { expectedContextFingerprint });
+  if (new Date(approval.issuedAt) > now) throw new Error('cleanup approval is not yet valid');
+  if (new Date(approval.expiresAt) <= now) throw new Error('cleanup approval has expired');
+  return approval;
+}
+
+export function verifyReservedCleanupApproval(approval, plan, dryRunReceipt, options = {}) {
+  return verifyCleanupApprovalScope(approval, plan, dryRunReceipt, options);
+}
+
+export const verifyCleanupApproval = verifyUnusedCleanupApproval;

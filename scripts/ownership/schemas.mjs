@@ -10,6 +10,12 @@ import {
 import { CLEANUP_POLICIES, RESOURCE_CLASSES } from './contracts.mjs';
 import { canonicalSha256 } from './canonical-json.mjs';
 import {
+  CLEANUP_ACTIONS as ACTIONS, CLEANUP_FAILURE_CLASSES,
+  CLEANUP_LOCATOR_KINDS as LOCATOR_KINDS, CLEANUP_RESULTS as RESULTS,
+  CLEANUP_STATES as STATES,
+} from './cleanup-schema-contract.mjs';
+import { validateExecutionReceipt } from './execution-receipt-schema.mjs';
+import {
   validateDeployment, validateRegistration, validateRun,
 } from './manifest-schema-validators.mjs';
 
@@ -18,20 +24,15 @@ export const ARTIFACT_TYPES = [
   'cleanup_approval', 'approval_state', 'journal_record', 'cleanup_receipt', 'cleanup_receipt_upload',
 ];
 const CLEANUP_SCHEMA_VERSION = '1.1.0';
+const CLEANUP_EXECUTION_SCHEMA_VERSION = '1.2.0';
 const CLEANUP_V11_TYPES = new Set(['inventory', 'cleanup_plan', 'cleanup_approval', 'cleanup_receipt']);
 export const ARTIFACT_SCHEMA_VERSIONS = Object.freeze(Object.fromEntries(
-  ARTIFACT_TYPES.map((artifactType) => [artifactType, CLEANUP_V11_TYPES.has(artifactType) ? CLEANUP_SCHEMA_VERSION : '1.0.0']),
+  ARTIFACT_TYPES.map((artifactType) => [artifactType, artifactType === 'inventory'
+    ? CLEANUP_EXECUTION_SCHEMA_VERSION
+    : CLEANUP_V11_TYPES.has(artifactType) ? CLEANUP_SCHEMA_VERSION : '1.0.0']),
 ));
-const STATES = ['dry_run', 'no_op', 'cleaned', 'partial', 'cancelled', 'refused', 'ambiguous', 'recovered'];
-const RESULTS = ['pending', 'cleaned', 'absent', 'retained', 'refused', 'ambiguous', 'failed'];
-const ACTIONS = ['stop', 'remove', 'reconcile', 'retain'];
-export const CLEANUP_FAILURE_CLASSES = [
-  'none', 'identity_changed', 'active', 'current', 'shared', 'protected', 'data', 'unlabeled',
-  'unregistered', 'referenced', 'default_builder', 'policy_retained', 'policy_mismatch', 'malformed',
-  'query_failed', 'unsupported', 'mutation_failed', 'postcondition_failed', 'cancelled',
-];
+export { CLEANUP_FAILURE_CLASSES } from './cleanup-schema-contract.mjs';
 const FAILURE_CLASSES = CLEANUP_FAILURE_CLASSES;
-const LOCATOR_KINDS = ['authority', 'engine_id', 'name', 'path', 'provider_id', 'reference'];
 const DISPOSITIONS = ['eligible', 'retain', 'refused', 'ambiguous'];
 const PLANNING_STATES = ['dry_run', 'no_op', 'refused', 'ambiguous'];
 const MAX_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
@@ -200,12 +201,22 @@ function validateReceipt(value, now) {
   digest(value.signerKeyId, '$.signerKeyId');
 }
 
-function validateInventoryResource(value, path) {
-  object(value, path, [
+function validateInventoryRunning(value, path, includeRunning) {
+  if (!includeRunning) return;
+  if (value.resourceClass === 'compose_container') {
+    boolean(value.running, `${path}.running`);
+    return;
+  }
+  if (value.running !== null) throw new Error(`${path}.running must be null for non-container resources`);
+}
+
+function validateInventoryResource(value, path, { includeRunning = false } = {}) {
+  const keys = [
     'resourceClass', 'locatorKind', 'locator', 'immutableIdentity', 'ownership',
     'ownershipDigest', 'observationDigest', 'disposition', 'failureClasses',
     'references', 'contentDigests', 'active', 'protected', 'data',
-  ]);
+  ];
+  object(value, path, includeRunning ? [...keys, 'running'] : keys);
   enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
   enumeration(value.locatorKind, `${path}.locatorKind`, LOCATOR_KINDS);
   string(value.locator, `${path}.locator`, { max: 1024 });
@@ -243,6 +254,7 @@ function validateInventoryResource(value, path) {
   boolean(value.active, `${path}.active`);
   boolean(value.protected, `${path}.protected`);
   boolean(value.data, `${path}.data`);
+  validateInventoryRunning(value, path, includeRunning);
 }
 
 function validateAmbiguity(value, path) {
@@ -255,11 +267,19 @@ function validateAmbiguity(value, path) {
 }
 
 function validateInventoryV11(value) {
+  validateInventoryCurrent(value, CLEANUP_SCHEMA_VERSION, false);
+}
+
+function validateInventoryV12(value) {
+  validateInventoryCurrent(value, CLEANUP_EXECUTION_SCHEMA_VERSION, true);
+}
+
+function validateInventoryCurrent(value, schemaVersion, includeRunning) {
   base(value, 'inventory', [
     'deploymentId', 'operationRunId', 'generation', 'observedAt', 'complete',
     'policyDigest', 'deploymentManifestDigest', 'runManifestDigest',
     'contextFingerprint', 'resources', 'ambiguities',
-  ], CLEANUP_SCHEMA_VERSION);
+  ], schemaVersion);
   identifier(value.deploymentId, '$.deploymentId');
   identifier(value.operationRunId, '$.operationRunId');
   integer(value.generation, '$.generation', { min: 1 });
@@ -267,7 +287,9 @@ function validateInventoryV11(value) {
   boolean(value.complete, '$.complete');
   for (const key of ['policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint']) digest(value[key], `$.${key}`);
   const resources = array(value.resources, '$.resources', { max: 10_000 });
-  resources.forEach((entry, index) => validateInventoryResource(entry, `$.resources[${index}]`));
+  resources.forEach((entry, index) => validateInventoryResource(
+    entry, `$.resources[${index}]`, { includeRunning },
+  ));
   unique(resources.map((entry) => `${entry.resourceClass}:${entry.immutableIdentity}`), '$.resources identity');
   const ambiguities = array(value.ambiguities, '$.ambiguities', { max: 10_000 });
   ambiguities.forEach((entry, index) => validateAmbiguity(entry, `$.ambiguities[${index}]`));
@@ -289,7 +311,7 @@ function validatePlanV11(value) {
   identifier(value.operationRunId, '$.operationRunId');
   timestamp(value.createdAt, '$.createdAt');
   for (const key of ['inventoryDigest', 'policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint']) digest(value[key], `$.${key}`);
-  const actions = array(value.actions, '$.actions', { max: 10_000 });
+  const actions = array(value.actions, '$.actions', { max: 3_000 });
   validateCleanupActions(actions, '$.actions');
 }
 
@@ -308,7 +330,7 @@ function validateApprovalV11(value) {
   if (expires - issued > MAX_APPROVAL_TTL_MS) throw new Error('$.expiresAt exceeds the maximum approval lifetime');
   identifier(value.nonce, '$.nonce');
   for (const key of ['dryRunReceiptDigest', 'planDigest', 'policyDigest', 'deploymentManifestDigest', 'runManifestDigest', 'contextFingerprint', 'signerKeyId']) digest(value[key], `$.${key}`);
-  const actions = array(value.actions, '$.actions', { min: 1, max: 10_000 });
+  const actions = array(value.actions, '$.actions', { min: 1, max: 3_000 });
   validateCleanupActions(actions, '$.actions');
   const permittedClasses = array(value.permittedClasses, '$.permittedClasses', { min: 1, max: RESOURCE_CLASSES.length });
   sortedUniqueStrings(permittedClasses, '$.permittedClasses', (entry, entryPath) => (
@@ -382,9 +404,9 @@ function validatePlanningReceipt(value, now) {
   integer(value.journalBytes, '$.journalBytes');
   integer(value.journalRecords, '$.journalRecords');
   if (value.journalBytes !== 0 || value.journalRecords !== 0) throw new Error('planning receipts cannot contain a journal');
-  const actions = array(value.actions, '$.actions', { max: 10_000 });
+  const actions = array(value.actions, '$.actions', { max: 3_000 });
   validateCleanupActions(actions, '$.actions');
-  const results = array(value.results, '$.results', { max: 10_000 });
+  const results = array(value.results, '$.results', { max: 3_000 });
   results.forEach((entry, index) => cleanupResult(entry, `$.results[${index}]`));
   ordered(results, '$.results');
   const refusals = array(value.refusals, '$.refusals', { max: 10_000 });
@@ -427,12 +449,19 @@ const CLEANUP_V11_VALIDATORS = {
   cleanup_receipt: validatePlanningReceipt,
 };
 
+const CLEANUP_V12_VALIDATORS = {
+  inventory: validateInventoryV12,
+  cleanup_receipt: validateExecutionReceipt,
+};
+
 export function validateArtifact(value, { now = new Date() } = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('$ must be an object');
   enumeration(value.artifactType, '$.artifactType', ARTIFACT_TYPES);
-  const validator = value.schemaVersion === CLEANUP_SCHEMA_VERSION
-    ? CLEANUP_V11_VALIDATORS[value.artifactType]
-    : VALIDATORS[value.artifactType];
+  const validator = value.schemaVersion === CLEANUP_EXECUTION_SCHEMA_VERSION
+    ? CLEANUP_V12_VALIDATORS[value.artifactType]
+    : value.schemaVersion === CLEANUP_SCHEMA_VERSION
+      ? CLEANUP_V11_VALIDATORS[value.artifactType]
+      : VALIDATORS[value.artifactType];
   if (!validator) throw new Error(`$.schemaVersion is not supported for ${value.artifactType}`);
   validator(value, now);
   return value;

@@ -1,13 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync, statSync, symlinkSync, utimesSync, writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
 import { assertKeyPair, publicKeyFingerprint, signDetached, verifyDetached } from '../../scripts/ownership/crypto.mjs';
 import { assertLocalPrivateSafe, assertUploadSafe } from '../../scripts/ownership/privacy.mjs';
-import { readExternalFile, writeExternalFileAtomic } from '../../scripts/ownership/safe-file.mjs';
+import {
+  descriptorReadIsStable, readExternalFile, writeExternalFileAtomic,
+} from '../../scripts/ownership/safe-file.mjs';
 import { validateArtifact } from '../../scripts/ownership/schemas.mjs';
 
 const checkoutRoot = path.resolve(import.meta.dirname, '../..');
@@ -47,6 +51,23 @@ test('safe evidence IO is bounded, no-follow, external, immutable, and mode 0600
   symlinkSync(target, link);
   assert.throws(() => readExternalFile(link, { checkoutRoot }), /non-symlink/);
   assert.throws(() => readExternalFile(import.meta.filename, { checkoutRoot }), /outside the checkout/);
+});
+
+test('stable descriptor reads reject same-inode same-length in-place rewrites', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-stable-read-'));
+  const target = path.join(root, 'evidence.json');
+  writeFileSync(target, 'old');
+  utimesSync(target, new Date('2026-08-30T00:00:00.000Z'), new Date('2026-08-30T00:00:00.000Z'));
+  const opened = statSync(target);
+
+  writeFileSync(target, 'new');
+  utimesSync(target, new Date('2026-08-30T00:00:01.000Z'), new Date('2026-08-30T00:00:01.000Z'));
+  const after = statSync(target);
+
+  assert.equal(after.dev, opened.dev);
+  assert.equal(after.ino, opened.ino);
+  assert.equal(after.size, opened.size);
+  assert.equal(descriptorReadIsStable(opened, after, after.size), false);
 });
 
 test('RSA signatures bind exact bytes, explicit key, and DER-SPKI fingerprint', () => {

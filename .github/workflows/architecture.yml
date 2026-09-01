@@ -227,6 +227,17 @@ jobs:
           npm run test:ownership
           INNER
 
+      - name: Prove exact cleanup against real Docker
+        if: steps.scope.outputs.core == 'true'
+        env:
+          SANCTUARY_RUN_DOCKER_ACCEPTANCE: 'true'
+        run: |
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/cleanup-docker-acceptance.log" \
+            bash -euo pipefail <<'INNER'
+          cd "$ARCH_WORKDIR"
+          node --test tests/ownership/cleanup-docker-real.test.mjs
+          INNER
+
       - name: Enforce repository-owned Prisma access
         if: steps.scope.outputs.core == 'true'
         run: |

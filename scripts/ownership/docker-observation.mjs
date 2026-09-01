@@ -1,6 +1,9 @@
 import { canonicalSha256 } from './canonical-json.mjs';
 import { commandAmbiguity, runCleanupCommand } from './cleanup-command.mjs';
 import { CLEANUP_POLICIES } from './contracts.mjs';
+import { DOCKER_DAEMON_AUTHORITY_POLICY, dockerDaemonDriftOperation,
+  observeResolvedDockerDaemonEvidence, resolveDockerDaemonContext,
+} from './cleanup-execution-context.mjs';
 import { commit, enumeration, identifier, timestamp } from './validation.mjs';
 
 export const DOCKER_RESOURCE_CLASSES = [
@@ -14,6 +17,7 @@ export const REQUIRED_OWNERSHIP_LABELS = [
   'io.sanctuary.created-by-commit', 'io.sanctuary.creation-run-id',
 ];
 
+const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const KINDS = {
   compose_container: { noun: 'container', list: ['container', 'ls', '--all', '--no-trunc'], format: '{{.ID}}' },
   compose_network: { noun: 'network', list: ['network', 'ls', '--no-trunc'], format: '{{.ID}}' },
@@ -137,10 +141,6 @@ function listArgs(resourceClass, selector) {
 function listedLocators(run, engine, resourceClass, selectors) {
   const union = new Set();
   for (const selector of selectors) {
-    if (selector.locator && resourceClass === 'oci_image') {
-      union.add(dockerImmutableIdentity(resourceClass, inspectOne(run, engine, resourceClass, selector.locator)));
-      continue;
-    }
     const selected = lines(query(run, engine, listArgs(resourceClass, selector), `${resourceClass} list`));
     for (const locator of selector.locator ? selected.filter((entry) => entry === selector.locator) : selected) union.add(locator);
   }
@@ -231,14 +231,28 @@ function registeredMetadata(options, resourceClass, immutableIdentity, locator) 
     cleanupPolicy: retained ? 'retain' : matches.at(-1).cleanupPolicy };
 }
 
-function classifyShared(result, identity, registration, options) {
+function registrationProof(registration) {
+  if (!registration.resourceClass) return null;
+  const keys = [
+    'registrationId', 'deploymentId', 'operationRunId', 'ownerId', 'resourceClass',
+    'lifecycle', 'cleanupPolicy', 'locatorKind', 'locator', 'immutableIdentity',
+    'metadataDigest', 'referenceIds', 'signerKeyId',
+  ];
+  return Object.fromEntries(keys.filter((key) => registration[key] !== undefined)
+    .map((key) => [key, registration[key]]));
+}
+
+function classifyShared(result, labels, identity, registration, options) {
   if ((registration.ownerIds?.length ?? 0) > 1 || (registration.referenceIds?.length ?? 0) > 1
+      || labels['io.sanctuary.lifecycle'] === 'shared'
       || registration.lifecycle === 'shared' || options.sharedImmutableIdentities?.includes(identity)) result.add('shared');
 }
 
 function classifyCurrentAndProtected(result, labels, registration, options) {
   const currentIds = options.currentDeploymentIds ?? (options.currentDeploymentId ? [options.currentDeploymentId] : []);
-  if (currentIds.includes(labels['io.sanctuary.deployment-id'])) result.add('current');
+  if (currentIds.includes(labels['io.sanctuary.deployment-id'])
+      || labels['io.sanctuary.lifecycle'] === 'active'
+      || registration.lifecycle === 'active') result.add('current');
   if (options.protectedProjects?.includes(labels['io.sanctuary.project']) || registration.protected === true) result.add('protected');
   if (registration.cleanupPolicy === 'retain' || registration.cleanupPolicy === 'retain_reconcile') result.add('protected');
 }
@@ -291,11 +305,11 @@ function classifications(resourceClass, record, labels, identity, locator, optio
   const result = new Set([state]);
   if (state === 'legacy_unlabeled') result.add('unlabeled');
   const registration = registeredMetadata(options, resourceClass, identity, resourceClass === 'compose_volume' ? locator : undefined);
-  classifyShared(result, identity, registration, options);
+  classifyShared(result, labels, identity, registration, options);
   classifyCurrentAndProtected(result, labels, registration, options);
   classifyProduction(result, labels, registration, options);
   if (['retain', 'retain_reconcile', 'preserve_ambiguous'].includes(labels['io.sanctuary.cleanup-policy'])) result.add('protected');
-  if (resourceClass === 'compose_container' && record.State?.Running === true) result.add('running');
+  if (resourceClass === 'compose_container' && runtime.running) result.add('running');
   if (resourceClass === 'compose_network' && runtime.endpointCount > 0) result.add('shared');
   if (resourceClass === 'compose_volume') classifyVolume(result, record, identity, registration, options, runtime);
   if (resourceClass === 'oci_image') classifyImage(result, record, identity, registration, runtime);
@@ -326,7 +340,9 @@ function relationshipState(run, engine, resourceClass, record, identity) {
     }
     return { referenceCount: new Set(refs).size, references, contentDigests, tags: [...tags].sort() };
   }
-  return { running: record.State?.Running === true };
+  const running = record.State?.Running;
+  if (typeof running !== 'boolean') throw Object.assign(new Error('container inspect lacks a boolean running state'), { category: 'malformed_output' });
+  return { running };
 }
 
 function observeLocator(context, resourceClass, locator) {
@@ -338,11 +354,14 @@ function observeLocator(context, resourceClass, locator) {
   }
   const labels = labelsFor(resourceClass, record);
   const runtime = relationshipState(run, engine, resourceClass, record, identity);
+  const registration = registeredMetadata(
+    options, resourceClass, identity, resourceClass === 'compose_volume' ? locator : undefined,
+  );
   return {
     resourceClass, locator, immutableIdentity: identity, labels,
     ownershipState: ownershipState(labels, resourceClass),
     classifications: classifications(resourceClass, record, labels, identity, locator, options, runtime),
-    runtime,
+    runtime, registration: registrationProof(registration),
   };
 }
 
@@ -412,15 +431,69 @@ function observeBuilders(context, selectors) {
   return observations;
 }
 
+function resolvedObservationAuthority(options, engine, baseRun) {
+  const authority = options.daemonAuthority
+    ?? resolveDockerDaemonContext({ engine, runCommand: baseRun });
+  if (authority?.engine !== engine || authority?.daemonAuthorityPolicy !== DOCKER_DAEMON_AUTHORITY_POLICY
+      || !DIGEST_PATTERN.test(authority?.fingerprint ?? '')
+      || !DIGEST_PATTERN.test(authority?.daemonFingerprint ?? '')) {
+    throw Object.assign(new Error('Docker pinned daemon authority is invalid'), { category: 'identity_changed' });
+  }
+  const currentDaemon = observeResolvedDockerDaemonEvidence({
+    engine, runCommand: baseRun, engineGlobalArgs: authority.engineGlobalArgs,
+  });
+  if (currentDaemon.fingerprint !== authority.daemonFingerprint) {
+    throw Object.assign(new Error('Docker pinned daemon authority changed'), {
+      category: 'identity_changed', operation: dockerDaemonDriftOperation(authority, currentDaemon),
+    });
+  }
+  return authority;
+}
+function unavailableObservation(engine, selectors, ambiguities) {
+  return { complete: false, engine, selectors,
+    daemonContextFingerprint: canonicalSha256({ engine, authority: 'unavailable' }),
+    engineGlobalArgs: [], resources: [], ambiguities,
+  };
+}
+function recheckResolvedDaemon(context, authority) {
+  try {
+    const daemonAfter = observeResolvedDockerDaemonEvidence({
+      engine: context.engine, runCommand: context.baseRun, engineGlobalArgs: authority.engineGlobalArgs,
+    });
+    if (daemonAfter.fingerprint !== authority.daemonFingerprint) {
+      context.ambiguities.push({ category: 'inventory_drift',
+        operation: dockerDaemonDriftOperation(authority, daemonAfter) });
+    }
+  } catch (error) {
+    context.ambiguities.push(commandAmbiguity(error, { operation: 'Docker daemon/context authority reinspection' }));
+  }
+}
 /** Produce a read-only, fail-closed observation. No mutation command is expressible here. */
 export function observeDockerResources(options = {}) {
   const selectors = normalizeDockerSelectors(options.selectors ?? {});
+  const engine = options.engine ?? 'docker';
+  if (!['docker', 'podman'].includes(engine)) throw new TypeError('Docker observation engine must be docker or podman');
   const context = {
-    engine: options.engine ?? 'docker', options, ambiguities: [],
-    run: options.runCommand ?? ((executable, args, commandOptions) => runCleanupCommand(executable, args, { ...options.commandOptions, ...commandOptions })),
+    engine, options, ambiguities: [],
+    baseRun: options.runCommand ?? ((executable, args, commandOptions) => runCleanupCommand(executable, args, { ...options.commandOptions, ...commandOptions })),
   };
+  let authority;
+  try {
+    authority = resolvedObservationAuthority(options, engine, context.baseRun);
+    context.run = (executable, args, commandOptions) => context.baseRun(
+      executable, [...authority.engineGlobalArgs, ...args], commandOptions,
+    );
+  } catch (error) {
+    context.ambiguities.push(commandAmbiguity(error,
+      { operation: error.operation ?? 'Docker daemon/context authority' }));
+    return unavailableObservation(engine, selectors, context.ambiguities);
+  }
   const resources = Object.keys(KINDS).flatMap((resourceClass) => observeClass(context, resourceClass, selectors[resourceClass]));
   resources.push(...observeBuilders(context, selectors.buildkit_cache));
+  recheckResolvedDaemon(context, authority);
   resources.sort((left, right) => `${left.resourceClass}:${left.locator}`.localeCompare(`${right.resourceClass}:${right.locator}`));
-  return { complete: context.ambiguities.length === 0, engine: context.engine, resources, ambiguities: context.ambiguities };
+  return { complete: context.ambiguities.length === 0, engine, selectors,
+    daemonContextFingerprint: authority.fingerprint,
+    engineGlobalArgs: authority.engineGlobalArgs, resources, ambiguities: context.ambiguities,
+  };
 }

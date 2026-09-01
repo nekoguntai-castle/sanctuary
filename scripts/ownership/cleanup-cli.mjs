@@ -1,29 +1,65 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import {
+  closeSync, constants, fstatSync, lstatSync, openSync, readFileSync,
+} from 'node:fs';
 import path from 'node:path';
-import { canonicalJson, parseStrictJson } from './canonical-json.mjs';
+import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 import { buildCleanupApproval } from './cleanup-approval.mjs';
+import { createCleanupDockerRuntime } from './cleanup-docker-runtime.mjs';
 import { createDockerCleanupAdapter } from './cleanup-docker-adapter.mjs';
+import { applyCleanupExecution } from './cleanup-execution.mjs';
 import { writeSignedArtifact, verifySignedArtifact } from './cleanup-evidence.mjs';
 import { inventoryCleanupResources } from './cleanup-inventory.mjs';
+import { deriveCleanupJournalPath } from './cleanup-journal.mjs';
+import {
+  acquireCleanupApplyLocks, acquireCleanupRecoveryLocks, releaseCleanupLocks,
+} from './cleanup-lock-controller.mjs';
 import { buildCleanupPlan, buildPlanningReceipt } from './cleanup-planner.mjs';
+import { recoverCleanupExecution } from './cleanup-recovery.mjs';
+import { verifyCleanupTrust } from './cleanup-trust.mjs';
 import { validateOwnershipContract } from './contracts.mjs';
 import { publicKeyFingerprint, sha256 } from './crypto.mjs';
 import { inspectDeploymentLock } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
 import { assertLocalPrivateSafe } from './privacy.mjs';
-import { readExternalFile, writeExternalFileAtomic } from './safe-file.mjs';
+import { readRegistrations } from './registration.mjs';
+import {
+  descriptorReadIsStable, readExternalFile, readPrivateKeyFile, writeExternalFileAtomic,
+} from './safe-file.mjs';
 import { validateArtifact } from './schemas.mjs';
 
-const EXIT = Object.freeze({ invalid: 2, ambiguous: 4, disabled: 6 });
+const EXIT = Object.freeze({ invalid: 2, conflict: 3, ambiguous: 4, partial: 5 });
+const MAX_REQUEST_BYTES = 64 * 1024;
 
 function usage() {
-  throw Object.assign(new Error('usage: cleanup-cli.mjs inventory|plan|authorize|verify|apply REQUEST.json'), { exitCode: EXIT.invalid });
+  throw Object.assign(new Error('usage: cleanup-cli.mjs inventory|plan|authorize|verify|apply|recover REQUEST.json'), { exitCode: EXIT.invalid });
 }
 
 function requestFile(args) {
   if (args.length !== 1) usage();
-  return parseStrictJson(readFileSync(path.resolve(args[0])));
+  const requestPath = path.resolve(args[0]);
+  const before = lstatSync(requestPath);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error('request must be a regular non-symlink file');
+  }
+  if (before.size > MAX_REQUEST_BYTES) throw new Error('request exceeds byte limit');
+  const descriptor = openSync(requestPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw new Error('request identity changed while opening');
+    }
+    const bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor);
+    const finalPath = lstatSync(requestPath);
+    if (!descriptorReadIsStable(opened, after, bytes.length)
+        || !finalPath.isFile() || finalPath.isSymbolicLink()
+        || !descriptorReadIsStable(opened, finalPath, bytes.length)
+        || bytes.length > MAX_REQUEST_BYTES) {
+      throw new Error('request changed while reading or exceeds byte limit');
+    }
+    return parseStrictJson(bytes);
+  } finally { closeSync(descriptor); }
 }
 
 function exactWithOptional(value, required, optional = []) {
@@ -175,21 +211,249 @@ function verifyCommand(request) {
   process.stdout.write(canonicalJson({ artifactType: artifact.artifactType, digest, verified: true }));
 }
 
-export async function run([command, ...args]) {
-  if (command === 'apply') {
-    throw Object.assign(new Error('apply is disabled until exact execution and recovery are proven in Phase 4'), { exitCode: EXIT.disabled });
+const EXECUTION_REQUIRED = Object.freeze([
+  'checkoutRoot', 'runtimeDirectory', 'deploymentId', 'ownershipContractPath',
+  'deploymentManifestPath', 'runManifestPath', 'inventoryPath', 'planPath',
+  'dryRunReceiptPath', 'approvalPath', 'evidencePrivateKeyPath',
+  'evidencePublicKeyPath', 'expectedEvidenceFingerprint',
+  'authorizationPublicKeyPath', 'expectedAuthorizationFingerprint',
+]);
+const EXECUTION_OPTIONAL = Object.freeze([
+  'receiptOutputPath', 'engine', 'sharedImmutableIdentities', 'protectedProjects',
+  'dataVolumeNames', 'timeoutMs', 'maxOutputBytes', 'subjectExitStatus',
+  'supervisorTimeoutMs', 'supervisorGraceMs', 'supervisorKillWaitMs',
+]);
+
+function executionInputs(request) {
+  verifyCleanupTrust({
+    runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+    deploymentId: request.deploymentId,
+    authorizationFingerprint: request.expectedAuthorizationFingerprint,
+    evidenceFingerprint: request.expectedEvidenceFingerprint,
+  });
+  const deploymentManifest = readCanonicalArtifact(request.deploymentManifestPath, request.checkoutRoot);
+  const runManifest = readCanonicalArtifact(request.runManifestPath, request.checkoutRoot);
+  const inventoryBefore = readCanonicalArtifact(request.inventoryPath, request.checkoutRoot);
+  const plan = readCanonicalArtifact(request.planPath, request.checkoutRoot);
+  const { artifact: dryRunReceipt } = verifySignedArtifact({
+    inputPath: request.dryRunReceiptPath, publicKeyPath: request.evidencePublicKeyPath,
+    expectedFingerprint: request.expectedEvidenceFingerprint, checkoutRoot: request.checkoutRoot,
+  });
+  const { artifact: approval } = verifySignedArtifact({
+    inputPath: request.approvalPath, publicKeyPath: request.authorizationPublicKeyPath,
+    expectedFingerprint: request.expectedAuthorizationFingerprint, checkoutRoot: request.checkoutRoot,
+  });
+  const ownership = readContract(request.ownershipContractPath, deploymentManifest.policyDigest);
+  if (request.deploymentId !== deploymentManifest.deploymentId
+      || runManifest.deploymentId !== request.deploymentId
+      || inventoryBefore.deploymentId !== request.deploymentId
+      || plan.deploymentId !== request.deploymentId
+      || approval.deploymentId !== request.deploymentId) {
+    throw new Error('execution evidence deployment identity mismatch');
   }
+  const privateKey = readPrivateKeyFile(path.resolve(request.evidencePrivateKeyPath), {
+    checkoutRoot: request.checkoutRoot,
+  });
+  const publicKey = readExternalFile(path.resolve(request.evidencePublicKeyPath), {
+    checkoutRoot: request.checkoutRoot, maxBytes: 64 * 1024,
+  });
+  return {
+    deploymentManifest, runManifest, inventoryBefore, plan, approval, dryRunReceipt,
+    ownershipContract: ownership.contract, ownershipContractDigest: ownership.digest,
+    privateKey, publicKey,
+  };
+}
+
+function inventoryLoader(request, inputs, lockOwnerDigest) {
+  const store = new DeploymentStore({
+    runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
+  });
+  return (inventoryRequest = {}) => inventoryCleanupResources({
+    deploymentManifest: inputs.deploymentManifest, runManifest: inputs.runManifest,
+    ownershipContract: inputs.ownershipContract,
+    ownershipContractDigest: inputs.ownershipContractDigest,
+    dockerAdapter: createDockerCleanupAdapter(),
+    dockerOptions: {
+      engine: request.engine, sharedImmutableIdentities: request.sharedImmutableIdentities,
+      protectedProjects: request.protectedProjects, dataVolumeNames: request.dataVolumeNames,
+      daemonAuthority: inventoryRequest.daemonAuthority,
+      commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
+    },
+    registrationRoot: path.join(path.resolve(request.runtimeDirectory), 'ownership'),
+    readDeploymentState: () => ({
+      ...store.inspect(), mutationLock: inspectDeploymentLock(store.lockPath),
+    }),
+    expectedMutationLockOwnerDigest: lockOwnerDigest,
+  });
+}
+
+function assertFreshPreflight(before, fresh) {
+  const rebound = { ...fresh, observedAt: before.observedAt };
+  if (canonicalSha256(rebound) !== canonicalSha256(before)) {
+    throw Object.assign(
+      new Error('cleanup inventory changed after approval and before reservation'),
+      { code: 'CLEANUP_AUTHORITY_AMBIGUOUS' },
+    );
+  }
+}
+
+function dockerRuntime(request, inputs, loadInventory) {
+  const registrationRoot = path.join(path.resolve(request.runtimeDirectory), 'ownership');
+  return createCleanupDockerRuntime({
+    plan: inputs.plan, deploymentManifest: inputs.deploymentManifest,
+    engine: request.engine ?? 'docker', loadInventory,
+    loadRegistrations: () => readRegistrations(registrationRoot),
+    registrationRoot,
+    observationOptions: {
+      protectedProjects: request.protectedProjects,
+      dataVolumeNames: request.dataVolumeNames,
+      sharedImmutableIdentities: request.sharedImmutableIdentities,
+      commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
+    },
+    supervisorOptions: {
+      timeoutMs: request.supervisorTimeoutMs, graceMs: request.supervisorGraceMs,
+      killWaitMs: request.supervisorKillWaitMs, maxOutputBytes: request.maxOutputBytes,
+    },
+  });
+}
+
+async function withCancellation(callback) {
+  const controller = new AbortController();
+  const handlers = new Map(['SIGINT', 'SIGTERM', 'SIGHUP'].map((name) => [
+    name, () => {
+      if (!controller.signal.aborted) controller.abort(name);
+    },
+  ]));
+  for (const [name, handler] of handlers) process.on(name, handler);
+  try { return await callback(controller.signal); } finally {
+    for (const [name, handler] of handlers) process.removeListener(name, handler);
+  }
+}
+
+function assertNotCancelled(signal) {
+  if (signal.aborted) {
+    throw Object.assign(new Error('cleanup cancelled before execution reservation'), {
+      exitCode: EXIT.ambiguous,
+    });
+  }
+}
+
+function executionOutput(result) {
+  process.stdout.write(canonicalJson({
+    state: result.state, receiptOutputPath: result.receiptOutputPath ?? null,
+    receiptDigest: result.receiptDigest ?? null, journalDigest: result.journalDigest ?? null,
+  }));
+  if (['ambiguous', 'cancelled'].includes(result.state)) process.exitCode = EXIT.ambiguous;
+  else if (['partial', 'refused'].includes(result.state)) process.exitCode = EXIT.partial;
+}
+
+async function applyCommand(request) {
+  return withCancellation(async (signal) => {
+    exactWithOptional(request, EXECUTION_REQUIRED, EXECUTION_OPTIONAL);
+    const inputs = executionInputs(request);
+    assertNotCancelled(signal);
+    const store = new DeploymentStore({
+      runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
+    });
+    const approvalDigest = canonicalSha256(inputs.approval);
+    const journalPath = deriveCleanupJournalPath({
+      runtimeDirectory: request.runtimeDirectory, approvalDigest,
+    });
+    const held = acquireCleanupApplyLocks({
+      runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
+      deploymentLockPath: store.lockPath,
+      composeProjectName: inputs.deploymentManifest.composeProjectName,
+      operationRunId: inputs.plan.operationRunId, journalPath,
+      generation: inputs.deploymentManifest.generation,
+    });
+    try {
+      assertNotCancelled(signal);
+      const loadInventory = inventoryLoader(request, inputs, held.ownerDigest);
+      assertFreshPreflight(inputs.inventoryBefore, await loadInventory());
+      assertNotCancelled(signal);
+      const runtime = dockerRuntime(request, inputs, loadInventory);
+      assertNotCancelled(signal);
+      const result = await applyCleanupExecution({
+        runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+        ...inputs, signerKeyId: request.expectedEvidenceFingerprint,
+        privateKeyPath: request.evidencePrivateKeyPath, publicKeyPath: request.evidencePublicKeyPath,
+        reloadAuthority: runtime.reloadAuthority, mutate: runtime.mutate,
+        reconcile: runtime.reconcile, buildInventoryAfter: loadInventory,
+        receiptOutputPath: request.receiptOutputPath, signal,
+        subjectExitStatus: request.subjectExitStatus ?? null,
+      });
+      executionOutput(result);
+    } finally { releaseCleanupLocks(held); }
+  });
+}
+
+async function recoverCommand(request) {
+  return withCancellation(async (signal) => {
+    exactWithOptional(request, [...EXECUTION_REQUIRED, 'controllerRunId'], EXECUTION_OPTIONAL);
+    const inputs = executionInputs(request);
+    assertNotCancelled(signal);
+    const store = new DeploymentStore({
+      runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
+    });
+    const approvalDigest = canonicalSha256(inputs.approval);
+    const journalPath = deriveCleanupJournalPath({
+      runtimeDirectory: request.runtimeDirectory, approvalDigest,
+    });
+    const acquired = acquireCleanupRecoveryLocks({
+      runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
+      deploymentLockPath: store.lockPath,
+      composeProjectName: inputs.deploymentManifest.composeProjectName,
+      originalOperationRunId: inputs.plan.operationRunId,
+      controllerRunId: request.controllerRunId, journalPath,
+      generation: inputs.deploymentManifest.generation,
+    });
+    try {
+      assertNotCancelled(signal);
+      const loadInventory = inventoryLoader(request, inputs, acquired.held.ownerDigest);
+      const runtime = dockerRuntime(request, inputs, loadInventory);
+      assertNotCancelled(signal);
+      const result = await recoverCleanupExecution({
+        runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+        ...inputs, signerKeyId: request.expectedEvidenceFingerprint,
+        privateKeyPath: request.evidencePrivateKeyPath, publicKeyPath: request.evidencePublicKeyPath,
+        controllerRunId: request.controllerRunId,
+        projectLockObservationDigest: acquired.observations.projectDigest,
+        deploymentLockObservationDigest: acquired.observations.deploymentDigest,
+        reloadAuthority: runtime.reloadAuthority, mutate: runtime.mutate,
+        reconcile: runtime.reconcile, buildInventoryAfter: loadInventory,
+        receiptOutputPath: request.receiptOutputPath, signal,
+        subjectExitStatus: request.subjectExitStatus,
+      });
+      executionOutput(result);
+    } finally { releaseCleanupLocks(acquired.held); }
+  });
+}
+
+export async function run([command, ...args]) {
   const request = requestFile(args);
   if (command === 'inventory') await inventoryCommand(request);
   else if (command === 'plan') planCommand(request);
   else if (command === 'authorize') authorizeCommand(request);
   else if (command === 'verify') verifyCommand(request);
+  else if (command === 'apply') await applyCommand(request);
+  else if (command === 'recover') await recoverCommand(request);
   else usage();
+}
+
+export function cleanupExitCode(error) {
+  if (Number.isInteger(error?.exitCode)) return error.exitCode;
+  if (error?.code === 'DEPLOYMENT_LOCK_CONFLICT'
+      || /compare-and-swap|\bcollision\b|already (?:active|pending)|\bconflict\b/.test(error?.message ?? '')) {
+    return EXIT.conflict;
+  }
+  if (error?.code === 'CLEANUP_AUTHORITY_AMBIGUOUS'
+      || /\bambiguous\b|\bliveness\b/.test(error?.message ?? '')) return EXIT.ambiguous;
+  return EXIT.invalid;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   run(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`cleanup-cli: ${error.message}\n`);
-    process.exitCode = error.exitCode ?? EXIT.invalid;
+    process.exitCode = cleanupExitCode(error);
   });
 }

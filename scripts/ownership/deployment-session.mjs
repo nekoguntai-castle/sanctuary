@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { canonicalSha256 } from './canonical-json.mjs';
+import { assertNoActiveCleanup } from './deployment-cleanup-gate.mjs';
 import { assertLegacyCleanupProjectNotCurrent } from './cleanup-legacy-guard.mjs';
 import { sha256 } from './crypto.mjs';
 import { composeArguments, resolveDeploymentDefinition } from './deployment-definition.mjs';
@@ -97,6 +98,7 @@ function lock(store, operationRunId, project = projectForSession(store)) {
     }
     assertProjectMutationLock(runtimeDirectory, project, inherited, operationRunId);
     assertDeploymentLock(store.lockPath, inherited, operationRunId);
+    assertNoActiveCleanup({ runtimeDirectory, deploymentId: required('SANCTUARY_DEPLOYMENT_ID') });
     return { token: inherited, owned: false, projectOwned: false, project };
   }
   const controllerPid = Number(required('SANCTUARY_LOCK_CONTROLLER_PID'));
@@ -110,6 +112,14 @@ function lock(store, operationRunId, project = projectForSession(store)) {
     const owner = acquireDeploymentLock(store.lockPath, {
       operationRunId, controllerPid, token: projectOwner.token, now: () => acquiredAt,
     });
+    try {
+      assertNoActiveCleanup({
+        runtimeDirectory, deploymentId: required('SANCTUARY_DEPLOYMENT_ID'),
+      });
+    } catch (error) {
+      releaseDeploymentLock(store.lockPath, owner.token, operationRunId);
+      throw error;
+    }
     return { token: owner.token, owned: true, projectOwned: !inheritedProject, project };
   } catch (error) {
     if (!inheritedProject) {
@@ -120,12 +130,19 @@ function lock(store, operationRunId, project = projectForSession(store)) {
 }
 
 function releaseLocks(store, held, operationRunId, { releaseProject = true } = {}) {
-  releaseDeploymentLock(store.lockPath, held.token, operationRunId);
-  if (releaseProject) {
-    releaseProjectMutationLock(
-      required('SANCTUARY_RUNTIME_DIR'), held.project, held.token, operationRunId,
-    );
+  const errors = [];
+  try { releaseDeploymentLock(store.lockPath, held.token, operationRunId); } catch (error) {
+    errors.push(error);
   }
+  if (releaseProject) {
+    try {
+      releaseProjectMutationLock(
+        required('SANCTUARY_RUNTIME_DIR'), held.project, held.token, operationRunId,
+      );
+    } catch (error) { errors.push(error); }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'failed to release deployment mutation locks');
 }
 
 function assertLocks(store, project = projectForSession(store)) {

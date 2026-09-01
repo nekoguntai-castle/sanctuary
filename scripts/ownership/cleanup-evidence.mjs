@@ -5,7 +5,9 @@ import {
   assertKeyPair, publicKeyFingerprint, sha256, signDetached, verifyDetached,
 } from './crypto.mjs';
 import { assertLocalPrivateSafe } from './privacy.mjs';
-import { readExternalFile, writeExternalFileAtomic } from './safe-file.mjs';
+import {
+  readExternalFile, readPrivateKeyFile, writeExternalFileAtomic,
+} from './safe-file.mjs';
 import { validateArtifact } from './schemas.mjs';
 
 function sidecarPaths(outputPath) {
@@ -18,13 +20,24 @@ function readKey(filePath, checkoutRoot) {
   return readExternalFile(path.resolve(filePath), { checkoutRoot, maxBytes: 64 * 1024 });
 }
 
+function readPrivateKey(filePath, checkoutRoot) {
+  return readPrivateKeyFile(path.resolve(filePath), { checkoutRoot });
+}
+
 function assertSigner(artifact, publicKey, expectedFingerprint) {
   const fingerprint = publicKeyFingerprint(publicKey);
   if (fingerprint !== expectedFingerprint) throw new Error('public key fingerprint does not match trusted fingerprint');
   if (artifact.signerKeyId !== fingerprint) throw new Error('artifact signerKeyId does not match trusted key');
 }
 
-export function writeSignedArtifact(artifact, {
+function exactExisting(filePath, expected, checkoutRoot) {
+  if (!existsSync(filePath)) return false;
+  const actual = readExternalFile(filePath, { checkoutRoot });
+  if (!actual.equals(expected)) throw new Error(`signed artifact output collision: ${filePath}`);
+  return true;
+}
+
+export function prepareSignedArtifact(artifact, {
   outputPath,
   privateKeyPath,
   publicKeyPath,
@@ -33,7 +46,7 @@ export function writeSignedArtifact(artifact, {
 } = {}) {
   validateArtifact(artifact);
   assertLocalPrivateSafe(artifact);
-  const privateKey = readKey(privateKeyPath, checkoutRoot);
+  const privateKey = readPrivateKey(privateKeyPath, checkoutRoot);
   const publicKey = readKey(publicKeyPath, checkoutRoot);
   assertKeyPair(privateKey, publicKey);
   assertSigner(artifact, publicKey, expectedFingerprint);
@@ -42,13 +55,37 @@ export function writeSignedArtifact(artifact, {
   const checksum = Buffer.from(sha256(bytes), 'ascii');
   const target = path.resolve(outputPath);
   const sidecars = sidecarPaths(target);
-  for (const candidate of [target, sidecars.signaturePath, sidecars.checksumPath]) {
-    if (existsSync(candidate)) throw new Error(`signed artifact output already exists: ${candidate}`);
+  const entries = [
+    [target, bytes], [sidecars.signaturePath, signature], [sidecars.checksumPath, checksum],
+  ];
+  entries.forEach(([filePath, expected]) => exactExisting(filePath, expected, checkoutRoot));
+  return {
+    outputPath: target, ...sidecars, digest: checksum.toString('ascii'), entries, checkoutRoot,
+  };
+}
+
+export function writePreparedSignedArtifact(prepared) {
+  for (let index = 0; index < prepared.entries.length; index += 1) {
+    writePreparedSignedArtifactEntry(prepared, index);
   }
-  writeExternalFileAtomic(target, bytes, { checkoutRoot });
-  writeExternalFileAtomic(sidecars.signaturePath, signature, { checkoutRoot });
-  writeExternalFileAtomic(sidecars.checksumPath, checksum, { checkoutRoot });
-  return { outputPath: target, ...sidecars, digest: checksum.toString('ascii') };
+  const { entries: _entries, checkoutRoot: _checkoutRoot, ...result } = prepared;
+  return result;
+}
+
+export function writePreparedSignedArtifactEntry(prepared, index) {
+  if (!prepared || !Array.isArray(prepared.entries)
+      || !Number.isSafeInteger(index) || index < 0 || index >= prepared.entries.length) {
+    throw new TypeError('prepared signed artifact entry index is invalid');
+  }
+  const [filePath, expected] = prepared.entries[index];
+  if (!exactExisting(filePath, expected, prepared.checkoutRoot)) {
+    writeExternalFileAtomic(filePath, expected, { checkoutRoot: prepared.checkoutRoot });
+  }
+  return filePath;
+}
+
+export function writeSignedArtifact(artifact, options = {}) {
+  return writePreparedSignedArtifact(prepareSignedArtifact(artifact, options));
 }
 
 export function verifySignedArtifact({

@@ -1,6 +1,6 @@
 # Post-v0.8.69 P0 Ownership Manifest and Cleanup-Receipt Plan
 
-Status: implementation in progress; PRs 1 and 2 plus the Compose compatibility hotfix have landed; PR 3 is in protected-check remediation
+Status: implementation in progress; PRs 1–3 plus the Compose compatibility hotfix have landed; PR 4 implementation and local acceptance are complete, with delivery pending
 Date: 2026-08-30
 Planning baseline: `origin/main` at `ee8baab03c4113c50f80183ff3aea068bc3c1ddc`
 Backlog source: `tasks/todo.md`, “P0 — telemetry, overload protection, and ownership”
@@ -465,6 +465,83 @@ Acceptance:
 
 ### PR 4 — exact execution, journal/recovery, and cleanup receipts
 
+Implementation lock (reviewed before execution work):
+
+- [x] Bind the canonical engine, daemon/context fingerprint, normalized selector
+  scope, protected/data/shared inputs, and registration snapshot digest through
+  inventory, plan, approval, journal, and receipt. Apply recomputes that context
+  and refuses drift; a caller-selected engine string is never sufficient authority.
+- [x] Add owner-only, no-follow execution storage derived only from the approval
+  digest. Its CAS state is `unused -> reserved -> finalized`; its append-only,
+  fsynced journal is hash-chained, signs every checkpoint, and binds the approval,
+  operation, ordered action, expected identity/ownership, fresh observation,
+  result, and reconciliation state.
+- [x] Persist a deployment-scoped active-cleanup pointer outside the mutation-lock
+  directory. Start, deploy, rollback, and a second cleanup refuse an unmatched
+  pointer even after a crashed controller's stale locks are recovered.
+  Create/fsync the journal, CAS this pointer, then reserve the approval; recovery
+  may clear an exact pre-reservation pointer without mutation, while any reserved
+  pointer remains blocking until exact recovery finalizes it.
+  Its owner-only/no-follow payload binds approval digest, original operation,
+  immutable journal genesis/identity digest, and generation; recovery derives the
+  live head only by verifying the signed chain, so the pointer never races a
+  mutable journal head. Keep it through finalized-state and all
+  exact receipt/signature/checksum writes, then CAS-tombstone it only after those
+  bytes verify. Recovery reconciles every pointer/reservation partial combination
+  under both locks; deploy, rollback, start, and another cleanup refuse every live
+  or incomplete combination and may only reconcile a fully verified terminal one.
+- [x] Break the receipt/state digest cycle by defining `receiptCoreDigest` over the
+  validated execution receipt with `approvalStateDigest` set to `null`. The
+  finalized approval state binds that digest; the signed terminal envelope then
+  adds the finalized approval-state digest. Recovery recomputes this exact core and
+  never mutates after a finalized transition.
+- [x] Split unused approval verification from reserved recovery. Expiry prevents a
+  new reservation, while the exact reserved journal remains recoverable after
+  wall-clock expiry. No different journal or operation may consume the approval.
+- [x] Acquire project then deployment lock with one owner/token and make inventory
+  self-lock-aware only for that exact owner. Foreign, stale, missing-owner, or
+  ambiguous locks remain hard refusals.
+- [x] Recovery acquires both locks under a fresh controller run identity and appends
+  a recovery checkpoint binding that controller, both observed stale-lock owner
+  states, the original authorized operation, and the exact prior journal head. Each
+  lock observation is discriminated as absent/released or an exact stale-owner
+  digest; only recovery may CAS-reclaim the latter before acquiring fresh project
+  then deployment locks. Cover both-absent, both-stale, and each partial boundary.
+  It never impersonates the dead controller or changes the receipt operation identity.
+- [x] Implement Docker mutation in a separate adapter with bounded process-group
+  supervision. Containers, networks, and images mutate only by immutable ID;
+  volumes mutate by name only after immediate fingerprint/nonce/ownership and zero-
+  attachment verification. BuildKit and host-artifact adapters remain non-mutating.
+- [x] At every action boundary reload deployment/run authority and all signed
+  registrations. The first action requires fresh eligibility for the approved
+  identity/ownership. Later actions accept only explicitly derived predecessor
+  state (for example, the same container stopped by the immediately prior action),
+  while rechecking every current/shared/data/reference/protection predicate.
+- [x] Fuse signed OCI ownership and volume fingerprint/nonce registrations into the
+  Docker observation before either class can become eligible; runtime image labels
+  alone and a volume name alone are never deletion authority.
+- [x] Journal and fsync intent before mutation, reconcile exact state before any
+  later mutation, journal every bounded result, run authoritative postcondition
+  inventory, privacy/schema-check the deterministic receipt core, finalize state,
+  and idempotently finish the immutable signed receipt sidecars.
+- [x] Pin each fail-stop boundary to: fresh full eligibility; signed+fsynced intent;
+  a second exact immutable-ID/full-ownership-tuple inspection; exact mutation;
+  authoritative reconciliation; signed+fsynced result. Any refusal, clean mutation
+  failure, cancellation, or unresolved ambiguity stops all later actions. Only a
+  reconciled success or approved already-absence may advance.
+- [x] Precompute and validate the terminal journal record and its resulting chain
+  digest, build/privacy-check the receipt core against that predicted digest, then
+  append/fsync the exact terminal record before finalizing approval state. This
+  avoids a journal/receipt digest cycle as well as the approval-state cycle above.
+- [x] A timed-out, interrupted, or response-lost mutation intent is never replayed.
+  Recovery may reconcile a proven exact absence/satisfied postcondition; otherwise
+  it finalizes partial/ambiguous evidence and issues no later mutation.
+- [x] Add fake-process, crash/cancellation, concurrent apply/recover, evidence-write,
+  and isolated real-Docker acceptance. Cover every PR 4 acceptance boundary and
+  preserve a separate bounded subject exit status for PR 5 wrapper propagation.
+  Include crash/concurrency barriers before/after pointer creation, approval
+  reservation, finalization, each receipt sidecar, and pointer tombstoning.
+
 - Implement approved-plan execution under the canonical deployment mutation lock,
   pre-action journal sync,
   immediate ID/tuple reinspection, bounded subprocess timeouts, dependency order,
@@ -509,6 +586,20 @@ Acceptance:
   cancellation, and recovery before execution code merges.
 - Focused tests, isolated real-resource acceptance, and exact-head/landed-main CI
   before PR 5.
+
+Local implementation review (2026-08-31):
+
+- The complete default ownership suite passes with 240 tests and two intentionally
+  skipped real-Docker cases; producer-hook and deployment-lifecycle bridges pass.
+- Isolated real-Docker acceptance passes both exact deletion/recovery and
+  cancellation cases, with no surviving fixture resources or supervisor process.
+- Frontend tests pass 8,260/8,260; server tests pass 15,703 with only configured
+  integration skips; the complete typecheck, ownership-contract checker, workflow
+  composition, CI registration, syntax, diff-hygiene, and complexity gates pass.
+- Successive independent P0-P2 reviews closed predicate-boundary, signal-timing,
+  stable-read, and private-key permission gaps. The final exact-tree architecture,
+  security, and acceptance rereviews returned `CLEAN`. Exact-head and landed-main
+  CI remain delivery gates before PR 5 starts.
 
 ### PR 5 — callsite convergence and real-resource proof
 

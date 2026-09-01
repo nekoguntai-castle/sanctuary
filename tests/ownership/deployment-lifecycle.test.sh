@@ -8,6 +8,7 @@ RUNTIME="$TEST_ROOT/runtime"
 export SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true
 export SANCTUARY_TEST_PROJECT_LOCK_ROOT="$TEST_ROOT/project-locks"
 mkdir -p "$PROJECT/config" "$RUNTIME"
+chmod 700 "$RUNTIME"
 mkdir -p "$TEST_ROOT/bin"
 cat > "$TEST_ROOT/bin/docker" <<'EOF'
 #!/usr/bin/env bash

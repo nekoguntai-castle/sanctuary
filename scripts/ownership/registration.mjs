@@ -39,8 +39,7 @@ function waitForRegistrationLock() {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, REGISTRATION_LOCK_WAIT_MS);
 }
 
-function acquireRegistrationLock(lock) {
-  const operationRunId = `registration-${process.pid}`;
+function acquireRegistrationLock(lock, operationRunId = `registration-${process.pid}`) {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return acquireDeploymentLock(lock, { operationRunId });
@@ -204,6 +203,17 @@ export function registerResource(input, { root, checkoutRoot }) {
   } finally {
     releaseDeploymentLock(lock, lockOwner.token, lockOwner.operationRunId);
   }
+}
+
+export function acquireRegistrationFence(root, operationRunId) {
+  assertExistingPrivateDirectory(root);
+  return acquireRegistrationLock(path.join(root, '.registration-lock'), operationRunId);
+}
+
+export function releaseRegistrationFence(root, owner) {
+  releaseDeploymentLock(
+    path.join(root, '.registration-lock'), owner.token, owner.operationRunId,
+  );
 }
 
 function registerResourceLocked(input, { root, checkoutRoot, keys }) {

@@ -17,6 +17,34 @@ import path from 'node:path';
 
 export const DEFAULT_MAX_EVIDENCE_BYTES = 1024 * 1024;
 
+export function descriptorReadIsStable(opened, after, bytesRead) {
+  if (!opened || !after || !Number.isSafeInteger(bytesRead) || bytesRead < 0) return false;
+  return opened.dev === after.dev
+    && opened.ino === after.ino
+    && opened.size === bytesRead
+    && after.size === bytesRead
+    && opened.mtimeMs === after.mtimeMs
+    && opened.ctimeMs === after.ctimeMs;
+}
+
+function assertPrivateKeyFile(info) {
+  if (!info.isFile() || info.isSymbolicLink()
+      || typeof process.getuid !== 'function' || info.uid !== process.getuid()
+      || (info.mode & 0o7777) !== 0o600) {
+    throw new Error('private key must be a current-user-owned regular file with exact mode 0600');
+  }
+}
+
+function assertPrivateKeyParent(filePath) {
+  const parent = path.dirname(filePath);
+  const info = lstatSync(parent);
+  if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(parent) !== parent
+      || typeof process.getuid !== 'function' || info.uid !== process.getuid()
+      || (info.mode & 0o077) !== 0) {
+    throw new Error('private key parent must be current-user-owned, owner-only, and non-symlink');
+  }
+}
+
 function isWithin(candidate, root) {
   const relative = path.relative(root, candidate);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
@@ -32,14 +60,16 @@ function validateExternalPath(filePath, checkoutRoot) {
   }
 }
 
-export function readExternalFile(filePath, { checkoutRoot, maxBytes = DEFAULT_MAX_EVIDENCE_BYTES }) {
+function readExternalFileWithPolicy(filePath, { checkoutRoot, maxBytes }, validateFile = () => {}) {
   validateExternalPath(filePath, checkoutRoot);
   const before = lstatSync(filePath);
+  validateFile(before);
   if (!before.isFile() || before.isSymbolicLink()) throw new Error('evidence must be a regular non-symlink file');
   if (before.size > maxBytes) throw new Error('evidence exceeds byte limit');
   const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const opened = fstatSync(descriptor);
+    validateFile(opened);
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
       throw new Error('evidence identity changed while opening');
     }
@@ -56,13 +86,30 @@ export function readExternalFile(filePath, { checkoutRoot, maxBytes = DEFAULT_MA
       chunks.push(Buffer.from(buffer.subarray(0, count)));
     }
     const after = fstatSync(descriptor);
-    if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== total) {
+    const finalPath = lstatSync(filePath);
+    validateFile(finalPath);
+    if (!descriptorReadIsStable(opened, after, total)
+        || !finalPath.isFile() || finalPath.isSymbolicLink()
+        || !descriptorReadIsStable(opened, finalPath, total)) {
       throw new Error('evidence changed while reading');
     }
     return Buffer.concat(chunks, total);
   } finally {
     closeSync(descriptor);
   }
+}
+
+export function readExternalFile(filePath, { checkoutRoot, maxBytes = DEFAULT_MAX_EVIDENCE_BYTES }) {
+  return readExternalFileWithPolicy(filePath, { checkoutRoot, maxBytes });
+}
+
+export function readPrivateKeyFile(filePath, { checkoutRoot, maxBytes = 64 * 1024 }) {
+  assertPrivateKeyParent(filePath);
+  const bytes = readExternalFileWithPolicy(
+    filePath, { checkoutRoot, maxBytes }, assertPrivateKeyFile,
+  );
+  assertPrivateKeyParent(filePath);
+  return bytes;
 }
 
 function writeAll(descriptor, bytes) {

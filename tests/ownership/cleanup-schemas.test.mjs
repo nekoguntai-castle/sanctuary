@@ -40,6 +40,7 @@ function inventoryResource(overrides = {}) {
     failureClasses: [],
     references: [],
     contentDigests: [],
+    running: true,
     active: false,
     protected: false,
     data: false,
@@ -49,7 +50,7 @@ function inventoryResource(overrides = {}) {
 
 function inventory(overrides = {}) {
   return {
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     artifactType: 'inventory',
     deploymentId: 'deploy-1',
     operationRunId: 'cleanup-1',
@@ -164,8 +165,8 @@ function receipt(state = 'dry_run', overrides = {}) {
   };
 }
 
-test('cleanup artifacts advertise v1.1 without changing manifest and registration versions', () => {
-  assert.equal(ARTIFACT_SCHEMA_VERSIONS.inventory, '1.1.0');
+test('cleanup inventory advertises v1.2 without changing other artifact versions', () => {
+  assert.equal(ARTIFACT_SCHEMA_VERSIONS.inventory, '1.2.0');
   assert.equal(ARTIFACT_SCHEMA_VERSIONS.cleanup_plan, '1.1.0');
   assert.equal(ARTIFACT_SCHEMA_VERSIONS.cleanup_approval, '1.1.0');
   assert.equal(ARTIFACT_SCHEMA_VERSIONS.cleanup_receipt, '1.1.0');
@@ -201,6 +202,28 @@ test('inventory binds exact local observations and fail-closed ambiguity state',
   })), /canonical ownership/);
 });
 
+test('inventory v1.2 requires boolean container running state and null elsewhere', () => {
+  for (const running of [null, 'false', 0, undefined]) {
+    const resource = inventoryResource();
+    if (running === undefined) delete resource.running;
+    else resource.running = running;
+    assert.throws(() => validateArtifact(inventory({ resources: [resource] })), /running/);
+  }
+
+  const networkOwnership = ownership({
+    resourceClass: 'compose_network', immutableIdentity: 'network-1',
+  });
+  const network = {
+    ...inventoryResource(), resourceClass: 'compose_network', locator: 'network-1',
+    immutableIdentity: 'network-1', ownership: networkOwnership,
+    ownershipDigest: canonicalSha256(networkOwnership), running: null,
+  };
+  assert.doesNotThrow(() => validateArtifact(inventory({ resources: [network] })));
+  assert.throws(() => validateArtifact(inventory({
+    resources: [{ ...network, running: false }],
+  })), /running must be null for non-container/);
+});
+
 test('cleanup plans bind exact locators and reject gaps or duplicate target actions', () => {
   assert.doesNotThrow(() => validateArtifact(plan()));
   assert.throws(() => validateArtifact(plan({
@@ -219,7 +242,7 @@ test('bounded approvals copy exact actions, classes, counts, and signer identity
   assert.throws(() => validateArtifact(approval({
     expiresAt: '2026-08-31T00:00:04.000Z',
   })), /maximum approval lifetime/);
-  assert.throws(() => validateArtifact(approval({ actions: [] })), /1-10000/);
+  assert.throws(() => validateArtifact(approval({ actions: [] })), /1-3000/);
 });
 
 test('planning receipts strictly distinguish dry-run, no-op, refused, and ambiguous outcomes', () => {

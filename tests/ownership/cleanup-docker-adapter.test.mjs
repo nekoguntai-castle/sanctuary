@@ -5,6 +5,13 @@ import { createDockerCleanupAdapter, inventoryDockerResources } from '../../scri
 const ID = 'f'.repeat(64);
 
 function dockerFixture(args) {
+  if (args.join(' ') === 'context show') return 'default\n';
+  if (args[0] === 'context') return JSON.stringify({
+    Name: 'default', Endpoints: { docker: { Host: 'unix:///run/docker-fixture.sock', SkipTLSVerify: false } },
+    TLSMaterial: {},
+  });
+  if (args[0] === '--host' && args[1] === 'unix:///run/docker-fixture.sock') return dockerFixture(args.slice(2));
+  if (['version', 'info'].includes(args[0])) return JSON.stringify({ authority: 'docker' });
   if (args[0] === 'container' && args[1] === 'ls') return `${ID}\n`;
   if (args[0] === 'container' && args[1] === 'inspect') return JSON.stringify([{
     Id: ID, State: { Running: false }, Config: { Labels: { 'com.docker.compose.project': 'legacy' } },
@@ -13,6 +20,11 @@ function dockerFixture(args) {
 }
 
 function podmanFixture(args) {
+  if (args.join(' ') === 'system connection list --format json') {
+    return JSON.stringify([{ Name: 'fixture', Default: true, URI: 'unix:///run/podman-fixture.sock' }]);
+  }
+  if (args[0] === '--url' && args[1] === 'unix:///run/podman-fixture.sock') return podmanFixture(args.slice(2));
+  if (['version', 'info'].includes(args[0])) return JSON.stringify({ authority: 'podman' });
   if (args[0] === 'network' && args[1] === 'ls') return `${ID}\n`;
   if (args[0] === 'network' && args[1] === 'inspect') return JSON.stringify([{
     id: ID, labels: { 'com.docker.compose.project': 'legacy' }, name: 'legacy_default', driver: 'bridge',
@@ -38,11 +50,12 @@ for (const engine of ['docker', 'podman']) {
     const result = adapter.inventory({ selectors: { [selectedClass]: [{ locator: ID }] } });
     assert.equal(result.complete, true);
     assert.equal(result.resources[0].ownershipState, 'legacy_unlabeled');
-    assert.equal(calls.length, engine === 'docker' ? 4 : 6);
+    assert.equal(calls.length, engine === 'docker' ? 12 : 13);
     for (const call of calls) {
-      assert.match(call.join(' '), /\b(ls|inspect)\b/);
       assert.doesNotMatch(call.join(' '), /\b(rm|remove|prune|stop|kill|down)\b/);
     }
+    assert.match(calls.map((call) => call.join(' ')).join('\n'), /version/);
+    assert.match(calls.map((call) => call.join(' ')).join('\n'), /info/);
   });
 }
 

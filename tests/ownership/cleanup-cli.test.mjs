@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, canonicalSha256, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
 import { publicKeyFingerprint, sha256 } from '../../scripts/ownership/crypto.mjs';
+import { cleanupExitCode } from '../../scripts/ownership/cleanup-cli.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CLI = path.join(ROOT, 'scripts/ownership/cleanup-cli.mjs');
@@ -47,8 +50,8 @@ function keys(root) {
   return { privateKeyPath, publicKeyPath, fingerprint: publicKeyFingerprint(publicKey) };
 }
 
-function invoke(command, requestPath) {
-  return spawnSync(process.execPath, [CLI, command, requestPath], { encoding: 'utf8', cwd: ROOT });
+function invoke(command, requestPath, env = process.env) {
+  return spawnSync(process.execPath, [CLI, command, requestPath], { encoding: 'utf8', cwd: ROOT, env });
 }
 
 test('cleanup CLI produces and verifies an immutable signed no-op dry-run without Docker mutation', () => {
@@ -80,9 +83,19 @@ test('cleanup CLI produces and verifies an immutable signed no-op dry-run withou
   chmodSync(path.join(runtimeDirectory, 'ownership'), 0o700);
   chmodSync(registrationKeys, 0o700);
   writeFileSync(path.join(registrationKeys, 'public.pem'), readFileSync(evidenceKeys.publicKeyPath), { mode: 0o600 });
-  const engine = path.join(evidenceRoot, 'read-only-engine');
+  const engineDirectory = path.join(evidenceRoot, 'bin');
+  mkdirSync(engineDirectory, { mode: 0o700 });
+  const engine = path.join(engineDirectory, 'docker');
   const engineLog = path.join(evidenceRoot, 'engine.log');
-  writeFileSync(engine, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> ${JSON.stringify(engineLog)}\n`, { mode: 0o700 });
+  writeFileSync(engine, `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> ${JSON.stringify(engineLog)}
+if [ "$1" = "--host" ]; then shift 2; fi
+case "$1 $2" in
+  "context show") printf 'default\\n' ;;
+  "version --format"|"info --format") printf '{}\\n' ;;
+  "context inspect") printf '%s\\n' '{"Name":"default","Endpoints":{"docker":{"Host":"unix:///run/docker-fixture.sock","SkipTLSVerify":false}},"TLSMaterial":{}}' ;;
+esac
+`, { mode: 0o700 });
   writeCanonical(deploymentPath, manifest);
   writeCanonical(runPath, run);
   const inventoryRequest = path.join(evidenceRoot, 'inventory-request.json');
@@ -94,9 +107,11 @@ test('cleanup CLI produces and verifies an immutable signed no-op dry-run withou
     outputPath: inventoryPath,
     deploymentId: manifest.deploymentId,
     runtimeDirectory,
-    engine,
+    engine: 'docker',
   });
-  const inventoried = invoke('inventory', inventoryRequest);
+  const inventoried = invoke('inventory', inventoryRequest, {
+    ...process.env, PATH: `${engineDirectory}:${process.env.PATH}`,
+  });
   assert.equal(inventoried.status, 0, inventoried.stderr);
   assert.equal(parseStrictJson(readFileSync(inventoryPath)).complete, true);
   const engineCalls = readFileSync(engineLog, 'utf8');
@@ -132,7 +147,40 @@ test('cleanup CLI produces and verifies an immutable signed no-op dry-run withou
   assert.equal(verified.status, 0, verified.stderr);
   assert.equal(parseStrictJson(Buffer.from(verified.stdout)).verified, true);
 
-  const disabled = invoke('apply', path.join(evidenceRoot, 'missing-request.json'));
-  assert.equal(disabled.status, 6);
-  assert.match(disabled.stderr, /apply is disabled/);
+  const invalidApply = invoke('apply', path.join(evidenceRoot, 'missing-request.json'));
+  assert.equal(invalidApply.status, 2);
+  assert.doesNotMatch(invalidApply.stderr, /apply is disabled/);
+});
+
+test('cleanup CLI rejects non-regular and oversized request inputs without opening them', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-cli-request-hardening-'));
+  const regular = path.join(root, 'regular.json');
+  const symbolic = path.join(root, 'symbolic.json');
+  const fifo = path.join(root, 'request.fifo');
+  const oversized = path.join(root, 'oversized.json');
+  writeCanonical(regular, {});
+  symlinkSync(regular, symbolic);
+  assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+  writeFileSync(oversized, Buffer.alloc(64 * 1024 + 1, 0x20));
+
+  const symlinkResult = invoke('verify', symbolic);
+  assert.equal(symlinkResult.status, 2);
+  assert.match(symlinkResult.stderr, /regular non-symlink/);
+  const fifoResult = invoke('verify', fifo);
+  assert.equal(fifoResult.status, 2);
+  assert.match(fifoResult.stderr, /regular non-symlink/);
+  const oversizedResult = invoke('verify', oversized);
+  assert.equal(oversizedResult.status, 2);
+  assert.match(oversizedResult.stderr, /exceeds byte limit/);
+});
+
+test('cleanup CLI maps lock conflicts and ambiguous observations to stable exit classes', () => {
+  assert.equal(cleanupExitCode(Object.assign(new Error('held'), {
+    code: 'DEPLOYMENT_LOCK_CONFLICT',
+  })), 3);
+  assert.equal(cleanupExitCode(new Error('project mutation lock liveness is ambiguous')), 4);
+  assert.equal(cleanupExitCode(Object.assign(new Error('inventory changed'), {
+    code: 'CLEANUP_AUTHORITY_AMBIGUOUS',
+  })), 4);
+  assert.equal(cleanupExitCode(new Error('request must be an object')), 2);
 });

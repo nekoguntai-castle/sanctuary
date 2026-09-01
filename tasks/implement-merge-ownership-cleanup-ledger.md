@@ -9,8 +9,8 @@ Created by loop: 2026-08-30
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 | `codex/implement-merge/ownership-contract-pr1` | `/home/nekoguntai/sanctuary-ownership-contract-pr1` | yes | no | cleaned | [#989](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/989) | `65a3ba81d35e8ace2eeb8dd2a78d7f4a7b21934a` |
 | PR 2 | `codex/implement-merge/ownership-manifests-pr2` | `/home/nekoguntai/sanctuary-ownership-manifests-pr2` | yes | no | active | [#990](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/990) | `cdf3de0d7d` |
-| PR 3 | `codex/implement-merge/ownership-inventory-dry-run` | `/home/nekoguntai/sanctuary-ownership-inventory-dry-run` | yes | no | active | pending | pending |
-| PR 4 | pending | pending | yes | no | pending | pending | pending |
+| PR 3 | `codex/implement-merge/ownership-inventory-dry-run` | `/home/nekoguntai/sanctuary-ownership-inventory-dry-run` | yes | no | cleaned | [#992](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/992) | `60c6dadcf495d9a15366d3698cbd27e675055dbd` |
+| PR 4 | `codex/implement-merge/cleanup-execution-receipts` | `/home/nekoguntai/sanctuary-cleanup-execution-receipts` | yes | no | active | pending | pending |
 | PR 5 | pending | pending | yes | no | pending | pending | pending |
 | PR 6 | pending | pending | yes | no | pending | pending | pending |
 
@@ -18,8 +18,8 @@ Created by loop: 2026-08-30
 
 - [x] PR 1 — policy, schemas, verifier, and architecture contract (PR #989; exact-head and landed-main CI green)
 - [x] PR 2 — deployment/run manifests and producer stamping (PR #990; exact-head and landed-main CI green)
-- [ ] PR 3 — read-only inventory and signed dry-run
-- [ ] PR 4 — exact execution, journal/recovery, and cleanup receipts
+- [x] PR 3 — read-only inventory and signed dry-run (PR #992; exact-head and landed-main CI green)
+- [ ] PR 4 — exact execution, journal/recovery, and cleanup receipts (local implementation and recursive review complete; delivery pending)
 - [ ] PR 5 — callsite convergence and real-resource proof
 - [ ] PR 6 — registered host-artifact execution
 - [ ] Final owned-resource sweep
@@ -43,3 +43,9 @@ Created by loop: 2026-08-30
   Docker observation-drift, and pre-manifest opt-in gaps. Local verification covers
   all ownership tests, installer unit tests, cleanup wrapper regressions, workflow
   composition, syntax, diff hygiene, and complexity limits.
+- PR 4 successive implementation reviews closed crash-transition adoption,
+  cancellation timing, dynamic authority drift, open-intent recovery, stable-read,
+  and private-key permission gaps. Local verification covers the complete ownership,
+  frontend, server, typecheck, workflow/static, complexity, and isolated real-Docker
+  acceptance gates. Final independent architecture/security and acceptance reviews
+  returned `CLEAN`; exact-head delivery is pending.
