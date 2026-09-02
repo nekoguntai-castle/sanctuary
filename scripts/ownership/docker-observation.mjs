@@ -372,6 +372,70 @@ function imageReferenceFields(record) {
   return { tags, digests };
 }
 
+function normalizeImageListIdentity(value) {
+  if (/^[a-f0-9]{64}$/.test(value)) return `sha256:${value}`;
+  if (/^sha256:[a-f0-9]{64}$/.test(value)) return value;
+  throw Object.assign(new Error('image reference witness has a malformed immutable ID'), {
+    category: 'malformed_output', operation: 'image reference witness',
+  });
+}
+
+function parseImageReferenceWitness(output) {
+  const rows = lines(output);
+  if (rows.length > 256) throw Object.assign(new Error('image reference witness exceeds the bounded limit'), {
+    category: 'output_limit', operation: 'image reference witness',
+  });
+  const byIdentity = new Map();
+  for (const row of rows) {
+    const fields = row.split('\t');
+    if (fields.length !== 4) throw Object.assign(new Error('image reference witness is malformed'), {
+      category: 'malformed_output', operation: 'image reference witness',
+    });
+    const [rawIdentity, repository, tag, digest] = fields;
+    const identity = normalizeImageListIdentity(rawIdentity);
+    const references = byIdentity.get(identity) ?? { tags: new Set(), digests: new Set() };
+    if (tag !== '<none>') {
+      const reference = `${repository}:${tag}`;
+      if (repository === '<none>') throw Object.assign(new Error('image tag witness lacks a repository'), {
+        category: 'malformed_output', operation: 'image reference witness',
+      });
+      validateReference(reference);
+      references.tags.add(reference);
+    }
+    if (digest !== '<none>') {
+      const reference = `${repository}@${digest}`;
+      if (repository === '<none>' || !/^sha256:[a-f0-9]{64}$/.test(digest)) {
+        throw Object.assign(new Error('image digest witness is malformed'), {
+          category: 'malformed_output', operation: 'image reference witness',
+        });
+      }
+      validateReference(reference);
+      references.digests.add(reference);
+    }
+    byIdentity.set(identity, references);
+  }
+  return byIdentity;
+}
+
+function listedImageReferences(context, labels, identity) {
+  const buildId = labels['io.sanctuary.build-id'];
+  if (typeof buildId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(buildId)) {
+    return { tags: [], digests: [] };
+  }
+  if (!context.imageReferenceWitnesses.has(buildId)) {
+    const output = query(context.run, context.engine, [
+      'image', 'ls', '--all', '--no-trunc', '--digests',
+      '--filter', `label=io.sanctuary.build-id=${buildId}`,
+      '--format', '{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Digest}}',
+    ], 'image reference witness');
+    context.imageReferenceWitnesses.set(buildId, parseImageReferenceWitness(output));
+  }
+  const references = context.imageReferenceWitnesses.get(buildId).get(identity);
+  return references ? {
+    tags: [...references.tags].sort(), digests: [...references.digests].sort(),
+  } : { tags: [], digests: [] };
+}
+
 function classifications(resourceClass, record, labels, identity, locator, options, runtime) {
   const state = ownershipState(labels, resourceClass);
   const result = new Set([state]);
@@ -398,7 +462,8 @@ function classifications(resourceClass, record, labels, identity, locator, optio
   return [...result].sort();
 }
 
-function relationshipState(run, engine, resourceClass, record, identity) {
+function relationshipState(context, resourceClass, record, labels, identity) {
+  const { run, engine } = context;
   if (resourceClass === 'compose_network') {
     const dependencyIdentities = boundedDependencyIdentities(
       query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `network=${identity}`, '--format', '{{.ID}}'], 'network endpoint list'),
@@ -418,7 +483,10 @@ function relationshipState(run, engine, resourceClass, record, identity) {
       query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `ancestor=${identity}`, '--format', '{{.ID}}'], 'image reference list'),
       'image reference list',
     );
-    const { tags, digests } = imageReferenceFields(record);
+    const inspected = imageReferenceFields(record);
+    const listed = listedImageReferences(context, labels, identity);
+    const tags = [...new Set([...inspected.tags, ...listed.tags])].sort();
+    const digests = [...new Set([...inspected.digests, ...listed.digests])].sort();
     const references = [...new Set([...tags, ...digests])].sort();
     const contentDigests = [...new Set([
       identity,
@@ -446,7 +514,7 @@ function observeLocator(context, resourceClass, locator) {
     throw Object.assign(new Error('immutable identity changed during inspection'), { category: 'identity_changed' });
   }
   const labels = labelsFor(resourceClass, record);
-  const runtime = relationshipState(run, engine, resourceClass, record, identity);
+  const runtime = relationshipState(context, resourceClass, record, labels, identity);
   const registration = registeredMetadata(
     options, resourceClass, identity, resourceClass === 'compose_volume' ? locator : undefined,
   );
@@ -467,6 +535,7 @@ function observeClass(context, resourceClass, selectors) {
     return [];
   }
   const observations = [];
+  if (resourceClass === 'oci_image') context.imageReferenceWitnesses.clear();
   for (const locator of before) {
     try {
       observations.push(observeLocator(context, resourceClass, locator));
@@ -479,6 +548,7 @@ function observeClass(context, resourceClass, selectors) {
     if (JSON.stringify(before) !== JSON.stringify(after)) {
       ambiguities.push({ category: 'inventory_drift', resourceClass, operation: `${resourceClass} relist` });
     } else {
+      if (resourceClass === 'oci_image') context.imageReferenceWitnesses.clear();
       const observed = new Map(observations.map((entry) => [entry.locator, entry]));
       for (const locator of after) {
         if (!observed.has(locator)) continue;
@@ -568,6 +638,7 @@ export function observeDockerResources(options = {}) {
   if (!['docker', 'podman'].includes(engine)) throw new TypeError('Docker observation engine must be docker or podman');
   const context = {
     engine, options, ambiguities: [],
+    imageReferenceWitnesses: new Map(),
     baseRun: options.runCommand ?? ((executable, args, commandOptions) => runCleanupCommand(executable, args, { ...options.commandOptions, ...commandOptions })),
   };
   let authority;

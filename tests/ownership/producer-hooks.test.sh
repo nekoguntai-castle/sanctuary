@@ -79,6 +79,7 @@ image_inspect="$(jq -cn --arg id "$image_id" --arg ref "$image_ref" \
 original_image_inspect="$image_inspect"
 image_calls="$(mktemp)"
 image_stale_inspections="$(mktemp)"
+image_list_override=''
 printf '0\n' > "$image_stale_inspections"
 image_rm_mode=success
 
@@ -115,8 +116,12 @@ docker() {
       [ "$image_rm_mode" = success ] || return 74
       ;;
     'image ls')
-      jq -er --arg ref "$image_ref" --arg id "$image_id" \
-        'select(.[0].RepoTags | index($ref)) | $id' <<< "$image_inspect" 2>/dev/null || true
+      if [ -n "$image_list_override" ]; then
+        printf '%s\n' "$image_list_override"
+      else
+        jq -r --arg id "$image_id" \
+          '.[0].RepoTags[]? | [$id, .] | @tsv' <<< "$image_inspect" 2>/dev/null || true
+      fi
       ;;
     *) return 1 ;;
   esac
@@ -128,6 +133,11 @@ ownership_bounded_image_remove() { shift; docker image rm "$1"; }
 original_bounded_image_inspect="$(declare -f ownership_bounded_image_inspect)"
 ownership_bounded_image_inspect() { docker image inspect "$1"; }
 test "$(recover_exact_built_image "$image_ref" test-run)" = "$image_id"
+image_inspect="$(jq -c '.[0].RepoTags = []' <<< "$original_image_inspect")"
+image_list_override="$image_id"$'\t'"$image_ref"
+test "$(recover_exact_loaded_image "$image_ref" test-run)" = "$image_id"
+image_inspect="$original_image_inspect"
+image_list_override=''
 printf '1\n' > "$image_stale_inspections"
 test "$(recover_exact_loaded_image "$image_ref" test-run)" = "$image_id"
 image_inspect="$(jq -c '.[0].Config.Labels["io.sanctuary.build-id"] = "foreign-build"' \
@@ -208,6 +218,7 @@ original_recover_exact_loaded_image_id="$(declare -f recover_exact_loaded_image_
 original_register_exact_built_image="$(declare -f register_exact_built_image)"
 original_register_exact_built_image_id="$(declare -f register_exact_built_image_id)"
 original_ownership_bounded_image_inspect="$(declare -f ownership_bounded_image_inspect)"
+original_ownership_bounded_image_list="$(declare -f ownership_bounded_image_list)"
 original_retire_exact_built_image="$(declare -f retire_exact_built_image)"
 original_ownership_new_image_deadline="$(declare -f ownership_new_image_deadline)"
 compose_image_calls="$(mktemp)"
@@ -379,11 +390,25 @@ if register_ci_compose_images 0 "$compose_deadline" sanctuary-backend:test-run >
 fi
 test "${#REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}" -eq 0
 
-REGISTERED_CI_COMPOSE_IMAGE_REFS=(sanctuary-backend:test-run)
-REGISTERED_CI_COMPOSE_IMAGE_IDS=("sha256:$(printf '4%.0s' {1..64})")
-ownership_bounded_image_inspect() {
-  jq -cn --arg id "${REGISTERED_CI_COMPOSE_IMAGE_IDS[0]}" \
-    '[{Id:$id,RepoTags:["sanctuary-backend:test-run","shared:keep"]}]'
+REGISTERED_CI_COMPOSE_IMAGE_REFS=(
+  sanctuary-backend:test-run sanctuary-frontend:test-run
+  sanctuary-gateway:test-run sanctuary-llm-egress-proxy:test-run
+)
+REGISTERED_CI_COMPOSE_IMAGE_IDS=(
+  "sha256:$(printf '4%.0s' {1..64})" "sha256:$(printf '5%.0s' {1..64})"
+  "sha256:$(printf '6%.0s' {1..64})" "sha256:$(printf '7%.0s' {1..64})"
+)
+retirement_list_calls="$(mktemp)"
+printf '0\n' > "$retirement_list_calls"
+ownership_bounded_image_list() {
+  local index count
+  count="$(cat "$retirement_list_calls")"
+  printf '%s\n' "$((count + 1))" > "$retirement_list_calls"
+  for index in "${!REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}"; do
+    printf '%s\t%s\n' "${REGISTERED_CI_COMPOSE_IMAGE_IDS[$index]}" \
+      "${REGISTERED_CI_COMPOSE_IMAGE_REFS[$index]}"
+  done
+  printf '%s\t%s\n' "${REGISTERED_CI_COMPOSE_IMAGE_IDS[0]}" 'shared:keep'
 }
 retire_exact_built_image() { printf 'retire %s %s %s\n' "$1" "$2" "$3" >> "$compose_image_calls"; }
 list_ci_compose_lane_images() {
@@ -392,17 +417,20 @@ list_ci_compose_lane_images() {
 }
 : > "$compose_image_calls"
 retire_shared_ci_compose_image_references "$compose_deadline"
+test "$(cat "$retirement_list_calls")" -eq 1
 grep -Fq 'retire sanctuary-backend:test-run' "$compose_image_calls"
+test "$(grep -Fc 'retire ' "$compose_image_calls")" -eq 1
 
 unset -f sleep list_ci_compose_lane_images recover_exact_loaded_image recover_exact_loaded_image_id
 unset -f register_exact_built_image register_exact_built_image_id
-unset -f ownership_bounded_image_inspect retire_exact_built_image
+unset -f ownership_bounded_image_inspect ownership_bounded_image_list retire_exact_built_image
 eval "$original_list_ci_compose_lane_images"
 eval "$original_recover_exact_loaded_image"
 eval "$original_recover_exact_loaded_image_id"
 eval "$original_register_exact_built_image"
 eval "$original_register_exact_built_image_id"
 eval "$original_ownership_bounded_image_inspect"
+eval "$original_ownership_bounded_image_list"
 eval "$original_retire_exact_built_image"
 eval "$original_ownership_run_docker_before_deadline"
 eval "$original_ownership_bounded_image_remove"

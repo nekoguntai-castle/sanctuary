@@ -9,7 +9,6 @@ ownership_image_id_from_inspect() {
     | if length == 1
       and ($id | type == "string" and test("^sha256:[0-9a-f]{64}$"))
       and (.[0].Created | type == "string" and length > 0)
-      and ((.[0].RepoTags // []) | index($ref) != null)
       and .[0].Config.Labels["io.sanctuary.build-id"] == $build
     then $id else error("image provenance mismatch") end
   '
@@ -189,8 +188,13 @@ retire_exact_built_image() {
   ownership_bounded_image_remove "$deadline" "$image_ref" \
     >/dev/null || remove_status=$?
   listed="$(ownership_run_docker_before_deadline "$deadline" image ls --no-trunc \
-    --filter "reference=$image_ref" --format '{{.ID}}')" || {
+    --filter "reference=$image_ref" --format '{{.ID}}\t{{.Repository}}:{{.Tag}}')" || {
     echo "Exact image retirement postcondition is unavailable: $image_ref" >&2
+    return 1
+  }
+  listed="$(printf '%s\n' "$listed" \
+    | ownership_exact_reference_id_from_list "$image_ref")" || {
+    echo "Exact image retirement postcondition is malformed: $image_ref" >&2
     return 1
   }
   if [ -n "$listed" ]; then
@@ -208,6 +212,44 @@ ownership_bounded_image_list() {
   ownership_run_docker_before_deadline "$deadline" image ls --no-trunc \
     --filter "label=io.sanctuary.build-id=$SANCTUARY_BUILD_ID" \
     --format '{{.ID}}\t{{.Repository}}:{{.Tag}}'
+}
+
+ownership_exact_reference_id_from_list() {
+  local expected_ref="$1"
+  awk -F '\t' -v expected_ref="$expected_ref" '
+    BEGIN { count = 0; malformed = 0 }
+    NF == 0 { next }
+    NF != 2 { malformed = 1; next }
+    $1 !~ /^(sha256:)?[0-9a-f]{64}$/ { malformed = 1; next }
+    $2 == expected_ref {
+      count += 1
+      value = $1
+      if (value !~ /^sha256:/) value = "sha256:" value
+      identity = value
+    }
+    END {
+      if (malformed || count > 1) exit 1
+      if (count == 1) print identity
+    }
+  '
+}
+
+ownership_image_reference_count_from_list() {
+  local expected_ref="$1" expected_id="$2"
+  awk -F '\t' -v expected_ref="$expected_ref" -v expected_id="$expected_id" '
+    BEGIN { count = 0; exact = 0; malformed = 0 }
+    NF == 0 { next }
+    NF != 2 { malformed = 1; next }
+    $1 !~ /^sha256:[0-9a-f]{64}$/ { malformed = 1; next }
+    $1 == expected_id && $2 != "<none>:<none>" {
+      count += 1
+      if ($2 == expected_ref) exact += 1
+    }
+    END {
+      if (malformed || exact != 1) exit 1
+      print count
+    }
+  '
 }
 
 list_ci_compose_lane_images() {
@@ -348,16 +390,13 @@ register_observed_ci_compose_images() {
 }
 
 retire_shared_ci_compose_image_references() {
-  local deadline="$1" index image_ref image_id inspected tag_count status=0
+  local deadline="$1" index image_ref image_id listed tag_count status=0
+  listed="$(ownership_bounded_image_list "$deadline")" || return 1
   for index in "${!REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}"; do
     image_ref="${REGISTERED_CI_COMPOSE_IMAGE_REFS[$index]}"
     image_id="${REGISTERED_CI_COMPOSE_IMAGE_IDS[$index]}"
-    inspected="$(ownership_bounded_image_inspect \
-      "$image_ref" "$deadline")" || { status=1; continue; }
-    tag_count="$(printf '%s' "$inspected" | jq -er \
-      --arg ref "$image_ref" --arg id "$image_id" \
-      'if length == 1 and .[0].Id == $id and ((.[0].RepoTags // []) | index($ref) != null)
-       then (.[0].RepoTags // [] | length) else error("registered image changed") end')" \
+    tag_count="$(printf '%s\n' "$listed" \
+      | ownership_image_reference_count_from_list "$image_ref" "$image_id")" \
       || { status=1; continue; }
     if [ "$tag_count" -gt 1 ]; then
       retire_exact_built_image \

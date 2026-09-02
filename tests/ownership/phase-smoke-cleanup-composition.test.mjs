@@ -106,7 +106,7 @@ case "$1 $2" in
     # per-call slice after a large Buildx --load and image removal.
     sleep 1.2
     if [ "$(cat "$LATENCY_IMAGE_STATE")" = present ]; then
-      printf '%s\\n' "$LATENCY_IMAGE_ID"
+      printf '%s\\t%s\\n' "$LATENCY_IMAGE_ID" "$LATENCY_IMAGE_REF"
     fi
     ;;
   *) exit 2 ;;
@@ -132,7 +132,7 @@ retire_exact_built_image "$LATENCY_IMAGE_REF" "$LATENCY_IMAGE_ID" latency-build
   assert.deepEqual(readFileSync(calls, 'utf8').trim().split('\n'), [
     `image inspect ${imageRef}`, `image inspect ${imageRef}`,
     `image inspect ${imageRef}`, `image rm ${imageRef}`,
-    `image ls --no-trunc --filter reference=${imageRef} --format {{.ID}}`,
+    `image ls --no-trunc --filter reference=${imageRef} --format {{.ID}}\\t{{.Repository}}:{{.Tag}}`,
   ]);
 });
 

@@ -30,7 +30,7 @@ const tuple = (resourceClass, extra = {}) => ({
 function fixtureRun({
   drift = false, malformed = false, volumeIdentityDrift = false,
   safetyDrift = null, lifecycle = 'active', imageTags, imageDigests,
-  imageLabels, imageContainerReferences,
+  imageLabels, imageContainerReferences, imageListTags, imageListDigests,
 } = {}) {
   const calls = [];
   let containerLists = 0;
@@ -39,6 +39,7 @@ function fixtureRun({
   let volumeReferences = 0;
   let imageReferences = 0;
   let imageInspections = 0;
+  let imageWitnesses = 0;
   let volumeInspections = 0;
   function run(engine, args) {
     const effectiveArgs = withoutPinnedContext(args);
@@ -57,6 +58,22 @@ function fixtureRun({
     if (joined.startsWith('container ls') && joined.includes('label=io.sanctuary.owner-id=two')) return `${B}\n`;
     if (joined.startsWith('network ls')) return `${N}\n`;
     if (joined.startsWith('volume ls')) return 'sanctuary_postgres_data\n';
+    if (joined.startsWith('image ls') && joined.includes('label=io.sanctuary.build-id=')) {
+      imageWitnesses += 1;
+      const tags = safetyDrift === 'image_tag' && imageWitnesses > 1
+        ? ['sanctuary:local', 'sanctuary:release'] : (imageListTags ?? imageTags ?? ['sanctuary:local']);
+      const digests = imageListDigests ?? imageDigests ?? [];
+      return [
+        ...tags.map((tag) => {
+          const separator = tag.lastIndexOf(':');
+          return `${IMAGE}\t${tag.slice(0, separator)}\t${tag.slice(separator + 1)}\t<none>`;
+        }),
+        ...digests.map((digest) => {
+          const separator = digest.lastIndexOf('@');
+          return `${IMAGE}\t${digest.slice(0, separator)}\t<none>\t${digest.slice(separator + 1)}`;
+        }),
+      ].join('\n');
+    }
     if (joined.startsWith('image ls')) return `${IMAGE}\n`;
     if (joined.startsWith('container ls') && joined.includes('volume=')) {
       volumeReferences += 1;
@@ -404,6 +421,40 @@ test('Compose-added image labels do not invalidate exact provenance registration
   assert.deepEqual(result.resources[0].classifications, [
     'externally_registered', 'legacy_unlabeled', 'registered', 'unlabeled',
   ]);
+});
+
+test('stable image-list evidence supplies references omitted by image inspect', () => {
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'replay-live-deployment',
+    'io.sanctuary.owner-id': 'replay-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'replay-live-run',
+  });
+  const fixture = fixtureRun({
+    imageTags: [], imageDigests: [], imageListTags: ['wallet-sync-replay:test'],
+    imageLabels: replayImageProvenance(), imageContainerReferences: [],
+  });
+  const result = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [replayImageRegistration(authority)], runCommand: fixture.run,
+  });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.resources[0].runtime.tags, ['wallet-sync-replay:test']);
+  assert.deepEqual(result.resources[0].classifications, [
+    'externally_registered', 'registered', 'unlabeled',
+  ]);
+
+  const aliased = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [replayImageRegistration(authority)],
+    runCommand: fixtureRun({
+      imageTags: [], imageDigests: [],
+      imageListTags: ['wallet-sync-replay:test', 'shared:keep'],
+      imageLabels: replayImageProvenance(), imageContainerReferences: [],
+    }).run,
+  });
+  assert.ok(aliased.resources[0].classifications.includes('protected'));
+  assert.ok(!aliased.resources[0].classifications.includes('externally_registered'));
 });
 
 test('one same-repository Podman digest is intrinsic to the sole registered tag', () => {
