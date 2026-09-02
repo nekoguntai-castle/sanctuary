@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0.0",
+  "incidentId": "lost-authority-fresh-install-2026-09-02",
+  "targets": [
+    {
+      "project": "ci-99604-1-fresh-install",
+      "deploymentId": "ci-99604-1-fresh-install-deploy",
+      "ownerId": "ci-99604-1-fresh-install-owner",
+      "sourceCommit": "49184c09339de320437cffeb2636aa6b9c6e17fd",
+      "sourceExecutionId": "ci-99604-1-fresh-install-cleanup",
+      "expectedCounts": { "compose_container": 9, "compose_network": 2, "compose_volume": 4 }
+    },
+    {
+      "project": "ci-99605-1-fresh-install",
+      "deploymentId": "ci-99605-1-fresh-install-deploy",
+      "ownerId": "ci-99605-1-fresh-install-owner",
+      "sourceCommit": "49184c09339de320437cffeb2636aa6b9c6e17fd",
+      "sourceExecutionId": "ci-99605-1-fresh-install-cleanup",
+      "expectedCounts": { "compose_container": 9, "compose_network": 2, "compose_volume": 4 }
+    },
+    {
+      "project": "ci-99606-1-fresh-install",
+      "deploymentId": "ci-99606-1-fresh-install-deploy",
+      "ownerId": "ci-99606-1-fresh-install-owner",
+      "sourceCommit": "fc2c6e8cb0c906aa5c5fff72cb9de77b1575c46f",
+      "sourceExecutionId": "ci-99606-1-fresh-install-cleanup",
+      "expectedCounts": { "compose_container": 9, "compose_network": 2, "compose_volume": 4 }
+    },
+    {
+      "project": "ci-99607-1-fresh-install",
+      "deploymentId": "ci-99607-1-fresh-install-deploy",
+      "ownerId": "ci-99607-1-fresh-install-owner",
+      "sourceCommit": "03ee72036885a096dbfcd4797c72e2c97898e15b",
+      "sourceExecutionId": "ci-99607-1-fresh-install-cleanup",
+      "expectedCounts": { "compose_container": 9, "compose_network": 2, "compose_volume": 4 }
+    }
+  ],
+  "exclusionProjects": [
+    "ci-local-3469272-1788333412-1-install-upgrade",
+    "sanctuary"
+  ],
+  "exclusionExpectedCounts": {
+    "ci-local-3469272-1788333412-1-install-upgrade": { "compose_container": 9, "compose_network": 2, "compose_volume": 4 },
+    "sanctuary": { "compose_container": 16, "compose_network": 3, "compose_volume": 9 }
+  }
+}

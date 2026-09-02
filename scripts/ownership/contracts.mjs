@@ -46,6 +46,7 @@ const REQUIRED_CALLSITE_PATHS = [
   'scripts/ci/run-extended-upgrade-fixtures.sh',
   'scripts/ops/grafana-quiescence-records.sh',
   'scripts/ops/run-grafana-password-migration.sh',
+  'scripts/ownership/operator-recovery-cli.mjs',
   'scripts/perf/wallet-sync-high-fanout-replay.mjs',
   'scripts/run-integration-tests.sh',
   'scripts/setup.sh',

@@ -437,7 +437,7 @@ while IFS= read -r file; do
     .github/workflows/install-test.yml)
       classify_install_workflow_change
       ;;
-    config/resource-ownership-contract.json|config/resource-lifecycle-callsites.json|scripts/ownership/*|tests/ownership/*|scripts/ci/cleanup-ci-callsite.sh|scripts/ci/run-compose-e2e-subject.sh)
+    config/resource-ownership-contract.json|config/operator-recovery-contract.json|config/operator-recovery-incident.json|config/resource-lifecycle-callsites.json|scripts/ownership/*|tests/ownership/*|scripts/ci/cleanup-ci-callsite.sh|scripts/ci/run-compose-e2e-subject.sh)
       enable_ownership_cleanup
       add_scope ownership-cleanup
       reason="Ownership cleanup architecture changed"

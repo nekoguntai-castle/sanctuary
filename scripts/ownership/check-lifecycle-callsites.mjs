@@ -796,6 +796,8 @@ function isApplicationMutationBoundary(relativePath, source, resourceClass) {
 
 function mechanismFor(relativePath, statements, resourceClass, source) {
   if (relativePath === 'scripts/ownership/cleanup-docker-executor.mjs') return 'canonical_executor';
+  if (relativePath === 'scripts/ownership/operator-recovery-cli.mjs'
+      && source.includes('executePreparedOperatorRecovery')) return 'cleanup_coordinator';
   if (relativePath === 'scripts/ownership/run-compose.sh'
       && hasRunComposeCoordinatorBoundary(source, statements)) {
     return 'cleanup_coordinator';
@@ -868,6 +870,10 @@ function cleanupClassesFor(relativePath, source, statements) {
   if (relativePath === 'scripts/ownership/cleanup-docker-executor.mjs'
       && source.includes('export function buildDockerMutation')) {
     addClasses(classes, ['compose_container', 'compose_network', 'compose_volume', 'oci_image']);
+  }
+  if (relativePath === 'scripts/ownership/operator-recovery-cli.mjs'
+      && source.includes('executePreparedOperatorRecovery')) {
+    addClasses(classes, ['compose_container', 'compose_network', 'compose_volume']);
   }
   if (relativePath === 'scripts/ownership/run-compose.sh'
       && statements.some((line) => /\bdocker\s+compose\b/.test(line))) {

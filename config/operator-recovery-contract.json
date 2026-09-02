@@ -1,0 +1,51 @@
+{
+  "authorityKind": "operator_lost_authority_recovery",
+  "normalCleanupAuthorityUnchanged": true,
+  "resourceClasses": [
+    {
+      "authority": [
+        "complete-ownership-label-tuple",
+        "full-engine-id",
+        "signed-operator-assertion",
+        "signed-recovery-scope"
+      ],
+      "classId": "compose_container",
+      "postconditions": [
+        "approved-container-id-absent",
+        "replacement-selector-absent"
+      ]
+    },
+    {
+      "authority": [
+        "complete-ownership-label-tuple",
+        "full-engine-id",
+        "zero-foreign-endpoints",
+        "signed-operator-assertion",
+        "signed-recovery-scope"
+      ],
+      "classId": "compose_network",
+      "postconditions": [
+        "approved-network-id-absent",
+        "replacement-selector-absent"
+      ]
+    },
+    {
+      "authority": [
+        "complete-ownership-label-tuple",
+        "exact-volume-name",
+        "full-inspect-fingerprint",
+        "recovery-attestation-nonce",
+        "zero-attachments",
+        "signed-operator-assertion",
+        "signed-recovery-scope"
+      ],
+      "classId": "compose_volume",
+      "postconditions": [
+        "approved-volume-fingerprint-absent",
+        "replacement-selector-absent",
+        "data-volume-refused"
+      ]
+    }
+  ],
+  "schemaVersion": "1.0.0"
+}

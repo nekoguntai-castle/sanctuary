@@ -44,6 +44,8 @@ assert_scope "wallet lifecycle ADR remains a contract input" \
 assert_scope "ownership policy, implementation, tests, and docs select both scopes" \
   $'core=true\ndocs=true' \
   "config/resource-ownership-contract.json" \
+  "config/operator-recovery-contract.json" \
+  "config/operator-recovery-incident.json" \
   "config/resource-lifecycle-callsites.json" \
   "scripts/ownership/schemas.mjs" \
   "tests/ownership/ownership-core.test.mjs" \

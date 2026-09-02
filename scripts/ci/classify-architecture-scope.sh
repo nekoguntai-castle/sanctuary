@@ -14,6 +14,8 @@ classify_path() {
       docs/adr/0005-resource-ownership-and-cleanup-receipts.md | \
       docs/reference/resource-ownership-cleanup.md | \
       config/resource-ownership-contract.json | \
+      config/operator-recovery-contract.json | \
+      config/operator-recovery-incident.json | \
       config/resource-lifecycle-callsites.json | \
       scripts/ownership/* | tests/ownership/* | \
       ARCHITECTURE.md | */ARCHITECTURE.md)

@@ -2781,6 +2781,34 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "scripts/ownership/operator-recovery-cli.mjs",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The operator recovery coordinator permits only the checked incident allowlist, exact signed actions, journal recovery, and signed closeout."
+    },
+    {
+      "path": "scripts/ownership/operator-recovery-cli.mjs",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The operator recovery coordinator permits only the checked incident allowlist, exact signed actions, journal recovery, and signed closeout."
+    },
+    {
+      "path": "scripts/ownership/operator-recovery-cli.mjs",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The operator recovery coordinator permits only the checked incident allowlist, exact signed actions, journal recovery, and signed closeout."
+    },
+    {
+      "path": "tests/ownership/operator-recovery-locks.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns and terminates only bounded child processes created to prove stale-lock recovery semantics."
+    },
+    {
       "path": "uninstall.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",

@@ -1585,6 +1585,8 @@ for wallet_lifecycle_input in \
 done
 for ownership_input in \
   "config/resource-ownership-contract.json" \
+  "config/operator-recovery-contract.json" \
+  "config/operator-recovery-incident.json" \
   "config/application-lifecycle-authorities.json" \
   "config/resource-lifecycle-callsites.json" \
   "scripts/ownership/**" \
@@ -2654,6 +2656,8 @@ done
 
 for docker_ownership_input in \
   "'config/resource-ownership-contract.json'" \
+  "'config/operator-recovery-contract.json'" \
+  "'config/operator-recovery-incident.json'" \
   "'scripts/ci/cleanup-ci-callsite.sh'" \
   "'scripts/ownership/**'"; do
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
