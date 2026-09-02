@@ -24,6 +24,7 @@
       "scripts/ci/ensure-node.sh",
       "scripts/ci/hardware-emulator-source-inventory.mjs",
       "scripts/ci/provider-context.sh",
+      "scripts/ci/registered-start-gate.mjs",
       "scripts/ci/retry-command.sh",
       "scripts/ci/run-with-log.sh",
       "scripts/ci/wait-for-docker.sh",

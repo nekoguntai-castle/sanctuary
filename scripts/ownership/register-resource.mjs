@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import path from 'node:path';
-import { canonicalSha256 } from './canonical-json.mjs';
+import { canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 import { defaultOwnershipRoot, registerResource } from './registration.mjs';
 
 const OPTIONS = new Set([
   'deployment-id', 'run-id', 'owner-id', 'class', 'lifecycle', 'policy',
   'release', 'commit', 'locator-kind', 'locator', 'identity', 'metadata-digest',
-  'root', 'checkout-root', 'created-at', 'reference',
+  'root', 'checkout-root', 'created-at', 'reference', 'execution-authority',
 ]);
 
 function parseArgs(argv) {
@@ -32,7 +32,12 @@ function required(options, key) {
 export function run(argv) {
   const options = parseArgs(argv);
   const checkoutRoot = path.resolve(options['checkout-root'] ?? process.cwd());
-  const metadataDigest = options['metadata-digest'] ?? canonicalSha256({ kind: options['locator-kind'], locator: options.locator });
+  const executionAuthority = options['execution-authority'] === undefined
+    ? undefined : parseStrictJson(Buffer.from(options['execution-authority'], 'utf8'));
+  const metadataDigest = options['metadata-digest']
+    ?? (executionAuthority === undefined
+      ? canonicalSha256({ kind: options['locator-kind'], locator: options.locator })
+      : canonicalSha256(executionAuthority));
   const { path: output } = registerResource({
     deploymentId: required(options, 'deployment-id'),
     operationRunId: required(options, 'run-id'),
@@ -46,6 +51,7 @@ export function run(argv) {
     locator: required(options, 'locator'),
     immutableIdentity: required(options, 'identity'),
     metadataDigest,
+    executionAuthority,
     createdAt: options['created-at'],
     referenceIds: options.reference,
   }, { root: path.resolve(options.root ?? defaultOwnershipRoot()), checkoutRoot });

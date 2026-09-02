@@ -72,6 +72,18 @@ run_test() {
   fi
 }
 
+run_create_bundle() {
+  local script="$1"
+  shift
+  local runtime="$TEST_TMP_DIR/registered-runtime"
+  mkdir -p "$runtime"
+  chmod 700 "$runtime"
+  SANCTUARY_CLEANUP_COORDINATED=1 \
+    SANCTUARY_RUNTIME_DIR="$runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$runtime/ownership" \
+    "$script" "$@"
+}
+
 host_platform() {
   local arch
   arch="$(uname -m)"
@@ -305,6 +317,7 @@ teardown_bundle_workspace() {
     find "$TEST_TMP_DIR" -type l -delete
     find "$TEST_TMP_DIR" -depth -type d -empty -delete
   fi
+  unset SANCTUARY_TEST_PROJECT_LOCK_ROOT SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT
 }
 
 write_checksums() {
@@ -449,7 +462,9 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
     SANCTUARY_IMAGE_LOCK_SHA256=poison-lock SANCTUARY_VERSION=poison-version SANCTUARY_BUILD_ID=poison-build \
     POSTGRES_PASSWORD="operator-postgres-secret" \
     ENCRYPTION_KEY="operator-encryption-secret" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null || failures=1
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+      >"$TEST_TMP_DIR/create.out" 2>"$TEST_TMP_DIR/create.err" \
+      || { cat "$TEST_TMP_DIR/create.out" "$TEST_TMP_DIR/create.err" >&2; failures=1; }
 
   if [ "$failures" -eq 0 ]; then
     list="$(tar -tzf "$output")" || failures=1
@@ -458,6 +473,30 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
     assert_contains "$list" "./image-inventory.tsv" "bundle should include target-readable image inventory" || failures=1
     assert_contains "$list" "./install-offline.sh" "bundle should include bootstrap installer" || failures=1
     assert_contains "$list" "./tools/create-upgrade-backup.sh" "bundle should include backup helper" || failures=1
+    assert_contains "$list" "./authority/scripts/ci/create-registered-staging.sh" \
+      "bundle should include registered staging authority" || failures=1
+    assert_contains "$list" "./authority/scripts/ci/cleanup-ci-callsite.sh" \
+      "bundle should include cleanup coordinator entrypoint" || failures=1
+    assert_contains "$list" "./authority/scripts/ownership/ci-cleanup-coordinator.mjs" \
+      "bundle should include the checked-in cleanup authority stack" || failures=1
+    local authority_source authority_relative
+    while IFS= read -r authority_source; do
+      authority_relative="${authority_source#"$PROJECT_ROOT/"}"
+      assert_contains "$list" "./authority/$authority_relative" \
+        "bundle should include ownership authority file $authority_relative" || failures=1
+    done < <(find "$PROJECT_ROOT/scripts/ownership" -type f | LC_ALL=C sort)
+    for authority_relative in \
+      scripts/ci/cleanup-ci-callsite.sh \
+      scripts/ci/create-registered-staging.sh \
+      scripts/ci/provider-context.sh \
+      scripts/ci/provider-context.mjs; do
+      assert_contains "$list" "./authority/$authority_relative" \
+        "bundle should include CI authority file $authority_relative" || failures=1
+    done
+    if grep -Fq './authority/scripts/ci/bounded-staging' <<<"$list"; then
+      echo "bundle should not package the retired bounded-staging helper" >&2
+      failures=1
+    fi
     assert_contains "$list" "./images/core/sanctuary-backend-local.tar" "bundle should include backend image" || failures=1
     assert_contains "$list" "./images/core/sanctuary-gateway-local.tar" "bundle should include gateway image" || failures=1
     assert_contains "$list" "./images/core/sanctuary-llm-egress-proxy-local.tar" "bundle should include LLM egress proxy image" || failures=1
@@ -487,7 +526,7 @@ test_create_bundle_tags_digest_refs_and_saves_runtime_refs() {
   runtime_ref="postgres:16-alpine"
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
     || failures=1
 
   if [ "$failures" -eq 0 ]; then
@@ -524,7 +563,7 @@ test_create_bundle_rejects_unexpected_archive_repo_tag() {
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
     SANCTUARY_FAKE_SAVED_REPO_TAG="unexpected.invalid/image:wrong" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
       >/dev/null 2>&1; then
     echo "bundle creation accepted an archive with an unexpected RepoTag" >&2
     failures=1
@@ -549,7 +588,7 @@ test_create_bundle_rejects_runtime_tag_for_different_image_id() {
   if PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_FAKE_RUNTIME_IMAGE_ID="sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
       >/dev/null 2>&1; then
     echo "bundle creation accepted a runtime tag that resolved to a different image ID" >&2
     failures=1
@@ -568,6 +607,8 @@ setup_inventory_bundle() {
   printf 'fake git bundle\n' > "$BUNDLE_DIR/repo/sanctuary.git.bundle"
   write_checksums
   sign_bundle
+  export SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime
+  export SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true
 }
 
 test_apply_validates_loaded_runtime_image_id() {
@@ -733,7 +774,7 @@ test_create_tag_response_loss_proves_alias_and_preserves_failure() {
   output="$TEST_TMP_DIR/offline.tar.gz"
   create_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_FAKE_TAG_STATUS=24 \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
       2>&1)" || status=$?
   [ "$status" -eq 24 ] || echo "$create_output" >&2
   [ "$status" -eq 24 ] && grep -Fq 'image inspect postgres:16-alpine' "$DOCKER_LOG" \
@@ -753,7 +794,7 @@ test_create_tag_failure_precedes_ambiguous_alias_verification() {
   create_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
     SANCTUARY_FAKE_TAG_STATUS=24 \
     SANCTUARY_FAKE_RUNTIME_IMAGE_ID="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
       2>&1)" || status=$?
   [ "$status" -eq 24 ] || echo "$create_output" >&2
   local result=0
@@ -776,7 +817,7 @@ test_create_full_bundle_builds_and_saves_migration_without_pull() {
   output="$TEST_TMP_DIR/sanctuary-offline-full-test.tar.gz"
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev >/dev/null \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev >/dev/null \
     || failures=1
   docker_log="$(cat "$DOCKER_LOG")"
 
@@ -817,6 +858,13 @@ test_create_bundle_signs_outer_archive() {
   cp "$PROJECT_ROOT/scripts/offline/create-bundle.sh" "$release_repo/scripts/offline/create-bundle.sh"
   cp "$PROJECT_ROOT/scripts/offline/apply-bundle.sh" "$release_repo/scripts/offline/apply-bundle.sh"
   cp "$PROJECT_ROOT/scripts/offline/bundle-common.sh" "$release_repo/scripts/offline/bundle-common.sh"
+  mkdir -p "$release_repo/scripts/ci"
+  cp "$PROJECT_ROOT/scripts/ci/create-registered-staging.sh" \
+    "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
+    "$PROJECT_ROOT/scripts/ci/provider-context.sh" \
+    "$PROJECT_ROOT/scripts/ci/provider-context.mjs" \
+    "$release_repo/scripts/ci/"
+  cp -R "$PROJECT_ROOT/scripts/ownership" "$release_repo/scripts/ownership"
   git -C "$release_repo" init -q
   git -C "$release_repo" config user.name "Sanctuary Tests"
   git -C "$release_repo" config user.email "tests@sanctuary.local"
@@ -833,7 +881,7 @@ test_create_bundle_signs_outer_archive() {
   if [ "$failures" -eq 0 ]; then
     PATH="$FAKE_BIN:$PATH" \
       SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
-      "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" --skip-build \
+      run_create_bundle "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" --skip-build \
         --signing-key "$private_key" --public-key "$public_key" >/dev/null \
       || failures=1
   fi
@@ -869,7 +917,7 @@ test_fresh_bootstrap_ignores_unrelated_database_volume() {
 
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
     || failures=1
   [ "$failures" -eq 0 ] && tar -xzf "$output" -C "$extracted" || failures=1
 
@@ -937,7 +985,7 @@ test_upgrade_bootstrap_resolves_current_and_legacy_project_names() {
 
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
     || failures=1
   [ "$failures" -eq 0 ] && tar -xzf "$output" -C "$extracted" || failures=1
 

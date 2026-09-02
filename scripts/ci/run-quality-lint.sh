@@ -2,7 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 source "$SCRIPT_DIR/provider-context.sh"
+REGISTERED_STAGING="$SCRIPT_DIR/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/cleanup-ci-callsite.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -31,20 +34,12 @@ resolve_source_workspace() {
   ci_workspace
 }
 
-remove_workdir() {
-  local workdir="$1"
-  if [ -n "$workdir" ] && [ -d "$workdir" ]; then
-    rm -rf "$workdir" || echo "::warning::Could not fully remove lint temp workspace"
-  fi
-}
-
 run_attempt() {
   local source_workspace="$1"
-  local lint_tmp_parent="$2"
-  local attempt="$3"
+  local attempt="$2"
 
   local lint_workdir
-  lint_workdir="$(mktemp -d "$lint_tmp_parent/sanctuary-lint.XXXXXX")"
+  lint_workdir="$($REGISTERED_STAGING "quality-lint-$attempt")"
 
   echo "quality lint workspace, attempt $attempt"
   local status=0
@@ -56,11 +51,14 @@ run_attempt() {
         npm run lint
     ) || status="$?"
   fi
-  remove_workdir "$lint_workdir"
   return "$status"
 }
 
 main() {
+  if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane quality-lint --engine host \
+      --checkout-root "$PROJECT_ROOT" -- bash "$0" "$@"
+  fi
   if [ "${1:-}" = "--help" ]; then
     usage
     return 0
@@ -80,15 +78,10 @@ main() {
   source_workspace="$(resolve_source_workspace)"
   [ -d "$source_workspace/.git" ] || fail "source workspace is not a git repository: $source_workspace"
 
-  local lint_tmp_parent
-  lint_tmp_parent="$(ci_temp_dir)"
-  mkdir -p "$lint_tmp_parent"
-  [ -w "$lint_tmp_parent" ] || fail "lint temp parent is not writable: $lint_tmp_parent"
-
   local attempt status
   for attempt in $(seq 1 "$attempts"); do
     status=0
-    run_attempt "$source_workspace" "$lint_tmp_parent" "$attempt" || status="$?"
+    run_attempt "$source_workspace" "$attempt" || status="$?"
     if [ "$status" -eq 0 ]; then
       return 0
     fi

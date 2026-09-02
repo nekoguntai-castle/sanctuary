@@ -2,6 +2,11 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
+CLEANUP_COORDINATOR="$ROOT/scripts/ci/cleanup-ci-callsite.sh"
+if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]]; then
+  exec "$CLEANUP_COORDINATOR" auto-run --lane quality --engine host \
+    --checkout-root "$ROOT" -- bash "$0" "$@"
+fi
 cd "$ROOT"
 
 QUALITY_TOOLS_DIR="${QUALITY_TOOLS_DIR:-$ROOT/.tmp/quality-tools}"
@@ -10,6 +15,7 @@ GITLEAKS_VERSION="${GITLEAKS_VERSION:-8.30.1}"
 SEMGREP_VERSION="${SEMGREP_VERSION:-1.161.0}"
 LIZARD_REQUIREMENTS_FILE="$ROOT/scripts/quality/lizard-requirements.txt"
 LIZARD_VENV="$QUALITY_TOOLS_DIR/lizard-$LIZARD_VERSION"
+LIZARD_VENV_BASE="$LIZARD_VENV"
 GITLEAKS_DIR="$QUALITY_TOOLS_DIR/gitleaks-$GITLEAKS_VERSION"
 SEMGREP_VENV="$QUALITY_TOOLS_DIR/semgrep-$SEMGREP_VERSION"
 LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-9}"
@@ -77,8 +83,12 @@ retry_setup_command() {
 }
 
 install_lizard() {
-  rm -rf "$LIZARD_VENV"
-  python3 -m venv --clear "$LIZARD_VENV" || return "$?"
+  mkdir -p "$QUALITY_TOOLS_DIR"
+  [[ ! -e "$LIZARD_VENV" ]] || {
+    printf 'Refusing stale lizard environment: %s\n' "$LIZARD_VENV" >&2
+    return 1
+  }
+  python3 -m venv "$LIZARD_VENV" || return "$?"
   "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip || return "$?"
   "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --requirement "$LIZARD_REQUIREMENTS_FILE"
 }
@@ -99,6 +109,9 @@ retry_lizard_bootstrap() {
   local attempt status
   for attempt in $(seq 1 "$attempts"); do
     printf 'lizard bootstrap, attempt %s\n' "$attempt"
+    if [[ "$attempt" -gt 1 ]]; then
+      LIZARD_VENV="${LIZARD_VENV_BASE}.retry-$attempt"
+    fi
     status=0
     install_lizard || status="$?"
     if [[ "$status" -eq 0 ]]; then
@@ -316,6 +329,10 @@ run_semgrep() {
 
   ensure_semgrep_bin
 
+  [[ ! -e "$SEMGREP_REPORT" ]] || {
+    printf 'Refusing stale Semgrep report: %s\n' "$SEMGREP_REPORT" >&2
+    return 1
+  }
   mkdir -p "$(dirname "$SEMGREP_REPORT")"
   "$SEMGREP_BIN_RESOLVED" --version
   set +e

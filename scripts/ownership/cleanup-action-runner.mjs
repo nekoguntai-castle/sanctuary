@@ -117,6 +117,16 @@ async function reload(reloadAuthority, action, phase, predecessorResultDigest, s
       exactKeys(response, ['state', 'failureClass'], 'authority refusal');
       return { state: response.state, failureClass: validateFailureClass(response.failureClass) };
     }
+    if (response?.state === 'absent') {
+      exactKeys(response, ['state', 'postconditionDigest', 'derivedFromResultDigest'], 'authority absence');
+      digest(response.postconditionDigest, 'authority absence postconditionDigest');
+      if ((predecessorResultDigest === null && response.derivedFromResultDigest !== null)
+          || (predecessorResultDigest !== null
+            && response.derivedFromResultDigest !== predecessorResultDigest)) {
+        return { state: 'refused', failureClass: 'identity_changed' };
+      }
+      return { ...response };
+    }
     exactKeys(response, ['state', 'row', 'derivedFromResultDigest'], 'authority response');
     if (response.state !== 'eligible') throw new TypeError('authority state is not eligible');
     const row = response.row;
@@ -160,10 +170,10 @@ function predecessorDigest(actions, completed, index) {
     const prior = actions[index - 1];
     requiredActions = prior?.resourceClass === 'compose_container' && prior.action === 'stop'
       && prior.immutableIdentity === action.immutableIdentity ? [prior] : [undefined];
-  } else if (['compose_network', 'compose_volume', 'oci_image'].includes(action.resourceClass)) {
+  } else if (action.dependencyIdentities.length > 0) {
     requiredActions = action.dependencyIdentities.map((identity) => actions.slice(0, index)
-      .findLast((candidate) => candidate.resourceClass === 'compose_container'
-        && candidate.action === 'remove' && candidate.immutableIdentity === identity));
+      .findLast((candidate) => candidate.immutableIdentity === identity
+        && (candidate.action === 'remove' || candidate.action === 'stop')));
   } else requiredActions = [];
   if (requiredActions.length === 0) return null;
   if (requiredActions.some((candidate) => candidate === undefined)) return undefined;
@@ -327,7 +337,7 @@ export async function runCleanupActions({
       break;
     }
     const first = await reload(reloadAuthority, action, 'fresh_eligibility', derived, signal);
-    if (first.state !== 'eligible') {
+    if (!['eligible', 'absent'].includes(first.state)) {
       const recorded = await recordResult(appendCheckpoint, action, {
         result: first.state === 'refused' ? 'refused' : 'ambiguous',
         failureClass: first.failureClass, advance: false,
@@ -341,7 +351,9 @@ export async function runCleanupActions({
         checkpointType: 'intent', payload: {
           actionSequence: action.sequence,
           resourceClass: action.resourceClass, immutableIdentity: action.immutableIdentity,
-          action: action.action, authorityRowDigest: first.rowDigest,
+          action: action.action,
+          authorityRowDigest: first.state === 'absent'
+            ? first.postconditionDigest : first.rowDigest,
           predecessorResultDigest: derived, ownershipDigest: action.ownershipDigest,
           approvedObservationDigest: action.observationDigest,
           approvedActionDigest: canonicalSha256(action),
@@ -359,10 +371,28 @@ export async function runCleanupActions({
       break;
     }
     const second = await reload(reloadAuthority, action, 'pre_mutation_reinspection', derived, signal);
+    if (first.state === 'absent') {
+      const stableAbsence = second.state === 'absent'
+        && second.postconditionDigest === first.postconditionDigest;
+      const recorded = await recordResult(appendCheckpoint, action, stableAbsence ? {
+        result: 'absent', failureClass: 'none', advance: true,
+        reconciliationState: 'absent', intentCheckpointDigest,
+        postconditionDigest: second.postconditionDigest,
+      } : {
+        result: second.state === 'ambiguous' ? 'ambiguous' : 'refused',
+        failureClass: ['refused', 'ambiguous'].includes(second.state)
+          ? second.failureClass : 'identity_changed',
+        advance: false, intentCheckpointDigest,
+      });
+      results.push(publicResult(action, recorded));
+      if (!recorded.advance) break;
+      continue;
+    }
     if (second.state !== 'eligible' || second.rowDigest !== first.rowDigest) {
       const recorded = await recordResult(appendCheckpoint, action, {
         result: second.state === 'refused' ? 'refused' : 'ambiguous',
-        failureClass: second.state === 'eligible' ? 'identity_changed' : second.failureClass,
+        failureClass: ['refused', 'ambiguous'].includes(second.state)
+          ? second.failureClass : 'identity_changed',
         advance: false, intentCheckpointDigest,
       });
       results.push(publicResult(action, recorded));

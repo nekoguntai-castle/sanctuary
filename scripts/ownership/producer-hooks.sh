@@ -337,6 +337,14 @@ register_owned_resource() {
     --created-at "$SANCTUARY_CLEANUP_CREATED_AT" --locator-kind "$locator_kind"
     --locator "$locator" --identity "$immutable_identity"
   )
+  if [ "${1:-}" = --execution-authority ]; then
+    [ "$#" -ge 2 ] || {
+      echo 'ownership producer requires execution authority JSON' >&2
+      return 1
+    }
+    args+=(--execution-authority "$2")
+    shift 2
+  fi
   local reference
   for reference in "$@"; do args+=(--reference "$reference"); done
   node "$SANCTUARY_OWNERSHIP_TOOL_DIR/register-resource.mjs" "${args[@]}" >/dev/null

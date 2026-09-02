@@ -251,6 +251,7 @@ export function observeDockerDaemonContext(options) {
 export function buildCleanupExecutionContext({
   engine, daemonContextFingerprint, selectors, protectedProjects = [],
   dataVolumeNames = [], sharedImmutableIdentities = [], registrations = [],
+  hostAuthorityDigest = null,
 }) {
   if (!['docker', 'podman'].includes(engine)) throw new TypeError('execution engine must be docker or podman');
   if (!DIGEST.test(daemonContextFingerprint ?? '')) throw new TypeError('daemonContextFingerprint must be a digest');
@@ -269,9 +270,38 @@ export function buildCleanupExecutionContext({
       canonicalSha256(left).localeCompare(canonicalSha256(right))
     ))),
   };
-  exactObject(context, [
+  if (hostAuthorityDigest !== null) {
+    if (!DIGEST.test(hostAuthorityDigest)) throw new TypeError('hostAuthorityDigest must be a digest');
+    context.hostAuthorityDigest = hostAuthorityDigest;
+  }
+  const keys = [
     'engine', 'daemonContextFingerprint', 'selectorsDigest', 'protectedProjects',
     'dataVolumeNames', 'sharedImmutableIdentities', 'registrationSnapshotDigest',
-  ], 'cleanup execution context');
+  ];
+  if (hostAuthorityDigest !== null) keys.push('hostAuthorityDigest');
+  exactObject(context, keys, 'cleanup execution context');
+  return Object.freeze({ context: Object.freeze(context), fingerprint: canonicalSha256(context) });
+}
+
+export function buildHostCleanupExecutionContext({ registrations = [], hostAuthorityDigest = null } = {}) {
+  if (!Array.isArray(registrations) || registrations.length > 10_000) {
+    throw new TypeError('registrations must be a bounded array');
+  }
+  if (hostAuthorityDigest !== null && !DIGEST.test(hostAuthorityDigest)) {
+    throw new TypeError('hostAuthorityDigest must be a digest or null');
+  }
+  if (registrations.length > 0 && hostAuthorityDigest === null) {
+    throw new TypeError('registered host cleanup requires helper authority');
+  }
+  const context = {
+    engine: 'host',
+    registrationSnapshotDigest: canonicalSha256([...registrations].sort((left, right) => (
+      canonicalSha256(left).localeCompare(canonicalSha256(right))
+    ))),
+    hostAuthorityDigest,
+  };
+  exactObject(context, [
+    'engine', 'registrationSnapshotDigest', 'hostAuthorityDigest',
+  ], 'host cleanup execution context');
   return Object.freeze({ context: Object.freeze(context), fingerprint: canonicalSha256(context) });
 }

@@ -89,35 +89,42 @@ async function execBitcoinCli(
     // Add command and arguments
     cliArgs.push(command, ...args);
 
-    const process = spawn(cliPath, cliArgs);
+    const abortController = new AbortController();
+    const child = spawn(cliPath, cliArgs, { signal: abortController.signal });
     let stdout = '';
     let stderr = '';
+    let spawnError: Error | null = null;
+    let timedOut = false;
 
     const timeout = setTimeout(() => {
-      process.kill();
-      reject(new Error(`Bitcoin Core CLI timeout after ${config.timeout}ms`));
+      timedOut = true;
+      abortController.abort();
     }, config.timeout || 30000);
 
-    process.stdout.on('data', (data) => {
+    child.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
-    process.stderr.on('data', (data) => {
+    child.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
-    process.on('close', (code) => {
+    child.on('error', (error) => {
       clearTimeout(timeout);
-      if (code === 0) {
+      if (!(timedOut && error.name === 'AbortError')) spawnError = error;
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`Bitcoin Core CLI timeout after ${config.timeout}ms`));
+      } else if (spawnError) {
+        reject(new Error(`Failed to execute bitcoin-cli: ${spawnError.message}`));
+      } else if (code === 0) {
         resolve(stdout.trim());
       } else {
         reject(new Error(`Bitcoin Core CLI error (code ${code}): ${stderr || stdout}`));
       }
-    });
-
-    process.on('error', (err) => {
-      clearTimeout(timeout);
-      reject(new Error(`Failed to execute bitcoin-cli: ${err.message}`));
     });
   });
 }

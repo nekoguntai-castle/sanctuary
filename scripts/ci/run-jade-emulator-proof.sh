@@ -26,6 +26,11 @@ readonly platform="$(jq -r '.platform' "$manifest")"
 readonly serial_port="$(jq -r '.qemu.serialPort' "$manifest")"
 readonly config_args="$(jq -r '.qemu.configArgs' "$manifest")"
 forwarder_pid=0
+forwarder_terminal=''
+forwarder_control_token=''
+forwarder_control_port=''
+forwarder_start_token=''
+forwarder_gate_fd=''
 container_started=0
 container_registered=0
 active_container=''
@@ -111,9 +116,15 @@ esac
 cleanup() {
   local subject_status=$? cleanup_status=0 final_status
   trap - EXIT
-  if [ "$forwarder_pid" -ne 0 ]; then
-    kill "$forwarder_pid" >/dev/null 2>&1 || true
+  if [ -n "$forwarder_gate_fd" ]; then
+    exec {forwarder_gate_fd}>&-
+    forwarder_gate_fd=''
     wait "$forwarder_pid" >/dev/null 2>&1 || true
+    forwarder_pid=0
+  fi
+  if [ "$forwarder_pid" -ne 0 ]; then
+    "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
+      || cleanup_status=$?
   fi
   if [ "$container_started" -eq 1 ]; then
     timeout --foreground --kill-after=10s 30s docker logs "$active_container_id" \
@@ -126,7 +137,7 @@ cleanup() {
   fi
   final_status="$subject_status"
   if [ "$cleanup_status" -ne 0 ]; then
-    echo "Jade registered-transient retirement failed (exit=$cleanup_status)" >&2
+    echo "Jade registered cleanup marker failed (exit=$cleanup_status)" >&2
     [ "$final_status" -ne 0 ] || final_status="$cleanup_status"
   fi
   jq -n --argjson subjectExitCode "$subject_status" \
@@ -136,12 +147,44 @@ cleanup() {
   exit "$final_status"
 }
 
+register_forwarder() {
+  local label=$1 registration
+  registration=$("$SCRIPT_DIR/registered-collector-process.sh" register \
+    "$forwarder_pid" "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" "$label") || return
+  IFS=$'\t' read -r _ forwarder_terminal <<< "$registration"
+  [[ -n $forwarder_terminal ]]
+}
+
+finish_forwarder() {
+  local poll
+  timeout --foreground 5s curl --fail --silent --show-error \
+    --request POST --header "Authorization: Bearer $forwarder_control_token" \
+    "http://127.0.0.1:$forwarder_control_port/shutdown" >/dev/null || return
+  for poll in $(seq 1 100); do
+    if ! jobs -pr | grep -Fxq "$forwarder_pid"; then
+      wait "$forwarder_pid"
+      "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal"
+      forwarder_pid=0
+      forwarder_terminal=''
+      forwarder_control_token=''
+      forwarder_control_port=''
+      unset SANCTUARY_FORWARDER SANCTUARY_FORWARDER_PID
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
 if ! mkdir -p "$(dirname "$attempt_dir")" || ! mkdir "$attempt_dir"; then
   echo "Refusing stale Jade evidence directory $attempt_dir" >&2
   exit 1
 fi
 mkdir "$proof_dir" "$diagnostics_dir" "$source_dir"
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 export SANCTUARY_PROJECT='jade-emulator-proof'
 export SANCTUARY_PROJECT_DIR="$PROJECT_ROOT"
@@ -361,17 +404,32 @@ for network in mainnet testnet; do
     exit 1
   fi
   forwarder_output="$diagnostics_dir/forwarder-${network}.json"
-  node scripts/ci/docker-exec-tcp-forwarder.mjs \
-    --container "$active_container" \
-    --controller-port "$serial_port" \
-    --bridge-port "$serial_port" > "$forwarder_output" &
-  forwarder_pid=$!
+  forwarder_control_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  forwarder_start_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  coproc SANCTUARY_FORWARDER {
+    SANCTUARY_COLLECTOR_START_TOKEN="$forwarder_start_token" exec setsid node \
+      --import "$SCRIPT_DIR/registered-start-gate.mjs" \
+      "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" \
+      --container "$active_container" \
+      --controller-port "$serial_port" \
+      --bridge-port "$serial_port" \
+      --control-token "$forwarder_control_token" > "$forwarder_output"
+  }
+  forwarder_pid=$SANCTUARY_FORWARDER_PID
+  forwarder_gate_fd=${SANCTUARY_FORWARDER[1]}
+  forwarder_output_fd=${SANCTUARY_FORWARDER[0]}
+  exec {forwarder_output_fd}<&-
+  register_forwarder "jade-forwarder-$network"
+  printf 'registered %s\n' "$forwarder_start_token" >&"$forwarder_gate_fd"
+  exec {forwarder_gate_fd}>&-
+  forwarder_gate_fd=''
   for _ in $(seq 1 300); do
-    if [ -s "$forwarder_output" ] && jq -e '.controllerPort > 0' "$forwarder_output" >/dev/null 2>&1; then break; fi
-    kill -0 "$forwarder_pid" >/dev/null 2>&1 || break
+    if [ -s "$forwarder_output" ] && jq -e \
+      '.controllerPort > 0 and .controlPort > 0' "$forwarder_output" >/dev/null 2>&1; then break; fi
     sleep 0.1
   done
   controller_port="$(jq -er '.controllerPort' "$forwarder_output")"
+  forwarder_control_port="$(jq -er '.controlPort' "$forwarder_output")"
   JADE_EMULATOR_PROOF=1 \
   JADE_EMULATOR_HOST=127.0.0.1 \
   JADE_EMULATOR_SERIAL_PORT="$controller_port" \
@@ -395,9 +453,7 @@ for network in mainnet testnet; do
       junitSha256: $junitSha256
     })' \
     > "$proof_dir/network-${network}.json"
-  kill "$forwarder_pid" >/dev/null 2>&1 || true
-  wait "$forwarder_pid" >/dev/null 2>&1 || true
-  forwarder_pid=0
+  finish_forwarder
   timeout --foreground --kill-after=10s 30s docker logs "$active_container_id" \
     > "$diagnostics_dir/${active_container}.log" 2>&1 || true
   retire_registered_transient "$active_container_id" "$network" "$container_registered"

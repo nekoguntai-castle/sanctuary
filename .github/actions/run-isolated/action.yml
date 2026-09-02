@@ -3,7 +3,7 @@ description: >-
   Wraps scripts/ci/run-in-isolated-workspace.sh so workflow YAML can express
   isolated runs as a composite step instead of a multi-line shell prologue.
   The source checkout stays immutable; the command runs from a per-job clone
-  that is removed after success.
+  that is removed through a signed cleanup receipt after the command terminates.
 inputs:
   label:
     description: 'Workspace label (letters, digits, dot, underscore, hyphen).'
@@ -17,10 +17,6 @@ inputs:
       see it. Required for Docker-backed E2E and install jobs.
     required: false
     default: 'false'
-  keep-on-failure:
-    description: 'Preserve the clone when the command fails (for inspection).'
-    required: false
-    default: 'false'
 runs:
   using: composite
   steps:
@@ -30,15 +26,11 @@ runs:
         SANCTUARY_RUN_ISOLATED_LABEL: ${{ inputs.label }}
         SANCTUARY_RUN_ISOLATED_COMMAND: ${{ inputs.command }}
         SANCTUARY_RUN_ISOLATED_DOCKER_VISIBLE: ${{ inputs.docker-visible }}
-        SANCTUARY_RUN_ISOLATED_KEEP_ON_FAILURE: ${{ inputs.keep-on-failure }}
       run: |
         set -euo pipefail
         args=()
         if [ "$SANCTUARY_RUN_ISOLATED_DOCKER_VISIBLE" = "true" ]; then
           args+=(--docker-visible)
-        fi
-        if [ "$SANCTUARY_RUN_ISOLATED_KEEP_ON_FAILURE" = "true" ]; then
-          args+=(--keep-on-failure)
         fi
         bash "${{ github.workspace }}/scripts/ci/run-in-isolated-workspace.sh" \
           "${args[@]}" \

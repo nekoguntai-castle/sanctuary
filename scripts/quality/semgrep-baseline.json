@@ -53,9 +53,9 @@
     {
       "id": "javascript.lang.security.detect-child-process.detect-child-process",
       "path": "scripts/verify-psbt/implementations/bitcoincore.ts",
-      "startLine": 92,
-      "endLine": 92,
-      "sha256": "daf4135518e5915035a4f93e477ea44a38053c40453e3c66dca01dc33c7c637c",
+      "startLine": 93,
+      "endLine": 93,
+      "sha256": "fdafb2cbad88350110d5b63fd61c72f8aed9ff22c1be16fbe6437be81212cf08",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     }
   ]

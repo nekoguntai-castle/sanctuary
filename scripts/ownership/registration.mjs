@@ -141,8 +141,16 @@ export function ensureRegistrationKeys(root) {
 
 function registrationCore(input, signerKeyId) {
   const referenceIds = [...(input.referenceIds ?? [])].sort();
+  const executionAuthority = input.executionAuthority;
+  const schemaVersion = executionAuthority === undefined ? '1.0.0' : '1.1.0';
+  const metadataDigest = executionAuthority === undefined
+    ? input.metadataDigest : canonicalSha256(executionAuthority);
+  if (executionAuthority !== undefined && input.metadataDigest !== undefined
+      && input.metadataDigest !== metadataDigest) {
+    throw new Error('metadataDigest does not match canonical executionAuthority');
+  }
   return {
-    schemaVersion: '1.0.0',
+    schemaVersion,
     artifactType: 'resource_registration',
     registrationId: '0'.repeat(64),
     deploymentId: input.deploymentId,
@@ -157,9 +165,10 @@ function registrationCore(input, signerKeyId) {
     locatorKind: input.locatorKind,
     locator: input.locator,
     immutableIdentity: input.immutableIdentity,
-    metadataDigest: input.metadataDigest,
+    metadataDigest,
     referenceIds,
     signerKeyId,
+    ...(executionAuthority === undefined ? {} : { executionAuthority }),
   };
 }
 

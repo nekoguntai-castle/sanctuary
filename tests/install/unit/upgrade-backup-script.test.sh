@@ -91,10 +91,43 @@ setup_fake_project() {
   RUNTIME_DIR="$TEST_TMP_DIR/runtime"
   SSL_DIR="$RUNTIME_DIR/ssl"
   OUTPUT_DIR="$TEST_TMP_DIR/output"
+  STAGING_DIR="$TEST_TMP_DIR/tmp"
   DOCKER_LOG="$TEST_TMP_DIR/docker.log"
+  BACKUP_SUBJECT="$TEST_TMP_DIR/subject/scripts/create-upgrade-backup.sh"
 
-  mkdir -p "$FAKE_BIN" "$INSTALL_DIR" "$RUNTIME_DIR" "$SSL_DIR" "$OUTPUT_DIR"
-  chmod 700 "$RUNTIME_DIR"
+  mkdir -p "$FAKE_BIN" "$INSTALL_DIR/.git" "$RUNTIME_DIR" "$SSL_DIR" "$OUTPUT_DIR" "$STAGING_DIR" \
+    "$TEST_TMP_DIR/subject/scripts/ci"
+  cp "$BACKUP_SCRIPT" "$BACKUP_SUBJECT"
+  cp -R "$PROJECT_ROOT/scripts/ownership" "$TEST_TMP_DIR/subject/scripts/ownership"
+  cp "$PROJECT_ROOT/scripts/ci/provider-context.sh" "$TEST_TMP_DIR/subject/scripts/ci/provider-context.sh"
+  cp "$PROJECT_ROOT/scripts/ci/provider-context.mjs" "$TEST_TMP_DIR/subject/scripts/ci/provider-context.mjs"
+  cat > "$TEST_TMP_DIR/subject/scripts/ownership/deployment-lifecycle.sh" <<'EOF'
+#!/usr/bin/env bash
+deployment_lock_only_acquire() {
+  SANCTUARY_DEPLOYMENT_LOCK_TOKEN=test-lock
+  export SANCTUARY_DEPLOYMENT_LOCK_TOKEN
+}
+deployment_assert_lock() { :; }
+deployment_use_active() { return 1; }
+deployment_lock_release() { :; }
+EOF
+  cat > "$TEST_TMP_DIR/subject/scripts/ci/create-registered-staging.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+mktemp -d "${TMPDIR:-/tmp}/registered-${1}.XXXXXX"
+EOF
+  cat > "$TEST_TMP_DIR/subject/scripts/ci/cleanup-ci-callsite.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done
+[ "${1:-}" = -- ] && shift
+export SANCTUARY_CLEANUP_COORDINATED=1
+export SANCTUARY_RUNTIME_DIR="${SANCTUARY_FAKE_COORDINATOR_RUNTIME:?}"
+exec "$@"
+EOF
+  chmod +x "$BACKUP_SUBJECT" "$TEST_TMP_DIR/subject/scripts/ci/create-registered-staging.sh" \
+    "$TEST_TMP_DIR/subject/scripts/ci/cleanup-ci-callsite.sh"
+  chmod 700 "$RUNTIME_DIR" "$STAGING_DIR"
   printf 'services:\n  postgres:\n    image: postgres:16-alpine\n' > "$INSTALL_DIR/docker-compose.yml"
   cat > "$RUNTIME_DIR/sanctuary.env" <<'EOF'
 POSTGRES_PASSWORD=test-password
@@ -199,7 +232,20 @@ run_backup_script() {
     SANCTUARY_RUNTIME_DIR="$RUNTIME_DIR" \
     SANCTUARY_ENV_FILE="$RUNTIME_DIR/sanctuary.env" \
     SANCTUARY_SSL_DIR="$SSL_DIR" \
-    "$BACKUP_SCRIPT" --install-dir "$INSTALL_DIR" --target-version v9.9.9 --output-dir "$OUTPUT_DIR" "$@"
+    SANCTUARY_CLEANUP_COORDINATED=1 \
+    TMPDIR="$STAGING_DIR" \
+    "$BACKUP_SUBJECT" --install-dir "$INSTALL_DIR" --target-version v9.9.9 --output-dir "$OUTPUT_DIR" "$@"
+}
+
+run_uncoordinated_backup_script() {
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_COORDINATOR_RUNTIME="$TEST_TMP_DIR/coordinator-runtime" \
+    SANCTUARY_RUNTIME_DIR="$RUNTIME_DIR" \
+    SANCTUARY_ENV_FILE="$RUNTIME_DIR/sanctuary.env" \
+    SANCTUARY_SSL_DIR="$SSL_DIR" \
+    TMPDIR="$STAGING_DIR" \
+    "$BACKUP_SUBJECT" --install-dir "$INSTALL_DIR" --target-version v9.9.9 --output-dir "$OUTPUT_DIR" "$@"
 }
 
 test_script_has_valid_syntax() {
@@ -240,6 +286,10 @@ test_backup_creates_single_valid_archive() {
   fi
 
   assert_contains "$(cat "$DOCKER_LOG")" "pg_dump --format=custom" "backup should use PostgreSQL custom-format dump" || failures=1
+  if ! find "$STAGING_DIR" -mindepth 1 -maxdepth 1 -type d -name 'registered-upgrade-backup.*' -print -quit | grep -q .; then
+    echo -e "${RED}ASSERTION FAILED:${NC} registered backup staging was not retained for coordinator cleanup"
+    failures=1
+  fi
 
   teardown_fake_project
   return "$failures"
@@ -272,6 +322,15 @@ EOF
   teardown_fake_project
 }
 
+test_coordinator_preserves_production_runtime() {
+  setup_fake_project
+  run_uncoordinated_backup_script >/dev/null
+  find "$OUTPUT_DIR" -name 'sanctuary-upgrade-backup-*.tar.gz' -type f -print -quit | grep -q .
+  local result=$?
+  teardown_fake_project
+  return "$result"
+}
+
 main() {
   echo "Upgrade Backup Script Unit Tests"
   echo "================================"
@@ -281,6 +340,7 @@ main() {
   run_test "backup creates single valid archive" test_backup_creates_single_valid_archive
   run_test "sidecar checksum is explicit" test_sidecar_checksum_is_explicit
   run_test "strict Compose receives persisted identity" test_strict_compose_receives_persisted_identity
+  run_test "coordinator preserves production runtime" test_coordinator_preserves_production_runtime
 
   echo ""
   echo "Tests run:    $TESTS_RUN"

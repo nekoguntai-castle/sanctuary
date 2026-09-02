@@ -154,7 +154,7 @@ initialize_install_test_ownership
 # Per-lane image tag, derived from the project name so concurrent lanes on one
 # daemon cannot alias each other's images (#719).
 export_lane_image_tag
-TEST_ROOT=$(default_install_test_root "$TARGET_PROJECT_ROOT")
+TEST_ROOT=$(prepare_install_test_root "$(default_install_test_root "$TARGET_PROJECT_ROOT")")
 
 apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
 apply_upgrade_test_network_defaults
@@ -371,7 +371,8 @@ discover_upgrade_source_ref() {
 }
 
 prepare_upgrade_source_checkout() {
-    local source_ref=""
+    local source_ref="" source_oid worktree_parent authority_bundle execution_authority
+    local worktree_identity add_status=0
     source_ref=$(discover_upgrade_source_ref 2>/dev/null || true)
 
     if [ -z "$source_ref" ]; then
@@ -392,8 +393,26 @@ prepare_upgrade_source_checkout() {
         return 1
     fi
 
-    mkdir -p "$(dirname "$UPGRADE_SOURCE_CHECKOUT")"
-    git -C "$TARGET_PROJECT_ROOT" worktree add --detach "$UPGRADE_SOURCE_CHECKOUT" "$source_ref" >/dev/null
+    worktree_parent="$(dirname "$UPGRADE_SOURCE_CHECKOUT")"
+    mkdir -p "$worktree_parent"
+    chmod 700 "$worktree_parent"
+    register_install_temporary_artifact "$worktree_parent" || return 1
+    source_oid="$(git -C "$TARGET_PROJECT_ROOT" rev-parse "${source_ref}^{commit}")" || return 1
+    git -C "$TARGET_PROJECT_ROOT" worktree add --detach \
+        "$UPGRADE_SOURCE_CHECKOUT" "$source_ref" >/dev/null || add_status=$?
+    if [ ! -d "$UPGRADE_SOURCE_CHECKOUT" ]; then
+        [ "$add_status" -ne 0 ] && return "$add_status"
+        return 1
+    fi
+    authority_bundle="$(node "$SANCTUARY_OWNERSHIP_TOOL_DIR/describe-host-authority.mjs" \
+        worktree "$UPGRADE_SOURCE_CHECKOUT" "$source_oid" "$SANCTUARY_DEPLOYMENT_ID" \
+        "$SANCTUARY_OPERATION_RUN_ID")" || return 1
+    execution_authority="$(printf '%s' "$authority_bundle" | jq -c '.executionAuthority')" || return 1
+    worktree_identity="$(printf '%s' "$authority_bundle" | jq -r '.immutableIdentity')" || return 1
+    register_owned_resource git_worktree obsolete exact_delete path \
+        "$UPGRADE_SOURCE_CHECKOUT" "$worktree_identity" \
+        --execution-authority "$execution_authority" "$SANCTUARY_OPERATION_RUN_ID" || return 1
+    [ "$add_status" -eq 0 ] || return "$add_status"
 
     PROJECT_ROOT="$UPGRADE_SOURCE_CHECKOUT"
     UPGRADE_SOURCE_CREATED=true
@@ -403,9 +422,31 @@ prepare_upgrade_source_checkout() {
 
 cleanup_upgrade_source_checkout() {
     if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
-        git -C "$TARGET_PROJECT_ROOT" worktree remove --force "$UPGRADE_SOURCE_CHECKOUT" >/dev/null 2>&1 || true
-        rmdir "$(dirname "$UPGRADE_SOURCE_CHECKOUT")" 2>/dev/null || true
-        UPGRADE_SOURCE_CREATED=false
+        normalize_upgrade_source_checkout_for_cleanup || return 1
+        log_info "Deferring registered upgrade worktree cleanup to the receipt-bound CI coordinator"
+    fi
+}
+
+normalize_upgrade_source_checkout_for_cleanup() {
+    local relative_path
+    local compose_paths=(
+        docker-compose.yml
+        docker-compose.ghcr.yml
+        docker-compose.monitoring.yml
+        docker-compose.tor.yml
+        docker/compose/monitoring.yml
+        docker/compose/tor.yml
+    )
+
+    for relative_path in "${compose_paths[@]}"; do
+        git -C "$UPGRADE_SOURCE_CHECKOUT" cat-file -e "HEAD:$relative_path" 2>/dev/null || continue
+        restore_tracked_worktree_file_for_cleanup \
+            "$UPGRADE_SOURCE_CHECKOUT" "$relative_path" || return 1
+    done
+    rm -f "$UPGRADE_SOURCE_CHECKOUT/.env"
+    if [ -n "$(git -C "$UPGRADE_SOURCE_CHECKOUT" status --porcelain=v2 --untracked-files=all)" ]; then
+        log_error "Registered upgrade worktree contains unexpected changes; canonical cleanup will refuse it"
+        return 1
     fi
 }
 
@@ -795,7 +836,7 @@ teardown() {
     fi
 
     if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ] && [ -d "$TEST_RUNTIME_DIR" ]; then
-        rm -rf "$TEST_RUNTIME_DIR"
+        log_warning "Preserving the uncoordinated runtime because no signed host cleanup authority exists"
     fi
 
     cleanup_upgrade_source_checkout

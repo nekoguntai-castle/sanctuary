@@ -124,6 +124,31 @@ function approval(overrides = {}) {
   };
 }
 
+function registration(executionAuthority, overrides = {}) {
+  const value = {
+    schemaVersion: executionAuthority ? '1.1.0' : '1.0.0',
+    artifactType: 'resource_registration', registrationId: HASH,
+    deploymentId: 'deploy-1', operationRunId: 'run-1', ownerId: 'owner-1',
+    resourceClass: 'temporary_artifact', lifecycle: 'active', cleanupPolicy: 'exact_delete',
+    createdAt: '2026-08-30T00:00:00.000Z', createdByRelease: 'v0.8.69',
+    createdByCommit: 'b'.repeat(40), locatorKind: 'path',
+    locator: '/tmp/sanctuary-owned/artifact', immutableIdentity: 'path-41-101',
+    metadataDigest: executionAuthority ? canonicalSha256(executionAuthority) : HASH,
+    referenceIds: ['run-1'], signerKeyId: HASH,
+    ...(executionAuthority ? { executionAuthority } : {}), ...overrides,
+  };
+  return value;
+}
+
+function temporaryExecutionAuthority() {
+  return {
+    kind: 'linux_dirfd_v1',
+    parent: { canonicalPath: '/tmp/sanctuary-owned', dev: '41', ino: '100', uid: '1000', mode: 448 },
+    entry: { basename: 'artifact', dev: '41', ino: '101', type: 'directory' },
+    creatorRunId: 'run-1',
+  };
+}
+
 function receipt(state = 'dry_run', overrides = {}) {
   const actions = state === 'dry_run' ? [action()] : [];
   const results = actions.map((entry) => ({
@@ -175,6 +200,24 @@ test('cleanup inventory advertises v1.2 without changing other artifact versions
   assert.equal(ARTIFACT_SCHEMA_VERSIONS.deployment_manifest, '1.0.0');
   assert.equal(ARTIFACT_SCHEMA_VERSIONS.run_manifest, '1.0.0');
   assert.equal(ARTIFACT_SCHEMA_VERSIONS.resource_registration, '1.0.0');
+});
+
+test('resource registration validates dual v1.0 and typed digest-bound v1.1 formats', () => {
+  assert.doesNotThrow(() => validateArtifact(registration()));
+  const authority = temporaryExecutionAuthority();
+  assert.doesNotThrow(() => validateArtifact(registration(authority)));
+  assert.throws(() => validateArtifact(registration(authority, {
+    metadataDigest: 'f'.repeat(64),
+  })), /canonical executionAuthority/);
+  assert.throws(() => validateArtifact(registration(authority, {
+    executionAuthority: { ...authority, unexpected: true },
+  })), /exactly/);
+  assert.throws(() => validateArtifact(registration(null, {
+    schemaVersion: '1.1.0',
+  })), /executionAuthority|exactly/);
+  assert.throws(() => validateArtifact(registration(authority, {
+    schemaVersion: '1.0.0',
+  })), /exactly/);
 });
 
 test('inventory binds exact local observations and fail-closed ambiguity state', () => {

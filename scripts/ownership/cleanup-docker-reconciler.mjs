@@ -65,13 +65,20 @@ function validateAction(action) {
   validateActionIdentity(action);
 }
 
+function isDockerAction(action) {
+  return ['compose_container', 'compose_network', 'compose_volume', 'oci_image']
+    .includes(action?.resourceClass);
+}
+
 function validateApprovedActions(actions) {
   if (!Array.isArray(actions) || actions.length > MAX_CLEANUP_ACTIONS) {
     throw new TypeError('approvedActions must be a bounded array');
   }
   actions.forEach((action, index) => {
-    validateAction(action);
-    if (action.sequence !== index + 1) throw new TypeError('approvedActions must be contiguous and ordered');
+    if (!Number.isSafeInteger(action?.sequence) || action.sequence !== index + 1) {
+      throw new TypeError('approvedActions must be contiguous and ordered');
+    }
+    if (isDockerAction(action)) validateAction(action);
   });
   return actions;
 }
@@ -213,6 +220,7 @@ function eligibleInventoryRow(inventory, action) {
   };
   const matches = inventory.resources.filter((row) => row.resourceClass === action.resourceClass
     && (row.immutableIdentity === action.immutableIdentity || row.locator === action.locator));
+  if (matches.length === 0 && inventory.resources.length === 0) return { absent: true };
   if (matches.length !== 1) return { failure: Object.freeze({
     state: matches.length === 0 ? 'refused' : 'ambiguous', failureClass: 'identity_changed',
   }) };
@@ -242,6 +250,23 @@ export async function reloadDockerActionAuthority({
   if (loaded.failure) return loaded.failure;
   const selected = eligibleInventoryRow(loaded.inventory, action);
   if (selected.failure) return selected.failure;
+  if (selected.absent) {
+    if (derivation.derived === null
+        || !['compose_container', 'compose_network', 'oci_image'].includes(action.resourceClass)) {
+      return Object.freeze({ state: 'refused', failureClass: 'identity_changed' });
+    }
+    return Object.freeze({
+      state: 'absent',
+      postconditionDigest: canonicalSha256({
+        contextFingerprint: loaded.inventory.contextFingerprint,
+        resourceClass: action.resourceClass,
+        locator: action.locator,
+        approvedImmutableIdentity: action.immutableIdentity,
+        observedImmutableIdentity: null,
+      }),
+      derivedFromResultDigest: derivation.derived,
+    });
+  }
   const row = selected.row;
   if (registration.proof && (!row.contentDigests.includes(registration.proof.registrationId)
       || !row.contentDigests.includes(registration.proof.metadataDigest))) {

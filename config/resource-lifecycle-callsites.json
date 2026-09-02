@@ -23,22 +23,8 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
-      "path": ".github/workflows/install-test.yml",
+      "path": ".github/workflows/podman-socket-canary.yml",
       "resourceClass": "compose_container",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": ".github/workflows/install-test.yml",
-      "resourceClass": "compose_network",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": ".github/workflows/install-test.yml",
-      "resourceClass": "compose_volume",
       "operation": "cleanup",
       "disposition": "exempt",
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
@@ -46,7 +32,7 @@
     {
       "path": ".github/workflows/podman-socket-canary.yml",
       "resourceClass": "compose_container",
-      "operation": "cleanup",
+      "operation": "create",
       "disposition": "exempt",
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
@@ -59,6 +45,13 @@
     },
     {
       "path": ".github/workflows/podman-socket-canary.yml",
+      "resourceClass": "compose_network",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": ".github/workflows/podman-socket-canary.yml",
       "resourceClass": "compose_volume",
       "operation": "cleanup",
       "disposition": "exempt",
@@ -66,24 +59,10 @@
     },
     {
       "path": ".github/workflows/podman-socket-canary.yml",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "Each executable canary subject stamps the complete ownership tuple before the signed cleanup coordinator permits creation."
-    },
-    {
-      "path": ".github/workflows/podman-socket-canary.yml",
-      "resourceClass": "compose_network",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The generated Compose canary is fully ownership-labeled and runs only inside the signed cleanup coordinator boundary."
-    },
-    {
-      "path": ".github/workflows/podman-socket-canary.yml",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "Named canary volumes are created and registered through the ownership producer hook inside the signed cleanup coordinator boundary."
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": ".github/workflows/release-candidate.yml",
@@ -101,6 +80,27 @@
     },
     {
       "path": ".github/workflows/release-candidate.yml",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": ".github/workflows/test.yml",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": ".github/workflows/test.yml",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": ".github/workflows/test.yml",
       "resourceClass": "compose_volume",
       "operation": "cleanup",
       "disposition": "exempt",
@@ -132,140 +132,140 @@
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker-compose.yml",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker-compose.yml",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/monitoring.yml",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/monitoring.yml",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/monitoring.yml",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/test.yml",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/test.yml",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/tor.yml",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docker/compose/tor.yml",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The ownership manifest stamps this resource class with the complete deployment and run identity."
+      "safetyContract": "The ownership manifest stamps this resource with the complete deployment and run identity."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "docs/how-to/docker.md",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "gateway/README.md",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "gateway/README.md",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "gateway/README.md",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "package.json",
@@ -293,98 +293,98 @@
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "README.md",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "README.md",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "README.md",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "README.md",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "README.md",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "README.md",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/bitcoin-core-docker/build.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/bitcoin-core-docker/build.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The manifest-backed application lifecycle retains this resource until its owning controller retires it."
+      "safetyContract": "This resource is intentionally retained under the owning application lifecycle."
     },
     {
       "path": "scripts/bitcoin-core-docker/README.md",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "path": "scripts/bitcoin-core-docker/README.md",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "path": "scripts/ci/build-runtime-image.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/ci/build-runtime-image.sh",
       "resourceClass": "oci_image",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/build-runtime-image.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/cleanup-ci-callsite.sh",
@@ -408,172 +408,214 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
-      "disposition": "deferred",
-      "operation": "create",
       "path": "scripts/ci/create-isolated-workspace.sh",
       "resourceClass": "temporary_artifact",
-      "safetyContract": "Phase 6 will register canonical root, device, inode, owner run, and controlled-parent identity."
-    },
-    {
-      "path": "scripts/ci/observe-runtime-image-cves.sh",
-      "resourceClass": "compose_container",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
-    },
-    {
-      "path": "scripts/ci/observe-runtime-image-cves.sh",
-      "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
-      "path": "scripts/ci/observe-runtime-image-cves.sh",
-      "resourceClass": "compose_volume",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
-    },
-    {
-      "path": "scripts/ci/observe-runtime-image-cves.sh",
-      "resourceClass": "compose_volume",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
-    },
-    {
-      "path": "scripts/ci/observe-runtime-image-cves.sh",
-      "resourceClass": "compose_volume",
-      "operation": "register",
-      "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
-    },
-    {
-      "path": "scripts/ci/run-compose-e2e-subject.sh",
-      "resourceClass": "buildkit_cache",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
-    },
-    {
-      "path": "scripts/ci/run-compose-e2e-subject.sh",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-compose-e2e-subject.sh",
-      "resourceClass": "compose_network",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-compose-e2e-subject.sh",
-      "resourceClass": "compose_volume",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-compose-e2e-subject.sh",
-      "resourceClass": "oci_image",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-docker-test-subject.sh",
-      "resourceClass": "compose_container",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-docker-test-subject.sh",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-docker-test-subject.sh",
-      "resourceClass": "compose_network",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-docker-test-subject.sh",
-      "resourceClass": "compose_network",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-docker-test-subject.sh",
-      "resourceClass": "compose_volume",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-docker-test-subject.sh",
-      "resourceClass": "compose_volume",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-extended-upgrade-fixtures.sh",
-      "resourceClass": "compose_container",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-extended-upgrade-fixtures.sh",
-      "resourceClass": "compose_network",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ci/run-extended-upgrade-fixtures.sh",
-      "resourceClass": "compose_volume",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "disposition": "deferred",
-      "operation": "cleanup",
-      "path": "scripts/ci/run-in-isolated-workspace.sh",
-      "resourceClass": "git_worktree",
-      "safetyContract": "Phase 6 will require clean state and exact git metadata proof before worktree cleanup."
-    },
-    {
-      "disposition": "deferred",
-      "operation": "cleanup",
-      "path": "scripts/ci/run-in-isolated-workspace.sh",
+      "path": "scripts/ci/create-registered-staging.sh",
       "resourceClass": "temporary_artifact",
-      "safetyContract": "Phase 6 will remove only the registered isolated workspace identity under its controlled parent."
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/ci/observe-runtime-image-cves.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
+    },
+    {
+      "path": "scripts/ci/observe-runtime-image-cves.sh",
+      "resourceClass": "compose_container",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
+    },
+    {
+      "path": "scripts/ci/observe-runtime-image-cves.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/ci/observe-runtime-image-cves.sh",
+      "resourceClass": "compose_volume",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/ci/observe-runtime-image-cves.sh",
+      "resourceClass": "compose_volume",
+      "operation": "register",
+      "disposition": "exempt",
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/ci/registered-collector-process.sh",
+      "resourceClass": "collector_process",
+      "operation": "register",
+      "disposition": "exempt",
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/ci/run-compose-e2e-subject.sh",
+      "resourceClass": "buildkit_cache",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
+    },
+    {
+      "path": "scripts/ci/run-compose-e2e-subject.sh",
+      "resourceClass": "compose_container",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-compose-e2e-subject.sh",
+      "resourceClass": "compose_network",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-compose-e2e-subject.sh",
+      "resourceClass": "compose_volume",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-compose-e2e-subject.sh",
+      "resourceClass": "oci_image",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-docker-test-subject.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-docker-test-subject.sh",
+      "resourceClass": "compose_container",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-docker-test-subject.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-docker-test-subject.sh",
+      "resourceClass": "compose_network",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-docker-test-subject.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-docker-test-subject.sh",
+      "resourceClass": "compose_volume",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-extended-upgrade-fixtures.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-extended-upgrade-fixtures.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-extended-upgrade-fixtures.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-in-isolated-workspace.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-in-isolated-workspace.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-in-isolated-workspace.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-install-e2e-isolated-subject.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-install-e2e-isolated-subject.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-install-e2e-isolated-subject.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": "scripts/ci/run-jade-emulator-proof.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/ci/run-jade-emulator-proof.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ci/run-jade-emulator-proof.sh",
@@ -587,7 +629,7 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The producer signs the exact immutable container ID and full ownership tuple before start or later mutation."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/run-jade-emulator-proof.sh",
@@ -615,7 +657,7 @@
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ci/run-jade-protocol-harness.sh",
@@ -629,7 +671,7 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The producer signs the exact immutable container ID and full ownership tuple before start or later mutation."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/run-jade-protocol-harness.sh",
@@ -650,14 +692,14 @@
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/ci/run-ledger-emulator-proof.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ci/run-ledger-emulator-proof.sh",
@@ -671,7 +713,7 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The producer signs the exact immutable container ID and full ownership tuple before start or later mutation."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/run-ledger-emulator-proof.sh",
@@ -706,14 +748,14 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The producer signs the exact immutable container ID and full ownership tuple before start or later mutation."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/run-trezor-emulator-proof.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ci/run-trezor-emulator-proof.sh",
@@ -727,7 +769,7 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The producer signs the exact immutable container ID and full ownership tuple before start or later mutation."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/run-trezor-emulator-proof.sh",
@@ -744,39 +786,67 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
+      "path": "scripts/ci/run-upgrade-baseline-isolated-subject.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-upgrade-baseline-isolated-subject.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-upgrade-baseline-isolated-subject.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ci/run-with-log.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "This canonical host helper verifies retained exact authority and a terminal or absent cleanup postcondition."
+    },
+    {
       "path": "scripts/ci/wallet-sync-replay-image.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/ci/wallet-sync-replay-image.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/wallet-sync-replay-image.sh",
       "resourceClass": "oci_image",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ci/write-runtime-image-evidence.mjs",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "path": "scripts/ci/write-runtime-image-evidence.mjs",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "disposition": "migrate",
@@ -786,60 +856,53 @@
       "safetyContract": "Record immutable provider object IDs, tag, commit, and asset digests for reconciliation only."
     },
     {
-      "disposition": "deferred",
-      "operation": "cleanup",
-      "path": "scripts/create-upgrade-backup.sh",
-      "resourceClass": "temporary_artifact",
-      "safetyContract": "Phase 6 will delete only the exact registered staging inode beneath its controlled private parent."
-    },
-    {
       "path": "scripts/offline/apply-bundle.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/offline/apply-bundle.sh",
       "resourceClass": "oci_image",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/offline/create-bundle.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/offline/create-bundle.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The manifest-backed application lifecycle retains this resource until its owning controller retires it."
+      "safetyContract": "This resource is intentionally retained under the owning application lifecycle."
     },
     {
       "path": "scripts/ops/grafana-quiescence-records.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ops/grafana-quiescence-records.sh",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ops/grafana-quiescence-records.sh",
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ops/phase2-alert-receiver-smoke.mjs",
@@ -861,20 +924,13 @@
       "operation": "create",
       "disposition": "exempt",
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "disposition": "deferred",
-      "operation": "cleanup",
-      "path": "scripts/ops/phase2-alert-receiver-smoke.mjs",
-      "resourceClass": "temporary_artifact",
-      "safetyContract": "Phase 6 will register the exact smoke-test temporary directory and controlled parent before removal."
     },
     {
       "path": "scripts/ops/phase2-gateway-audit-compose-smoke.mjs",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/ops/phase2-gateway-audit-compose-smoke.mjs",
@@ -909,203 +965,231 @@
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ops/run-grafana-password-migration.sh",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The full ownership tuple and immutable container ID are recovered, re-inspected, and retired with an absence proof."
+      "safetyContract": "The transient resource is registered by exact identity and retired through its bounded lifecycle helper."
     },
     {
       "path": "scripts/ops/run-grafana-password-migration.sh",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ops/run-grafana-password-migration.sh",
       "resourceClass": "compose_volume",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/ownership/ci-cleanup-coordinator.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "This canonical host helper verifies retained exact authority and a terminal or absent cleanup postcondition."
     },
     {
       "path": "scripts/ownership/cleanup-docker-executor.mjs",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The canonical executor mutates only approved immutable identities and verifies postconditions."
+      "safetyContract": "The canonical executor applies only an authorized exact plan and records signed terminal evidence."
     },
     {
       "path": "scripts/ownership/cleanup-docker-executor.mjs",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The canonical executor mutates only approved immutable identities and verifies postconditions."
+      "safetyContract": "The canonical executor applies only an authorized exact plan and records signed terminal evidence."
     },
     {
       "path": "scripts/ownership/cleanup-docker-executor.mjs",
       "resourceClass": "compose_volume",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The canonical executor mutates only approved immutable identities and verifies postconditions."
+      "safetyContract": "The canonical executor applies only an authorized exact plan and records signed terminal evidence."
     },
     {
       "path": "scripts/ownership/cleanup-docker-executor.mjs",
       "resourceClass": "oci_image",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The canonical executor mutates only approved immutable identities and verifies postconditions."
+      "safetyContract": "The canonical executor applies only an authorized exact plan and records signed terminal evidence."
     },
     {
-      "path": "scripts/ownership/producer-hooks.sh",
-      "resourceClass": "compose_volume",
-      "operation": "create",
+      "path": "scripts/ownership/cleanup-process-group-launcher.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "This canonical host helper verifies retained exact authority and a terminal or absent cleanup postcondition."
     },
     {
-      "path": "scripts/ownership/producer-hooks.sh",
-      "resourceClass": "compose_volume",
-      "operation": "register",
+      "path": "scripts/ownership/cleanup-supervisor.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "This canonical host helper verifies retained exact authority and a terminal or absent cleanup postcondition."
     },
     {
       "path": "scripts/ownership/compose-image-registration.sh",
       "resourceClass": "oci_image",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/ownership/compose-image-registration.sh",
       "resourceClass": "oci_image",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
-      "path": "scripts/ownership/run-compose.sh",
-      "resourceClass": "compose_container",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ownership/run-compose.sh",
-      "resourceClass": "compose_network",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ownership/run-compose.sh",
-      "resourceClass": "compose_volume",
-      "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "buildkit_cache",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "compose_container",
-      "operation": "cleanup",
+      "path": "scripts/ownership/deployment-lock.mjs",
+      "resourceClass": "collector_process",
+      "operation": "register",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This callsite mechanically observes identity only and cannot authorize or perform lifecycle mutation."
     },
     {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "compose_network",
-      "operation": "cleanup",
-      "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "compose_network",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "compose_volume",
-      "operation": "cleanup",
-      "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "compose_volume",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
-    },
-    {
-      "path": "scripts/ownership/run-operator-compose.sh",
-      "resourceClass": "oci_image",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
-    },
-    {
-      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
-      "resourceClass": "buildkit_cache",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
-    },
-    {
-      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
-      "resourceClass": "compose_network",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
-      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "path": "scripts/ownership/producer-hooks.sh",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
-      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
-      "resourceClass": "oci_image",
-      "operation": "create",
+      "path": "scripts/ownership/producer-hooks.sh",
+      "resourceClass": "compose_volume",
+      "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
-      "disposition": "deferred",
-      "operation": "cleanup",
-      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "path": "scripts/ownership/registration.mjs",
       "resourceClass": "temporary_artifact",
-      "safetyContract": "Phase 6 will register the exact generated benchmark directory before recursive cleanup."
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "This canonical host helper verifies retained exact authority and a terminal or absent cleanup postcondition."
+    },
+    {
+      "path": "scripts/ownership/run-compose.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ownership/run-compose.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ownership/run-compose.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "buildkit_cache",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "compose_container",
+      "operation": "cleanup",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "compose_container",
+      "operation": "create",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "compose_network",
+      "operation": "create",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "compose_volume",
+      "operation": "cleanup",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "compose_volume",
+      "operation": "create",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ownership/run-operator-compose.sh",
+      "resourceClass": "oci_image",
+      "operation": "create",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "resourceClass": "buildkit_cache",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
+    },
+    {
+      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "resourceClass": "compose_container",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "resourceClass": "compose_network",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "resourceClass": "compose_volume",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
+    },
+    {
+      "path": "scripts/perf/phase3-compose-benchmark-smoke.mjs",
+      "resourceClass": "oci_image",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": "scripts/perf/phase3-compose/backend-scale-out-proof.mjs",
@@ -1150,60 +1234,67 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
-      "disposition": "deferred",
-      "operation": "create",
       "path": "scripts/perf/wallet-sync-high-fanout-replay.mjs",
       "resourceClass": "collector_process",
-      "safetyContract": "Phase 6 will register process start identity, script digest, heartbeat, and terminal marker."
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": "scripts/perf/wallet-sync-high-fanout-replay.mjs",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/perf/wallet-sync-high-fanout-replay.mjs",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/perf/wallet-sync-high-fanout-replay.mjs",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "scripts/perf/wallet-sync-persistence-driver.cjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "This canonical host helper verifies retained exact authority and a terminal or absent cleanup postcondition."
     },
     {
       "path": "scripts/perf/wallet-sync-replay-cleanup.mjs",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/perf/wallet-sync-replay-cleanup.mjs",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/perf/wallet-sync-replay-creation.mjs",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/perf/wallet-sync-replay-creation.mjs",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "disposition": "migrate",
@@ -1213,11 +1304,11 @@
       "safetyContract": "Retain signed evidence with immutable content digests and owner-only local staging."
     },
     {
-      "disposition": "deferred",
-      "operation": "register",
       "path": "scripts/release/promote-release.sh",
       "resourceClass": "git_worktree",
-      "safetyContract": "Phase 6 will bind promotion liveness inspection to exact registered worktree identity without cleanup authority."
+      "operation": "register",
+      "disposition": "reference_only",
+      "safetyContract": "This callsite mechanically observes identity only and cannot authorize or perform lifecycle mutation."
     },
     {
       "disposition": "migrate",
@@ -1245,7 +1336,7 @@
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator performs exact receipt-bound retirement after the integration subject terminates."
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": "scripts/run-integration-tests.sh",
@@ -1259,7 +1350,7 @@
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator performs exact receipt-bound retirement after the integration subject terminates."
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": "scripts/run-integration-tests.sh",
@@ -1273,7 +1364,7 @@
       "resourceClass": "compose_volume",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator performs exact receipt-bound retirement after the integration subject terminates."
+      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
       "path": "scripts/run-integration-tests.sh",
@@ -1287,112 +1378,112 @@
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/setup.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "path": "scripts/setup.sh",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/setup.sh",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/setup.sh",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/setup.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/templates/README.template.md",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/verify-addresses/implementations/python.ts",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "path": "scripts/verify-addresses/implementations/python.ts",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "The explicit foreground --rm invocation is synchronous, non-detached, and daemon-atomic for this exact container."
+      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
     },
     {
       "path": "scripts/verify-addresses/verify-repeatable.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "scripts/verify-addresses/verify-repeatable.sh",
@@ -1420,7 +1511,7 @@
       "resourceClass": "oci_image",
       "operation": "cleanup",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/verify-addresses/verify-repeatable.sh",
@@ -1434,7 +1525,7 @@
       "resourceClass": "oci_image",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "scripts/verify-psbt/README.md",
@@ -1476,21 +1567,21 @@
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "server/src/utils/docker/tor.ts",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "server/src/utils/docker/tor.ts",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "disposition": "reference_only",
@@ -1511,77 +1602,637 @@
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "src/components/Monitoring/MonitoringDisabledBanner.tsx",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "src/components/Monitoring/MonitoringDisabledBanner.tsx",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "start.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "start.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "start.sh",
       "resourceClass": "compose_container",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "start.sh",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "start.sh",
       "resourceClass": "compose_network",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "start.sh",
       "resourceClass": "compose_volume",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "start.sh",
       "resourceClass": "oci_image",
       "operation": "create",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "tests/bitcoin/mine-to-address.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/actionlint-shellcheck.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/aggregate-runner-locks.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/backend-coverage-scripts.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-actions-cache-service.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-actions-cache-service.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-github-action-runtimes.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-hardware-emulator-source-inventory.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-provider-leaks.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-root-layout.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-supply-chain-locks.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/check-workflow-composition.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/classify-architecture-scope.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/classify-docker-build-images.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/classify-hardware-emulator-shadow.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/classify-integration-failure.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/classify-quality-scope.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/classify-test-changes.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/cleanup-docker-resources.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/collect-playwright-artifacts.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/dockerExecTcpForwarder.test.ts",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/dockerExecTcpForwarder.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/download-verified-source.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/ensure-go.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/ensure-toolchains.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/frontend-coverage-scripts.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/git-default-branch.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/install-playwright-chromium.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/install-semgrep.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/install-test-ports.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/isolated-subject-drivers.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/isolated-workspace.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/measure-wallclock.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/observe-runtime-image-cves.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/plan-test-run.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/playwright-timing-reporter.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/podman-socket-canary-composition.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/portability.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/pre-commit-agent-gate.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/provider-context.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/psbt-core-subject.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/quality-audit.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/quality-lizard-bootstrap.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/registered-collector-process.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/registered-collector-process.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/registered-staging.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/report-timing-notices.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/report-workflow-durations.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/report-workflow-trends.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/resolve-postgres-service.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/resolve-redis-service.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/retry-command.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/retry-playwright-infrastructure-failure.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/retry-vitest-infrastructure-failure.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/run-lane.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/run-quality-lint.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/run-with-log.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/run-with-log.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/sanctuary-backup.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/sanctuary-backup.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/setup-server-dependencies.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/time-command.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/trezorEmulatorRunnerPreflight.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/upload-artifact-from-subject.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/verify-addresses-repeatable.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/verify-repeatable-rpc-wait.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/wait-for-docker.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/wait-for-migration.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/wallet-sync-persistence-replay-controller.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/wallet-sync-persistence-replay-controller.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/wallet-sync-replay-cleanup.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/with-runner-lock.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/workflows-test-only.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/write-diagnostic-summary.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/write-empty-diagnostic-breadcrumb.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/write-preflight-diagnostics.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/config/coveragePolicy.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/config/jadeProtocolHarness.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/config/ledgerEmulatorProofConfig.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/config/trezorEmulatorProofBinding.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
       "path": "tests/install/e2e/fresh-install.test.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",
       "disposition": "exempt",
-      "safetyContract": "This shared BuildKit cache is retained by policy and is never broadly pruned."
+      "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
     },
     {
       "path": "tests/install/e2e/fresh-install.test.sh",
@@ -1654,18 +2305,116 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
-      "disposition": "deferred",
-      "operation": "cleanup",
       "path": "tests/install/e2e/upgrade-install.test.sh",
       "resourceClass": "git_worktree",
-      "safetyContract": "Phase 6 will register canonical path, common directory, branch, HEAD, base, and clean state."
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
+    },
+    {
+      "path": "tests/install/unit/cleanup-containers-guard.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/grafana-password-migration.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/grafana-quiescence.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and terminates only the exact background PID created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/grafana-quiescence.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/install-unit-suite-runner.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/install-scope.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/install-script.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/offline-bundle-script.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/optional-stack-lifecycle.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/purge-image-scope.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/reset-user-2fa-script.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/upgrade-backup-script.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/upgrade-helpers.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/install/unit/upgrade-staleness.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
       "path": "tests/install/utils/helpers.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "tests/install/utils/helpers.sh",
@@ -1679,7 +2428,7 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The producer registers the exact immutable container identity and complete ownership tuple before later mutation."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "tests/install/utils/helpers.sh",
@@ -1700,7 +2449,7 @@
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "tests/install/utils/upgrade-assertions.sh",
@@ -1714,7 +2463,7 @@
       "resourceClass": "compose_container",
       "operation": "register",
       "disposition": "exempt",
-      "safetyContract": "The exact immutable identity is registered, re-inspected, and mutation postconditions are verified."
+      "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
       "path": "tests/install/utils/upgrade-assertions.sh",
@@ -1735,7 +2484,7 @@
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh",
@@ -1745,25 +2494,305 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
+      "path": "tests/ownership/ci-cleanup-coordinator.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/ci-cleanup-evidence.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/ci-cleanup-evidence.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-cli-execution.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-cli-execution.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-docker-real.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-host-cli-e2e.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-host-real.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-host-real.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-lock-controller.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-safe-helper.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-safe-helper.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-supervisor.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/deployment-cli.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/describe-host-authority.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/describe-host-authority.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/phase-smoke-cleanup-composition.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/phase-smoke-cleanup-composition.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/registration.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/bump-version.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/cleanup-trap-exit-status.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/create-forge-release.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/prepare-release-assets.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/previous-release-tag.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/promote-release.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/publish-release-assets.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/publish-release.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/release-candidate-canary.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/verify-prepared-release.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/verify-release-artifacts.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/release/wallet-safety-audit-review.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/bitcoinCoreCliSupervision.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/checkBitcoinNetworkBoundaries.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/checkLargeFiles.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/checkSafetyCatchGuards.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/checkSemgrepBaseline.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/diagnoseWalletSync.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/opsRuntimeEnvironment.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/verifyAddressesGenerated.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/scripts/verifyAddressesPythonWrapper.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "uninstall.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "uninstall.sh",
       "resourceClass": "compose_network",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "uninstall.sh",
       "resourceClass": "compose_volume",
       "operation": "cleanup",
       "disposition": "reference_only",
-      "safetyContract": "This exact mutation remains inside the mechanically recognized application lifecycle."
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     }
   ]
 }

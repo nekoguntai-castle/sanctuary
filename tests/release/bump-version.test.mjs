@@ -52,8 +52,15 @@ function canonicalReport(repo) {
 function createFixture() {
   const repo = mkdtempSync(join(tmpdir(), 'sanctuary-bump-test-'));
   for (const output of outputs) mkdirSync(dirname(join(repo, output)), { recursive: true });
-  mkdirSync(join(repo, 'scripts'), { recursive: true });
+  mkdirSync(join(repo, 'scripts/ci'), { recursive: true });
   cpSync(sourceScript, join(repo, 'scripts/bump-version.sh'));
+  const stagingHelper = join(repo, 'scripts/ci/create-registered-staging.sh');
+  writeFileSync(stagingHelper, `#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "\${TMPDIR:-/tmp}"
+mktemp -d "\${TMPDIR:-/tmp}/registered-\${1}.XXXXXX"
+`);
+  chmodSync(stagingHelper, 0o755);
   chmodSync(join(repo, 'scripts/bump-version.sh'), 0o755);
   for (const name of ['package.json', 'server/package.json', 'gateway/package.json', 'llm-egress-proxy/package.json']) {
     writeJson(join(repo, name), { name, version: '1.2.3' });
@@ -117,6 +124,7 @@ function run(fixture, args, extraEnv = {}) {
       ...process.env,
       SANCTUARY_BUMP_NPM_BIN: fixture.npmStub,
       SANCTUARY_BUMP_REPORT_BIN: fixture.reportStub,
+      SANCTUARY_CLEANUP_COORDINATED: '1',
       ...extraEnv,
     },
   });

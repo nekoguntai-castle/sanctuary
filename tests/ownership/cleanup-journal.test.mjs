@@ -64,6 +64,12 @@ function resultPayload(intentDigest) {
   };
 }
 
+function provenAbsentResultPayload(intentDigest) {
+  return {
+    ...resultPayload(intentDigest), result: 'absent', mutationOutcome: 'not_started',
+  };
+}
+
 test('signed canonical checkpoints retain an immutable genesis identity', () => {
   const state = fixture();
   const genesis = create(state);
@@ -94,6 +100,28 @@ test('signed canonical checkpoints retain an immutable genesis identity', () => 
   assert.deepEqual(verified.records.map((entry) => entry.checkpoint.checkpointType), ['genesis', 'intent', 'result']);
   assert.equal(verified.records[1].checkpoint.previousDigest, genesis.headDigest);
   assert.equal(readFileSync(genesis.journalPath).at(-1), 0x0a);
+});
+
+test('a signed intent can journal a stable proven absence without mutation', () => {
+  const state = fixture();
+  const genesis = create(state);
+  const intent = appendCleanupCheckpoint({
+    ...state, expectedGenesisDigest: genesis.genesisDigest,
+    expectedHeadDigest: genesis.headDigest, checkpointType: 'intent',
+    payload: intentPayload(),
+  });
+  const result = appendCleanupCheckpoint({
+    ...state, expectedGenesisDigest: genesis.genesisDigest,
+    expectedHeadDigest: intent.headDigest, checkpointType: 'result',
+    payload: provenAbsentResultPayload(intent.headDigest),
+  });
+  const verified = verifyCleanupJournal({
+    ...state, expectedSignerKeyId: state.signerKeyId,
+    expectedGenesisDigest: genesis.genesisDigest,
+  });
+  assert.equal(verified.headDigest, result.headDigest);
+  assert.equal(verified.records[2].checkpoint.payload.result, 'absent');
+  assert.equal(verified.records[2].checkpoint.payload.mutationOutcome, 'not_started');
 });
 
 test('append requires an exact current head and rejects private payload fields', () => {

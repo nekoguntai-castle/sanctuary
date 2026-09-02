@@ -59,6 +59,11 @@ jq -e '
 cleanup_container=''
 cleanup_container_registered=0
 forwarder_pid=0
+forwarder_terminal=''
+forwarder_control_token=''
+forwarder_control_port=''
+forwarder_start_token=''
+forwarder_gate_fd=''
 proof_image_id=''
 proof_image_registered=0
 
@@ -132,10 +137,15 @@ retire_registered_transient() {
 cleanup() {
   local subject_status=$? cleanup_status=0 final_status
   trap - EXIT
-  if [ "$forwarder_pid" -ne 0 ]; then
-    kill "$forwarder_pid" >/dev/null 2>&1 || true
+  if [ -n "$forwarder_gate_fd" ]; then
+    exec {forwarder_gate_fd}>&-
+    forwarder_gate_fd=''
     wait "$forwarder_pid" >/dev/null 2>&1 || true
     forwarder_pid=0
+  fi
+  if [ "$forwarder_pid" -ne 0 ]; then
+    "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
+      || cleanup_status=$?
   fi
   if [ -n "$cleanup_container" ]; then
     timeout --foreground --kill-after=5s 20s docker logs "$cleanup_container" \
@@ -148,7 +158,7 @@ cleanup() {
   fi
   final_status="$subject_status"
   if [ "$cleanup_status" -ne 0 ]; then
-    echo "Ledger registered-transient retirement failed (exit=$cleanup_status)" >&2
+    echo "Ledger registered cleanup marker failed (exit=$cleanup_status)" >&2
     [ "$final_status" -ne 0 ] || final_status="$cleanup_status"
   fi
   jq -n --argjson subjectExitCode "$subject_status" \
@@ -157,7 +167,39 @@ cleanup() {
     > "$diagnostics_dir/run-status.json"
   exit "$final_status"
 }
+
+register_forwarder() {
+  local label=$1 registration
+  registration=$("$SCRIPT_DIR/registered-collector-process.sh" register \
+    "$forwarder_pid" "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" "$label") || return
+  IFS=$'\t' read -r _ forwarder_terminal <<< "$registration"
+  [[ -n $forwarder_terminal ]]
+}
+
+finish_forwarder() {
+  local poll
+  timeout --foreground 5s curl --fail --silent --show-error \
+    --request POST --header "Authorization: Bearer $forwarder_control_token" \
+    "http://127.0.0.1:$forwarder_control_port/shutdown" >/dev/null || return
+  for poll in $(seq 1 100); do
+    if ! jobs -pr | grep -Fxq "$forwarder_pid"; then
+      wait "$forwarder_pid"
+      "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal"
+      forwarder_pid=0
+      forwarder_terminal=''
+      forwarder_control_token=''
+      forwarder_control_port=''
+      unset SANCTUARY_FORWARDER SANCTUARY_FORWARDER_PID
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 export SANCTUARY_PROJECT='ledger-emulator-proof'
 export SANCTUARY_PROJECT_DIR="$PROJECT_ROOT"
@@ -268,17 +310,32 @@ run_network() {
   timeout --foreground --kill-after=10s 60s docker start "$container" >/dev/null
 
   forwarder_output="$diagnostics_dir/forwarder-${network}.json"
-  node scripts/ci/docker-exec-tcp-forwarder.mjs \
-    --container "$container" \
-    --controller-port 9999 \
-    --bridge-port 9999 > "$forwarder_output" &
-  forwarder_pid=$!
+  forwarder_control_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  forwarder_start_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  coproc SANCTUARY_FORWARDER {
+    SANCTUARY_COLLECTOR_START_TOKEN="$forwarder_start_token" exec setsid node \
+      --import "$SCRIPT_DIR/registered-start-gate.mjs" \
+      "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" \
+      --container "$container" \
+      --controller-port 9999 \
+      --bridge-port 9999 \
+      --control-token "$forwarder_control_token" > "$forwarder_output"
+  }
+  forwarder_pid=$SANCTUARY_FORWARDER_PID
+  forwarder_gate_fd=${SANCTUARY_FORWARDER[1]}
+  forwarder_output_fd=${SANCTUARY_FORWARDER[0]}
+  exec {forwarder_output_fd}<&-
+  register_forwarder "ledger-forwarder-$network"
+  printf 'registered %s\n' "$forwarder_start_token" >&"$forwarder_gate_fd"
+  exec {forwarder_gate_fd}>&-
+  forwarder_gate_fd=''
   for _ in $(seq 1 100); do
-    [ -s "$forwarder_output" ] && break
-    kill -0 "$forwarder_pid" >/dev/null 2>&1 || break
+    if [ -s "$forwarder_output" ] && jq -e \
+      '.controllerPort > 0 and .controlPort > 0' "$forwarder_output" >/dev/null 2>&1; then break; fi
     sleep 0.1
   done
   apdu_port="$(jq -er '.controllerPort' "$forwarder_output")"
+  forwarder_control_port="$(jq -er '.controlPort' "$forwarder_output")"
   junit_path="$diagnostics_dir/junit-ledger-${network}.xml"
   LEDGER_EMULATOR_PROOF=1 \
   LEDGER_EMULATOR_HOST=127.0.0.1 \
@@ -291,9 +348,7 @@ run_network() {
     timeout --foreground --kill-after=30s 900s \
       npx vitest run --config config/tooling/vitest.ledger-emulator.config.ts
 
-  kill "$forwarder_pid" >/dev/null 2>&1 || true
-  wait "$forwarder_pid" >/dev/null 2>&1 || true
-  forwarder_pid=0
+  finish_forwarder
   timeout --foreground --kill-after=5s 20s docker logs "$container" \
     > "$diagnostics_dir/${container}.log" 2>&1 || true
   retire_registered_transient "$container" "$network" "$cleanup_container_registered"

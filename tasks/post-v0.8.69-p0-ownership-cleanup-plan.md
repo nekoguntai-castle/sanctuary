@@ -1,6 +1,6 @@
 # Post-v0.8.69 P0 Ownership Manifest and Cleanup-Receipt Plan
 
-Status: implementation in progress; PRs 1–4 plus the Compose compatibility hotfix have landed with exact-head and landed-main CI green; PR 5 is in progress
+Status: implementation in progress; PRs 1–5 plus the Compose compatibility hotfix have landed; PR 6 is locally verified and awaiting protected-PR delivery
 Date: 2026-08-30
 Planning baseline: `origin/main` at `ee8baab03c4113c50f80183ff3aea068bc3c1ddc`
 Backlog source: `tasks/todo.md`, “P0 — telemetry, overload protection, and ownership”
@@ -661,7 +661,10 @@ the complete quality gate with 8,271/8,271 tests and 100% coverage. A coordinate
 address-verifier recovery produced verified signed final evidence and left no exact
 resource residue. Independent architecture, security, recovery, callsite-scanner,
 acceptance, subject-authority, and crash-window rereviews returned `CLEAN`;
-protected-PR delivery remains the only unfinished PR 5 step.
+protected PR #994 merged with exact-head CI green. Landed-main Fresh Install then
+exposed the deferred host-authority handoff: the subject passed, but cleanup
+refused after its coordinator authority changed. PR 6 owns that remaining
+landed-main acceptance gap rather than weakening the refusal.
 
 ### PR 6 — registered host-artifact execution
 
@@ -693,6 +696,19 @@ Acceptance:
 - The complete lifecycle-callsite inventory has no unclassified or legacy
   destructive host-artifact bypass. Repository-wide searches and independent
   P0-P2 review cover every serial phase before closeout.
+
+Implementation checkpoint: the Linux helper, typed v1.1 host registrations,
+registered staging/collector/start-gate adapters, isolated subject drivers, and
+host cleanup integration are complete. The lifecycle registry classifies 388
+scanned identities plus nine preserved provider/evidence/application identities,
+with zero host-artifact or Docker migrations. Real registered process, staging,
+collector, upload, isolated-workspace, subject-driver, and cleanup-CLI fixtures
+pass. The complete install-unit gate, 680 workflow-composition assertions, 10/10
+CI registration checks, 401 ownership cases (398 pass plus three opt-in
+real-Docker skips), all typechecks, and 8,277 behavioral tests at 100% coverage
+pass. The Semgrep report has seven findings, all matched by the reviewed baseline;
+gitleaks and npm audit gates pass. Two independent P0-P2 reviews returned `CLEAN`.
+Exact-head and landed-main CI, including Fresh Install, remain delivery gates.
 
 ## 5. Rollout and backout
 

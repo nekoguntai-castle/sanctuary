@@ -93,7 +93,8 @@ export RUNNER_TEMP="$fixture_root"
 mkdir -p "$fixture_root/bin" "$fixture_root/receipts/mount"
 cat > "$fixture_root/bin/node" <<'NODE'
 #!/usr/bin/env bash
-exit 0
+printf '%s\n' "$@" > "${FAKE_NODE_ARGS:?}"
+exit "${FAKE_NODE_STATUS:-0}"
 NODE
 chmod +x "$fixture_root/bin/node"
 for name in planning-upload final-upload; do
@@ -103,43 +104,26 @@ for name in planning-upload final-upload; do
   printf '%064d\n' 0 > "$fixture_root/receipts/mount/$name.sha256"
 done
 printf '%s\n' public-key > "$fixture_root/receipts/mount/evidence-public.pem"
+printf '%s\n' authorization-key > "$fixture_root/receipts/mount/authorization-public.pem"
 PATH="$fixture_root/bin:$PATH" GITHUB_WORKSPACE="$ROOT_DIR" \
-  CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_REQUIRE_SUCCESS=true \
+  CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_RECURSIVE=false \
+  CLEANUP_RECEIPT_REQUIRE_SUCCESS=true FAKE_NODE_ARGS="$fixture_root/node-args" \
   CLEANUP_RECEIPT_ROOT="$fixture_root/receipts" bash -c "$action_body"
-sed -i 's/"no_op"/"ambiguous"/' "$fixture_root/receipts/mount/final-upload.json"
+grep -Fxq -- '--artifact-mode' "$fixture_root/node-args"
+grep -Fxq -- 'children' "$fixture_root/node-args"
+grep -Fxq -- '--require-cleanup-success' "$fixture_root/node-args"
+grep -Fxq -- 'true' "$fixture_root/node-args"
 if PATH="$fixture_root/bin:$PATH" GITHUB_WORKSPACE="$ROOT_DIR" \
-    CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_REQUIRE_SUCCESS=true \
+    CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_RECURSIVE=false \
+    CLEANUP_RECEIPT_REQUIRE_SUCCESS=true FAKE_NODE_ARGS="$fixture_root/node-args" \
+    FAKE_NODE_STATUS=1 \
     CLEANUP_RECEIPT_ROOT="$fixture_root/receipts" bash -c "$action_body"; then
-  echo 'strict cleanup receipt action accepted an ambiguous final state' >&2
+  echo 'strict cleanup receipt action ignored verifier failure' >&2
   exit 1
 fi
-sed -i 's/"ambiguous"/"no_op"/' "$fixture_root/receipts/mount/final-upload.json"
-mkdir "$fixture_root/receipts/proxy"
 if PATH="$fixture_root/bin:$PATH" GITHUB_WORKSPACE="$ROOT_DIR" \
-    CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_REQUIRE_SUCCESS=true \
-    CLEANUP_RECEIPT_ROOT="$fixture_root/receipts" bash -c "$action_body"; then
-  echo 'strict cleanup receipt action skipped an incomplete child directory' >&2
-  exit 1
-fi
-rmdir "$fixture_root/receipts/proxy"
-mkdir "$fixture_root/receipts/.hidden"
-if PATH="$fixture_root/bin:$PATH" GITHUB_WORKSPACE="$ROOT_DIR" \
-    CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_REQUIRE_SUCCESS=true \
-    CLEANUP_RECEIPT_ROOT="$fixture_root/receipts" bash -c "$action_body"; then
-  echo 'strict cleanup receipt action skipped an incomplete hidden child directory' >&2
-  exit 1
-fi
-rmdir "$fixture_root/receipts/.hidden"
-ln -s "$fixture_root/receipts/mount" "$fixture_root/receipts/symlink"
-if PATH="$fixture_root/bin:$PATH" GITHUB_WORKSPACE="$ROOT_DIR" \
-    CLEANUP_RECEIPT_CHILDREN=true CLEANUP_RECEIPT_REQUIRE_SUCCESS=true \
-    CLEANUP_RECEIPT_ROOT="$fixture_root/receipts" bash -c "$action_body"; then
-  echo 'strict cleanup receipt action followed a symlink child directory' >&2
-  exit 1
-fi
-unlink "$fixture_root/receipts/symlink"
-if PATH="$fixture_root/bin:$PATH" GITHUB_WORKSPACE="$ROOT_DIR" \
-    CLEANUP_RECEIPT_CHILDREN=false CLEANUP_RECEIPT_REQUIRE_SUCCESS=invalid \
+    CLEANUP_RECEIPT_CHILDREN=false CLEANUP_RECEIPT_RECURSIVE=false \
+    CLEANUP_RECEIPT_REQUIRE_SUCCESS=invalid FAKE_NODE_ARGS="$fixture_root/node-args" \
     CLEANUP_RECEIPT_ROOT="$fixture_root/receipts/mount" bash -c "$action_body"; then
   echo 'strict cleanup receipt action accepted an invalid success requirement' >&2
   exit 1

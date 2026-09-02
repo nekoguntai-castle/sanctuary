@@ -449,6 +449,7 @@ const VALIDATORS = {
 };
 
 const CLEANUP_V11_VALIDATORS = {
+  resource_registration: validateRegistration,
   inventory: validateInventoryV11,
   cleanup_plan: validatePlanV11,
   cleanup_approval: validateApprovalV11,

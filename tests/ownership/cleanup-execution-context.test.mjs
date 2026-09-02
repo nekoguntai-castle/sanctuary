@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildCleanupExecutionContext, observeDockerDaemonContext,
+  buildCleanupExecutionContext, buildHostCleanupExecutionContext, observeDockerDaemonContext,
   dockerDaemonDriftOperation, observeResolvedDockerDaemonEvidence, resolveDockerDaemonContext,
 } from '../../scripts/ownership/cleanup-execution-context.mjs';
 
@@ -198,5 +198,34 @@ test('execution context binds every destructive selector and registration input'
     { dataVolumeNames: ['data-2'] },
     { sharedImmutableIdentities: [] },
     { registrations: [{ registrationId: 'f'.repeat(64) }] },
+    { hostAuthorityDigest: '1'.repeat(64) },
   ]) assert.notEqual(buildCleanupExecutionContext({ ...base, ...changed }).fingerprint, first.fingerprint);
+  assert.equal(Object.hasOwn(first.context, 'hostAuthorityDigest'), false);
+  assert.equal(buildCleanupExecutionContext({
+    ...base, hostAuthorityDigest: '1'.repeat(64),
+  }).context.hostAuthorityDigest, '1'.repeat(64));
+});
+
+test('host-only execution context binds registrations and helper without daemon fields', () => {
+  const registrations = [{ registrationId: 'b'.repeat(64) }, { registrationId: 'c'.repeat(64) }];
+  const first = buildHostCleanupExecutionContext({ registrations, hostAuthorityDigest: HASH });
+  const reordered = buildHostCleanupExecutionContext({
+    registrations: [...registrations].reverse(), hostAuthorityDigest: HASH,
+  });
+  assert.equal(first.fingerprint, reordered.fingerprint);
+  assert.deepEqual(Object.keys(first.context).sort(), [
+    'engine', 'hostAuthorityDigest', 'registrationSnapshotDigest',
+  ]);
+  assert.equal(first.context.engine, 'host');
+  assert.notEqual(buildHostCleanupExecutionContext({
+    registrations: registrations.slice(1), hostAuthorityDigest: HASH,
+  }).fingerprint, first.fingerprint);
+  assert.notEqual(buildHostCleanupExecutionContext({
+    registrations, hostAuthorityDigest: 'd'.repeat(64),
+  }).fingerprint, first.fingerprint);
+  assert.throws(() => buildCleanupExecutionContext({
+    engine: 'host', daemonContextFingerprint: HASH,
+    selectors: { compose_container: [], compose_network: [], compose_volume: [], oci_image: [], buildkit_cache: [] },
+  }), /docker or podman/);
+  assert.throws(() => buildHostCleanupExecutionContext({ registrations }), /requires helper authority/);
 });

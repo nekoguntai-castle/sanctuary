@@ -105,7 +105,7 @@ test('CI cleanup lifecycle activates exact manifest authority then terminalizes 
     assert.match(prepared.environment.SANCTUARY_IMAGE_LOCK_SHA256, /^[a-f0-9]{64}$/);
     assert.match(prepared.environment.SANCTUARY_VERSION, /^\d+\.\d+\.\d+/);
     assert.equal(prepared.environment.SANCTUARY_BUILD_ID,
-      `checkout-${prepared.state.authority.checkoutCommit}`);
+      prepared.state.authority.operationRunId);
     assert.equal(prepared.environment.SANCTUARY_IMAGE_TAG,
       prepared.state.authority.composeProjectName);
     assert.equal(prepared.environment.SANCTUARY_VOLUME_CLEANUP_POLICY, 'exact_delete');
@@ -118,6 +118,20 @@ test('CI cleanup lifecycle activates exact manifest authority then terminalizes 
       now: new Date('2026-08-31T00:00:01.000Z'),
     });
     assert.equal(resumed.digest, prepared.digest);
+    assert.equal(resumed.environment.SANCTUARY_BUILD_ID,
+      prepared.environment.SANCTUARY_BUILD_ID);
+    const peer = prepareCiCleanupLifecycle({
+      checkoutRoot: CHECKOUT,
+      runtimeDirectory: path.join(runnerTemp, 'sanctuary-cleanup', 'install-peer'),
+      lane: 'install-peer',
+      now: new Date('2026-08-31T00:00:01.000Z'),
+    });
+    assert.equal(peer.environment.SANCTUARY_SOURCE_COMMIT,
+      prepared.environment.SANCTUARY_SOURCE_COMMIT);
+    assert.equal(peer.environment.SANCTUARY_BUILD_ID,
+      peer.state.authority.operationRunId);
+    assert.notEqual(peer.environment.SANCTUARY_BUILD_ID,
+      prepared.environment.SANCTUARY_BUILD_ID);
 
     const finished = finishCiCleanupLifecycle({
       statePath: prepared.path, checkoutRoot: CHECKOUT, subjectExitStatus: 17,

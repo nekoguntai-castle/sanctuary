@@ -4,6 +4,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+REGISTERED_STAGING="$SCRIPT_DIR/ci/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/ci/cleanup-ci-callsite.sh"
+
+if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]]; then
+  exec "$CLEANUP_COORDINATOR" auto-run --lane bump-version --engine host \
+    --checkout-root "$ROOT_DIR" -- bash "$0" "$@"
+fi
 cd "$ROOT_DIR"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -25,9 +32,7 @@ ROLLBACK=false
 fail() { echo -e "${RED}Version evidence check failed:${NC} $*" >&2; return 1; }
 
 cleanup_transaction() {
-  [[ -n "$TRANSACTION_DIR" && -d "$TRANSACTION_DIR" ]] || return 0
-  find "$TRANSACTION_DIR" -type f -delete
-  find "$TRANSACTION_DIR" -depth -type d -empty -delete
+  : # Registered temporary artifacts are removed only by the cleanup coordinator.
 }
 
 finish_transaction() {
@@ -40,7 +45,6 @@ finish_transaction() {
     done
     echo -e "${YELLOW}Version bump failed; restored every declared output.${NC}" >&2
   fi
-  cleanup_transaction || status=1
   exit "$status"
 }
 
@@ -123,24 +127,16 @@ if (errors.length) { process.stderr.write(`${errors.join('\n')}\n`); process.exi
 NODE
 }
 
-remove_temp_dir() {
-  local directory=$1
-  find "$directory" -type f -delete 2>/dev/null || true
-  find "$directory" -depth -type d -empty -delete 2>/dev/null || true
-}
-
 check_release_evidence() {
   require_declared_outputs
   validate_version_identities || fail "manifest, lockfile, or generated JSON identity mismatch"
   local parity_dir
-  parity_dir="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-version-check.XXXXXX")"
+  parity_dir="$($REGISTERED_STAGING version-check)"
   if ! run_hardware_report "$parity_dir/report.json" "$parity_dir/report.md" \
     || ! cmp -s "$HARDWARE_JSON" "$parity_dir/report.json" \
     || ! cmp -s "$HARDWARE_MARKDOWN" "$parity_dir/report.md"; then
-    remove_temp_dir "$parity_dir"
     fail "generated hardware JSON/Markdown are not the canonical matching pair"
   fi
-  remove_temp_dir "$parity_dir"
   echo -e "${GREEN}All release version evidence is in sync: $(get_version package.json)${NC}"
 }
 
@@ -156,7 +152,7 @@ calc_version() {
 }
 
 begin_transaction() {
-  TRANSACTION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-version-bump.XXXXXX")"
+  TRANSACTION_DIR="$($REGISTERED_STAGING version-bump)"
   local output
   for output in "${DECLARED_OUTPUTS[@]}"; do
     mkdir -p "$TRANSACTION_DIR/$(dirname "$output")"

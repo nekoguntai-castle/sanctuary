@@ -95,6 +95,8 @@ main() {
       fail 'expected docker-visible clone under workspace .tmp'
       ;;
   esac
+  [ "$(stat -c '%a' -- "$docker_clone")" = 700 ] || \
+    fail 'expected isolated repository to be owner-only'
   for required_name in \
     SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID \
     SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT \
@@ -121,6 +123,15 @@ main() {
     status="$?"
     [ "$status" -eq 42 ] || fail "expected status 42, got ${status}"
   fi
+
+  if SANCTUARY_CI_SOURCE_WORKSPACE="$source_repo" \
+    SANCTUARY_CI_WORKSPACE_PARENT="$workspace_parent" \
+    SANCTUARY_TEST_FAIL_AFTER_WORKSPACE_REGISTRATION=1 \
+    bash "$RUN_SCRIPT" registration-failure true >/dev/null 2>&1; then
+    fail 'expected injected post-registration workspace failure'
+  fi
+  [ -z "$(find "$workspace_parent" -mindepth 1 -maxdepth 1 -print -quit)" ] || \
+    fail 'expected registered workspace root to be cleaned after creator failure'
 
   echo 'isolated workspace regression checks passed'
 }

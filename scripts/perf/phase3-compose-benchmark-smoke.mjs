@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,9 +51,19 @@ async function findAvailablePort(startPort) {
   throw new Error(`Could not find an available loopback port starting at ${startPort}${reason}`);
 }
 
+const configEnv = { ...process.env };
+if (!configEnv.PHASE3_COMPOSE_SSL_DIR) {
+  configEnv.PHASE3_COMPOSE_SSL_DIR = execFileSync(
+    path.join(repoRoot, 'scripts/ci/create-registered-staging.sh'),
+    ['phase3-compose-ssl'],
+    { cwd: repoRoot, encoding: 'utf8', env: process.env },
+  ).trim();
+  configEnv.PHASE3_COMPOSE_SSL_DIR_REGISTERED = 'true';
+}
+
 const config = await readPhase3ComposeBenchmarkConfig({
   env: {
-    ...process.env,
+    ...configEnv,
     PHASE3_COMPOSE_BENCHMARK_PROJECT: process.env.COMPOSE_PROJECT_NAME,
   },
   repoRoot,
@@ -101,7 +111,6 @@ const {
   composeEnv,
   benchmarkEnv,
 } = config;
-
 if (keepStack) {
   throw new Error('PHASE3_COMPOSE_BENCHMARK_KEEP_STACK is incompatible with receipt-bound cleanup');
 }
@@ -368,13 +377,6 @@ try {
   console.log(`Wrote ${relativePath(mdPath)}`);
   console.log(`Wrote ${relativePath(jsonPath)}`);
 
-  if (!keepStack && ownsSslDir) {
-    try {
-      rmSync(sslDir, { recursive: true, force: true });
-    } catch (error) {
-      console.warn(`Failed to clean up temporary SSL directory ${sslDir}: ${getErrorMessage(error)}`);
-    }
-  }
 }
 
 if (!passed) {

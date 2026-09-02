@@ -20,11 +20,6 @@
       "rationale": "Names ten install timing labels; these JSON keys cannot execute commands."
     },
     {
-      "file": ".github/workflows/architecture.yml",
-      "executable": true,
-      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
-    },
-    {
       "file": ".github/workflows/install-test.yml",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
@@ -95,6 +90,11 @@
       "executable": false,
       "expectedMatches": 0,
       "rationale": "This policy file; mentions npm ci in its explanatory note."
+    },
+    {
+      "file": "scripts/ci/run-architecture-validation-subject.sh",
+      "executable": true,
+      "rationale": "Installs exact locked root and docs dependencies with lifecycle scripts explicitly constrained inside the registered architecture coordinator subject."
     },
     {
       "file": "scripts/ci/run-quality-lint.sh",

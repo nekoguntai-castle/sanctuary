@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TIMING_SCRIPT="$ROOT_DIR/scripts/ci/report-timing-notices.sh"
+COORDINATOR="$ROOT_DIR/scripts/ci/cleanup-ci-callsite.sh"
 TEST_TEMP_DIR=''
 
 fail() {
@@ -33,6 +34,17 @@ assert_fails_with() {
   fi
 
   assert_contains "$output_file" "$expected"
+}
+
+run_coordinated_timing() {
+  local provider="$TEST_TEMP_DIR/provider-timing"
+  mkdir -m 700 "$provider"
+  SANCTUARY_LOCAL_CLEANUP_AUTHORITY=1 \
+  SANCTUARY_LOCAL_CLEANUP_RUN_ID=report-timing-notices-test \
+  SANCTUARY_CI_TEMP_DIR_OVERRIDE="$provider" \
+    bash "$COORDINATOR" run --engine host --lane report-timing-notices-test \
+      --runtime "$provider/runtime" --artifact-dir "$TEST_TEMP_DIR/timing-artifacts" \
+      --checkout-root "$ROOT_DIR" -- "$@"
 }
 
 main() {
@@ -119,6 +131,11 @@ fi
 CURL
   chmod +x "$TEST_TEMP_DIR/bin/curl"
   : > "$url_log"
+  assert_fails_with 'could not create registered report staging' env \
+    PATH="$TEST_TEMP_DIR/bin:$PATH" TIMING_URL_LOG="$url_log" \
+    TIMING_ZIP_FIXTURE="$archive_file" FORGEJO_API_URL='https://forge.example/api/v1' \
+    FORGEJO_REPOSITORY='owner/repo' FORGEJO_TOKEN='test-token' \
+    bash "$TIMING_SCRIPT" --run 42 --job-filter 'Browser E2E'
   PATH="$TEST_TEMP_DIR/bin:$PATH" \
     TIMING_URL_LOG="$url_log" \
     TIMING_ZIP_FIXTURE="$archive_file" \
@@ -126,7 +143,9 @@ CURL
     FORGEJO_REPOSITORY='owner/repo' \
     FORGEJO_TOKEN='test-token' \
     FORGEJO_REPORT_TOKEN='preexported' \
-    bash "$TIMING_SCRIPT" --run 42 --job-filter 'Browser E2E' > "$output_file"
+    run_coordinated_timing bash "$TIMING_SCRIPT" --run 42 --job-filter 'Browser E2E' > "$output_file"
+  [ ! -e "$TEST_TEMP_DIR/provider-timing/runtime/subject-staging" ] \
+    || fail 'coordinator left registered timing-report staging behind'
   assert_contains "$output_file" '19 | 0m 19s | Full Browser E2E Tests | browser npm ci'
   if grep -Fq 'backend tests' "$output_file"; then
     fail 'job filter admitted an unrelated Forgejo log'

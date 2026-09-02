@@ -8,6 +8,10 @@ inputs:
     description: Verify every immediate child directory.
     required: false
     default: 'false'
+  recursive:
+    description: Verify every leaf directory beneath root.
+    required: false
+    default: 'false'
   require-cleanup-success:
     description: Require each final receipt to report cleaned, no_op, or recovered.
     required: false
@@ -18,6 +22,7 @@ runs:
     - shell: bash
       env:
         CLEANUP_RECEIPT_CHILDREN: ${{ inputs.children }}
+        CLEANUP_RECEIPT_RECURSIVE: ${{ inputs.recursive }}
         CLEANUP_RECEIPT_REQUIRE_SUCCESS: ${{ inputs.require-cleanup-success }}
         CLEANUP_RECEIPT_ROOT: ${{ inputs.root }}
       run: |
@@ -26,42 +31,28 @@ runs:
           true|false) ;;
           *) echo "children must be true or false" >&2; exit 1 ;;
         esac
+        case "$CLEANUP_RECEIPT_RECURSIVE" in
+          true|false) ;;
+          *) echo "recursive must be true or false" >&2; exit 1 ;;
+        esac
+        if [ "$CLEANUP_RECEIPT_CHILDREN" = true ] && [ "$CLEANUP_RECEIPT_RECURSIVE" = true ]; then
+          echo "children and recursive are mutually exclusive" >&2
+          exit 1
+        fi
         case "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" in
           true|false) ;;
           *) echo "require-cleanup-success must be true or false" >&2; exit 1 ;;
         esac
-        verify_directory() {
-          local root="$1" name
-          test -d "$root"
-          test ! -L "$root"
-          for name in planning-upload final-upload; do
-            for file in "$name.json" "$name.json.sig" "$name.sha256"; do
-              test -f "$root/$file"
-              test ! -L "$root/$file"
-              test -s "$root/$file"
-            done
-            test -f "$root/evidence-public.pem"
-            test ! -L "$root/evidence-public.pem"
-            test -s "$root/evidence-public.pem"
-          done
-          node scripts/ownership/verify-ci-cleanup-upload.mjs \
-            --artifact-root "$root" \
-            --runtime-root "$RUNNER_TEMP/sanctuary-cleanup" \
-            --checkout-root "$GITHUB_WORKSPACE"
-          if [ "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" = true ]; then
-            jq -e '.state == "cleaned" or .state == "no_op" or .state == "recovered"' \
-              "$root/final-upload.json" >/dev/null
-          fi
-        }
-        if [ "$CLEANUP_RECEIPT_CHILDREN" = true ]; then
-          shopt -s nullglob dotglob
-          directories=("$CLEANUP_RECEIPT_ROOT"/*)
-          test "${#directories[@]}" -gt 0
-          for directory in "${directories[@]}"; do
-            test ! -L "$directory"
-            test -d "$directory"
-            verify_directory "$directory"
-          done
+        if [ "$CLEANUP_RECEIPT_RECURSIVE" = true ]; then
+          artifact_mode=recursive
+        elif [ "$CLEANUP_RECEIPT_CHILDREN" = true ]; then
+          artifact_mode=children
         else
-          verify_directory "$CLEANUP_RECEIPT_ROOT"
+          artifact_mode=single
         fi
+        node scripts/ownership/verify-ci-cleanup-upload.mjs \
+          --artifact-root "$CLEANUP_RECEIPT_ROOT" \
+          --artifact-mode "$artifact_mode" \
+          --runtime-root "$RUNNER_TEMP/sanctuary-cleanup" \
+          --checkout-root "$GITHUB_WORKSPACE" \
+          --require-cleanup-success "$CLEANUP_RECEIPT_REQUIRE_SUCCESS"

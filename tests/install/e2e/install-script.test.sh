@@ -72,7 +72,7 @@ initialize_install_test_ownership
 # Per-lane image tag, derived from the project name so concurrent lanes on one
 # daemon cannot alias each other's images (#719).
 export_lane_image_tag
-TEST_ROOT=$(default_install_test_root "$PROJECT_ROOT")
+TEST_ROOT=$(prepare_install_test_root "$(default_install_test_root "$PROJECT_ROOT")")
 TEST_RUNTIME_DIR="${TEST_RUNTIME_DIR:-$TEST_ROOT/sanctuary-install-runtime-${TEST_ID}}"
 TEST_DOCKER_RUNTIME_DIR=$(docker_visible_path "$TEST_RUNTIME_DIR")
 TEST_ENV_FILE="$TEST_RUNTIME_DIR/sanctuary.env"
@@ -165,8 +165,6 @@ setup() {
         rm -f "$PROJECT_ROOT/docker/nginx/ssl/privkey.pem"
     fi
 
-    rm -rf "$TEST_RUNTIME_DIR"
-
     setup_cleanup_trap "teardown"
 }
 
@@ -191,9 +189,9 @@ teardown() {
         rm -f "$COOKIE_JAR"
     fi
 
-    if [ -d "$TEST_RUNTIME_DIR" ]; then
-        rm -rf "$TEST_RUNTIME_DIR"
-    fi
+    # TEST_RUNTIME_DIR contains the coordinator's manifests, registration keys,
+    # journal, and final receipt. The subject must never retire its authority.
+    log_info "Preserving receipt-bound cleanup runtime evidence"
 }
 
 # ============================================

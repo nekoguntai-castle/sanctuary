@@ -630,20 +630,17 @@ REPLAY_HOST_CHECK="$REPO_ROOT/scripts/ci/check-wallet-sync-replay-host.sh"
 REPLAY_IMAGE_HELPER="$REPO_ROOT/scripts/ci/wallet-sync-replay-image.sh"
 CLEANUP_RECEIPT_ACTION="$REPO_ROOT/.github/actions/verify-cleanup-receipt/action.yml"
 CLEANUP_EVIDENCE_UPLOAD_ACTION="$REPO_ROOT/.github/actions/upload-cleanup-evidence/action.yml"
+CLEANUP_RECEIPT_VERIFIER="$REPO_ROOT/scripts/ownership/verify-ci-cleanup-upload.mjs"
 RELEASE_GATES="$REPO_ROOT/docs/reference/release-gates.md"
 UPGRADE_ROADMAP="$REPO_ROOT/docs/plans/upgrade-testing-roadmap.md"
 CI_STRATEGY="$REPO_ROOT/docs/reference/ci-cd-strategy.md"
 INSTALL_README="$REPO_ROOT/tests/install/README.md"
 
-assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+assert_contains_in_order "$CLEANUP_RECEIPT_VERIFIER" \
   "shared cleanup receipt gate verifies exact signed artifacts against provider-bound trust" \
-  'for name in planning-upload final-upload' \
-  '"$name.json" "$name.json.sig" "$name.sha256"' \
-  'test -s "$root/evidence-public.pem"' \
-  "node scripts/ownership/verify-ci-cleanup-upload.mjs" \
-  '--artifact-root "$root"' \
-  '--runtime-root "$RUNNER_TEMP/sanctuary-cleanup"' \
-  '--checkout-root "$GITHUB_WORKSPACE"'
+  'const RECEIPT_FILES' \
+  'assertReceiptLeaf(directory, entries)' \
+  'verifyCiCleanupUpload({ artifactRoot: root, runtimeRoot, checkoutRoot })'
 
 assert_not_contains "$CLEANUP_RECEIPT_ACTION" \
   "shared cleanup receipt gate never trusts a receipt-declared signer fingerprint" \
@@ -662,26 +659,26 @@ assert_occurrence_count "$RC" \
 assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
   "shared cleanup receipt gate supports strict child receipt sets" \
   'CLEANUP_RECEIPT_CHILDREN' \
-  'shopt -s nullglob dotglob' \
-  'directories=' \
-  'test ! -L "$directory"' \
-  'test -d' \
-  'verify_directory "$directory"'
+  'artifact_mode=children' \
+  '--artifact-mode "$artifact_mode"'
 
 assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+  "shared cleanup receipt gate verifies nested cleanup leaves without following symlinks" \
+  'CLEANUP_RECEIPT_RECURSIVE' \
+  'artifact_mode=recursive' \
+  '--artifact-mode "$artifact_mode"'
+
+assert_contains_in_order "$CLEANUP_RECEIPT_VERIFIER" \
   "shared cleanup receipt gate rejects invalid boolean inputs and symlink artifacts" \
-  'case "$CLEANUP_RECEIPT_CHILDREN" in' \
-  'case "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" in' \
-  'test ! -L "$root"' \
-  'test ! -L "$root/$file"' \
-  'test ! -L "$root/evidence-public.pem"'
+  "['single', 'children', 'recursive'].includes(mode)" \
+  'rootInfo.isSymbolicLink()' \
+  'info.isSymbolicLink()'
 
-assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+assert_contains_in_order "$CLEANUP_RECEIPT_VERIFIER" \
   "shared cleanup receipt gate can require successful final cleanup state" \
-  'CLEANUP_RECEIPT_REQUIRE_SUCCESS' \
-  'if [ "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" = true ]; then' \
-  '.state == "cleaned" or .state == "no_op" or .state == "recovered"' \
-  '"$root/final-upload.json"'
+  'requireCleanupSuccess' \
+  "['cleaned', 'no_op', 'recovered'].includes(receipt.state)" \
+  'cleanup evidence final state is not successful'
 
 assert_occurrence_count "$RC" \
   "release-candidate disables restart for CI-created Compose stacks" \
@@ -1055,6 +1052,8 @@ assert_named_job_step_not_contains "$RC" "fresh-install-test" "Run fresh install
 
 # --- install-test.yml -------------------------------------------------------
 IT="$REPO_ROOT/.github/workflows/install-test.yml"
+INSTALL_ISOLATED_SUBJECT="$REPO_ROOT/scripts/ci/run-install-e2e-isolated-subject.sh"
+UPGRADE_BASELINE_SUBJECT="$REPO_ROOT/scripts/ci/run-upgrade-baseline-isolated-subject.sh"
 assert_occurrence_count "$IT" \
   "install-test binds every cleanup evidence upload to its verification root" \
   'cleanup-root:' 6
@@ -1179,44 +1178,32 @@ assert_contains_in_order "$REPO_ROOT/tests/install/e2e/upgrade-install.test.sh" 
   'force_test_compose_restart_policy_no "$PROJECT_ROOT"' \
   'run_install_script "$PROJECT_ROOT"'
 
-assert_named_job_step_contains_in_order "$IT" "fresh-install-test" "Run fresh install test" \
-  "install-test fresh-install-test coordinator composition" \
-  'subject=(bash -c' \
-  'scripts/ci/run-with-log.sh' \
-  'scripts/ci/with-runner-lock.sh e2e' \
-  'scripts/ci/time-command.sh "fresh install e2e"' \
-  'scripts/ci/cleanup-ci-callsite.sh run' \
-  '-- "${subject[@]}"'
-assert_named_job_step_contains "$IT" "fresh-install-test" "Run fresh install test" \
-  "install-test fresh install selects subject-managed deployment authority" \
-  '--authority-mode deployment_managed_by_subject'
+assert_named_job_step_contains_in_order "$IT" "fresh-install-test" \
+  "Run requested install tests in one signed isolated workspace" \
+  "install-test fresh-install clone has one signed subject" \
+  'scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install' \
+  'scripts/ci/run-install-e2e-isolated-subject.sh'
+assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
+  "install-test fresh-install and install-script coordinator composition" \
+  "run_fresh_install" \
+  "deployment_managed_by_subject" \
+  "fresh-install.test.sh --verbose" \
+  "install-script.test.sh --verbose"
 
-assert_named_job_step_contains_in_order "$IT" "fresh-install-test" "Run install script test" \
-  "install-test install-script coordinator composition" \
-  'subject=(bash -c' \
-  'scripts/ci/run-with-log.sh' \
-  'scripts/ci/with-runner-lock.sh e2e' \
-  'scripts/ci/time-command.sh "install script e2e"' \
-  'scripts/ci/cleanup-ci-callsite.sh run' \
-  '-- "${subject[@]}"'
-assert_named_job_step_contains "$IT" "fresh-install-test" "Run install script test" \
-  "install-test install script selects subject-managed deployment authority" \
-  '--authority-mode deployment_managed_by_subject'
-
-assert_contains_in_order "$IT" \
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test upgrade-baseline composition" \
   'upgrade_args=(--mode core --fixture baseline --verbose)' \
   "run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  "scripts/ci/time-command.sh" \
-  'upgrade-install.test.sh "${upgrade_args[@]}"'
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  '"$SCRIPT_DIR/with-runner-lock.sh" e2e' \
+  '"$SCRIPT_DIR/time-command.sh"' \
+  'upgrade-install.test.sh" "${upgrade_args[@]}"'
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline upgrade selects subject-managed deployment authority" \
   '--authority-mode deployment_managed_by_subject'
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline upgrade proves run-local legacy fixture creation" \
   '--legacy-fixture-creation-witness'
-assert_occurrence_count "$IT" \
+assert_occurrence_count "$UPGRADE_BASELINE_SUBJECT" \
   "install-test scopes legacy fixture creation authority to one baseline wrapper" \
   '--legacy-fixture-creation-witness' 1
 
@@ -1224,36 +1211,40 @@ assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install tes
   "release-candidate fresh install selects subject-managed deployment authority" \
   '--authority-mode deployment_managed_by_subject'
 
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test force rebuild is gated by the release classifier" \
   'upgrade_should_verify_force_rebuild'
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" \
+  "Run baseline upgrades in one signed isolated workspace" \
   "install-test force rebuild uses the release output" \
   'IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}'
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test passes the force rebuild flag through one args array" \
   'upgrade_args+=(--verify-force-rebuild)'
-assert_occurrence_count "$IT" \
+assert_occurrence_count "$UPGRADE_BASELINE_SUBJECT" \
   "install-test exposes one force rebuild opt-in" \
   '--verify-force-rebuild' 1
-assert_occurrence_count "$IT" \
+assert_occurrence_count "$UPGRADE_BASELINE_SUBJECT" \
   "install-test selects the release force rebuild once" \
   'upgrade_should_verify_force_rebuild' 1
 
-for coordinator_step in \
-  'fresh-install-test|Run fresh install test' \
-  'fresh-install-test|Run install script test' \
-  'install-stack-smoke|Run receipt-bound reusable stack subject' \
-  'container-health-test|Run receipt-bound container health subject' \
-  'auth-flow-test|Run receipt-bound auth flow subject'; do
-  IFS='|' read -r install_job step_name <<< "$coordinator_step"
+for isolated_step in \
+  'fresh-install-test|Run requested install tests in one signed isolated workspace|fresh-install' \
+  'install-stack-smoke|Run reusable stack in one signed isolated workspace|install-stack' \
+  'container-health-test|Run container health in one signed isolated workspace|container-health' \
+  'auth-flow-test|Run auth flow in one signed isolated workspace|auth-flow' \
+  'upgrade-baseline-test|Run baseline upgrades in one signed isolated workspace|upgrade-baseline'; do
+  IFS='|' read -r install_job step_name label <<< "$isolated_step"
   assert_named_job_step_contains "$IT" "$install_job" "$step_name" \
-    "install-test $install_job/$step_name uses supervised receipt-bound cleanup" \
-    'scripts/ci/cleanup-ci-callsite.sh run'
-  assert_named_job_step_not_contains "$IT" "$install_job" "$step_name" \
-    "install-test $install_job/$step_name has no direct cleanup owner" \
-    'cleanup-docker-resources.sh'
+    "install-test $install_job/$step_name uses one signed isolated subject" \
+    "scripts/ci/run-in-isolated-workspace.sh --docker-visible $label"
 done
+assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
+  "install E2E driver retains supervised receipt-bound Docker cleanup" \
+  '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run' \
+  '"$SCRIPT_DIR/run-compose-e2e-subject.sh"'
+assert_not_contains "$INSTALL_ISOLATED_SUBJECT" \
+  "install E2E driver has no direct cleanup owner" 'cleanup-docker-resources.sh'
 
 for retired_phase in 'cleanup-ci-callsite.sh prepare' 'cleanup-ci-callsite.sh finish'; do
   assert_not_contains "$IT" "install-test retires stale coordinator phase: $retired_phase" "$retired_phase"
@@ -1298,13 +1289,13 @@ for cleanup_gate in \
     "steps.verify_cleanup_receipt.outcome == 'success'"
 done
 
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline wrapper uses receipt-bound cleanup" \
-  'scripts/ci/cleanup-ci-callsite.sh" run'
-assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run'
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline wrapper preserves fixture status through cleanup" \
   'return "$status"'
-assert_named_job_step_not_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+assert_not_contains "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline wrapper leaves graceful teardown to the test" \
   'docker compose down'
 
@@ -1373,9 +1364,13 @@ assert_contains_in_order "$COMPOSE_E2E_SUBJECT" \
   '"WORKER_DIAGNOSTICS_SECRET=$WORKER_DIAGNOSTICS_SECRET"' \
   'env "${compose_env[@]}" docker compose up -d --build'
 
+assert_occurrence_count "$INSTALL_ISOLATED_SUBJECT" \
+  "install driver owns two supervised Compose subject modes" \
+  'run-compose-e2e-subject.sh' \
+  2
 assert_occurrence_count "$IT" \
-  "workflow scope and all reusable stack lanes include the common supervised subject" \
-  'scripts/ci/run-compose-e2e-subject.sh' \
+  "all five cross-step clones use the canonical isolated subject" \
+  'scripts/ci/run-in-isolated-workspace.sh --docker-visible' \
   5
 
 assert_contains_in_order "$IT" \
@@ -1416,7 +1411,8 @@ assert_contains_in_order "$IT" \
 assert_contains_in_order "$IT" \
   "install-test fresh install sink summary" \
   "fresh-install-test:" \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log"' \
+  "Run requested install tests in one signed isolated workspace" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install" \
   "Write install diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Fresh Install"' \
   "diag-install-fresh-install"
@@ -1425,10 +1421,8 @@ assert_contains_in_order "$IT" \
   "install-test stack smoke diagnostics" \
   "install-stack-smoke:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-stack-smoke' \
-  "Run receipt-bound reusable stack subject" \
-  'scripts/ci/run-compose-e2e-subject.sh' \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-stack.log"' \
-  'scripts/ci/time-command.sh "install stack subject"' \
+  "Run reusable stack in one signed isolated workspace" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible install-stack" \
   "Write install stack diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Stack Smoke"' \
   "diag-install-stack-smoke"
@@ -1437,10 +1431,8 @@ assert_contains_in_order "$IT" \
   "install-test container health diagnostics" \
   "container-health-test:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health' \
-  "Run receipt-bound container health subject" \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log"' \
-  'scripts/ci/time-command.sh "container health subject"' \
-  'scripts/ci/run-compose-e2e-subject.sh' \
+  "Run container health in one signed isolated workspace" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible container-health" \
   "Write container health diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Container Health"' \
   "diag-container-health"
@@ -1449,10 +1441,8 @@ assert_contains_in_order "$IT" \
   "install-test auth flow diagnostics" \
   "auth-flow-test:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow' \
-  "Run receipt-bound auth flow subject" \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log"' \
-  'scripts/ci/time-command.sh "auth flow subject"' \
-  'scripts/ci/run-compose-e2e-subject.sh' \
+  "Run auth flow in one signed isolated workspace" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible auth-flow" \
   "Write auth flow diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Auth Flow"' \
   "diag-auth-flow"
@@ -1461,10 +1451,10 @@ assert_contains_in_order "$IT" \
   "install-test upgrade diagnostic summaries" \
   "upgrade-baseline-test:" \
   "UPGRADE_BASELINE_REFS:" \
-  "upgrade_validate_baseline_ref_selection" \
-  "upgrade_sanitize_label" \
+  "scripts/ci/run-upgrade-baseline-isolated-subject.sh" \
   "Post-upgrade DIND diagnostics" \
   "Write upgrade baseline timing summary" \
+  'combined="$JOB_LOG_DIR/upgrade-baseline-timing-input.txt"' \
   'scripts/ci/report-timing-notices.sh --log-file "$combined"' \
   "Write upgrade baseline diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Baseline"' \
@@ -1566,6 +1556,7 @@ fi
 
 # --- architecture and docs-site scope / native-toolchain stability -----------
 ARCHITECTURE_WORKFLOW="$REPO_ROOT/.github/workflows/architecture.yml"
+ARCHITECTURE_SUBJECT="$REPO_ROOT/scripts/ci/run-architecture-validation-subject.sh"
 
 assert_event_paths_equal "$ARCHITECTURE_WORKFLOW" \
   "architecture paths are equivalent on PR and main push" \
@@ -1615,83 +1606,68 @@ for architecture_shared_input in \
   "scripts/ci/redactor.sh" \
   "scripts/ci/provider-context.sh" \
   ".github/ci-performance-budget.json"; do
-  expected_occurrences=2
-  if [ "$architecture_shared_input" = "scripts/ci/time-command.sh" ]; then
-    expected_occurrences=3
-  fi
   assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
     "architecture triggers for $architecture_shared_input on PR and main push" \
-    "$architecture_shared_input" "$expected_occurrences"
+    "$architecture_shared_input" 2
 done
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
-  "architecture installs each selected dependency tree only" \
-  "Install application workspace dependencies" \
-  "if: steps.scope.outputs.core == 'true'" \
-  'scripts/ci/retry-command.sh "root npm ci"' \
-  "Install docs-site dependencies" \
-  "if: steps.scope.outputs.docs == 'true'" \
-  'scripts/ci/retry-command.sh "docs-site npm ci"'
+  "architecture uses one signed isolated validation subject" \
+  "Run architecture validation in one signed isolated workspace" \
+  'SANCTUARY_ARCHITECTURE_CORE_SCOPE: ${{ steps.scope.outputs.core }}' \
+  'SANCTUARY_ARCHITECTURE_DOCS_SCOPE: ${{ steps.scope.outputs.docs }}' \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible architecture" \
+  "scripts/ci/run-architecture-validation-subject.sh"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
+  "architecture installs each selected dependency tree only" \
+  "run_locked_retry install-dependencies 'root npm ci'" \
+  "run_locked_retry install-docs-dependencies 'docs-site npm ci'" \
+  '[[ $CORE_SCOPE != true ]] || run_core_checks' \
+  '[[ $DOCS_SCOPE != true ]] || run_docs_checks'
+
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "architecture runtime boundary gate composition" \
-  "Enforce runtime architecture boundaries" \
-  "if: steps.scope.outputs.core == 'true'" \
-  ".tmp/ci-diagnostics/architecture/runtime-boundaries.log" \
+  "run_logged runtime-boundaries" \
   "npm run check:architecture-boundaries"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "wallet sync lifecycle contract gate composition" \
-  "Enforce wallet sync lifecycle contract" \
-  "if: steps.scope.outputs.core == 'true'" \
-  ".tmp/ci-diagnostics/architecture/wallet-sync-lifecycle-contract.log" \
+  "run_logged wallet-sync-lifecycle-contract" \
   "npm run check:wallet-sync-lifecycle-contract"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "resource ownership contract gate composition" \
-  "Enforce resource ownership contract" \
-  "if: steps.scope.outputs.core == 'true'" \
-  ".tmp/ci-diagnostics/architecture/resource-ownership-contract.log" \
+  "run_logged resource-ownership-contract" \
   "npm run check:resource-ownership-contract" \
   "npm run test:ownership"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "architecture Prisma boundary gate composition" \
-  "Enforce repository-owned Prisma access" \
-  ".tmp/ci-diagnostics/architecture/prisma-imports.log" \
+  "run_logged prisma-imports" \
   "npm --workspace server run check:prisma-imports"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "architecture server cycle baseline composition" \
-  "Enforce server dependency cycle baseline" \
-  ".tmp/ci-diagnostics/architecture/server-cycle-baseline.log" \
+  "run_logged server-cycle-baseline" \
   "npm run check:server-cycle-baseline"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "docs-site typecheck retry composition" \
-  "Typecheck Docusaurus site" \
-  "if: steps.scope.outputs.docs == 'true'" \
-  "SANCTUARY_RETRY_ATTEMPTS: '5'" \
-  "scripts/ci/run-with-log.sh" \
-  ".tmp/ci-diagnostics/architecture/docs-typecheck.log" \
-  "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-command.sh "docs typecheck"' \
-  'scripts/ci/time-command.sh "docs typecheck"' \
+  "SANCTUARY_RETRY_ATTEMPTS=5 run_locked_retry docs-typecheck" \
+  '"$SCRIPT_DIR/time-command.sh"' \
   "npm --prefix docs/site run typecheck"
 
 assert_not_contains "$ARCHITECTURE_WORKFLOW" \
   "architecture workflow retired website path" \
   "website/"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "architecture failure bundle stays in the diagnostic artifact" \
-  "Collect architecture diagnostics on failure" \
-  'diagnostic_dir="$GITHUB_WORKSPACE/.tmp/ci-diagnostics/architecture"' \
-  'git diff -- docs/architecture/generated > "$diagnostic_dir/full-diff.txt"' \
-  'cp "$source" "$diagnostic_dir/${graph}.regenerated.md"' \
-  '"$diagnostic_dir/env.txt"' \
-  "Write architecture diagnostic summary" \
-  "Upload architecture diagnostics"
+  "collect_failure_diagnostics" \
+  'git diff -- docs/architecture/generated > "$DIAGNOSTIC_DIR/full-diff.txt"' \
+  'cp "$source" "$DIAGNOSTIC_DIR/${graph}.regenerated.md"' \
+  '"$DIAGNOSTIC_DIR/env.txt"'
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture diagnostic summary upload" \
@@ -1702,6 +1678,7 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
 
 # --- full frontend typecheck retry stability --------------------------------
 TEST_WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
+BROWSER_E2E_SUBJECT="$REPO_ROOT/scripts/ci/run-browser-e2e-subject.sh"
 CACHE_NPM_ACTION="$REPO_ROOT/.github/actions/cache-npm/action.yml"
 CLASSIFY_TEST_CHANGES="$REPO_ROOT/scripts/ci/classify-test-changes.sh"
 PLAN_TEST_RUN="$REPO_ROOT/scripts/ci/plan-test-run.sh"
@@ -2043,9 +2020,9 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full-browser-e2e-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log"' \
   "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}"' \
-  'scripts/ci/time-command.sh "browser-flow E2E ${browser_group}"' \
-  'npm run test:e2e -- --project=chromium "${browser_specs[@]}"' \
+  "scripts/ci/cleanup-ci-callsite.sh auto-run" \
+  "--engine host" \
+  "-- scripts/ci/run-browser-e2e-subject.sh" \
   "Write browser E2E diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Browser E2E"' \
   "Upload browser E2E diagnostics" \
@@ -2326,10 +2303,10 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/retry-command.sh" "build check backend build"' \
   "npm --ignore-scripts run build"
 
-assert_contains_in_order "$TEST_WORKFLOW" \
+assert_contains_in_order "$BROWSER_E2E_SUBJECT" \
   "full browser Playwright infrastructure retry" \
-  'scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}"' \
-  'scripts/ci/time-command.sh "browser-flow E2E ${browser_group}"' \
+  '"$SCRIPT_DIR/retry-playwright-infrastructure-failure.sh" "browser-flow E2E ${browser_group}"' \
+  '"$SCRIPT_DIR/time-command.sh" "browser-flow E2E ${browser_group}"' \
   'npm run test:e2e -- --project=chromium "${browser_specs[@]}"'
 
 assert_contains_in_order "$TEST_WORKFLOW" \
@@ -3198,6 +3175,17 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "node tests/ci/check-npm-ci-callsites.test.mjs"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality isolates the complete classifier fixture from provider authority" \
+  'run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log"' \
+  "scripts/ci/run-standalone-test-command.sh bash -euo pipefail" \
+  "QUALITY_CI_CLASSIFIER_TESTS"
+
+assert_occurrence_count "$QUALITY_WORKFLOW" \
+  "quality retains one classifier isolation boundary plus the syntax sweep" \
+  "scripts/ci/run-standalone-test-command.sh" \
+  2
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality runs on direct main pushes" \
   "on:" \
   "push:" \
@@ -3280,7 +3268,6 @@ assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   'echo "${NPM_SHA512}  /tmp/npm.tgz" | sha512sum -c -' 1
 
 declare -A strict_install_counts=(
-  [architecture.yml]=2
   [quality.yml]=2
   [test.yml]=10
   [verify-vectors.yml]=7
@@ -3292,9 +3279,12 @@ for workflow in "${!strict_install_counts[@]}"; do
     "--strict-allow-scripts" \
     "${strict_install_counts[$workflow]}"
 done
+assert_occurrence_count "$ARCHITECTURE_SUBJECT" \
+  "architecture subject makes every npm ci fail closed on unknown lifecycle scripts" \
+  "--strict-allow-scripts" 2
 
 npm_ci_sources=(
-  "$REPO_ROOT/.github/workflows/architecture.yml"
+  "$ARCHITECTURE_SUBJECT"
   "$REPO_ROOT/.github/workflows/quality.yml"
   "$REPO_ROOT/.github/workflows/test.yml"
   "$REPO_ROOT/.github/workflows/verify-vectors.yml"
@@ -3448,7 +3438,8 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "dependency-audit:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-deprecations.log"' \
-  'source "$source_workspace/scripts/ci/redactor.sh"' \
+  'scripts/ci/run-in-isolated-workspace.sh npm-deprecations' \
+  'source scripts/ci/redactor.sh' \
   "npm ci --strict-allow-scripts --ignore-scripts --audit=false --fund=false" \
   'redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"' \
   "node scripts/ci/check-npm-install-scripts.mjs --verify-installed" \
@@ -3474,13 +3465,38 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality semgrep diagnostics" \
   "semgrep-sast:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-semgrep' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/semgrep-baseline.log"' \
+  "scripts/ci/run-in-isolated-workspace.sh semgrep" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-semgrep.log"' \
   "scripts/ci/install-semgrep.sh" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/semgrep-baseline.log"' \
   "check-semgrep-baseline.mjs" \
   "Write Semgrep diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Semgrep"' \
   "ci-diagnostics-quality-semgrep"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality Semgrep report survives the signed isolated subject" \
+  "scripts/ci/run-in-isolated-workspace.sh semgrep" \
+  'SEMGREP_REPORT_DIR="reports/semgrep"' \
+  'scripts/ci/upload-artifact-from-subject.sh semgrep-report' \
+  '"$SEMGREP_REPORT_DIR" || upload_status="$?"' \
+  'exit "$upload_status"'
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality jscpd report survives the signed isolated subject" \
+  "scripts/ci/run-in-isolated-workspace.sh jscpd" \
+  "QUALITY_JSCPD_OUTPUT_DIR=reports/jscpd" \
+  'scripts/ci/upload-artifact-from-subject.sh jscpd-report reports/jscpd' \
+  '|| upload_status="$?"' \
+  'exit "$upload_status"'
+
+assert_not_contains "$QUALITY_WORKFLOW" \
+  "quality workflow has no direct recursive staging cleanup" \
+  "rm -rf"
+
+assert_not_contains "$QUALITY_WORKFLOW" \
+  "quality workflow has no unbounded temporary creation" \
+  "mktemp"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality workflow lint diagnostics" \
@@ -3735,8 +3751,6 @@ assert_occurrence_count "$QUALITY_WORKFLOW" \
   13
 
 for quality_evidence in \
-  "semgrep-sast|Upload Semgrep report" \
-  "jscpd|Upload jscpd report" \
   "ci-performance-report|Upload CI performance report"; do
   quality_job="${quality_evidence%%|*}"
   quality_step="${quality_evidence#*|}"

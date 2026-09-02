@@ -5,6 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REGISTERED_STAGING="$ROOT_DIR/scripts/ci/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$ROOT_DIR/scripts/ci/cleanup-ci-callsite.sh"
 TAG=""
 RELEASE_COMMIT=""
 TEMP_DIR=""
@@ -128,6 +130,7 @@ prepare_or_verify_rehearsal() {
   if [[ ! -e "$OUTPUT_DIR" ]]; then
     node "$SCRIPT_DIR/prepare-release-assets.mjs" --tag "$RC_TAG" --output-dir "$OUTPUT_DIR" \
       --signing-key "$SIGNING_KEY" --public-key "$PUBLIC_KEY" \
+      --staging-root "$TEMP_DIR" \
       --run-id "prestable-${RC_TAG}"
   fi
   verify_rehearsal
@@ -195,9 +198,11 @@ push_stable_tag() {
   echo "Promoted $RC_TAG to immutable $STABLE_TAG at $RELEASE_COMMIT."
 }
 
-cleanup() { [[ -z "$TEMP_DIR" || ! -d "$TEMP_DIR" ]] || find "$TEMP_DIR" -type f -delete; [[ -z "$TEMP_DIR" || ! -d "$TEMP_DIR" ]] || find "$TEMP_DIR" -depth -type d -empty -delete; }
-
 main() {
+  if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane promote-release --engine host \
+      --checkout-root "$ROOT_DIR" -- bash "$0" "$@"
+  fi
   parse_args "$@"
   local parsed_rc_tag="$RC_TAG" parsed_stable_tag="$STABLE_TAG"
   local parsed_receipt="$RECEIPT" parsed_evidence="$EVIDENCE"
@@ -206,8 +211,7 @@ main() {
   RC_TAG="$parsed_rc_tag"; STABLE_TAG="$parsed_stable_tag"
   RECEIPT="$parsed_receipt"; EVIDENCE="$parsed_evidence"; OUTPUT_DIR="$parsed_output"
   SIGNING_KEY="$parsed_signing_key"; PUBLIC_KEY="$parsed_public_key"
-  TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-promote-release.XXXXXX")"
-  trap cleanup EXIT
+  TEMP_DIR="$($REGISTERED_STAGING promote-release)"
   validate_checkout
   validate_output_location
   TAG="$RC_TAG"

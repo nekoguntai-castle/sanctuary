@@ -96,8 +96,14 @@ EOF
 new_fixture() {
   local name="$1"
   local fixture="$TEST_ROOT/$name"
-  mkdir -p "$fixture/scripts/release" "$fixture/bin" "$fixture.external"
+  mkdir -p "$fixture/scripts/release" "$fixture/scripts/ci" "$fixture/bin" "$fixture.external"
   cp "$REPO_ROOT/scripts/release/promote-release.sh" "$fixture/scripts/release/"
+  cat > "$fixture/scripts/ci/create-registered-staging.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+mktemp -d "${TMPDIR:-/tmp}/registered-${1}.XXXXXX"
+EOF
+  chmod +x "$fixture/scripts/ci/create-registered-staging.sh"
   cp "$REPO_ROOT/scripts/release/release-operator-api.sh" "$fixture/scripts/release/"
   write_curl_stub "$fixture/bin/curl"
   write_git_stub "$fixture/bin/git"
@@ -145,6 +151,7 @@ run_promote() {
     SANCTUARY_RELEASE_CONFIG="$fixture/missing.env" \
     FORGEJO_URL=https://forgejo.test FORGEJO_TOKEN=token \
     GITHUB_API_URL=https://api.github.test GITHUB_RELEASE_TOKEN=token \
+    SANCTUARY_CLEANUP_COORDINATED=1 TMPDIR="$fixture.external" \
     "$fixture/scripts/release/promote-release.sh" \
       --rc-tag v1.2.3-rc1 --stable-tag v1.2.3 \
       --receipt "$fixture.external/receipt.json" --evidence "$fixture.external/evidence.log" \

@@ -16,6 +16,26 @@ const EXCLUDED_PREFIXES = [
   'tests/scripts/',
 ];
 const EXCLUDED_PATHS = new Set(['scripts/ownership/check-lifecycle-callsites.mjs']);
+const EXCLUDED_HOST_PATHS = new Set([
+  // This file is the scanner's fixture corpus: destructive command strings are test data,
+  // not executable host operations. Its temporary fixture roots are intentionally test-owned.
+  'tests/ownership/lifecycle-host-callsite-scanner.test.mjs',
+  'tests/ownership/lifecycle-callsite-scanner.test.mjs',
+]);
+const HOST_SOURCE_PREFIXES = ['.github/', 'scripts/', 'tests/'];
+const CANONICAL_HOST_INTERNAL_PATHS = new Set([
+  'scripts/ownership/ci-cleanup-coordinator.mjs',
+  'scripts/ownership/cleanup-process-group-launcher.mjs',
+  'scripts/ownership/cleanup-supervisor.mjs',
+  'scripts/ownership/registration.mjs',
+  'scripts/ci/run-with-log.sh',
+  'scripts/perf/wallet-sync-persistence-driver.cjs',
+]);
+const EXPLICIT_HOST_CREATION_PATHS = new Map([
+  ['scripts/ci/create-registered-staging.sh', 'temporary_artifact'],
+  ['scripts/ci/create-isolated-workspace.sh', 'temporary_artifact'],
+  ['scripts/perf/wallet-sync-high-fanout-replay.mjs', 'collector_process'],
+]);
 const PUBLIC_COMMAND_DOCS = new Set([
   'README.md', 'docs/how-to/docker.md', 'gateway/README.md',
   'scripts/bitcoin-core-docker/README.md', 'scripts/templates/README.template.md',
@@ -130,6 +150,13 @@ function isSourcePath(relativePath) {
   if (PUBLIC_COMMAND_DOCS.has(relativePath)) return true;
   if (path.basename(relativePath) === 'package.json') return true;
   if (path.extname(relativePath) === '.json') return false;
+  return SOURCE_EXTENSIONS.has(path.extname(relativePath));
+}
+
+function isHostSourcePath(relativePath) {
+  if (EXCLUDED_PATHS.has(relativePath) || EXCLUDED_HOST_PATHS.has(relativePath)) return false;
+  if (relativePath.startsWith('scripts/ci/vendor/')) return false;
+  if (!HOST_SOURCE_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) return false;
   return SOURCE_EXTENSIONS.has(path.extname(relativePath));
 }
 
@@ -875,6 +902,257 @@ function creationClassesFor(relativePath, source, statements) {
   return classes;
 }
 
+function hasRecursivePathDeletion(text) {
+  return /\brm\s+(?:--[^\s]*recursive\b|-[A-Za-z]*[rR][A-Za-z]*\b)/.test(text)
+    || hasJavaScriptRecursivePathDeletion(text)
+    || /\bfind\s+[^\n;]{0,320}(?:-delete\b|-exec\s+rm\s+(?:--[^\s]*recursive|-[A-Za-z]*[rR][A-Za-z]*))/.test(text);
+}
+
+function hasJavaScriptRecursivePathDeletion(text) {
+  return /\b(?:rmSync|rm|fs\.rmSync|fs\.rm)\s*\([^)]{0,320}\brecursive\s*:\s*true/.test(text);
+}
+
+function isContainerInternalPathDeletion(line) {
+  return /\bdocker\s+(?:run|exec)\b/.test(line)
+    && /\bfind\s+\/(?:dst|app|tmp)\//.test(line);
+}
+
+function processSignalStatements(statements) {
+  return statements.filter((line) => (
+    /(?:^|[;&|]\s*|\b(?:if|then|while|until)\s+!?\s*)kill\s+/.test(line)
+      || /(?:^|[;&|]\s*)pkill\s+/.test(line)
+      || /\b[A-Za-z_$][\w$]*\.kill\s*\(/.test(line)
+  ));
+}
+
+function isSignalObservation(line) {
+  return /\bkill\s+-0(?:\s|$)/.test(line)
+    || /\b[A-Za-z_$][\w$]*\.kill\s*\([^,()]+,\s*0\s*\)/.test(line);
+}
+
+function hasWorktreeCommand(text, command) {
+  const shell = new RegExp(String.raw`\bgit\b[^\n;]{0,240}\bworktree\s+${command}\b`);
+  const argv = new RegExp(
+    String.raw`["']git["'][^\n;]{0,240}["']worktree["'][^\n;]{0,120}["']${command}["']`,
+  );
+  return shell.test(text) || argv.test(text);
+}
+
+function hasCanonicalHostInternalProof(relativePath, source) {
+  if (!CANONICAL_HOST_INTERNAL_PATHS.has(relativePath)) return false;
+  if (relativePath === 'scripts/ownership/registration.mjs') {
+    return /\.keys-\$\{process\.pid\}/.test(source)
+      && /renameSync\(staging, keys\)/.test(source)
+      && /rmSync\(staging,\s*\{\s*recursive:\s*true/.test(source);
+  }
+  const ownsProcessIdentity = /\bspawn\s*\(|\bprocess\.pid\b|\bkill\s+[^\n]*"\$\$"/.test(source);
+  return ownsProcessIdentity && processSignalStatements(executableStatements(source)).length > 0;
+}
+
+function orderedRegistrationShape(source, patterns) {
+  let offset = 0;
+  for (const pattern of patterns) {
+    const match = pattern.exec(source.slice(offset));
+    if (!match) return false;
+    offset += match.index + match[0].length;
+  }
+  return true;
+}
+
+function exposesBeforeRegistration(source, start, registration, handlePattern) {
+  const startMatch = start.exec(source);
+  if (!startMatch) return true;
+  const registrationMatch = registration.exec(source.slice(startMatch.index + startMatch[0].length));
+  if (!registrationMatch) return true;
+  const between = source.slice(
+    startMatch.index + startMatch[0].length,
+    startMatch.index + startMatch[0].length + registrationMatch.index,
+  );
+  return between.split('\n').some((line) => (
+    /\b(?:printf|echo)\b/.test(line) && handlePattern.test(line)
+  ));
+}
+
+function textBeforeRegistration(source, start, registration) {
+  const startMatch = start.exec(source);
+  if (!startMatch) return null;
+  const registrationMatch = registration.exec(source.slice(startMatch.index + startMatch[0].length));
+  if (!registrationMatch) return null;
+  return source.slice(
+    startMatch.index + startMatch[0].length,
+    startMatch.index + startMatch[0].length + registrationMatch.index,
+  );
+}
+
+function hasRegisteredStagingProof(relativePath, source) {
+  if (relativePath !== 'scripts/ci/create-registered-staging.sh') return false;
+  const creation = /artifact=\$\(mktemp -d "\$parent\/\$label\.XXXXXX"\) \|\| return/;
+  return orderedRegistrationShape(source, [
+      /ownership_initialize/,
+      /describe-host-authority\.mjs"\s+\\?\s*temporary "\$parent" "\$SANCTUARY_OPERATION_RUN_ID"\) \|\| return/,
+      /execution_authority=\$\(printf '%s' "\$authority_bundle" \| jq -c '\.executionAuthority'\) \|\| return/,
+      /identity=\$\(printf '%s' "\$authority_bundle" \| jq -r '\.immutableIdentity'\) \|\| return/,
+      /register_owned_resource temporary_artifact obsolete exact_delete path\s+\\?\s*"\$parent" "\$identity" --execution-authority "\$execution_authority"\s+\\?\s*"\$SANCTUARY_OPERATION_RUN_ID" \|\| return/,
+      creation,
+      /printf '%s\\n' "\$artifact"/,
+    ]);
+}
+
+function hasRegisteredCollectorProof(relativePath, source) {
+  if (relativePath !== 'scripts/ci/registered-collector-process.sh') return false;
+  const observation = /write_marker "\$heartbeat" heartbeat \|\| return/;
+  const registration = /register_owned_resource collector_process obsolete exact_delete authority/;
+  return !exposesBeforeRegistration(source, observation, registration, /\$(?:pid|heartbeat|terminal)\b/)
+    && orderedRegistrationShape(source, [
+      observation,
+      /ownership_initialize/,
+      /describe-host-authority\.mjs"\s+\\?\s*collector "\$pid" "\$script" "\$heartbeat" "\$terminal"\) \|\| return/,
+      /execution_authority=\$\(printf '%s' "\$authority_bundle" \| jq -c '\.executionAuthority'\) \|\| return/,
+      /identity=\$\(printf '%s' "\$authority_bundle" \| jq -r '\.immutableIdentity'\) \|\| return/,
+      /register_owned_resource collector_process obsolete exact_delete authority\s+\\?\s*"\$pid" "\$identity" --execution-authority "\$execution_authority"\s+\\?\s*"\$SANCTUARY_OPERATION_RUN_ID" \|\| return/,
+      /printf '%s\\t%s\\n' "\$heartbeat" "\$terminal"/,
+    ]);
+}
+
+function hasRegisteredIsolatedWorkspaceProof(relativePath, source) {
+  if (relativePath !== 'scripts/ci/create-isolated-workspace.sh') return false;
+  const creation = /workdir="\$\(mktemp -d "\$parent\/\$\(safe_label "\$label"\)\.XXXXXX"\)"/;
+  const registration = /register_owned_resource temporary_artifact active exact_delete path "\$workdir" "\$path_identity"/;
+  const between = textBeforeRegistration(source, creation, registration);
+  if (between === null || between.split('\n').some((line) => (
+    /\$workdir\b/.test(line)
+      && !/temporary "\$workdir" "\$SANCTUARY_OPERATION_RUN_ID"/.test(line)
+  ))) return false;
+  return orderedRegistrationShape(source, [
+      creation,
+      /SANCTUARY_PROJECT_DIR="\$source_workspace" ownership_initialize/,
+      /describe-host-authority\.mjs"\s+\\?\s*temporary "\$workdir" "\$SANCTUARY_OPERATION_RUN_ID"\)"/,
+      /execution_authority="\$\(printf '%s' "\$authority_bundle" \| jq -c '\.executionAuthority'\)"/,
+      /path_identity="\$\(printf '%s' "\$authority_bundle" \| jq -r '\.immutableIdentity'\)"/,
+      /register_owned_resource temporary_artifact active exact_delete path "\$workdir" "\$path_identity"\s+\\?\s*--execution-authority "\$execution_authority" "\$run_id"/,
+      /repo="\$workdir\/repo"/,
+      /git clone --quiet --no-hardlinks "\$source_workspace" "\$repo"/,
+      /printf '%s\\n' "\$repo"/,
+    ]);
+}
+
+function hasRegisteredWorktreeProof(relativePath, source) {
+  if (relativePath !== 'tests/install/e2e/upgrade-install.test.sh') return false;
+  const creation = /git -C "\$TARGET_PROJECT_ROOT" worktree add --detach\s+\\?\s*"\$UPGRADE_SOURCE_CHECKOUT" "\$source_ref" >\/dev\/null \|\| add_status=\$\?/;
+  const registration = /register_owned_resource git_worktree obsolete exact_delete path/;
+  const between = textBeforeRegistration(source, creation, registration);
+  if (between === null) return false;
+  const prematureUse = between.split('\n').some((line) => (
+    /\$UPGRADE_SOURCE_CHECKOUT\b/.test(line)
+      && !/\[ ! -d "\$UPGRADE_SOURCE_CHECKOUT" \]/.test(line)
+      && !/worktree "\$UPGRADE_SOURCE_CHECKOUT"/.test(line)
+  ));
+  return !prematureUse && orderedRegistrationShape(source, [
+    creation,
+    /describe-host-authority\.mjs"\s+\\?\s*worktree "\$UPGRADE_SOURCE_CHECKOUT" "\$source_oid" "\$SANCTUARY_DEPLOYMENT_ID"\s+\\?\s*"\$SANCTUARY_OPERATION_RUN_ID"\)" \|\| return 1/,
+    /execution_authority="\$\(printf '%s' "\$authority_bundle" \| jq -c '\.executionAuthority'\)" \|\| return 1/,
+    /worktree_identity="\$\(printf '%s' "\$authority_bundle" \| jq -r '\.immutableIdentity'\)" \|\| return 1/,
+    /register_owned_resource git_worktree obsolete exact_delete path\s+\\?\s*"\$UPGRADE_SOURCE_CHECKOUT" "\$worktree_identity"\s+\\?\s*--execution-authority "\$execution_authority" "\$SANCTUARY_OPERATION_RUN_ID" \|\| return 1/,
+    /\[ "\$add_status" -eq 0 \] \|\| return "\$add_status"/,
+    /PROJECT_ROOT="\$UPGRADE_SOURCE_CHECKOUT"/,
+  ]);
+}
+
+function hasTestFixtureProof(relativePath, source, statements) {
+  if (!relativePath.startsWith('tests/') || relativePath.startsWith('tests/install/e2e/')) {
+    return false;
+  }
+  const declaresFixture = /\b(?:mktemp|mkdtempSync|tmpdir)\b|\bTEST_[A-Z0-9_]*(?:ROOT|DIR|TMP|TEMP)[A-Z0-9_]*\b|\bfixture\b|\b[A-Z][A-Z0-9_]*_PID\b/i.test(source);
+  const destructive = statements.filter((line) => (
+    hasRecursivePathDeletion(line)
+      || processSignalStatements([line]).some((candidate) => !isSignalObservation(candidate))
+      || hasWorktreeCommand(line, '(?:add|remove|prune)')
+  ));
+  const broadHostTarget = /\$(?:\{)?(?:HOME|GITHUB[_]WORKSPACE|RUNNER_WORKSPACE)\b|\brm\s+(?:--[^\s]*recursive|-[A-Za-z]*[rR][A-Za-z]*)\s+['"]?\/|\bfind\s+['"]?\/|\b(?:rmSync|rm|fs\.rmSync|fs\.rm)\s*\(\s*['"]\/|\b(?:process\.)?kill\s*\(\s*1\b|\bkill\s+(?:-[A-Z]+\s+)?1\b/;
+  return declaresFixture && destructive.length > 0
+    && destructive.every((line) => !broadHostTarget.test(line));
+}
+
+function hostMechanism(relativePath, source, statements) {
+  if (hasCanonicalHostInternalProof(relativePath, source)) return 'canonical_host_internal';
+  if (hasTestFixtureProof(relativePath, source, statements)) return 'test_fixture';
+  return 'host_migration';
+}
+
+function hostLifecycleFindings(relativePath, source, statements) {
+  if (!isHostSourcePath(relativePath)) return [];
+  const findings = [];
+  const text = statements.join('\n');
+  const mechanism = hostMechanism(relativePath, source, statements);
+  const recursiveDeletions = statements.filter((line) => (
+    hasRecursivePathDeletion(line) && !isContainerInternalPathDeletion(line)
+  ));
+  if (recursiveDeletions.length > 0 || hasJavaScriptRecursivePathDeletion(text)) {
+    findings.push({
+      path: relativePath, resourceClass: 'temporary_artifact', operation: 'cleanup', mechanism,
+    });
+  }
+
+  const signals = processSignalStatements(statements);
+  const mutatingSignals = signals.filter((line) => !isSignalObservation(line));
+  if (mutatingSignals.length > 0) {
+    findings.push({
+      path: relativePath, resourceClass: 'collector_process', operation: 'cleanup', mechanism,
+    });
+  } else if (signals.length > 0) {
+    findings.push({
+      path: relativePath, resourceClass: 'collector_process', operation: 'register',
+      mechanism: 'reference_observation',
+    });
+  }
+
+  if (hasWorktreeCommand(text, '(?:remove|prune)')) {
+    findings.push({
+      path: relativePath, resourceClass: 'git_worktree', operation: 'cleanup',
+      mechanism: hasRegisteredWorktreeProof(relativePath, source) ? 'registered_exact' : mechanism,
+    });
+  }
+  if (hasWorktreeCommand(text, 'add')) {
+    findings.push({
+      path: relativePath, resourceClass: 'git_worktree', operation: 'create',
+      mechanism: hasRegisteredWorktreeProof(relativePath, source) ? 'registered_exact' : mechanism,
+    });
+  }
+  if (hasWorktreeCommand(text, 'list') && !hasWorktreeCommand(text, '(?:add|remove|prune)')) {
+    findings.push({
+      path: relativePath, resourceClass: 'git_worktree', operation: 'register',
+      mechanism: 'reference_observation',
+    });
+  }
+
+  const explicitClass = EXPLICIT_HOST_CREATION_PATHS.get(relativePath);
+  if (explicitClass && !findings.some((entry) => (
+    entry.resourceClass === explicitClass && entry.operation === 'create'
+  ))) {
+    findings.push({
+      path: relativePath, resourceClass: explicitClass, operation: 'create',
+      mechanism: hasRegisteredStagingProof(relativePath, source)
+        ? 'registered_exact'
+        : hasRegisteredIsolatedWorkspaceProof(relativePath, source)
+        ? 'registered_exact'
+        : relativePath === 'scripts/perf/wallet-sync-high-fanout-replay.mjs'
+          && /assertCoordinatedReplayAuthority/.test(source)
+          && /SANCTUARY_CLEANUP_COORDINATED/.test(source)
+          && /SANCTUARY_OWNERSHIP_ROOT/.test(source)
+          ? 'cleanup_coordinator'
+          : 'host_migration',
+    });
+  }
+  if (relativePath === 'scripts/ci/registered-collector-process.sh') {
+    findings.push({
+      path: relativePath, resourceClass: 'collector_process', operation: 'register',
+      mechanism: hasRegisteredCollectorProof(relativePath, source)
+        ? 'registered_exact' : 'host_migration',
+    });
+  }
+  return findings;
+}
+
 function lifecycleFindings(relativePath, source, statements) {
   const findings = [];
   for (const resourceClass of [...cleanupClassesFor(relativePath, source, statements)].sort()) {
@@ -906,19 +1184,27 @@ function scanSourceFile(root, relativePath) {
   let source;
   try { source = readFileSync(path.join(root, relativePath), 'utf8'); } catch { return null; }
   const statements = executableStatements(source);
+  const dockerFindings = isSourcePath(relativePath)
+    ? [...lifecycleFindings(relativePath, source, statements),
+      ...registrationFindings(relativePath, source, statements)]
+    : [];
   return {
     findings: [
-      ...lifecycleFindings(relativePath, source, statements),
-      ...registrationFindings(relativePath, source, statements),
+      ...dockerFindings,
+      ...hostLifecycleFindings(relativePath, source, statements),
     ],
-    broadPrunes: [...new Set(statements.flatMap(broadPrunes))]
-      .map((kind) => ({ path: relativePath, kind })),
+    broadPrunes: isSourcePath(relativePath)
+      ? [...new Set(statements.flatMap(broadPrunes))]
+        .map((kind) => ({ path: relativePath, kind }))
+      : [],
   };
 }
 
 export function scanLifecycleCallsites({ root, files = trackedFiles(root) }) {
   const result = { findings: [], broadPrunes: [] };
-  for (const relativePath of [...files].sort().filter(isSourcePath)) {
+  for (const relativePath of [...files].sort().filter((entry) => (
+    isSourcePath(entry) || isHostSourcePath(entry)
+  ))) {
     const scanned = scanSourceFile(root, relativePath);
     if (!scanned) continue;
     result.findings.push(...scanned.findings);
@@ -935,7 +1221,7 @@ function coverageErrors(declared, discovered) {
     if (!declared.has(key)) errors.push(`unclassified lifecycle callsite: ${key}`);
   }
   for (const [key, entry] of declared) {
-    if (DOCKER_CLASSES.has(entry.resourceClass)
+    if ((DOCKER_CLASSES.has(entry.resourceClass) || PHASE6_HOST_CLASSES.has(entry.resourceClass))
         && ['cleanup', 'create', 'register'].includes(entry.operation)
         && !discovered.has(key)) errors.push(`stale lifecycle callsite: ${key}`);
   }
@@ -951,9 +1237,16 @@ const EXEMPT_CLEANUP_MECHANISMS = new Set([
   'registered_exact',
 ]);
 const APPLICATION_MECHANISMS = new Set(['application_api', 'ownership_manifest']);
+const EXEMPT_HOST_MECHANISMS = new Set([
+  'canonical_host_internal', 'cleanup_coordinator', 'registered_exact', 'test_fixture',
+]);
 
 function exemptDeclarationErrors(key, entry, finding) {
   if (entry.disposition !== 'exempt' || !finding) return [];
+  if (PHASE6_HOST_CLASSES.has(entry.resourceClass)) {
+    return EXEMPT_HOST_MECHANISMS.has(finding.mechanism)
+      ? [] : [`unverified host lifecycle cannot be exempt: ${key}`];
+  }
   if (entry.operation === 'create' && !EXEMPT_CREATE_MECHANISMS.has(finding.mechanism)) {
     return [`unverified Docker producer cannot be exempt: ${key}`];
   }
@@ -968,6 +1261,10 @@ function exemptDeclarationErrors(key, entry, finding) {
 
 function referenceDeclarationErrors(key, entry, finding, phase) {
   if (entry.disposition !== 'reference_only') return [];
+  if (PHASE6_HOST_CLASSES.has(entry.resourceClass)) {
+    return finding?.mechanism === 'reference_observation'
+      ? [] : [`host reference is not a mechanically read-only observation: ${key}`];
+  }
   const errors = [];
   if (entry.operation === 'create' && finding && !APPLICATION_MECHANISMS.has(finding.mechanism)) {
     errors.push(`Docker producer is not an application lifecycle reference: ${key}`);
@@ -1011,6 +1308,11 @@ export function phase5MigrationBlockers(inventory) {
     && entry.disposition === 'migrate').map(identity).sort();
 }
 
+export function phase6MigrationBlockers(inventory) {
+  return inventory.callsites.filter((entry) => PHASE6_HOST_CLASSES.has(entry.resourceClass)
+    && ['deferred', 'migrate'].includes(entry.disposition)).map(identity).sort();
+}
+
 export function validateLifecycleCallsites({ inventory, scan, phase = 5 }) {
   const declared = new Map(inventory.callsites.map((entry) => [identity(entry), entry]));
   const discovered = new Map(scan.findings.map((entry) => [identity(entry), entry]));
@@ -1020,6 +1322,9 @@ export function validateLifecycleCallsites({ inventory, scan, phase = 5 }) {
   ];
   if (phase >= 5) for (const blocker of phase5MigrationBlockers(inventory)) {
     errors.push(`unresolved Phase 5 Docker lifecycle migration: ${blocker}`);
+  }
+  if (phase >= 6) for (const blocker of phase6MigrationBlockers(inventory)) {
+    errors.push(`unresolved Phase 6 host lifecycle migration: ${blocker}`);
   }
   for (const prune of scan.broadPrunes) {
     errors.push(`broad Docker cleanup is forbidden: ${prune.path}:${prune.kind}`);
@@ -1034,8 +1339,14 @@ function main() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const inventoryPath = path.resolve(process.argv[2] ?? path.join(root, 'config/resource-lifecycle-callsites.json'));
   const inventory = parseStrictJson(readFileSync(inventoryPath));
-  const result = validateLifecycleCallsites({ inventory, scan: scanLifecycleCallsites({ root }) });
-  console.log(`lifecycle callsite registry is complete (${result.callsites} Docker lifecycle identities; ${result.migrations} Docker migrations remain)`);
+  const result = validateLifecycleCallsites({
+    inventory, scan: scanLifecycleCallsites({ root }), phase: 6,
+  });
+  const hostMigrations = inventory.callsites.filter((entry) => (
+    PHASE6_HOST_CLASSES.has(entry.resourceClass)
+      && ['deferred', 'migrate'].includes(entry.disposition)
+  )).length;
+  console.log(`lifecycle callsite registry is complete (${result.callsites} lifecycle identities; ${result.migrations} Docker migrations and ${hostMigrations} host migrations remain)`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

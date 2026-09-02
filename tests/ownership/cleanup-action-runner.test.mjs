@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { canonicalSha256 } from '../../scripts/ownership/canonical-json.mjs';
 import { runCleanupActions } from '../../scripts/ownership/cleanup-action-runner.mjs';
+import { validateCheckpointPayload } from '../../scripts/ownership/cleanup-journal-protocol.mjs';
 
 const A = 'a'.repeat(64);
 const C = 'c'.repeat(64);
@@ -48,6 +49,7 @@ function reconciliation(candidate, state = 'absent', failureClass = 'none') {
 function checkpointRecorder(events) {
   let sequence = 0;
   return async (record) => {
+    validateCheckpointPayload(record.checkpointType, record.payload);
     events.push(`checkpoint:${record.checkpointType}:${record.payload.actionSequence}`);
     sequence += 1;
     return { checkpointDigest: canonicalSha256({ sequence, record }), signed: true, synced: true };
@@ -135,6 +137,51 @@ test('dependency actions derive authority from every signed successful container
   assert.equal(predecessorDigests.filter(([sequence]) => sequence === 3).length, 2);
   assert.ok(predecessorDigests.filter(([sequence]) => sequence === 3)
     .every(([, digest]) => /^[a-f0-9]{64}$/.test(digest)));
+});
+
+test('stable proven absence is intent-bound and journaled without mutation', async () => {
+  const events = [];
+  let mutations = 0;
+  let reconciliations = 0;
+  const candidate = action(1, 'compose_network', 'remove');
+  const result = await runCleanupActions({
+    actions: [candidate], appendCheckpoint: checkpointRecorder(events),
+    reloadAuthority: async () => ({
+      state: 'absent', postconditionDigest: C, derivedFromResultDigest: null,
+    }),
+    mutate: async () => { mutations += 1; return { outcome: 'success' }; },
+    reconcile: async () => { reconciliations += 1; return reconciliation(candidate); },
+  });
+  assert.equal(result.terminalState, 'completed');
+  assert.equal(result.processedActionCount, 1);
+  assert.equal(result.results[0].result, 'absent');
+  assert.equal(result.results[0].failureClass, 'none');
+  assert.equal(result.results[0].reconciliationState, 'absent');
+  assert.equal(result.results[0].postconditionDigest, C);
+  assert.deepEqual(events.map((entry) => entry.split(':').slice(0, 2).join(':')),
+    ['checkpoint:intent', 'checkpoint:result']);
+  assert.equal(mutations, 0);
+  assert.equal(reconciliations, 0);
+});
+
+test('unstable absence proof fails closed before mutation', async () => {
+  const candidate = action(1, 'compose_network', 'remove');
+  let reloads = 0;
+  let mutations = 0;
+  const result = await runCleanupActions({
+    actions: [candidate], appendCheckpoint: checkpointRecorder([]),
+    reloadAuthority: async () => {
+      reloads += 1;
+      return reloads === 1
+        ? { state: 'absent', postconditionDigest: C, derivedFromResultDigest: null }
+        : { state: 'eligible', row: row(candidate), derivedFromResultDigest: null };
+    },
+    mutate: async () => { mutations += 1; return { outcome: 'success' }; },
+    reconcile: async () => reconciliation(candidate),
+  });
+  assert.equal(result.results[0].result, 'refused');
+  assert.equal(result.results[0].failureClass, 'identity_changed');
+  assert.equal(mutations, 0);
 });
 
 test('refusal and second-inspection drift stop all later actions', async () => {

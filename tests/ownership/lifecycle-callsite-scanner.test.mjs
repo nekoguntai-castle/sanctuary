@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
-  phase5MigrationBlockers, scanLifecycleCallsites, validateLifecycleCallsites,
+  phase5MigrationBlockers, phase6MigrationBlockers,
+  scanLifecycleCallsites, validateLifecycleCallsites,
 } from '../../scripts/ownership/check-lifecycle-callsites.mjs';
 
 const CHECKOUT = path.resolve('.');
@@ -423,26 +424,6 @@ test('raw Docker producers cannot claim an application lifecycle by prose alone'
   }), /not an application lifecycle reference/);
 });
 
-test('only explicitly identified Phase 6 host artifacts may be deferred', () => {
-  const deferred = (resourceClass, safetyContract) => ({
-    path: 'host.sh', resourceClass, operation: 'cleanup', disposition: 'deferred', safetyContract,
-  });
-  assert.doesNotThrow(() => validateLifecycleCallsites({
-    inventory: {
-      schemaVersion: '1.0.0',
-      callsites: [deferred('temporary_artifact', 'Phase 6 performs descriptor-relative host cleanup.')],
-    },
-    scan: { findings: [], broadPrunes: [] },
-  }));
-  assert.throws(() => validateLifecycleCallsites({
-    inventory: {
-      schemaVersion: '1.0.0',
-      callsites: [deferred('compose_container', 'Phase 6 would remove this Docker container.')],
-    },
-    scan: { findings: [], broadPrunes: [] },
-  }), /only an explicit Phase 6 host artifact may be deferred/);
-});
-
 test('Phase 5 rejects unresolved Docker creation and registration migrations', () => {
   const creation = {
     path: 'build.sh', resourceClass: 'oci_image', operation: 'create',
@@ -856,12 +837,12 @@ docker compose "\${compose_arguments[@]}"
   assert.deepEqual(scanLifecycleCallsites(unguarded).findings, []);
 });
 
-test('tracked lifecycle registry exactly covers the current Phase 5 Docker surface', () => {
+test('tracked lifecycle registry exactly covers Docker and host-artifact surfaces', () => {
   const inventory = JSON.parse(readFileSync(
     path.join(CHECKOUT, 'config/resource-lifecycle-callsites.json'), 'utf8',
   ));
   const scan = scanLifecycleCallsites({ root: CHECKOUT });
-  const result = validateLifecycleCallsites({ inventory, scan, phase: 4 });
+  const result = validateLifecycleCallsites({ inventory, scan, phase: 6 });
   assert.equal(result.callsites, scan.findings.length);
   assert.equal(result.broadPrunes, 0);
   assert.equal(result.migrations, 0, 'Phase 5 must leave no unresolved Docker lifecycle migrations');
@@ -869,6 +850,8 @@ test('tracked lifecycle registry exactly covers the current Phase 5 Docker surfa
     `${entry.path}:${entry.resourceClass}:${entry.operation}`, entry.disposition,
   ]));
   const expectedDisposition = {
+    canonical_host_internal: 'exempt', host_migration: 'deferred',
+    reference_observation: 'reference_only', test_fixture: 'exempt',
     direct: 'migrate', canonical_executor: 'exempt', cleanup_coordinator: 'exempt',
     daemon_atomic: 'exempt', registered_transient: 'exempt', registered_exact: 'exempt',
     retained_shared_cache: 'exempt', retained_application: 'exempt',

@@ -22,12 +22,23 @@ fail() {
 
 copy_path() {
   local source_path="$1"
-  local destination_path="$2"
-
-  rm -rf "$destination_path"
+  local workspace_root="$2"
+  local destination_relative="$3"
+  local destination_path="$workspace_root/$destination_relative"
+  [ ! -e "$destination_path" ] || fail "artifact destination already exists: $destination_relative"
   if [ -e "$source_path" ]; then
     cp -R "$source_path" "$destination_path"
   fi
+}
+
+ensure_real_directory() {
+  local directory="$1"
+  if [ ! -e "$directory" ]; then
+    (umask 077; mkdir -- "$directory")
+  fi
+  [ -d "$directory" ] && [ ! -L "$directory" ] \
+    && [ "$(cd "$directory" && pwd -P)" = "$directory" ] \
+    || fail "artifact parent is not a canonical real directory: $directory"
 }
 
 main() {
@@ -49,13 +60,20 @@ main() {
   local original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-$(ci_workspace)}"
   original_workspace="$(cd "$original_workspace" && pwd -P)"
 
-  local artifact_root="$original_workspace/.tmp/${label}-artifacts/${run_id}"
-  mkdir -p "$artifact_root"
+  local artifact_relative=".tmp/${label}-artifacts/${run_id}"
+  local temp_root="$original_workspace/.tmp"
+  local artifact_parent="$original_workspace/.tmp/${label}-artifacts"
+  local artifact_root="$original_workspace/$artifact_relative"
+  ensure_real_directory "$temp_root"
+  ensure_real_directory "$artifact_parent"
+  chmod 0700 "$artifact_parent"
+  [ ! -e "$artifact_root" ] || fail "artifact destination already exists: $artifact_relative"
+  (umask 077; mkdir -- "$artifact_root")
 
-  copy_path playwright-report "$artifact_root/playwright-report"
-  copy_path test-results "$artifact_root/test-results"
-  copy_path playwright-timing.json "$artifact_root/playwright-timing.json"
-  copy_path playwright-timing.md "$artifact_root/playwright-timing.md"
+  copy_path playwright-report "$original_workspace" "$artifact_relative/playwright-report"
+  copy_path test-results "$original_workspace" "$artifact_relative/test-results"
+  copy_path playwright-timing.json "$original_workspace" "$artifact_relative/playwright-timing.json"
+  copy_path playwright-timing.md "$original_workspace" "$artifact_relative/playwright-timing.md"
 }
 
 main "$@"

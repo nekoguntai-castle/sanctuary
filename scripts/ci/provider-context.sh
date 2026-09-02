@@ -63,6 +63,23 @@ ci_authority_run_id() { printf '%s' "${GITHUB_RUN_ID:-}"; }
 ci_authority_run_attempt() { printf '%s' "${GITHUB_RUN_ATTEMPT:-}"; }
 ci_authority_temp_dir() { printf '%s' "${RUNNER_TEMP:-}"; }
 
+# Execute a standalone fixture outside the invoking job's destructive
+# authority. The child may construct a complete provider fixture of its own.
+ci_exec_without_provider_authority() {
+  [ "$#" -gt 0 ] || {
+    echo 'ci_exec_without_provider_authority requires a command' >&2
+    return 2
+  }
+  exec env -u CI \
+    -u FORGEJO_ACTIONS \
+    -u FORGEJO_SERVER_URL \
+    -u GITHUB_ACTIONS \
+    -u GITHUB_RUN_ID \
+    -u GITHUB_RUN_ATTEMPT \
+    -u RUNNER_TEMP \
+    "$@"
+}
+
 ci_event_name() {
   if [ -n "${SANCTUARY_CI_EVENT_NAME_OVERRIDE:-}" ]; then
     printf '%s' "$SANCTUARY_CI_EVENT_NAME_OVERRIDE"

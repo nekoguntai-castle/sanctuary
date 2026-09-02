@@ -142,9 +142,12 @@ test_refuses_empty_project_name() {
 }
 
 test_run_project_compose_passes_explicit_project_flag() {
-  local output
+  local fixture output
+  fixture="$(mktemp -d)"
   set +e
   output=$(
+    SANCTUARY_RUNTIME_DIR="$fixture/runtime" \
+    SANCTUARY_DEPLOYMENT_ID=deploy-fallback-fixture \
     bash -c "
       export COMPOSE_PROJECT_NAME=sanctuary-test-fixture-id
       source '$HELPERS'
@@ -154,6 +157,7 @@ test_run_project_compose_passes_explicit_project_flag() {
     "
   )
   set -e
+  rm -rf "$fixture"
 
   assert_contains "$output" "-p sanctuary-test-fixture-id" \
     "run_project_compose must pass -p with COMPOSE_PROJECT_NAME" || return 1

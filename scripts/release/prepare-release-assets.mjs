@@ -2,16 +2,16 @@
 import { randomUUID } from 'node:crypto';
 import {
   copyFileSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   readdirSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { sha256File } from './release-asset-common.mjs';
@@ -71,27 +71,42 @@ export function prepareReleaseAssets(input) {
   return { commit, manifestPath, bundlePath };
 }
 
-function normalizeOptions(input) {
-  if (!TAG_RE.test(input.tag ?? '')) throw new Error('tag must be a v-prefixed semantic version');
-  if ((input.platform ?? 'linux/amd64') !== 'linux/amd64') {
+function releasePlatform(value) {
+  const platform = value ?? 'linux/amd64';
+  if (platform !== 'linux/amd64') {
     throw new Error('only linux/amd64 is release-verified; ARM64 requires a native acceptance rehearsal');
   }
+  return platform;
+}
+
+function optionalResolvedPath(value) {
+  return value ? path.resolve(value) : '';
+}
+
+function outputIsInsideRepo(repoRoot, outputDir) {
+  const relative = path.relative(repoRoot, outputDir);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function normalizeOptions(input) {
+  if (!TAG_RE.test(input.tag ?? '')) throw new Error('tag must be a v-prefixed semantic version');
   const options = {
     tag: input.tag,
-    platform: input.platform ?? 'linux/amd64',
+    platform: releasePlatform(input.platform),
     outputDir: path.resolve(input.outputDir),
     signingKey: path.resolve(input.signingKey),
     publicKey: path.resolve(input.publicKey),
     repoRoot: path.resolve(input.repoRoot ?? REPO_ROOT),
-    bundlePath: input.bundlePath ? path.resolve(input.bundlePath) : '',
+    stagingRoot: optionalResolvedPath(input.stagingRoot),
+    bundlePath: optionalResolvedPath(input.bundlePath),
     runId: input.runId ?? `operator-${new Date().toISOString().replace(/[^0-9A-Za-z.-]/g, '-')}`,
   };
-  const outputRelative = path.relative(options.repoRoot, options.outputDir);
-  if (outputRelative === '' || (!outputRelative.startsWith('..') && !path.isAbsolute(outputRelative))) {
+  if (outputIsInsideRepo(options.repoRoot, options.outputDir)) {
     throw new Error('release asset output directory must be outside the release checkout');
   }
   requireFile(options.signingKey);
   requireFile(options.publicKey);
+  requirePrivateDirectory(options.stagingRoot);
   return options;
 }
 
@@ -127,66 +142,87 @@ function createOrCopyBundle(options, destination) {
   ]);
 }
 
+function validateBundleManifest(options, commit, embedded) {
+  if (embedded.gitTag !== options.tag || embedded.gitCommit !== commit || embedded.platform !== options.platform) {
+    throw new Error('offline bundle identity does not match the requested tag, commit, and platform');
+  }
+  if (embedded.flavor !== 'full' || embedded.includedProfiles !== 'core,monitoring,tor') {
+    throw new Error('release offline bundle must contain the full core, monitoring, and Tor profiles');
+  }
+}
+
+function expectedReleaseImages(options) {
+  return capture('bash', [
+    '-c', 'source "$1"; offline_all_release_images', '_',
+    path.join(options.repoRoot, 'scripts/offline/bundle-common.sh'),
+  ]).split('\n').filter(Boolean).sort();
+}
+
+function validInventoryImage(image, expectedArchitecture) {
+  return image.os === 'linux'
+    && image.architecture === expectedArchitecture
+    && /^sha256:[a-f0-9]{64}$/.test(image.id ?? '')
+    && image.archiveRef === archiveRefFor(image.image)
+    && (!image.image.includes('@sha256:')
+      || (Array.isArray(image.repoDigests) && image.repoDigests.includes(repoDigestFor(image.image))));
+}
+
+function validateBundleInventory(options, inventory) {
+  const hasImages = Array.isArray(inventory.images);
+  const inventoryImages = hasImages ? inventory.images.map((image) => image.image).sort() : [];
+  const valid = hasImages && inventory.platform === options.platform
+    && JSON.stringify(inventoryImages) === JSON.stringify(expectedReleaseImages(options))
+    && inventory.images.every((image) => validInventoryImage(image, options.platform.split('/')[1]));
+  if (!valid) throw new Error('offline bundle image inventory does not match the release platform');
+}
+
+function expectedTargetInventory(options, images) {
+  const rows = images.map(image => [
+    image.image, image.archiveRef, image.id, image.os, image.architecture,
+    image.image.includes('@sha256:') ? repoDigestFor(image.image) : '-',
+  ].join('\t'));
+  return [
+    'SANCTUARY_IMAGE_INVENTORY_SCHEMA=1',
+    `SANCTUARY_IMAGE_INVENTORY_PLATFORM=${options.platform}`,
+    ...rows,
+  ];
+}
+
+function validateTargetInventory(options, stageDir, images) {
+  const target = readFileSync(path.join(stageDir, 'image-inventory.tsv'), 'utf8').trimEnd().split('\n');
+  if (JSON.stringify(target) !== JSON.stringify(expectedTargetInventory(options, images))) {
+    throw new Error('target-readable offline image inventory does not match signed image metadata');
+  }
+}
+
+function validateImageArchives(stageDir, images) {
+  for (const image of images) {
+    const tarPath = imageTarPath(stageDir, image.image);
+    requireFile(tarPath);
+    const manifest = JSON.parse(run('tar', ['-xOf', tarPath, 'manifest.json']));
+    const restoredTags = manifest.flatMap(entry => entry.RepoTags ?? []);
+    if (restoredTags.length !== 1 || restoredTags[0] !== image.archiveRef) {
+      throw new Error(`offline image archive does not restore ${image.archiveRef}`);
+    }
+  }
+}
+
 function validateBundle(options, bundlePath, commit) {
   requireFile(`${bundlePath}.sig`);
   verifySignature(bundlePath, `${bundlePath}.sig`, options.publicKey);
-  const stageDir = mkdtempSync(path.join(tmpdir(), 'sanctuary-release-bundle-'));
-  try {
-    run(path.join(options.repoRoot, 'scripts/offline/apply-bundle.sh'), [
-      '--bundle', bundlePath,
-      '--stage-dir', stageDir,
-      '--prepare-only',
-      '--public-key', options.publicKey,
-    ]);
-    const embedded = JSON.parse(readFileSync(path.join(stageDir, 'manifest.json'), 'utf8'));
-    if (embedded.gitTag !== options.tag || embedded.gitCommit !== commit || embedded.platform !== options.platform) {
-      throw new Error('offline bundle identity does not match the requested tag, commit, and platform');
-    }
-    if (embedded.flavor !== 'full' || embedded.includedProfiles !== 'core,monitoring,tor') {
-      throw new Error('release offline bundle must contain the full core, monitoring, and Tor profiles');
-    }
-    const inventory = JSON.parse(readFileSync(path.join(stageDir, 'image-inventory.json'), 'utf8'));
-    const targetInventory = readFileSync(path.join(stageDir, 'image-inventory.tsv'), 'utf8').trimEnd().split('\n');
-    const expectedArchitecture = options.platform.split('/')[1];
-    const expectedImages = capture('bash', ['-c', 'source "$1"; offline_all_release_images', '_', path.join(options.repoRoot, 'scripts/offline/bundle-common.sh')]).split('\n').filter(Boolean).sort();
-    const inventoryImages = Array.isArray(inventory.images) ? inventory.images.map((image) => image.image).sort() : [];
-    if (inventory.platform !== options.platform || JSON.stringify(inventoryImages) !== JSON.stringify(expectedImages)
-      || inventory.images.some((image) => image.os !== 'linux' || image.architecture !== expectedArchitecture
-        || !/^sha256:[a-f0-9]{64}$/.test(image.id ?? '')
-        || image.archiveRef !== archiveRefFor(image.image)
-        || (image.image.includes('@sha256:')
-          && (!Array.isArray(image.repoDigests) || !image.repoDigests.includes(repoDigestFor(image.image)))))) {
-      throw new Error('offline bundle image inventory does not match the release platform');
-    }
-    const expectedTargetRows = inventory.images.map(image => [
-      image.image,
-      image.archiveRef,
-      image.id,
-      image.os,
-      image.architecture,
-      image.image.includes('@sha256:') ? repoDigestFor(image.image) : '-',
-    ].join('\t'));
-    const expectedTargetInventory = [
-      'SANCTUARY_IMAGE_INVENTORY_SCHEMA=1',
-      `SANCTUARY_IMAGE_INVENTORY_PLATFORM=${options.platform}`,
-      ...expectedTargetRows,
-    ];
-    if (JSON.stringify(targetInventory) !== JSON.stringify(expectedTargetInventory)) {
-      throw new Error('target-readable offline image inventory does not match signed image metadata');
-    }
-    for (const image of inventory.images) {
-      const tarPath = imageTarPath(stageDir, image.image);
-      requireFile(tarPath);
-      const archiveManifest = JSON.parse(run('tar', ['-xOf', tarPath, 'manifest.json']));
-      const restoredTags = archiveManifest.flatMap(entry => entry.RepoTags ?? []);
-      if (restoredTags.length !== 1 || restoredTags[0] !== image.archiveRef) {
-        throw new Error(`offline image archive does not restore ${image.archiveRef}`);
-      }
-    }
-    const bundledCommit = peelBundledCommit(stageDir, options.tag);
-    if (bundledCommit !== commit) throw new Error('offline bundle git ref does not match the release commit');
-  } finally {
-    rmSync(stageDir, { recursive: true, force: true });
+  const stageDir = mkdtempSync(path.join(options.stagingRoot, 'release-bundle-'));
+  run(path.join(options.repoRoot, 'scripts/offline/apply-bundle.sh'), [
+    '--bundle', bundlePath, '--stage-dir', stageDir, '--prepare-only', '--public-key', options.publicKey,
+  ]);
+  validateBundleManifest(
+    options, commit, JSON.parse(readFileSync(path.join(stageDir, 'manifest.json'), 'utf8')),
+  );
+  const inventory = JSON.parse(readFileSync(path.join(stageDir, 'image-inventory.json'), 'utf8'));
+  validateBundleInventory(options, inventory);
+  validateTargetInventory(options, stageDir, inventory.images);
+  validateImageArchives(stageDir, inventory.images);
+  if (peelBundledCommit(stageDir, options.tag) !== commit) {
+    throw new Error('offline bundle git ref does not match the release commit');
   }
 }
 
@@ -210,13 +246,11 @@ function imageTarPath(stageDir, image) {
 }
 
 function peelBundledCommit(stageDir, tag) {
-  const verifyRepo = mkdtempSync(path.join(tmpdir(), 'sanctuary-bundle-ref-'));
-  try {
+  const verifyRepo = mkdtempSync(path.join(stageDir, '.bundle-ref-'));
+  {
     run('git', ['-C', verifyRepo, 'init', '--bare', '-q']);
     run('git', ['-C', verifyRepo, 'fetch', '-q', path.join(stageDir, 'repo/sanctuary.git.bundle'), `refs/tags/${tag}:refs/tags/${tag}`]);
     return capture('git', ['-C', verifyRepo, 'rev-parse', `refs/tags/${tag}^{commit}`]);
-  } finally {
-    rmSync(verifyRepo, { recursive: true, force: true });
   }
 }
 
@@ -323,6 +357,16 @@ function requireFile(filePath) {
   if (!filePath || !statSync(filePath).isFile()) throw new Error(`required file is missing: ${filePath}`);
 }
 
+function requirePrivateDirectory(directory) {
+  if (!directory) throw new Error('registered staging root is required');
+  const info = lstatSync(directory, { throwIfNoEntry: false });
+  if (!info?.isDirectory() || info.isSymbolicLink() || realpathSync(directory) !== directory
+      || (info.mode & 0o077) !== 0
+      || (typeof process.getuid === 'function' && info.uid !== process.getuid())) {
+    throw new Error('registered staging root must be an owner-only directory');
+  }
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (result.status !== 0) throw new Error(`${path.basename(command)} failed: ${(result.stderr || result.stdout).trim()}`);
@@ -344,11 +388,11 @@ function parseArgs(argv) {
     const key = argv[i];
     const value = argv[i + 1];
     if (!value || !key.startsWith('--')) throw new Error(`missing value for ${key}`);
-    const names = { '--tag': 'tag', '--platform': 'platform', '--output-dir': 'outputDir', '--signing-key': 'signingKey', '--public-key': 'publicKey', '--bundle': 'bundlePath', '--run-id': 'runId' };
+    const names = { '--tag': 'tag', '--platform': 'platform', '--output-dir': 'outputDir', '--signing-key': 'signingKey', '--public-key': 'publicKey', '--bundle': 'bundlePath', '--run-id': 'runId', '--staging-root': 'stagingRoot' };
     if (!names[key]) throw new Error(`unknown argument: ${key}`);
     options[names[key]] = value;
   }
-  for (const required of ['tag', 'outputDir', 'signingKey', 'publicKey']) {
+  for (const required of ['tag', 'outputDir', 'signingKey', 'publicKey', 'stagingRoot']) {
     if (!options[required]) throw new Error(`--${required.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
   }
   return options;

@@ -64,7 +64,7 @@ fi
 # drift:
 #   1. `PORT_OFFSET:` env keys in .github/workflows/*.yml   (one per lane job)
 #   2. the extended upgrade fixture table                    (one per fixture)
-#   3. the upgrade-baseline loop in install-test.yml, which allocates one offset
+#   3. the isolated upgrade-baseline subject, which allocates one offset
 #      per baseline source ref from a base, stepping each time — so its offsets
 #      depend on how many refs the selection contract yields, not on any literal
 # shellcheck source=tests/install/utils/upgrade-selection.sh
@@ -87,12 +87,12 @@ extended_fixture_offsets() {
 }
 
 baseline_loop_offsets() {
-  local wf="$ROOT_DIR/.github/workflows/install-test.yml"
+  local subject="$ROOT_DIR/scripts/ci/run-upgrade-baseline-isolated-subject.sh"
   local start step count i
-  start="$(grep -oE '^[[:space:]]*port_offset=[0-9]+' "$wf" | head -n1 | grep -oE '[0-9]+$' || true)"
-  step="$(grep -oE 'port_offset \+ [0-9]+' "$wf" | head -n1 | grep -oE '[0-9]+' || true)"
+  start="$(grep -oE 'port_offset=[0-9]+' "$subject" | head -n1 | grep -oE '[0-9]+$' || true)"
+  step="$(grep -oE 'port_offset \+ [0-9]+' "$subject" | head -n1 | grep -oE '[0-9]+' || true)"
   if [ -z "$start" ] || [ -z "$step" ]; then
-    echo "could not read the upgrade-baseline port loop out of install-test.yml" >&2
+    echo "could not read the upgrade-baseline port loop out of its isolated subject" >&2
     return 1
   fi
   count="$(upgrade_default_baseline_refs | awk -F',' '{print NF}')"

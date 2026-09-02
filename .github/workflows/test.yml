@@ -190,7 +190,7 @@ jobs:
         env:
           FRONTEND_FILES: ${{ needs.detect-changes.outputs.frontend_files }}
         run: |
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log" scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-frontend bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log" scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh quick-frontend bash -c '
             set -euo pipefail
             for attempt in 1 2 3; do
               echo "npm ci (quick frontend), attempt $attempt"
@@ -1780,65 +1780,13 @@ jobs:
 
       - name: Run browser-flow E2E tests
         run: |
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log" scripts/ci/with-runner-lock.sh e2e bash -c '
-            set -euo pipefail
-
-            readonly api_port="${BROWSER_E2E_API_PORT:?}"
-            BACKEND_PID=""
-
-            cleanup_backend() {
-              if [ -n "${BACKEND_PID:-}" ]; then
-                kill -- "-${BACKEND_PID}" 2>/dev/null || kill "$BACKEND_PID" 2>/dev/null || true
-                wait "$BACKEND_PID" 2>/dev/null || true
-                BACKEND_PID=""
-              fi
-            }
-            trap cleanup_backend EXIT
-
-            backend_log=".tmp/browser-e2e-backend.log"
-            mkdir -p "$(dirname "$backend_log")"
-            setsid bash -c "cd server; PORT=\"\$1\" npm run start" _ "$api_port" >"$backend_log" 2>&1 &
-            BACKEND_PID="$!"
-
-            echo "Waiting for backend server..."
-            for i in {1..60}; do
-              if curl -s "http://localhost:${api_port}/health" > /dev/null 2>&1; then
-                echo "Backend is ready!"
-                break
-              fi
-              if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
-                echo "Backend process exited before becoming ready"
-                tail -200 "$backend_log" || true
-                exit 1
-              fi
-              if [ "$i" -eq 60 ]; then
-                echo "Backend failed to start"
-                tail -200 "$backend_log" || true
-                exit 1
-              fi
-              echo "Attempt $i: Backend not ready yet..."
-              sleep 2
-            done
-
-            while IFS= read -r browser_group; do
-              echo "::group::Browser E2E ${browser_group}"
-              mapfile -t browser_specs < <(scripts/ci/browser-e2e-groups.sh "$browser_group")
-              if [ "${#browser_specs[@]}" -eq 0 ]; then
-                echo "No browser-flow E2E specs found for ${browser_group}."
-                echo "::endgroup::"
-                continue
-              fi
-
-              printf "Running browser-flow E2E group %s:\n" "$browser_group"
-              printf "  %s\n" "${browser_specs[@]}"
-              VITE_API_URL="${BROWSER_E2E_API_URL:?}" \
-                scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}" \
-                scripts/ci/time-command.sh "browser-flow E2E ${browser_group}" \
-                npm run test:e2e -- --project=chromium "${browser_specs[@]}"
-
-              echo "::endgroup::"
-            done < <(scripts/ci/browser-e2e-groups.sh --groups)
-          '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/cleanup-ci-callsite.sh auto-run \
+              --engine host \
+              --lane browser-e2e-backend \
+              --checkout-root "$GITHUB_WORKSPACE" \
+              -- scripts/ci/run-browser-e2e-subject.sh
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!

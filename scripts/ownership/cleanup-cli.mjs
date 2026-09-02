@@ -6,10 +6,16 @@ import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 import { buildCleanupApproval } from './cleanup-approval.mjs';
 import { createCleanupDockerRuntime } from './cleanup-docker-runtime.mjs';
+import { createCleanupHostRuntime, HOST_RESOURCE_CLASSES } from './cleanup-host-runtime.mjs';
+import { createCleanupHostOperations } from './cleanup-host-operations.mjs';
+import { createCleanupCompositeRuntime } from './cleanup-composite-runtime.mjs';
+import { resolveCleanupHostAuthority } from './cleanup-host-authority.mjs';
 import { createDockerCleanupAdapter } from './cleanup-docker-adapter.mjs';
 import { applyCleanupExecution } from './cleanup-execution.mjs';
 import { writeSignedArtifact, verifySignedArtifact } from './cleanup-evidence.mjs';
-import { inventoryCleanupResources } from './cleanup-inventory.mjs';
+import {
+  buildCleanupInventoryExecutionContext, inventoryCleanupResources,
+} from './cleanup-inventory.mjs';
 import { deriveCleanupJournalPath } from './cleanup-journal.mjs';
 import {
   acquireCleanupApplyLocks, acquireCleanupRecoveryLocks, releaseCleanupLocks,
@@ -110,6 +116,28 @@ function deploymentStateReader(request) {
   return () => ({ ...store.inspect(), mutationLock: inspectDeploymentLock(store.lockPath) });
 }
 
+function executionEngine(value) {
+  if (value === undefined) return 'docker';
+  if (['docker', 'podman', 'host'].includes(value)) return value;
+  throw new TypeError('cleanup engine must be docker, podman, or host');
+}
+
+function assertHostOnlyOptions(request, engine) {
+  if (engine !== 'host') return;
+  for (const key of ['sharedImmutableIdentities', 'protectedProjects', 'dataVolumeNames']) {
+    if (request[key] !== undefined && (!Array.isArray(request[key]) || request[key].length > 0)) {
+      throw new TypeError(`host-only cleanup rejects Docker option ${key}`);
+    }
+  }
+  if (request.legacyFixtureWitnessDigest !== undefined && request.legacyFixtureWitnessDigest !== null) {
+    throw new TypeError('host-only cleanup rejects Docker option legacyFixtureWitnessDigest');
+  }
+}
+
+function cleanupInventoryAdapter(engine) {
+  return engine === 'host' ? null : createDockerCleanupAdapter();
+}
+
 async function inventoryCommand(request) {
   exactWithOptional(request, [
     'checkoutRoot', 'ownershipContractPath', 'deploymentManifestPath', 'runManifestPath',
@@ -122,15 +150,17 @@ async function inventoryCommand(request) {
   const deploymentManifest = readCanonicalArtifact(request.deploymentManifestPath, request.checkoutRoot);
   const runManifest = readCanonicalArtifact(request.runManifestPath, request.checkoutRoot);
   const ownership = readContract(request.ownershipContractPath, deploymentManifest.policyDigest);
+  const engine = executionEngine(request.engine);
+  assertHostOnlyOptions(request, engine);
   if (request.deploymentId !== deploymentManifest.deploymentId) throw new Error('request deploymentId does not match manifest');
   const inventory = await inventoryCleanupResources({
     deploymentManifest,
     runManifest,
     ownershipContract: ownership.contract,
     ownershipContractDigest: ownership.digest,
-    dockerAdapter: createDockerCleanupAdapter(),
+    dockerAdapter: cleanupInventoryAdapter(engine),
     dockerOptions: {
-      engine: request.engine,
+      engine,
       sharedImmutableIdentities: request.sharedImmutableIdentities,
       protectedProjects: request.protectedProjects,
       dataVolumeNames: request.dataVolumeNames,
@@ -138,6 +168,9 @@ async function inventoryCommand(request) {
       commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
     },
     registrationRoot: path.join(path.resolve(request.runtimeDirectory), 'ownership'),
+    hostOptions: {
+      runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+    },
     readDeploymentState: deploymentStateReader(request),
   });
   const outputInventory = request.forcedAmbiguity === undefined ? inventory : {
@@ -296,6 +329,8 @@ function executionInputs(request) {
 }
 
 function inventoryLoader(request, inputs, lockOwnerDigest) {
+  const engine = executionEngine(request.engine);
+  assertHostOnlyOptions(request, engine);
   const store = new DeploymentStore({
     runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
   });
@@ -303,15 +338,18 @@ function inventoryLoader(request, inputs, lockOwnerDigest) {
     deploymentManifest: inputs.deploymentManifest, runManifest: inputs.runManifest,
     ownershipContract: inputs.ownershipContract,
     ownershipContractDigest: inputs.ownershipContractDigest,
-    dockerAdapter: createDockerCleanupAdapter(),
+    dockerAdapter: cleanupInventoryAdapter(engine),
     dockerOptions: {
-      engine: request.engine, sharedImmutableIdentities: request.sharedImmutableIdentities,
+      engine, sharedImmutableIdentities: request.sharedImmutableIdentities,
       protectedProjects: request.protectedProjects, dataVolumeNames: request.dataVolumeNames,
       legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
       daemonAuthority: inventoryRequest.daemonAuthority,
       commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
     },
     registrationRoot: path.join(path.resolve(request.runtimeDirectory), 'ownership'),
+    hostOptions: {
+      runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+    },
     readDeploymentState: () => ({
       ...store.inspect(), mutationLock: inspectDeploymentLock(store.lockPath),
     }),
@@ -329,18 +367,48 @@ function assertFreshPreflight(before, fresh) {
   }
 }
 
-function dockerRuntime(request, inputs, loadInventory) {
+function cleanupRuntime(request, inputs, loadInventory) {
   const registrationRoot = path.join(path.resolve(request.runtimeDirectory), 'ownership');
-  return createCleanupDockerRuntime({
+  const loadRegistrations = () => readRegistrations(registrationRoot);
+  const hostAuthority = resolveCleanupHostAuthority({
+    runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+    registrations: loadRegistrations(),
+  });
+  const engine = executionEngine(request.engine);
+  assertHostOnlyOptions(request, engine);
+  const nonHostActions = inputs.plan.actions.filter((action) => (
+    !HOST_RESOURCE_CLASSES.includes(action.resourceClass)
+  ));
+  if (engine === 'host' && nonHostActions.length > 0) {
+    throw new Error('host-only cleanup plan contains a Docker action');
+  }
+  const hostRuntime = createCleanupHostRuntime({
+    plan: inputs.plan, loadInventory, loadRegistrations, registrationRoot,
+    hostOperations: createCleanupHostOperations({ helperAuthority: hostAuthority }),
+  });
+  if (engine === 'host') {
+    const currentContext = buildCleanupInventoryExecutionContext({
+      deploymentManifest: inputs.deploymentManifest,
+      registrations: loadRegistrations(),
+      engine,
+      hostAuthorityDigest: hostAuthority?.digest ?? null,
+    });
+    if (currentContext.fingerprint !== inputs.plan.contextFingerprint) {
+      throw new Error('runtime host authority does not match approved cleanup context');
+    }
+    return hostRuntime;
+  }
+  const dockerRuntime = createCleanupDockerRuntime({
     plan: inputs.plan, deploymentManifest: inputs.deploymentManifest,
-    engine: request.engine ?? 'docker', loadInventory,
-    loadRegistrations: () => readRegistrations(registrationRoot),
+    engine, loadInventory,
+    loadRegistrations,
     registrationRoot,
     observationOptions: {
       protectedProjects: request.protectedProjects,
       dataVolumeNames: request.dataVolumeNames,
       sharedImmutableIdentities: request.sharedImmutableIdentities,
       legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
+      hostAuthorityDigest: hostAuthority?.digest ?? null,
       commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
     },
     supervisorOptions: {
@@ -348,6 +416,7 @@ function dockerRuntime(request, inputs, loadInventory) {
       killWaitMs: request.supervisorKillWaitMs, maxOutputBytes: request.maxOutputBytes,
     },
   });
+  return createCleanupCompositeRuntime({ dockerRuntime, hostRuntime });
 }
 
 function exactCancellationPath(request) {
@@ -411,7 +480,7 @@ async function applyCommand(request) {
     try {
       const loadInventory = inventoryLoader(request, inputs, held.ownerDigest);
       assertFreshPreflight(inputs.inventoryBefore, await loadInventory());
-      const runtime = dockerRuntime(request, inputs, loadInventory);
+      const runtime = cleanupRuntime(request, inputs, loadInventory);
       const result = await applyCleanupExecution({
         runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
         ...inputs, signerKeyId: request.expectedEvidenceFingerprint,
@@ -447,7 +516,7 @@ async function recoverCommand(request) {
     });
     try {
       const loadInventory = inventoryLoader(request, inputs, acquired.held.ownerDigest);
-      const runtime = dockerRuntime(request, inputs, loadInventory);
+      const runtime = cleanupRuntime(request, inputs, loadInventory);
       const result = await recoverCleanupExecution({
         runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
         ...inputs, signerKeyId: request.expectedEvidenceFingerprint,

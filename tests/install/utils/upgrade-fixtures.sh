@@ -11,6 +11,37 @@ UPGRADE_SEED_NOTIFICATION_STATE="${UPGRADE_SEED_NOTIFICATION_STATE:-false}"
 UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-}"
 UPGRADE_EXPECT_OPTIONAL_PROFILES="${UPGRADE_EXPECT_OPTIONAL_PROFILES:-false}"
 
+restore_tracked_worktree_file_for_cleanup() {
+    local worktree_root="$1"
+    local relative_path="$2"
+    local target_path="$worktree_root/$relative_path"
+    local restore_path="${target_path}.cleanup-restore-$$"
+    local tracked_entry
+    local tracked_mode
+
+    tracked_entry="$(git -C "$worktree_root" ls-tree HEAD -- "$relative_path")" || return 1
+    tracked_mode="${tracked_entry%% *}"
+    case "$tracked_mode" in
+        100644|100755)
+            ;;
+        *)
+            echo "Unsupported tracked mode for cleanup restore: $relative_path ($tracked_mode)" >&2
+            return 1
+            ;;
+    esac
+
+    git -C "$worktree_root" show "HEAD:$relative_path" > "$restore_path" || {
+        rm -f "$restore_path"
+        return 1
+    }
+    if [ "$tracked_mode" = "100755" ]; then
+        chmod 755 "$restore_path"
+    else
+        chmod 644 "$restore_path"
+    fi
+    mv "$restore_path" "$target_path"
+}
+
 apply_optional_profile_isolation_defaults() {
     local profile_slug="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-optional}"
     local optional_port_base="${UPGRADE_OPTIONAL_PROFILE_PORT_BASE:-}"

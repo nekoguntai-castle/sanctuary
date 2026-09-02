@@ -11,7 +11,10 @@ export const READ_ONLY_REGISTRATION_CLASSES = Object.freeze([
 const READ_ONLY_CLASSES = new Set(READ_ONLY_REGISTRATION_CLASSES);
 const RETAIN_CLASSES = new Set(['cleanup_evidence', 'provider_publication']);
 const LOCAL_PATH_CLASSES = new Set(['temporary_artifact', 'cleanup_evidence']);
-const REFUSED_CLASSES = new Set(['collector_process', 'git_worktree', 'temporary_artifact']);
+export const HOST_EXECUTION_CLASSES = Object.freeze([
+  'collector_process', 'git_worktree', 'temporary_artifact',
+]);
+const HOST_CLASSES = new Set(HOST_EXECUTION_CLASSES);
 const OBSERVATION_STATES = new Set(['current', 'missing', 'identity_changed', 'ambiguous', 'unverified']);
 
 function defaultObservation(registration) {
@@ -44,12 +47,24 @@ function observeRegistration(registration, inspectors) {
   }
 }
 
+function hostDisposition(registration, observation) {
+  if (registration.schemaVersion !== '1.1.0' || !registration.executionAuthority) {
+    return { disposition: 'refused', reason: `${registration.resourceClass} lacks v1.1 execution authority` };
+  }
+  if (observation.active === true) {
+    return { disposition: 'refused', reason: `${registration.resourceClass} creator run is active` };
+  }
+  if (observation.state === 'current' && observation.executable === true) {
+    return { disposition: 'eligible', reason: `${registration.resourceClass} exact execution authority is terminal` };
+  }
+  const suffix = observation.state === 'current' ? 'execution authority is incomplete'
+    : `identity is ${observation.state}`;
+  return { disposition: 'refused', reason: `${registration.resourceClass} ${suffix}` };
+}
+
 function disposition(registration, observation) {
   if (observation.state === 'missing') return { disposition: 'absent', reason: 'registered locator is absent' };
-  if (REFUSED_CLASSES.has(registration.resourceClass)) {
-    const suffix = observation.state === 'current' ? 'execution is not enabled' : `identity is ${observation.state}`;
-    return { disposition: 'refused', reason: `${registration.resourceClass} ${suffix}` };
-  }
+  if (HOST_CLASSES.has(registration.resourceClass)) return hostDisposition(registration, observation);
   if (observation.state === 'ambiguous' || observation.state === 'unverified') {
     return { disposition: 'ambiguous', reason: observation.error ?? 'registered locator could not be verified' };
   }
@@ -72,7 +87,7 @@ export function classifyCleanupRegistration(registration, { inspectors = {} } = 
     registration,
     observation,
     ...decision,
-    executable: false,
+    executable: decision.disposition === 'eligible' && observation.executable === true,
   };
 }
 

@@ -25,6 +25,16 @@ safe_label() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-'
 }
 
+validate_identity_lines() {
+  local identity_name identity_value
+  for identity_name in "$@"; do
+    identity_value="${!identity_name}"
+    if [[ "$identity_value" == *$'\n'* || "$identity_value" == *$'\r'* ]]; then
+      fail "ownership identity contains a line break: $identity_name"
+    fi
+  done
+}
+
 main() {
   local docker_visible=false
 
@@ -93,7 +103,7 @@ main() {
   fi
 
   mkdir -p "$parent"
-  chmod 1777 "$parent" 2>/dev/null || true
+  chmod 0700 "$parent"
 
   if [ ! -w "$parent" ]; then
     fail 'isolated workspace parent is not writable'
@@ -101,10 +111,35 @@ main() {
 
   local workdir
   workdir="$(mktemp -d "$parent/$(safe_label "$label").XXXXXX")"
+  local authority_bundle execution_authority path_identity
+  if [ "$docker_visible" = true ]; then
+    SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-${source_workspace##*/}}}"
+    export SANCTUARY_PROJECT
+  fi
+  SANCTUARY_PROJECT_DIR="$source_workspace" ownership_initialize
+  validate_identity_lines \
+    SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID \
+    SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT \
+    SANCTUARY_CLEANUP_CREATED_AT
+  authority_bundle="$(node "$SANCTUARY_OWNERSHIP_TOOL_DIR/describe-host-authority.mjs" \
+    temporary "$workdir" "$SANCTUARY_OPERATION_RUN_ID")"
+  execution_authority="$(printf '%s' "$authority_bundle" | jq -c '.executionAuthority')"
+  path_identity="$(printf '%s' "$authority_bundle" | jq -r '.immutableIdentity')"
+  SANCTUARY_PROJECT_DIR="$source_workspace" \
+    register_owned_resource temporary_artifact active exact_delete path "$workdir" "$path_identity" \
+      --execution-authority "$execution_authority" "$run_id"
+  if [ "${SANCTUARY_TEST_FAIL_AFTER_WORKSPACE_REGISTRATION:-0}" = 1 ] \
+      && [ "${SANCTUARY_LOCAL_CLEANUP_AUTHORITY:-0}" = 1 ]; then
+    fail 'injected failure after isolated workspace registration'
+  fi
+
   local repo="$workdir/repo"
 
   git clone --quiet --no-hardlinks "$source_workspace" "$repo"
   git -C "$repo" checkout --quiet "$source_head"
+  chmod 0700 "$repo"
+  [[ $(stat -c '%u:%a' -- "$repo") == "${uid}:700" ]] || \
+    fail 'isolated repository is not an owner-only authority boundary'
 
   if [ "$docker_visible" = true ]; then
     SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-${source_workspace##*/}}}"
@@ -113,29 +148,19 @@ main() {
     ownership_initialize_build_identity
 
     if [ "$(ci_env_file)" != /dev/stdout ]; then
-      local identity_name identity_value
+      local identity_name
       local -a identity_names=(
         SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID
         SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT
         SANCTUARY_CLEANUP_CREATED_AT SANCTUARY_SOURCE_COMMIT
         SANCTUARY_IMAGE_LOCK_SHA256 SANCTUARY_VERSION SANCTUARY_BUILD_ID
       )
+      validate_identity_lines "${identity_names[@]}"
       for identity_name in "${identity_names[@]}"; do
-        identity_value="${!identity_name}"
-        if [[ "$identity_value" == *$'\n'* || "$identity_value" == *$'\r'* ]]; then
-          fail "ownership identity contains a line break: $identity_name"
-        fi
-        ci_emit_env "$identity_name=$identity_value"
+        ci_emit_env "$identity_name=${!identity_name}"
       done
     fi
   fi
-
-  local path_identity parent_identity
-  path_identity="path-$(stat -c '%d-%i' "$workdir" 2>/dev/null || stat -f '%d-%i' "$workdir")"
-  parent_identity="parent-$(printf '%s' "$(cd "$parent" && pwd -P)" | ownership_sha256)"
-  SANCTUARY_PROJECT_DIR="$source_workspace" \
-    register_owned_resource temporary_artifact active exact_delete path "$workdir" "$path_identity" \
-      "$run_id" "$parent_identity"
 
   printf '%s\n' "$repo"
 }

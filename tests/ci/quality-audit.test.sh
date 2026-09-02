@@ -70,7 +70,7 @@ main() {
   ) >/dev/null
 
   assert_contains "$call_log" 'scripts/ci/npm-audit-gate.mjs' 'aggregate audit gate'
-  if [ "$(wc -l < "$call_log")" -ne 1 ]; then
+  if [ "$(grep -Fc 'scripts/ci/npm-audit-gate.mjs' "$call_log")" -ne 1 ]; then
     fail "aggregate audit gate: expected exactly one invocation"
   fi
 

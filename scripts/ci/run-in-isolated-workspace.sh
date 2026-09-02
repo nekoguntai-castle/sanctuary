@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: scripts/ci/run-in-isolated-workspace.sh [--docker-visible] [--keep-on-failure] LABEL COMMAND [ARG...]
+Usage: scripts/ci/run-in-isolated-workspace.sh [--docker-visible] LABEL COMMAND [ARG...]
 
 Runs COMMAND from a per-job clone of the current repository. The source
 checkout is treated as immutable input; generated files stay in the clone.
@@ -17,16 +17,11 @@ fail() {
 
 main() {
   local docker_visible=false
-  local keep_on_failure=false
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --docker-visible)
         docker_visible=true
-        shift
-        ;;
-      --keep-on-failure)
-        keep_on_failure=true
         shift
         ;;
       --help|-h)
@@ -65,6 +60,19 @@ main() {
   original_workspace="$(ci_workspace)"
   original_workspace="$(cd "$original_workspace" && pwd -P)"
 
+  if [ "${SANCTUARY_ISOLATED_CLEANUP_SUBJECT:-0}" != 1 ]; then
+    local cleanup_engine lane suffix
+    suffix="$(printf '%s' "$label" | sha256sum | cut -c1-10)"
+    lane="isolated-$(printf '%s' "${label,,}" | tr -c 'a-z0-9-' '-' | cut -c1-12)-$suffix"
+    cleanup_engine=host
+    [ "$docker_visible" = false ] || cleanup_engine=docker
+    local -a nested_args=()
+    [ "$docker_visible" = false ] || nested_args+=(--docker-visible)
+    SANCTUARY_ISOLATED_CLEANUP_SUBJECT=1 exec "$script_dir/cleanup-ci-callsite.sh" auto-run \
+      --lane "$lane" --engine "$cleanup_engine" --checkout-root "$(cd "$script_dir/../.." && pwd -P)" -- \
+      "$0" "${nested_args[@]}" "$label" "$@"
+  fi
+
   local isolated_workspace
   isolated_workspace="$("$script_dir/create-isolated-workspace.sh" "${create_args[@]}" "$label")"
   local isolated_root
@@ -80,11 +88,10 @@ main() {
     "$@"
   ) || status="$?"
 
-  if [ "$status" -eq 0 ] || [ "$keep_on_failure" = false ]; then
-    rm -rf "$isolated_root" || ci_emit_warning "Could not fully remove isolated workspace"
-  else
-    ci_emit_warning "Preserving failed isolated workspace for runner-side inspection"
-  fi
+  # The outer signed cleanup coordinator owns the registered isolated root.
+  # It removes the exact entry only after this subject and its process group
+  # are terminal, then journals and receipts that postcondition.
+  [ -n "$isolated_root" ] || fail 'isolated workspace root was not resolved'
 
   return "$status"
 }

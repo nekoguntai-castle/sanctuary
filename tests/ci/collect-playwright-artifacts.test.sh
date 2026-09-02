@@ -61,14 +61,9 @@ main() {
   assert_exists "$artifact_root/playwright-timing.json"
   assert_exists "$artifact_root/playwright-timing.md"
 
-  rm -rf "$isolated_workspace/playwright-report" "$isolated_workspace/test-results"
-  (
-    cd "$isolated_workspace"
-    SANCTUARY_CI_ORIGINAL_WORKSPACE="$original_workspace" bash "$SCRIPT" quick-browser run-123
-  )
-  assert_not_exists "$artifact_root/playwright-report"
-  assert_not_exists "$artifact_root/test-results"
-  assert_exists "$artifact_root/playwright-timing.json"
+  assert_fails_with 'artifact destination already exists' env \
+    SANCTUARY_CI_ORIGINAL_WORKSPACE="$original_workspace" \
+    bash -c 'cd "$1" && bash "$2" quick-browser run-123' _ "$isolated_workspace" "$SCRIPT"
 
   assert_fails_with 'label may only contain' bash "$SCRIPT" '../bad'
   assert_fails_with 'run id may only contain' bash "$SCRIPT" quick-browser '../bad'

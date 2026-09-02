@@ -67,45 +67,34 @@ list_assigned_specs() {
   done < <(list_groups)
 }
 
-fail_if_file_has_content() {
+fail_if_content() {
   local message="$1"
-  local file="$2"
+  local content="$2"
 
-  if [ -s "$file" ]; then
+  if [ -n "$content" ]; then
     echo "$message" >&2
-    cat "$file" >&2
+    printf '%s\n' "$content" >&2
     return 1
   fi
 }
 
 check_groups() {
-  local temp_dir repo_specs assigned_specs duplicate_specs missing_specs extra_specs
+  local assigned_specs duplicate_specs missing_specs extra_specs
   local failed=false
 
-  temp_dir="$(mktemp -d)"
+  assigned_specs="$(list_assigned_specs | sort)"
+  duplicate_specs="$(printf '%s\n' "$assigned_specs" | uniq -d)"
+  missing_specs="$(comm -23 <(list_repo_browser_specs) <(printf '%s\n' "$assigned_specs"))"
+  extra_specs="$(comm -13 <(list_repo_browser_specs) <(printf '%s\n' "$assigned_specs"))"
 
-  repo_specs="$temp_dir/repo-specs"
-  assigned_specs="$temp_dir/assigned-specs"
-  duplicate_specs="$temp_dir/duplicate-specs"
-  missing_specs="$temp_dir/missing-specs"
-  extra_specs="$temp_dir/extra-specs"
+  fail_if_content 'Duplicate browser E2E group assignments:' "$duplicate_specs" || failed=true
+  fail_if_content 'Missing browser E2E group assignments:' "$missing_specs" || failed=true
+  fail_if_content 'Unknown browser E2E group assignments:' "$extra_specs" || failed=true
 
-  list_repo_browser_specs > "$repo_specs"
-  list_assigned_specs | sort > "$assigned_specs"
-  uniq -d "$assigned_specs" > "$duplicate_specs"
-  comm -23 "$repo_specs" "$assigned_specs" > "$missing_specs"
-  comm -13 "$repo_specs" "$assigned_specs" > "$extra_specs"
-
-  fail_if_file_has_content 'Duplicate browser E2E group assignments:' "$duplicate_specs" || failed=true
-  fail_if_file_has_content 'Missing browser E2E group assignments:' "$missing_specs" || failed=true
-  fail_if_file_has_content 'Unknown browser E2E group assignments:' "$extra_specs" || failed=true
-
-  if grep -Fxq "$RENDER_SPEC" "$assigned_specs"; then
+  if grep -Fxq "$RENDER_SPEC" <<< "$assigned_specs"; then
     echo "$RENDER_SPEC must stay in the render-regression lane" >&2
     failed=true
   fi
-
-  rm -rf "$temp_dir"
 
   if [ "$failed" = "true" ]; then
     return 1

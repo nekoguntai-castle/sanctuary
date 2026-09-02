@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/bundle-common.sh"
+REGISTERED_STAGING="$SCRIPT_DIR/../ci/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/../ci/cleanup-ci-callsite.sh"
 
 TAG=""
 PLATFORM="$(offline_detect_platform)"
@@ -124,11 +126,7 @@ target_commit() {
 }
 
 cleanup_create_tmp() {
-  if [ -n "${CREATE_TMP_ROOT:-}" ] && [ -d "$CREATE_TMP_ROOT" ]; then
-    find "$CREATE_TMP_ROOT" -type f -delete
-    find "$CREATE_TMP_ROOT" -type l -delete
-    find "$CREATE_TMP_ROOT" -depth -type d -empty -delete
-  fi
+  : # Registered temporary artifacts are removed only by the cleanup coordinator.
 }
 
 validate_release_checkout() {
@@ -415,10 +413,17 @@ write_git_bundle() {
 copy_bootstrap_tools() {
   local stage_dir="$1"
 
-  mkdir -p "$stage_dir/tools" "$stage_dir/keys"
+  mkdir -p "$stage_dir/tools" "$stage_dir/keys" \
+    "$stage_dir/authority/scripts/ci" "$stage_dir/authority/scripts/ownership"
   cp "$SCRIPT_DIR/bundle-common.sh" "$stage_dir/tools/bundle-common.sh"
   cp "$SCRIPT_DIR/apply-bundle.sh" "$stage_dir/tools/apply-bundle.sh"
   cp "$OFFLINE_REPO_ROOT/scripts/create-upgrade-backup.sh" "$stage_dir/tools/create-upgrade-backup.sh"
+  cp "$OFFLINE_REPO_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
+    "$OFFLINE_REPO_ROOT/scripts/ci/create-registered-staging.sh" \
+    "$OFFLINE_REPO_ROOT/scripts/ci/provider-context.sh" \
+    "$OFFLINE_REPO_ROOT/scripts/ci/provider-context.mjs" \
+    "$stage_dir/authority/scripts/ci/"
+  cp -R "$OFFLINE_REPO_ROOT/scripts/ownership/." "$stage_dir/authority/scripts/ownership/"
   chmod +x "$stage_dir/tools/apply-bundle.sh"
   chmod +x "$stage_dir/tools/create-upgrade-backup.sh"
 
@@ -630,17 +635,23 @@ create_archive() {
   local output_dir
   output_dir="$(dirname "$OUTPUT")"
   mkdir -p "$output_dir"
-  tar -czf "$OUTPUT" -C "$stage_dir" .
+  [ ! -e "$OUTPUT" ] || offline_fail "bundle output already exists: $OUTPUT"
+  (set -o noclobber; tar -cz -C "$stage_dir" . > "$OUTPUT")
 }
 
 sign_archive() {
   if [ "$UNSIGNED_FOR_DEV" = "true" ]; then
     return
   fi
-  openssl dgst -sha256 -sign "$SIGNING_KEY" -out "${OUTPUT}.sig" "$OUTPUT"
+  [ ! -e "${OUTPUT}.sig" ] || offline_fail "bundle signature already exists: ${OUTPUT}.sig"
+  (set -o noclobber; openssl dgst -sha256 -sign "$SIGNING_KEY" "$OUTPUT" > "${OUTPUT}.sig")
 }
 
 main() {
+  if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane offline-create --engine docker \
+      --checkout-root "$OFFLINE_REPO_ROOT" -- bash "$0" "$@"
+  fi
   parse_args "$@"
   validate_args
 
@@ -657,7 +668,7 @@ main() {
 
   validate_release_checkout "$commit"
 
-  CREATE_TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-create.XXXXXX")"
+  CREATE_TMP_ROOT="$($REGISTERED_STAGING offline-create)"
   stage_dir="$CREATE_TMP_ROOT/stage"
   mkdir -p "$stage_dir"
   trap cleanup_create_tmp EXIT

@@ -283,6 +283,14 @@ while IFS= read -r path; do
       && grep -qF "./${rel}" "$REPO_ROOT/scripts/ci/run-compose-e2e-subject.sh"; then
     continue
   fi
+  for isolated_driver in \
+    scripts/ci/run-install-e2e-isolated-subject.sh \
+    scripts/ci/run-upgrade-baseline-isolated-subject.sh; do
+    if grep -rqF "$isolated_driver" "$WORKFLOW_DIR" \
+        && grep -qF "${rel}" "$REPO_ROOT/$isolated_driver"; then
+      continue 2
+    fi
+  done
   # tests/install/unit/* are executed by the shared suite runner via a glob, so
   # they are registered by construction -- adding a suite needs no workflow edit.
   # That is the point: the enumeration is what drifted.

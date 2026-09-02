@@ -84,6 +84,27 @@ SETUP_NPM
   assert_fails_with 'shard total must be a positive integer' bash "$SHARD_SCRIPT" 1 nope
   assert_fails_with 'shard index must be less than or equal to shard total' bash "$SHARD_SCRIPT" 3 2
 
+  local coordinator_fixture="$TEST_TEMP_DIR/coordinator-fixture"
+  local shard_one_args="$TEST_TEMP_DIR/coordinator-shard-one.args"
+  local shard_two_args="$TEST_TEMP_DIR/coordinator-shard-two.args"
+  mkdir -p "$coordinator_fixture/scripts/ci"
+  cp "$SHARD_SCRIPT" "$coordinator_fixture/scripts/ci/frontend-coverage-shard.sh"
+  cat >"$coordinator_fixture/scripts/ci/cleanup-ci-callsite.sh" <<'FAKE_COORDINATOR'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" >"${CAPTURED_COORDINATOR_ARGS:?}"
+FAKE_COORDINATOR
+  chmod +x "$coordinator_fixture/scripts/ci/cleanup-ci-callsite.sh"
+  CAPTURED_COORDINATOR_ARGS="$shard_one_args" \
+    bash "$coordinator_fixture/scripts/ci/frontend-coverage-shard.sh" 1 2
+  CAPTURED_COORDINATOR_ARGS="$shard_two_args" \
+    bash "$coordinator_fixture/scripts/ci/frontend-coverage-shard.sh" 2 2
+  assert_file_contains 'frontend-coverage-shard-1-2' "$shard_one_args"
+  assert_file_contains 'frontend-coverage-shard-2-2' "$shard_two_args"
+  if cmp -s "$shard_one_args" "$shard_two_args"; then
+    fail 'frontend coverage shards reused one cleanup coordinator identity'
+  fi
+
   local fake_vitest_bin="$TEST_TEMP_DIR/fake-vitest"
   local captured_args="$TEST_TEMP_DIR/vitest-args"
   local captured_reports_dir="$TEST_TEMP_DIR/coverage-reports-dir"
@@ -117,6 +138,9 @@ FAKE_VITEST
       SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR=/tmp/not-safe \
       bash "$SHARD_SCRIPT" 1 2
 
+  rm -rf "$TEST_TEMP_DIR/.vitest-reports" "$TEST_TEMP_DIR/coverage-shards" \
+    "$TEST_TEMP_DIR/.tmp"
+
   local retry_vitest_bin="$TEST_TEMP_DIR/retry-vitest"
   local retry_count="$TEST_TEMP_DIR/retry-count"
   cat >"$retry_vitest_bin" <<'RETRY_VITEST'
@@ -140,6 +164,9 @@ RETRY_VITEST
     CAPTURED_VITEST_ATTEMPTS="$retry_count" VITEST_BIN="$retry_vitest_bin" bash "$SHARD_SCRIPT" 1 2
   )
   assert_file_equals '2' "$retry_count"
+
+  rm -rf "$TEST_TEMP_DIR/.vitest-reports" "$TEST_TEMP_DIR/coverage-shards" \
+    "$TEST_TEMP_DIR/.tmp"
 
   local ipc_vitest_bin="$TEST_TEMP_DIR/ipc-vitest"
   local ipc_count="$TEST_TEMP_DIR/ipc-count"
@@ -165,6 +192,9 @@ IPC_VITEST
     CAPTURED_VITEST_ATTEMPTS="$ipc_count" VITEST_BIN="$ipc_vitest_bin" bash "$SHARD_SCRIPT" 1 2
   )
   assert_file_equals '2' "$ipc_count"
+
+  rm -rf "$TEST_TEMP_DIR/.vitest-reports" "$TEST_TEMP_DIR/coverage-shards" \
+    "$TEST_TEMP_DIR/.tmp"
 
   local fail_vitest_bin="$TEST_TEMP_DIR/fail-vitest"
   local fail_count="$TEST_TEMP_DIR/fail-count"

@@ -66,6 +66,11 @@ container_started=0
 container_registered=0
 container_id=''
 forwarder_pid=0
+forwarder_terminal=''
+forwarder_control_token=''
+forwarder_control_port=''
+forwarder_start_token=''
+forwarder_gate_fd=''
 published_host=''
 controller_port=''
 bridge_port=''
@@ -113,18 +118,15 @@ cleanup() {
       -e 's/ hostname="[^"]*"/ hostname="[REDACTED RUNNER]"/g' \
       "$diagnostics_dir/junit-trezor-emulator.xml"
   fi
-  if [ "$forwarder_pid" -ne 0 ]; then
-    kill "$forwarder_pid" >/dev/null 2>&1 || true
-    for _ in $(seq 1 50); do
-      if ! kill -0 "$forwarder_pid" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 0.1
-    done
-    if kill -0 "$forwarder_pid" >/dev/null 2>&1; then
-      kill -KILL "$forwarder_pid" >/dev/null 2>&1 || true
-    fi
+  if [ -n "$forwarder_gate_fd" ]; then
+    exec {forwarder_gate_fd}>&-
+    forwarder_gate_fd=''
     wait "$forwarder_pid" >/dev/null 2>&1 || true
+    forwarder_pid=0
+  fi
+  if [ "$forwarder_pid" -ne 0 ]; then
+    "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
+      || cleanup_status=$?
   fi
   if [ "$container_started" -eq 1 ]; then
     timeout --foreground --kill-after=10s 30s docker inspect "$container_id" \
@@ -136,7 +138,7 @@ cleanup() {
   fi
   final_status="$subject_status"
   if [ "$cleanup_status" -ne 0 ]; then
-    echo "Trezor registered-transient retirement failed (exit=$cleanup_status)" >&2
+    echo "Trezor registered cleanup marker failed (exit=$cleanup_status)" >&2
     [ "$final_status" -ne 0 ] || final_status="$cleanup_status"
   fi
   jq -n --argjson subjectExitCode "$subject_status" \
@@ -144,6 +146,35 @@ cleanup() {
     '{subjectExitCode: $subjectExitCode, cleanupExitCode: $cleanupExitCode, exitCode: $exitCode}' \
     > "$diagnostics_dir/run-status.json"
   exit "$final_status"
+}
+
+register_forwarder() {
+  local registration
+  registration=$("$SCRIPT_DIR/registered-collector-process.sh" register \
+    "$forwarder_pid" "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" trezor-forwarder) || return
+  IFS=$'\t' read -r _ forwarder_terminal <<< "$registration"
+  [[ -n $forwarder_terminal ]]
+}
+
+finish_forwarder() {
+  local poll
+  timeout --foreground 5s curl --fail --silent --show-error \
+    --request POST --header "Authorization: Bearer $forwarder_control_token" \
+    "http://127.0.0.1:$forwarder_control_port/shutdown" >/dev/null || return
+  for poll in $(seq 1 100); do
+    if ! jobs -pr | grep -Fxq "$forwarder_pid"; then
+      wait "$forwarder_pid"
+      "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal"
+      forwarder_pid=0
+      forwarder_terminal=''
+      forwarder_control_token=''
+      forwarder_control_port=''
+      unset SANCTUARY_FORWARDER SANCTUARY_FORWARDER_PID
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
 }
 
 assert_registered_transient() {
@@ -374,6 +405,9 @@ if [ "$ci_environment_file" != '/dev/stdout' ]; then
     "TREZOR_EMULATOR_DIAGNOSTICS_DIR=$diagnostics_dir"
 fi
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 export SANCTUARY_PROJECT='trezor-emulator-proof'
 export SANCTUARY_PROJECT_DIR="$PROJECT_ROOT"
@@ -567,24 +601,35 @@ controller_command '{"type":"emulator-get-features","id":6}' | tee "$proof_dir/f
 
 if [ "$docker_is_podman" = 'true' ]; then
   readonly forwarder_endpoints="$diagnostics_dir/docker-exec-forwarder.json"
-  node scripts/ci/docker-exec-tcp-forwarder.mjs \
-    --container "$container_name" \
-    --controller-port 9001 \
-    --bridge-port 21326 \
-    > "$forwarder_endpoints" \
-    2> "$diagnostics_dir/docker-exec-forwarder.log" &
-  forwarder_pid=$!
+  forwarder_control_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  forwarder_start_token="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  coproc SANCTUARY_FORWARDER {
+    SANCTUARY_COLLECTOR_START_TOKEN="$forwarder_start_token" exec setsid node \
+      --import "$SCRIPT_DIR/registered-start-gate.mjs" \
+      "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" \
+      --container "$container_name" \
+      --controller-port 9001 \
+      --bridge-port 21326 \
+      --control-token "$forwarder_control_token" \
+      > "$forwarder_endpoints" \
+      2> "$diagnostics_dir/docker-exec-forwarder.log"
+  }
+  forwarder_pid=$SANCTUARY_FORWARDER_PID
+  forwarder_gate_fd=${SANCTUARY_FORWARDER[1]}
+  forwarder_output_fd=${SANCTUARY_FORWARDER[0]}
+  exec {forwarder_output_fd}<&-
+  register_forwarder
+  printf 'registered %s\n' "$forwarder_start_token" >&"$forwarder_gate_fd"
+  exec {forwarder_gate_fd}>&-
+  forwarder_gate_fd=''
   for attempt in $(seq 1 30); do
     if jq -e '
       .host == "127.0.0.1"
       and (.controllerPort | type == "number" and . > 0 and . <= 65535)
       and (.bridgePort | type == "number" and . > 0 and . <= 65535)
+      and (.controlPort | type == "number" and . > 0 and . <= 65535)
     ' "$forwarder_endpoints" >/dev/null 2>&1; then
       break
-    fi
-    if ! kill -0 "$forwarder_pid" >/dev/null 2>&1; then
-      echo 'Trezor Docker-exec loopback forwarder exited before readiness' >&2
-      exit 1
     fi
     if [ "$attempt" -eq 30 ]; then
       echo 'Trezor Docker-exec loopback forwarder did not become ready' >&2
@@ -595,6 +640,7 @@ if [ "$docker_is_podman" = 'true' ]; then
   published_host="$(jq -r '.host' "$forwarder_endpoints")"
   controller_port="$(jq -r '.controllerPort' "$forwarder_endpoints")"
   bridge_port="$(jq -r '.bridgePort' "$forwarder_endpoints")"
+  forwarder_control_port="$(jq -r '.controlPort' "$forwarder_endpoints")"
 else
   readonly published_ports="$(
     run_bounded_docker "resolve Trezor published ports" \
@@ -733,3 +779,7 @@ export TREZOR_EMULATOR_JUNIT_PATH="$diagnostics_dir/junit-trezor-emulator.xml"
 npx vitest run --config config/tooling/vitest.trezor-emulator.config.ts \
   tests/integration/trezorEmulator.integration.test.ts \
   --pool threads --maxWorkers=1 --no-file-parallelism
+
+if [ "$forwarder_pid" -ne 0 ]; then
+  finish_forwarder
+fi

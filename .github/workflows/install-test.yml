@@ -376,78 +376,16 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
             scripts/ci/wait-for-docker.sh
 
-      - name: Prepare isolated install workspace
+      - name: Run requested install tests in one signed isolated workspace
         if: github.event_name != 'pull_request'
+        env:
+          SANCTUARY_INSTALL_SUBJECT_MODE: fresh-install
+          SANCTUARY_RUN_FRESH_INSTALL: ${{ needs.determine-scope.outputs.run_fresh_install }}
+          SANCTUARY_RUN_INSTALL_SCRIPT: ${{ needs.determine-scope.outputs.run_install_script }}
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
-          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          INNER
-
-      - name: Assign run-specific ports
-        if: github.event_name != 'pull_request'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          INNER
-
-      - name: Run fresh install test
-        if: github.event_name != 'pull_request'
-        run: |
-          subject=(bash -c 'cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/fresh-install.test.sh --verbose')
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/fresh-install.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "fresh install e2e" \
-            scripts/ci/cleanup-ci-callsite.sh run \
-              --authority-mode deployment_managed_by_subject \
-              --lane fresh-install \
-              --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
-              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/fresh-install" \
-              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/fresh-install" \
-              -- "${subject[@]}"
-
-      - name: Run install script test
-        if: github.event_name != 'pull_request'
-        run: |
-          subject=(bash -c 'cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/install-script.test.sh --verbose')
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-script.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "install script e2e" \
-            scripts/ci/cleanup-ci-callsite.sh run \
-              --authority-mode deployment_managed_by_subject \
-              --lane install-script \
-              --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
-              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/install-script" \
-              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/install-script" \
-              -- "${subject[@]}"
-
-      - name: Show container logs on failure
-        if: failure() && github.event_name != 'pull_request'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
-          if [ -d "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-          fi
-          echo "=== Container Status ==="
-          docker compose ps || true
-          echo ""
-          echo "=== Database Logs ==="
-          docker compose logs --tail 100 postgres 2>&1 || true
-          echo ""
-          echo "=== Backend Logs ==="
-          docker compose logs --tail 100 backend 2>&1 || true
-          echo ""
-          echo "=== Frontend Logs ==="
-          docker compose logs --tail 100 frontend 2>&1 || true
-          echo ""
-          echo "=== Gateway Logs ==="
-          docker compose logs --tail 100 gateway 2>&1 || true
-          echo ""
-          echo "=== Migration Logs ==="
-          docker compose logs migrate 2>&1 || true
-          exit 1
-          INNER
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install \
+              scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write install diagnostic summary
         if: always() && github.event_name != 'pull_request'
@@ -470,7 +408,7 @@ jobs:
         uses: ./.github/actions/verify-cleanup-receipt
         with:
           root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
-          children: 'true'
+          recursive: 'true'
 
       - name: Upload install cleanup evidence
         if: always() && github.event_name != 'pull_request' && steps.verify_cleanup_receipt.outcome == 'success'
@@ -479,17 +417,10 @@ jobs:
           name: cleanup-install-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/
           cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
-          children: 'true'
+          recursive: 'true'
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
-
-      - name: Cleanup isolated install workspace
-        if: always() && github.event_name != 'pull_request'
-        run: |
-          if [ -n "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
-            rm -rf "$(dirname "$SANCTUARY_INSTALL_WORKSPACE")" || echo "::warning::Could not fully remove isolated install workspace"
-          fi
 
   # ============================================
   # Install Script E2E Test
@@ -591,54 +522,16 @@ jobs:
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
-      - name: Prepare isolated stack workspace
-        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible install-stack)"
-          echo "SANCTUARY_STACK_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          INNER
-
-      - name: Assign run-specific ports
-        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
-          cd "$SANCTUARY_STACK_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          INNER
-
-      - name: Run receipt-bound reusable stack subject
+      - name: Run reusable stack in one signed isolated workspace
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         env:
+          SANCTUARY_INSTALL_SUBJECT_MODE: install-stack
           RUN_HEALTH: ${{ needs.determine-scope.outputs.run_container_health }}
           RUN_AUTH: ${{ needs.determine-scope.outputs.run_auth_flow }}
         run: |
-          subject=(scripts/ci/run-compose-e2e-subject.sh \
-            --workspace "$SANCTUARY_STACK_WORKSPACE" --mode install-stack \
-            --run-health "${RUN_HEALTH:-false}" --run-auth "${RUN_AUTH:-false}")
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-stack.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "install stack subject" \
-            scripts/ci/cleanup-ci-callsite.sh run \
-              --lane install-stack \
-              --checkout-root "$SANCTUARY_STACK_WORKSPACE" \
-              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/install-stack" \
-              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/install-stack" \
-              -- "${subject[@]}"
-
-      - name: Show container logs on failure
-        if: failure() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
-          if [ -d "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_STACK_WORKSPACE"
-          fi
-          docker compose ps || true
-          docker compose logs --tail 100 postgres 2>&1 || true
-          docker compose logs --tail 100 backend 2>&1 || true
-          docker compose logs --tail 100 frontend 2>&1 || true
-          exit 1
-          INNER
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible install-stack \
+              scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write install stack diagnostic summary
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
@@ -660,25 +553,20 @@ jobs:
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         uses: ./.github/actions/verify-cleanup-receipt
         with:
-          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/install-stack
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
 
       - name: Upload install stack cleanup evidence
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && steps.verify_cleanup_receipt.outcome == 'success'
         uses: ./.github/actions/upload-cleanup-evidence
         with:
           name: cleanup-install-stack-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/install-stack/
-          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/install-stack
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
-
-      - name: Cleanup isolated stack workspace
-        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
-        run: |
-          if [ -n "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
-            rm -rf "$(dirname "$SANCTUARY_STACK_WORKSPACE")" || echo "::warning::Could not fully remove isolated stack workspace"
-          fi
 
   # ============================================
   # Container Health Test
@@ -715,46 +603,13 @@ jobs:
       - name: Check Docker
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
-      - name: Prepare isolated health workspace
+      - name: Run container health in one signed isolated workspace
+        env:
+          SANCTUARY_INSTALL_SUBJECT_MODE: container-health
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
-          echo "SANCTUARY_HEALTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          INNER
-
-      - name: Assign run-specific ports
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
-          cd "$SANCTUARY_HEALTH_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          INNER
-
-      - name: Run receipt-bound container health subject
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "container health subject" \
-            scripts/ci/cleanup-ci-callsite.sh run \
-              --lane container-health \
-              --checkout-root "$SANCTUARY_HEALTH_WORKSPACE" \
-              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/container-health" \
-              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/container-health" \
-              -- scripts/ci/run-compose-e2e-subject.sh \
-                --workspace "$SANCTUARY_HEALTH_WORKSPACE" --mode container-health
-
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
-          if [ -d "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_HEALTH_WORKSPACE"
-          fi
-          docker compose ps || true
-          docker compose logs --tail 50 postgres 2>&1 || true
-          docker compose logs --tail 50 backend 2>&1 || true
-          docker compose logs --tail 50 frontend 2>&1 || true
-          exit 1
-          INNER
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible container-health \
+              scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write container health diagnostic summary
         if: always()
@@ -776,25 +631,20 @@ jobs:
         if: always()
         uses: ./.github/actions/verify-cleanup-receipt
         with:
-          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/container-health
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
 
       - name: Upload container health cleanup evidence
         if: always() && steps.verify_cleanup_receipt.outcome == 'success'
         uses: ./.github/actions/upload-cleanup-evidence
         with:
           name: cleanup-container-health-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/container-health/
-          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/container-health
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
-
-      - name: Cleanup isolated health workspace
-        if: always()
-        run: |
-          if [ -n "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
-            rm -rf "$(dirname "$SANCTUARY_HEALTH_WORKSPACE")" || echo "::warning::Could not fully remove isolated health workspace"
-          fi
 
   # ============================================
   # Authentication Flow Test
@@ -833,44 +683,13 @@ jobs:
       - name: Check Docker
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
-      - name: Prepare isolated auth workspace
+      - name: Run auth flow in one signed isolated workspace
+        env:
+          SANCTUARY_INSTALL_SUBJECT_MODE: auth-flow
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
-          echo "SANCTUARY_AUTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          INNER
-
-      - name: Assign run-specific ports
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
-          cd "$SANCTUARY_AUTH_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          INNER
-
-      - name: Run receipt-bound auth flow subject
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "auth flow subject" \
-            scripts/ci/cleanup-ci-callsite.sh run \
-              --lane auth-flow \
-              --checkout-root "$SANCTUARY_AUTH_WORKSPACE" \
-              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/auth-flow" \
-              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/auth-flow" \
-              -- scripts/ci/run-compose-e2e-subject.sh \
-                --workspace "$SANCTUARY_AUTH_WORKSPACE" --mode auth-flow
-
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
-          if [ -d "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_AUTH_WORKSPACE"
-          fi
-          docker compose ps || true
-          docker compose logs --tail 100 backend 2>&1 || true
-          exit 1
-          INNER
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible auth-flow \
+              scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write auth flow diagnostic summary
         if: always()
@@ -892,25 +711,20 @@ jobs:
         if: always()
         uses: ./.github/actions/verify-cleanup-receipt
         with:
-          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/auth-flow
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
 
       - name: Upload auth flow cleanup evidence
         if: always() && steps.verify_cleanup_receipt.outcome == 'success'
         uses: ./.github/actions/upload-cleanup-evidence
         with:
           name: cleanup-auth-flow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/auth-flow/
-          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/auth-flow
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
-
-      - name: Cleanup isolated auth workspace
-        if: always()
-        run: |
-          if [ -n "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
-            rm -rf "$(dirname "$SANCTUARY_AUTH_WORKSPACE")" || echo "::warning::Could not fully remove isolated auth workspace"
-          fi
 
   # ============================================
   # Upgrade Test Matrix (Long Running)
@@ -955,14 +769,7 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
             scripts/ci/wait-for-docker.sh
 
-      - name: Prepare isolated upgrade workspace
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
-            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-baseline)"
-            echo "SANCTUARY_UPGRADE_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          '
-
-      - name: Run baseline upgrades sequentially
+      - name: Run baseline upgrades in one signed isolated workspace
         timeout-minutes: 100
         env:
           UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
@@ -971,97 +778,9 @@ jobs:
           IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          set -euo pipefail
-          cd "$SANCTUARY_UPGRADE_WORKSPACE"
-          source tests/install/utils/upgrade-selection.sh
-          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
-            echo "::error::Unexpected workflow run id"
-            exit 1
-          fi
-          if ! upgrade_validate_baseline_ref_selection "$UPGRADE_BASELINE_REFS"; then
-            echo "::error::Invalid upgrade baseline ref selection"
-            exit 1
-          fi
-
-          original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}"
-          manifest_dir="$original_workspace/.tmp/upgrade-artifacts"
-          upgrade_write_selection_manifest \
-            "$PWD" \
-            "$manifest_dir" \
-            "$UPGRADE_BASELINE_REFS" \
-            "$UPGRADE_EXTENDED_FIXTURES" \
-            "${UPGRADE_EXTENDED_SOURCE_REF:-latest-stable}" \
-            "$RUN_ID"
-
-          run_upgrade() {
-            local source_ref="$1"
-            local port_offset="$2"
-            local verify_force_rebuild="$3"
-            local source_label
-            local port_env
-            local -a upgrade_args=(--mode core --fixture baseline --verbose)
-            source_label="$(upgrade_sanitize_label "$source_ref")"
-
-            if [ "$verify_force_rebuild" = "true" ]; then
-              upgrade_args+=(--verify-force-rebuild)
-            fi
-
-            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${GITHUB_RUN_ATTEMPT}-${source_label}-baseline"
-            export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
-            export SANCTUARY_UPGRADE_FIXTURE="baseline"
-            export SANCTUARY_UPGRADE_ARTIFACT_DIR="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/.tmp/upgrade-artifacts/${source_label}-baseline"
-
-            port_env="$(mktemp)"
-            GITHUB_ENV="$port_env" bash scripts/ci/install-test-ports.sh "$port_offset"
-            set -a
-            . "$port_env"
-            set +a
-            rm -f "$port_env"
-
-            local status
-            local log_path="${JOB_LOG_DIR}/upgrade-baseline-${source_label}.log"
-            local cleanup_lane="upgrade-${port_offset}"
-            local cleanup_runtime="$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/${cleanup_lane}"
-            local cleanup_artifacts="$RUNNER_TEMP/sanctuary-cleanup-artifacts/upgrade-baseline/${cleanup_lane}"
-            if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/cleanup-ci-callsite.sh" run \
-                 --authority-mode deployment_managed_by_subject \
-                 --legacy-fixture-creation-witness \
-                 --lane "$cleanup_lane" \
-                 --checkout-root "$PWD" \
-                 --runtime "$cleanup_runtime" \
-                 --artifact-dir "$cleanup_artifacts" \
-                 -- \
-                 "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
-                 scripts/ci/with-runner-lock.sh e2e \
-                 scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" \
-                 ./tests/install/e2e/upgrade-install.test.sh "${upgrade_args[@]}"; then
-              status=0
-            else
-              status="$?"
-              docker compose ps || true
-              docker compose logs --tail 50 postgres 2>&1 || true
-              docker compose logs --tail 100 backend 2>&1 || true
-            fi
-            return "$status"
-          }
-
-          IFS=',' read -ra selected_refs <<< "$UPGRADE_BASELINE_REFS"
-          port_offset=15
-          force_rebuild_selected=false
-          for source_ref in "${selected_refs[@]}"; do
-            verify_force_rebuild=false
-            if upgrade_should_verify_force_rebuild \
-                "$IS_RELEASE" "$source_ref" "$force_rebuild_selected"; then
-              verify_force_rebuild=true
-              force_rebuild_selected=true
-            fi
-            run_upgrade "$source_ref" "$port_offset" "$verify_force_rebuild"
-            port_offset=$((port_offset + 3))
-          done
-          if [ "$IS_RELEASE" = "true" ] && [ "$force_rebuild_selected" != "true" ]; then
-            echo "::error::Release baseline selection did not schedule the required latest-stable force rebuild"
-            exit 1
-          fi
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible upgrade-baseline \
+              scripts/ci/run-upgrade-baseline-isolated-subject.sh
 
       - name: Post-upgrade DIND diagnostics
         if: always()
@@ -1077,17 +796,17 @@ jobs:
         if: always()
         uses: ./.github/actions/verify-cleanup-receipt
         with:
-          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-baseline
-          children: 'true'
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
 
       - name: Upload upgrade baseline cleanup evidence
         if: always() && steps.verify_cleanup_receipt.outcome == 'success'
         uses: ./.github/actions/upload-cleanup-evidence
         with:
           name: cleanup-upgrade-baseline-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-baseline/
-          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-baseline
-          children: 'true'
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          recursive: 'true'
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
@@ -1096,7 +815,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          combined="$JOB_LOG_DIR/upgrade-baseline-timing-combined.log"
+          combined="$JOB_LOG_DIR/upgrade-baseline-timing-input.txt"
           : > "$combined"
           for log in "$JOB_LOG_DIR"/upgrade-baseline-*.log; do
             [ -f "$log" ] && cat "$log" >> "$combined"
@@ -1132,13 +851,6 @@ jobs:
           path: ${{ env.JOB_LOG_DIR }}
           retention-days: 14
           if-no-files-found: ignore
-
-      - name: Cleanup isolated upgrade workspace
-        if: always()
-        run: |
-          if [ -n "${SANCTUARY_UPGRADE_WORKSPACE:-}" ]; then
-            rm -rf "$(dirname "$SANCTUARY_UPGRADE_WORKSPACE")" || echo "::warning::Could not fully remove isolated upgrade workspace"
-          fi
 
   upgrade-extended-fixture-test:
     name: Upgrade Extended Fixtures
@@ -1224,7 +936,7 @@ jobs:
         uses: ./.github/actions/verify-cleanup-receipt
         with:
           root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended
-          children: 'true'
+          recursive: 'true'
 
       - name: Upload extended upgrade cleanup evidence
         if: always() && steps.verify_cleanup_receipt.outcome == 'success'
@@ -1233,7 +945,7 @@ jobs:
           name: cleanup-upgrade-extended-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended/
           cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended
-          children: 'true'
+          recursive: 'true'
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90

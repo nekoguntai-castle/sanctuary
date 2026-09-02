@@ -115,7 +115,16 @@ export function validateFinalExecutionInventory(inventoryAfter, inventoryBefore,
       && resource.immutableIdentity === action.immutableIdentity
     ));
     if (action.action === 'remove' && survivor) {
-      throw new Error('authoritative cleanup postcondition still contains a removed identity');
+      const evidence = {
+        sequence: action.sequence,
+        resourceClass: action.resourceClass,
+        immutableIdentity: action.immutableIdentity,
+        survivorLocator: survivor.locator,
+        survivorReferences: survivor.references,
+        survivorDisposition: survivor.disposition,
+        survivorFailureClasses: survivor.failureClasses,
+      };
+      throw new Error(`authoritative cleanup postcondition still contains a removed identity: ${JSON.stringify(evidence)}`);
     }
     const removedLater = !survivor && hasLaterSuccessfulRemove(actions, results, index);
     if (action.action === 'stop' && action.resourceClass === 'compose_container'

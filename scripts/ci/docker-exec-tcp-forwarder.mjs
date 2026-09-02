@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import net from "node:net";
+import http from "node:http";
 import process from "node:process";
 import { spawn } from "node:child_process";
 
@@ -50,6 +51,7 @@ const parseArguments = () => {
   const container = values.get("--container");
   const controllerPort = Number(values.get("--controller-port"));
   const bridgePort = Number(values.get("--bridge-port"));
+  const controlToken = values.get("--control-token");
   if (!container || !/^[A-Za-z0-9._-]+$/.test(container)) {
     throw new Error("A safe container name is required");
   }
@@ -58,7 +60,12 @@ const parseArguments = () => {
       throw new Error("Remote ports must be integers from 1 through 65535");
     }
   }
-  return { container, controllerPort, bridgePort };
+  if (!controlToken || !/^[a-f0-9]{64}$/.test(controlToken)) {
+    throw new Error(
+      "A 256-bit lowercase hexadecimal control token is required",
+    );
+  }
+  return { container, controllerPort, bridgePort, controlToken };
 };
 
 const activeChildren = new Set();
@@ -89,12 +96,12 @@ const createForwarder = (container, remotePort) =>
       activeChildren.delete(relay);
       activeSockets.delete(socket);
       if (!socket.destroyed) socket.destroy();
-      if (!relay.killed) relay.kill("SIGTERM");
+      if (!relay.stdin.destroyed) relay.stdin.end();
     };
     socket.on("error", abort);
     socket.on("close", () => {
       activeSockets.delete(socket);
-      if (!relay.killed && relay.exitCode === null) relay.kill("SIGTERM");
+      if (!relay.stdin.destroyed) relay.stdin.end();
     });
     relay.on("error", abort);
     relay.on("close", () => {
@@ -117,7 +124,8 @@ const listen = (server) =>
     });
   });
 
-const { container, controllerPort, bridgePort } = parseArguments();
+const { container, controllerPort, bridgePort, controlToken } =
+  parseArguments();
 const controllerServer = createForwarder(container, controllerPort);
 const bridgeServer = createForwarder(container, bridgePort);
 const [localControllerPort, localBridgePort] = await Promise.all([
@@ -125,24 +133,43 @@ const [localControllerPort, localBridgePort] = await Promise.all([
   listen(bridgeServer),
 ]);
 
+let shutdownStarted = false;
+const shutdown = () => {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  controllerServer.close();
+  bridgeServer.close();
+  controlServer.close();
+  for (const socket of activeSockets) socket.destroy();
+  for (const child of activeChildren) {
+    if (!child.stdin.destroyed) child.stdin.end();
+  }
+};
+
+const controlServer = http.createServer((request, response) => {
+  const authenticated =
+    request.headers.authorization === `Bearer ${controlToken}`;
+  if (
+    request.method !== "POST" ||
+    request.url !== "/shutdown" ||
+    !authenticated
+  ) {
+    response.writeHead(authenticated ? 404 : 401).end();
+    return;
+  }
+  response.writeHead(202, { "content-type": "application/json" });
+  response.end('{"state":"shutting_down"}\n', () => shutdown());
+});
+const localControlPort = await listen(controlServer);
+
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+
 process.stdout.write(
   `${JSON.stringify({
     host: "127.0.0.1",
     controllerPort: localControllerPort,
     bridgePort: localBridgePort,
+    controlPort: localControlPort,
   })}\n`,
 );
-
-const shutdown = () => {
-  controllerServer.close();
-  bridgeServer.close();
-  for (const socket of activeSockets) socket.destroy();
-  for (const child of activeChildren) {
-    child.kill("SIGTERM");
-    setTimeout(() => {
-      if (child.exitCode === null) child.kill("SIGKILL");
-    }, 2000);
-  }
-};
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);

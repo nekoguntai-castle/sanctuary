@@ -53,10 +53,14 @@ function actionFrom(resource, action) {
     locator: resource.locator,
     ownershipDigest: resource.ownershipDigest,
     observationDigest: resource.observationDigest,
-    dependencyIdentities: action === 'remove'
-      && ['compose_network', 'compose_volume', 'oci_image'].includes(resource.resourceClass)
-      ? [...resource.dependencyIdentities] : [],
+    dependencyIdentities: action === 'remove' ? [...resource.dependencyIdentities] : [],
   };
+}
+
+function dependencyWasCompleted(actions, action, identity) {
+  return actions.some((candidate) => candidate.sequence < action.sequence
+    && candidate.immutableIdentity === identity
+    && (candidate.action === 'stop' || candidate.action === 'remove'));
 }
 
 function assertPlannedDependencies(actions) {
@@ -70,9 +74,10 @@ function assertPlannedDependencies(actions) {
         throw new Error('container removal lacks its approved stop dependency');
       }
       removed.add(action.immutableIdentity);
-    } else if (['compose_network', 'compose_volume', 'oci_image'].includes(action.resourceClass)
-        && action.dependencyIdentities.some((identity) => !removed.has(identity))) {
-      throw new Error(`${action.resourceClass} cleanup dependency lacks an approved container removal`);
+    } else if (action.dependencyIdentities.some((identity) => (
+      !removed.has(identity) && !dependencyWasCompleted(actions, action, identity)
+    ))) {
+      throw new Error(`${action.resourceClass} cleanup dependency lacks an approved prior action`);
     }
   }
 }

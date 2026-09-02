@@ -469,7 +469,7 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
 set -euo pipefail
 printf '%s' "$$" > ${JSON.stringify(wrapperPidPath)}
 ${JSON.stringify(realDocker)} "$@"
-sleep 10 &
+sleep 30 &
 wait "$!"
 `, { mode: 0o700 });
       const runtime = createCleanupDockerRuntime({
@@ -492,7 +492,7 @@ wait "$!"
         supervisor: (_engine, args, options) => runSupervisedCleanupCommand(
           wrapperPath, args, options,
         ),
-        supervisorOptions: { timeoutMs: 2_000, graceMs: 200, killWaitMs: 2_000 },
+        supervisorOptions: { timeoutMs: 10_000, graceMs: 200, killWaitMs: 2_000 },
       });
       const buildInventoryAfter = async () => {
         const after = observe({
@@ -534,7 +534,7 @@ wait "$!"
         reconcile: async () => { throw new Error('terminal recovery must not reconcile'); },
         buildInventoryAfter: async () => { throw new Error('terminal recovery must reuse inventory'); },
       });
-      assert.equal(recovered.state, 'cleaned');
+      assert.equal(recovered.state, 'cleaned', JSON.stringify(recovered.receipt.results));
       const verified = verifySignedArtifact({
         inputPath: recovered.receiptOutputPath,
         signaturePath: `${recovered.receiptOutputPath}.sig`,

@@ -272,6 +272,27 @@ test_assert_installed_image_matches_checkout_skips_when_unreadable() {
   assert_equals "0" "$rc" "unreadable image version should not fail the install"
 }
 
+test_cleanup_restore_preserves_tracked_executable_mode() {
+  local checkout="$TEST_TMP_DIR/cleanup-restore-checkout"
+  local status
+
+  git init -q "$checkout" || return 1
+  git -C "$checkout" config user.name "Upgrade Cleanup Test" || return 1
+  git -C "$checkout" config user.email "upgrade-cleanup@example.invalid" || return 1
+  printf 'services:\n  backend: {}\n' > "$checkout/docker-compose.yml"
+  chmod 755 "$checkout/docker-compose.yml"
+  git -C "$checkout" add docker-compose.yml || return 1
+  git -C "$checkout" commit -qm "fixture" || return 1
+
+  printf 'services:\n  frontend: {}\n' > "$checkout/docker-compose.yml"
+  chmod 644 "$checkout/docker-compose.yml"
+  restore_tracked_worktree_file_for_cleanup "$checkout" docker-compose.yml || return 1
+
+  status="$(git -C "$checkout" status --porcelain=v2 --untracked-files=all)" || return 1
+  assert_equals "" "$status" \
+    "cleanup restore should preserve tracked contents and executable mode"
+}
+
 # The upgrade fixture files used to define upgrade_fixture_* hooks that nothing
 # ever called -- the harness has no dispatcher, and the files were not even
 # sourced. They also called helpers that no longer exist. Fixture behaviour is
@@ -890,6 +911,28 @@ test_upgrade_coordinated_mode_defers_legacy_cleanup() {
     "coordinated teardown must retain the coordinator runtime and recovery state"
 }
 
+test_install_host_artifacts_use_exact_registered_cleanup() {
+  local upgrade helpers fresh
+  upgrade="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+  helpers="$(cat "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+  fresh="$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")"
+
+  assert_contains "$upgrade" 'describe-host-authority.mjs" \' \
+    "upgrade worktree must derive v1.1 execution authority" || return 1
+  assert_contains "$upgrade" 'register_owned_resource git_worktree obsolete exact_delete' \
+    "upgrade worktree must register exact retirement authority" || return 1
+  assert_not_contains "$upgrade" 'worktree remove --force' \
+    "upgrade subject must not bypass the canonical worktree executor" || return 1
+  assert_contains "$upgrade" 'status --porcelain=v2 --untracked-files=all' \
+    "upgrade worktree must fail closed on unexpected dirt" || return 1
+  assert_contains "$helpers" 'register_owned_resource temporary_artifact obsolete exact_delete' \
+    "install scratch directories must register exact retirement authority" || return 1
+  assert_contains "$helpers" 'temporary "$artifact" "$SANCTUARY_OPERATION_RUN_ID"' \
+    "install scratch registration must bind the creator run" || return 1
+  assert_not_contains "$fresh" 'rm -rf "$TEST_INSTALL_DIR"' \
+    "fresh install teardown must defer registered path cleanup"
+}
+
 # The source (legacy) stack is where upgrade failures have actually landed, so
 # its diagnostics must be captured too, not only the target stack's.
 test_upgrade_teardown_captures_source_checkout_diagnostics() {
@@ -1491,6 +1534,44 @@ test_install_root_honors_explicit_override() {
     "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$PROJECT_ROOT")"
 
   assert_equals "/custom/install-tests" "$root" "explicit install test root should win"
+}
+
+test_prepare_install_root_refuses_symlink_before_mutating_target() {
+  local parent="$TEST_TMP_DIR/install-root-parent" target="$TEST_TMP_DIR/shared-target" link
+  mkdir -m 700 "$parent"
+  mkdir -m 755 "$target"
+  link="$parent/link"
+  ln -s "$target" "$link"
+
+  if bash -c 'source "$1"; prepare_install_test_root "$2"' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$link" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} symlink install root should be refused"
+    return 1
+  fi
+  assert_equals "755" "$(stat -c '%a' "$target")" \
+    "symlink target permissions must remain unchanged"
+}
+
+test_prepare_install_root_refuses_broad_existing_root() {
+  local broad="$TEST_TMP_DIR/broad-home"
+  mkdir -m 700 "$broad"
+  if HOME="$broad" bash -c 'source "$1"; prepare_install_test_root "$2"' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$broad" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} home directory install root should be refused"
+    return 1
+  fi
+}
+
+test_prepare_install_root_uses_coordinated_private_runtime_for_tmp() {
+  local runtime="$TEST_TMP_DIR/runtime-authority" root
+  mkdir -m 700 "$runtime"
+  root="$(SANCTUARY_RUNTIME_DIR="$runtime" GITHUB_RUN_ID=2468 \
+    bash -c 'source "$1"; prepare_install_test_root /tmp' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+  assert_equals "$runtime/install-test-roots/install-tests-2468-$(id -u)" "$root" \
+    "shared tmp should map beneath the coordinated runtime"
+  assert_equals "700" "$(stat -c '%a' "$root")" \
+    "mapped install root should be owner-only"
 }
 
 test_docker_visible_path_maps_workspace_volume() {
@@ -2330,6 +2411,7 @@ main() {
   run_test "coordinated monitoring sync uses immutable ID" test_monitoring_sync_uses_labeled_immutable_id_when_coordinated
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
   run_test "coordinated upgrade defers legacy cleanup" test_upgrade_coordinated_mode_defers_legacy_cleanup
+  run_test "install host artifacts use exact registered cleanup" test_install_host_artifacts_use_exact_registered_cleanup
   run_test "unhealthy capture dumps the unhealthy container" test_unhealthy_capture_dumps_unhealthy_container
   run_test "unhealthy capture is quiet when all healthy" test_unhealthy_capture_is_quiet_when_all_healthy
   run_test "upgrade teardown captures source checkout diagnostics" test_upgrade_teardown_captures_source_checkout_diagnostics
@@ -2393,6 +2475,7 @@ main() {
   run_test "installed image matching checkout passes" test_assert_installed_image_matches_checkout_accepts_match
   run_test "installed image from another ref fails" test_assert_installed_image_matches_checkout_rejects_mismatch
   run_test "unreadable image version is not a failure" test_assert_installed_image_matches_checkout_skips_when_unreadable
+  run_test "cleanup restore preserves executable mode" test_cleanup_restore_preserves_tracked_executable_mode
 
   echo ""
   echo "Total:  $TESTS_RUN"

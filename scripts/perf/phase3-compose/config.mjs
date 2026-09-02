@@ -1,5 +1,3 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readPositiveInt } from './common.mjs';
 
@@ -116,8 +114,8 @@ function resolveUrls({ httpsPort, gatewayPort }) {
 }
 
 function resolveRuntimeConfig({ env, repoRoot, projectName }) {
-  const sslDir = env.PHASE3_COMPOSE_SSL_DIR
-    || mkdtempSync(path.join(tmpdir(), `${projectName}-ssl-`));
+  const sslDir = env.PHASE3_COMPOSE_SSL_DIR;
+  if (!sslDir) throw new Error('PHASE3_COMPOSE_SSL_DIR must be registered before resolving runtime config');
   return {
     outputDir: env.PHASE3_COMPOSE_BENCHMARK_OUTPUT_DIR || path.join(repoRoot, PHASE3_COMPOSE_DEFAULTS.outputSubpath),
     keepStack: env.PHASE3_COMPOSE_BENCHMARK_KEEP_STACK === 'true',
@@ -128,7 +126,7 @@ function resolveRuntimeConfig({ env, repoRoot, projectName }) {
     adminUsername: env.SANCTUARY_BENCHMARK_USERNAME || 'admin',
     adminPassword: env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary',
     sslDir,
-    ownsSslDir: !env.PHASE3_COMPOSE_SSL_DIR,
+    ownsSslDir: env.PHASE3_COMPOSE_SSL_DIR_REGISTERED === 'true',
   };
 }
 

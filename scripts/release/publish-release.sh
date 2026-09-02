@@ -20,6 +20,8 @@ if [[ -f "$ROOT_DIR/scripts/ownership/producer-hooks.sh" ]]; then
   # shellcheck source=scripts/ownership/producer-hooks.sh
   . "$ROOT_DIR/scripts/ownership/producer-hooks.sh"
 fi
+REGISTERED_STAGING="$ROOT_DIR/scripts/ci/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$ROOT_DIR/scripts/ci/cleanup-ci-callsite.sh"
 
 TAG=""
 DRY_RUN=false
@@ -156,27 +158,6 @@ reject_unsafe_tokens() {
   done
 }
 
-cleanup() {
-  local cleanup_status=0
-  if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
-    if ! find "$TEMP_DIR" -type f -delete 2>/dev/null \
-      || ! find "$TEMP_DIR" -depth -type d -empty -delete 2>/dev/null; then
-      echo "release cleanup failed: temporary release files were not removed" >&2
-      cleanup_status=1
-    fi
-  fi
-  return "$cleanup_status"
-}
-
-on_exit() {
-  local command_status=$?
-  trap - EXIT
-  if ! cleanup; then
-    (( command_status != 0 )) || command_status=1
-  fi
-  exit "$command_status"
-}
-
 validate_checkout() {
   cd "$ROOT_DIR"
   git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}" >/dev/null \
@@ -225,9 +206,6 @@ create_release_objects() {
     register_owned_resource provider_publication retained retain_reconcile provider_id \
       "$provider_id" "$identity" "$SANCTUARY_OPERATION_RUN_ID" "$outcome"
   done
-  register_owned_resource temporary_artifact active exact_delete path "$publication_result" \
-    "path-$(stat -c '%d-%i' "$publication_result" 2>/dev/null || stat -f '%d-%i' "$publication_result")" \
-    "$SANCTUARY_OPERATION_RUN_ID"
 }
 
 register_publication_inputs() {
@@ -244,13 +222,14 @@ register_publication_inputs() {
     register_owned_resource cleanup_evidence referenced retain path "$input" \
       "sha256:$digest" "$SANCTUARY_OPERATION_RUN_ID"
   done
-  register_owned_resource temporary_artifact active exact_delete path "$TEMP_DIR" \
-    "path-$(stat -c '%d-%i' "$TEMP_DIR" 2>/dev/null || stat -f '%d-%i' "$TEMP_DIR")" \
-    "$SANCTUARY_OPERATION_RUN_ID"
 }
 
 main() {
   parse_args "$@"
+  if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane publish-release --engine host \
+      --checkout-root "$ROOT_DIR" -- bash "$0" "$@"
+  fi
   local parsed_tag="$TAG" parsed_dry_run="$DRY_RUN" parsed_candidate="$CANDIDATE_TAG"
   local parsed_receipt="$CANARY_RECEIPT" parsed_evidence="$CANARY_EVIDENCE"
   local parsed_manifest="$REHEARSAL_MANIFEST" parsed_public_key="$RELEASE_PUBLIC_KEY"
@@ -258,8 +237,7 @@ main() {
   TAG="$parsed_tag"; DRY_RUN="$parsed_dry_run"; CANDIDATE_TAG="$parsed_candidate"
   CANARY_RECEIPT="$parsed_receipt"; CANARY_EVIDENCE="$parsed_evidence"
   REHEARSAL_MANIFEST="$parsed_manifest"; RELEASE_PUBLIC_KEY="$parsed_public_key"
-  TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-publish-release.XXXXXX")"
-  trap on_exit EXIT
+  TEMP_DIR="$($REGISTERED_STAGING publish-release)"
   validate_checkout
   verify_promotion_evidence
   verify_forgejo_tag

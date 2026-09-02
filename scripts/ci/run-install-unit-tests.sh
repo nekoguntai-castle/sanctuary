@@ -45,7 +45,7 @@ scripts/ci/retry-command.sh "CI YAML parser dependencies" npm ci --prefix tests/
 run_suite() {
   local suite="$1"
   echo "=== ${suite}"
-  bash "$suite"
+  scripts/ci/run-install-unit-suite.sh "$suite"
 }
 
 shopt -s nullglob

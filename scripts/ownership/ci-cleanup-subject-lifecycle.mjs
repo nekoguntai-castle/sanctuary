@@ -32,7 +32,7 @@ export function subjectEnvironment(state, statePath) {
     SANCTUARY_SOURCE_COMMIT: authority.checkoutCommit,
     SANCTUARY_IMAGE_LOCK_SHA256: imageLockSha256,
     SANCTUARY_VERSION: version,
-    SANCTUARY_BUILD_ID: `checkout-${authority.checkoutCommit}`,
+    SANCTUARY_BUILD_ID: authority.operationRunId,
     SANCTUARY_IMAGE_TAG: authority.composeProjectName,
     SANCTUARY_VOLUME_CLEANUP_POLICY: 'exact_delete',
     SANCTUARY_CLEANUP_CREATED_AT: state.resourceCreatedAt,

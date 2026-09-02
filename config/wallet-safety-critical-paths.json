@@ -153,6 +153,7 @@
     "scripts/ci/check-wallet-safety-classifier.mjs",
     "scripts/ci/check-trezor-transport-provenance.sh",
     "scripts/ci/docker-exec-tcp-forwarder.mjs",
+    "scripts/ci/registered-start-gate.mjs",
     "scripts/ci/download-verified-source.sh",
     "scripts/ci/run-trezor-emulator-proof.sh",
     "scripts/ci/run-ledger-emulator-proof.sh",

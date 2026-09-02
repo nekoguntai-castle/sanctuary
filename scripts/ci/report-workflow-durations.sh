@@ -35,8 +35,8 @@ command -v jq >/dev/null 2>&1 || fail 'required command not found: jq'
 command -v python3 >/dev/null 2>&1 || fail 'required command not found: python3'
 forgejo_report_resolve_context || fail 'could not resolve Forgejo API context'
 
-temp_dir="$(mktemp -d)"
-trap 'rm -rf "${temp_dir:-}"' EXIT
+temp_dir="$("$SCRIPT_DIR/create-registered-staging.sh" report-workflow-durations)" \
+  || fail 'could not create registered report staging'
 run_file="$temp_dir/run.json"
 tasks_file="$temp_dir/tasks.json"
 report_tasks_file="$temp_dir/report-tasks.json"

@@ -73,6 +73,22 @@ function validateIntent(payload) {
   digest(payload.predecessorResultDigest, 'intent predecessorResultDigest', true);
 }
 
+function validateSuccessfulResult(payload) {
+  const successful = ['cleaned', 'absent', 'retained'].includes(payload.result);
+  const verifiedNoMutationAbsence = payload.result === 'absent'
+    && payload.mutationOutcome === 'not_started'
+    && payload.reconciliationState === 'absent';
+  if (successful !== (payload.failureClass === 'none')) {
+    throw new Error('result payload result and failureClass are inconsistent');
+  }
+  if (successful && (payload.intentCheckpointDigest === null
+      || (payload.mutationOutcome === 'not_started' && !verifiedNoMutationAbsence)
+      || !['satisfied', 'absent'].includes(payload.reconciliationState)
+      || payload.postconditionDigest === null)) {
+    throw new Error('a successful result requires an exact intent and postcondition');
+  }
+}
+
 function validateResult(payload) {
   exact(payload, [
     'actionSequence', 'failureClass', 'immutableIdentity', 'intentCheckpointDigest',
@@ -87,19 +103,13 @@ function validateResult(payload) {
   if (!RECONCILIATION_STATES.has(payload.reconciliationState)) throw new Error('result payload reconciliationState is invalid');
   digest(payload.intentCheckpointDigest, 'result intentCheckpointDigest', true);
   digest(payload.postconditionDigest, 'result postconditionDigest', true);
-  const successful = ['cleaned', 'absent', 'retained'].includes(payload.result);
-  if (successful !== (payload.failureClass === 'none')) throw new Error('result payload result and failureClass are inconsistent');
+  validateSuccessfulResult(payload);
   if (['satisfied', 'absent'].includes(payload.reconciliationState) !== (payload.postconditionDigest !== null)) {
     throw new Error('result payload reconciliation and postcondition are inconsistent');
   }
   if (payload.intentCheckpointDigest === null
       && (payload.mutationOutcome !== 'not_started' || payload.reconciliationState !== 'not_started')) {
     throw new Error('a result without intent cannot claim mutation or reconciliation');
-  }
-  if (successful && (payload.intentCheckpointDigest === null || payload.mutationOutcome === 'not_started'
-      || !['satisfied', 'absent'].includes(payload.reconciliationState)
-      || payload.postconditionDigest === null)) {
-    throw new Error('a successful result requires an exact mutation intent and postcondition');
   }
 }
 

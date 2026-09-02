@@ -7,6 +7,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/bundle-common.sh"
+REGISTERED_STAGING="$SCRIPT_DIR/../ci/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/../ci/cleanup-ci-callsite.sh"
+if [ ! -f "$REGISTERED_STAGING" ]; then
+  REGISTERED_STAGING="$SCRIPT_DIR/../authority/scripts/ci/create-registered-staging.sh"
+  CLEANUP_COORDINATOR="$SCRIPT_DIR/../authority/scripts/ci/cleanup-ci-callsite.sh"
+fi
 
 BUNDLE_PATH=""
 STAGE_DIR=""
@@ -29,11 +35,6 @@ cleanup_apply() {
   fi
   if [ "$APPLY_LOCK_ACTIVE" = true ]; then
     deployment_lock_release || lock_status=$?
-  fi
-  if [ "$GENERATED_STAGE" = true ] && [ -d "$STAGE_DIR" ]; then
-    find "$STAGE_DIR" -type f -delete
-    find "$STAGE_DIR" -type l -delete
-    find "$STAGE_DIR" -depth -type d -empty -delete
   fi
   if [ "$status" -eq 0 ]; then
     if [ "$recovery_status" -ne 0 ]; then status="$recovery_status"
@@ -428,6 +429,14 @@ main() {
     offline_fail "choose only one of --prepare-only, --verify-only, or --apply"
   fi
 
+  if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+    if [ -z "$STAGE_DIR" ]; then
+      [ -d "$OFFLINE_REPO_ROOT/.git" ] || offline_fail 'cleanup authority requires a Git checkout'
+      exec "$CLEANUP_COORDINATOR" auto-run --lane offline-apply --engine docker \
+        --checkout-root "$OFFLINE_REPO_ROOT" -- bash "$0" "$@"
+    fi
+  fi
+
   if [ "$PREPARE_ONLY" = "true" ]; then
     prepare_bundle
     exit 0
@@ -447,7 +456,7 @@ main() {
 
   [ -n "$BUNDLE_PATH" ] || offline_fail "--bundle is required"
   if [ -z "$STAGE_DIR" ]; then
-    STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-bundle.XXXXXX")"
+    STAGE_DIR="$($REGISTERED_STAGING offline-apply)"
     GENERATED_STAGE=true
   fi
 

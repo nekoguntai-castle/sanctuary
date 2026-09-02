@@ -56,6 +56,26 @@ test('planner emits stable dependency and action order with a signed-receipt-rea
   assert.deepEqual(receipt.results.map((entry) => entry.result), ['pending', 'pending', 'pending']);
 });
 
+test('planner binds registered host removals to prior collector stop actions', () => {
+  const processIdentity = '1'.repeat(64);
+  const artifactIdentity = '2'.repeat(64);
+  const hostContract = { resourceClasses: [
+    { classId: 'collector_process', dependsOn: [], cleanupPolicies: ['exact_delete'] },
+    { classId: 'temporary_artifact', dependsOn: ['collector_process'], cleanupPolicies: ['exact_delete'] },
+  ] };
+  const hostInventory = inventory({ resources: [
+    resource('temporary_artifact', artifactIdentity, {
+      locatorKind: 'path', dependencyIdentities: [processIdentity],
+    }),
+    resource('collector_process', processIdentity, { locatorKind: 'authority' }),
+  ] });
+  const plan = buildCleanupPlan(hostInventory, hostContract, { policyDigest: HASH });
+  assert.deepEqual(plan.actions.map(({ resourceClass, action }) => `${resourceClass}:${action}`), [
+    'collector_process:stop', 'temporary_artifact:remove',
+  ]);
+  assert.deepEqual(plan.actions[1].dependencyIdentities, [processIdentity]);
+});
+
 test('ambiguity suppresses every action while refusals remain categorical', () => {
   const ambiguousInventory = inventory({
     complete: false,

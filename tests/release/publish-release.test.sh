@@ -130,6 +130,11 @@ for retired_name in GHCR_USER GHCR_TOKEN UMBREL_DISPATCH_TOKEN UMBREL_OWNER UMBR
 done
 [[ "${SANCTUARY_FORGE_TOKENS:-}" == "/dev/null" ]] || exit 98
 printf 'create-release %s\n' "$*" >> "$TRACE_FILE"
+if [[ "${RELEASE_TEST_CLEANUP_IDENTITY_DRIFT:-false}" == true ]]; then
+  staging="$(find "$TMPDIR" -maxdepth 1 -type d -name 'sanctuary-publish-release.*' -print -quit)"
+  mv "$staging" "$staging.original"
+  mkdir -m 700 "$staging"
+fi
 EOF
 }
 
@@ -140,7 +145,14 @@ set -euo pipefail
 case "$(basename "$1")" in
   verify-release-candidate-canary.mjs|verify-prestable-rehearsal.mjs)
     printf 'evidence %s\n' "$*" >> "$TRACE_FILE"
-    [[ "${RELEASE_TEST_EVIDENCE_FAIL:-false}" != true ]] || exit 9
+    if [[ "${RELEASE_TEST_EVIDENCE_FAIL:-false}" == true ]]; then
+      if [[ "${RELEASE_TEST_CLEANUP_IDENTITY_DRIFT:-false}" == true ]]; then
+        staging="$(find "$TMPDIR" -maxdepth 1 -type d -name 'sanctuary-publish-release.*' -print -quit)"
+        mv "$staging" "$staging.original"
+        mkdir -m 700 "$staging"
+      fi
+      exit 9
+    fi
     ;;
   *) exec /usr/bin/node "$@" ;;
 esac
@@ -154,7 +166,13 @@ new_fixture() {
   local fixture="$TEST_ROOT/$name"
   mkdir -p "$fixture/config" "$fixture/scripts/ci" "$fixture/scripts/release" \
     "$fixture/bin" "$fixture/state" "$fixture/tmp" "$fixture/external/assets"
+  chmod 700 "$fixture/tmp"
   cp "$SCRIPT_UNDER_TEST" "$fixture/scripts/release/publish-release.sh"
+  cat > "$fixture/scripts/ci/create-registered-staging.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+mktemp -d "${TMPDIR:-/tmp}/registered-${1}.XXXXXX"
+EOF
   cp "$REPO_ROOT/scripts/release/release-operator-api.sh" \
     "$fixture/scripts/release/release-operator-api.sh"
   cp "$REPO_ROOT/scripts/release/previous-release-tag.sh" \
@@ -177,7 +195,8 @@ new_fixture() {
   chmod +x "$fixture/scripts/release/publish-release.sh" \
     "$fixture/scripts/release/previous-release-tag.sh" \
     "$fixture/scripts/create-forge-release.sh" \
-    "$fixture/bin/curl" "$fixture/bin/docker"
+    "$fixture/bin/curl" "$fixture/bin/docker" \
+    "$fixture/scripts/ci/create-registered-staging.sh"
   git -C "$fixture" init -q
   git -C "$fixture" config user.name "Release Test"
   git -C "$fixture" config user.email "release-test@example.invalid"
@@ -266,6 +285,7 @@ run_publish() {
     UMBREL_REPO="retired-repo" \
     SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW="$evidence_path" \
     TMPDIR="$fixture/tmp" \
+    SANCTUARY_CLEANUP_COORDINATED=1 \
     "$fixture/scripts/release/publish-release.sh" "$tag" "${promotion_args[@]}" "$@"
   )
 }
@@ -321,6 +341,8 @@ test_dry_run_verifies_without_mutation() {
   assert_not_contains "$fixture/trace.log" "create-release"
   assert_not_contains "$fixture/trace.log" "docker "
   assert_contains "$fixture/output.log" "no API mutations"
+  [[ -n "$(find "$fixture/tmp" -mindepth 1 -type d -name 'registered-publish-release.*' -print -quit)" ]] \
+    || fail "dry-run did not create registered publication staging"
 }
 
 test_real_publish_orders_release_gates() {
@@ -333,6 +355,8 @@ test_real_publish_orders_release_gates() {
   assert_contains "$fixture/trace.log" "create-release $tag"
   assert_not_contains "$fixture/trace.log" "docker "
   assert_contains "$fixture/output.log" "published to Forgejo and GitHub"
+  [[ -n "$(find "$fixture/tmp" -mindepth 1 -type d -name 'registered-publish-release.*' -print -quit)" ]] \
+    || fail "publication did not create registered staging"
 
   local forgejo_tag_line gate_line actions_line github_tag_line create_line
   forgejo_tag_line="$(trace_line "$fixture/trace.log" "forgejo.test/api/v1/repos/nekoguntai-castle/sanctuary/git/commits/$tag")"
@@ -464,6 +488,21 @@ test_failed_promotion_evidence_blocks_publication() {
   assert_not_contains "$fixture/trace.log" "create-release"
 }
 
+test_subject_failure_is_preserved_without_local_cleanup() {
+  local tag="v1.2.3"
+  local fixture status
+  fixture="$(new_fixture cleanup-after-failure "$tag")"
+  set +e
+  RELEASE_TEST_EVIDENCE_FAIL=true \
+    run_publish "$fixture" "$tag" > "$fixture/output.log" 2>&1
+  status=$?
+  set -e
+  [[ "$status" -eq 9 ]] || fail "subject status 9 changed to $status"
+  assert_not_contains "$fixture/output.log" "release cleanup failed"
+  [[ -n "$(find "$fixture/tmp" -mindepth 1 -type d -name 'registered-publish-release.*' -print -quit)" ]] \
+    || fail "failed subject did not leave registered staging for coordinator cleanup"
+}
+
 test_similar_but_nonmatching_candidate_is_rejected() {
   local tag="v1.2.3"
   local fixture
@@ -520,6 +559,7 @@ test_dry_run_requires_existing_github_tag
 test_exact_tag_lookup_ignores_branch_name_collision
 test_manual_stable_tag_without_promotion_evidence_fails_before_network
 test_failed_promotion_evidence_blocks_publication
+test_subject_failure_is_preserved_without_local_cleanup
 test_similar_but_nonmatching_candidate_is_rejected
 test_non_main_release_commit_fails_before_publication_apis
 test_operator_script_has_no_verifier_override_seam

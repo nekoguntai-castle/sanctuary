@@ -64,7 +64,6 @@ done
 
 parse_logs() {
   local input_file="$1"
-  local parsed_file="$2"
 
   while IFS= read -r line; do
     line="$(printf '%s' "$line" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g')"
@@ -83,21 +82,21 @@ parse_logs() {
       job='n/a'
     fi
 
-    printf '%s\t%s\t%s\n' "$seconds" "$job" "$label" >> "$parsed_file"
+    printf '%s\t%s\t%s\n' "$seconds" "$job" "$label"
   done < "$input_file"
 }
 
 print_report() {
-  local parsed_file="$1"
+  local parsed="$1"
 
-  if [ ! -s "$parsed_file" ]; then
+  if [ -z "$parsed" ]; then
     fail 'no CI timing notices found'
   fi
 
   echo 'Seconds | Duration | Job | Label'
   echo '--- | --- | --- | ---'
 
-  sort -nr "$parsed_file" | while IFS=$'\t' read -r seconds job label; do
+  printf '%s\n' "$parsed" | sort -nr | while IFS=$'\t' read -r seconds job label; do
     printf '%s | %s | %s | %s\n' "$seconds" "$(format_seconds "$seconds")" "$job" "$label"
   done
 }
@@ -110,22 +109,21 @@ main() {
     fail 'use either --run or --log-file, not both'
   fi
 
-  local temp_dir combined_log parsed
-  temp_dir="$(mktemp -d)"
-  trap 'rm -rf "${temp_dir:-}"' EXIT
-  combined_log="$temp_dir/combined.log"
-  parsed="$temp_dir/parsed.tsv"
+  local combined_log parsed staging
 
   if [ -n "$log_file" ]; then
     [ -f "$log_file" ] || fail "log file not found: $log_file"
-    cp "$log_file" "$combined_log"
+    parsed="$(parse_logs "$log_file")"
   elif [ -n "$run_id" ]; then
     [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || fail '--run must be a positive integer'
     require_command curl
     require_command python3
     forgejo_report_resolve_context || fail 'could not resolve Forgejo API context'
 
-    local archive="$temp_dir/run-logs.zip"
+    staging="$("$SCRIPT_DIR/create-registered-staging.sh" report-timing-notices)" \
+      || fail 'could not create registered report staging'
+    combined_log="$staging/combined.log"
+    local archive="$staging/run-logs.zip"
     forgejo_report_get "actions/runs/$run_id/logs" "$archive" 268435456 application/zip \
       || fail "could not fetch logs for workflow run $run_id"
     [ "$(wc -c < "$archive")" -le 268435456 ] \
@@ -174,12 +172,12 @@ PY
     then
       fail "could not read matching logs for workflow run $run_id"
     fi
+    parsed="$(parse_logs "$combined_log")"
   else
     usage >&2
     exit 1
   fi
 
-  parse_logs "$combined_log" "$parsed"
   print_report "$parsed"
 }
 

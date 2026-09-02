@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/cleanup-ci-callsite.sh"
+
 # Run a single shard of the backend unit-coverage suite.
 #
 # Mirrors scripts/ci/frontend-coverage-shard.sh: each shard runs
@@ -55,8 +59,9 @@ run_vitest_shard_once() {
   is_safe_relative_path "$coverage_reports_dir" || \
     fail 'SANCTUARY_BACKEND_COVERAGE_REPORTS_DIR must be a safe relative path'
 
-  rm -f "$expected_blob"
-  rm -rf "$coverage_reports_dir"
+  [ ! -e "$expected_blob" ] || fail "refusing stale Vitest blob report: $expected_blob"
+  [ ! -e "$coverage_reports_dir" ] || \
+    fail "refusing stale backend coverage report directory: $coverage_reports_dir"
   mkdir -p "$(dirname "$coverage_reports_dir")"
 
   SANCTUARY_BACKEND_COVERAGE_REPORTS_DIR="$coverage_reports_dir" "$vitest_bin" run \
@@ -99,6 +104,7 @@ run_vitest_shard_with_native_retry() {
   local attempt attempt_log status
   for attempt in $(seq 1 "$attempts"); do
     attempt_log="${log_dir}/shard-${shard_index}-${shard_total}-attempt-${attempt}.log"
+    [ ! -e "$attempt_log" ] || fail "refusing stale backend coverage log: $attempt_log"
     set +e
     run_vitest_shard_once "$vitest_bin" "$shard_index" "$shard_total" "$expected_blob" 2>&1 | tee "$attempt_log"
     status="${PIPESTATUS[0]}"
@@ -132,6 +138,16 @@ main() {
 
   if [ "$shard_index" -gt "$shard_total" ]; then
     fail 'shard index must be less than or equal to shard total'
+  fi
+
+  local coverage_reports_dir
+  coverage_reports_dir="$(coverage_reports_dir_for_shard "$shard_index" "$shard_total")"
+  is_safe_relative_path "$coverage_reports_dir" || \
+    fail 'SANCTUARY_BACKEND_COVERAGE_REPORTS_DIR must be a safe relative path'
+
+  if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane backend-coverage-shard --engine host \
+      --checkout-root "$PROJECT_ROOT" -- bash "$0" "$@"
   fi
 
   # Workspace-aware binary lookup: cwd first, then walk up for hoisted bins.

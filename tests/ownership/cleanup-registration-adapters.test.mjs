@@ -143,6 +143,29 @@ test('processes and worktrees remain refused after exact identity observation', 
   assert.equal(driftedWorktree.disposition, 'refused');
 });
 
+test('v1.1 host registrations become executable only after exact terminal observation', () => {
+  const identity = 'f'.repeat(64);
+  const registration = {
+    ...registrationInput('temporary_artifact', '/tmp/owned/item', identity),
+    schemaVersion: '1.1.0', executionAuthority: { kind: 'linux_dirfd_v1' },
+  };
+  const eligible = classifyCleanupRegistration(registration, {
+    inspectors: { temporary_artifact: () => ({
+      state: 'current', immutableIdentity: identity, active: false, executable: true,
+    }) },
+  });
+  assert.equal(eligible.disposition, 'eligible');
+  assert.equal(eligible.executable, true);
+
+  const active = classifyCleanupRegistration(registration, {
+    inspectors: { temporary_artifact: () => ({
+      state: 'current', immutableIdentity: identity, active: true, executable: true,
+    }) },
+  });
+  assert.equal(active.disposition, 'refused');
+  assert.equal(active.executable, false);
+});
+
 test('publication observations retain exact identity and refuse drift', () => {
   const publication = registrationInput('provider_publication', 'release-123', 'provider-object-123', {
     locatorKind: 'provider_id', lifecycle: 'retained', cleanupPolicy: 'retain_reconcile',

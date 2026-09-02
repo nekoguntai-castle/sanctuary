@@ -2,8 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 # shellcheck source=scripts/ci/provider-context.sh
 . "$SCRIPT_DIR/provider-context.sh"
+REGISTERED_STAGING="$SCRIPT_DIR/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/cleanup-ci-callsite.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -62,6 +65,10 @@ main() {
   if [ -z "${SEMGREP_VERSION:-}" ]; then
     fail 'SEMGREP_VERSION is required'
   fi
+  if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane install-semgrep --engine host \
+      --checkout-root "$PROJECT_ROOT" -- bash "$0" "$@"
+  fi
 
   local attempts="${SANCTUARY_SEMGREP_INSTALL_ATTEMPTS:-3}"
   local delay_seconds="${SANCTUARY_SEMGREP_INSTALL_DELAY_SECONDS:-10}"
@@ -71,17 +78,13 @@ main() {
   local python_bin
   python_bin="$(find_python)" || fail 'python3 or python is required'
 
-  local temp_parent
-  temp_parent="$(ci_temp_dir)"
-  mkdir -p "$temp_parent"
-
   local run_id
   run_id="$(ci_run_id)"
   local report_dir="${SEMGREP_REPORT_DIR:-/tmp/sanctuary-semgrep-${run_id}}"
   local attempt status workdir
 
   for attempt in $(seq 1 "$attempts"); do
-    workdir="$(mktemp -d "$temp_parent/sanctuary-semgrep.XXXXXX")"
+    workdir="$($REGISTERED_STAGING "semgrep-$attempt")"
     echo "semgrep install+validate, attempt ${attempt}"
 
     set +e
@@ -97,7 +100,6 @@ main() {
       return 0
     fi
 
-    rm -rf "$workdir" || true
     if [ "$attempt" -eq "$attempts" ]; then
       return "$status"
     fi

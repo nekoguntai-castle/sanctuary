@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'child_process';
 import { createServer } from 'http';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,9 +13,6 @@ const outputDir = process.env.PHASE2_ALERT_RECEIVER_OUTPUT_DIR || path.join(repo
 const startedAt = new Date();
 const timestamp = startedAt.toISOString().replace(/[:.]/g, '-');
 const projectName = process.env.COMPOSE_PROJECT_NAME;
-const tempDir = path.join(repoRoot, '.tmp', 'phase2-alert-receiver', timestamp);
-const composePath = path.join(tempDir, 'compose.yml');
-const alertmanagerConfigPath = path.join(tempDir, 'alertmanager.yml');
 const keepStack = process.env.PHASE2_ALERT_RECEIVER_KEEP_STACK === 'true';
 const timeoutMs = Number(process.env.PHASE2_ALERT_RECEIVER_TIMEOUT_MS || '120000');
 const retryMs = Number(process.env.PHASE2_ALERT_RECEIVER_RETRY_MS || '1000');
@@ -75,7 +72,7 @@ function recordStep(name, passed, summary, extra = {}) {
 
 function runDocker(args, options = {}) {
   const result = spawnSync('docker', args, {
-    cwd: tempDir,
+    cwd: registeredTempDir,
     encoding: 'utf8',
     env: process.env,
     maxBuffer: 1024 * 1024 * 20,
@@ -409,9 +406,17 @@ function buildMarkdown(report) {
   return `${lines.join('\n')}\n`;
 }
 
-mkdirSync(tempDir, { recursive: true });
-writeAlertmanagerConfig();
-writeComposeFile();
+const tempDir = spawnSync(
+  path.join(repoRoot, 'scripts/ci/create-registered-staging.sh'),
+  [`phase2-alert-${timestamp}`],
+  { cwd: repoRoot, encoding: 'utf8', env: process.env },
+);
+if (tempDir.status !== 0 || !tempDir.stdout.trim()) {
+  throw new Error(`Could not register Phase 2 staging: ${tempDir.stderr?.trim() || 'unknown error'}`);
+}
+const registeredTempDir = tempDir.stdout.trim();
+const composePath = path.join(registeredTempDir, 'compose.yml');
+const alertmanagerConfigPath = path.join(registeredTempDir, 'alertmanager.yml');
 
 let webhookServer = null;
 let receivedWebhookDeliveries = [];
@@ -425,6 +430,8 @@ let passed = false;
 let failureError = null;
 
 try {
+  writeAlertmanagerConfig();
+  writeComposeFile();
   generatedReceiverConfig = validateGeneratedAlertmanagerConfig();
   recordStep('receiver config generated', true, `receiver=${generatedReceiverConfig.receiver} url=${generatedReceiverConfig.webhookUrl}`);
 
@@ -501,9 +508,6 @@ try {
   console.log(`Wrote ${path.relative(repoRoot, mdPath)}`);
   console.log(`Wrote ${path.relative(repoRoot, jsonPath)}`);
 
-  if (!keepStack) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
 }
 
 if (!passed) {

@@ -13,7 +13,9 @@ import {
   readActiveCleanupPointer, readApprovalState, createCleanupLedger,
 } from '../../scripts/ownership/cleanup-approval-ledger.mjs';
 import { inspectDeploymentCleanupState } from '../../scripts/ownership/deployment-cleanup-gate.mjs';
-import { applyCleanupExecution } from '../../scripts/ownership/cleanup-execution.mjs';
+import {
+  applyCleanupExecution, validateFinalExecutionInventory,
+} from '../../scripts/ownership/cleanup-execution.mjs';
 import { recoverCleanupExecution } from '../../scripts/ownership/cleanup-recovery.mjs';
 import { verifyCleanupJournal } from '../../scripts/ownership/cleanup-journal.mjs';
 import { buildCleanupPlan, buildPlanningReceipt } from '../../scripts/ownership/cleanup-planner.mjs';
@@ -122,6 +124,37 @@ function recoveryIdentity() {
     deploymentLockObservationDigest: HASH,
   };
 }
+
+test('final inventory survivor error identifies the exact removed action and observation', () => {
+  const before = inventory([row()], '2026-08-30T00:00:00.000Z');
+  const plan = buildCleanupPlan(before, contract, { policyDigest: HASH });
+  const after = inventory([{
+    ...row(), locator: `survivor-${ID}`,
+    references: ['foreign-lane:test'], disposition: 'refused',
+    failureClasses: ['shared'], protected: true,
+  }], '2026-08-30T00:00:08.000Z');
+  assert.throws(() => validateFinalExecutionInventory(
+    after,
+    before,
+    plan.actions,
+    plan.actions.map((action) => ({
+      sequence: action.sequence,
+      resourceClass: action.resourceClass,
+      immutableIdentity: action.immutableIdentity,
+      result: 'cleaned',
+      failureClass: 'none',
+    })),
+  ), (error) => {
+    assert.match(error.message, /authoritative cleanup postcondition still contains/);
+    assert.match(error.message, /"sequence":1/);
+    assert.match(error.message, /"resourceClass":"compose_network"/);
+    assert.match(error.message, new RegExp(`"immutableIdentity":"${ID}"`));
+    assert.match(error.message, /"survivorReferences":\["foreign-lane:test"\]/);
+    assert.match(error.message, /"survivorDisposition":"refused"/);
+    assert.match(error.message, /"survivorFailureClasses":\["shared"\]/);
+    return true;
+  });
+});
 
 test('apply durably orders terminal state, exact receipt sidecars, and pointer tombstone', async () => {
   const checkoutRoot = mkdtempSync(path.join(os.tmpdir(), 'cleanup-execution-checkout-'));

@@ -71,7 +71,7 @@ initialize_install_test_ownership
 # Per-lane image tag, derived from the project name so concurrent lanes on one
 # daemon cannot alias each other's images (#719).
 export_lane_image_tag
-TEST_ROOT=$(default_install_test_root "$PROJECT_ROOT")
+TEST_ROOT=$(prepare_install_test_root "$(default_install_test_root "$PROJECT_ROOT")")
 TEST_INSTALL_DIR=$(create_test_directory "$TEST_ROOT" "sanctuary-install-test")
 TEST_DOCKER_INSTALL_DIR=$(docker_visible_path "$TEST_INSTALL_DIR")
 HTTPS_PORT="${HTTPS_PORT:-8443}"
@@ -190,10 +190,9 @@ teardown() {
         get_container_status "$PROJECT_ROOT"
     fi
 
-    # Clean up test directory
-    if [ -d "$TEST_INSTALL_DIR" ]; then
-        rm -rf "$TEST_INSTALL_DIR"
-    fi
+    # TEST_INSTALL_DIR has exact v1.1 path authority and is retired only after
+    # this subject terminates and the coordinator signs its cleanup receipt.
+    log_info "Deferring registered install directory cleanup to the receipt-bound CI coordinator"
 
     # Clean up cookie jar
     if [ -f "$COOKIE_JAR" ]; then

@@ -14,6 +14,10 @@ inputs:
     description: Verify successful cleanup in every immediate child directory.
     required: false
     default: 'false'
+  recursive:
+    description: Verify successful cleanup in every leaf directory beneath cleanup-root.
+    required: false
+    default: 'false'
   retention-days:
     description: Days to retain the artifact.
     required: false
@@ -46,4 +50,5 @@ runs:
       with:
         root: ${{ inputs.cleanup-root }}
         children: ${{ inputs.children }}
+        recursive: ${{ inputs.recursive }}
         require-cleanup-success: 'true'

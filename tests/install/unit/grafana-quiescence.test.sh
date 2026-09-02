@@ -13,8 +13,49 @@ MIGRATION_NAME="${TEST_PROJECT}-sanctuary-grafana-password-migration"
 MIGRATION_RUNTIME_ID="$(printf 'b%.0s' {1..64})"
 CONTROL_NAME="${TEST_PROJECT}-sanctuary-grafana-control-helper"
 SCRIPT_DIGEST="$(sha256sum "$PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh" | awk '{print $1}')"
+ACTIVE_OWNER_PID=""
+ACTIVE_OWNER_RELEASE=""
+ACTIVE_OWNER_OUTPUT=""
+ACTIVE_OWNER_GRACE_SECONDS=""
+
+owner_diagnostics() {
+    local output="$1"
+    [ ! -f "$output" ] || tail -c 8192 "$output" >&2
+}
+
+cleanup_active_owner() {
+    local owner_pid="$ACTIVE_OWNER_PID" release_signal="$ACTIVE_OWNER_RELEASE"
+    local grace_seconds="${ACTIVE_OWNER_GRACE_SECONDS:-10}" deadline owner_status=0
+    [ -n "$owner_pid" ] || return 0
+    touch "$release_signal"
+    deadline=$((SECONDS + grace_seconds))
+    while kill -0 "$owner_pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.02; done
+    if kill -0 "$owner_pid" 2>/dev/null; then
+        kill -TERM "$owner_pid" 2>/dev/null || true
+        deadline=$((SECONDS + 1))
+        while kill -0 "$owner_pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.02; done
+    fi
+    if kill -0 "$owner_pid" 2>/dev/null; then
+        kill -KILL "$owner_pid" 2>/dev/null || true
+    fi
+    wait "$owner_pid" || owner_status=$?
+    ACTIVE_OWNER_PID=""
+    ACTIVE_OWNER_RELEASE=""
+    ACTIVE_OWNER_OUTPUT=""
+    ACTIVE_OWNER_GRACE_SECONDS=""
+    return "$owner_status"
+}
+
+track_owner() {
+    ACTIVE_OWNER_PID="$1"
+    ACTIVE_OWNER_RELEASE="$2"
+    ACTIVE_OWNER_OUTPUT="$3"
+    ACTIVE_OWNER_GRACE_SECONDS="${4:-10}"
+}
 
 cleanup() {
+    local owner_output="$ACTIVE_OWNER_OUTPUT"
+    if ! cleanup_active_owner; then owner_diagnostics "$owner_output"; fi
     find "$TEST_ROOT" -type f -delete
     find "$TEST_ROOT" -type l -delete
     find "$TEST_ROOT" -depth -type d -empty -delete
@@ -698,6 +739,42 @@ no_flock_path() {
     printf '%s\n' "$restricted"
 }
 
+wait_for_owner_signal() {
+    local signal="$1" owner_pid="$2" owner_output="$3" label="$4"
+    local deadline=$((SECONDS + 10)) owner_status=0
+    while [ ! -f "$signal" ]; do
+        if ! kill -0 "$owner_pid" 2>/dev/null; then
+            wait "$owner_pid" || owner_status=$?
+            ACTIVE_OWNER_PID=""
+            ACTIVE_OWNER_RELEASE=""
+            ACTIVE_OWNER_OUTPUT=""
+            ACTIVE_OWNER_GRACE_SECONDS=""
+            owner_diagnostics "$owner_output"
+            echo "$label exited before reaching its barrier (status=$owner_status)" >&2
+            return 1
+        fi
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            cleanup_active_owner || owner_status=$?
+            owner_diagnostics "$owner_output"
+            echo "$label did not reach its barrier within 10 seconds (status=$owner_status)" >&2
+            return 1
+        fi
+        sleep 0.02
+    done
+}
+
+test_owner_cleanup_is_bounded() {
+    reset_case
+    local owner_pid owner_status=0 started_at="$SECONDS"
+    sleep 30 >"$TEST_ROOT/wedged-owner.out" 2>&1 &
+    owner_pid=$!
+    track_owner "$owner_pid" "$TEST_ROOT/helper-release" "$TEST_ROOT/wedged-owner.out" 1
+    cleanup_active_owner || owner_status=$?
+    [ "$owner_status" -ne 0 ]
+    ! kill -0 "$owner_pid" 2>/dev/null
+    [ $((SECONDS - started_at)) -le 3 ]
+}
+
 test_fresh_data_volume_is_created_with_compose_identity() {
     reset_case
     run_helper fresh-volume >/dev/null
@@ -856,32 +933,31 @@ test_concurrent_no_flock_wrapper_is_refused_by_running_sentinel() {
     reset_case
     local restricted owner_pid second_status=0
     restricted="$(no_flock_path)"
-    run_helper concurrent-hold "$restricted" >"$TEST_ROOT/owner.out" 2>&1 &
+    ( sleep 3; run_helper concurrent-hold "$restricted" ) >"$TEST_ROOT/owner.out" 2>&1 &
     owner_pid=$!
-    for _attempt in {1..200}; do
-        [ -f "$TEST_ROOT/migration-started" ] && break
-        sleep 0.01
-    done
-    [ -f "$TEST_ROOT/migration-started" ] || {
-        touch "$TEST_ROOT/migration-release"
-        wait "$owner_pid" || true
-        echo "first no-flock wrapper never reached its daemon sentinel" >&2
-        return 1
-    }
+    track_owner "$owner_pid" "$TEST_ROOT/migration-release" "$TEST_ROOT/owner.out"
+    wait_for_owner_signal "$TEST_ROOT/migration-started" "$owner_pid" \
+        "$TEST_ROOT/owner.out" "first no-flock wrapper" || return 1
 
     run_helper concurrent-hold "$restricted" >"$TEST_ROOT/contender.out" 2>&1 \
         && second_status=0 || second_status=$?
     [ "$second_status" -ne 0 ] || {
-        touch "$TEST_ROOT/migration-release"
-        wait "$owner_pid" || true
+        local owner_status=0
+        cleanup_active_owner || owner_status=$?
+        owner_diagnostics "$TEST_ROOT/owner.out"
         echo "concurrent no-flock wrapper unexpectedly overlapped migration" >&2
+        [ "$owner_status" -eq 0 ] || echo "owner cleanup status=$owner_status" >&2
         return 1
     }
-    [ "$(grep -Fc 'stop grafana' "$TEST_ROOT/docker.log")" -eq 1 ]
-    grep -Fq 'still active or indeterminate' "$TEST_ROOT/contender.out"
-
-    touch "$TEST_ROOT/migration-release"
-    wait "$owner_pid"
+    local assertion_failure=0 owner_status=0
+    [ "$(grep -Fc 'stop grafana' "$TEST_ROOT/docker.log")" -eq 1 ] || assertion_failure=1
+    grep -Fq 'still active or indeterminate' "$TEST_ROOT/contender.out" || assertion_failure=1
+    cleanup_active_owner || owner_status=$?
+    if [ "$assertion_failure" -ne 0 ] || [ "$owner_status" -ne 0 ]; then
+        owner_diagnostics "$TEST_ROOT/owner.out"
+        echo "no-flock concurrency fixture failed (owner=$owner_status assertions=$assertion_failure)" >&2
+        return 1
+    fi
 }
 
 test_terminal_disconnect_reconciles_fresh_and_marked_paths() {
@@ -1083,31 +1159,23 @@ test_live_unique_control_helpers_are_not_cross_removed() {
         [ "$mode" != hold-helper-exited ] || signal="$TEST_ROOT/helper-exited"
         run_helper "$mode" "$restricted" >"$TEST_ROOT/helper-owner.out" 2>&1 &
         owner_pid=$!
-        for _attempt in {1..200}; do
-            [ -f "$signal" ] && break
-            sleep 0.01
-        done
-        [ -f "$signal" ] || {
-            touch "$TEST_ROOT/helper-release"
-            wait "$owner_pid" || true
-            echo "$mode never reached its barrier" >&2
-            return 1
-        }
+        track_owner "$owner_pid" "$TEST_ROOT/helper-release" "$TEST_ROOT/helper-owner.out"
+        wait_for_owner_signal "$signal" "$owner_pid" "$TEST_ROOT/helper-owner.out" \
+            "$mode" || return 1
 
         second_status=0
         run_helper success "$restricted" >"$TEST_ROOT/helper-contender.out" 2>&1 \
             || second_status=$?
-        [ "$second_status" -eq 0 ] || {
-            touch "$TEST_ROOT/helper-release"
-            wait "$owner_pid" || true
-            return "$second_status"
-        }
-        find "$TEST_ROOT" -maxdepth 1 -name 'helper.state.*' -type f | grep -q .
-        touch "$TEST_ROOT/helper-release"
-        wait "$owner_pid" || {
-            cat "$TEST_ROOT/helper-owner.out" >&2
+        local assertion_failure=0 owner_status=0
+        [ "$second_status" -eq 0 ] || assertion_failure=1
+        find "$TEST_ROOT" -maxdepth 1 -name 'helper.state.*' -type f | grep -q . \
+            || assertion_failure=1
+        cleanup_active_owner || owner_status=$?
+        if [ "$assertion_failure" -ne 0 ] || [ "$owner_status" -ne 0 ]; then
+            owner_diagnostics "$TEST_ROOT/helper-owner.out"
+            echo "$mode concurrency fixture failed (owner=$owner_status assertions=$assertion_failure)" >&2
             return 1
-        }
+        fi
         test -z "$(find "$TEST_ROOT" -maxdepth 1 -name 'helper.state.*' -type f -print -quit)"
     done
 }
@@ -1190,6 +1258,7 @@ test_control_helper_terminal_state_lag_settles
 test_control_helper_terminal_state_failures_stay_closed
 test_rolled_back_terminal_reconciles_before_retry
 test_post_claim_pre_snapshot_failure_reconciles_without_data_mutation
+test_owner_cleanup_is_bounded
 test_concurrent_no_flock_wrapper_is_refused_by_running_sentinel
 test_live_unique_control_helpers_are_not_cross_removed
 test_stale_owned_control_helpers_are_reclaimed

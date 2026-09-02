@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import {
-  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync,
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,9 +18,76 @@ import {
   finishCiCleanupLifecycle, prepareCiCleanupLifecycle,
 } from '../../scripts/ownership/ci-cleanup-lifecycle.mjs';
 import { readCoordinatorState } from '../../scripts/ownership/ci-cleanup-state.mjs';
-import { verifyCiCleanupUpload } from '../../scripts/ownership/verify-ci-cleanup-upload.mjs';
+import {
+  cleanupArtifactRoots, verifyCiCleanupUpload, verifyCiCleanupUploads,
+} from '../../scripts/ownership/verify-ci-cleanup-upload.mjs';
 
 const CHECKOUT = path.resolve('.');
+const RECEIPT_FILES = [
+  'authorization-public.pem', 'evidence-public.pem',
+  'final-upload.json', 'final-upload.json.sig', 'final-upload.sha256',
+  'planning-upload.json', 'planning-upload.json.sig', 'planning-upload.sha256',
+];
+
+function fakeReceipt(directory) {
+  mkdirSync(directory, { recursive: true });
+  for (const name of RECEIPT_FILES) writeFileSync(path.join(directory, name), '{}\n');
+}
+
+test('cleanup artifact traversal verifies every bounded nested receipt leaf', (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-artifact-tree-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const shallow = path.join(root, 'outer', 'lane-a');
+  const deep = path.join(root, 'inner', 'group', 'lane-b');
+  fakeReceipt(shallow);
+  fakeReceipt(deep);
+  assert.deepEqual(cleanupArtifactRoots(root, 'recursive'), [deep, shallow]);
+  assert.throws(() => cleanupArtifactRoots(root, 'children'), /immediate receipt leaf/);
+});
+
+test('cleanup artifact traversal rejects malformed and symlinked trees', (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-artifact-invalid-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const partial = path.join(root, 'partial');
+  mkdirSync(partial);
+  writeFileSync(path.join(partial, 'planning-upload.json'), '{}\n');
+  assert.throws(() => cleanupArtifactRoots(root, 'recursive'), /incomplete or unexpected/);
+
+  rmSync(partial, { recursive: true });
+  const receipt = path.join(root, 'receipt');
+  fakeReceipt(receipt);
+  symlinkSync(path.join(receipt, 'final-upload.json'), path.join(root, 'receipt-link'));
+  assert.throws(() => cleanupArtifactRoots(root, 'recursive'), /contains a symlink/);
+});
+
+test('cleanup artifact traversal rejects empty, mixed, and over-deep trees', (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-artifact-bounds-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  assert.throws(() => cleanupArtifactRoots(root, 'recursive'), /directory is empty/);
+
+  mkdirSync(path.join(root, 'child'));
+  writeFileSync(path.join(root, 'unexpected.txt'), 'unexpected\n');
+  assert.throws(() => cleanupArtifactRoots(root, 'recursive'), /mixes receipt files/);
+
+  rmSync(root, { recursive: true });
+  mkdirSync(root);
+  let nested = root;
+  for (let depth = 0; depth < 10; depth += 1) {
+    nested = path.join(nested, `depth-${depth}`);
+    mkdirSync(nested);
+  }
+  fakeReceipt(path.join(nested, 'receipt'));
+  assert.throws(() => cleanupArtifactRoots(root, 'recursive'), /exceeds the depth limit/);
+});
+
+test('cleanup artifact traversal bounds the number of verified leaves', (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-artifact-count-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (let index = 0; index < 513; index += 1) {
+    fakeReceipt(path.join(root, `receipt-${String(index).padStart(3, '0')}`));
+  }
+  assert.throws(() => cleanupArtifactRoots(root, 'recursive'), /exceeds the receipt limit/);
+});
 
 test('cleanup invocation result preserves subprocess failures and accepted statuses', () => {
   const spawnError = Object.assign(new Error('stdout maxBuffer length exceeded'), {
@@ -173,6 +241,10 @@ test('CI cleanup evidence emits verified planning and final upload projections f
     assert.doesNotThrow(() => verifyCiCleanupUpload({
       artifactRoot: artifactDirectory, runtimeRoot: runnerTemp, checkoutRoot: CHECKOUT,
     }));
+    assert.deepEqual(verifyCiCleanupUploads({
+      artifactRoot: artifactDirectory, runtimeRoot: runnerTemp, checkoutRoot: CHECKOUT,
+      requireCleanupSuccess: true,
+    }), [artifactDirectory]);
 
     const forgedDirectory = path.join(runnerTemp, 'forged-artifacts');
     const forgedKeys = path.join(runnerTemp, 'forged-keys');

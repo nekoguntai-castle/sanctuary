@@ -231,6 +231,18 @@ test('phase smoke subjects fail closed and contain no direct Compose cleanup', (
   }
 });
 
+test('phase smoke subjects immediately register staging and defer mutation to the coordinator', () => {
+  for (const subject of [
+    'scripts/ops/phase2-alert-receiver-smoke.mjs',
+    'scripts/perf/phase3-compose-benchmark-smoke.mjs',
+  ]) {
+    const source = readFileSync(subject, 'utf8');
+    assert.match(source, /create-registered-staging\.sh/);
+    assert.doesNotMatch(source, /bounded-staging\.mjs|rmSync\([^)]*recursive/);
+    assert.doesNotMatch(source, /removeBoundedStagingDirectory|cleanupOwnedSslDirectory|rmSync\(/);
+  }
+});
+
 test('Compose smoke subjects register exact images before use and defer retirement to the outer owner', () => {
   for (const subject of [
     'scripts/ops/phase2-gateway-audit-compose-smoke.mjs',
@@ -323,7 +335,7 @@ esac
   assert.match(spoofedResult.statePath, new RegExp(`^${providerRoot}/sanctuary-cleanup/real-99-3/`));
 });
 
-test('alert receiver stamps generated Compose resources and Phase 6 deletion remains bounded', () => {
+test('alert receiver stamps generated resources and leaves host mutation to registered cleanup', () => {
   const alert = readFileSync(scripts[0][2], 'utf8');
   const gateway = readFileSync(scripts[1][2], 'utf8');
   const benchmark = readFileSync(scripts[2][2], 'utf8');
@@ -331,7 +343,9 @@ test('alert receiver stamps generated Compose resources and Phase 6 deletion rem
   assert.match(alert, /io\.sanctuary\.resource-class: compose_network/);
   assert.match(alert, /labels: \*container-ownership/);
   assert.match(alert, /labels: \*network-ownership/);
-  assert.match(alert, /rmSync\(tempDir, \{ recursive: true, force: true \}\)/);
-  assert.match(benchmark, /rmSync\(sslDir, \{ recursive: true, force: true \}\)/);
+  assert.match(alert, /create-registered-staging\.sh/);
+  assert.match(benchmark, /create-registered-staging\.sh/);
+  assert.doesNotMatch(alert, /cleanupAlertReceiverStaging|removeBoundedStagingDirectory/);
+  assert.doesNotMatch(benchmark, /cleanupOwnedSslDirectory|removeBoundedStagingDirectory/);
   assert.doesNotMatch(gateway, /rmSync\(/);
 });

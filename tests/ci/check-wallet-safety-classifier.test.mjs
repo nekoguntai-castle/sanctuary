@@ -30,6 +30,7 @@ test('checked-in classifier covers every hardware proof helper and emulator modu
   const proofFiles = [
     'config/hardware-emulator-source-inventory.json',
     'scripts/ci/hardware-emulator-source-inventory.mjs',
+    'scripts/ci/registered-start-gate.mjs',
     'tests/ci/check-hardware-emulator-source-inventory.test.mjs',
     ...recursiveFiles('server/tests/helpers').filter((path) =>
       /\/hardwareSigned[^/]*\.ts$/.test(path)

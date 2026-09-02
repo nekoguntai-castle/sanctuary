@@ -13,8 +13,10 @@ const root = mkdtempSync(path.join(tmpdir(), 'sanctuary-prepare-assets-test-'));
 try {
   const repo = path.join(root, 'repo');
   const output = path.join(root, 'output');
+  const stagingRoot = path.join(root, 'registered-staging');
   mkdirSync(repo);
   mkdirSync(output);
+  mkdirSync(stagingRoot, { mode: 0o700 });
   mkdirSync(path.join(repo, 'scripts/offline'), { recursive: true });
   copyFileSync(path.resolve('scripts/offline/apply-bundle.sh'), path.join(repo, 'scripts/offline/apply-bundle.sh'));
   copyFileSync(path.resolve('scripts/offline/bundle-common.sh'), path.join(repo, 'scripts/offline/bundle-common.sh'));
@@ -110,6 +112,7 @@ try {
     publicKey: publicKeyPath,
     repoRoot: repo,
     bundlePath: bundle,
+    stagingRoot,
     runId: 'test-run-1',
   });
   const manifest = JSON.parse(readFileSync(result.manifestPath, 'utf8'));
@@ -152,7 +155,7 @@ try {
   run('openssl', ['dgst', '-sha256', '-sign', privateKeyPath, '-out', `${bundle}.sig`, bundle]);
   assert.throws(() => prepareReleaseAssets({
     tag: 'v1.2.3-rc1', outputDir: path.join(root, 'unnamed-image'), signingKey: privateKeyPath,
-    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle,
+    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle, stagingRoot,
   }), /offline image archive does not restore/);
 
   writeImageArchive(malformedImagePath, imageInventory[expectedImages.indexOf(malformedImage)].archiveRef);
@@ -166,11 +169,11 @@ try {
   run('openssl', ['dgst', '-sha256', '-sign', privateKeyPath, '-out', `${bundle}.sig`, bundle]);
   assert.throws(() => prepareReleaseAssets({
     tag: 'v1.2.3-rc1', outputDir: path.join(root, 'wrong-identity'), signingKey: privateKeyPath,
-    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle,
+    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle, stagingRoot,
   }), /bundle identity does not match/);
   assert.throws(() => prepareReleaseAssets({
     tag: 'v1.2.3-rc1', outputDir: path.join(root, 'arm'), signingKey: privateKeyPath,
-    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle, platform: 'linux/arm64',
+    publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle, stagingRoot, platform: 'linux/arm64',
   }), /only linux\/amd64 is release-verified/);
   const sparse = path.join(root, 'large-sparse.bin');
   writeFileSync(sparse, '');

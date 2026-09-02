@@ -191,15 +191,10 @@ jobs:
       - name: Check lockfile peer resolution
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lockfile-peer-resolution.log" bash -euo pipefail <<'QUALITY_LOCKFILE_PEER'
-          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
-          peer_tmp_parent="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$peer_tmp_parent"
-          peer_workdir="$(mktemp -d "$peer_tmp_parent/sanctuary-peer-resolution.XXXXXX")"
-          trap 'rm -rf "$peer_workdir" || echo "::warning::Could not fully remove peer-resolution temp workspace"' EXIT
-
-          git clone --quiet --no-hardlinks "$source_workspace" "$peer_workdir/repo"
-          cd "$peer_workdir/repo"
-          npm_config_cache="$peer_workdir/.npm-cache" bash scripts/quality/check-lockfile-peer-resolution.sh
+          scripts/ci/run-in-isolated-workspace.sh lockfile-peer-resolution bash -euo pipefail <<'PEER_SUBJECT'
+          mkdir -p .tmp/npm-cache
+          npm_config_cache="$PWD/.tmp/npm-cache" bash scripts/quality/check-lockfile-peer-resolution.sh
+          PEER_SUBJECT
           QUALITY_LOCKFILE_PEER
 
       - name: Write lockfile peer failure breadcrumb
@@ -247,19 +242,13 @@ jobs:
       - name: Check npm deprecation inventory
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-deprecations.log" bash -euo pipefail <<'QUALITY_NPM_DEPRECATIONS'
-          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
-          source "$source_workspace/scripts/ci/redactor.sh"
-          warning_tmp_parent="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$warning_tmp_parent"
-          warning_workdir="$(mktemp -d "$warning_tmp_parent/sanctuary-npm-deprecations.XXXXXX")"
-          trap 'rm -rf "$warning_workdir" || echo "::warning::Could not fully remove npm-deprecation temp workspace"' EXIT
-
-          git clone --quiet --no-hardlinks "$source_workspace" "$warning_workdir/repo"
-          cd "$warning_workdir/repo"
-          install_log="$warning_workdir/npm-ci.log"
+          scripts/ci/run-in-isolated-workspace.sh npm-deprecations bash -euo pipefail <<'DEPRECATION_SUBJECT'
+          source scripts/ci/redactor.sh
+          mkdir -p .tmp/npm-cache
+          install_log="$PWD/.tmp/npm-ci.log"
           for attempt in 1 2 3; do
             echo "npm deprecation clean install, attempt $attempt"
-            if npm ci --strict-allow-scripts --ignore-scripts --audit=false --fund=false --cache "$warning_workdir/.npm-cache" >"$install_log" 2>&1; then
+            if npm ci --strict-allow-scripts --ignore-scripts --audit=false --fund=false --cache "$PWD/.tmp/npm-cache" >"$install_log" 2>&1; then
               break
             else
               install_status="$?"
@@ -273,20 +262,13 @@ jobs:
           redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"
           node scripts/ci/check-npm-install-scripts.mjs --verify-installed
           node scripts/ci/check-npm-deprecations.mjs --install-log "$install_log"
+          DEPRECATION_SUBJECT
           QUALITY_NPM_DEPRECATIONS
 
       - name: Run npm audit
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log" bash -euo pipefail <<'QUALITY_NPM_AUDIT'
-          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
-          audit_tmp_parent="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$audit_tmp_parent"
-          audit_workdir="$(mktemp -d "$audit_tmp_parent/sanctuary-audit.XXXXXX")"
-          trap 'rm -rf "$audit_workdir" || echo "::warning::Could not fully remove audit temp workspace"' EXIT
-
-          git clone --quiet --no-hardlinks "$source_workspace" "$audit_workdir/repo"
-          cd "$audit_workdir/repo"
-
+          scripts/ci/run-in-isolated-workspace.sh npm-audit bash -euo pipefail <<'AUDIT_SUBJECT'
           # One fail-closed policy owns every workspace and standalone lockfile.
           # Retrying the complete aggregate preserves global exception accounting.
           for attempt in 1 2 3; do
@@ -299,6 +281,7 @@ jobs:
             fi
             sleep $((attempt * 10))
           done
+          AUDIT_SUBJECT
           QUALITY_NPM_AUDIT
 
       - name: Write dependency audit failure breadcrumb
@@ -424,17 +407,20 @@ jobs:
         with:
           clean: false
 
-      - name: Install Semgrep
-        env:
-          SEMGREP_REPORT_DIR: /tmp/sanctuary-semgrep-${{ github.run_id }}
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-semgrep.log"
-          bash ${{ github.workspace }}/scripts/ci/install-semgrep.sh
-
       - name: Run Semgrep baseline gate
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/semgrep-baseline.log" bash -euo pipefail <<'QUALITY_SEMGREP'
-          rm -rf "$SEMGREP_REPORT_DIR"
+          scripts/ci/run-in-isolated-workspace.sh semgrep bash -euo pipefail <<'SEMGREP_SUBJECT'
+          export SANCTUARY_CI_TEMP_DIR_OVERRIDE="$PWD/.tmp/semgrep-tools"
+          mkdir -p "$SANCTUARY_CI_TEMP_DIR_OVERRIDE"
+          semgrep_env="$PWD/.tmp/semgrep.env"
+          : > "$semgrep_env"
+          GITHUB_ENV="$semgrep_env" scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-semgrep.log" \
+            bash "$GITHUB_WORKSPACE/scripts/ci/install-semgrep.sh"
+          set -a
+          source "$semgrep_env"
+          set +a
+          SEMGREP_REPORT_DIR="reports/semgrep"
           mkdir -p "$SEMGREP_REPORT_DIR"
 
           semgrep_status=0
@@ -465,30 +451,26 @@ jobs:
               break
             fi
             if [ "$attempt" -eq 3 ]; then
-              exit "$semgrep_status"
+              break
             fi
             sleep $((attempt * 10))
           done
 
-          node scripts/quality/check-semgrep-baseline.mjs "$SEMGREP_REPORT_DIR/semgrep.json" scripts/quality/semgrep-baseline.json
-          QUALITY_SEMGREP
-
-      - name: Upload Semgrep report
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: semgrep-report
-          path: /tmp/sanctuary-semgrep-${{ github.run_id }}/
-          if-no-files-found: ignore
-
-      - name: Clean Semgrep workspace
-        if: always()
-        run: |
-          if [ -n "${SEMGREP_WORKDIR:-}" ] && [ -d "$SEMGREP_WORKDIR" ]; then
-            rm -rf "$SEMGREP_WORKDIR" || echo "::warning::Could not fully remove Semgrep temp workspace"
+          baseline_status=0
+          if [ "$semgrep_status" -gt 1 ]; then
+            baseline_status="$semgrep_status"
+          else
+            node scripts/quality/check-semgrep-baseline.mjs \
+              "$SEMGREP_REPORT_DIR/semgrep.json" scripts/quality/semgrep-baseline.json || baseline_status="$?"
           fi
-          rm -rf "/tmp/sanctuary-semgrep-${{ github.run_id }}"
+
+          upload_status=0
+          scripts/ci/upload-artifact-from-subject.sh semgrep-report \
+            "$SEMGREP_REPORT_DIR" || upload_status="$?"
+          [ "$baseline_status" -ne 0 ] && exit "$baseline_status"
+          exit "$upload_status"
+          SEMGREP_SUBJECT
+          QUALITY_SEMGREP
 
       - name: Write Semgrep failure breadcrumb
         if: failure()
@@ -643,10 +625,15 @@ jobs:
 
       - name: Run CI classifier tests
         run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log" bash -euo pipefail <<'QUALITY_CI_CLASSIFIER_TESTS'
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log" \
+            scripts/ci/run-standalone-test-command.sh bash -euo pipefail <<'QUALITY_CI_CLASSIFIER_TESTS'
           ${{ github.workspace }}/scripts/ci/retry-command.sh "CI YAML parser dependencies" npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false
           # Production scripts (Phase 1-7 + pre-existing) — bash -n syntax sweep.
           bash -n scripts/ci/provider-context.sh
+          bash -n scripts/ci/create-registered-staging.sh
+          bash -n scripts/ci/registered-collector-process.sh
+          bash -n scripts/ci/upload-artifact-from-subject.sh
+          node --check scripts/ci/registered-start-gate.mjs
           bash -n scripts/ci/measure-wallclock.sh
           bash -n scripts/ci/classify-files-lib.sh
           bash -n scripts/ci/plan-test-run.sh
@@ -707,6 +694,10 @@ jobs:
           bash -n scripts/ci/cleanup-docker-resources.sh
           bash -n scripts/ci/cleanup-ci-callsite.sh
           bash -n scripts/ci/run-compose-e2e-subject.sh
+          bash -n scripts/ci/run-architecture-validation-subject.sh
+          bash -n scripts/ci/run-browser-e2e-subject.sh
+          bash -n scripts/ci/run-install-e2e-isolated-subject.sh
+          bash -n scripts/ci/run-upgrade-baseline-isolated-subject.sh
           bash -n scripts/ci/run-docker-test-subject.sh
           bash -n scripts/ci/install-playwright-chromium.sh
           bash -n scripts/ci/retry-playwright-infrastructure-failure.sh
@@ -731,6 +722,8 @@ jobs:
           bash -n scripts/ci/run-quality-lint.sh
           bash -n scripts/ci/redactor.sh
           bash -n scripts/ci/run-with-log.sh
+          bash -n scripts/ci/run-standalone-test-command.sh
+          bash -n scripts/ci/run-install-unit-suite.sh
           bash -n scripts/ci/run-install-unit-tests.sh
           bash -n scripts/ci/write-preflight-diagnostics.sh
           bash -n scripts/ci/write-empty-diagnostic-breadcrumb.sh
@@ -740,6 +733,10 @@ jobs:
           bash -n scripts/verify-addresses/verify-repeatable.sh
           # Test files — bash -n syntax sweep.
           bash -n tests/ci/provider-context.test.sh
+          bash -n tests/ci/registered-staging.test.sh
+          bash -n tests/ci/registered-collector-process.test.sh
+          bash -n tests/ci/upload-artifact-from-subject.test.sh
+          bash -n tests/ci/isolated-subject-drivers.test.sh
           bash -n tests/ci/actionlint-shellcheck.test.sh
           bash -n tests/ci/measure-wallclock.test.sh
           bash -n tests/ci/plan-test-run.test.sh
@@ -831,6 +828,10 @@ jobs:
           node tests/ci/provider-context-node.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
+          bash tests/ci/registered-staging.test.sh
+          bash tests/ci/registered-collector-process.test.sh
+          bash tests/ci/upload-artifact-from-subject.test.sh
+          bash tests/ci/isolated-subject-drivers.test.sh
           bash tests/ci/actionlint-shellcheck.test.sh
           bash tests/ci/measure-wallclock.test.sh
           bash tests/ci/plan-test-run.test.sh
@@ -1004,28 +1005,24 @@ jobs:
         # Uses config/tooling/jscpd.json. Config owns threshold and
         # exclusions. Installing via npx keeps the repo devDependencies
         # lean; pin to a known-good major version to avoid drift.
-        env:
-          JSCPD_REPORT_DIR: /tmp/sanctuary-jscpd-${{ github.run_id }}
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jscpd.log" bash -euo pipefail <<'QUALITY_JSCPD'
-          rm -rf "$JSCPD_REPORT_DIR"
-          QUALITY_JSCPD_OUTPUT_DIR="$JSCPD_REPORT_DIR" \
-            scripts/ci/run-in-isolated-workspace.sh --keep-on-failure jscpd \
-              scripts/ci/retry-command.sh "quality jscpd" scripts/quality/jscpd-only.sh
+          scripts/ci/run-in-isolated-workspace.sh jscpd bash -euo pipefail <<'JSCPD_SUBJECT'
+          export SANCTUARY_CI_TEMP_DIR_OVERRIDE="$PWD/.tmp/jscpd-tools"
+          mkdir -p "$SANCTUARY_CI_TEMP_DIR_OVERRIDE"
+          jscpd_status=0
+          QUALITY_JSCPD_OUTPUT_DIR=reports/jscpd \
+            scripts/ci/retry-command.sh "quality jscpd" scripts/quality/jscpd-only.sh || jscpd_status="$?"
+
+          upload_status=0
+          if [ -d reports/jscpd ]; then
+            scripts/ci/upload-artifact-from-subject.sh jscpd-report reports/jscpd \
+              || upload_status="$?"
+          fi
+          [ "$jscpd_status" -ne 0 ] && exit "$jscpd_status"
+          exit "$upload_status"
+          JSCPD_SUBJECT
           QUALITY_JSCPD
-
-      - name: Upload jscpd report
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: jscpd-report
-          path: /tmp/sanctuary-jscpd-${{ github.run_id }}/
-          if-no-files-found: ignore
-
-      - name: Clean jscpd report
-        if: always()
-        run: rm -rf "/tmp/sanctuary-jscpd-${{ github.run_id }}"
 
       - name: Write jscpd failure breadcrumb
         if: failure()
@@ -1291,7 +1288,6 @@ jobs:
 
             if bash scripts/ci/report-workflow-trends.sh "${args[@]}" >"$markdown_file" 2>"$error_file"; then
               status='success'
-              rm -f "$error_file"
             else
               status='error'
               echo "::warning::Could not collect CI performance cohort $slug; see artifact diagnostics"

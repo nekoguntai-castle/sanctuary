@@ -898,13 +898,89 @@ change_password() {
 # ============================================
 
 # Create a clean test directory
+install_owner_only_directory() {
+    local directory="$1" resolved owner mode
+    [ -d "$directory" ] && [ ! -L "$directory" ] || return 1
+    resolved="$(cd "$directory" && pwd -P)" || return 1
+    owner="$(stat -c '%u' -- "$directory")" || return 1
+    mode="$(stat -c '%a' -- "$directory")" || return 1
+    [ "$resolved" = "$directory" ] \
+        && [ "$owner" = "${UID:-$(id -u)}" ] && [ "$mode" = "700" ]
+}
+
+install_create_exact_private_child() {
+    local parent="$1" child="$2"
+    install_owner_only_directory "$parent" || return 1
+    [ "$(dirname -- "$child")" = "$parent" ] && [ ! -e "$child" ] && [ ! -L "$child" ] \
+        || return 1
+    (umask 077; mkdir -- "$child") || return 1
+    install_owner_only_directory "$child"
+}
+
+install_test_root_parent() {
+    local root="$1" parent grandparent
+    parent="$(dirname -- "$root")"
+    if [ ! -e "$parent" ]; then
+        [ "$(basename -- "$parent")" = ".tmp" ] || return 1
+        grandparent="$(dirname -- "$parent")"
+        install_create_exact_private_child "$grandparent" "$parent" || return 1
+    fi
+    install_owner_only_directory "$parent" || return 1
+    printf '%s\n' "$parent"
+}
+
+prepare_install_test_root() {
+    local root="$1"
+
+    # /tmp itself is shared and cannot be execution authority. Coordinated local
+    # runs already have an owner-only runtime; use it as the controlled parent.
+    if [ "$root" = "/tmp" ]; then
+        local runtime="${SANCTUARY_RUNTIME_DIR:-}" staging_parent
+        install_owner_only_directory "$runtime" || return 1
+        staging_parent="$runtime/install-test-roots"
+        if [ ! -e "$staging_parent" ]; then
+            install_create_exact_private_child "$runtime" "$staging_parent" || return 1
+        fi
+        install_owner_only_directory "$staging_parent" || return 1
+        root="$staging_parent/$(install_test_root_name)"
+    fi
+
+    [ -n "$root" ] && [ "$root" != "/" ] && [ "$root" = "${root%/}" ] \
+        && [ "$root" = "$(dirname -- "$root")/$(basename -- "$root")" ] || return 1
+    [ -z "${HOME:-}" ] || [ "$root" != "$HOME" ] || return 1
+    [ -z "${PROJECT_ROOT:-}" ] || [ "$root" != "$PROJECT_ROOT" ] || return 1
+    install_test_root_parent "$root" >/dev/null || return 1
+    if [ -e "$root" ] || [ -L "$root" ]; then
+        install_owner_only_directory "$root" || return 1
+    else
+        install_create_exact_private_child "$(dirname -- "$root")" "$root" || return 1
+    fi
+    printf '%s\n' "$root"
+}
+
+register_install_temporary_artifact() {
+    local artifact="$1" authority_bundle execution_authority immutable_identity
+
+    [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ] || return 0
+    authority_bundle="$(node "$SANCTUARY_OWNERSHIP_TOOL_DIR/describe-host-authority.mjs" \
+        temporary "$artifact" "$SANCTUARY_OPERATION_RUN_ID")" || return 1
+    execution_authority="$(printf '%s' "$authority_bundle" | jq -c '.executionAuthority')" || return 1
+    immutable_identity="$(printf '%s' "$authority_bundle" | jq -r '.immutableIdentity')" || return 1
+    register_owned_resource temporary_artifact obsolete exact_delete path \
+        "$artifact" "$immutable_identity" --execution-authority "$execution_authority" \
+        "$SANCTUARY_OPERATION_RUN_ID"
+}
+
 create_test_directory() {
     local base_dir="${1:-/tmp}"
     local prefix="${2:-sanctuary-test}"
+    local test_dir
 
-    mkdir -p "$base_dir"
-    local test_dir=$(mktemp -d "${base_dir}/${prefix}-XXXXXX")
-    echo "$test_dir"
+    base_dir="$(prepare_install_test_root "$base_dir")" || return 1
+    test_dir=$(mktemp -d "${base_dir}/${prefix}-XXXXXX") || return 1
+    chmod 700 "$test_dir"
+    register_install_temporary_artifact "$test_dir" || return 1
+    printf '%s\n' "$test_dir"
 }
 
 # Pick a default install-test scratch root. Forgejo/GitHub Actions jobs that

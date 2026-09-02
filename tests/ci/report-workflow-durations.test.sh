@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT_DIR/scripts/ci/report-workflow-durations.sh"
+COORDINATOR="$ROOT_DIR/scripts/ci/cleanup-ci-callsite.sh"
 TEST_TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_TEMP_DIR"' EXIT
 
@@ -83,8 +84,22 @@ printf '200'
 CURL
 chmod +x "$TEST_TEMP_DIR/bin/curl"
 
+run_coordinated_report() {
+  local lane="$1"
+  local provider="$TEST_TEMP_DIR/provider-$lane"
+  shift
+  mkdir -m 700 "$provider"
+  SANCTUARY_LOCAL_CLEANUP_AUTHORITY=1 \
+  SANCTUARY_LOCAL_CLEANUP_RUN_ID="report-workflow-durations-$lane" \
+  SANCTUARY_CI_TEMP_DIR_OVERRIDE="$provider" \
+    bash "$COORDINATOR" run --engine host --lane "duration-$lane" \
+      --runtime "$provider/runtime" --artifact-dir "$TEST_TEMP_DIR/artifacts-$lane" \
+      --checkout-root "$ROOT_DIR" -- "$@"
+}
+
 run_case() {
   local api_url="$1"
+  local lane="$2"
   : > "$TEST_TEMP_DIR/urls.log"
   PATH="$TEST_TEMP_DIR/bin:$PATH" \
     DURATION_URL_LOG="$TEST_TEMP_DIR/urls.log" \
@@ -93,21 +108,30 @@ run_case() {
     FORGEJO_REPOSITORY='owner/repo' \
     FORGEJO_TOKEN='test-token' \
     FORGEJO_REPORT_TOKEN='preexported' \
-    bash "$SCRIPT" 42 > "$TEST_TEMP_DIR/output.md"
+    run_coordinated_report "$lane" bash "$SCRIPT" 42 > "$TEST_TEMP_DIR/output.md"
   assert_contains "$TEST_TEMP_DIR/output.md" '2m 5s | success | Slow \| Job'
   assert_contains "$TEST_TEMP_DIR/output.md" 'n/a | failure | Clock skew'
   assert_contains "$TEST_TEMP_DIR/output.md" 'n/a | skipped | Skipped'
   assert_contains "$TEST_TEMP_DIR/urls.log" "$api_url"
   assert_contains "$TEST_TEMP_DIR/urls.log" 'actions/tasks?page=2&limit=50'
+  [ ! -e "$TEST_TEMP_DIR/provider-$lane/runtime/subject-staging" ] \
+    || fail 'coordinator left registered duration-report staging behind'
 }
 
-run_case 'https://forge.example/api/v1'
-run_case 'https://forge.example'
+if PATH="$TEST_TEMP_DIR/bin:$PATH" DURATION_URL_LOG="$TEST_TEMP_DIR/urls.log" \
+    FORGEJO_API_URL='https://forge.example' FORGEJO_REPOSITORY='owner/repo' \
+    FORGEJO_TOKEN='test-token' bash "$SCRIPT" 42 >"$TEST_TEMP_DIR/uncoordinated" 2>&1; then
+  fail 'uncoordinated duration report unexpectedly created staging'
+fi
+assert_contains "$TEST_TEMP_DIR/uncoordinated" 'could not create registered report staging'
+
+run_case 'https://forge.example/api/v1' api-v1
+run_case 'https://forge.example' root-api
 
 PATH="$TEST_TEMP_DIR/bin:$PATH" DURATION_URL_LOG="$TEST_TEMP_DIR/urls.log" \
   DURATION_RUN_STATUS='cancelled' FORGEJO_API_URL='https://forge.example' \
   FORGEJO_REPOSITORY='owner/repo' FORGEJO_TOKEN='test-token' \
-  bash "$SCRIPT" 42 > "$TEST_TEMP_DIR/cancelled.md"
+  run_coordinated_report cancelled bash "$SCRIPT" 42 > "$TEST_TEMP_DIR/cancelled.md"
 assert_contains "$TEST_TEMP_DIR/cancelled.md" 'n/a | cancelled | Cancelled before start'
 
 if FORGEJO_API_URL='https://forge.example' FORGEJO_REPOSITORY='owner/repo' \
@@ -121,13 +145,13 @@ fi
 if PATH="$TEST_TEMP_DIR/bin:$PATH" DURATION_URL_LOG="$TEST_TEMP_DIR/urls.log" \
   DURATION_RUN_STATUS='running' FORGEJO_API_URL='https://forge.example' \
   FORGEJO_REPOSITORY='owner/repo' FORGEJO_TOKEN='test-token' \
-  bash "$SCRIPT" 42 >/dev/null 2>&1; then
+  run_coordinated_report running bash "$SCRIPT" 42 >/dev/null 2>&1; then
   fail 'running workflow unexpectedly produced final durations'
 fi
 if PATH="$TEST_TEMP_DIR/bin:$PATH" DURATION_URL_LOG="$TEST_TEMP_DIR/urls.log" \
   DURATION_RUN_STATUS='blocked' FORGEJO_API_URL='https://forge.example' \
   FORGEJO_REPOSITORY='owner/repo' FORGEJO_TOKEN='test-token' \
-  bash "$SCRIPT" 42 >/dev/null 2>&1; then
+  run_coordinated_report blocked bash "$SCRIPT" 42 >/dev/null 2>&1; then
   fail 'blocked workflow unexpectedly produced final durations'
 fi
 

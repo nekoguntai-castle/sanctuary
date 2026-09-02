@@ -37,11 +37,12 @@ const PHASE_SIX_RESOURCE_CLASSES = new Set([
   'collector_process', 'git_worktree', 'temporary_artifact',
 ]);
 const REQUIRED_CALLSITE_PATHS = [
-  '.github/workflows/install-test.yml',
   '.github/workflows/podman-socket-canary.yml',
   '.github/workflows/release-candidate.yml',
   '.github/workflows/verify-vectors.yml',
   'scripts/ci/observe-runtime-image-cves.sh',
+  'scripts/ci/run-install-e2e-isolated-subject.sh',
+  'scripts/ci/run-upgrade-baseline-isolated-subject.sh',
   'scripts/ci/run-extended-upgrade-fixtures.sh',
   'scripts/ops/grafana-quiescence-records.sh',
   'scripts/ops/run-grafana-password-migration.sh',

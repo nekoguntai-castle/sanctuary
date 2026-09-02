@@ -146,6 +146,19 @@ test('network, volume, and image transitions require exact approved container re
       ...(proofLoader ? { loadVolumeRegistrationProof: proofLoader } : {}),
     }), { state: 'eligible', row: clearedRow, derivedFromResultDigest: predecessor });
 
+    const absent = await reloadDockerActionAuthority({
+      action: dependent, phase: 'fresh_eligibility', predecessorResultDigest: predecessor,
+      approvedActions, loadInventory: async () => inventory([]),
+      ...(proofLoader ? { loadVolumeRegistrationProof: proofLoader } : {}),
+    });
+    if (resourceClass === 'compose_volume') {
+      assert.deepEqual(absent, { state: 'refused', failureClass: 'identity_changed' });
+    } else {
+      assert.equal(absent.state, 'absent');
+      assert.match(absent.postconditionDigest, /^[a-f0-9]{64}$/);
+      assert.equal(absent.derivedFromResultDigest, predecessor);
+    }
+
     const foreignRow = row(dependent, {
       observationDigest: C, dependencyIdentities: [C],
       ...(resourceClass === 'compose_volume' ? { contentDigests: [B, C] } : {}),

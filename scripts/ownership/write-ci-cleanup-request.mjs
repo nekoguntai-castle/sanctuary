@@ -39,7 +39,10 @@ export function writeCiCleanupRequest(values) {
   if (!['coordinator_managed', 'deployment_managed_by_subject'].includes(request.authorityMode)) {
     throw new Error('--authority-mode is invalid');
   }
-  if (values.engine) request.engine = values.engine;
+  if (values.engine) {
+    if (!['docker', 'podman', 'host'].includes(values.engine)) throw new Error('--engine is invalid');
+    request.engine = values.engine;
+  }
   if (legacyFixtureRequested(values, request.authorityMode)) request.legacyFixtureCreationWitness = true;
   if (['finish', 'recover'].includes(values.mode)) {
     if (!values.state || !/^(?:0|[1-9][0-9]{0,2})$/.test(values.status ?? '')) {

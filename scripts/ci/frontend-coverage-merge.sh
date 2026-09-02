@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+REGISTERED_STAGING="$SCRIPT_DIR/create-registered-staging.sh"
+CLEANUP_COORDINATOR="$SCRIPT_DIR/cleanup-ci-callsite.sh"
+
 fail() {
   echo "frontend-coverage-merge: $*" >&2
   exit 1
 }
 
-MERGE_REPORTS_DIR=''
-
-cleanup_merge_reports_dir() {
-  if [ -n "$MERGE_REPORTS_DIR" ]; then
-    rm -rf "$MERGE_REPORTS_DIR"
-  fi
-}
-
 main() {
+  if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+    exec "$CLEANUP_COORDINATOR" auto-run --lane frontend-coverage-merge --engine host \
+      --checkout-root "$PROJECT_ROOT" -- bash "$0" "$@"
+  fi
   if [ "$#" -gt 1 ]; then
     fail 'expected zero or one blob report directory argument'
   fi
@@ -50,20 +51,20 @@ main() {
     fail "Vitest binary not found in ./node_modules/.bin or ../node_modules/.bin; run npm ci first"
   fi
 
-  MERGE_REPORTS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/frontend-coverage-reports.XXXXXX")"
-  trap cleanup_merge_reports_dir EXIT
+  local merge_reports_dir
+  merge_reports_dir="$($REGISTERED_STAGING frontend-coverage-merge)"
 
   for blob in "$reports_dir"/blob-*.json; do
     if [ -f "$blob" ]; then
-      cp "$blob" "$MERGE_REPORTS_DIR/"
+      cp "$blob" "$merge_reports_dir/"
     fi
   done
 
-  rm -rf coverage
+  [ ! -e coverage ] || fail 'refusing stale frontend coverage output directory: coverage'
   "$vitest_bin" run \
     --config config/tooling/vitest.config.ts \
     --coverage \
-    --mergeReports "$MERGE_REPORTS_DIR"
+    --mergeReports "$merge_reports_dir"
 
   if [ ! -f coverage/coverage-summary.json ]; then
     fail 'expected merged frontend coverage summary at coverage/coverage-summary.json'

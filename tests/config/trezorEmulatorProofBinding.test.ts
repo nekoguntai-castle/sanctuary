@@ -68,7 +68,11 @@ describe("Trezor emulator proof publish binding", () => {
     expect(runner).toContain('componentNames | any(. == "Podman Engine")');
     expect(runner).toContain("docker-exec-tcp-forwarder.mjs");
     expect(runner).toContain("trezor_transport='docker-exec-loopback'");
-    expect(runner).toContain('kill -KILL "$forwarder_pid"');
+    expect(runner).toContain('registered-collector-process.sh" register');
+    expect(runner).toContain("--control-token");
+    expect(runner).toContain("finish_forwarder");
+    expect(runner).not.toContain("bounded-child-process.mjs");
+    expect(runner).not.toContain('kill -KILL "$forwarder_pid"');
     expect(runner).toContain("check-trezor-transport-provenance.sh");
     expect(runner).not.toContain("-p 9001/tcp -p 21326/tcp");
   });
