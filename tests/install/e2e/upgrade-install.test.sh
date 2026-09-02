@@ -145,7 +145,8 @@ if ! validate_upgrade_fixture "$UPGRADE_FIXTURE"; then
     exit 1
 fi
 
-install_e2e_cleanup_auto_run install-upgrade "$TARGET_PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
+install_e2e_cleanup_auto_run deployment_managed_by_subject install-upgrade \
+    "$TARGET_PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)

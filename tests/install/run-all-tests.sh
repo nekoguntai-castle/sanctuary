@@ -25,8 +25,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source helpers
 source "$SCRIPT_DIR/utils/helpers.sh"
-INSTALL_E2E_ARGS=("$@")
-
 # ============================================
 # Configuration
 # ============================================
@@ -90,11 +88,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-if [ "$RUN_E2E" = "true" ]; then
-    install_e2e_cleanup_auto_run install-e2e-suite \
-        "$(cd "$SCRIPT_DIR/../.." && pwd)" "$0" "${INSTALL_E2E_ARGS[@]}"
-fi
 
 # Track results
 TOTAL_SUITES=0
@@ -194,42 +187,24 @@ run_unit_suites() {
 
 run_e2e_suites() {
     local suite_failed=false
-    local cleanup_arg=""
 
     if [ "$SKIP_CLEANUP" = "true" ]; then
-        cleanup_arg="--keep-containers"
+        log_error "--skip-cleanup is incompatible with receipt-bound E2E cleanup"
+        return 2
     fi
 
-    if ! run_test_suite "Fresh Install E2E" "$SCRIPT_DIR/e2e/fresh-install.test.sh" "$cleanup_arg"; then
+    if ! run_test_suite "Fresh Install, Container Health, and Auth Flow" \
+        "$SCRIPT_DIR/e2e/run-fresh-install-stack.sh"; then
         suite_failed=true
     fi
 
-    if [ "$suite_failed" = "false" ] || [ "$SKIP_CLEANUP" = "true" ]; then
-        if ! run_test_suite "Container Health" "$SCRIPT_DIR/e2e/container-health.test.sh"; then
-            suite_failed=true
-        fi
-    fi
-
-    if [ "$suite_failed" = "false" ] || [ "$SKIP_CLEANUP" = "true" ]; then
-        if ! run_test_suite "Auth Flow" "$SCRIPT_DIR/e2e/auth-flow.test.sh"; then
-            suite_failed=true
-        fi
-    fi
-
     if [ "$FAST_MODE" = "false" ]; then
-        local upgrade_args="$cleanup_arg --fixture $UPGRADE_FIXTURE"
+        local upgrade_args="--fixture $UPGRADE_FIXTURE"
         if ! run_test_suite "Upgrade Install" "$SCRIPT_DIR/e2e/upgrade-install.test.sh" "$upgrade_args"; then
             suite_failed=true
         fi
     else
         log_info "Skipping upgrade test (fast mode)"
-    fi
-
-    if [ "$SKIP_CLEANUP" = "false" ]; then
-        log_info "Cleaning up containers..."
-        local cleanup_project="${COMPOSE_PROJECT_NAME:-sanctuary-run-all-$(generate_test_run_id)}"
-        COMPOSE_PROJECT_NAME="$cleanup_project" \
-            cleanup_containers "$(cd "$SCRIPT_DIR/../.." && pwd)" 2>/dev/null || true
     fi
 
     [ "$suite_failed" = "false" ]

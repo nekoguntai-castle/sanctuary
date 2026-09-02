@@ -62,7 +62,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-install_e2e_cleanup_auto_run install-fresh "$PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
+install_e2e_cleanup_auto_run coordinator_managed install-fresh \
+    "$PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
@@ -93,6 +94,17 @@ TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
 declare -a FAILED_TESTS
+compose_registered=false
+readonly -a COMPOSE_REGISTRATION_ARGS=(
+    --expected-image sanctuary-backend
+    --expected-image sanctuary-frontend
+    --expected-image sanctuary-gateway
+    --expected-image sanctuary-llm-egress-proxy
+    --expected-volume backup_data
+    --expected-volume postgres_data
+    --expected-volume redis_data
+    --expected-volume support_capture_runtime
+)
 
 # Shared authentication state (cookie-based, Phase 6 auth)
 # The backend sets HttpOnly sanctuary_access + sanctuary_refresh cookies
@@ -172,6 +184,7 @@ setup() {
     fi
 
     setup_cleanup_trap "teardown"
+    setup_cleanup_registration_exit_trap "register_fresh_cleanup_resources"
 }
 
 teardown() {
@@ -435,6 +448,37 @@ test_docker_compose_up() {
 }
 
 # ============================================
+# Test: Cleanup Resource Registration
+# ============================================
+
+test_cleanup_resource_registration() {
+    log_info "Registering exact Fresh Install resources for receipt-bound cleanup..."
+
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Fresh Install resource registration requires coordinated cleanup"
+        return 1
+    fi
+
+    register_fresh_cleanup_resources
+}
+
+register_fresh_cleanup_resources() {
+    if [ "$compose_registered" = "true" ]; then
+        return 0
+    fi
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Fresh Install resource registration requires coordinated cleanup"
+        return 1
+    fi
+    local -a registration_args=("${COMPOSE_REGISTRATION_ARGS[@]}")
+    if [ "${SANCTUARY_INSTALL_TEST_SIGNALLED:-0}" = "1" ]; then
+        registration_args=(--interrupt-fallback "${registration_args[@]}")
+    fi
+    register_ci_compose_resources "${registration_args[@]}" || return $?
+    compose_registered=true
+}
+
+# ============================================
 # Test: Database Container Health
 # ============================================
 
@@ -680,7 +724,7 @@ test_password_change_flow() {
     fi
 
     # Change password using cookie auth + CSRF token (state-changing POST)
-    local new_password="NewSecurePassword123!"
+    local new_password="${SANCTUARY_FRESH_INSTALL_CHANGED_PASSWORD:-NewSecurePassword123!}"
     local change_response=$(curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -H "X-CSRF-Token: $CSRF_TOKEN" \
@@ -818,6 +862,9 @@ main() {
     run_test "Environment Variable Generation" test_environment_variable_generation
     run_test "Docker Compose Build" test_docker_compose_build
     run_test "Docker Compose Up" test_docker_compose_up
+    # This runs even when Build/Up recorded a failure so any partially created
+    # exact resources receive signed registration before coordinator cleanup.
+    run_test "Cleanup Resource Registration" test_cleanup_resource_registration
     run_test "Database Container Health" test_database_container_health
     run_test "Migration Container" test_migration_container
     run_test "Backend Container Health" test_backend_container_health

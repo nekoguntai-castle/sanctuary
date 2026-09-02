@@ -37,6 +37,23 @@ if SANCTUARY_INSTALL_SUBJECT_MODE=invalid PORT_OFFSET=0 JOB_LOG_DIR="$TEST_ROOT/
   fail 'install driver accepted an invalid mode'
 fi
 
+snapshot_source="$TEST_ROOT/snapshot-source"
+snapshot_clone="$TEST_ROOT/snapshot-clone"
+mkdir -p "$snapshot_source"
+git -C "$snapshot_source" init --quiet
+git -C "$snapshot_source" config user.email test@example.invalid
+git -C "$snapshot_source" config user.name 'Test User'
+printf '%s\n' committed > "$snapshot_source/input"
+git -C "$snapshot_source" add input
+git -C "$snapshot_source" commit --quiet -m initial
+git clone --quiet "$snapshot_source" "$snapshot_clone"
+printf '%s\n' dirty > "$snapshot_source/input"
+if SANCTUARY_CI_ORIGINAL_WORKSPACE="$snapshot_source" \
+  bash -c 'source "$1/scripts/ci/run-install-e2e-isolated-subject.sh"; WORKSPACE="$2"; assert_source_snapshot_current' \
+    _ "$REPO_ROOT" "$snapshot_clone" >/dev/null 2>&1; then
+  fail 'install driver accepted a stale isolated snapshot from a dirty source'
+fi
+
 set +e
 fresh_failure_output=$(SANCTUARY_INSTALL_SUBJECT_MODE=fresh-install PORT_OFFSET=0 \
   JOB_LOG_DIR="$TEST_ROOT/install-failure-logs" \
@@ -46,6 +63,7 @@ fresh_failure_output=$(SANCTUARY_INSTALL_SUBJECT_MODE=fresh-install PORT_OFFSET=
     calls=0
     run_supervised() {
       calls=$((calls + 1))
+      printf "lane=%s authority=%s\n" "$1" "$4"
       (( calls == 1 )) && return 17
       return 0
     }
@@ -58,8 +76,19 @@ fresh_failure_status=$?
 set -e
 [[ $fresh_failure_status -eq 17 ]] || \
   fail "fresh-install failure was replaced by status $fresh_failure_status"
-[[ $fresh_failure_output == 'calls=1' ]] || \
+[[ $fresh_failure_output == $'lane=fresh-install authority=\ncalls=1' ]] || \
   fail "install script ran after fresh-install failure: $fresh_failure_output"
+
+install_authority_output=$(SANCTUARY_INSTALL_SUBJECT_MODE=fresh-install PORT_OFFSET=0 \
+  JOB_LOG_DIR="$TEST_ROOT/install-authority-logs" \
+  SANCTUARY_RUN_FRESH_INSTALL=false SANCTUARY_RUN_INSTALL_SCRIPT=true \
+  bash -c '
+    source "$1/scripts/ci/run-install-e2e-isolated-subject.sh"
+    run_supervised() { printf "lane=%s authority=%s\n" "$1" "$4"; }
+    run_fresh_install
+  ' _ "$REPO_ROOT")
+[[ $install_authority_output == 'lane=install-script authority=deployment_managed_by_subject' ]] || \
+  fail "install script lost subject-managed cleanup authority: $install_authority_output"
 
 SANCTUARY_LOCAL_CLEANUP_AUTHORITY=1 \
 SANCTUARY_LOCAL_CLEANUP_RUN_ID=isolated-install-port-test \

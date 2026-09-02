@@ -2494,6 +2494,13 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
+      "path": "tests/install/unit/install-script.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test signals only its own private subshell to verify bounded cleanup-registration trap behavior."
+    },
+    {
       "path": "tests/ownership/ci-cleanup-coordinator.test.mjs",
       "resourceClass": "collector_process",
       "operation": "cleanup",

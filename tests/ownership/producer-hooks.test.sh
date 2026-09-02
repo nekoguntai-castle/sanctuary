@@ -209,16 +209,22 @@ original_register_exact_built_image="$(declare -f register_exact_built_image)"
 original_register_exact_built_image_id="$(declare -f register_exact_built_image_id)"
 original_ownership_bounded_image_inspect="$(declare -f ownership_bounded_image_inspect)"
 original_retire_exact_built_image="$(declare -f retire_exact_built_image)"
+original_ownership_new_image_deadline="$(declare -f ownership_new_image_deadline)"
 compose_image_calls="$(mktemp)"
 compose_list_state="$(mktemp)"
 compose_recover_frontend_available=1
+compose_recover_backend_available=1
+
 export SANCTUARY_BUILD_ID=test-run SANCTUARY_IMAGE_TAG=test-run COMPOSE_PROJECT_NAME=test-compose
 compose_deadline=9999999999999
 sleep() { :; }
 recover_exact_loaded_image() {
   printf 'recover %s %s\n' "$1" "$2" >> "$compose_image_calls"
   case "$1" in
-    sanctuary-backend:test-run) printf 'sha256:%064d\n' 1 ;;
+    sanctuary-backend:test-run)
+      [ "$compose_recover_backend_available" -eq 1 ] || return 1
+      printf 'sha256:%064d\n' 1
+      ;;
     sanctuary-frontend:test-run)
       [ "$compose_recover_frontend_available" -eq 1 ] || return 1
       printf 'sha256:%064d\n' 2
@@ -234,6 +240,34 @@ recover_exact_loaded_image_id() {
 }
 register_exact_built_image() { printf 'register %s %s\n' "$1" "$2" >> "$compose_image_calls"; }
 register_exact_built_image_id() { printf 'register-id %s\n' "$1" >> "$compose_image_calls"; }
+
+# An incomplete expected set may exhaust discovery, but observed partial images
+# must still be recovered under a fresh registration budget.
+ownership_new_image_deadline() { printf '%s\n' 9999999999999; }
+list_ci_compose_lane_images() { printf 'sha256:%064d\t%s\n' 1 'sanctuary-backend:test-run'; }
+: > "$compose_image_calls"
+set +e
+register_ci_compose_images 0 0 \
+  sanctuary-backend:test-run sanctuary-frontend:test-run 2>/dev/null
+expired_discovery_status=$?
+set -e
+test "$expired_discovery_status" -ne 0
+grep -Fq 'register sanctuary-backend:test-run' "$compose_image_calls"
+
+# Candidate order must not matter: an earlier missing expectation cannot spend
+# the later observed image's recovery budget.
+list_ci_compose_lane_images() { printf 'sha256:%064d\t%s\n' 2 'sanctuary-frontend:test-run'; }
+compose_recover_backend_available=0
+: > "$compose_image_calls"
+set +e
+register_ci_compose_images 0 0 \
+  sanctuary-backend:test-run sanctuary-frontend:test-run 2>/dev/null
+reverse_partial_status=$?
+set -e
+test "$reverse_partial_status" -ne 0
+grep -Fq 'register sanctuary-frontend:test-run' "$compose_image_calls"
+compose_recover_backend_available=1
+eval "$original_ownership_new_image_deadline"
 
 printf '0\n' > "$compose_list_state"
 list_ci_compose_lane_images() { :; }
@@ -254,6 +288,15 @@ list_ci_compose_lane_images() {
 : > "$compose_image_calls"
 printf '0\n' > "$compose_list_state"
 register_ci_compose_images 0 "$compose_deadline" sanctuary-backend:test-run sanctuary-frontend:test-run
+test "${#REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}" -eq 2
+test "$(grep -Fc 'register ' "$compose_image_calls")" -eq 2
+
+list_ci_compose_lane_images() {
+  printf 'sha256:%064d\t%s\n' 1 'sanctuary-backend:test-run'
+  printf 'sha256:%064d\t%s\n' 2 'sanctuary-frontend:test-run'
+}
+: > "$compose_image_calls"
+register_observed_ci_compose_images "$compose_deadline"
 test "${#REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}" -eq 2
 test "$(grep -Fc 'register ' "$compose_image_calls")" -eq 2
 
@@ -547,14 +590,62 @@ unset -f docker inspect_owned_ci_volume register_owned_resource
 eval "$original_ownership_run_docker_before_deadline"
 
 registration_chain_calls="$(mktemp)"
+registration_deadline_calls="$(mktemp)"
+
+# Volume discovery and every exact recovery have independent budgets so slow
+# signing or an earlier missing volume cannot starve later observed volumes.
+(
+  volume_calls="$(mktemp)"
+  volume_deadline_counter="$(mktemp)"
+  printf '%s\n' 0 > "$volume_deadline_counter"
+  ownership_new_image_deadline() {
+    local count
+    count="$(cat "$volume_deadline_counter")"
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$volume_deadline_counter"
+    printf 'volume-deadline-%s\n' "$count"
+  }
+  ownership_run_docker_before_deadline() {
+    local deadline="$1"; shift
+    if [ "$1 $2" = 'volume ls' ]; then
+      printf '%s\n' volume-a volume-b
+    else
+      return 1
+    fi
+  }
+  recover_exact_owned_ci_volume() { printf 'recover %s %s\n' "$1" "$2" >> "$volume_calls"; printf 'id-%s\n' "$1"; }
+  register_owned_resource() { printf 'register %s\n' "$5" >> "$volume_calls"; }
+  register_ci_compose_volumes discovery-deadline
+  grep -Fq 'recover volume-a volume-deadline-1' "$volume_calls"
+  grep -Fq 'recover volume-b volume-deadline-2' "$volume_calls"
+  grep -Fq 'register volume-a' "$volume_calls"
+  grep -Fq 'register volume-b' "$volume_calls"
+
+  : > "$volume_calls"
+  register_ci_compose_volumes discovery-deadline per-resource \
+    test-compose_volume-a test-compose_volume-b
+  if grep -Fq 'volume ls' "$volume_calls"; then
+    echo 'exact expected Compose volumes performed a daemon-wide discovery' >&2
+    exit 1
+  fi
+  grep -Fq 'recover test-compose_volume-a' "$volume_calls"
+  grep -Fq 'recover test-compose_volume-b' "$volume_calls"
+)
+
 set +e
 (
   export SANCTUARY_CLEANUP_COORDINATED=1
+  ownership_new_image_deadline() {
+    local count
+    count="$(wc -l < "$registration_deadline_calls")"
+    printf 'deadline-%s\n' "$((count + 1))" >> "$registration_deadline_calls"
+    printf 'deadline-%s\n' "$((count + 1))"
+  }
   ownership_initialize_build_identity() { printf '%s\n' identity >> "$registration_chain_calls"; }
   export_lane_image_tag() { printf '%s\n' tag >> "$registration_chain_calls"; }
-  register_ci_compose_images() { printf '%s\n' images >> "$registration_chain_calls"; return 37; }
-  register_ci_compose_volumes() { printf '%s\n' volumes >> "$registration_chain_calls"; }
-  retire_shared_ci_compose_image_references() { printf '%s\n' retire >> "$registration_chain_calls"; }
+  register_ci_compose_images() { printf 'images %s\n' "$2" >> "$registration_chain_calls"; return 37; }
+  register_ci_compose_volumes() { printf 'volumes %s %s\n' "$1" "${2:-per-resource}" >> "$registration_chain_calls"; }
+  retire_shared_ci_compose_image_references() { printf 'retire %s\n' "$1" >> "$registration_chain_calls"; }
   register_ci_compose_resources
 )
 registration_chain_status=$?
@@ -562,9 +653,26 @@ set -e
 test "$registration_chain_status" -eq 37
 test "$(cat "$registration_chain_calls")" = "identity
 tag
-images
-volumes
-retire"
+images deadline-1
+volumes deadline-2 per-resource"
+
+: > "$registration_chain_calls"
+: > "$registration_deadline_calls"
+(
+  export SANCTUARY_CLEANUP_COORDINATED=1
+  ownership_new_image_deadline() { printf '%s\n' deadline-fast; }
+  ownership_initialize_build_identity() { printf '%s\n' identity >> "$registration_chain_calls"; }
+  export_lane_image_tag() { printf '%s\n' tag >> "$registration_chain_calls"; }
+  register_observed_ci_compose_images() { printf 'observed %s\n' "$1" >> "$registration_chain_calls"; }
+  register_ci_compose_volumes() { printf 'volumes %s %s\n' "$1" "${2:-per-resource}" >> "$registration_chain_calls"; }
+  retire_shared_ci_compose_image_references() { printf '%s\n' unexpected-retire >> "$registration_chain_calls"; }
+  register_ci_compose_resources --interrupt-fallback \
+    --expected-image sanctuary-backend
+)
+test "$(cat "$registration_chain_calls")" = "identity
+tag
+observed deadline-fast
+volumes deadline-fast shared"
 
 : > "$registration_chain_calls"
 (

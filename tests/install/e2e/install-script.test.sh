@@ -59,7 +59,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-install_e2e_cleanup_auto_run install-script "$PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
+install_e2e_cleanup_auto_run deployment_managed_by_subject install-script \
+    "$PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
 
 # Test configuration
 HTTPS_PORT="${HTTPS_PORT:-8443}"

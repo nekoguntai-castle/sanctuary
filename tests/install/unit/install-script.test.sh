@@ -2452,7 +2452,7 @@ test_fresh_install_initializes_ownership_identity() {
 test_install_e2e_entrypoints_use_cleanup_auto_run() {
     local entrypoint contents
     for entrypoint in \
-        "$PROJECT_ROOT/tests/install/run-all-tests.sh" \
+        "$PROJECT_ROOT/tests/install/e2e/run-fresh-install-stack.sh" \
         "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh" \
         "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh" \
         "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"; do
@@ -2462,6 +2462,82 @@ test_install_e2e_entrypoints_use_cleanup_auto_run() {
         assert_contains "$contents" 'INSTALL_E2E_ARGS=("$@")' \
             "$(basename "$entrypoint") should preserve its original arguments" || return 1
     done
+
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+        'install_e2e_cleanup_auto_run coordinator_managed install-fresh' \
+        "fresh-install should prepare coordinator authority before direct Compose mutation" || return 1
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/run-fresh-install-stack.sh")" \
+        'install_e2e_cleanup_auto_run coordinator_managed install-fresh-stack' \
+        "aggregate runtime group should retain one coordinator authority" || return 1
+    for entrypoint in fresh-install container-health auth-flow; do
+        assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/run-fresh-install-stack.sh")" \
+            '"$SCRIPT_DIR/'"$entrypoint"'.test.sh" "$@"' \
+            "aggregate runtime group should execute $entrypoint inside its authority" || return 1
+    done
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/run-all-tests.sh")" \
+        '"$SCRIPT_DIR/e2e/run-fresh-install-stack.sh"' \
+        "aggregate runner should use the shared Fresh/Health/Auth lifecycle" || return 1
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+        'SANCTUARY_FRESH_INSTALL_CHANGED_PASSWORD:-NewSecurePassword123!' \
+        "fresh-install should accept the aggregate's explicit password handoff" || return 1
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+        'run_test "Cleanup Resource Registration" test_cleanup_resource_registration' \
+        "fresh-install should register partial or complete Compose resources before cleanup" || return 1
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+        'setup_cleanup_registration_exit_trap "register_fresh_cleanup_resources"' \
+        "fresh-install should register partial resources when interrupted" || return 1
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+        'registration_args=(--interrupt-fallback "${registration_args[@]}")' \
+        "fresh-install interruption fallback should fit the coordinator grace" || return 1
+    for entrypoint in sanctuary-backend sanctuary-frontend sanctuary-gateway sanctuary-llm-egress-proxy; do
+        assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+            "--expected-image $entrypoint" \
+            "fresh-install should register its $entrypoint image" || return 1
+    done
+    for volume in backup_data postgres_data redis_data support_capture_runtime; do
+        assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
+            "--expected-volume $volume" \
+            "fresh-install should register its $volume volume" || return 1
+    done
+    if ! awk '
+        /run_test "Docker Compose Up"/ { up = NR }
+        /run_test "Cleanup Resource Registration"/ { registration = NR }
+        /run_test "Database Container Health"/ { health = NR }
+        END { exit !(up > 0 && up < registration && registration < health) }
+    ' "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} Fresh registration must run immediately after Compose Up and before consumers"
+        return 1
+    fi
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/auth-flow.test.sh")" \
+        'CURRENT_PASSWORD="${SANCTUARY_AUTH_CURRENT_PASSWORD:-}"' \
+        "auth-flow should accept the aggregate's known current password" || return 1
+    for entrypoint in \
+        "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh" \
+        "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"; do
+        assert_contains "$(cat "$entrypoint")" \
+            'install_e2e_cleanup_auto_run deployment_managed_by_subject' \
+            "$(basename "$entrypoint") should let the installer bind deployment authority" || return 1
+    done
+}
+
+test_cleanup_registration_exit_trap_preserves_interrupt_status() {
+    local log="$TEST_TMP_DIR/cleanup-registration-exit.log"
+    local status
+    set +e
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        teardown() { printf '%s\n' teardown >> "$log"; }
+        register_partial_resources() { printf '%s\n' registration >> "$log"; }
+        setup_cleanup_trap teardown
+        setup_cleanup_registration_exit_trap register_partial_resources
+        kill -TERM "$BASHPID"
+        exit 99
+    ) >/dev/null 2>&1
+    status=$?
+    set -e
+    assert_equals "1" "$status" "signal failure should survive fallback registration" || return 1
+    assert_equals $'teardown\nregistration' "$(cat "$log")" \
+        "signal handling should teardown and then register partial resources"
 }
 
 test_install_e2e_cleanup_auto_run_delegates_and_preserves_status() {
@@ -2480,7 +2556,8 @@ EOF
     (
         source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
         INSTALL_CLEANUP_TEST_LOG="$log" \
-            install_e2e_cleanup_auto_run install-fixture "$fixture" /exact/subject --verbose exact-spec
+            install_e2e_cleanup_auto_run deployment_managed_by_subject \
+              install-fixture "$fixture" /exact/subject --verbose exact-spec
     ) >/dev/null 2>&1
     status=$?
     set -e
@@ -2495,12 +2572,100 @@ EOF
         && grep -qx -- '--verbose' "$log" && grep -qx 'exact-spec' "$log"
 }
 
+test_install_e2e_cleanup_auto_run_omits_subject_authority_for_coordinator_mode() {
+    local fixture="$TEST_TMP_DIR/install-cleanup-coordinator-auto-run"
+    local log="$fixture/args.log"
+    mkdir -p "$fixture/scripts/ci"
+    cat > "$fixture/scripts/ci/cleanup-ci-callsite.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$INSTALL_CLEANUP_TEST_LOG"
+EOF
+    chmod +x "$fixture/scripts/ci/cleanup-ci-callsite.sh"
+
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        INSTALL_CLEANUP_TEST_LOG="$log" \
+            install_e2e_cleanup_auto_run coordinator_managed \
+              install-fixture "$fixture" /exact/subject --verbose
+    ) >/dev/null 2>&1
+
+    if grep -qx -- '--authority-mode' "$log"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} coordinator-managed cleanup must not select subject authority"
+        return 1
+    fi
+    grep -qx -- '--lane' "$log" && grep -qx 'install-fixture' "$log" \
+        && grep -qx -- '--' "$log" && grep -qx '/exact/subject' "$log"
+}
+
+test_install_e2e_cleanup_auto_run_refuses_unknown_authority() {
+    local status
+    set +e
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        install_e2e_cleanup_auto_run unknown install-fixture "$TEST_TMP_DIR/missing" \
+            /exact/subject
+    ) >/dev/null 2>&1
+    status=$?
+    set -e
+    assert_equals "2" "$status" "unknown cleanup authority should fail before coordinator execution"
+}
+
+test_install_e2e_cleanup_auto_run_checks_existing_authority() {
+    local status
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        SANCTUARY_CLEANUP_COORDINATED=1 \
+        SANCTUARY_CLEANUP_AUTHORITY_MODE=coordinator_managed \
+            install_e2e_cleanup_auto_run coordinator_managed install-fixture \
+              "$TEST_TMP_DIR/missing" /exact/subject
+    ) || return 1
+
+    set +e
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        SANCTUARY_CLEANUP_COORDINATED=1 \
+        SANCTUARY_CLEANUP_AUTHORITY_MODE=deployment_managed_by_subject \
+            install_e2e_cleanup_auto_run coordinator_managed install-fixture \
+              "$TEST_TMP_DIR/missing" /exact/subject
+    ) >/dev/null 2>&1
+    status=$?
+    set -e
+    assert_equals "2" "$status" "mismatched active cleanup authority should fail before mutation"
+}
+
+test_fresh_install_stack_keeps_consumers_inside_one_authority() {
+    local fixture="$TEST_TMP_DIR/fresh-install-stack"
+    local log="$fixture/calls.log"
+    local entrypoint
+    mkdir -p "$fixture/e2e" "$fixture/utils"
+    cp "$PROJECT_ROOT/tests/install/e2e/run-fresh-install-stack.sh" "$fixture/e2e/"
+    cat > "$fixture/utils/helpers.sh" <<'EOF'
+log_error() { printf 'error:%s\n' "$*" >> "$INSTALL_STACK_TEST_LOG"; }
+install_e2e_cleanup_auto_run() {
+    printf 'authority:%s:%s\n' "$1" "$2" >> "$INSTALL_STACK_TEST_LOG"
+}
+EOF
+    for entrypoint in fresh-install container-health auth-flow; do
+        cat > "$fixture/e2e/$entrypoint.test.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s:%s:%s:%s\n' '$entrypoint' "\${1:-}" \
+    "\${SANCTUARY_FRESH_INSTALL_CHANGED_PASSWORD:-}" \
+    "\${SANCTUARY_AUTH_CURRENT_PASSWORD:-}" >> "\$INSTALL_STACK_TEST_LOG"
+EOF
+        chmod +x "$fixture/e2e/$entrypoint.test.sh"
+    done
+
+    INSTALL_STACK_TEST_LOG="$log" bash "$fixture/e2e/run-fresh-install-stack.sh" --verbose
+    assert_equals $'authority:coordinator_managed:install-fresh-stack\nfresh-install:--verbose:NewSecurePassword123!:\ncontainer-health:--verbose::\nauth-flow:--verbose::NewSecurePassword123!' \
+        "$(cat "$log")" "Fresh, Health, and Auth should share one ordered coordinator lifetime"
+}
+
 test_install_e2e_cleanup_auto_run_refuses_keep_semantics() {
     local status
     set +e
     (
         source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
-        install_e2e_cleanup_auto_run install-fixture "$TEST_TMP_DIR/missing" \
+        install_e2e_cleanup_auto_run coordinator_managed install-fixture "$TEST_TMP_DIR/missing" \
             /exact/subject --keep-containers
     ) >/dev/null 2>&1
     status=$?
@@ -2510,7 +2675,7 @@ test_install_e2e_cleanup_auto_run_refuses_keep_semantics() {
     set +e
     (
         source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
-        install_e2e_cleanup_auto_run install-fixture "$TEST_TMP_DIR/missing" \
+        install_e2e_cleanup_auto_run coordinator_managed install-fixture "$TEST_TMP_DIR/missing" \
             /exact/subject --skip-cleanup
     ) >/dev/null 2>&1
     status=$?
@@ -2733,7 +2898,12 @@ main() {
     run_test ".env.example has all required secrets" test_env_example_has_all_required_secrets
     run_test "fresh install initializes ownership identity" test_fresh_install_initializes_ownership_identity
     run_test "install E2E entrypoints use cleanup auto-run" test_install_e2e_entrypoints_use_cleanup_auto_run
+    run_test "cleanup registration exit trap preserves interruption" test_cleanup_registration_exit_trap_preserves_interrupt_status
     run_test "install cleanup auto-run delegates and preserves status" test_install_e2e_cleanup_auto_run_delegates_and_preserves_status
+    run_test "install cleanup auto-run omits subject authority for coordinator mode" test_install_e2e_cleanup_auto_run_omits_subject_authority_for_coordinator_mode
+    run_test "install cleanup auto-run refuses unknown authority" test_install_e2e_cleanup_auto_run_refuses_unknown_authority
+    run_test "install cleanup auto-run checks existing authority" test_install_e2e_cleanup_auto_run_checks_existing_authority
+    run_test "fresh install stack keeps consumers inside one authority" test_fresh_install_stack_keeps_consumers_inside_one_authority
     run_test "install cleanup auto-run refuses keep semantics" test_install_e2e_cleanup_auto_run_refuses_keep_semantics
     run_test ".env.example has setup instructions" test_env_example_has_setup_instructions
     echo ""

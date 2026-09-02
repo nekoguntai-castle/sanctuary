@@ -11,6 +11,20 @@ JOB_LOG_DIR="${JOB_LOG_DIR:?job log directory is required}"
 
 is_boolean() { [[ ${1:-} == true || ${1:-} == false ]]; }
 
+assert_source_snapshot_current() {
+  local source_workspace=${SANCTUARY_CI_ORIGINAL_WORKSPACE:-}
+  [[ -n $source_workspace ]] || return 0
+  [[ -d $source_workspace/.git || -f $source_workspace/.git ]] || return 0
+  local source_head isolated_head source_status
+  source_head=$(git -C "$source_workspace" rev-parse --verify HEAD) || return 2
+  isolated_head=$(git -C "$WORKSPACE" rev-parse --verify HEAD) || return 2
+  source_status=$(git -C "$source_workspace" status --porcelain --untracked-files=normal) || return 2
+  if [[ -n $source_status || $source_head != "$isolated_head" ]]; then
+    echo 'install E2E isolated subject refuses a stale snapshot; commit the intended source tree before cloning it' >&2
+    return 2
+  fi
+}
+
 assign_ports() {
   local port_root port_env status=0
   port_root=$("$SCRIPT_DIR/create-registered-staging.sh" install-port-env)
@@ -75,7 +89,7 @@ run_fresh_install() {
   local run_install=${SANCTUARY_RUN_INSTALL_SCRIPT:-false}
   is_boolean "$run_fresh" && is_boolean "$run_install" || return 2
   if [[ $run_fresh == true ]]; then
-    run_supervised fresh-install fresh-install 'fresh install e2e' deployment_managed_by_subject \
+    run_supervised fresh-install fresh-install 'fresh install e2e' '' \
       ./tests/install/e2e/fresh-install.test.sh --verbose || return $?
   fi
   if [[ $run_install == true ]]; then
@@ -108,6 +122,7 @@ main() {
     fresh-install|install-stack|container-health|auth-flow) ;;
     *) echo "unsupported install subject mode: $MODE" >&2; return 2 ;;
   esac
+  assert_source_snapshot_current
   mkdir -p "$JOB_LOG_DIR"
   cd "$WORKSPACE"
   assign_ports

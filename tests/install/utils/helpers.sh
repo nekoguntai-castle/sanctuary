@@ -51,11 +51,21 @@ log_debug() {
 # Standalone Docker-producing install lanes must acquire the same ephemeral,
 # receipt-bound authority as their workflow callers before creating resources.
 install_e2e_cleanup_auto_run() {
-    local lane="$1"
-    local checkout_root="$2"
-    local subject="$3"
+    local authority_mode="$1"
+    local lane="$2"
+    local checkout_root="$3"
+    local subject="$4"
     local argument
-    shift 3
+    local -a authority_args=()
+    shift 4
+
+    case "$authority_mode" in
+        coordinator_managed) ;;
+        deployment_managed_by_subject)
+            authority_args+=(--authority-mode deployment_managed_by_subject)
+            ;;
+        *) log_error "Unsupported cleanup authority mode: $authority_mode"; return 2 ;;
+    esac
 
     for argument in "$@"; do
         case "$argument" in
@@ -65,11 +75,17 @@ install_e2e_cleanup_auto_run() {
                 ;;
         esac
     done
-    [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ] || return 0
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        if [ "${SANCTUARY_CLEANUP_AUTHORITY_MODE:-}" != "$authority_mode" ]; then
+            log_error "Cleanup authority mode mismatch: requested $authority_mode, active ${SANCTUARY_CLEANUP_AUTHORITY_MODE:-unset}"
+            return 2
+        fi
+        return 0
+    fi
 
     exec "$checkout_root/scripts/ci/cleanup-ci-callsite.sh" auto-run \
         --lane "$lane" --checkout-root "$checkout_root" \
-        --authority-mode deployment_managed_by_subject -- "$subject" "$@"
+        "${authority_args[@]}" -- "$subject" "$@"
 }
 
 # ============================================
@@ -1426,7 +1442,22 @@ setup_cleanup_trap() {
     local cleanup_func="${1:-cleanup_containers}"
     local project_dir="${2:-.}"
 
-    trap "log_warning 'Caught signal, cleaning up...'; $cleanup_func '$project_dir'; exit 1" INT TERM
+    trap "SANCTUARY_INSTALL_TEST_SIGNALLED=1; log_warning 'Caught signal, cleaning up...'; $cleanup_func '$project_dir'; exit 1" INT TERM
+}
+
+# Run a registration callback on every ordinary or signal-driven exit while
+# preserving an existing subject failure over any registration result.
+setup_cleanup_registration_exit_trap() {
+    local registration_func="$1"
+    [[ "$registration_func" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 2
+    trap "status=\$?; trap - EXIT; cleanup_registration_exit_status \"\$status\" '$registration_func'" EXIT
+}
+
+cleanup_registration_exit_status() {
+    local subject_status="$1" registration_func="$2" registration_status=0
+    "$registration_func" || registration_status=$?
+    [ "$subject_status" -eq 0 ] || return "$subject_status"
+    return "$registration_status"
 }
 
 # Set up cleanup traps for interrupted and ordinary exit paths.

@@ -1184,10 +1184,11 @@ assert_named_job_step_contains_in_order "$IT" "fresh-install-test" \
   'scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install' \
   'scripts/ci/run-install-e2e-isolated-subject.sh'
 assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
-  "install-test fresh-install and install-script coordinator composition" \
+  "install-test fresh-install uses coordinator authority before direct Compose mutation" \
   "run_fresh_install" \
-  "deployment_managed_by_subject" \
+  "run_supervised fresh-install fresh-install 'fresh install e2e' ''" \
   "fresh-install.test.sh --verbose" \
+  "deployment_managed_by_subject" \
   "install-script.test.sh --verbose"
 
 assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
@@ -1207,8 +1208,8 @@ assert_occurrence_count "$UPGRADE_BASELINE_SUBJECT" \
   "install-test scopes legacy fixture creation authority to one baseline wrapper" \
   '--legacy-fixture-creation-witness' 1
 
-assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install test" \
-  "release-candidate fresh install selects subject-managed deployment authority" \
+assert_named_job_step_not_contains "$RC" "fresh-install-test" "Run fresh install test" \
+  "release-candidate fresh install uses coordinator-managed deployment authority" \
   '--authority-mode deployment_managed_by_subject'
 
 assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \

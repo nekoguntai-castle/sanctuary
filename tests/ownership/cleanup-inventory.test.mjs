@@ -459,15 +459,19 @@ test('provenance-only image derives lane-local cleanup ownership with dependency
   const deployment = deploymentManifest();
   const imageId = `sha256:${'9'.repeat(64)}`;
   const containerId = '4'.repeat(64);
-  const registration = {
-    registrationId: '1'.repeat(64), signerKeyId: '2'.repeat(64), metadataDigest: '3'.repeat(64),
+  const root = mkdtempSync(path.join(os.tmpdir(), 'compose-image-registration-'));
+  const checkoutRoot = path.join(root, 'checkout');
+  const registrationRoot = path.join(root, 'ownership');
+  mkdirSync(checkoutRoot, { mode: 0o700 });
+  const { registration } = registerResource({
+    metadataDigest: '3'.repeat(64),
     resourceClass: 'oci_image', immutableIdentity: imageId,
     deploymentId: deployment.deploymentId, ownerId: deployment.ownerId,
     operationRunId: 'replay-live-run', lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
     createdAt: '2026-08-30T00:00:00.000Z', createdByRelease: 'v0.8.69',
     createdByCommit: COMMIT, locatorKind: 'reference', locator: 'wallet-sync-replay:live',
     referenceIds: ['replay-live-run'],
-  };
+  }, { root: registrationRoot, checkoutRoot });
   const image = (dependencyIdentities) => ({
     resourceClass: 'oci_image', locator: imageId, immutableIdentity: imageId,
     labels: {
@@ -476,9 +480,11 @@ test('provenance-only image derives lane-local cleanup ownership with dependency
       'org.opencontainers.image.revision': '7'.repeat(40),
       'io.sanctuary.build-id': 'distinct-build-lane',
       'dev.sanctuary.image-lock-sha256': '8'.repeat(64),
+      'com.docker.compose.project': 'replay-live-project',
+      'com.docker.compose.service': 'backend',
     },
-    ownershipState: 'unlabeled',
-    classifications: ['externally_registered', 'registered', 'unlabeled'],
+    ownershipState: 'legacy_unlabeled',
+    classifications: ['externally_registered', 'legacy_unlabeled', 'registered', 'unlabeled'],
     registration,
     runtime: {
       referenceCount: dependencyIdentities.length, dependencyIdentities,
@@ -493,13 +499,20 @@ test('provenance-only image derives lane-local cleanup ownership with dependency
   };
   const collect = (resources) => inventoryCleanupResources({
     deploymentManifest: deployment, runManifest: runManifest(deployment), ownershipContract,
-    ownershipContractDigest: HASH,
-    dockerAdapter: { inventory: () => ({ complete: true, ambiguities: [], resources }) },
+    ownershipContractDigest: HASH, registrationRoot,
+    dockerAdapter: { inventory: (options) => {
+      assert.deepEqual(options.registrations.map((entry) => entry.registrationId), [
+        registration.registrationId,
+      ]);
+      return { complete: true, ambiguities: [], resources };
+    } },
     readDeploymentState: () => null,
   });
   const ownedDependency = await collect([container, image([containerId])]);
+  assert.equal(ownedDependency.resources.length, 2);
   const imageRow = ownedDependency.resources.find((row) => row.resourceClass === 'oci_image');
   assert.equal(imageRow.disposition, 'eligible');
+  assert.deepEqual(imageRow.failureClasses, []);
   assert.equal(imageRow.ownership.deploymentId, deployment.deploymentId);
   assert.equal(imageRow.ownership.ownerId, deployment.ownerId);
   assert.equal(imageRow.ownership.creationRunId, 'replay-live-run');

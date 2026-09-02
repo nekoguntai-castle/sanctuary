@@ -381,6 +381,31 @@ test('one exact consuming-lane registration admits provenance-only replay bytes 
   ]);
 });
 
+test('Compose-added image labels do not invalidate exact provenance registration', () => {
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'replay-live-deployment',
+    'io.sanctuary.owner-id': 'replay-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'replay-live-run',
+  });
+  const fixture = fixtureRun({
+    imageTags: ['wallet-sync-replay:test'], imageDigests: [],
+    imageLabels: {
+      ...replayImageProvenance(),
+      'com.docker.compose.project': 'replay-live-project',
+      'com.docker.compose.service': 'backend',
+    },
+    imageContainerReferences: [],
+  });
+  const result = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [replayImageRegistration(authority)], runCommand: fixture.run,
+  });
+  assert.deepEqual(result.resources[0].classifications, [
+    'externally_registered', 'legacy_unlabeled', 'registered', 'unlabeled',
+  ]);
+});
+
 test('one same-repository Podman digest is intrinsic to the sole registered tag', () => {
   const authority = tuple('oci_image', {
     'io.sanctuary.deployment-id': 'replay-live-deployment',

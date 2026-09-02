@@ -66,7 +66,7 @@ declare -a FAILED_TESTS
 # The backend sets HttpOnly sanctuary_access + sanctuary_refresh cookies and
 # a readable sanctuary_csrf cookie. Subsequent requests flow cookies via
 # -b "$COOKIE_JAR"; mutations must echo the CSRF token in X-CSRF-Token.
-CURRENT_PASSWORD=""
+CURRENT_PASSWORD="${SANCTUARY_AUTH_CURRENT_PASSWORD:-}"
 CSRF_TOKEN=""
 
 # Extract the sanctuary_csrf cookie value from the Netscape-format cookie jar.
@@ -205,7 +205,6 @@ test_login_default_credentials() {
     else
         # Maybe password was already changed
         log_warning "Default password may have been changed"
-        CURRENT_PASSWORD=""
         return 0
     fi
 }

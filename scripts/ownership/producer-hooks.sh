@@ -104,17 +104,34 @@ ci_compose_volume_identity() {
 source "$SANCTUARY_OWNERSHIP_TOOL_DIR/compose-image-registration.sh"
 
 register_ci_compose_volumes() {
-  local deadline="$1" volume_name identity volume_names
-  volume_names="$(ownership_run_docker_before_deadline "$deadline" volume ls \
-    --filter "label=io.sanctuary.project=$SANCTUARY_PROJECT" \
-    --filter "label=io.sanctuary.creation-run-id=$SANCTUARY_OPERATION_RUN_ID" --format '{{.Name}}')" \
-    || return 1
+  local deadline="$1"
+  shift
+  local deadline_mode="${1:-per-resource}"
+  [ "$#" -eq 0 ] || shift
+  local volume_name identity volume_names recovery_deadline status=0
+  case "$deadline_mode" in per-resource|shared) ;; *) return 2 ;; esac
+  if [ "$#" -gt 0 ]; then
+    volume_names="$(printf '%s\n' "$@" | sed '/^$/d' | sort -u)"
+    [ "$#" -eq "$(printf '%s\n' "$volume_names" | wc -l)" ] || return 2
+  else
+    volume_names="$(ownership_run_docker_before_deadline "$deadline" volume ls \
+      --filter "label=io.sanctuary.project=$SANCTUARY_PROJECT" \
+      --filter "label=io.sanctuary.creation-run-id=$SANCTUARY_OPERATION_RUN_ID" --format '{{.Name}}')" \
+      || return 1
+  fi
   while IFS= read -r volume_name; do
     [ -n "$volume_name" ] || continue
-    identity="$(recover_exact_owned_ci_volume "$volume_name" "$deadline")" || return 1
-    register_owned_resource compose_volume obsolete exact_delete name \
-      "$volume_name" "$identity" "$SANCTUARY_OPERATION_RUN_ID"
+    recovery_deadline="$deadline"
+    [ "$deadline_mode" = shared ] || recovery_deadline="$(ownership_new_image_deadline)"
+    if identity="$(recover_exact_owned_ci_volume "$volume_name" "$recovery_deadline")" \
+        && register_owned_resource compose_volume obsolete exact_delete name \
+          "$volume_name" "$identity" "$SANCTUARY_OPERATION_RUN_ID"; then
+      :
+    else
+      status=1
+    fi
   done < <(printf '%s\n' "$volume_names" | sort -u)
+  return "$status"
 }
 
 recover_exact_owned_ci_volume() {
@@ -167,9 +184,10 @@ create_and_register_owned_volume() {
 }
 
 register_ci_compose_resources() {
-  local allow_no_owned_images=0 defer_image_retirement=0 argument
-  local image_status=0 volume_status=0 retire_status=0 deadline
-  local -a expected_images=() expected_refs=()
+  local allow_no_owned_images=0 defer_image_retirement=0 interrupt_fallback=0 argument
+  local image_status=0 volume_status=0 retire_status=0
+  local image_discovery_deadline volume_deadline retirement_deadline
+  local -a expected_images=() expected_refs=() expected_volumes=()
   [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = 1 ] || {
     echo 'CI Compose registration requires the signed cleanup coordinator' >&2
     return 1
@@ -179,12 +197,21 @@ register_ci_compose_resources() {
     case "$argument" in
       --allow-no-owned-images) allow_no_owned_images=1; shift ;;
       --defer-image-reference-retirement) defer_image_retirement=1; shift ;;
+      --interrupt-fallback) interrupt_fallback=1; shift ;;
       --expected-image)
         [ "$#" -ge 2 ] && [[ "$2" =~ ^[a-z0-9][a-z0-9._/-]*$ ]] || {
           echo 'CI Compose --expected-image requires an untagged image name' >&2
           return 2
         }
         expected_images+=("$2")
+        shift 2
+        ;;
+      --expected-volume)
+        [ "$#" -ge 2 ] && [[ "$2" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || {
+          echo 'CI Compose --expected-volume requires a Compose volume key' >&2
+          return 2
+        }
+        expected_volumes+=("${COMPOSE_PROJECT_NAME}_$2")
         shift 2
         ;;
       *) echo "Unknown CI Compose registration option: $argument" >&2; return 2 ;;
@@ -199,12 +226,25 @@ register_ci_compose_resources() {
   for argument in "${expected_images[@]}"; do
     expected_refs+=("$argument:$SANCTUARY_IMAGE_TAG")
   done
-  deadline="$(ownership_new_image_deadline)"
+  image_discovery_deadline="$(ownership_new_image_deadline)"
+  if [ "$interrupt_fallback" -eq 1 ]; then
+    register_observed_ci_compose_images "$image_discovery_deadline" || image_status=$?
+    # Use the same deadline so the entire EXIT callback remains below the
+    # coordinator's five-second TERM-to-KILL grace. Retirement is nonessential
+    # here and is left to signed cleanup.
+    register_ci_compose_volumes "$image_discovery_deadline" shared || volume_status=$?
+    [ "$image_status" -eq 0 ] || return "$image_status"
+    return "$volume_status"
+  fi
   register_ci_compose_images \
-    "$allow_no_owned_images" "$deadline" "${expected_refs[@]}" || image_status=$?
-  register_ci_compose_volumes "$deadline" || volume_status=$?
-  if [ "$defer_image_retirement" -eq 0 ]; then
-    retire_shared_ci_compose_image_references "$deadline" || retire_status=$?
+    "$allow_no_owned_images" "$image_discovery_deadline" "${expected_refs[@]}" || image_status=$?
+  volume_deadline="$(ownership_new_image_deadline)"
+  register_ci_compose_volumes "$volume_deadline" per-resource \
+    "${expected_volumes[@]}" || volume_status=$?
+  if [ "$defer_image_retirement" -eq 0 ] \
+      && [ "$image_status" -eq 0 ] && [ "$volume_status" -eq 0 ]; then
+    retirement_deadline="$(ownership_new_image_deadline)"
+    retire_shared_ci_compose_image_references "$retirement_deadline" || retire_status=$?
   fi
   [ "$image_status" -eq 0 ] || return "$image_status"
   [ "$volume_status" -eq 0 ] || return "$volume_status"

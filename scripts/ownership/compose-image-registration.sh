@@ -261,7 +261,7 @@ declare -a REGISTERED_CI_COMPOSE_IMAGE_IDS=()
 
 register_ci_compose_images() {
   local allow_no_owned_images="$1" deadline="$2" expected_refs observed_rows observed_refs candidate_refs
-  local image_ref image_id recovered_id dangling_ids
+  local image_ref image_id recovered_id dangling_ids registration_deadline
   local discovery_status=0 registration_status=0
   shift 2
   expected_refs="$(printf '%s\n' "$@" | sed '/^$/d' | sort -u)"
@@ -282,8 +282,11 @@ register_ci_compose_images() {
   candidate_refs="$(printf '%s\n%s\n' "$expected_refs" "$observed_refs" | sed '/^$/d' | sort -u)"
   while IFS= read -r image_ref; do
     [ -n "$image_ref" ] || continue
+    # A missing expected reference must not consume the recovery budget for a
+    # later observed partial image. Bound each exact candidate independently.
+    registration_deadline="$(ownership_new_image_deadline)"
     if image_id="$(recover_exact_loaded_image \
-        "$image_ref" "$SANCTUARY_BUILD_ID" "$deadline")" \
+        "$image_ref" "$SANCTUARY_BUILD_ID" "$registration_deadline")" \
         && register_exact_built_image "$image_ref" "$image_id"; then
       REGISTERED_CI_COMPOSE_IMAGE_REFS+=("$image_ref")
       REGISTERED_CI_COMPOSE_IMAGE_IDS+=("$image_id")
@@ -295,8 +298,9 @@ register_ci_compose_images() {
     | awk -F '\t' '$2 == "<none>:<none>" { print $1 }' | sort -u)"
   while IFS= read -r image_id; do
     [ -n "$image_id" ] || continue
+    registration_deadline="$(ownership_new_image_deadline)"
     if recovered_id="$(recover_exact_loaded_image_id \
-        "$image_id" "$SANCTUARY_BUILD_ID" "$deadline")" \
+        "$image_id" "$SANCTUARY_BUILD_ID" "$registration_deadline")" \
         && [ "$recovered_id" = "$image_id" ] \
         && register_exact_built_image_id "$image_id"; then
       :
@@ -309,6 +313,38 @@ register_ci_compose_images() {
     return "$discovery_status"
   fi
   return "$registration_status"
+}
+
+# Signal fallback has less than the coordinator's five-second grace. Discover
+# once and use one shared bounded deadline to sign only resources that are
+# already observable; ordinary registration later enforces the complete set.
+register_observed_ci_compose_images() {
+  local deadline="$1" observed_rows image_id image_ref recovered_id status=0
+  REGISTERED_CI_COMPOSE_IMAGE_REFS=()
+  REGISTERED_CI_COMPOSE_IMAGE_IDS=()
+  observed_rows="$(list_ci_compose_lane_images "$deadline")" || return 1
+  while IFS=$'\t' read -r image_id image_ref; do
+    [ -n "$image_id" ] || continue
+    if [ "$image_ref" = '<none>:<none>' ]; then
+      if recovered_id="$(recover_exact_loaded_image_id \
+          "$image_id" "$SANCTUARY_BUILD_ID" "$deadline")" \
+          && [ "$recovered_id" = "$image_id" ] \
+          && register_exact_built_image_id "$image_id"; then
+        :
+      else
+        status=1
+      fi
+    elif recovered_id="$(recover_exact_loaded_image \
+        "$image_ref" "$SANCTUARY_BUILD_ID" "$deadline")" \
+        && [ "$recovered_id" = "$image_id" ] \
+        && register_exact_built_image "$image_ref" "$image_id"; then
+      REGISTERED_CI_COMPOSE_IMAGE_REFS+=("$image_ref")
+      REGISTERED_CI_COMPOSE_IMAGE_IDS+=("$image_id")
+    else
+      status=1
+    fi
+  done <<< "$observed_rows"
+  return "$status"
 }
 
 retire_shared_ci_compose_image_references() {

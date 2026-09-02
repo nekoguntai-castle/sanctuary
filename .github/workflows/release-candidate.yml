@@ -592,7 +592,6 @@ jobs:
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "fresh install e2e" \
             scripts/ci/cleanup-ci-callsite.sh run \
-              --authority-mode deployment_managed_by_subject \
               --lane rc-fresh-install \
               --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
               --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/rc-fresh-install" \

@@ -349,7 +349,7 @@ function exclusivelyRegisteredLegacyFixture(resourceClass, identity, locator, re
 function classifyImage(result, labels, identity, registration, runtime) {
   const registered = registration.immutableIdentity === identity;
   result.add(registered ? 'registered' : 'unregistered');
-  const external = ownershipState(labels, 'oci_image') === 'unlabeled'
+  const external = ['unlabeled', 'legacy_unlabeled'].includes(ownershipState(labels, 'oci_image'))
     && validImageProvenance(labels)
     && exclusivelyRegisteredImage(identity, registration, runtime);
   if (external) result.add('externally_registered');
