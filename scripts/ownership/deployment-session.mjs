@@ -269,6 +269,44 @@ function verifyLegacyPreconditions() {
   output(['verified']);
 }
 
+function verifyLegacyComposeVolume(composeResource, locator) {
+  if (!composeResource || !locator || composeResource.includes('\0') || locator.includes('\0')) {
+    throw new Error('legacy Compose volume identity is invalid');
+  }
+  const { store } = state();
+  assertLocks(store);
+  const inspection = store.inspect();
+  const pointer = inspection.pending ?? inspection.active;
+  if (!pointer) throw new Error('deployment has no revision to verify');
+  const generation = Number(required('SANCTUARY_DEPLOYMENT_GENERATION'));
+  if (!Number.isSafeInteger(generation) || generation !== pointer.value.generation) {
+    throw new Error('deployment generation does not match current revision');
+  }
+  if (inspection.pending) {
+    if (required('SANCTUARY_PENDING_DIGEST') !== inspection.pending.digest) {
+      throw new Error('pending deployment digest does not match current revision');
+    }
+    if (required('SANCTUARY_DEPLOYMENT_STAGE') !== inspection.pending.value.stage) {
+      throw new Error('pending deployment stage does not match current revision');
+    }
+  }
+  const revision = store.readManifest(generation, { verifySnapshots: true });
+  const matches = revision.manifest.legacyResources.filter((entry) => (
+    entry.resourceClass === 'compose_volume'
+      && entry.composeResource === composeResource
+      && entry.locator === locator
+  ));
+  if (matches.length === 0) {
+    output(['not-legacy']);
+    return;
+  }
+  if (matches.length !== 1) throw new Error('legacy Compose volume identity is ambiguous');
+  const options = { legacyResources: matches, definition: revision.manifest };
+  assertLegacyDurablePreconditions(options);
+  assertLegacyDurablePreconditions(options);
+  output(['legacy']);
+}
+
 function useActive() {
   const { store } = state();
   const operationRunId = required('SANCTUARY_OPERATION_RUN_ID');
@@ -358,6 +396,7 @@ const COMMANDS = new Map([
   ['transition', [transition, 1]], ['activate', [activate, 0]],
   ['finalize-prepared', [finalizePrepared, 0]],
   ['verify-legacy-preconditions', [verifyLegacyPreconditions, 0]],
+  ['verify-legacy-compose-volume', [verifyLegacyComposeVolume, 2]],
   ['verify-legacy-upgrade', [verifyLegacyUpgrade, 0]], ['compose-args', [composeArgs, 1]],
   ['release', [release, 0]],
 ]);
@@ -365,7 +404,7 @@ const COMMANDS = new Map([
 async function main([command, ...args]) {
   const entry = COMMANDS.get(command);
   if (!entry || args.length !== entry[1]) {
-    throw new Error('usage: deployment-session.mjs begin|lock-only|assert-lock|guard-legacy-cleanup PROJECT|use-active|transition STAGE|activate|finalize-prepared|verify-legacy-preconditions|verify-legacy-upgrade|compose-args GENERATION|release');
+    throw new Error('usage: deployment-session.mjs begin|lock-only|assert-lock|guard-legacy-cleanup PROJECT|use-active|transition STAGE|activate|finalize-prepared|verify-legacy-preconditions|verify-legacy-compose-volume COMPOSE_RESOURCE LOCATOR|verify-legacy-upgrade|compose-args GENERATION|release');
   }
   entry[0](...args);
 }

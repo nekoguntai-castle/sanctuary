@@ -13,6 +13,7 @@ MIGRATION_NAME="${TEST_PROJECT}-sanctuary-grafana-password-migration"
 MIGRATION_RUNTIME_ID="$(printf 'b%.0s' {1..64})"
 CONTROL_NAME="${TEST_PROJECT}-sanctuary-grafana-control-helper"
 SCRIPT_DIGEST="$(sha256sum "$PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh" | awk '{print $1}')"
+REAL_NODE="$(command -v node)"
 ACTIVE_OWNER_PID=""
 ACTIVE_OWNER_RELEASE=""
 ACTIVE_OWNER_OUTPUT=""
@@ -135,6 +136,14 @@ if [ "${1:-}" = volume ] && [ "${2:-}" = inspect ]; then
     fi
     logical=grafana_data
     [ "$volume" != "${FAKE_CONTROL_VOLUME:?}" ] || logical=grafana_quiescence
+    if [[ "${FAKE_DOCKER_MODE:-success}" == legacy-* ]]; then
+        jq -cn --arg name "$volume" --arg composeProject "${FAKE_PROJECT_NAME:?}" \
+          --arg logical "$logical" \
+          '[{Name:$name,Driver:"local",Scope:"local",Mountpoint:("/volumes/" + $name),CreatedAt:"2026-09-01T00:00:00Z",Options:null,Labels:{
+            "com.docker.compose.project":$composeProject,
+            "com.docker.compose.volume":$logical}}]'
+        exit 0
+    fi
     owner="$SANCTUARY_OWNER_ID"
     [ "${FAKE_DOCKER_MODE:-success}" != foreign-volume ] || owner=foreign-owner
     release="$SANCTUARY_RELEASE"
@@ -203,7 +212,8 @@ if [ "${1:-}" = container ] && [ "${2:-}" = inspect ]; then
               --arg project "$SANCTUARY_PROJECT" --arg deployment "$SANCTUARY_DEPLOYMENT_ID" \
               --arg ownerId "$SANCTUARY_OWNER_ID" --arg run "$SANCTUARY_OPERATION_RUN_ID" \
               --arg createdAt "$SANCTUARY_CLEANUP_CREATED_AT" --arg release "$SANCTUARY_RELEASE" \
-              --arg commit "$SANCTUARY_COMMIT" '[{Id:$id,Name:$name,State:{Status:"created",Running:false},Config:{Labels:{"io.sanctuary.project":$project,"io.sanctuary.deployment-id":$deployment,"io.sanctuary.owner-id":$ownerId,"io.sanctuary.resource-class":"compose_container","io.sanctuary.lifecycle":"obsolete","io.sanctuary.cleanup-policy":"exact_delete","io.sanctuary.created-at":$createdAt,"io.sanctuary.created-by-release":$release,"io.sanctuary.created-by-commit":$commit,"io.sanctuary.creation-run-id":$run}}}]'
+              --arg commit "$SANCTUARY_COMMIT" --arg controlVolume "${FAKE_CONTROL_VOLUME:?}" \
+              --arg mode "${FAKE_DOCKER_MODE:-success}" '[{Id:$id,Name:$name,State:{Status:"created",Running:false},Config:{Labels:{"io.sanctuary.project":$project,"io.sanctuary.deployment-id":$deployment,"io.sanctuary.owner-id":$ownerId,"io.sanctuary.resource-class":"compose_container","io.sanctuary.lifecycle":"obsolete","io.sanctuary.cleanup-policy":"exact_delete","io.sanctuary.created-at":$createdAt,"io.sanctuary.created-by-release":$release,"io.sanctuary.created-by-commit":$commit,"io.sanctuary.creation-run-id":$run}},Mounts:[{Type:"volume",Name:$controlVolume,Destination:(if $mode == "legacy-wrong-helper-mount" then "/wrong" else "/control" end)}]}]'
         fi
         exit 0
     fi
@@ -224,7 +234,9 @@ if [ "${1:-}" = container ] && [ "${2:-}" = inspect ]; then
               --arg project "$SANCTUARY_PROJECT" --arg deployment "$SANCTUARY_DEPLOYMENT_ID" \
               --arg ownerId "$SANCTUARY_OWNER_ID" --arg run "$SANCTUARY_OPERATION_RUN_ID" \
               --arg createdAt "$SANCTUARY_CLEANUP_CREATED_AT" --arg release "$SANCTUARY_RELEASE" \
-              --arg commit "$SANCTUARY_COMMIT" '[{Id:$id,Name:$name,State:{Status:"created",Running:false},Config:{Labels:{"io.sanctuary.project":$project,"io.sanctuary.deployment-id":$deployment,"io.sanctuary.owner-id":$ownerId,"io.sanctuary.resource-class":"compose_container","io.sanctuary.lifecycle":"obsolete","io.sanctuary.cleanup-policy":"exact_delete","io.sanctuary.created-at":$createdAt,"io.sanctuary.created-by-release":$release,"io.sanctuary.created-by-commit":$commit,"io.sanctuary.creation-run-id":$run}}}]'
+              --arg commit "$SANCTUARY_COMMIT" --arg data "${FAKE_DATA_VOLUME:?}" \
+              --arg controlVolume "${FAKE_CONTROL_VOLUME:?}" \
+              --arg mode "${FAKE_DOCKER_MODE:-success}" '[{Id:$id,Name:$name,State:{Status:"created",Running:false},Config:{Labels:{"io.sanctuary.project":$project,"io.sanctuary.deployment-id":$deployment,"io.sanctuary.owner-id":$ownerId,"io.sanctuary.resource-class":"compose_container","io.sanctuary.lifecycle":"obsolete","io.sanctuary.cleanup-policy":"exact_delete","io.sanctuary.created-at":$createdAt,"io.sanctuary.created-by-release":$release,"io.sanctuary.created-by-commit":$commit,"io.sanctuary.creation-run-id":$run}},Mounts:[{Type:"volume",Name:$data,Destination:(if $mode == "legacy-wrong-mount" then "/wrong" else "/var/lib/grafana" end)},{Type:"volume",Name:$controlVolume,Destination:"/var/lib/sanctuary-grafana-control"}]}]'
         fi
         exit 0
     fi
@@ -537,6 +549,36 @@ SCRIPT
     chmod +x "$bin_dir/docker"
 }
 
+make_fake_node() {
+    local path="$1"
+    cat > "$path" <<SCRIPT
+#!/bin/bash
+set -eu
+if [ "\${1:-}" = "$PROJECT_ROOT/scripts/ownership/deployment-session.mjs" ] \
+    && [ "\${2:-}" = verify-legacy-compose-volume ]; then
+    printf '%s\n' "\$*" >> "\${FAKE_SESSION_LOG:?}"
+    logical="\${3:?}"
+    count_file="\${FAKE_SESSION_COUNT:?}.\$logical"
+    count=0
+    [ ! -f "\$count_file" ] || count="\$(cat "\$count_file")"
+    count=\$((count + 1))
+    printf '%s\n' "\$count" > "\$count_file"
+    case "\${FAKE_DOCKER_MODE:-success}" in
+        legacy-drift-before-helper) [ "\$logical" != grafana_quiescence ] || [ "\$count" -le 1 ] || exit 41; printf '%s\n' legacy ;;
+        legacy-drift-after-helper) [ "\$logical" != grafana_quiescence ] || [ "\$count" -le 2 ] || exit 41; printf '%s\n' legacy ;;
+        legacy-drift-before-migration) [ "\$logical" != grafana_data ] || [ "\$count" -le 1 ] || exit 41; printf '%s\n' legacy ;;
+        legacy-drift-after-migration) [ "\$logical" != grafana_data ] || [ "\$count" -le 2 ] || exit 41; printf '%s\n' legacy ;;
+        legacy-volume|legacy-wrong-mount|legacy-wrong-helper-mount) printf '%s\n' legacy ;;
+        legacy-classifier-error) exit 41 ;;
+        *) printf '%s\n' not-legacy ;;
+    esac
+    exit 0
+fi
+exec "$REAL_NODE" "\$@"
+SCRIPT
+    chmod +x "$path"
+}
+
 reset_case() {
     find "$TEST_ROOT/control" -type f -delete 2>/dev/null || true
     find "$TEST_ROOT/control" -depth -type d -empty -delete 2>/dev/null || true
@@ -544,7 +586,7 @@ reset_case() {
     find "$TEST_ROOT/ownership" -depth -type d -empty -delete 2>/dev/null || true
     rm -f "$TEST_ROOT/migration.state" "$TEST_ROOT/helper.state" "$TEST_ROOT/helper.state".* \
         "$TEST_ROOT/data-volume.state" \
-        "$TEST_ROOT/volume-inspect.count" "$TEST_ROOT/migration-started" \
+        "$TEST_ROOT/volume-inspect.count" "$TEST_ROOT/session.log" "$TEST_ROOT/session.count".* "$TEST_ROOT/migration-started" \
         "$TEST_ROOT/migration-release" "$TEST_ROOT/events.log"
     rm -f "$TEST_ROOT/helper-created" "$TEST_ROOT/helper-exited" "$TEST_ROOT/helper-release"
     find "$TEST_ROOT/grafana-data" -type f -delete 2>/dev/null || true
@@ -561,6 +603,8 @@ run_helper() {
         FAKE_VOLUME_INSPECT_COUNT="$TEST_ROOT/volume-inspect.count" \
         FAKE_GRAFANA_DATA_DIR="$TEST_ROOT/grafana-data" \
         FAKE_EVENT_LOG="$TEST_ROOT/events.log" \
+        FAKE_SESSION_LOG="$TEST_ROOT/session.log" \
+        FAKE_SESSION_COUNT="$TEST_ROOT/session.count" \
         FAKE_MIGRATION_STARTED_SIGNAL="$TEST_ROOT/migration-started" \
         FAKE_MIGRATION_RELEASE_SIGNAL="$TEST_ROOT/migration-release" \
         FAKE_HELPER_CREATED_SIGNAL="$TEST_ROOT/helper-created" \
@@ -719,7 +763,7 @@ test_no_flock_path_succeeds() {
     mkdir -p "$restricted"
     ln -s "$TEST_ROOT/bin/docker" "$restricted/docker"
     local tool resolved
-    for tool in sed head awk grep jq node openssl mkdir chmod date cat rm rmdir find sleep; do
+    for tool in sed head awk grep jq node openssl mkdir chmod date cat rm rmdir find sleep dirname; do
         resolved="$(command -v "$tool")"
         ln -s "$resolved" "$restricted/$tool"
     done
@@ -732,7 +776,7 @@ no_flock_path() {
     mkdir -p "$restricted"
     ln -sf "$TEST_ROOT/bin/docker" "$restricted/docker"
     local tool resolved
-    for tool in sed head awk grep jq node openssl mkdir chmod date cat rm rmdir find sleep; do
+    for tool in sed head awk grep jq node openssl mkdir chmod date cat rm rmdir find sleep dirname; do
         resolved="$(command -v "$tool")"
         ln -sf "$resolved" "$restricted/$tool"
     done
@@ -814,6 +858,54 @@ test_foreign_malformed_and_unstable_volumes_fail_closed() {
         grep -Fq 'volume identity is unavailable, unexpected, or unstable' <<< "$output"
         ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
         ! grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"
+    done
+}
+
+test_manifest_bound_legacy_volumes_are_used_without_claim_or_create() {
+    reset_case
+    run_helper legacy-volume >/dev/null
+    grep -Fq 'verify-legacy-compose-volume grafana_data' "$TEST_ROOT/session.log"
+    grep -Fq 'verify-legacy-compose-volume grafana_quiescence' "$TEST_ROOT/session.log"
+    ! grep -Eq '^volume create ' "$TEST_ROOT/docker.log"
+    ! find "$TEST_ROOT/ownership/registrations/compose_volume" -name '*.json' \
+        -print -quit 2>/dev/null | grep -q .
+    grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
+    grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+}
+
+test_legacy_volume_classifier_errors_refuse_before_mutation() {
+    reset_case
+    if run_helper legacy-classifier-error >/dev/null 2>&1; then
+        echo 'legacy classifier failure unexpectedly allowed migration' >&2
+        return 1
+    fi
+    ! grep -Eq '^volume create ' "$TEST_ROOT/docker.log"
+    ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
+    ! grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+}
+
+test_legacy_volume_drift_is_refused_before_start() {
+    local mode
+    for mode in legacy-drift-before-migration legacy-drift-after-migration legacy-wrong-mount; do
+        reset_case
+        if run_helper "$mode" >/dev/null 2>&1; then
+            echo "$mode unexpectedly allowed migration" >&2
+            return 1
+        fi
+        ! grep -Eq '^container start b{64}$' "$TEST_ROOT/docker.log"
+    done
+}
+
+test_legacy_control_volume_drift_is_refused_before_helper_start() {
+    local mode
+    for mode in legacy-drift-before-helper legacy-drift-after-helper legacy-wrong-helper-mount; do
+        reset_case
+        if run_helper "$mode" >/dev/null 2>&1; then
+            echo "$mode unexpectedly allowed a control helper" >&2
+            return 1
+        fi
+        ! grep -Eq '^container start a' "$TEST_ROOT/docker.log"
+        [ ! -s "$TEST_ROOT/events.log" ]
     done
 }
 
@@ -1239,6 +1331,7 @@ test_terminal_state_that_never_settles_is_still_refused() {
 }
 
 make_fake_docker "$TEST_ROOT/bin"
+make_fake_node "$TEST_ROOT/bin/node"
 test_success_uses_daemon_control_volume
 test_control_helpers_use_detached_start_wait_and_logs
 test_create_response_loss_arms_exact_retirement
@@ -1251,6 +1344,10 @@ test_no_flock_path_succeeds
 test_fresh_data_volume_is_created_with_compose_identity
 test_volume_create_response_loss_recovers_without_deleting_data
 test_foreign_malformed_and_unstable_volumes_fail_closed
+test_manifest_bound_legacy_volumes_are_used_without_claim_or_create
+test_legacy_volume_classifier_errors_refuse_before_mutation
+test_legacy_volume_drift_is_refused_before_start
+test_legacy_control_volume_drift_is_refused_before_helper_start
 test_flock_refusal_precedes_docker_mutation
 test_control_helper_failure_precedes_grafana_stop
 test_control_helper_transport_failures_fail_closed

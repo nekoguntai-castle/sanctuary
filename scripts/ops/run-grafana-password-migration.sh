@@ -20,6 +20,8 @@ resolved_control_volume=""
 resolved_image="sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}"
 migration_image_id=""
 migration_container=""
+legacy_data_volume=false
+legacy_control_volume=false
 readonly helper_stale_after_seconds=300
 readonly control_helper_terminal_settle_attempts="${SANCTUARY_GRAFANA_TERMINAL_SETTLE_ATTEMPTS:-20}"
 readonly control_helper_terminal_settle_delay="${SANCTUARY_GRAFANA_TERMINAL_SETTLE_DELAY:-1}"
@@ -30,6 +32,7 @@ script_dir="${script_path%/*}"
 [ "$script_dir" != "$script_path" ] || script_dir="."
 # shellcheck source=scripts/ownership/producer-hooks.sh
 source "$script_dir/../ownership/producer-hooks.sh"
+source "$script_dir/../ownership/deployment-lifecycle.sh"
 source "$script_dir/grafana-quiescence-records.sh"
 
 fail() {
@@ -153,11 +156,30 @@ register_compose_volume() {
 }
 
 ensure_compose_volume() {
-    local volume="$1" logical_name="$2" identity create_status=0
+    local volume="$1" logical_name="$2" identity legacy_state create_status=0
     ownership_initialize
     if identity="$(stable_compose_volume_identity "$volume" "$logical_name" 2>/dev/null)"; then
         register_compose_volume "$volume" "$identity"
         return 0
+    fi
+
+    legacy_state="$(deployment_verify_legacy_compose_volume "$logical_name" "$volume")" \
+        || fail "Grafana $logical_name legacy volume authority is unavailable."
+    case "$legacy_state" in
+        legacy)
+            if [ "$logical_name" = grafana_data ]; then
+                legacy_data_volume=true
+            else
+                legacy_control_volume=true
+            fi
+            return 0
+            ;;
+        not-legacy) ;;
+        *) fail "Grafana $logical_name legacy volume authority is malformed." ;;
+    esac
+
+    if docker volume inspect "$volume" >/dev/null 2>&1; then
+        fail "Grafana $logical_name volume identity is unavailable, unexpected, or unstable."
     fi
 
     local SANCTUARY_RESOURCE_LIFECYCLE=active
@@ -174,6 +196,36 @@ ensure_compose_volume() {
     if [ "$create_status" -ne 0 ]; then
         echo "Recovered Grafana $logical_name volume after a lost create response." >&2
     fi
+}
+
+verify_retained_legacy_volume() {
+    local logical_name="$1" volume="$2" legacy_state
+    legacy_state="$(deployment_verify_legacy_compose_volume "$logical_name" "$volume")" \
+        || fail "Grafana $logical_name legacy volume authority is unavailable."
+    [ "$legacy_state" = legacy ] \
+        || fail "Grafana $logical_name legacy volume authority is no longer exact."
+}
+
+verify_retained_legacy_volumes() {
+    [ "$legacy_data_volume" != true ] \
+        || verify_retained_legacy_volume grafana_data "$resolved_data_volume"
+    [ "$legacy_control_volume" != true ] \
+        || verify_retained_legacy_volume grafana_quiescence "$resolved_control_volume"
+}
+
+verify_retained_legacy_control_volume() {
+    [ "$legacy_control_volume" != true ] \
+        || verify_retained_legacy_volume grafana_quiescence "$resolved_control_volume"
+}
+
+assert_control_helper_mount() {
+    local id="$1"
+    docker container inspect "$id" | jq -e \
+        --arg id "$id" --arg control "$resolved_control_volume" '
+        length == 1 and .[0].Id == $id and
+        [.[0].Mounts[] | select(.Type == "volume") | {Name, Destination}] ==
+        [{Name: $control, Destination: "/control"}]
+        ' >/dev/null
 }
 
 ensure_control_volume() {
@@ -309,6 +361,7 @@ create_migration_container() {
     local token="$1" grafana_container_id="$2" generation="$3"
     local id create_output identity create_status=0 output_status=0
     local SANCTUARY_RESOURCE_LIFECYCLE=obsolete
+    verify_retained_legacy_volumes
     ownership_label_args compose_container exact_delete
     create_output="$(docker container create --pull never --name "$migration_container" \
         "${OWNERSHIP_LABEL_ARGS[@]}" \
@@ -352,6 +405,20 @@ create_migration_container() {
         return "$output_status"
     fi
     printf '%s\n' "$id"
+}
+
+assert_migration_mounts() {
+    local id="$1"
+    docker container inspect "$id" | jq -e \
+        --arg id "$id" --arg data "$resolved_data_volume" \
+        --arg control "$resolved_control_volume" '
+        length == 1 and .[0].Id == $id and
+        ([.[0].Mounts[] | select(.Type == "volume") | {Name, Destination}] | sort_by(.Destination)) ==
+        ([
+          {Name: $data, Destination: "/var/lib/grafana"},
+          {Name: $control, Destination: "/var/lib/sanctuary-grafana-control"}
+        ] | sort_by(.Destination))
+        ' >/dev/null
 }
 
 assert_launched_migration() {
@@ -452,6 +519,9 @@ run_migration() {
         || fail "launched migration container identity is unavailable."
     assert_launched_migration "$identity" "$id" "$token" "$grafana_container_id" "$generation" \
         || fail "launched migration container identity does not match its lease."
+    assert_migration_mounts "$id" \
+        || fail "launched migration container volume mounts are not exact."
+    verify_retained_legacy_volumes
     if ! docker container start "$id" >/dev/null; then
         record_abandoned_start "$id" "$token" "$grafana_container_id" "$generation"
         fail "migration container start failed; reserved state requires reconciliation."

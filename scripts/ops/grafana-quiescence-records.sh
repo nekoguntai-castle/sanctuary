@@ -133,6 +133,7 @@ run_control_helper() {
     shift 2
     local nonce helper_name id create_output identity state create_status=0 output_status=0
     local SANCTUARY_RESOURCE_LIFECYCLE=obsolete
+    verify_retained_legacy_control_volume
     ownership_label_args compose_container exact_delete
     nonce="$(openssl rand -hex 16)"
     helper_name="${resolved_project}-sanctuary-grafana-control-${nonce}"
@@ -159,6 +160,9 @@ run_control_helper() {
         || fail "created Grafana control helper identity is invalid."
     register_transient_container "$id" \
         || fail "created Grafana control helper registration failed."
+    assert_control_helper_mount "$id" \
+        || fail "created Grafana control helper volume mount is not exact."
+    verify_retained_legacy_control_volume
     IFS='|' read -r _ _ state _ <<< "$identity"
     [ "$state" = "created" ] || fail "created Grafana control helper is not startable."
     if [ "$create_status" -ne 0 ] || [ "$output_status" -ne 0 ]; then

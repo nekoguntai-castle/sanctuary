@@ -52,7 +52,10 @@ case " $* " in
   " container ls "*)
     ;;
   " volume inspect lifecycle-test_data ")
-    printf '%s\n' '[{"Name":"lifecycle-test_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/docker/volumes/lifecycle-test_data/_data","CreatedAt":"2026-08-30T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"lifecycle-test","com.docker.compose.volume":"data"}}]'
+    created_at=2026-08-30T00:00:00Z
+    [ "${FAKE_DOCKER_LEGACY_CHANGED:-no}" != yes ] || created_at=2026-08-31T00:00:00Z
+    jq -cn --arg createdAt "$created_at" --arg claimed "${FAKE_DOCKER_LEGACY_CLAIMED:-no}" \
+      '[{"Name":"lifecycle-test_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/docker/volumes/lifecycle-test_data/_data","CreatedAt":$createdAt,"Options":{},"Labels":({"com.docker.compose.project":"lifecycle-test","com.docker.compose.volume":"data"} + (if $claimed == "yes" then {"io.sanctuary.project":"sanctuary"} else {} end))}]'
     ;;
   " network inspect legacy-network "|" network inspect lifecycle-test_default ")
     printf '%s\n' '[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Labels":{"com.docker.compose.project":"lifecycle-test","com.docker.compose.network":"default"}}]'
@@ -131,9 +134,33 @@ deployment_begin no no no true
 [ "${#COMPOSE_FILE_ARGS[@]}" -ge 8 ]
 grep -q '"resourceClass":"compose_volume"' "$RUNTIME/ownership/deployments/deployment-test/revisions/1/deployment-manifest.json"
 grep -q '"resourceClass":"compose_network"' "$RUNTIME/ownership/deployments/deployment-test/revisions/1/deployment-manifest.json"
+[ "$(deployment_verify_legacy_compose_volume data lifecycle-test_data)" = legacy ]
+[ "$(deployment_verify_legacy_compose_volume other lifecycle-test_data)" = not-legacy ]
+[ "$(deployment_verify_legacy_compose_volume data other_data)" = not-legacy ]
+for mismatch in generation digest stage changed claimed; do
+  case "$mismatch" in
+    generation) override=(env SANCTUARY_DEPLOYMENT_GENERATION=2) ;;
+    digest) override=(env SANCTUARY_PENDING_DIGEST=invalid) ;;
+    stage) override=(env SANCTUARY_DEPLOYMENT_STAGE=build_started) ;;
+    changed) override=(env FAKE_DOCKER_LEGACY_CHANGED=yes) ;;
+    claimed) override=(env FAKE_DOCKER_LEGACY_CLAIMED=yes) ;;
+  esac
+  if "${override[@]}" node "$DEPLOYMENT_SESSION_SCRIPT" \
+      verify-legacy-compose-volume data lifecycle-test_data \
+      >"$TEST_ROOT/legacy-$mismatch.out" 2>&1; then
+    echo "legacy volume verification accepted $mismatch authority" >&2
+    exit 1
+  fi
+done
 deployment_finalize_prepared
 deployment_lock_release
 [ -z "$(find "$SANCTUARY_TEST_PROJECT_LOCK_ROOT" -type d -name mutation-lock -print 2>/dev/null)" ]
+
+if deployment_verify_legacy_compose_volume data lifecycle-test_data \
+    >"$TEST_ROOT/legacy-without-lock.out" 2>&1; then
+  echo 'legacy volume verification unexpectedly succeeded without the deployment lock' >&2
+  exit 1
+fi
 
 unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP SANCTUARY_PENDING_DIGEST
 export SANCTUARY_OPERATION_RUN_ID=run-prepared-resume
@@ -142,6 +169,7 @@ deployment_begin no no no
 [ "$SANCTUARY_DEPLOYMENT_GENERATION" = 1 ]
 [ "$SANCTUARY_DEPLOYMENT_STAGE" = prepared ]
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/prepared-revision.json" ]
+[ "$(deployment_verify_legacy_compose_volume data lifecycle-test_data)" = legacy ]
 for stage in build_started build_completed postgres_started password_reconciled stack_started health_verified; do
   deployment_transition "$stage"
 done

@@ -46,6 +46,11 @@ deployment_verify_legacy_preconditions() {
   node "$DEPLOYMENT_SESSION_SCRIPT" verify-legacy-preconditions >/dev/null
 }
 
+deployment_verify_legacy_compose_volume() {
+  deployment_lifecycle_initialize
+  node "$DEPLOYMENT_SESSION_SCRIPT" verify-legacy-compose-volume "$1" "$2"
+}
+
 deployment_lock_only_acquire() {
   local result
   deployment_lifecycle_initialize
