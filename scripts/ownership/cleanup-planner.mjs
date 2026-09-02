@@ -53,7 +53,28 @@ function actionFrom(resource, action) {
     locator: resource.locator,
     ownershipDigest: resource.ownershipDigest,
     observationDigest: resource.observationDigest,
+    dependencyIdentities: action === 'remove'
+      && ['compose_network', 'compose_volume', 'oci_image'].includes(resource.resourceClass)
+      ? [...resource.dependencyIdentities] : [],
   };
+}
+
+function assertPlannedDependencies(actions) {
+  const stopped = new Set();
+  const removed = new Set();
+  for (const action of actions) {
+    if (action.resourceClass === 'compose_container' && action.action === 'stop') {
+      stopped.add(action.immutableIdentity);
+    } else if (action.resourceClass === 'compose_container' && action.action === 'remove') {
+      if (!stopped.has(action.immutableIdentity)) {
+        throw new Error('container removal lacks its approved stop dependency');
+      }
+      removed.add(action.immutableIdentity);
+    } else if (['compose_network', 'compose_volume', 'oci_image'].includes(action.resourceClass)
+        && action.dependencyIdentities.some((identity) => !removed.has(identity))) {
+      throw new Error(`${action.resourceClass} cleanup dependency lacks an approved container removal`);
+    }
+  }
 }
 
 function inventoryBinding(inventory) {
@@ -82,6 +103,7 @@ export function buildCleanupPlan(inventory, ownershipContract, {
       .map((action) => actionFrom(resource, action)))
     .sort((left, right) => compareActions(order, left, right));
   const actions = candidates.map((action, index) => ({ sequence: index + 1, ...action }));
+  assertPlannedDependencies(actions);
   const plan = {
     schemaVersion: ARTIFACT_SCHEMA_VERSIONS.cleanup_plan,
     artifactType: 'cleanup_plan',

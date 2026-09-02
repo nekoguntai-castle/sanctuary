@@ -1,6 +1,6 @@
 # Post-v0.8.69 P0 Ownership Manifest and Cleanup-Receipt Plan
 
-Status: implementation in progress; PRs 1–3 plus the Compose compatibility hotfix have landed; PR 4 implementation and local acceptance are complete, with delivery pending
+Status: implementation in progress; PRs 1–4 plus the Compose compatibility hotfix have landed with exact-head and landed-main CI green; PR 5 is in progress
 Date: 2026-08-30
 Planning baseline: `origin/main` at `ee8baab03c4113c50f80183ff3aea068bc3c1ddc`
 Backlog source: `tasks/todo.md`, “P0 — telemetry, overload protection, and ownership”
@@ -651,6 +651,17 @@ PR 5 Docker/Compose/image/build-cache acceptance:
   deployment lock, receipt, and postcondition.
 - Exact-head and landed-main CI are green; an independent P0-P2 review finds no
   remaining correctness/safety issue in this phase.
+
+Implementation checkpoint: the broadened bidirectional lifecycle registry contains
+231 classified identities and zero Docker migrations. Exact-tree verification passes
+342 ownership cases (339 pass and three opt-in real-Docker skips), 3/3 isolated
+real-Docker acceptance cases, 677 workflow-composition assertions, the complete
+15-install-plus-2-CI-composition install-unit gate, 10/10 CI registration checks, and
+the complete quality gate with 8,271/8,271 tests and 100% coverage. A coordinated
+address-verifier recovery produced verified signed final evidence and left no exact
+resource residue. Independent architecture, security, recovery, callsite-scanner,
+acceptance, subject-authority, and crash-window rereviews returned `CLEAN`;
+protected-PR delivery remains the only unfinished PR 5 step.
 
 ### PR 6 — registered host-artifact execution
 

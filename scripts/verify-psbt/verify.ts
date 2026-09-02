@@ -73,7 +73,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const GENERATED_VECTORS_PATH = join(__dirname, '../../server/tests/fixtures/generated-psbt-vectors.ts');
 const GENERATED_SIGNED_VECTORS_PATH = join(__dirname, '../../server/tests/fixtures/generated-signed-psbt-vectors.ts');
-const COMPOSE_PATH = join(__dirname, 'docker-compose.yml');
 
 const REQUIRED_MARKERS = [
   'Bitcoin Core',
@@ -135,13 +134,6 @@ const verifyPinnedProvenance = (content: string, label: string): void => {
     if (!content.includes(value)) {
       fail(`${label} does not attest the pinned Bitcoin Core value: ${value}`);
     }
-  }
-};
-
-const verifyPinnedRuntimeDefinition = (): void => {
-  const compose = readFileSync(COMPOSE_PATH, 'utf8');
-  if (!compose.includes(`image: ${PSBT_PROOF_MANIFEST.coreImage}`)) {
-    fail('docker-compose.yml does not use the proof manifest Bitcoin Core image');
   }
 };
 
@@ -284,6 +276,5 @@ const verifyGeneratedSignedVectors = (): void => {
   console.log(`Signed PSBT verifier passed with ${vectorCount} generated Bitcoin Core-accepted vectors.`);
 };
 
-verifyPinnedRuntimeDefinition();
 verifyGeneratedVectors();
 verifyGeneratedSignedVectors();

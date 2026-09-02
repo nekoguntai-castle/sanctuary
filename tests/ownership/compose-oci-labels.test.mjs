@@ -40,7 +40,11 @@ function assertOwnership(labels, resourceClass, cleanupPolicy) {
   assert.ok(labels, 'resource must have ownership labels');
   for (const key of tupleKeys) assert.ok(key in labels, `missing ${key}`);
   assert.equal(labels['io.sanctuary.resource-class'], resourceClass);
-  assert.equal(labels['io.sanctuary.cleanup-policy'], cleanupPolicy);
+  const declaredPolicy = labels['io.sanctuary.cleanup-policy'];
+  const semanticPolicy = declaredPolicy === '${SANCTUARY_VOLUME_CLEANUP_POLICY:-preserve_ambiguous}'
+    ? 'preserve_ambiguous'
+    : declaredPolicy;
+  assert.equal(semanticPolicy, cleanupPolicy);
 }
 
 function assertResources(config, section, resourceClass, cleanupPolicy) {

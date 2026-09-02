@@ -41,6 +41,8 @@ case " $* " in
       printf '%s\n' '{"services":{"app":{}},"networks":{},"volumes":{}}'
     fi
     ;;
+  *" compose "*" down "*|*" compose "*" stop "*|*" compose "*" rm "*|*" compose "*" up "*|*" compose "*" run "*)
+    ;;
   " volume ls "*)
     if [ "${FAKE_DOCKER_LEGACY:-no}" = yes ]; then printf '%s\n' lifecycle-test_data; fi
     ;;
@@ -87,7 +89,31 @@ fi
 grep -q 'first deployment manifest refused existing legacy Docker resources' "$TEST_ROOT/legacy.err"
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/pending-revision.json" ]
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/mutation-lock" ]
+
+missing_log="$TEST_ROOT/missing-deployment.log"
+if SANCTUARY_DEPLOYMENT_ID=missing-deployment FAKE_DOCKER_LOG="$missing_log" \
+    "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" down \
+    >"$TEST_ROOT/missing-deployment.out" 2>&1; then
+  echo 'operator Compose accepted destructive manifest-less fallback' >&2
+  exit 1
+fi
+grep -q 'require an exact active deployment manifest' "$TEST_ROOT/missing-deployment.out"
+[ ! -s "$missing_log" ]
 [ -z "$(find "$SANCTUARY_TEST_PROJECT_LOCK_ROOT" -type d -name mutation-lock -print 2>/dev/null)" ]
+
+for renewal_flag in -V --renew-anon-volumes; do
+  renewal_name="${renewal_flag#--}"
+  renewal_name="${renewal_name#-}"
+  if SANCTUARY_DEPLOYMENT_ID=missing-deployment FAKE_DOCKER_LOG="$missing_log" \
+      "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" \
+      --confirm-data-delete up "$renewal_flag" service-name \
+      >"$TEST_ROOT/missing-${renewal_name}.out" 2>&1; then
+    echo "operator Compose accepted manifest-less anonymous-volume renewal: $renewal_flag" >&2
+    exit 1
+  fi
+  grep -q 'require an exact active deployment manifest' "$TEST_ROOT/missing-${renewal_name}.out"
+  [ ! -s "$missing_log" ]
+done
 
 export FAKE_DOCKER_OVERRIDE_UNSUPPORTED=yes
 if deployment_begin no no no true 2>"$TEST_ROOT/unsupported.err"; then
@@ -133,6 +159,87 @@ grep -q '/ownership/deployments/deployment-test/revisions/1/compose/' "$operator
 [ "$(grep -o '/ownership/deployments/deployment-test/revisions/1/compose/' "$operator_log" | wc -l)" -eq 2 ]
 grep -R -q 'external: true' "$RUNTIME/ownership/deployments/deployment-test/revisions/1/compose"
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/mutation-lock" ]
+
+operator_down_log="$TEST_ROOT/operator-down.log"
+operator_lock="$RUNTIME/ownership/deployments/deployment-test/mutation-lock"
+env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+  FAKE_DOCKER_LOG="$operator_down_log" FAKE_REQUIRE_LOCK="$operator_lock" \
+  "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" down --remove-orphans
+grep -q ' down --remove-orphans' "$operator_down_log"
+[ ! -e "$operator_lock" ]
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" down --volumes \
+    >"$TEST_ROOT/unconfirmed-volume.out" 2>&1; then
+  echo 'operator Compose accepted unconfirmed data deletion' >&2
+  exit 1
+fi
+grep -q -- '--confirm-data-delete' "$TEST_ROOT/unconfirmed-volume.out"
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" rm -v service-name \
+    >"$TEST_ROOT/unconfirmed-rm-volume.out" 2>&1; then
+  echo 'operator Compose accepted unconfirmed anonymous-volume deletion' >&2
+  exit 1
+fi
+grep -q -- '--confirm-data-delete' "$TEST_ROOT/unconfirmed-rm-volume.out"
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" rm -sv service-name \
+    >"$TEST_ROOT/unconfirmed-rm-clustered-volume.out" 2>&1; then
+  echo 'operator Compose accepted unconfirmed clustered anonymous-volume deletion' >&2
+  exit 1
+fi
+grep -q -- '--confirm-data-delete' "$TEST_ROOT/unconfirmed-rm-clustered-volume.out"
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" up -V service-name \
+    >"$TEST_ROOT/unconfirmed-renew-short.out" 2>&1; then
+  echo 'operator Compose accepted unconfirmed short anonymous-volume renewal' >&2
+  exit 1
+fi
+grep -q -- '--confirm-data-delete' "$TEST_ROOT/unconfirmed-renew-short.out"
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" up -dV service-name \
+    >"$TEST_ROOT/unconfirmed-renew-clustered.out" 2>&1; then
+  echo 'operator Compose accepted unconfirmed clustered anonymous-volume renewal' >&2
+  exit 1
+fi
+grep -q -- '--confirm-data-delete' "$TEST_ROOT/unconfirmed-renew-clustered.out"
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" run --renew-anon-volumes service-name \
+    >"$TEST_ROOT/unconfirmed-renew-long.out" 2>&1; then
+  echo 'operator Compose accepted unconfirmed anonymous-volume renewal' >&2
+  exit 1
+fi
+grep -q -- '--confirm-data-delete' "$TEST_ROOT/unconfirmed-renew-long.out"
+
+confirmed_volume_log="$TEST_ROOT/confirmed-volume.log"
+env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+  FAKE_DOCKER_LOG="$confirmed_volume_log" FAKE_REQUIRE_LOCK="$operator_lock" \
+  "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" \
+    --confirm-data-delete down --volumes
+grep -q ' down --volumes' "$confirmed_volume_log"
+[ ! -e "$operator_lock" ]
+
+confirmed_rm_volume_log="$TEST_ROOT/confirmed-rm-volume.log"
+env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+  FAKE_DOCKER_LOG="$confirmed_rm_volume_log" FAKE_REQUIRE_LOCK="$operator_lock" \
+  "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" \
+    --confirm-data-delete rm -v service-name
+grep -q ' rm -v service-name' "$confirmed_rm_volume_log"
+[ ! -e "$operator_lock" ]
+
+confirmed_renew_volume_log="$TEST_ROOT/confirmed-renew-volume.log"
+env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+  FAKE_DOCKER_LOG="$confirmed_renew_volume_log" FAKE_REQUIRE_LOCK="$operator_lock" \
+  "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" \
+    --confirm-data-delete up --renew-anon-volumes service-name
+grep -q ' up --renew-anon-volumes service-name' "$confirmed_renew_volume_log"
+[ ! -e "$operator_lock" ]
+
+if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" down --rmi all \
+    >"$TEST_ROOT/image-delete.out" 2>&1; then
+  echo 'operator Compose accepted mutable image deletion' >&2
+  exit 1
+fi
+grep -q 'not cleanup authority' "$TEST_ROOT/image-delete.out"
 
 if env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
   FAKE_DOCKER_COMMAND_FAIL=yes "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" \

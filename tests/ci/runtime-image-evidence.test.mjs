@@ -15,10 +15,12 @@ function fixture() {
   const bin = path.join(root, 'bin');
   const output = path.join(root, 'evidence');
   const lock = path.join(root, 'image-lock.json');
+  const dockerLog = path.join(root, 'docker.log');
   writeFileSync(lock, '{"schemaVersion":1}\n');
   const lockSha = createHash('sha256').update(readFileSync(lock)).digest('hex');
   writeFileSync(path.join(root, 'docker'), `#!/bin/sh
 set -eu
+printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
 if [ "$1 $2" = "image inspect" ]; then
   printf '[{"Id":"sha256:%s","RepoDigests":["example/image@sha256:%s"],"Os":"linux","Architecture":"amd64","Config":{"User":"472","Labels":{"org.opencontainers.image.revision":"%s","dev.sanctuary.image-lock-sha256":"%s"}}}]\n' "$(printf '1%.0s' $(seq 1 64))" "$(printf '2%.0s' $(seq 1 64))" "$FAKE_COMMIT" "$FAKE_LOCK_SHA"
   exit 0
@@ -29,7 +31,7 @@ case "$*" in
 esac
 `);
   chmodSync(path.join(root, 'docker'), 0o755);
-  return { root, bin, output, lock, lockSha };
+  return { root, bin, output, lock, lockSha, dockerLog };
 }
 
 function run(fx, overrides = {}) {
@@ -48,6 +50,16 @@ function run(fx, overrides = {}) {
       PATH: `${fx.root}:${process.env.PATH}`,
       FAKE_COMMIT: overrides.commit ?? commit,
       FAKE_LOCK_SHA: overrides.lockSha ?? fx.lockSha,
+      FAKE_DOCKER_LOG: fx.dockerLog,
+      SANCTUARY_CLEANUP_COORDINATED: overrides.coordinated ?? '1',
+      SANCTUARY_PROJECT: 'runtime-evidence',
+      SANCTUARY_DEPLOYMENT_ID: 'deploy-runtime-evidence',
+      SANCTUARY_OWNER_ID: 'owner-runtime-evidence',
+      SANCTUARY_RESOURCE_LIFECYCLE: 'obsolete',
+      SANCTUARY_CLEANUP_CREATED_AT: '2026-09-01T00:00:00.000Z',
+      SANCTUARY_RELEASE: 'unreleased',
+      SANCTUARY_COMMIT: commit,
+      SANCTUARY_OPERATION_RUN_ID: 'run-runtime-evidence',
     },
   });
 }
@@ -63,6 +75,21 @@ test('writes subject-bound provenance and a non-empty SPDX component inventory',
   assert.equal(provenance.predicate.buildDefinition.externalParameters.imageLockSha256, fx.lockSha);
   assert.equal(sbom.spdxVersion, 'SPDX-2.3');
   assert.deepEqual(sbom.packages.map(entry => entry.name), ['busybox', 'ca-certificates']);
+  const runs = readFileSync(fx.dockerLog, 'utf8').split('\n').filter(line => line.startsWith('run --rm '));
+  assert.equal(runs.length, 2);
+  for (const invocation of runs) {
+    assert.match(invocation, /--label io\.sanctuary\.resource-class=compose_container/);
+    assert.match(invocation, /--label io\.sanctuary\.cleanup-policy=exact_delete/);
+    assert.match(invocation, /--label io\.sanctuary\.creation-run-id=run-runtime-evidence/);
+  }
+});
+
+test('refuses transient smoke creation outside the signed cleanup coordinator', () => {
+  const fx = fixture();
+  const result = run(fx, { coordinated: '0' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /signed cleanup coordinator authority is required/);
+  assert.doesNotMatch(readFileSync(fx.dockerLog, 'utf8'), /^run /m);
 });
 
 test('fails closed when the image revision label is not the tested commit', () => {

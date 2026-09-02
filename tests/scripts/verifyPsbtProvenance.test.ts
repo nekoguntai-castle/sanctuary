@@ -60,10 +60,10 @@ describe('PSBT proof provenance', () => {
     })).toThrow(/runtime drift/);
   });
 
-  it('binds compose, workflow, and checked-in vectors to the manifest', () => {
+  it('binds the workflow and checked-in vectors to the manifest', () => {
     const expected = PSBT_PROOF_MANIFEST.coreImage;
-    const compose = readFileSync(join(repoRoot, 'scripts/verify-psbt/docker-compose.yml'), 'utf8');
     const workflow = readFileSync(join(repoRoot, '.github/workflows/verify-vectors.yml'), 'utf8');
+    const subject = readFileSync(join(repoRoot, 'scripts/ci/run-psbt-core-subject.sh'), 'utf8');
     const unsignedFixture = readFileSync(
       join(repoRoot, 'server/tests/fixtures/generated-psbt-vectors.ts'),
       'utf8',
@@ -73,14 +73,23 @@ describe('PSBT proof provenance', () => {
       'utf8',
     );
 
-    expect(compose).toContain(`image: ${expected}`);
     expect(workflow).toContain(`VERIFY_PSBT_CORE_IMAGE: ${expected}`);
-    expect(workflow).toContain("docker image inspect \"$VERIFY_PSBT_CORE_IMAGE\" --format '{{.Id}}'");
-    expect(workflow).toContain("docker inspect bitcoin-core --format '{{.Image}}'");
-    expect(workflow).toContain("--format '{{join .RepoDigests \"\\n\"}}'");
-    expect(workflow).toContain('VERIFY_PSBT_CORE_PROVENANCE_MODE: pinned-container');
-    expect(workflow).toContain('working-directory: scripts/verify-psbt');
-    expect(workflow).toContain('npm run verify');
+    expect(workflow.match(/scripts\/ci\/run-psbt-core-subject\.sh (?:live|regenerate)/g)).toHaveLength(2);
+    expect(workflow).toContain('--lane verify-psbt-live');
+    expect(workflow).toContain('--lane regenerate-psbt');
+    expect(workflow.match(/Upload (?:live|regenerated) PSBT cleanup evidence/g)).toHaveLength(2);
+    expect(subject).toContain("docker image inspect \"$VERIFY_PSBT_CORE_IMAGE\" --format '{{.Id}}'");
+    expect(subject).toContain('docker inspect "$container_id" --format \'{{.Image}}\'');
+    expect(subject).toContain('ownership_label_args compose_container exact_delete');
+    expect(subject).toContain('docker create --cidfile "$cidfile" --name');
+    expect(subject).not.toContain('docker create --cidfile "$cidfile" --rm');
+    expect(subject).toContain('recover_exact_created_container "$container_name"');
+    expect(subject).toContain('[ "$create_status" -eq 0 ] || return "$create_status"');
+    expect(subject).toContain('docker start "$container_id"');
+    expect(subject).toContain("--format '{{join .RepoDigests \"\\n\"}}'");
+    expect(subject).toContain('VERIFY_PSBT_CORE_PROVENANCE_MODE=pinned-container');
+    expect(subject).toContain('npm run verify');
+    expect(subject).not.toMatch(/docker (?:rm|stop|kill)\b/);
     expect(workflow).not.toMatch(/bitcoin\/bitcoin:\d+\.\d+(?:\s|\\)/);
     for (const fixture of [unsignedFixture, signedFixture]) {
       expect(fixture).toContain(expected);

@@ -15,11 +15,13 @@ function ownership(resourceClass, immutableIdentity) {
   };
 }
 
-function action(sequence, resourceClass, mutation, identity = A) {
+function action(sequence, resourceClass, mutation, identity = A, overrides = {}) {
   return {
     sequence, resourceClass, immutableIdentity: identity, action: mutation,
     locatorKind: 'engine_id', locator: identity,
     ownershipDigest: canonicalSha256(ownership(resourceClass, identity)), observationDigest: C,
+    dependencyIdentities: [],
+    ...overrides,
   };
 }
 
@@ -31,7 +33,7 @@ function row(candidate, observationDigest = candidate.observationDigest) {
     ownership: authority, ownershipDigest: canonicalSha256(authority), observationDigest,
     disposition: 'eligible', failureClasses: [], active: false, protected: false, data: false,
     running: candidate.resourceClass === 'compose_container' ? true : null,
-    references: [], contentDigests: [],
+    references: [], contentDigests: [], dependencyIdentities: [],
   };
 }
 
@@ -66,8 +68,12 @@ test('serial execution permits only explicit immediate container stop to remove 
     reloadAuthority: async ({ action: candidate, phase, predecessorResultDigest }) => {
       events.push(`reload:${candidate.sequence}:${phase}`);
       if (candidate.sequence === 1) return { state: 'eligible', row: row(candidate), derivedFromResultDigest: null };
-      assert.equal(predecessorResultDigest, stopResultDigest);
-      return { state: 'eligible', row: row(candidate, 'd'.repeat(64)), derivedFromResultDigest: stopResultDigest };
+      const dependencyDigest = canonicalSha256([{
+        sequence: 1, resourceClass: 'compose_container', immutableIdentity: A,
+        action: 'stop', resultCheckpointDigest: stopResultDigest,
+      }]);
+      assert.equal(predecessorResultDigest, dependencyDigest);
+      return { state: 'eligible', row: row(candidate, 'd'.repeat(64)), derivedFromResultDigest: dependencyDigest };
     },
     mutate: async ({ action: candidate }) => { events.push(`mutate:${candidate.sequence}`); return { outcome: 'success', raw: 'secret' }; },
     reconcile: async ({ action: candidate }) => { events.push(`reconcile:${candidate.sequence}`); return reconciliation(candidate, 'satisfied'); },
@@ -103,6 +109,32 @@ test('missing predecessor digest refuses derived state before a second mutation'
   assert.deepEqual(mutations, [1]);
   assert.equal(result.results[1].result, 'refused');
   assert.equal(result.results[1].failureClass, 'identity_changed');
+});
+
+test('dependency actions derive authority from every signed successful container result', async () => {
+  const actions = [
+    action(1, 'compose_container', 'stop'),
+    action(2, 'compose_container', 'remove'),
+    action(3, 'compose_network', 'remove', A, { dependencyIdentities: [A] }),
+  ];
+  const predecessorDigests = [];
+  const result = await runCleanupActions({
+    actions, appendCheckpoint: checkpointRecorder([]),
+    reloadAuthority: async ({ action: candidate, predecessorResultDigest }) => {
+      predecessorDigests.push([candidate.sequence, predecessorResultDigest]);
+      return {
+        state: 'eligible', row: row(candidate, candidate.sequence === 1 ? C : 'd'.repeat(64)),
+        derivedFromResultDigest: predecessorResultDigest,
+      };
+    },
+    mutate: async () => ({ outcome: 'success' }),
+    reconcile: async ({ action: candidate }) => reconciliation(candidate, 'satisfied'),
+  });
+  assert.equal(result.terminalState, 'completed');
+  assert.deepEqual(result.results.map((entry) => entry.result), ['cleaned', 'cleaned', 'cleaned']);
+  assert.equal(predecessorDigests.filter(([sequence]) => sequence === 3).length, 2);
+  assert.ok(predecessorDigests.filter(([sequence]) => sequence === 3)
+    .every(([, digest]) => /^[a-f0-9]{64}$/.test(digest)));
 });
 
 test('refusal and second-inspection drift stop all later actions', async () => {

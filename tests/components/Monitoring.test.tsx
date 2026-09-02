@@ -558,7 +558,7 @@ describe('Monitoring', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Monitoring Stack Not Enabled')).toBeInTheDocument();
-        expect(screen.getByText(/docker compose/)).toBeInTheDocument();
+        expect(screen.getByText(/scripts\/ownership\/run-operator-compose\.sh/)).toBeInTheDocument();
       });
     });
 

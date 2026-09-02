@@ -986,9 +986,7 @@ compose_build_failed_due_to_cache_corruption() {
 recover_docker_builder_cache() {
     echo ""
     echo -e "${YELLOW}Docker builder cache appears to be corrupt.${NC}"
-    echo "Clearing Docker builder cache and retrying once with --no-cache."
-
-    docker builder prune --force >/dev/null
+    echo "Preserving the shared builder cache and retrying once with --no-cache."
 }
 
 compose_build_uses_no_cache() {
@@ -1461,6 +1459,14 @@ main() {
         LEGACY_UPGRADE_COMPATIBILITY=true
     fi
     deployment_begin "$OPT_ENABLE_MONITORING" "$OPT_ENABLE_TOR" "$OPT_ENABLE_MCP" "$LEGACY_UPGRADE_COMPATIBILITY"
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = 1 ]; then
+        [ "${SANCTUARY_CLEANUP_AUTHORITY_MODE:-}" = deployment_managed_by_subject ] || {
+            echo "Coordinated setup requires deployment-managed cleanup authority." >&2
+            exit 1
+        }
+        node "$PROJECT_DIR/scripts/ownership/ci-cleanup-coordinator.mjs" \
+            bind "${SANCTUARY_CLEANUP_STATE:?}" >/dev/null
+    fi
     deployment_verify_legacy_preconditions
     if [ "$OPT_NO_START" = false ]; then
         reconcile_postgres_password_with_running_database

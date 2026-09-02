@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {
-  closeSync, constants, fstatSync, lstatSync, openSync, readFileSync,
+  closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
@@ -91,7 +91,14 @@ function readContract(filePath, expectedDigest) {
 function writeArtifact(artifact, outputPath, checkoutRoot) {
   validateArtifact(artifact);
   assertLocalPrivateSafe(artifact);
-  writeExternalFileAtomic(path.resolve(outputPath), canonicalJson(artifact), { checkoutRoot });
+  const target = path.resolve(outputPath);
+  const bytes = canonicalJson(artifact);
+  if (existsSync(target)) {
+    const existing = readExternalFile(target, { checkoutRoot });
+    if (!existing.equals(bytes)) throw new Error(`artifact output collision: ${target}`);
+    return;
+  }
+  writeExternalFileAtomic(target, bytes, { checkoutRoot });
 }
 
 function deploymentStateReader(request) {
@@ -109,7 +116,8 @@ async function inventoryCommand(request) {
     'outputPath', 'deploymentId', 'runtimeDirectory',
   ], [
     'engine',
-    'sharedImmutableIdentities', 'protectedProjects', 'dataVolumeNames', 'timeoutMs', 'maxOutputBytes',
+    'sharedImmutableIdentities', 'protectedProjects', 'dataVolumeNames', 'timeoutMs',
+    'maxOutputBytes', 'forcedAmbiguity', 'legacyFixtureWitnessDigest',
   ]);
   const deploymentManifest = readCanonicalArtifact(request.deploymentManifestPath, request.checkoutRoot);
   const runManifest = readCanonicalArtifact(request.runManifestPath, request.checkoutRoot);
@@ -126,14 +134,27 @@ async function inventoryCommand(request) {
       sharedImmutableIdentities: request.sharedImmutableIdentities,
       protectedProjects: request.protectedProjects,
       dataVolumeNames: request.dataVolumeNames,
+      legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
       commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
     },
     registrationRoot: path.join(path.resolve(request.runtimeDirectory), 'ownership'),
     readDeploymentState: deploymentStateReader(request),
   });
-  writeArtifact(inventory, request.outputPath, request.checkoutRoot);
-  process.stdout.write(canonicalJson({ outputPath: path.resolve(request.outputPath), complete: inventory.complete }));
-  if (!inventory.complete) process.exitCode = EXIT.ambiguous;
+  const outputInventory = request.forcedAmbiguity === undefined ? inventory : {
+    ...inventory,
+    complete: false,
+    ambiguities: [...inventory.ambiguities, request.forcedAmbiguity].sort((left, right) => (
+      left.adapter.localeCompare(right.adapter)
+      || (left.resourceClass ?? '').localeCompare(right.resourceClass ?? '')
+      || left.failureClass.localeCompare(right.failureClass)
+      || left.scope.localeCompare(right.scope)
+    )),
+  };
+  writeArtifact(outputInventory, request.outputPath, request.checkoutRoot);
+  process.stdout.write(canonicalJson({
+    outputPath: path.resolve(request.outputPath), complete: outputInventory.complete,
+  }));
+  if (!outputInventory.complete) process.exitCode = EXIT.ambiguous;
 }
 
 function signerFingerprint(publicKeyPath, checkoutRoot) {
@@ -145,11 +166,15 @@ function planCommand(request) {
     'checkoutRoot', 'ownershipContractPath', 'inventoryPath', 'planOutputPath',
     'receiptOutputPath', 'evidencePrivateKeyPath', 'evidencePublicKeyPath',
     'expectedEvidenceFingerprint',
-  ]);
+  ], ['receiptFinalizedAt']);
   const inventory = readCanonicalArtifact(request.inventoryPath, request.checkoutRoot);
   const ownership = readContract(request.ownershipContractPath, inventory.policyDigest);
   const plan = buildCleanupPlan(inventory, ownership.contract, { policyDigest: ownership.digest });
-  const receipt = buildPlanningReceipt(inventory, plan, { signerKeyId: request.expectedEvidenceFingerprint });
+  const receipt = buildPlanningReceipt(inventory, plan, {
+    signerKeyId: request.expectedEvidenceFingerprint,
+    now: request.receiptFinalizedAt === undefined
+      ? () => new Date() : () => new Date(request.receiptFinalizedAt),
+  });
   writeArtifact(plan, request.planOutputPath, request.checkoutRoot);
   writeSignedArtifact(receipt, {
     outputPath: request.receiptOutputPath,
@@ -172,7 +197,7 @@ function authorizeCommand(request) {
     'expectedEvidenceFingerprint', 'approvalOutputPath', 'authorizationPrivateKeyPath',
     'authorizationPublicKeyPath', 'expectedAuthorizationFingerprint', 'nonce', 'expiresAt',
     'decommission',
-  ]);
+  ], ['issuedAt']);
   const plan = readCanonicalArtifact(request.planPath, request.checkoutRoot);
   const { artifact: receipt } = verifySignedArtifact({
     inputPath: request.dryRunReceiptPath,
@@ -192,6 +217,7 @@ function authorizeCommand(request) {
     nonce: request.nonce,
     expiresAt: request.expiresAt,
     decommission: request.decommission,
+    ...(request.issuedAt ? { now: () => new Date(request.issuedAt) } : {}),
   });
   writeSignedArtifact(approval, {
     outputPath: request.approvalOutputPath,
@@ -222,15 +248,11 @@ const EXECUTION_OPTIONAL = Object.freeze([
   'receiptOutputPath', 'engine', 'sharedImmutableIdentities', 'protectedProjects',
   'dataVolumeNames', 'timeoutMs', 'maxOutputBytes', 'subjectExitStatus',
   'supervisorTimeoutMs', 'supervisorGraceMs', 'supervisorKillWaitMs',
+  'cleanupAuthorityIdentityDigest', 'cancellationSignalPath',
+  'legacyFixtureWitnessDigest',
 ]);
 
 function executionInputs(request) {
-  verifyCleanupTrust({
-    runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
-    deploymentId: request.deploymentId,
-    authorizationFingerprint: request.expectedAuthorizationFingerprint,
-    evidenceFingerprint: request.expectedEvidenceFingerprint,
-  });
   const deploymentManifest = readCanonicalArtifact(request.deploymentManifestPath, request.checkoutRoot);
   const runManifest = readCanonicalArtifact(request.runManifestPath, request.checkoutRoot);
   const inventoryBefore = readCanonicalArtifact(request.inventoryPath, request.checkoutRoot);
@@ -251,6 +273,15 @@ function executionInputs(request) {
       || approval.deploymentId !== request.deploymentId) {
     throw new Error('execution evidence deployment identity mismatch');
   }
+  verifyCleanupTrust({
+    runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
+    deploymentId: request.deploymentId,
+    authorizationFingerprint: request.expectedAuthorizationFingerprint,
+    evidenceFingerprint: request.expectedEvidenceFingerprint,
+    expectedAuthorityIdentityDigest: request.cleanupAuthorityIdentityDigest ?? null,
+    operationRunId: plan.operationRunId,
+    deploymentManifestDigest: canonicalSha256(deploymentManifest),
+  });
   const privateKey = readPrivateKeyFile(path.resolve(request.evidencePrivateKeyPath), {
     checkoutRoot: request.checkoutRoot,
   });
@@ -276,6 +307,7 @@ function inventoryLoader(request, inputs, lockOwnerDigest) {
     dockerOptions: {
       engine: request.engine, sharedImmutableIdentities: request.sharedImmutableIdentities,
       protectedProjects: request.protectedProjects, dataVolumeNames: request.dataVolumeNames,
+      legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
       daemonAuthority: inventoryRequest.daemonAuthority,
       commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
     },
@@ -308,6 +340,7 @@ function dockerRuntime(request, inputs, loadInventory) {
       protectedProjects: request.protectedProjects,
       dataVolumeNames: request.dataVolumeNames,
       sharedImmutableIdentities: request.sharedImmutableIdentities,
+      legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
       commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
     },
     supervisorOptions: {
@@ -317,24 +350,34 @@ function dockerRuntime(request, inputs, loadInventory) {
   });
 }
 
-async function withCancellation(callback) {
+function exactCancellationPath(request) {
+  if (!request.cancellationSignalPath) return null;
+  const expected = path.join(path.resolve(request.runtimeDirectory), 'coordinator', 'cancellation-signal');
+  if (path.resolve(request.cancellationSignalPath) !== expected) {
+    throw new Error('cleanup cancellation signal path is outside coordinator runtime');
+  }
+  return expected;
+}
+
+async function withCancellation(request, callback) {
   const controller = new AbortController();
+  const cancellationPath = exactCancellationPath(request);
+  const pollCancellation = () => {
+    if (!cancellationPath || controller.signal.aborted || !existsSync(cancellationPath)) return;
+    const reason = readFileSync(cancellationPath, 'utf8').trim().toLowerCase();
+    controller.abort(['sigint', 'sigterm', 'sighup'].includes(reason) ? reason : 'abort');
+  };
   const handlers = new Map(['SIGINT', 'SIGTERM', 'SIGHUP'].map((name) => [
     name, () => {
       if (!controller.signal.aborted) controller.abort(name);
     },
   ]));
   for (const [name, handler] of handlers) process.on(name, handler);
+  pollCancellation();
+  const timer = setInterval(pollCancellation, 10);
   try { return await callback(controller.signal); } finally {
+    clearInterval(timer);
     for (const [name, handler] of handlers) process.removeListener(name, handler);
-  }
-}
-
-function assertNotCancelled(signal) {
-  if (signal.aborted) {
-    throw Object.assign(new Error('cleanup cancelled before execution reservation'), {
-      exitCode: EXIT.ambiguous,
-    });
   }
 }
 
@@ -348,10 +391,9 @@ function executionOutput(result) {
 }
 
 async function applyCommand(request) {
-  return withCancellation(async (signal) => {
+  return withCancellation(request, async (signal) => {
     exactWithOptional(request, EXECUTION_REQUIRED, EXECUTION_OPTIONAL);
     const inputs = executionInputs(request);
-    assertNotCancelled(signal);
     const store = new DeploymentStore({
       runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
     });
@@ -367,12 +409,9 @@ async function applyCommand(request) {
       generation: inputs.deploymentManifest.generation,
     });
     try {
-      assertNotCancelled(signal);
       const loadInventory = inventoryLoader(request, inputs, held.ownerDigest);
       assertFreshPreflight(inputs.inventoryBefore, await loadInventory());
-      assertNotCancelled(signal);
       const runtime = dockerRuntime(request, inputs, loadInventory);
-      assertNotCancelled(signal);
       const result = await applyCleanupExecution({
         runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
         ...inputs, signerKeyId: request.expectedEvidenceFingerprint,
@@ -388,10 +427,9 @@ async function applyCommand(request) {
 }
 
 async function recoverCommand(request) {
-  return withCancellation(async (signal) => {
+  return withCancellation(request, async (signal) => {
     exactWithOptional(request, [...EXECUTION_REQUIRED, 'controllerRunId'], EXECUTION_OPTIONAL);
     const inputs = executionInputs(request);
-    assertNotCancelled(signal);
     const store = new DeploymentStore({
       runtimeDirectory: request.runtimeDirectory, deploymentId: request.deploymentId,
     });
@@ -408,10 +446,8 @@ async function recoverCommand(request) {
       generation: inputs.deploymentManifest.generation,
     });
     try {
-      assertNotCancelled(signal);
       const loadInventory = inventoryLoader(request, inputs, acquired.held.ownerDigest);
       const runtime = dockerRuntime(request, inputs, loadInventory);
-      assertNotCancelled(signal);
       const result = await recoverCleanupExecution({
         runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,
         ...inputs, signerKeyId: request.expectedEvidenceFingerprint,

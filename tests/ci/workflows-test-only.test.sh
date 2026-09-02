@@ -16,8 +16,14 @@ bash "$checker" "$repo_root/.github/workflows" >/dev/null
 
 [ "$(grep -c '^[[:space:]]*push: false$' "$docker_workflow" || true)" -eq 0 ] ||
   fail "Docker validation must not retain retired build-push action settings"
-[ "$(grep -c '^[[:space:]]*run: scripts/ci/build-runtime-image.sh' "$docker_workflow")" -eq 5 ] ||
+[ "$(grep -c -- '-- scripts/ci/build-runtime-image.sh' "$docker_workflow")" -eq 5 ] ||
   fail "Docker validation must locally build, smoke, and attest all five shipped images"
+[ "$(grep -c 'scripts/ci/cleanup-ci-callsite.sh run' "$docker_workflow")" -eq 5 ] ||
+  fail "Every Docker validation image build must run under the cleanup coordinator"
+[ "$(grep -c 'name: Upload .* cleanup evidence' "$docker_workflow")" -eq 5 ] ||
+  fail "Every Docker validation image build must upload final cleanup evidence"
+[ "$(grep -c 'name: Require .* final cleanup evidence' "$docker_workflow")" -eq 5 ] ||
+  fail "Every Docker validation image build must require its signed final receipt"
 if grep -Eq 'github\.server_url|packages:[[:space:]]+write|docker/login-action' "$docker_workflow"; then
   fail "Docker validation still contains a provider gate or registry authority"
 fi

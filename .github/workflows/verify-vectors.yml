@@ -110,6 +110,24 @@ jobs:
       - name: Verify hardware emulator source inventory
         run: node scripts/ci/hardware-emulator-source-inventory.mjs validate
 
+      # Run the complete checked-in proof verifier before Docker, emulator,
+      # server-install, mutation, and live-resource work so drift fails fast.
+      - name: Install PSBT proof verifier dependencies
+        timeout-minutes: 5
+        working-directory: scripts/verify-psbt
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-psbt-verifier-dependencies.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm ci --strict-allow-scripts
+
+      - name: Verify pinned Bitcoin Core PSBT proof
+        timeout-minutes: 5
+        working-directory: scripts/verify-psbt
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/pinned-psbt-proof.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run verify
+
       - name: Verify Go toolchain
         uses: ./.github/actions/setup-go-toolchain
 
@@ -119,11 +137,35 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
           ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
+      - name: Run PSBT cleanup subject failure-path tests
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-cleanup-subject-tests.log"
+          node --test tests/ci/psbt-core-subject.test.mjs
+
       - name: Run pinned Jade vendor protocol harness
         timeout-minutes: 5
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-protocol-harness.log"
           npm run test:jade-protocol-harness
+
+      - name: Verify Jade protocol cleanup receipt
+        id: verify_jade_protocol_cleanup
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-protocol-harness
+
+      - name: Upload Jade protocol cleanup evidence
+        if: always() && steps.verify_jade_protocol_cleanup.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-jade-protocol-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-protocol-harness/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-protocol-harness
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Upload current Jade protocol proof
         if: success() && env.JADE_PROTOCOL_PROOF_DIR != ''
@@ -196,7 +238,31 @@ jobs:
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/cleanup-ci-callsite.sh run
+          --lane address-verify
+          --runtime "${RUNNER_TEMP}/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/address-verify"
+          --artifact-dir "${RUNNER_TEMP}/sanctuary-cleanup-artifacts/address-verify"
+          --checkout-root "${GITHUB_WORKSPACE}"
+          --
           npm run verify:repeatable
+
+      - name: Verify address verifier cleanup receipt
+        id: verify_address_cleanup
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/address-verify
+
+      - name: Upload address verifier cleanup evidence
+        if: always() && steps.verify_address_cleanup.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-address-verify-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/address-verify/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/address-verify
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Run address verifier contract tests
         timeout-minutes: 5
@@ -299,121 +365,32 @@ jobs:
           tests/unit/services/bitcoin/psbt.verified.test.ts
           tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
 
-      - name: Install PSBT proof verifier dependencies
-        timeout-minutes: 5
-        working-directory: scripts/verify-psbt
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-psbt-verifier-dependencies.log"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          npm ci --strict-allow-scripts
-
-      - name: Verify pinned Bitcoin Core PSBT proof
-        timeout-minutes: 5
-        working-directory: scripts/verify-psbt
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/pinned-psbt-proof.log"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          npm run verify
-
-      - name: Start isolated pinned Bitcoin Core for live PSBT proof
-        timeout-minutes: 5
+      - name: Run receipt-bound live Bitcoin Core PSBT proof
+        timeout-minutes: 25
         run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/start-live-psbt-core.log" bash <<'INNER'
-          set -euo pipefail
-          container_name="sanctuary-psbt-core-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
-          echo "VERIFY_PSBT_CORE_CONTAINER=$container_name" >> "$GITHUB_ENV"
-          docker pull "$VERIFY_PSBT_CORE_IMAGE"
-          docker run -d --name "$container_name" -p 18443/tcp \
-            "$VERIFY_PSBT_CORE_IMAGE" \
-            -regtest=1 \
-            -server=1 \
-            -rpcuser=sanctuary \
-            -rpcpassword=sanctuary-verify \
-            -rpcallowip=0.0.0.0/0 \
-            -rpcbind=0.0.0.0 \
-            -fallbackfee=0.00001 \
-            -txindex=1 \
-            -printtoconsole=1
+          scripts/ci/cleanup-ci-callsite.sh run --lane verify-psbt-live \
+            --checkout-root "$GITHUB_WORKSPACE" \
+            --runtime "$RUNNER_TEMP/sanctuary-cleanup/verify-psbt-live-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/verify-psbt-live-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -- scripts/ci/run-psbt-core-subject.sh live
 
-          expected_image_id="$(docker image inspect "$VERIFY_PSBT_CORE_IMAGE" --format '{{.Id}}')"
-          actual_image_id="$(docker inspect "$container_name" --format '{{.Image}}')"
-          if [ "$actual_image_id" != "$expected_image_id" ]; then
-            echo "Bitcoin Core image drift: expected ID $expected_image_id, received $actual_image_id" >&2
-            exit 1
-          fi
-          expected_digest="${VERIFY_PSBT_CORE_IMAGE##*@}"
-          if ! docker image inspect "$VERIFY_PSBT_CORE_IMAGE" --format '{{join .RepoDigests "\n"}}' \
-            | grep -Fq "@$expected_digest"; then
-            echo "Pulled Bitcoin Core image does not attest expected digest $expected_digest" >&2
-            exit 1
-          fi
-
-          rpc_port="$(docker inspect "$container_name" \
-            --format '{{(index (index .NetworkSettings.Ports "18443/tcp") 0).HostPort}}')"
-          case "$rpc_port" in
-            ''|*[!0-9]*) echo "Invalid Bitcoin Core RPC port: $rpc_port" >&2; exit 1 ;;
-          esac
-          {
-            echo "VERIFY_PSBT_CORE_PROVENANCE_MODE=pinned-container"
-            echo "BITCOIN_RPC_HOST=${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}"
-            echo "BITCOIN_RPC_PORT=$rpc_port"
-            echo "BITCOIN_RPC_USER=sanctuary"
-            echo "BITCOIN_RPC_PASS=sanctuary-verify"
-          } >> "$GITHUB_ENV"
-          INNER
-
-      - name: Wait for live Bitcoin Core RPC
-        timeout-minutes: 3
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-live-psbt-core.log" bash <<'INNER'
-          set -euo pipefail
-          rpc_url="http://${BITCOIN_RPC_HOST}:${BITCOIN_RPC_PORT}/"
-          for attempt in $(seq 1 60); do
-            if curl -fsS --user "$BITCOIN_RPC_USER:$BITCOIN_RPC_PASS" \
-              --data-binary '{"jsonrpc":"1.0","id":"readiness","method":"getnetworkinfo","params":[]}' \
-              "$rpc_url" >/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Pinned Bitcoin Core did not become ready" >&2
-          docker logs "$VERIFY_PSBT_CORE_CONTAINER" >&2 || true
-          exit 1
-          INNER
-
-      - name: Regenerate and verify live Bitcoin Core PSBT proof
-        timeout-minutes: 12
-        working-directory: scripts/verify-psbt
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/live-psbt-proof.log" \
-            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              npm run generate
-              npm run generate:signed
-              npm run verify
-              git -C "$GITHUB_WORKSPACE" diff --exit-code -- \
-                server/tests/fixtures/generated-psbt-vectors.ts \
-                server/tests/fixtures/generated-signed-psbt-vectors.ts
-            '
-
-      - name: Replay live Bitcoin Core PSBT vectors
-        timeout-minutes: 5
-        working-directory: server
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/live-psbt-replay-tests.log"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          npm run test:run:ci --
-          tests/unit/services/bitcoin/psbt.verified.test.ts
-          tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
-
-      - name: Stop isolated Bitcoin Core
+      - name: Verify live PSBT cleanup receipt
+        id: verify_live_psbt_cleanup
         if: always()
-        continue-on-error: true
-        timeout-minutes: 2
-        run: |
-          if [ -n "${VERIFY_PSBT_CORE_CONTAINER:-}" ]; then
-            docker rm -f "$VERIFY_PSBT_CORE_CONTAINER"
-          fi
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/verify-psbt-live-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload live PSBT cleanup evidence
+        if: always() && steps.verify_live_psbt_cleanup.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: verify-psbt-live-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/verify-psbt-live-${{ github.run_id }}-${{ github.run_attempt }}/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/verify-psbt-live-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Run PSBT property-based tests
         timeout-minutes: 5
@@ -507,6 +484,24 @@ jobs:
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh trezor-emulator
           npm run test:trezor-emulator-proof
 
+      - name: Verify Trezor emulator cleanup receipt
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/trezor-emulator-proof
+
+      - name: Upload Trezor emulator cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-trezor-emulator-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/trezor-emulator-proof/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/trezor-emulator-proof
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
       - name: Upload current Trezor emulator proof
         if: success() && env.TREZOR_EMULATOR_PROOF_DIR != ''
         uses: ./.github/actions/upload-artifact
@@ -596,6 +591,24 @@ jobs:
           env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$LEDGER_EMULATOR_LOCK_TIMEOUT_SECONDS"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh ledger-emulator
           npm run test:ledger-emulator-proof
+
+      - name: Verify Ledger emulator cleanup receipt
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/ledger-emulator-proof
+
+      - name: Upload Ledger emulator cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-ledger-emulator-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/ledger-emulator-proof/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/ledger-emulator-proof
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Upload current Ledger emulator proof
         if: success() && env.LEDGER_EMULATOR_PROOF_DIR != ''
@@ -687,6 +700,24 @@ jobs:
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh jade-emulator
           npm run test:jade-emulator-proof
 
+      - name: Verify Jade QEMU cleanup receipt
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-emulator-proof
+
+      - name: Upload Jade QEMU cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-jade-emulator-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-emulator-proof/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-emulator-proof
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
       - name: Upload current Jade QEMU proof
         if: success() && env.JADE_EMULATOR_PROOF_DIR != ''
         uses: ./.github/actions/upload-artifact
@@ -767,7 +798,31 @@ jobs:
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-address-vectors.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/cleanup-ci-callsite.sh run
+          --lane address-generate
+          --runtime "${RUNNER_TEMP}/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/address-generate"
+          --artifact-dir "${RUNNER_TEMP}/sanctuary-cleanup-artifacts/address-generate"
+          --checkout-root "${GITHUB_WORKSPACE}"
+          --
           npm run generate:repeatable
+
+      - name: Verify generated address cleanup receipt
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/address-generate
+
+      - name: Upload generated address verifier cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-address-generate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/address-generate/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/address-generate
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Check for vector changes
         run: |
@@ -819,60 +874,6 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
           ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
-      - name: Start Bitcoin Core
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/start-bitcoin-core.log" bash <<'INNER'
-          set -euo pipefail
-          docker run --pull=always -d --name bitcoin-core \
-            -p 18443:18443 \
-            "${VERIFY_PSBT_CORE_IMAGE}" \
-            -regtest=1 \
-            -server=1 \
-            -rpcuser=sanctuary \
-            -rpcpassword=sanctuary-verify \
-            -rpcallowip=0.0.0.0/0 \
-            -rpcbind=0.0.0.0 \
-            -fallbackfee=0.00001 \
-            -txindex=1 \
-            -printtoconsole=1
-          INNER
-
-      - name: Attest Bitcoin Core image
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/attest-bitcoin-core-image.log" bash <<'INNER'
-          set -euo pipefail
-          expected_image_id="$(docker image inspect "$VERIFY_PSBT_CORE_IMAGE" --format '{{.Id}}')"
-          actual_image_id="$(docker inspect bitcoin-core --format '{{.Image}}')"
-          if [ "$actual_image_id" != "$expected_image_id" ]; then
-            echo "Bitcoin Core image drift: expected ID $expected_image_id, received $actual_image_id" >&2
-            exit 1
-          fi
-          expected_digest="${VERIFY_PSBT_CORE_IMAGE##*@}"
-          if ! docker image inspect "$VERIFY_PSBT_CORE_IMAGE" --format '{{join .RepoDigests "\n"}}' \
-            | grep -Fq "@$expected_digest"; then
-            echo "Pulled Bitcoin Core image does not attest expected digest $expected_digest" >&2
-            exit 1
-          fi
-          INNER
-
-      - name: Wait for Bitcoin Core
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-bitcoin-core.log" bash <<'INNER'
-          set -euo pipefail
-          rpc_url="http://${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}:18443/"
-          echo "Waiting for Bitcoin Core to be ready..."
-          for i in {1..30}; do
-            if curl -s --user sanctuary:sanctuary-verify --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' "$rpc_url" > /dev/null 2>&1; then
-              echo "Bitcoin Core is ready"
-              exit 0
-            fi
-            echo "Waiting... (attempt $i/30)"
-            sleep 2
-          done
-          docker logs bitcoin-core
-          exit 1
-          INNER
-
       - name: Install server dependencies
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
@@ -891,66 +892,32 @@ jobs:
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           npm ci --strict-allow-scripts
 
-      - name: Generate PSBT vectors
-        working-directory: scripts/verify-psbt
+      - name: Run receipt-bound regenerated Bitcoin Core PSBT proof
+        timeout-minutes: 25
         run: |
-          BITCOIN_RPC_HOST="${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}" \
-            BITCOIN_RPC_USER=sanctuary \
-            BITCOIN_RPC_PASS=sanctuary-verify \
-            ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-psbt-vectors.log" \
-            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate
+          scripts/ci/cleanup-ci-callsite.sh run --lane regenerate-psbt \
+            --checkout-root "$GITHUB_WORKSPACE" \
+            --runtime "$RUNNER_TEMP/sanctuary-cleanup/regenerate-psbt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/regenerate-psbt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -- scripts/ci/run-psbt-core-subject.sh regenerate
 
-      - name: Generate signed PSBT vectors
-        working-directory: scripts/verify-psbt
-        run: |
-          BITCOIN_RPC_HOST="${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}" \
-            BITCOIN_RPC_USER=sanctuary \
-            BITCOIN_RPC_PASS=sanctuary-verify \
-            ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-signed-psbt-vectors.log" \
-            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate:signed
+      - name: Verify regenerated PSBT cleanup receipt
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/regenerate-psbt-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Verify generated PSBT vectors are non-empty
-        working-directory: scripts/verify-psbt
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/verify-generated-psbt-vectors.log"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          npm run verify
-
-      - name: Check for PSBT vector changes
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-psbt-vector-changes.log" bash <<'INNER'
-          set -euo pipefail
-          if git diff --quiet server/tests/fixtures/generated-psbt-vectors.ts 2>/dev/null; then
-            echo "PSBT vectors unchanged"
-          else
-            echo "PSBT vectors updated"
-            git diff server/tests/fixtures/generated-psbt-vectors.ts || true
-          fi
-          INNER
-
-      - name: Check for signed PSBT vector changes
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-signed-psbt-vector-changes.log" bash <<'INNER'
-          set -euo pipefail
-          if git diff --quiet server/tests/fixtures/generated-signed-psbt-vectors.ts 2>/dev/null; then
-            echo "Signed PSBT vectors unchanged"
-          else
-            echo "Signed PSBT vectors updated"
-            git diff server/tests/fixtures/generated-signed-psbt-vectors.ts || true
-          fi
-          INNER
-
-      - name: Run PSBT tests with new vectors
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/run-psbt-vector-tests.log" \
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-            set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --strict-allow-scripts --ignore-scripts
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
-            cd server
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
-            npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
-          '
+      - name: Upload regenerated PSBT cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: regenerate-psbt-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/regenerate-psbt-${{ github.run_id }}-${{ github.run_attempt }}/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/regenerate-psbt-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Write regenerate PSBT vector diagnostic summary
         if: always()

@@ -4,8 +4,11 @@ import path from 'node:path';
 import { canonicalSha256 } from './canonical-json.mjs';
 import { assertNoActiveCleanup } from './deployment-cleanup-gate.mjs';
 import { assertLegacyCleanupProjectNotCurrent } from './cleanup-legacy-guard.mjs';
-import { sha256 } from './crypto.mjs';
 import { composeArguments, resolveDeploymentDefinition } from './deployment-definition.mjs';
+import {
+  assertBoundCoordinatedRevision, deploymentIdentityOptions,
+} from './deployment-coordinated-authority.mjs';
+import { sha256 } from './crypto.mjs';
 import { acquireDeploymentLock, assertDeploymentLock, releaseDeploymentLock } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
 import {
@@ -30,7 +33,9 @@ function flag(name) { return ['1', 'true', 'yes'].includes((process.env[name] ??
 function state() {
   const runtimeDirectory = required('SANCTUARY_RUNTIME_DIR');
   const deploymentId = required('SANCTUARY_DEPLOYMENT_ID');
-  return { runtimeDirectory, deploymentId, store: new DeploymentStore({ runtimeDirectory, deploymentId }) };
+  const store = new DeploymentStore({ runtimeDirectory, deploymentId });
+  const coordinated = deploymentIdentityOptions(runtimeDirectory, deploymentId, store);
+  return { runtimeDirectory, deploymentId, store, coordinated };
 }
 
 function definitionOptions() {
@@ -157,16 +162,21 @@ function assertLocks(store, project = projectForSession(store)) {
 function output(fields) { process.stdout.write(`${fields.join('\t')}\n`); }
 
 function begin() {
-  const { store } = state();
+  const { store, coordinated } = state();
   const operationRunId = required('SANCTUARY_OPERATION_RUN_ID');
   const options = definitionOptions();
   const held = lock(store, operationRunId, options.composeProjectName);
   try {
     const baseBundle = resolveDeploymentDefinition(options);
-    store.initialize({ projectDirectory: baseBundle.definition.projectDirectory, composeProjectName: baseBundle.definition.composeProjectName });
+    store.initialize({
+      projectDirectory: baseBundle.definition.projectDirectory,
+      composeProjectName: baseBundle.definition.composeProjectName,
+      ...coordinated.identity,
+    });
     const inspection = store.reconcilePointers({ operationRunId, lockToken: held.token });
     const existingLegacyResources = existingRevisionLegacyResources(store, inspection);
     let bundle = resolveDefinition(options, baseBundle, existingLegacyResources);
+    assertBoundCoordinatedRevision(coordinated, inspection, bundle, store);
     if (inspection.pending) {
       const resumed = store.resumePending({
         operationRunId, lockToken: held.token, expectedPendingDigest: inspection.pending.digest,
@@ -212,6 +222,7 @@ function begin() {
       operationRunId,
       lockToken: held.token,
       legacyResources,
+      now: coordinated.createdAt ? () => new Date(coordinated.createdAt) : undefined,
     });
     output(['pending', prepared.manifest.generation, prepared.pendingDigest, held.token,
       held.owned ? 'owned' : 'inherited', prepared.pending.stage]);

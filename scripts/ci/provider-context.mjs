@@ -9,12 +9,33 @@ import { execFileSync } from 'node:child_process';
 
 const env = process.env;
 
-export function ciProvider() {
-  if (env.SANCTUARY_CI_PROVIDER_OVERRIDE) return env.SANCTUARY_CI_PROVIDER_OVERRIDE;
-  if (env.FORGEJO_ACTIONS === 'true' || env.FORGEJO_SERVER_URL) return 'forgejo';
-  if (env.GITHUB_ACTIONS === 'true') return 'github';
-  if (env.CI === 'true') return 'unknown-ci';
+export function ciProvider(environment = env) {
+  if (environment.SANCTUARY_CI_PROVIDER_OVERRIDE) {
+    return environment.SANCTUARY_CI_PROVIDER_OVERRIDE;
+  }
+  if (environment.FORGEJO_ACTIONS === 'true' || environment.FORGEJO_SERVER_URL) return 'forgejo';
+  if (environment.GITHUB_ACTIONS === 'true') return 'github';
+  if (environment.CI === 'true') return 'unknown-ci';
   return 'local';
+}
+
+export function ciAuthorityProvider(environment = env) {
+  if (environment.FORGEJO_ACTIONS === 'true' || environment.FORGEJO_SERVER_URL) return 'forgejo';
+  if (environment.GITHUB_ACTIONS === 'true') return 'github';
+  if (environment.CI === 'true') return 'unknown-ci';
+  return 'local';
+}
+
+export function ciAuthorityRunId(environment = env) {
+  return environment.GITHUB_RUN_ID || '';
+}
+
+export function ciAuthorityRunAttempt(environment = env) {
+  return environment.GITHUB_RUN_ATTEMPT || '';
+}
+
+export function ciAuthorityTempDir(environment = env) {
+  return environment.RUNNER_TEMP || '';
 }
 
 export function ciEventName() {
@@ -55,17 +76,26 @@ export function ciWorkspace() {
   }
 }
 
-export function ciRunId() {
-  if (env.SANCTUARY_CI_RUN_ID_OVERRIDE) return env.SANCTUARY_CI_RUN_ID_OVERRIDE;
-  if (env.GITHUB_RUN_ID) return env.GITHUB_RUN_ID;
-  if (env.GITHUB_RUN_NUMBER) return env.GITHUB_RUN_NUMBER;
+export function ciRunId(environment = env) {
+  if (environment.SANCTUARY_CI_RUN_ID_OVERRIDE) return environment.SANCTUARY_CI_RUN_ID_OVERRIDE;
+  if (environment.GITHUB_RUN_ID) return environment.GITHUB_RUN_ID;
+  if (environment.GITHUB_RUN_NUMBER) return environment.GITHUB_RUN_NUMBER;
   return `${process.pid}-${Math.floor(Date.now() / 1000)}`;
 }
 
-export function ciTempDir() {
-  if (env.SANCTUARY_CI_TEMP_DIR_OVERRIDE) return env.SANCTUARY_CI_TEMP_DIR_OVERRIDE;
-  if (env.RUNNER_TEMP) return env.RUNNER_TEMP;
-  return env.TMPDIR || '/tmp';
+export function ciRunAttempt(environment = env) {
+  if (environment.SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE) {
+    return environment.SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE;
+  }
+  return environment.GITHUB_RUN_ATTEMPT || '1';
+}
+
+export function ciTempDir(environment = env) {
+  if (environment.SANCTUARY_CI_TEMP_DIR_OVERRIDE) {
+    return environment.SANCTUARY_CI_TEMP_DIR_OVERRIDE;
+  }
+  if (environment.RUNNER_TEMP) return environment.RUNNER_TEMP;
+  return environment.TMPDIR || '/tmp';
 }
 
 export function ciOutputFile() {

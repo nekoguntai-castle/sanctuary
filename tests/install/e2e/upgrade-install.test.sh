@@ -14,7 +14,8 @@
 #   - Git tags or an explicit --source-ref for a real ref-to-ref upgrade path
 #   - Docker and Docker Compose v2
 #
-# Run: ./upgrade-install.test.sh [--keep-containers] [--source-ref <git-ref>] [--mode <core|full>]
+# Run: ./upgrade-install.test.sh [--source-ref <git-ref>] [--mode <core|full>]
+# (`--keep-containers` is refused because cleanup is receipt-bound.)
 # ============================================
 
 set -e
@@ -38,6 +39,7 @@ source "$SCRIPT_DIR/../utils/upgrade-transaction-migration-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-state-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-retirement-helpers.sh"
 source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
+INSTALL_E2E_ARGS=("$@")
 
 # ============================================
 # Configuration
@@ -133,10 +135,17 @@ if [ "$VERIFY_FORCE_REBUILD" = "true" ] && [ "$UPGRADE_TEST_MODE" != "core" ]; t
     exit 1
 fi
 
+if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ] && [ "$KEEP_CONTAINERS" = "true" ]; then
+    log_error "--keep-containers is incompatible with receipt-bound coordinated cleanup"
+    exit 1
+fi
+
 if ! validate_upgrade_fixture "$UPGRADE_FIXTURE"; then
     usage
     exit 1
 fi
+
+install_e2e_cleanup_auto_run install-upgrade "$TARGET_PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
@@ -151,7 +160,7 @@ apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
 apply_upgrade_test_network_defaults
 
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$TEST_ROOT/sanctuary-upgrade-runtime-${TEST_ID}}"
-TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
+TEST_SSL_DIR="$(upgrade_test_ssl_dir "$TEST_RUNTIME_DIR" "$TEST_ROOT" "$COMPOSE_PROJECT_NAME")"
 TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$(docker_visible_path "$TEST_SSL_DIR")}"
 # Same treatment as the SSL directory: give compose paths the engine can read.
 # Without this the monitoring and Tor overlays mount /workspace/... and
@@ -243,8 +252,7 @@ install_log_has_buildkit_cache_corruption() {
 }
 
 recover_upgrade_builder_cache() {
-    log_warning "Docker builder cache appears corrupt during source install; clearing builder cache and retrying once"
-    docker builder prune --force >/dev/null
+    log_warning "Docker builder cache appears corrupt during source install; preserving shared cache and retrying once with --no-cache"
 }
 
 load_runtime_env() {
@@ -492,6 +500,11 @@ retry_install_script_after_grafana_terminal_state_race() {
     local project_dir="$1"
     local install_log="$2"
 
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        log_error "The baseline Grafana race cannot invoke legacy cleanup during a coordinated run"
+        return 1
+    fi
+
     {
         echo ""
         echo "Retrying install after the Podman Grafana terminal-state race (baseline ref carries the unfixed migration)..."
@@ -504,6 +517,10 @@ retry_install_script_after_cache_recovery() {
     local project_dir="$1"
     local install_log="$2"
 
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        log_error "Builder recovery cannot invoke legacy cleanup during a coordinated run"
+        return 1
+    fi
     if ! recover_upgrade_builder_cache; then
         return 1
     fi
@@ -710,8 +727,10 @@ setup() {
     export SANCTUARY_RESTART_POLICY=no
 
     setup_exit_cleanup_trap "teardown"
-    cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
-    cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
+        cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
+    fi
 
     if ! prepare_upgrade_source_checkout; then
         log_error "Failed to prepare upgrade source checkout"
@@ -753,7 +772,9 @@ teardown() {
         fi
     fi
 
-    if [ "$KEEP_CONTAINERS" = "false" ]; then
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        log_info "Deferring Docker resource cleanup to the receipt-bound CI coordinator"
+    elif [ "$KEEP_CONTAINERS" = "false" ]; then
         cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
         if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
             cleanup_containers "$UPGRADE_SOURCE_CHECKOUT" 2>/dev/null || true
@@ -773,7 +794,7 @@ teardown() {
         rm -f "$LEGACY_TARGET_ENV_FILE"
     fi
 
-    if [ -d "$TEST_RUNTIME_DIR" ]; then
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ] && [ -d "$TEST_RUNTIME_DIR" ]; then
         rm -rf "$TEST_RUNTIME_DIR"
     fi
 
@@ -1891,7 +1912,8 @@ test_recover_postgres_password_drift() {
 
     # Keep postgres running so setup.sh can recover the real password from the
     # existing container and volume, then restart the application stack.
-    docker compose stop backend worker frontend gateway llm-egress-proxy migrate 2>&1 || true
+    run_project_compose "$PROJECT_ROOT" stop \
+        backend worker frontend gateway llm-egress-proxy migrate 2>&1 || true
 
     setup_output=$(
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"

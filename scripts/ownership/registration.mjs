@@ -182,16 +182,33 @@ export function validateRegistrationIdentity(registration) {
   return registration;
 }
 
-function writeRegistrationFiles(root, checkoutRoot, registration, privateKey) {
+function publishRegistrationFiles(root, checkoutRoot, registration, keys) {
   const directory = path.join(root, 'registrations', registration.resourceClass);
   ensurePrivateDirectory(path.dirname(directory));
   ensurePrivateDirectory(directory);
   const payload = canonicalJson(registration);
   const base = path.join(directory, registration.registrationId);
-  const signature = signDetached(payload, privateKey).toString('base64');
-  writeExternalFileAtomic(`${base}.json`, payload, { checkoutRoot });
-  writeExternalFileAtomic(`${base}.sig`, Buffer.from(signature), { checkoutRoot });
-  return `${base}.json`;
+  const target = `${base}.json`;
+  const signaturePath = `${base}.sig`;
+  if (existsSync(target)) {
+    if (!existsSync(signaturePath) || !readPrivateFile(target).equals(payload)) {
+      throw new Error('existing registration pair conflicts with the requested identity');
+    }
+    const signature = Buffer.from(readPrivateFile(signaturePath).toString('utf8'), 'base64');
+    verifyDetached(payload, signature, keys.publicKey, publicKeyFingerprint(keys.publicKey));
+    return target;
+  }
+  if (existsSync(signaturePath)) {
+    const signature = Buffer.from(readPrivateFile(signaturePath).toString('utf8'), 'base64');
+    verifyDetached(payload, signature, keys.publicKey, publicKeyFingerprint(keys.publicKey));
+  } else {
+    writeExternalFileAtomic(
+      signaturePath, Buffer.from(signDetached(payload, keys.privateKey).toString('base64')),
+      { checkoutRoot },
+    );
+  }
+  writeExternalFileAtomic(target, payload, { checkoutRoot });
+  return target;
 }
 
 export function registerResource(input, { root, checkoutRoot }) {
@@ -233,7 +250,7 @@ function registerResourceLocked(input, { root, checkoutRoot, keys }) {
   const registration = finalizeRegistration(effectiveInput, signerKeyId);
   validateRegistrationIdentity(registration);
   const target = path.join(root, 'registrations', registration.resourceClass, `${registration.registrationId}.json`);
-  if (!existsSync(target)) writeRegistrationFiles(root, checkoutRoot, registration, keys.privateKey);
+  publishRegistrationFiles(root, checkoutRoot, registration, keys);
   if (sharedImage) {
     for (const prior of existingReferences) {
       if (prior.lifecycle === 'shared' && prior.cleanupPolicy === 'retain'
@@ -242,8 +259,7 @@ function registerResourceLocked(input, { root, checkoutRoot, keys }) {
         ...prior, lifecycle: 'shared', cleanupPolicy: 'retain', referenceIds: sharedReferences,
       }, signerKeyId);
       validateRegistrationIdentity(superseding);
-      const supersedingTarget = path.join(root, 'registrations', 'oci_image', `${superseding.registrationId}.json`);
-      if (!existsSync(supersedingTarget)) writeRegistrationFiles(root, checkoutRoot, superseding, keys.privateKey);
+      publishRegistrationFiles(root, checkoutRoot, superseding, keys);
     }
   }
   return { registration, path: target };
@@ -259,14 +275,14 @@ function readOneRegistration(file, publicKey, fingerprint) {
 }
 
 function readRegistrationClass(directory, className, publicKey, fingerprint) {
-  const entries = readStableDirectory(directory);
+  const atomicTemporary = /^[a-f0-9]{64}\.(?:json|sig)\.tmp-[1-9][0-9]*-[0-9]+$/;
+  const entries = readStableDirectory(directory).filter((entry) => !atomicTemporary.test(entry));
   if (entries.some((entry) => !entry.endsWith('.json') && !entry.endsWith('.sig'))) {
     throw new Error(`registration directory contains an unexpected entry: ${directory}`);
   }
   const jsonBases = new Set(entries.filter((entry) => entry.endsWith('.json')).map((entry) => entry.slice(0, -5)));
   const signatureBases = new Set(entries.filter((entry) => entry.endsWith('.sig')).map((entry) => entry.slice(0, -4)));
-  if ([...jsonBases].some((entry) => !signatureBases.has(entry))
-      || [...signatureBases].some((entry) => !jsonBases.has(entry))) {
+  if ([...jsonBases].some((entry) => !signatureBases.has(entry))) {
     throw new Error(`registration directory contains an incomplete signed pair: ${directory}`);
   }
   return [...jsonBases].sort().map((base) => {

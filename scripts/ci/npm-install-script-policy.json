@@ -10,7 +10,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "Firebase's postinstall compatibility message is not required at runtime.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/@prisma/engines",
@@ -21,7 +21,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "Prisma must fetch and select the engine binary for the locked platform.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/@stellar/stellar-sdk",
@@ -32,7 +32,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "The Stellar SDK setup script is not needed by Sanctuary's browser bundle.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/blake-hash",
@@ -43,7 +43,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "Sanctuary does not require this optional native acceleration path.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/cbor-extract",
@@ -54,7 +54,7 @@
       "optional": true,
       "owner": "Sanctuary maintainers",
       "rationale": "CBOR decoding has a supported JavaScript fallback without the optional native package.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/esbuild",
@@ -65,7 +65,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "Esbuild must verify or install the binary matching the locked package and platform.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/fsevents",
@@ -76,7 +76,7 @@
       "optional": true,
       "owner": "Sanctuary maintainers",
       "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/msgpackr-extract",
@@ -87,7 +87,7 @@
       "optional": true,
       "owner": "Sanctuary maintainers",
       "rationale": "MessagePack decoding retains its supported JavaScript fallback.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/prisma",
@@ -98,7 +98,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "Prisma's platform compatibility check is required before client generation.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/protobufjs",
@@ -109,7 +109,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "The protobufjs postinstall notice does not affect generated runtime code.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/@trezor/utxo-lib/node_modules/tiny-secp256k1",
@@ -120,7 +120,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "The package explicitly supports its pure JavaScript implementation when native bindings are absent.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/tsx/node_modules/fsevents",
@@ -131,7 +131,7 @@
       "optional": true,
       "owner": "Sanctuary maintainers",
       "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/usb",
@@ -142,7 +142,7 @@
       "optional": false,
       "owner": "Sanctuary maintainers",
       "rationale": "Browser WebUSB integrations do not load the Node native USB binding.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "location": "node_modules/vite/node_modules/fsevents",
@@ -153,7 +153,7 @@
       "optional": true,
       "owner": "Sanctuary maintainers",
       "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     }
   ]
 }

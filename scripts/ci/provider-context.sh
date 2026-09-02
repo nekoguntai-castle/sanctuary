@@ -44,6 +44,25 @@ ci_provider() {
   printf '%s' "local"
 }
 
+# Destructive authority must never consume the test/display overrides above.
+# These helpers expose only provider-owned runtime identity, keeping raw
+# provider variables confined to this adapter without permitting downgrade.
+ci_authority_provider() {
+  if [ "${FORGEJO_ACTIONS:-}" = "true" ] || [ -n "${FORGEJO_SERVER_URL:-}" ]; then
+    printf '%s' "forgejo"
+  elif [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    printf '%s' "github"
+  elif [ "${CI:-}" = "true" ]; then
+    printf '%s' "unknown-ci"
+  else
+    printf '%s' "local"
+  fi
+}
+
+ci_authority_run_id() { printf '%s' "${GITHUB_RUN_ID:-}"; }
+ci_authority_run_attempt() { printf '%s' "${GITHUB_RUN_ATTEMPT:-}"; }
+ci_authority_temp_dir() { printf '%s' "${RUNNER_TEMP:-}"; }
+
 ci_event_name() {
   if [ -n "${SANCTUARY_CI_EVENT_NAME_OVERRIDE:-}" ]; then
     printf '%s' "$SANCTUARY_CI_EVENT_NAME_OVERRIDE"

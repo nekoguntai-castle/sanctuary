@@ -16,6 +16,27 @@ container_is_absent() {
     [ -z "$listed" ]
 }
 
+container_id_is_absent() {
+    local container_id="$1" listed
+    if docker container inspect "$container_id" >/dev/null 2>&1; then
+        return 1
+    fi
+    listed="$(docker container ls -a --no-trunc \
+        --filter "id=$container_id" --format '{{.ID}}')" \
+        || return 2
+    [ -z "$listed" ]
+}
+
+record_registered_transient_retirement() {
+    printf 'registered-transient resource_class=compose_container immutable_id=%s postcondition=absent\n' "$1" >&2
+}
+
+register_transient_container() {
+    local container_id="$1"
+    register_owned_resource compose_container obsolete exact_delete engine_id \
+        "$container_id" "$container_id" "$SANCTUARY_OPERATION_RUN_ID"
+}
+
 inspect_control_helper() {
     local helper_id="$1"
     docker container inspect --format \
@@ -36,6 +57,21 @@ validate_control_helper_identity() {
         && [ "$owner" = "$expected_owner" ] \
         && [ "$operation" = "$expected_operation" ] \
         && [ "$nonce" = "$expected_nonce" ]
+}
+
+retire_control_helper() {
+    local helper_id="$1" expected_owner="$2" expected_operation="$3" expected_nonce="$4"
+    local identity remove_status=0
+    identity="$(inspect_control_helper "$helper_id")" || return 1
+    validate_control_helper_identity \
+        "$identity" "$helper_id" "$expected_owner" "$expected_operation" "$expected_nonce" \
+        || return 1
+    docker container rm "$helper_id" >/dev/null || remove_status=$?
+    if ! container_id_is_absent "$helper_id"; then
+        [ "$remove_status" -ne 0 ] && return "$remove_status"
+        return 1
+    fi
+    record_registered_transient_retirement "$helper_id"
 }
 
 last_observed_control_helper_state=""
@@ -86,7 +122,7 @@ complete_control_helper() {
         || fail "completed Grafana control helper identity is invalid."
     [ "$settle_status" = "0" ] \
         || fail "Grafana control helper terminal state is inconsistent (state=$last_observed_control_helper_state exit_code=$last_observed_control_helper_exit_code wait_code=$status)."
-    docker container rm "$helper_id" >/dev/null \
+    retire_control_helper "$helper_id" "$wrapper_owner_token" "$operation" "$nonce" \
         || fail "completed Grafana control helper could not be removed."
     [ "$status" -eq 0 ] || fail "Grafana control helper failed with exit code $status."
     CONTROL_HELPER_OUTPUT="$output"
@@ -95,11 +131,12 @@ complete_control_helper() {
 run_control_helper() {
     local operation="$1" command="$2"
     shift 2
-    local nonce helper_name id identity state
-    ownership_label_args collector_process exact_delete
+    local nonce helper_name id create_output identity state create_status=0 output_status=0
+    local SANCTUARY_RESOURCE_LIFECYCLE=obsolete
+    ownership_label_args compose_container exact_delete
     nonce="$(openssl rand -hex 16)"
     helper_name="${resolved_project}-sanctuary-grafana-control-${nonce}"
-    id="$(docker container create --pull never --name "$helper_name" \
+    create_output="$(docker container create --pull never --name "$helper_name" \
         "${OWNERSHIP_LABEL_ARGS[@]}" \
         --label sanctuary.grafana.role=control-helper \
         --label "sanctuary.grafana.project=$resolved_project" \
@@ -110,17 +147,26 @@ run_control_helper() {
         --label "sanctuary.grafana.nonce=$nonce" \
         --user 0 --entrypoint /bin/sh \
         --mount "type=volume,src=$resolved_control_volume,dst=/control" \
-        "$@" "$migration_image_id" -c "$command")" \
-        || fail "Grafana control helper creation failed."
+        "$@" "$migration_image_id" -c "$command")" || create_status=$?
+    id="$(recover_exact_created_container "$helper_name")" || {
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return 1
+    }
+    [ "$create_status" -ne 0 ] || [ "$create_output" = "$id" ] || output_status=1
     identity="$(inspect_control_helper "$id")" \
         || fail "created Grafana control helper identity is unavailable."
     validate_control_helper_identity "$identity" "$id" "$wrapper_owner_token" "$operation" "$nonce" \
         || fail "created Grafana control helper identity is invalid."
-    if [ "$ownership_registration_enabled" = true ]; then
-        register_owned_resource collector_process active exact_delete name "$helper_name" "$id" "$SANCTUARY_OPERATION_RUN_ID"
-    fi
+    register_transient_container "$id" \
+        || fail "created Grafana control helper registration failed."
     IFS='|' read -r _ _ state _ <<< "$identity"
     [ "$state" = "created" ] || fail "created Grafana control helper is not startable."
+    if [ "$create_status" -ne 0 ] || [ "$output_status" -ne 0 ]; then
+        retire_control_helper "$id" "$wrapper_owner_token" "$operation" "$nonce" \
+            || fail "recovered Grafana control helper could not be removed."
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return "$output_status"
+    fi
     complete_control_helper "$id" "$operation" "$nonce"
 }
 
@@ -172,7 +218,7 @@ reconcile_abandoned_control_helpers() {
             ''|*[!0-9]*) fail "Grafana control helper creation time is invalid." ;;
         esac
         [ "$((now - created_epoch))" -ge "$helper_stale_after_seconds" ] || continue
-        docker container rm "$id" >/dev/null \
+        retire_control_helper "$id" "$owner" "$operation" "$nonce" \
             || fail "an abandoned Grafana control helper could not be removed."
     done < <(control_helper_ids)
 }
@@ -325,6 +371,20 @@ assert_reclamation_identity() {
         && [ "$inspected_generation" = "$generation" ]
 }
 
+retire_migration_container() {
+    local expected_id="$1" token="$2" container_id="$3" generation="$4"
+    local identity remove_status=0
+    identity="$(inspect_migration_container "$expected_id")" || return 1
+    assert_reclamation_identity "$identity" "$expected_id" "$token" "$container_id" "$generation" \
+        || return 1
+    docker container rm "$expected_id" >/dev/null || remove_status=$?
+    if ! container_id_is_absent "$expected_id"; then
+        [ "$remove_status" -ne 0 ] && return "$remove_status"
+        return 1
+    fi
+    record_registered_transient_retirement "$expected_id"
+}
+
 wait_and_remove_reclaimed_migration() {
     local expected_id="$1" token="$2" container_id="$3" generation="$4"
     local identity id state exit_code wait_code settle_status
@@ -341,7 +401,7 @@ wait_and_remove_reclaimed_migration() {
     assert_reclamation_identity "$identity" "$expected_id" "$token" "$container_id" "$generation" \
         || fail "the reclaimed migration terminal identity changed."
     IFS='|' read -r id state exit_code _ <<< "$identity"
-    docker container rm "$id" >/dev/null \
+    retire_migration_container "$id" "$token" "$container_id" "$generation" \
         || fail "the reclaimed migration container could not be removed."
 }
 
@@ -355,7 +415,7 @@ recover_reclaimed_removal_failure() {
     IFS='|' read -r id state exit_code _ <<< "$identity"
     case "$state" in
         running) wait_and_remove_reclaimed_migration "$expected_id" "$token" "$container_id" "$generation" ;;
-        exited|stopped) docker container rm "$id" >/dev/null \
+        exited|stopped) retire_migration_container "$id" "$token" "$container_id" "$generation" \
             || fail "the exited reclaimed migration container could not be removed." ;;
         *) fail "the reclaimed migration container could not be removed safely." ;;
     esac

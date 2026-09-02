@@ -6,13 +6,10 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { waitForDatabaseReadiness } from './wallet-sync-database-readiness.mjs';
 import { collectHealthProbe, healthProbeUrl } from './wallet-sync-health-probe.mjs';
-import {
-  inspectOwnedId, registerReplayResource, replayOwnershipLabels,
-} from './wallet-sync-replay-ownership.mjs';
-
-export { collectHealthProbe, healthProbeUrl, waitForDatabaseReadiness };
-export { replayOwnershipLabels };
-
+import { registerReplayResource, replayOwnershipLabels } from './wallet-sync-replay-ownership.mjs';
+import { buildReplayCleanupEvidence, cleanup } from './wallet-sync-replay-cleanup.mjs';
+import { createRegisteredReplayResource } from './wallet-sync-replay-creation.mjs';
+export { buildReplayCleanupEvidence, cleanup, collectHealthProbe, healthProbeUrl, replayOwnershipLabels, waitForDatabaseReadiness };
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
 const DRIVER_PATH = resolve(SCRIPT_DIR, 'wallet-sync-persistence-driver.cjs');
@@ -21,7 +18,7 @@ const FIXTURE_PATH = resolve(SCRIPT_DIR, 'wallet-sync-persistence-fixture.cjs');
 const POSTGRES_IMAGE = 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777';
 const RC10_REVISION = '5c1d1909f177b7bbd7c8f470da375b2de6bd0de3';
 const PROBE_PATHS = ['/live', '/ready', '/metrics/prometheus'];
-let activeOwnedNames;
+let activeOwnedResources;
 let terminationSignal;
 
 function throwIfTerminated() {
@@ -347,7 +344,11 @@ function migrationDigest(root) {
 
 function imageMigrationDigest(image) {
   const code = "const f=require('fs'),c=require('crypto'),p=require('path'),r='/app/prisma/migrations',a=[];const w=d=>f.readdirSync(d).sort().forEach(n=>{const x=p.join(d,n);f.statSync(x).isDirectory()?w(x):a.push(x)});w(r);const h=c.createHash('sha256');a.forEach(x=>{h.update(p.relative(r,x));h.update('\\0');h.update(f.readFileSync(x));h.update('\\0')});process.stdout.write(h.digest('hex'))";
-  return run(['docker', 'run', '--rm', '--entrypoint', 'node', image, '-e', code]).trim();
+  const name = `sanctuary-replay-migration-digest-${process.pid}-${randomBytes(4).toString('hex')}`;
+  return runRegisteredReplayContainer(name, [
+    'docker', 'create', '--rm', '--name', name, ...replayOwnershipLabels('compose_container'),
+    '--entrypoint', 'node', image, '-e', code,
+  ]).trim();
 }
 
 function verifyImage(image, revision, lockSha) {
@@ -564,17 +565,37 @@ async function hostPort(name) {
   throw new Error('Replay health port was not published');
 }
 
-export function cleanup(names, operations = { inspect: containerInspect, run }) {
-  const failures = [];
-  [names.worker, names.postgres].forEach(name => {
-    if (operations.inspect(name, '{{.Id}}')) try { operations.run(['docker', 'rm', '--force', name]); } catch { failures.push(name); }
+function registerActiveResource(resourceClass, name, commandOutput) {
+  const immutableIdentity = String(commandOutput ?? '').trim();
+  if (!/^[a-f0-9]{64}$/.test(immutableIdentity)) {
+    throw new Error(`Replay ${resourceClass} immutable identity unavailable`);
+  }
+  registerReplayResource(resourceClass, name, immutableIdentity);
+  activeOwnedResources?.push({ resourceClass, immutableIdentity, name });
+}
+
+function activeResourceIdentity(resourceClass, name) {
+  const resource = activeOwnedResources?.find(candidate => candidate.resourceClass === resourceClass
+    && candidate.name === name);
+  if (!resource) throw new Error(`Replay ${resourceClass} ${name} was not registered`);
+  return resource.immutableIdentity;
+}
+
+export const cleanupReplayResources = (resources, operation = run) => cleanup(resources, { run: operation });
+
+export function createReplayResource(resourceClass, name, createArgs, runtime = {}) {
+  const operation = runtime.operation ?? run;
+  const onCreated = runtime.onCreated ?? registerActiveResource;
+  return createRegisteredReplayResource(resourceClass, name, createArgs, { operation, onCreated });
+}
+
+export function runRegisteredReplayContainer(name, createArgs, runtime = {}) {
+  const operation = runtime.operation ?? run;
+  const onCreated = runtime.onCreated ?? registerActiveResource;
+  const immutableIdentity = createReplayResource('compose_container', name, createArgs, {
+    operation, onCreated,
   });
-  let networkExists = true;
-  try { operations.run(['docker', 'network', 'inspect', names.network]); } catch { networkExists = false; }
-  if (networkExists) try { operations.run(['docker', 'network', 'rm', names.network]); } catch { failures.push(names.network); }
-  if (operations.inspect(names.worker, '{{.Id}}') || operations.inspect(names.postgres, '{{.Id}}')) failures.push('container_verify');
-  try { operations.run(['docker', 'network', 'inspect', names.network]); failures.push('network_verify'); } catch { /* absent */ }
-  return failures;
+  return operation(['docker', 'start', '--attach', immutableIdentity], runtime.startOptions);
 }
 
 export function ownedResourceNames(role, suffix) {
@@ -596,7 +617,7 @@ export function postgresRunArgs(names, password, mode) {
 
 export function workerCreateArgs(subject, names, databaseUrl) {
   return ['docker', 'create', '--name', names.worker, '--network', names.network, '--cpus', '1', '--memory', '1g',
-    '--memory-swap', '1280m', ...replayOwnershipLabels('collector_process'),
+    '--memory-swap', '1280m', ...replayOwnershipLabels('compose_container'),
     '--publish', '3002', '--tmpfs', '/tmp:rw,noexec,nosuid,size=128m',
     '--env', `DATABASE_URL=${databaseUrl}`,
     '--env', `WALLET_SYNC_MUTATION_TIMEOUT_MS=${subject.mode === 'max' ? 45000 : 60000}`,
@@ -612,19 +633,23 @@ export function workerCreateArgs(subject, names, databaseUrl) {
     subject.image, 'node', '--expose-gc', `/app/${basename(DRIVER_PATH)}`];
 }
 
-export function workerFileCopyArgs(subject, names) {
+export function workerFileCopyArgs(subject, workerIdentity) {
   return [DRIVER_PATH, DRIVER_HELPER_PATH, FIXTURE_PATH, subject.manifestPath].map(source => (
-    ['docker', 'cp', source, `${names.worker}:/app/${basename(source)}`]
+    ['docker', 'cp', source, `${workerIdentity}:/app/${basename(source)}`]
   ));
 }
 
-export function stageAndStartWorker(subject, names, databaseUrl, operation = run) {
-  operation(workerCreateArgs(subject, names, databaseUrl));
-  if (process.env.SANCTUARY_OWNERSHIP_ROOT) {
-    registerReplayResource('collector_process', names.worker, inspectOwnedId('container', names.worker, run));
-  }
-  workerFileCopyArgs(subject, names).forEach(args => operation(args));
-  operation(['docker', 'start', names.worker]);
+export function stageAndStartWorker(subject, names, databaseUrl, runtime = {}) {
+  const operation = typeof runtime === 'function' ? runtime : runtime.operation ?? run;
+  const onCreated = typeof runtime === 'function'
+    ? registerActiveResource : runtime.onCreated ?? registerActiveResource;
+  const workerIdentity = createReplayResource(
+    'compose_container', names.worker, workerCreateArgs(subject, names, databaseUrl), {
+      operation, onCreated,
+    },
+  );
+  workerFileCopyArgs(subject, workerIdentity).forEach(args => operation(args));
+  operation(['docker', 'start', workerIdentity]);
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -636,22 +661,26 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 export async function startDatabase(names, password, image, mode, runtime = {}) {
   const {
     operation = run,
+    onCreated = registerActiveResource,
     waitUntilReady = waitForDatabaseReadiness,
     readinessRuntime = {},
   } = runtime;
   const statementTimeoutMs = mode === 'max' ? 20000 : 30000;
-  operation(['docker', 'network', 'create', ...replayOwnershipLabels('compose_network'), names.network]);
-  if (process.env.SANCTUARY_OWNERSHIP_ROOT) {
-    registerReplayResource('compose_network', names.network, inspectOwnedId('network', names.network, run));
-  }
-  operation(postgresRunArgs(names, password, mode));
-  if (process.env.SANCTUARY_OWNERSHIP_ROOT) {
-    registerReplayResource('compose_container', names.postgres, inspectOwnedId('container', names.postgres, run));
-  }
+  createReplayResource('compose_network', names.network, [
+    'docker', 'network', 'create', ...replayOwnershipLabels('compose_network'), names.network,
+  ], { operation, onCreated });
+  createReplayResource('compose_container', names.postgres, postgresRunArgs(names, password, mode), {
+    operation, onCreated,
+  });
   await waitUntilReady(names, password, { ...readinessRuntime, throwIfTerminated });
   const url = `postgresql://sanctuary:${password}@postgres:5432/sanctuary_replay?schema=public&connection_limit=30&pool_timeout=30&connect_timeout=10&statement_timeout=${statementTimeoutMs}`;
-  operation(['docker', 'run', '--rm', '--network', names.network, '--env', `DATABASE_URL=${url}`, image,
-    'npx', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma'], { stdio: 'inherit' });
+  const migrationName = `${names.postgres}-migration`;
+  runRegisteredReplayContainer(migrationName, [
+    'docker', 'create', '--rm', '--name', migrationName,
+    ...replayOwnershipLabels('compose_container'), '--network', names.network,
+    '--env', `DATABASE_URL=${url}`, image,
+    'npx', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma',
+  ], { operation, onCreated, startOptions: { stdio: 'inherit' } });
   return url;
 }
 
@@ -662,7 +691,7 @@ function startWorker(subject, names, databaseUrl) {
 export async function observe(subject, manifest, evidenceDir, failureRuntime = {
   logs,
   inspect: containerInspect,
-  cleanup,
+  cleanup: cleanupReplayResources,
 }) {
   const suffix = `${process.pid}-${randomBytes(4).toString('hex')}`;
   const names = ownedResourceNames(subject.role, suffix);
@@ -674,7 +703,7 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
   let postgresMeasurementOffset = 0;
   let observerEvidence;
   try {
-    activeOwnedNames = names;
+    activeOwnedResources = [];
     throwIfTerminated();
     const url = await startDatabase(names, randomBytes(16).toString('hex'), subject.image, subject.mode);
     startWorker(subject, names, url);
@@ -686,7 +715,7 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
     resourceSamples.push(createResourceSnapshot(
       'idle_baseline', baselineBytes, baselineCurrentBytes, baselineKernelPeakBytes,
     ));
-    run(['docker', 'kill', '--signal', 'USR1', names.worker]);
+    run(['docker', 'kill', '--signal', 'USR1', activeResourceIdentity('compose_container', names.worker)]);
     if (subject.mode === 'max') {
       await waitForMaxFixturePreparation(names.worker, manifest);
     } else {
@@ -707,7 +736,7 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
     currentPeakBytes = Math.max(baselineCurrentBytes, fixtureReadyCurrentBytes);
     kernelPeakBytes = Math.max(baselineKernelPeakBytes, fixtureReadyKernelPeakBytes);
     postgresMeasurementOffset = logs(names.postgres).length;
-    run(['docker', 'kill', '--signal', 'USR2', names.worker]);
+    run(['docker', 'kill', '--signal', 'USR2', activeResourceIdentity('compose_container', names.worker)]);
     const timeout = replayObservationTimeout(subject.mode, manifest);
     const deadline = Date.now() + timeout;
     let completionReleased = false;
@@ -752,12 +781,12 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
         Math.max(sampledPeakBytes, kernelPeakBytes),
         manifest,
       )) {
-        run(['docker', 'kill', names.worker]);
+        run(['docker', 'kill', activeResourceIdentity('compose_container', names.worker)]);
         break;
       }
       if (!completionReleased && observedEvents.some(event => event.event === 'replay_cleanup_completed')) {
         completionReleased = true;
-        run(['docker', 'kill', '--signal', 'HUP', names.worker]);
+        run(['docker', 'kill', '--signal', 'HUP', activeResourceIdentity('compose_container', names.worker)]);
         break;
       }
     }
@@ -772,7 +801,7 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
       containerInspect(names.worker, '{{.State.Running}}'),
     )) {
       watchdogStage = parseJsonEvents(logs(names.worker)).findLast(event => event.event === 'phase_started')?.stage;
-      run(['docker', 'kill', names.worker]);
+      run(['docker', 'kill', activeResourceIdentity('compose_container', names.worker)]);
     }
     const output = logs(names.worker);
     const postgresLogs = logs(names.postgres);
@@ -855,17 +884,16 @@ export async function observe(subject, manifest, evidenceDir, failureRuntime = {
     if (error && typeof error === 'object') error.replayEvidence = failureEvidence;
     throw error;
   } finally {
-    const cleanupFailures = failureRuntime.cleanup(names);
-    activeOwnedNames = undefined;
-    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-cleanup.json`), `${JSON.stringify({
-      worker: names.worker,
-      postgres: names.postgres,
-      network: names.network,
-      verifiedAbsent: cleanupFailures.length === 0,
-      failures: cleanupFailures,
-    }, null, 2)}\n`);
-    if (cleanupFailures.length > 0 && process.exitCode === undefined) {
-      const cleanupError = new Error(`Owned replay cleanup failed: ${cleanupFailures.join(',')}`);
+    const cleanupEvidence = failureRuntime.cleanup(activeOwnedResources);
+    activeOwnedResources = undefined;
+    const rawEvidencePath = join(evidenceDir, `${subject.role}-${subject.mode}.jsonl`);
+    const rawEvidence = existsSync(rawEvidencePath)
+      ? { sha256: sha256File(rawEvidencePath), bytes: statSync(rawEvidencePath).size }
+      : null;
+    const uploadSafeEvidence = buildReplayCleanupEvidence(cleanupEvidence, rawEvidence);
+    writeFileSync(join(evidenceDir, `${subject.role}-${subject.mode}-cleanup.json`), `${JSON.stringify(uploadSafeEvidence, null, 2)}\n`);
+    if (cleanupEvidence.failureClasses.length > 0 && process.exitCode === undefined) {
+      const cleanupError = new Error(`Owned replay cleanup failed: ${cleanupEvidence.failureClasses.join(',')}`);
       cleanupError.replayEvidence = observerEvidence;
       throw cleanupError;
     }
@@ -948,7 +976,15 @@ function preflight() {
   return { cpu, memoryBytes: memoryKiB * 1024, diskBytes: disk };
 }
 
+export function assertCoordinatedReplayAuthority() {
+  if (process.env.SANCTUARY_CLEANUP_COORDINATED !== '1'
+    || !process.env.SANCTUARY_OWNERSHIP_ROOT) {
+    throw new Error('Wallet-sync replay requires the canonical cleanup coordinator');
+  }
+}
+
 export async function main(argv = process.argv.slice(2)) {
+  assertCoordinatedReplayAuthority();
   const options = parseArgs(argv);
   if (existsSync(options.evidenceDir) && readdirSync(options.evidenceDir).length) throw new Error('Evidence directory must be empty');
   mkdirSync(options.evidenceDir, { recursive: true });

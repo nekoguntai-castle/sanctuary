@@ -84,6 +84,7 @@ assert_scope() {
   local run_upgrade_baseline="$9"
   local run_upgrade_extended="${10}"
   local run_reuse_stack="${11}"
+  local run_ownership_cleanup="${12:-false}"
 
   assert_exact_output "$output_file" "should_run" "$should_run"
   assert_exact_output "$output_file" "run_unit" "$run_unit"
@@ -95,6 +96,7 @@ assert_scope() {
   assert_exact_output "$output_file" "run_upgrade_baseline" "$run_upgrade_baseline"
   assert_exact_output "$output_file" "run_upgrade_extended" "$run_upgrade_extended"
   assert_exact_output "$output_file" "run_reuse_stack" "$run_reuse_stack"
+  assert_exact_output "$output_file" "run_ownership_cleanup" "$run_ownership_cleanup"
 }
 
 assert_release_critical_scope() {
@@ -463,6 +465,14 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
   assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/ownership/cleanup-fixture.mjs" "export {};" "ownership cleanup change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" \
+    "false" "false" "false" "false" "true"
+  assert_exact_output "$output_file" "scope" "ownership-cleanup"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow base" base

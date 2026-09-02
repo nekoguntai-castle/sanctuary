@@ -21,6 +21,11 @@ This test suite covers:
 ./tests/install/run-all-tests.sh
 ```
 
+Docker-producing E2E entry points automatically re-exec through the local,
+ephemeral cleanup coordinator when run outside CI. The coordinator preserves
+the test exit status, records signed cleanup evidence, and removes the exact
+resources created by that invocation.
+
 ### Run Specific Test Suites
 
 ```bash
@@ -219,7 +224,7 @@ Tests authentication and password management:
 |--------|-------------|
 | `--unit-only` | Run only unit tests |
 | `--e2e-only` | Run only E2E tests |
-| `--skip-cleanup` | Keep containers after tests |
+| `--skip-cleanup` | Refused for E2E runs because it conflicts with receipt-bound cleanup |
 | `--verbose` | Show detailed output |
 | `--fast` | Skip slow tests (upgrade) |
 | `--upgrade-fixture FIXTURE[,FIXTURE...]` | Fixture list for `upgrade-install.test.sh` |
@@ -230,13 +235,13 @@ Tests authentication and password management:
 | Option | Description |
 |--------|-------------|
 | `--verbose`, `-v` | Show detailed output |
-| `--keep-containers` | Don't cleanup containers after test |
+| `--keep-containers` | Refused by Docker-producing E2E entry points because it conflicts with receipt-bound cleanup |
 | `--mode core|full` | Choose the focused ref-to-ref upgrade lane or the extended local suite |
 | `--core-only` | Shortcut for `--mode core` |
 | `--full-suite` | Shortcut for `--mode full` |
 | `--source-ref REF` | Older source ref/tag/alias to install before upgrading |
 | `--fixture FIXTURE[,FIXTURE...]` | Upgrade fixture list |
-| `--skip-cleanup` | Skip initial cleanup |
+| `--skip-cleanup` | Refused by the fresh-install E2E lane because pre-existing resources are outside its cleanup receipt |
 | `--slow` | Use longer timeouts |
 | `--keep-state` | Don't reset password after auth tests |
 
@@ -295,9 +300,11 @@ Total release validation time: ~25-60 minutes depending on upgrade matrix concur
 workflow_dispatch:
   inputs:
     test_suite: all|unit|fresh-install|upgrade|container-health|auth-flow|release-critical
-    keep_containers: true|false
     upgrade_source_ref: v0.8.39 # optional override for the matrix source ref
 ```
+
+Docker-producing workflow lanes always emit signed terminal cleanup evidence;
+manual dispatch cannot retain their containers after the run.
 
 #### 2. Release Candidate Validation (`.github/workflows/release-candidate.yml`)
 
@@ -357,17 +364,12 @@ docker logs sanctuary-frontend --tail 100
 docker logs sanctuary-migrate
 ```
 
-### Keep Containers Running
+### Cleanup and Diagnostics
 
-```bash
-# Run tests without cleanup
-./tests/install/e2e/fresh-install.test.sh --keep-containers
-
-# Manually inspect
-docker compose ps
-docker exec -it sanctuary-backend sh
-docker exec -it sanctuary-db psql -U sanctuary -d sanctuary
-```
+Standalone Docker-producing E2E runs cannot keep containers running: doing so
+would contradict the signed cleanup receipt and leave restart-policy resources
+outside an active controller. Failure diagnostics are captured before cleanup;
+use `--verbose` and the emitted artifact paths to inspect them.
 
 ### Enable Debug Mode
 

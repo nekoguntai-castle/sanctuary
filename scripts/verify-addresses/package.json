@@ -14,9 +14,7 @@
     "generate:repeatable": "./verify-repeatable.sh generate",
     "verify": "tsx generate-vectors.ts --verify-only",
     "verify:repeatable": "./verify-repeatable.sh verify",
-    "typecheck": "tsc --noEmit",
-    "start-bitcoind": "docker compose up -d",
-    "stop-bitcoind": "docker compose down"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "bip32": "^5.0.1",

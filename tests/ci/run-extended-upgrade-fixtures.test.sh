@@ -40,10 +40,19 @@ main() {
     fail 'expected unknown option to fail'
   fi
 
-  grep -Fq -- '--project "$COMPOSE_PROJECT_NAME" --verify-empty' "$SCRIPT" ||
-    fail 'expected extended upgrade wrapper to verify exact label cleanup'
-  grep -Fq 'upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"' "$SCRIPT" ||
-    fail 'expected extended upgrade wrapper to preserve fixture status through cleanup'
+  grep -Fq 'cleanup-ci-callsite.sh" run' "$SCRIPT" ||
+    fail 'expected extended upgrade wrapper to use the receipt-bound coordinator'
+  grep -Fq -- '--authority-mode deployment_managed_by_subject' "$SCRIPT" ||
+    fail 'expected extended upgrade wrapper to select subject-managed deployment authority'
+  grep -Fq 'source scripts/ci/provider-context.sh' "$SCRIPT" ||
+    fail 'expected the isolated fixture shell to load provider-neutral cleanup paths'
+  grep -Fq -- '--subject-exit-status' "$SCRIPT" &&
+    fail 'run mode must obtain the subject status from the supervised command'
+  grep -Fq 'exit "$status"' "$SCRIPT" ||
+    fail 'expected extended upgrade wrapper to preserve the coordinator status'
+  if grep -Eq 'cleanup-docker-resources|upgrade_finish_with_cleanup|--prefix|--verify-empty' "$SCRIPT"; then
+    fail 'extended upgrade wrapper must not retain a legacy cleanup bypass'
+  fi
   if grep -Fq 'docker compose down' "$SCRIPT"; then
     fail 'extended upgrade wrapper must leave graceful Compose teardown to the test'
   fi

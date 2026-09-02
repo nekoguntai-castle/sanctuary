@@ -47,14 +47,19 @@ if [ -n "${SANCTUARY_TEST_SOURCE_ONLY:-}" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
+if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+  exec "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" auto-run \
+    --lane integration-tests --checkout-root "$PROJECT_ROOT" -- "$0" "$@"
+fi
+
 # A unique project name stops two checkouts sharing a container, but both would
 # still bind the same default host port (55433) and the second would die with
 # "port is already allocated". Isolating one half and not the other just moves
 # the collision, so when the caller has not pinned a port we ask the kernel for
 # an ephemeral one and discover it after startup.
 #
-# Pin TEST_POSTGRES_PORT to get the old fixed behaviour — useful when attaching
-# psql to a kept database (INTEGRATION_KEEP_DB=true).
+# Pin TEST_POSTGRES_PORT to get the old fixed behaviour when attaching an
+# external client during the test run.
 PORT_WAS_PINNED="${TEST_POSTGRES_PORT:+yes}"
 DATABASE_URL_WAS_PINNED="${TEST_DATABASE_URL:+yes}"
 if [ -z "$PORT_WAS_PINNED" ]; then
@@ -65,13 +70,19 @@ fi
 source "$SCRIPT_DIR/integration-test-defaults.sh"
 apply_integration_test_defaults
 
-cleanup() {
-  if [[ "$KEEP_DB" == "true" ]]; then
-    echo "Keeping integration database container running (INTEGRATION_KEEP_DB=true)."
-    return
-  fi
+if [[ "$KEEP_DB" == "true" ]]; then
+  echo "INTEGRATION_KEEP_DB=true is incompatible with mandatory receipt-bound cleanup." >&2
+  echo "Use a separately managed development database when post-test retention is required." >&2
+  exit 2
+fi
 
-  "${COMPOSE_COMMAND[@]}" "${COMPOSE_ARGS[@]}" down --remove-orphans >/dev/null 2>&1 || true
+cleanup() {
+  if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" == "1" ]]; then
+    echo "Integration resources are retained for receipt-bound coordinator cleanup."
+  else
+    echo "Refusing unregistered local integration cleanup; exact cleanup authority is unavailable." >&2
+    echo "The isolated Compose project remains: ${COMPOSE_PROJECT_NAME}" >&2
+  fi
 }
 
 require_command() {

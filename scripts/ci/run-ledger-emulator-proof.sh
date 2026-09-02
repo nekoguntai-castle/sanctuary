@@ -2,14 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/ci/provider-context.sh
-. "$SCRIPT_DIR/provider-context.sh"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+  exec "$SCRIPT_DIR/cleanup-ci-callsite.sh" auto-run \
+    --lane ledger-emulator-proof --checkout-root "$PROJECT_ROOT" -- "$0" "$@"
+fi
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
 readonly manifest='config/ledger-emulator/proof.json'
-readonly image='sanctuary-ledger-emulator:proof'
 readonly run_id="$(ci_run_id)"
 readonly run_attempt="${SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE:-0}"
 readonly run_identity="${run_id}-${run_attempt}-$$"
+readonly image="localhost/sanctuary-ledger-emulator:proof-${run_identity}"
 readonly evidence_root="$(ci_workspace)/.tmp/ci-evidence/ledger-emulator/${run_identity}"
 readonly diagnostics_dir="$evidence_root/diagnostics"
 mkdir -p "$diagnostics_dir"
@@ -52,9 +57,81 @@ jq -e '
 ' "$manifest" >/dev/null
 
 cleanup_container=''
+cleanup_container_registered=0
 forwarder_pid=0
+proof_image_id=''
+proof_image_registered=0
+
+assert_registered_transient() {
+  local container_id="$1"
+  docker inspect "$container_id" | jq -e \
+    --arg id "$container_id" --arg name "$container_name" --arg project "$SANCTUARY_PROJECT" \
+    --arg deployment "$SANCTUARY_DEPLOYMENT_ID" --arg owner "$SANCTUARY_OWNER_ID" \
+    --arg run "$SANCTUARY_OPERATION_RUN_ID" --arg created "$SANCTUARY_CLEANUP_CREATED_AT" \
+    --arg release "$SANCTUARY_RELEASE" --arg commit "$SANCTUARY_COMMIT" '
+      length == 1 and .[0].Id == $id and .[0].Name == ("/" + $name)
+      and .[0].Config.Labels["io.sanctuary.project"] == $project
+      and .[0].Config.Labels["io.sanctuary.deployment-id"] == $deployment
+      and .[0].Config.Labels["io.sanctuary.owner-id"] == $owner
+      and .[0].Config.Labels["io.sanctuary.resource-class"] == "compose_container"
+      and .[0].Config.Labels["io.sanctuary.lifecycle"] == "obsolete"
+      and .[0].Config.Labels["io.sanctuary.cleanup-policy"] == "exact_delete"
+      and .[0].Config.Labels["io.sanctuary.created-at"] == $created
+      and .[0].Config.Labels["io.sanctuary.created-by-release"] == $release
+      and .[0].Config.Labels["io.sanctuary.created-by-commit"] == $commit
+      and .[0].Config.Labels["io.sanctuary.creation-run-id"] == $run
+    ' >/dev/null
+}
+
+container_absence_proven() {
+  local container_id="$1" listed
+  if docker container inspect "$container_id" >/dev/null 2>&1; then
+    return 1
+  fi
+  listed="$(docker container ls -a --no-trunc \
+    --filter "id=$container_id" --format '{{.ID}}')" || return 2
+  [ -z "$listed" ]
+}
+
+record_registered_transient_retirement() {
+  local container_id="$1" evidence_name="$2" postcondition="$3"
+  case "$postcondition" in
+    absent|already-absent) ;;
+    *) return 1 ;;
+  esac
+  jq -n --arg containerId "$container_id" --arg postcondition "$postcondition" \
+    '{containerId: $containerId, ownership: "verified", postcondition: $postcondition}' \
+    > "$diagnostics_dir/registered-transient-${evidence_name}.json"
+}
+
+retire_registered_transient() {
+  local container_id="$1" evidence_name="$2" identity_was_verified="${3:-0}" absence_status=0 stop_status=0
+  if ! assert_registered_transient "$container_id"; then
+    container_absence_proven "$container_id" || absence_status=$?
+    if [ "$absence_status" -ne 0 ]; then
+      echo "Ledger container absence is ambiguous: $container_id (exit=$absence_status)" >&2
+      return 1
+    fi
+    if [ "$identity_was_verified" -ne 1 ]; then
+      echo "Ledger container disappeared before ownership was verified: $container_id" >&2
+      return 1
+    fi
+    record_registered_transient_retirement "$container_id" "$evidence_name" already-absent
+    return 0
+  fi
+  timeout --foreground --kill-after=5s 20s docker stop --timeout 5 "$container_id" >/dev/null \
+    || stop_status=$?
+  container_absence_proven "$container_id" || absence_status=$?
+  if [ "$absence_status" -ne 0 ]; then
+    echo "Daemon-atomic Ledger container removal is unproven: $container_id (stop=$stop_status, inspect=$absence_status)" >&2
+    return 1
+  fi
+  record_registered_transient_retirement "$container_id" "$evidence_name" absent
+}
+
 cleanup() {
-  local status=$?
+  local subject_status=$? cleanup_status=0 final_status
+  trap - EXIT
   if [ "$forwarder_pid" -ne 0 ]; then
     kill "$forwarder_pid" >/dev/null 2>&1 || true
     wait "$forwarder_pid" >/dev/null 2>&1 || true
@@ -63,14 +140,31 @@ cleanup() {
   if [ -n "$cleanup_container" ]; then
     timeout --foreground --kill-after=5s 20s docker logs "$cleanup_container" \
       > "$diagnostics_dir/${cleanup_container}.log" 2>&1 || true
-    timeout --foreground --kill-after=5s 20s docker stop --timeout 5 "$cleanup_container" \
-      >/dev/null 2>&1 || true
-    timeout --foreground --kill-after=5s 20s docker rm "$cleanup_container" \
-      >/dev/null 2>&1 || true
+    retire_registered_transient \
+      "$cleanup_container" failure "$cleanup_container_registered" || cleanup_status=$?
   fi
-  return "$status"
+  if [ "$proof_image_registered" -eq 1 ]; then
+    retire_exact_built_image "$image" "$proof_image_id" "$run_identity" || cleanup_status=$?
+  fi
+  final_status="$subject_status"
+  if [ "$cleanup_status" -ne 0 ]; then
+    echo "Ledger registered-transient retirement failed (exit=$cleanup_status)" >&2
+    [ "$final_status" -ne 0 ] || final_status="$cleanup_status"
+  fi
+  jq -n --argjson subjectExitCode "$subject_status" \
+    --argjson cleanupExitCode "$cleanup_status" --argjson exitCode "$final_status" \
+    '{subjectExitCode: $subjectExitCode, cleanupExitCode: $cleanupExitCode, exitCode: $exitCode}' \
+    > "$diagnostics_dir/run-status.json"
+  exit "$final_status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+
+export SANCTUARY_PROJECT='ledger-emulator-proof'
+export SANCTUARY_PROJECT_DIR="$PROJECT_ROOT"
+export SANCTUARY_OPERATION_RUN_ID="run-ledger-emulator-${run_identity}"
+export SANCTUARY_RESOURCE_LIFECYCLE='obsolete'
+ownership_label_args compose_container exact_delete
+readonly -a container_ownership_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
 
 expected_ledger_version="$(jq -r '.sdk.ledgerBitcoin' "$manifest")"
 expected_transport_version="$(jq -r '.sdk.webUsbTransport' "$manifest")"
@@ -82,15 +176,50 @@ if [ "$expected_ledger_version" != "$locked_ledger_version" ] \
   exit 1
 fi
 
+build_status=0
 timeout --foreground --kill-after=30s 900s docker buildx build \
   --load \
   --platform "$(jq -r '.platform' "$manifest")" \
-  --tag "$image" config/ledger-emulator
+  --label "io.sanctuary.build-id=$run_identity" \
+  --tag "$image" config/ledger-emulator || build_status=$?
+if ! proof_image_id="$(recover_exact_loaded_image "$image" "$run_identity")"; then
+  [ "$build_status" -eq 0 ] && exit 1
+  exit "$build_status"
+fi
+register_exact_built_image "$image" "$proof_image_id"
+proof_image_registered=1
+[ "$build_status" -eq 0 ] || exit "$build_status"
 docker image inspect "$image" > "$diagnostics_dir/image-inspect.json"
+
+resolve_created_container() {
+  local container_name="$1" cidfile="$2" create_status="$3"
+  local cid_id='' recovered_id invalid_cidfile=false
+  if [ -f "$cidfile" ]; then
+    cid_id="$(tr -d '\r\n' < "$cidfile")"
+    if ! [[ "$cid_id" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "Ledger emulator cidfile contains an invalid container ID" >&2
+      cid_id=''
+      invalid_cidfile=true
+    fi
+  fi
+  recovered_id="$(recover_exact_created_container "$container_name")" || {
+    [ "$create_status" -ne 0 ] && return "$create_status"
+    return 1
+  }
+  if [ -n "$cid_id" ] && [ "$cid_id" != "$recovered_id" ]; then
+    echo "Ledger emulator cidfile disagrees with the exact created container" >&2
+    printf '%s\n' "$recovered_id"
+    return 1
+  fi
+  printf '%s\n' "$recovered_id" > "$cidfile"
+  printf '%s\n' "$recovered_id"
+  [ "$invalid_cidfile" != true ] || return 1
+}
 
 run_network() {
   local network="$1"
-  local app_name app_path container forwarder_output apdu_port junit_path
+  local app_name app_path container container_name cidfile create_output create_status resolve_status
+  local forwarder_output apdu_port junit_path
   if [ "$network" = mainnet ]; then
     app_name='Bitcoin'
     app_path='/apps/bitcoin-2.4.2-nanosp.elf'
@@ -98,23 +227,45 @@ run_network() {
     app_name='Bitcoin Test'
     app_path='/apps/bitcoin-test-2.4.2-nanosp.elf'
   fi
-  container="sanctuary-ledger-proof-${network}-${run_identity}"
-  case "$container" in
+  container_name="sanctuary-ledger-proof-${network}-${run_identity}"
+  case "$container_name" in
     sanctuary-ledger-proof-[A-Za-z0-9._-]*) ;;
     *) echo "Unsafe Ledger proof container name: $container" >&2; exit 1 ;;
   esac
-  cleanup_container="$container"
   local automation_json
   automation_json="$(jq -c . config/ledger-emulator/automation.json)"
-  timeout --foreground --kill-after=10s 60s docker run --detach \
-    --name "$container" \
+  cidfile="$evidence_root/container-${network}.cid"
+  create_output="$evidence_root/container-${network}.create-output"
+  create_status=0
+  timeout --foreground --kill-after=10s 60s docker create --rm --cidfile "$cidfile" \
+    --name "$container_name" \
+    "${container_ownership_labels[@]}" \
     --platform linux/amd64 \
     "$image" \
     --model nanosp \
     --display headless \
     --automation "$automation_json" \
     --apdu-port 9999 \
-    "$app_path" >/dev/null
+    "$app_path" > "$create_output" || create_status=$?
+  resolve_status=0
+  container="$(resolve_created_container "$container_name" "$cidfile" "$create_status")" \
+    || resolve_status=$?
+  if [[ "$container" =~ ^[0-9a-f]{64}$ ]]; then
+    cleanup_container="$container"
+  else
+    echo "Ledger emulator creation produced no durable container ID" >&2
+    [ "$resolve_status" -ne 0 ] && exit "$resolve_status"
+    exit 1
+  fi
+  assert_registered_transient "$container"
+  register_owned_resource compose_container obsolete exact_delete engine_id \
+    "$container" "$container" "$SANCTUARY_OPERATION_RUN_ID"
+  cleanup_container_registered=1
+  [ "$resolve_status" -eq 0 ] || exit "$resolve_status"
+  [ "$create_status" -eq 0 ] || exit "$create_status"
+  [ "$(tr -d '\r\n' < "$create_output")" = "$container" ] \
+    || { echo "Ledger emulator create output disagrees with its durable container ID" >&2; exit 1; }
+  timeout --foreground --kill-after=10s 60s docker start "$container" >/dev/null
 
   forwarder_output="$diagnostics_dir/forwarder-${network}.json"
   node scripts/ci/docker-exec-tcp-forwarder.mjs \
@@ -145,9 +296,9 @@ run_network() {
   forwarder_pid=0
   timeout --foreground --kill-after=5s 20s docker logs "$container" \
     > "$diagnostics_dir/${container}.log" 2>&1 || true
-  timeout --foreground --kill-after=5s 20s docker stop --timeout 5 "$container" >/dev/null
-  timeout --foreground --kill-after=5s 20s docker rm "$container" >/dev/null
+  retire_registered_transient "$container" "$network" "$cleanup_container_registered"
   cleanup_container=''
+  cleanup_container_registered=0
 }
 
 readonly proof_networks="${LEDGER_EMULATOR_NETWORKS:-mainnet testnet}"

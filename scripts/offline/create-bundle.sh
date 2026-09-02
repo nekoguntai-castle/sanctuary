@@ -243,9 +243,25 @@ pull_external_images() {
   done < <(external_images)
 }
 
+verify_archive_alias() {
+  local image="$1" archive_ref="$2" source archive expected_digest=''
+  source="$(docker image inspect "$image")" || return 1
+  archive="$(docker image inspect "$archive_ref")" || return 1
+  if [[ "$image" == *@sha256:* ]]; then expected_digest="$(offline_repo_digest_ref "$image")"; fi
+  printf '%s' "$archive" | jq -e \
+    --arg ref "$archive_ref" --arg digest "$expected_digest" --argjson source "$source" '
+      length == 1 and ($source | length == 1)
+      and (.[0].Id | test("^sha256:[0-9a-f]{64}$"))
+      and .[0].Id == $source[0].Id and .[0].Os == $source[0].Os
+      and .[0].Architecture == $source[0].Architecture
+      and ((.[0].RepoTags // []) | index($ref) != null)
+      and ($digest == "" or (($source[0].RepoDigests // []) | index($digest) != null))
+    ' >/dev/null
+}
+
 save_images() {
   local stage_dir="$1"
-  local image archive_ref image_id archive_id file_name bucket image_tar
+  local image archive_ref image_id archive_id file_name bucket image_tar tag_status alias_status
 
   mkdir -p "$stage_dir/images/core" "$stage_dir/images/monitoring" "$stage_dir/images/tor"
 
@@ -255,8 +271,13 @@ save_images() {
     archive_ref="$(offline_archive_image_ref "$image")"
 
     if [ "$archive_ref" != "$image" ]; then
-      docker image tag "$image" "$archive_ref" \
-        || offline_fail "could not name bundled image $image as $archive_ref"
+      tag_status=0
+      docker image tag "$image" "$archive_ref" || tag_status=$?
+      alias_status=0
+      verify_archive_alias "$image" "$archive_ref" || alias_status=$?
+      [ "$tag_status" -eq 0 ] || return "$tag_status"
+      [ "$alias_status" -eq 0 ] \
+        || offline_fail "could not prove bundled image alias $image as $archive_ref"
     fi
     image_id="$(docker image inspect --format '{{.Id}}' "$image")" \
       || offline_fail "could not resolve bundled image ID: $image"

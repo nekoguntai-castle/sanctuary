@@ -57,6 +57,7 @@ const BROAD_WORKFLOW = `  pull_request:
       - run: node scripts/ci/hardware-emulator-source-inventory.mjs validate
       - working-directory: scripts/verify-psbt
         run: npm run verify
+      - run: scripts/ci/run-psbt-core-subject.sh live
       - run: psbt.signed-vectors.test.ts
       - run: psbt.hardware-signed-vectors.test.ts
       - run: npm run test:trezor-emulator-proof

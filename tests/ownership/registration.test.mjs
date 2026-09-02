@@ -35,6 +35,28 @@ test('registrations are immutable, signed, owner-only, and idempotent', () => {
   assert.equal(readFileSync(first.path).at(-1), 0x7d);
 });
 
+test('signature-first registration recovers publication loss without trusting unsigned data', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-registration-repair-'));
+  const first = registerResource(input(), { root, checkoutRoot });
+  const signature = first.path.replace(/\.json$/, '.sig');
+  writeFileSync(`${signature}.tmp-123-456`, readFileSync(signature), { mode: 0o600 });
+  writeFileSync(`${first.path}.tmp-123-457`, readFileSync(first.path), { mode: 0o600 });
+  assert.equal(listRegistrations(root).length, 1);
+  rmSync(first.path);
+  assert.equal(listRegistrations(root).length, 0);
+  const repaired = registerResource(input(), { root, checkoutRoot });
+  assert.equal(repaired.path, first.path);
+  assert.equal(existsSync(signature), true);
+  assert.equal(listRegistrations(root).length, 1);
+
+  rmSync(signature);
+  assert.throws(() => listRegistrations(root), /incomplete signed pair/);
+  assert.throws(
+    () => registerResource(input(), { root, checkoutRoot }),
+    /incomplete signed pair|existing registration pair conflicts/,
+  );
+});
+
 test('shared image registrations retain every independent consumer', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-registration-shared-'));
   const first = registerResource(input(), { root, checkoutRoot });

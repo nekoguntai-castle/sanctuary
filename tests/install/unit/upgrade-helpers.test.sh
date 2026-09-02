@@ -873,6 +873,23 @@ test_upgrade_teardown_captures_diagnostics_before_cleanup() {
   return 0
 }
 
+test_upgrade_coordinated_mode_defers_legacy_cleanup() {
+  local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+  local contents
+  contents="$(cat "$lane")"
+
+  assert_contains "$contents" 'SANCTUARY_CLEANUP_COORDINATED:-0' \
+    "upgrade lane must recognize receipt-bound coordinated mode" || return 1
+  assert_contains "$contents" 'Deferring Docker resource cleanup to the receipt-bound CI coordinator' \
+    "coordinated teardown must leave Docker mutation to the coordinator" || return 1
+  assert_contains "$contents" 'Builder recovery cannot invoke legacy cleanup during a coordinated run' \
+    "coordinated cache retry must not bypass receipt-bound cleanup" || return 1
+  assert_contains "$contents" 'baseline Grafana race cannot invoke legacy cleanup during a coordinated run' \
+    "coordinated Grafana retry must not bypass receipt-bound cleanup" || return 1
+  assert_contains "$contents" '"${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ] && [ -d "$TEST_RUNTIME_DIR"' \
+    "coordinated teardown must retain the coordinator runtime and recovery state"
+}
+
 # The source (legacy) stack is where upgrade failures have actually landed, so
 # its diagnostics must be captured too, not only the target stack's.
 test_upgrade_teardown_captures_source_checkout_diagnostics() {
@@ -955,23 +972,72 @@ test_monitoring_sync_stands_down_when_configs_are_reachable() {
     "the shim should stand down when the engine can already read the configs"
 }
 
-# With no translation available the value equals the job-side path, so the shim
-# must still run — a Docker-in-Docker host still needs it.
-test_monitoring_sync_still_runs_when_path_is_untranslated() {
-  local src="$TEST_TMP_DIR/proj-runs"
+# With no translation available the helper would need a persistent container.
+# It must refuse that mutation unless the signed coordinator owns the lifetime.
+test_monitoring_sync_requires_coordinator_when_path_is_untranslated() {
+  local src="$TEST_TMP_DIR/proj-refuses"
+  local call_log="$TEST_TMP_DIR/monitoring-sync-docker.log"
+  local fake_bin="$TEST_TMP_DIR/monitoring-sync-bin"
+  local out status
+  mkdir -p "$src/docker/monitoring"
+  mkdir -p "$fake_bin"
+  : > "$src/docker/monitoring/prometheus.yml"
+  cat > "$fake_bin/docker" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$DOCKER_CALL_LOG"
+exit 99
+EOF
+  chmod +x "$fake_bin/docker"
+
+  set +e
+  out="$(PATH="$fake_bin:$PATH" DOCKER_CALL_LOG="$call_log" \
+    SANCTUARY_MONITORING_CONFIG_DIR="$src/docker/monitoring" \
+    bash -c 'source "$1"; sync_monitoring_configs_to_daemon "$2"; result=$?; echo "STATUS=$SYNC_MONITORING_STATUS"; exit "$result"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$src" 2>&1)"
+  status=$?
+  set -e
+
+  assert_equals "1" "$status" "uncoordinated monitoring sync must fail closed" || return 1
+  assert_contains "$out" "STATUS=refused: signed cleanup coordinator is required" \
+    "monitoring sync should explain the missing authority" || return 1
+  [ ! -s "$call_log" ] || {
+    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated monitoring sync invoked Docker"
+    cat "$call_log"
+    return 1
+  }
+}
+
+test_monitoring_sync_uses_labeled_immutable_id_when_coordinated() {
+  local src="$TEST_TMP_DIR/proj-coordinated"
+  local call_log="$TEST_TMP_DIR/monitoring-sync-coordinated.log"
+  local exact_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   mkdir -p "$src/docker/monitoring"
   : > "$src/docker/monitoring/prometheus.yml"
 
-  local out
-  out="$(SANCTUARY_MONITORING_CONFIG_DIR="$src/docker/monitoring" \
-    bash -c 'source "$1"; sync_monitoring_configs_to_daemon "$2" >/dev/null 2>&1; echo "STATUS=$SYNC_MONITORING_STATUS"' _ \
-    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$src" 2>&1)"
+  (
+    export SANCTUARY_CLEANUP_COORDINATED=1
+    export SANCTUARY_MONITORING_CONFIG_DIR="$src/docker/monitoring"
+    export SANCTUARY_OPERATION_RUN_ID=test-run
+    ownership_label_args() { OWNERSHIP_LABEL_ARGS=(--label io.sanctuary.test=owned); }
+    recover_exact_created_container() { printf '%s\n' "$exact_id"; }
+    register_owned_resource() { return 0; }
+    docker() {
+      printf '%s\n' "$*" >> "$call_log"
+      case "$*" in
+        create*) printf '%s\n' "$exact_id" ;;
+        'container inspect '*) return 1 ;;
+        'container ls -a '*) return 0 ;;
+      esac
+    }
+    sync_monitoring_configs_to_daemon "$src"
+  ) || return 1
 
-  if echo "$out" | grep -q "skipped: configs reachable"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} shim must not stand down when the path was not translated"
-    return 1
-  fi
-  return 0
+  assert_contains "$(cat "$call_log")" "create --rm --name sanctuary-monitoring-sync-test-run-" \
+    "coordinated monitoring helper should use a recoverable exact name" || return 1
+  assert_contains "$(cat "$call_log")" "--label io.sanctuary.test=owned" \
+    "coordinated monitoring helper should stamp ownership" || return 1
+  assert_contains "$(cat "$call_log")" "stop $exact_id" \
+    "coordinated monitoring helper should stop the immutable returned ID"
 }
 
 test_install_scopes_monitoring_config_dir_per_checkout() {
@@ -1056,6 +1122,8 @@ test_upgrade_harness_sources_extracted_helpers() {
     "upgrade harness should detect legacy source install BuildKit cache corruption"
   assert_contains "$contents" 'recover_upgrade_builder_cache' \
     "upgrade harness should recover Docker builder cache for disposable legacy source installs"
+  assert_not_contains "$contents" 'docker builder prune' \
+    "upgrade cache recovery must preserve the shared builder cache"
   assert_contains "$contents" 'install.sh exited successfully after BuildKit cache corruption; retrying source install' \
     "upgrade harness should retry legacy source installs that hide BuildKit failures behind a zero exit"
   assert_contains "$contents" 'run_install_script_attempt "$project_dir" "$install_log" true' \
@@ -1092,21 +1160,66 @@ test_upgrade_harness_restart_fallback_is_opt_in() {
 
 test_install_workflow_uses_run_scoped_ssl_dirs() {
   local contents
+  local subject_contents
   local checkout_count
   local clean_false_count
   contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
+  subject_contents="$(cat "$PROJECT_ROOT/scripts/ci/run-compose-e2e-subject.sh")"
 
   assert_contains "$contents" 'SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2' \
     "install workflow should keep inner runner locks under the checked-out workspace"
-  assert_contains "$contents" 'SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"' \
-    "install workflow should generate SSL material under the run-scoped install-test root"
-  assert_not_contains "$contents" 'SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"' \
-    "install workflow should not write generated SSL material into a fixed repo path"
+  assert_contains "$contents" 'scripts/ci/run-compose-e2e-subject.sh' \
+    "install workflow should delegate reusable stack setup to the supervised subject" || return 1
+  assert_contains "$subject_contents" 'SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"' \
+    "supervised subject should generate SSL material under the run-scoped install-test root"
+  assert_not_contains "$subject_contents" 'SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"' \
+    "supervised subject should not write generated SSL material into a fixed repo path"
 
   checkout_count="$(grep -c 'uses: actions/checkout' <<< "$contents")"
   clean_false_count="$(grep -c 'clean: false' <<< "$contents")"
   assert_equals "$checkout_count" "$clean_false_count" \
     "install workflow checkout steps should not pre-clean shared runner workspaces"
+}
+
+test_upgrade_ssl_dir_keeps_coordinator_runtime_off_docker_mounts() {
+  local harness_contents
+  local selected
+
+  harness_contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+  assert_contains "$harness_contents" \
+    'TEST_SSL_DIR="$(upgrade_test_ssl_dir "$TEST_RUNTIME_DIR" "$TEST_ROOT" "$COMPOSE_PROJECT_NAME")"' \
+    "upgrade harness should select TLS storage independently from coordinator state" || return 1
+  assert_not_contains "$harness_contents" \
+    'TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"' \
+    "upgrade harness should not bind-mount coordinator-private runtime paths" || return 1
+
+  selected="$({
+    SANCTUARY_CLEANUP_COORDINATED=1
+    unset SANCTUARY_SSL_DIR
+    upgrade_test_ssl_dir \
+      /tmp/sanctuary-cleanup/14102-1/upgrade-15 \
+      /workspace/sanctuary/.tmp/install-tests-14102-1001 \
+      ci-14102-1-upgrade-15
+  })" || return 1
+  assert_equals \
+    "/workspace/sanctuary/.tmp/install-tests-14102-1001/ssl-ci-14102-1-upgrade-15" \
+    "$selected" \
+    "coordinated upgrades should keep generated TLS under the Docker-visible install root" || return 1
+
+  selected="$({
+    SANCTUARY_CLEANUP_COORDINATED=1
+    SANCTUARY_SSL_DIR=/explicit/ssl
+    upgrade_test_ssl_dir /cleanup/runtime /workspace/install ci-project
+  })" || return 1
+  assert_equals "/explicit/ssl" "$selected" \
+    "an explicit upgrade TLS directory should remain authoritative" || return 1
+
+  selected="$({
+    unset SANCTUARY_CLEANUP_COORDINATED SANCTUARY_SSL_DIR
+    upgrade_test_ssl_dir /ordinary/runtime /workspace/install ci-project
+  })" || return 1
+  assert_equals "/ordinary/runtime/ssl" "$selected" \
+    "uncoordinated upgrades should retain their existing runtime-local TLS directory"
 }
 
 test_release_tag_workflows_use_distinct_concurrency_groups() {
@@ -1240,6 +1353,14 @@ test_upgrade_harness_covers_wallet_sync_retirement() {
     "retirement fixture should require below-floor incompatibility evidence" || failures=1
   assert_contains "$helper_contents" 'rollback_env="$TEST_RUNTIME_DIR/wallet-sync-retirement-rollback.env"' \
     "rollback proof secrets should stay inside harness-owned runtime cleanup" || failures=1
+  assert_contains "$helper_contents" 'ownership_label_args compose_container exact_delete' \
+    "coordinated rollback proof container must carry the cleanup ownership tuple" || failures=1
+  assert_contains "$helper_contents" 'docker create --rm' \
+    "rollback proof should create a recoverable coordinator-owned transient container" || failures=1
+  assert_contains "$helper_contents" 'resolve_registered_created_container' \
+    "rollback proof should register the exact created tuple before start" || failures=1
+  assert_contains "$helper_contents" 'retire_install_container "$rollback_container_id" stop' \
+    "rollback proof should reconcile retirement of the immutable returned container ID" || failures=1
   assert_contains "$helper_contents" 'install -m 600 /dev/null "$rollback_env"' \
     "rollback proof should create its secret file securely before populating it" || failures=1
   assert_contains "$helper_contents" 'reason: "manual"' \
@@ -1705,7 +1826,7 @@ test_support_package_smoke_confirms_shareable_aggregate() {
     "support package request should explicitly confirm shareable aggregate disclosure"
 }
 
-test_cleanup_compose_projects_by_prefix_skips_current_project() {
+test_legacy_prefix_cleanup_refuses_mutation() {
   local call_log="$TEST_TMP_DIR/docker-calls.log"
   local original_path="$PATH"
   local calls
@@ -1721,14 +1842,8 @@ test_cleanup_compose_projects_by_prefix_skips_current_project() {
 
   calls="$(cat "$call_log")"
 
-  assert_contains "$calls" "rm -f old-container" \
-    "stale project containers should be removed by compose label" || return 1
-  assert_contains "$calls" "network rm old-network" \
-    "stale project networks should be removed by compose label" || return 1
-  assert_contains "$calls" "volume rm -f old-volume" \
-    "stale project volumes should be removed by compose label" || return 1
-  assert_not_contains "$calls" "label=com.docker.compose.project=sanctuary-upgrade-test-current" \
-    "current project must not be removed during stale-project cleanup"
+  assert_equals "" "$calls" \
+    "retired prefix cleanup must not query or mutate Docker without signed exact authority"
 }
 
 test_disable_compose_project_restart_policy_updates_project_containers() {
@@ -1907,12 +2022,22 @@ test_upgrade_harness_covers_backend_address_replacement() {
     "upgrade lane should dispatch the backend replacement regression" || return 1
   assert_contains "$lane" 'fixture_list_contains "$UPGRADE_FIXTURE" "baseline"' \
     "PR baseline upgrades should execute the real backend replacement regression" || return 1
-  assert_contains "$assertions" 'docker rm -f "$backend_container"' \
-    "regression should replace only the backend container" || return 1
+  assert_contains "$assertions" 'register_coordinated_container "$backend_container" "$backend_id"' \
+    "regression should register the exact backend before replacement" || return 1
+  assert_contains "$assertions" 'remove_coordinated_container "$backend_id"' \
+    "regression should replace only the immutable backend container ID" || return 1
   assert_contains "$assertions" '--ip "$old_ip"' \
     "regression should prevent reuse of the old backend address" || return 1
   assert_contains "$assertions" 'com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
-    "holder should be swept by exact project-label cleanup on interruption" || return 1
+    "holder should retain its exact Compose project selector" || return 1
+  assert_contains "$assertions" 'ownership_label_args compose_container exact_delete' \
+    "coordinated holder must carry the full cleanup ownership tuple" || return 1
+  assert_contains "$assertions" 'docker create --rm --name "$holder_container"' \
+    "holder should use a recoverable named create lifecycle" || return 1
+  assert_contains "$assertions" 'resolve_registered_created_container' \
+    "coordinated holder must be signed before later mutation" || return 1
+  assert_contains "$assertions" 'remove_coordinated_container "$FRONTEND_PROXY_HOLDER_ID"' \
+    "coordinated holder teardown should prove exact-ID absence" || return 1
   assert_contains "$assertions" 'resolve_frontend_backend_network' \
     "regression should select the one network shared with the frontend" || return 1
   assert_contains "$assertions" 'assert_authenticated_websocket_handshake' \
@@ -1922,6 +2047,88 @@ test_upgrade_harness_covers_backend_address_replacement() {
   assert_contains "$assertions" 'Could not restore the backend after the replacement regression' \
     "regression cleanup should fail closed if backend restoration fails"
 }
+
+test_coordinated_container_removal_reconciles_lost_response() (
+  docker() {
+    case "$*" in
+      'rm -f exact-container') return 17 ;;
+      'container inspect exact-container') return 1 ;;
+      'container ls -a --no-trunc --filter id=exact-container --format {{.ID}}') return 0 ;;
+      *) return 99 ;;
+    esac
+  }
+  remove_coordinated_container exact-container
+)
+
+test_coordinated_container_removal_refuses_ambiguous_postcondition() (
+  docker() {
+    case "$*" in
+      'rm -f exact-container') return 17 ;;
+      'container inspect exact-container') return 1 ;;
+      'container ls -a --no-trunc --filter id=exact-container --format {{.ID}}') return 19 ;;
+      *) return 99 ;;
+    esac
+  }
+  ! remove_coordinated_container exact-container
+)
+
+test_created_container_response_loss_preserves_status_after_registration() (
+  local exact_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  local output status
+  export SANCTUARY_OPERATION_RUN_ID=test-run
+  recover_exact_created_container() { printf '%s\n' "$exact_id"; }
+  register_owned_resource() { return 0; }
+  set +e
+  output="$(resolve_registered_created_container helper-name '' 23)"
+  status=$?
+  set -e
+  assert_equals "$exact_id" "$output" "response-loss recovery should expose only the proven immutable ID" || return 1
+  assert_equals "23" "$status" "response-loss recovery must preserve the original create status"
+)
+
+test_created_container_rejects_foreign_success_id() (
+  local exact_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  local foreign_id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  export SANCTUARY_OPERATION_RUN_ID=test-run
+  recover_exact_created_container() { printf '%s\n' "$exact_id"; }
+  register_owned_resource() { return 0; }
+  ! resolve_registered_created_container helper-name "$foreign_id" 0 >/dev/null
+)
+
+test_registered_container_start_preserves_failure_status() (
+  local call_log="$TEST_TMP_DIR/registered-start.log"
+  local status
+  docker() {
+    printf 'docker:%s\n' "$*" >> "$call_log"
+    [ "$*" != 'start exact-container' ] || return 23
+  }
+  retire_install_container() {
+    printf 'retire:%s\n' "$*" >> "$call_log"
+    return 0
+  }
+
+  set +e
+  start_registered_install_container exact-container
+  status=$?
+  set -e
+
+  assert_equals "23" "$status" \
+    "registered start response loss must preserve the engine status" || return 1
+  assert_contains "$(cat "$call_log")" "retire:exact-container stop" \
+    "registered start failure must reconcile the exact immutable ID"
+)
+
+test_install_container_retirement_refuses_ambiguous_postcondition() (
+  docker() {
+    case "$*" in
+      'stop exact-container') return 17 ;;
+      'container inspect exact-container') return 1 ;;
+      'container ls -a --no-trunc --filter id=exact-container --format {{.ID}}') return 19 ;;
+      *) return 99 ;;
+    esac
+  }
+  ! retire_install_container exact-container stop
+)
 
 test_upgrade_harness_exports_operator_runtime_state() {
   local lane
@@ -1964,6 +2171,7 @@ test_backend_replacement_failure_restores_backend() {
     TEST_ID="cleanup-test"
     PROJECT_ROOT="$PROJECT_ROOT"
     HEALTH_CHECK_TIMEOUT=5
+    SANCTUARY_CLEANUP_COORDINATED=1
 
     assert_frontend_proxy_recovers_after_backend_recreate_inner() { return 7; }
     docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
@@ -1982,6 +2190,100 @@ test_backend_replacement_failure_restores_backend() {
     "backend cleanup should always recreate the compose backend" || return 1
   assert_contains "$(cat "$call_log")" "healthy:upgrade-cleanup-test-backend-1 5" \
     "backend cleanup should wait for restored health"
+}
+
+test_backend_replacement_rejects_uncoordinated_mutation() {
+  local call_log="$TEST_TMP_DIR/backend-replacement-uncoordinated.log"
+  local exit_code
+
+  set +e
+  (
+    unset SANCTUARY_CLEANUP_COORDINATED
+    COMPOSE_PROJECT_NAME="upgrade-uncoordinated-test"
+    TEST_ID="uncoordinated-test"
+    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
+    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
+    assert_frontend_proxy_recovers_after_backend_recreate "https://127.0.0.1:9443"
+  )
+  exit_code=$?
+  set -e
+
+  assert_equals "1" "$exit_code" \
+    "backend replacement must reject missing coordinator authority" || return 1
+  [ ! -s "$call_log" ] || {
+    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated backend replacement invoked Docker or Compose"
+    cat "$call_log"
+    return 1
+  }
+}
+
+test_backend_replacement_producer_rejects_uncoordinated_mutation() {
+  local call_log="$TEST_TMP_DIR/backend-replacement-producer-uncoordinated.log"
+  local exit_code
+
+  set +e
+  (
+    unset SANCTUARY_CLEANUP_COORDINATED
+    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
+    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
+    assert_frontend_proxy_recovers_after_backend_recreate_inner \
+      "https://127.0.0.1:9443" backend-ip-holder
+  )
+  exit_code=$?
+  set -e
+
+  assert_equals "1" "$exit_code" \
+    "backend replacement producer must reject missing coordinator authority" || return 1
+  [ ! -s "$call_log" ] || {
+    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated backend replacement producer mutated Docker"
+    cat "$call_log"
+    return 1
+  }
+}
+
+test_rollback_floor_proof_rejects_uncoordinated_mutation() {
+  local call_log="$TEST_TMP_DIR/rollback-floor-uncoordinated.log"
+  local exit_code
+
+  set +e
+  (
+    unset SANCTUARY_CLEANUP_COORDINATED
+    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
+    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
+    prove_below_floor_rollback_is_unsupported
+  )
+  exit_code=$?
+  set -e
+
+  assert_equals "1" "$exit_code" \
+    "rollback-floor proof must reject missing coordinator authority" || return 1
+  [ ! -s "$call_log" ] || {
+    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated rollback-floor proof invoked Docker or Compose"
+    cat "$call_log"
+    return 1
+  }
+}
+
+test_rollback_worker_start_rejects_uncoordinated_mutation() {
+  local call_log="$TEST_TMP_DIR/rollback-worker-start-uncoordinated.log"
+  local exit_code
+
+  set +e
+  (
+    unset SANCTUARY_CLEANUP_COORDINATED
+    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
+    start_below_floor_rollback_worker rollback-worker rollback-network rollback.env
+  )
+  exit_code=$?
+  set -e
+
+  assert_equals "1" "$exit_code" \
+    "rollback worker producer must reject missing coordinator authority" || return 1
+  [ ! -s "$call_log" ] || {
+    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated rollback worker start invoked Docker"
+    cat "$call_log"
+    return 1
+  }
 }
 
 test_backend_replacement_selects_shared_frontend_network() {
@@ -2024,8 +2326,10 @@ main() {
   run_test "install scopes Tor ingress config per checkout" test_install_scopes_tor_ingress_config_per_checkout
   run_test "Tor ingress config maps workspace volume" test_tor_ingress_config_maps_workspace_volume
   run_test "monitoring sync stands down when reachable" test_monitoring_sync_stands_down_when_configs_are_reachable
-  run_test "monitoring sync still runs when untranslated" test_monitoring_sync_still_runs_when_path_is_untranslated
+  run_test "monitoring sync requires coordinator when untranslated" test_monitoring_sync_requires_coordinator_when_path_is_untranslated
+  run_test "coordinated monitoring sync uses immutable ID" test_monitoring_sync_uses_labeled_immutable_id_when_coordinated
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
+  run_test "coordinated upgrade defers legacy cleanup" test_upgrade_coordinated_mode_defers_legacy_cleanup
   run_test "unhealthy capture dumps the unhealthy container" test_unhealthy_capture_dumps_unhealthy_container
   run_test "unhealthy capture is quiet when all healthy" test_unhealthy_capture_is_quiet_when_all_healthy
   run_test "upgrade teardown captures source checkout diagnostics" test_upgrade_teardown_captures_source_checkout_diagnostics
@@ -2037,6 +2341,7 @@ main() {
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "upgrade harness restart fallback is opt-in" test_upgrade_harness_restart_fallback_is_opt_in
   run_test "install workflow uses run-scoped ssl dirs" test_install_workflow_uses_run_scoped_ssl_dirs
+  run_test "coordinated upgrade ssl uses Docker-visible root" test_upgrade_ssl_dir_keeps_coordinator_runtime_off_docker_mounts
   run_test "release tag workflows use distinct concurrency groups" test_release_tag_workflows_use_distinct_concurrency_groups
   run_test "upgrade harness covers historical transaction migrations" test_upgrade_harness_covers_historical_transaction_migrations
   run_test "upgrade harness covers wallet sync state migration" test_upgrade_harness_covers_wallet_sync_state_migration
@@ -2059,7 +2364,7 @@ main() {
   run_test "health waiter still fails when never healthy" test_wait_for_container_healthy_fails_when_never_healthy
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets
   run_test "diagnostic redaction hides log secrets" test_diagnostic_redaction_hides_log_secrets
-  run_test "stale upgrade projects cleanup skips current project" test_cleanup_compose_projects_by_prefix_skips_current_project
+  run_test "legacy prefix cleanup refuses mutation" test_legacy_prefix_cleanup_refuses_mutation
   run_test "upgrade cleanup disables restart policy" test_disable_compose_project_restart_policy_updates_project_containers
   run_test "historical Compose files disable restart before startup" test_force_test_compose_restart_policy_no_rewrites_historical_files
   run_test "exit cleanup trap runs on normal exit" test_exit_cleanup_trap_runs_on_normal_exit
@@ -2068,9 +2373,19 @@ main() {
   run_test "upgrade cleanup preserves failure when cleanup fails" test_upgrade_finish_preserves_failure_when_cleanup_fails
   run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
   run_test "upgrade harness covers backend address replacement" test_upgrade_harness_covers_backend_address_replacement
+  run_test "coordinated container removal reconciles lost response" test_coordinated_container_removal_reconciles_lost_response
+  run_test "coordinated container removal refuses ambiguous postcondition" test_coordinated_container_removal_refuses_ambiguous_postcondition
+  run_test "created container response loss preserves status" test_created_container_response_loss_preserves_status_after_registration
+  run_test "created container rejects foreign success ID" test_created_container_rejects_foreign_success_id
+  run_test "registered container start preserves failure status" test_registered_container_start_preserves_failure_status
+  run_test "install retirement refuses ambiguous postcondition" test_install_container_retirement_refuses_ambiguous_postcondition
   run_test "upgrade harness exports operator runtime state" test_upgrade_harness_exports_operator_runtime_state
   run_test "install ownership rebinds workspace identity" test_install_ownership_rebinds_workspace_identity_to_compose_lane
   run_test "backend replacement failure restores backend" test_backend_replacement_failure_restores_backend
+  run_test "backend replacement rejects uncoordinated mutation" test_backend_replacement_rejects_uncoordinated_mutation
+  run_test "backend replacement producer rejects uncoordinated mutation" test_backend_replacement_producer_rejects_uncoordinated_mutation
+  run_test "rollback-floor proof rejects uncoordinated mutation" test_rollback_floor_proof_rejects_uncoordinated_mutation
+  run_test "rollback worker start rejects uncoordinated mutation" test_rollback_worker_start_rejects_uncoordinated_mutation
   run_test "backend replacement selects shared frontend network" test_backend_replacement_selects_shared_frontend_network
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate

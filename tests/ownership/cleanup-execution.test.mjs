@@ -49,7 +49,7 @@ function row(identity = ID) {
     resourceClass: 'compose_network', locatorKind: 'engine_id', locator: identity,
     immutableIdentity: identity, ownership: authority, ownershipDigest: canonicalSha256(authority),
     observationDigest: HASH, disposition: 'eligible', failureClasses: [], references: [],
-    contentDigests: [], active: false, protected: false, data: false,
+    contentDigests: [], dependencyIdentities: [], active: false, protected: false, data: false,
     running: null,
   };
 }

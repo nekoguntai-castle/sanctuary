@@ -22,6 +22,7 @@ import {
   percentile,
   postgresRunArgs,
   qualifyRc10Failure,
+  replayOwnershipLabels,
   replayObservationTimeout,
   shouldStopQualifiedRc10Observation,
   validateReceiptValidationTrace,
@@ -506,22 +507,43 @@ test('container argv seals distinct resources, cgroups, and timeouts', () => {
   assert.ok(worker.includes('SANCTUARY_REPLAY_DRIVER_HELPERS=/app/wallet-sync-persistence-driver-helpers.cjs'));
   assert.ok(worker.includes('SANCTUARY_REPLAY_FIXTURE=/app/wallet-sync-persistence-fixture.cjs'));
   assert.ok(worker.includes('SANCTUARY_REPLAY_MANIFEST=/app/manifest.json'));
+  assert.ok(worker.includes('io.sanctuary.resource-class=compose_container'));
 
-  const copies = workerFileCopyArgs(subject, names);
+  const workerIdentity = 'a'.repeat(64);
+  const copies = workerFileCopyArgs(subject, workerIdentity);
   assert.equal(copies.length, 4);
   assert.ok(copies.every(args => args[0] === 'docker' && args[1] === 'cp'));
   assert.deepEqual(copies.map(args => args.at(-1)), [
-    `${names.worker}:/app/wallet-sync-persistence-driver.cjs`,
-    `${names.worker}:/app/wallet-sync-persistence-driver-helpers.cjs`,
-    `${names.worker}:/app/wallet-sync-persistence-fixture.cjs`,
-    `${names.worker}:/app/manifest.json`,
+    `${workerIdentity}:/app/wallet-sync-persistence-driver.cjs`,
+    `${workerIdentity}:/app/wallet-sync-persistence-driver-helpers.cjs`,
+    `${workerIdentity}:/app/wallet-sync-persistence-fixture.cjs`,
+    `${workerIdentity}:/app/manifest.json`,
   ]);
 
   const operations = [];
-  stageAndStartWorker(subject, names, 'postgresql://database', args => operations.push(args));
+  stageAndStartWorker(subject, names, 'postgresql://database', {
+    onCreated: () => {},
+    operation: args => {
+      operations.push(args);
+      if (args[1] === 'create') return workerIdentity;
+      if (args[1] === 'container' && args[2] === 'ls') return workerIdentity;
+      if (args[1] === 'container' && args[2] === 'inspect') {
+        const labels = Object.fromEntries(replayOwnershipLabels('compose_container')
+          .flatMap((value, index, values) => value === '--label'
+            ? [values[index + 1].split(/=(.*)/s).slice(0, 2)] : []));
+        return JSON.stringify([{
+          Id: workerIdentity, Name: `/${names.worker}`,
+          State: { Status: 'created' }, Config: { Labels: labels },
+        }]);
+      }
+      return '';
+    },
+  });
   assert.equal(operations[0][1], 'create');
-  assert.deepEqual(operations.slice(1, -1), copies);
-  assert.deepEqual(operations.at(-1), ['docker', 'start', names.worker]);
+  assert.equal(operations[1][2], 'ls');
+  assert.equal(operations[2][2], 'inspect');
+  assert.deepEqual(operations.slice(3, -1), copies);
+  assert.deepEqual(operations.at(-1), ['docker', 'start', workerIdentity]);
 });
 
 test('health probes use the daemon-reachable published host with a local fallback', () => {
@@ -746,32 +768,13 @@ test('RC10 failure only qualifies after checkExisting and persistence are observ
   assert.equal(qualifyRc10Failure({ ...reached, oomKilled: false }, manifest).qualified, false);
 });
 
-test('RC10 observation stops as soon as an authorized failure is fully evidenced', () => {
-  const reached = [
-    { event: 'phase_completed', stage: 'checkExisting' },
-    { event: 'mutation_started', unit: 'transaction_batch' },
-  ];
-
-  assert.equal(shouldStopQualifiedRc10Observation(
-    { role: 'rc10', mode: 'live' }, reached, 1, 0, manifest,
-  ), true);
-  assert.equal(shouldStopQualifiedRc10Observation(
-    { role: 'rc10', mode: 'live' }, reached.slice(0, 1), 1, 0, manifest,
-  ), false);
-  assert.equal(shouldStopQualifiedRc10Observation(
-    { role: 'rc11', mode: 'live' }, reached, 1, 0, manifest,
-  ), false);
-  assert.match(replayControllerSource,
-    /shouldStopQualifiedRc10Observation\([\s\S]*docker', 'kill', names\.worker/);
-});
-
-test('JSONL parser ignores non-events and malformed output', () => {
+test('JSONL parser ignores non-events and malformed output', function ignoresMalformedJsonl() {
   assert.deepEqual(parseJsonEvents('{"event":"ready","value":1}\nnot-json\n{"value":2}\n'), [
     { event: 'ready', value: 1 },
   ]);
 });
 
-test('sealed fixture deterministically matches its manifest union and counts', () => {
+test('sealed fixture deterministically matches its manifest union and counts', function sealedFixtureMatchesManifest() {
   const require = createRequire(new URL('../../server/package.json', import.meta.url));
   const bitcoin = require('bitcoinjs-lib');
   const fixtureRequire = createRequire(new URL('../../scripts/perf/wallet-sync-persistence-fixture.cjs', import.meta.url));
@@ -810,7 +813,7 @@ test('sealed fixture deterministically matches its manifest union and counts', (
   );
 });
 
-test('combined maximum fixture has one coherent transaction identity and shape', () => {
+test('combined maximum fixture has one coherent transaction identity and shape', function combinedMaximumFixtureIsCoherent() {
   const require = createRequire(new URL('../../server/package.json', import.meta.url));
   const bitcoin = require('bitcoinjs-lib');
   class TransactionWithoutBuilderReparse extends bitcoin.Transaction {
@@ -843,7 +846,7 @@ test('combined maximum fixture has one coherent transaction identity and shape',
   assert.deepEqual(progress, MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE);
 });
 
-test('maximum fixture axes retain serialized weight without builder reparsing', () => {
+test('maximum fixture axes retain serialized weight without builder reparsing', function maximumFixtureAxesRetainWeight() {
   const require = createRequire(new URL('../../server/package.json', import.meta.url));
   const bitcoin = require('bitcoinjs-lib');
   class TransactionWithoutBuilderReparse extends bitcoin.Transaction {
@@ -866,45 +869,7 @@ test('maximum fixture axes retain serialized weight without builder reparsing', 
   }
 });
 
-test('TERM during setup preserves failure receipts and exact owned cleanup', async () => {
-  const names = ownedResourceNames('rc11', 'termination');
-  const containers = new Set([names.worker, names.postgres]);
-  const networks = new Set([names.network]);
-  const removed = [];
-  const cleanupFailures = cleanup(names, {
-    inspect: name => containers.has(name) ? `id-${name}` : '',
-    run: args => {
-      if (args[1] === 'rm') {
-        const name = args.at(-1);
-        removed.push(name);
-        containers.delete(name);
-        return '';
-      }
-      if (args[1] === 'network' && args[2] === 'rm') {
-        const name = args[3];
-        removed.push(name);
-        if (!networks.delete(name)) throw new Error('missing network');
-        return '';
-      }
-      if (args[1] === 'network' && args[2] === 'inspect') {
-        if (!networks.has(args[3])) throw new Error('missing network');
-        return '';
-      }
-      throw new Error(`unexpected command: ${args.join(' ')}`);
-    },
-  });
-  assert.deepEqual(cleanupFailures, []);
-  assert.deepEqual(new Set(removed), new Set(Object.values(names)));
-  assert.equal(containers.size, 0);
-  assert.equal(networks.size, 0);
-  assert.deepEqual(cleanup(names, {
-    inspect: () => '',
-    run: args => {
-      if (args[1] === 'network' && args[2] === 'inspect') throw new Error('already absent');
-      throw new Error(`unexpected cleanup of absent resource: ${args.join(' ')}`);
-    },
-  }), []);
-
+test('TERM during setup preserves failure receipts and exact owned cleanup', async function termPreservesCleanupEvidence() {
   const evidenceDir = mkdtempSync(join(tmpdir(), 'sanctuary-replay-term-'));
   const controllerUrl = new URL('../../scripts/perf/wallet-sync-high-fanout-replay.mjs', import.meta.url).href;
   const childSource = `
@@ -919,7 +884,10 @@ test('TERM during setup preserves failure receipts and exact owned cleanup', asy
           { role: 'rc11', mode: 'max', image: 'unused', manifestPath: '/unused' },
           { limits: {} },
           evidenceDir,
-          { logs: () => '', inspect: () => '', cleanup: () => [] },
+          { logs: () => '', inspect: () => '', cleanup: () => ({
+            schemaVersion: '1.0.0', artifactType: 'replay_cleanup_evidence',
+            state: 'no_op', actions: [], results: [], postconditions: [], failureClasses: [],
+          }) },
         );
         process.exitCode = 2;
       } catch (error) {
@@ -943,7 +911,31 @@ test('TERM during setup preserves failure receipts and exact owned cleanup', asy
   assert.ok(files.has('rc11-max-observer.json'));
   assert.ok(files.has('rc11-max-cleanup.json'));
   assert.ok(files.has('replay-summary.json'));
-  assert.equal(JSON.parse(readFileSync(join(evidenceDir, 'rc11-max-cleanup.json'))).verifiedAbsent, true);
+  const cleanupReceipt = JSON.parse(readFileSync(join(evidenceDir, 'rc11-max-cleanup.json')));
+  assert.equal(cleanupReceipt.artifactType, 'replay_cleanup_evidence');
+  assert.equal(cleanupReceipt.evidenceAuthority, 'unsigned_subject_evidence');
+  assert.equal(cleanupReceipt.state, 'no_op');
+  assert.match(cleanupReceipt.rawEvidence.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(cleanupReceipt.rawEvidence.bytes, 0);
   assert.match(JSON.parse(readFileSync(join(evidenceDir, 'replay-summary.json'))).error, /SIGTERM/);
   rmSync(evidenceDir, { recursive: true, force: true });
+});
+
+test('RC10 observation stops as soon as an authorized failure is fully evidenced', function rc10ObservationStops() {
+  const reached = [
+    { event: 'phase_completed', stage: 'checkExisting' },
+    { event: 'mutation_started', unit: 'transaction_batch' },
+  ];
+
+  assert.equal(shouldStopQualifiedRc10Observation(
+    { role: 'rc10', mode: 'live' }, reached, 1, 0, manifest,
+  ), true);
+  assert.equal(shouldStopQualifiedRc10Observation(
+    { role: 'rc10', mode: 'live' }, reached.slice(0, 1), 1, 0, manifest,
+  ), false);
+  assert.equal(shouldStopQualifiedRc10Observation(
+    { role: 'rc11', mode: 'live' }, reached, 1, 0, manifest,
+  ), false);
+  assert.match(replayControllerSource,
+    /shouldStopQualifiedRc10Observation\([\s\S]*docker', 'kill'[\s\S]*activeResourceIdentity\('compose_container', names\.worker\)/);
 });

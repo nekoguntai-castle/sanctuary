@@ -7,20 +7,20 @@
 #
 # Usage:
 #   # Run all tests
-#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm test-all
+#   npm run test:docker
 #
 #   # Run backend tests only
-#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm backend-test
+#   npm run test:docker:backend
 #
 #   # Run frontend tests only
-#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm frontend-test
+#   npm run test:docker:frontend
 #
 #   # Run with coverage
-#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm backend-coverage
-#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml run --rm frontend-coverage
+#   npm run test:docker:coverage
 #
 #   # Clean up
-#   scripts/ownership/run-compose.sh --project-directory . -f docker/compose/test.yml down -v
+#   The package commands above use the signed cleanup coordinator; do not run
+#   direct Compose teardown commands for these resources.
 #
 # =============================================
 

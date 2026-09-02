@@ -29,7 +29,8 @@ const tuple = (resourceClass, extra = {}) => ({
 
 function fixtureRun({
   drift = false, malformed = false, volumeIdentityDrift = false,
-  safetyDrift = null, lifecycle = 'active',
+  safetyDrift = null, lifecycle = 'active', imageTags, imageDigests,
+  imageLabels, imageContainerReferences,
 } = {}) {
   const calls = [];
   let containerLists = 0;
@@ -63,6 +64,7 @@ function fixtureRun({
     }
     if (joined.startsWith('container ls') && joined.includes('ancestor=')) {
       imageReferences += 1;
+      if (imageContainerReferences !== undefined) return imageContainerReferences.join('\n');
       return safetyDrift === 'image_reference' && imageReferences > 1 ? `${A}\n${B}\n` : `${B}\n`;
     }
     if (joined.startsWith('container ls') && joined.includes('network=')) {
@@ -91,9 +93,10 @@ function fixtureRun({
     if (joined === `image inspect ${IMAGE}`) {
       imageInspections += 1;
       const tags = safetyDrift === 'image_tag' && imageInspections > 1
-        ? ['sanctuary:local', 'sanctuary:release'] : ['sanctuary:local'];
+        ? ['sanctuary:local', 'sanctuary:release'] : (imageTags ?? ['sanctuary:local']);
       return JSON.stringify([{
-        Id: IMAGE, RepoTags: tags, RepoDigests: [`sanctuary@${IMAGE}`], Config: { Labels: tuple('oci_image') },
+        Id: IMAGE, RepoTags: tags, RepoDigests: imageDigests ?? [`sanctuary@${IMAGE}`],
+        Config: { Labels: imageLabels ?? tuple('oci_image') },
       }]);
     }
     if (joined === 'buildx inspect default') return 'Name: default\nDriver: docker\n';
@@ -134,15 +137,17 @@ test('exact selectors are unioned, inspections retain immutable IDs, and safety 
   const legacy = result.resources.find((row) => row.immutableIdentity === B);
   assert.deepEqual(legacy.classifications, ['legacy_unlabeled', 'protected', 'unlabeled']);
   const network = result.resources.find((row) => row.resourceClass === 'compose_network');
-  assert.deepEqual(network.classifications, ['legacy_unlabeled', 'protected', 'shared', 'unlabeled']);
+  assert.deepEqual(network.classifications, ['legacy_unlabeled', 'protected', 'unlabeled']);
+  assert.deepEqual(network.runtime.dependencyIdentities, [A]);
   const volume = result.resources.find((row) => row.resourceClass === 'compose_volume');
   assert.ok(volume.classifications.includes('data'));
   assert.ok(volume.classifications.includes('registered'));
   assert.ok(volume.classifications.includes('protected'));
   assert.match(volume.immutableIdentity, /^[a-f0-9]{64}$/);
   const image = result.resources.find((row) => row.resourceClass === 'oci_image');
-  assert.ok(image.classifications.includes('shared'));
-  assert.ok(image.classifications.includes('referenced'));
+  assert.equal(image.classifications.includes('shared'), false);
+  assert.equal(image.classifications.includes('referenced'), false);
+  assert.deepEqual(image.runtime.dependencyIdentities, [B]);
   assert.deepEqual(image.runtime.references, ['sanctuary:local', `sanctuary@${IMAGE}`]);
   assert.deepEqual(image.runtime.contentDigests, ['d'.repeat(64)]);
   const builder = result.resources.find((row) => row.resourceClass === 'buildkit_cache');
@@ -152,6 +157,28 @@ test('exact selectors are unioned, inspections retain immutable IDs, and safety 
   assert.deepEqual(firstList.args.slice(0, 2), ['--host', 'unix:///run/docker-fixture.sock']);
   assert.ok(firstList.effectiveArgs.includes('label=io.sanctuary.project=sanctuary'));
   assert.ok(firstList.effectiveArgs.includes('label=io.sanctuary.resource-class=compose_container'));
+});
+
+test('one exclusive witness registration converts only its exact legacy container to cleanup authority', () => {
+  const fixture = fixtureRun();
+  const witness = 'f'.repeat(64);
+  const result = observeDockerResources({
+    selectors: { compose_container: selectors.compose_container }, runCommand: fixture.run,
+    legacyFixtureWitnessDigest: witness,
+    registrations: [{
+      registrationId: '1'.repeat(64), signerKeyId: '2'.repeat(64), metadataDigest: witness,
+      deploymentId: 'deploy-fixture', ownerId: 'owner-fixture', operationRunId: 'run-fixture',
+      resourceClass: 'compose_container', immutableIdentity: B, locatorKind: 'engine_id',
+      locator: B, lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
+      referenceIds: ['run-fixture'], createdAt: '2026-08-31T00:00:00.000Z',
+      createdByRelease: 'unreleased', createdByCommit: 'e'.repeat(40),
+    }],
+  });
+  const owned = result.resources.find((row) => row.immutableIdentity === A);
+  const witnessed = result.resources.find((row) => row.immutableIdentity === B);
+  assert.equal(owned.classifications.includes('externally_registered'), false);
+  assert.deepEqual(witnessed.classifications,
+    ['externally_registered', 'legacy_unlabeled', 'unlabeled']);
 });
 
 test('list-inspect-relist drift and malformed output become categorical ambiguity', () => {
@@ -306,6 +333,155 @@ test('JSON-valid malformed image reference fields become categorical ambiguity',
   assert.equal(result.resources.length, 0);
 });
 
+function replayImageRegistration(labels, extra = {}) {
+  return {
+    registrationId: '1'.repeat(64), signerKeyId: '2'.repeat(64), metadataDigest: '3'.repeat(64),
+    deploymentId: labels['io.sanctuary.deployment-id'],
+    operationRunId: labels['io.sanctuary.creation-run-id'],
+    ownerId: labels['io.sanctuary.owner-id'], resourceClass: 'oci_image',
+    lifecycle: labels['io.sanctuary.lifecycle'], cleanupPolicy: labels['io.sanctuary.cleanup-policy'],
+    createdAt: labels['io.sanctuary.created-at'],
+    createdByRelease: labels['io.sanctuary.created-by-release'],
+    createdByCommit: labels['io.sanctuary.created-by-commit'],
+    locatorKind: 'reference', locator: 'wallet-sync-replay:test', immutableIdentity: IMAGE,
+    referenceIds: [labels['io.sanctuary.creation-run-id']], ...extra,
+  };
+}
+
+function replayImageProvenance(extra = {}) {
+  return {
+    'org.opencontainers.image.source': 'https://github.com/nekoguntai-castle/sanctuary',
+    'org.opencontainers.image.version': '0.8.69',
+    'org.opencontainers.image.revision': '9'.repeat(40),
+    'io.sanctuary.build-id': 'build-lane-run',
+    'dev.sanctuary.image-lock-sha256': '8'.repeat(64),
+    ...extra,
+  };
+}
+
+test('one exact consuming-lane registration admits provenance-only replay bytes by immutable ID', () => {
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'replay-live-deployment',
+    'io.sanctuary.owner-id': 'replay-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'replay-live-run',
+  });
+  const fixture = fixtureRun({
+    imageTags: ['wallet-sync-replay:test'], imageDigests: [], imageLabels: replayImageProvenance(),
+    imageContainerReferences: [],
+  });
+  const result = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [replayImageRegistration(authority)], runCommand: fixture.run,
+  });
+  assert.equal(result.complete, true);
+  assert.equal(result.resources[0].locator, IMAGE);
+  assert.deepEqual(result.resources[0].classifications, [
+    'externally_registered', 'registered', 'unlabeled',
+  ]);
+});
+
+test('one same-repository Podman digest is intrinsic to the sole registered tag', () => {
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'replay-live-deployment',
+    'io.sanctuary.owner-id': 'replay-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'replay-live-run',
+  });
+  const fixture = fixtureRun({
+    imageTags: ['wallet-sync-replay:test'],
+    imageDigests: [`wallet-sync-replay@${IMAGE}`],
+    imageLabels: replayImageProvenance(), imageContainerReferences: [],
+  });
+  const result = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [replayImageRegistration(authority)], runCommand: fixture.run,
+  });
+  assert.deepEqual(result.resources[0].classifications, [
+    'externally_registered', 'registered', 'unlabeled',
+  ]);
+});
+
+test('one exact engine-ID registration admits only a truly dangling provenance image', () => {
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'dangling-live-deployment',
+    'io.sanctuary.owner-id': 'dangling-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'dangling-live-run',
+  });
+  const registration = replayImageRegistration(authority, {
+    locatorKind: 'engine_id', locator: IMAGE,
+  });
+  const result = observeDockerResources({
+    selectors: { oci_image: [{ locator: IMAGE }] }, registrations: [registration],
+    runCommand: fixtureRun({
+      imageTags: [], imageDigests: [], imageLabels: replayImageProvenance(),
+      imageContainerReferences: [],
+    }).run,
+  });
+  assert.deepEqual(result.resources[0].classifications, [
+    'externally_registered', 'registered', 'unlabeled',
+  ]);
+
+  for (const item of [
+    { name: 'tagged', imageTags: ['unexpected:tag'], imageDigests: [] },
+    { name: 'digest-referenced', imageTags: [], imageDigests: [`unexpected@${IMAGE}`] },
+  ]) {
+    const protectedResult = observeDockerResources({
+      selectors: { oci_image: [{ locator: IMAGE }] }, registrations: [registration],
+      runCommand: fixtureRun({
+        ...item, imageLabels: replayImageProvenance(), imageContainerReferences: [],
+      }).run,
+    });
+    assert.ok(protectedResult.resources[0].classifications.includes('protected'), item.name);
+  }
+});
+
+test('replay image content remains protected when any reference or ownership proof is extra', () => {
+  const authority = tuple('oci_image', { 'io.sanctuary.lifecycle': 'obsolete' });
+  const cases = [
+    { name: 'tag', fixture: { imageTags: ['wallet-sync-replay:test', 'shared:latest'], imageDigests: [], imageContainerReferences: [] } },
+    { name: 'digest', fixture: { imageTags: ['wallet-sync-replay:test'], imageDigests: [`shared@${IMAGE}`], imageContainerReferences: [] } },
+    { name: 'provenance', fixture: { imageTags: ['wallet-sync-replay:test'], imageDigests: [], imageContainerReferences: [], imageLabels: replayImageProvenance({ 'org.opencontainers.image.revision': 'invalid' }) } },
+    { name: 'runtime ownership', fixture: { imageTags: ['wallet-sync-replay:test'], imageDigests: [], imageContainerReferences: [], imageLabels: tuple('oci_image', { 'io.sanctuary.lifecycle': 'obsolete' }) } },
+  ];
+  for (const item of cases) {
+    const fixture = fixtureRun({ imageLabels: replayImageProvenance(), ...item.fixture });
+    const result = observeDockerResources({
+      selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+      registrations: [replayImageRegistration(authority)], runCommand: fixture.run,
+    });
+    assert.equal(result.complete, true, item.name);
+    assert.ok(result.resources[0].classifications.includes('protected'), item.name);
+  }
+  const sharedFixture = fixtureRun({
+    imageTags: ['wallet-sync-replay:test'], imageDigests: [], imageLabels: replayImageProvenance(),
+    imageContainerReferences: [],
+  });
+  const first = replayImageRegistration(authority);
+  const shared = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [first, {
+      ...first, registrationId: '4'.repeat(64), operationRunId: 'other-run',
+      referenceIds: ['other-run'],
+    }],
+    runCommand: sharedFixture.run,
+  });
+  assert.ok(shared.resources[0].classifications.includes('shared'));
+  assert.ok(shared.resources[0].classifications.includes('protected'));
+  const duplicateAuthority = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [first, {
+      ...first, registrationId: '5'.repeat(64), locator: 'removed-extra:test',
+    }],
+    runCommand: fixtureRun({
+      imageTags: ['wallet-sync-replay:test'], imageDigests: [], imageLabels: replayImageProvenance(),
+      imageContainerReferences: [],
+    }).run,
+  });
+  assert.ok(duplicateAuthority.resources[0].classifications.includes('protected'));
+});
+
 test('volume fingerprints without an exact nonce-bearing registration remain protected', () => {
   const fixture = fixtureRun();
   const result = observeDockerResources({
@@ -358,4 +534,5 @@ test('selector validation rejects intersected kinds and wrong resource kinds', (
   assert.throws(() => normalizeDockerSelectors({ compose_container: [{ labels: { 'io.sanctuary.project': 'too-broad' } }] }), /complete ownership tuple/);
   assert.throws(() => normalizeDockerSelectors({ oci_image: [{ reference: 'sanctuary:*' }] }), /exact tag or digest/);
   assert.throws(() => dockerImmutableIdentity('compose_container', { Id: 'mutable-name' }), /immutable ID/);
+  assert.equal(dockerImmutableIdentity('oci_image', { Id: IMAGE.slice('sha256:'.length) }), IMAGE);
 });

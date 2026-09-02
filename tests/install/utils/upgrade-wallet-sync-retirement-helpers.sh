@@ -464,9 +464,92 @@ process.stdin.on("end", () => {
 ' || return 1
 }
 
+start_below_floor_rollback_worker() {
+    local rollback_container="$1"
+    local target_network="$2"
+    local rollback_env="$3"
+    local rollback_container_id create_output create_status=0 resolve_status=0 start_status=0
+    local -a rollback_ownership_labels=()
+
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Rollback-floor proof requires the signed cleanup coordinator"
+        return 1
+    fi
+
+    ownership_label_args compose_container exact_delete || return 1
+    rollback_ownership_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
+    create_output="$(docker create --rm \
+        --name "$rollback_container" \
+        --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
+        "${rollback_ownership_labels[@]}" \
+        --network "$target_network" \
+        --env-file "$rollback_env" \
+        -e "WORKER_REPLICA_ID=upgrade-below-floor-$TEST_ID" \
+        "$WALLET_SYNC_RETIREMENT_SOURCE_WORKER_IMAGE" \
+        node dist/server/src/worker.js)" || create_status=$?
+    rollback_container_id="$(resolve_registered_created_container \
+        "$rollback_container" "$create_output" "$create_status")" || resolve_status=$?
+    if [[ ! "$rollback_container_id" =~ ^[0-9a-f]{64}$ ]]; then
+        log_error "Rollback-floor helper identity was not proven"
+        [ "$resolve_status" -ne 0 ] || resolve_status=1
+        return "$resolve_status"
+    fi
+    if [ "$resolve_status" -ne 0 ]; then
+        retire_install_container "$rollback_container_id" stop || true
+        return "$resolve_status"
+    fi
+    start_registered_install_container "$rollback_container_id" || start_status=$?
+    [ "$start_status" -eq 0 ] || return "$start_status"
+    printf '%s\n' "$rollback_container_id"
+}
+
+observe_below_floor_scheduler() {
+    local rollback_container_id="$1"
+    local _attempt
+
+    for _attempt in $(seq 1 45); do
+        if docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T backend node -e '
+const { Queue } = require("bullmq");
+const IORedis = require("ioredis");
+const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+const queue = new Queue("sync", { connection, prefix: "sanctuary:worker" });
+(async () => {
+  const schedulers = await queue.getJobSchedulers();
+  if (!schedulers.some(({ key, name }) => key === "sync:check-stale-wallets" || name === "check-stale-wallets")) {
+    process.exitCode = 1;
+  }
+})().finally(async () => { await queue.close(); await connection.quit(); });
+' >/dev/null 2>&1; then
+            return 0
+        fi
+        docker inspect "$rollback_container_id" >/dev/null 2>&1 || return 1
+        sleep 2
+    done
+    return 1
+}
+
+finish_below_floor_rollback_worker() {
+    local rollback_container_id="$1"
+    local rollback_env="$2"
+
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Rollback-floor cleanup requires the signed cleanup coordinator"
+        return 1
+    fi
+    if [ -n "$rollback_container_id" ]; then
+        retire_install_container "$rollback_container_id" stop || return 1
+    fi
+    rm -f "$rollback_env"
+}
+
 prove_below_floor_rollback_is_unsupported() {
-    local target_worker_container target_network rollback_env rollback_container
+    local target_worker_container target_network rollback_env rollback_container rollback_container_id=""
     local observed=false started=false setup_failed=false
+
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Rollback-floor proof requires the signed cleanup coordinator"
+        return 1
+    fi
     target_worker_container=$(get_container_name worker)
     target_network=$(docker inspect --format \
         '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
@@ -489,46 +572,21 @@ prove_below_floor_rollback_is_unsupported() {
         && ! run_project_compose "$PROJECT_ROOT" stop worker >/dev/null; then
         setup_failed=true
     fi
-    if [ "$setup_failed" = "false" ] && docker run --rm -d \
-        --name "$rollback_container" \
-        --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
-        --network "$target_network" \
-        --env-file "$rollback_env" \
-        -e "WORKER_REPLICA_ID=upgrade-below-floor-$TEST_ID" \
-        "$WALLET_SYNC_RETIREMENT_SOURCE_WORKER_IMAGE" \
-        node dist/server/src/worker.js >/dev/null; then
-        started=true
-    else
-        setup_failed=true
+    if [ "$setup_failed" = "false" ]; then
+        if rollback_container_id="$(start_below_floor_rollback_worker \
+            "$rollback_container" "$target_network" "$rollback_env")"; then
+            started=true
+        else
+            setup_failed=true
+        fi
     fi
 
-    for _attempt in $(seq 1 45); do
-        [ "$started" = "true" ] || break
-        if docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T backend node -e '
-const { Queue } = require("bullmq");
-const IORedis = require("ioredis");
-const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
-const queue = new Queue("sync", { connection, prefix: "sanctuary:worker" });
-(async () => {
-  const schedulers = await queue.getJobSchedulers();
-  if (!schedulers.some(({ key, name }) => key === "sync:check-stale-wallets" || name === "check-stale-wallets")) {
-    process.exitCode = 1;
-  }
-})().finally(async () => { await queue.close(); await connection.quit(); });
-' >/dev/null 2>&1; then
-            observed=true
-            break
-        fi
-        if ! docker inspect "$rollback_container" >/dev/null 2>&1; then
-            break
-        fi
-        sleep 2
-    done
-
-    if [ "$started" = "true" ]; then
-        docker stop "$rollback_container" >/dev/null 2>&1 || true
+    if [ "$started" = "true" ] \
+        && observe_below_floor_scheduler "$rollback_container_id"; then
+        observed=true
     fi
-    rm -f "$rollback_env"
+
+    finish_below_floor_rollback_worker "$rollback_container_id" "$rollback_env"
     if [ "$setup_failed" = "true" ] || [ "$observed" != "true" ]; then
         log_error "The below-floor worker did not reproduce its forbidden scheduler"
         return 1

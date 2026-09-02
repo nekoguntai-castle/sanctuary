@@ -12,7 +12,7 @@ const repoRoot = path.resolve(scriptDir, '../..');
 const outputDir = process.env.PHASE2_ALERT_RECEIVER_OUTPUT_DIR || path.join(repoRoot, 'docs/plans');
 const startedAt = new Date();
 const timestamp = startedAt.toISOString().replace(/[:.]/g, '-');
-const projectName = process.env.PHASE2_ALERT_RECEIVER_PROJECT || `sanctuary-phase2-alert-${timestamp.toLowerCase()}`;
+const projectName = process.env.COMPOSE_PROJECT_NAME;
 const tempDir = path.join(repoRoot, '.tmp', 'phase2-alert-receiver', timestamp);
 const composePath = path.join(tempDir, 'compose.yml');
 const alertmanagerConfigPath = path.join(tempDir, 'alertmanager.yml');
@@ -21,6 +21,14 @@ const timeoutMs = Number(process.env.PHASE2_ALERT_RECEIVER_TIMEOUT_MS || '120000
 const retryMs = Number(process.env.PHASE2_ALERT_RECEIVER_RETRY_MS || '1000');
 const alertName = 'Phase2AlertReceiverProof';
 const runId = timestamp;
+const coordinatedCleanup = process.env.SANCTUARY_CLEANUP_COORDINATED === '1';
+
+if (!coordinatedCleanup || !projectName) {
+  throw new Error('phase2 alert receiver smoke requires the signed cleanup coordinator package command');
+}
+if (keepStack) {
+  throw new Error('PHASE2_ALERT_RECEIVER_KEEP_STACK is incompatible with receipt-bound cleanup');
+}
 
 const steps = [];
 
@@ -112,8 +120,23 @@ inhibit_rules: []
 }
 
 function writeComposeFile() {
-  writeFileSync(composePath, `services:
+  writeFileSync(composePath, `x-container-ownership: &container-ownership
+  io.sanctuary.project: "${process.env.SANCTUARY_PROJECT}"
+  io.sanctuary.deployment-id: "${process.env.SANCTUARY_DEPLOYMENT_ID}"
+  io.sanctuary.owner-id: "${process.env.SANCTUARY_OWNER_ID}"
+  io.sanctuary.resource-class: compose_container
+  io.sanctuary.lifecycle: "${process.env.SANCTUARY_RESOURCE_LIFECYCLE}"
+  io.sanctuary.cleanup-policy: exact_delete
+  io.sanctuary.created-at: "${process.env.SANCTUARY_CLEANUP_CREATED_AT}"
+  io.sanctuary.created-by-release: "${process.env.SANCTUARY_RELEASE}"
+  io.sanctuary.created-by-commit: "${process.env.SANCTUARY_COMMIT}"
+  io.sanctuary.creation-run-id: "${process.env.SANCTUARY_OPERATION_RUN_ID}"
+x-network-ownership: &network-ownership
+  <<: *container-ownership
+  io.sanctuary.resource-class: compose_network
+services:
   alertmanager:
+    labels: *container-ownership
     image: prom/alertmanager:v0.26.0@sha256:361db356b33041437517f1cd298462055580585f26555c317df1a3caf2868552
     restart: "no"
     extra_hosts:
@@ -131,6 +154,9 @@ function writeComposeFile() {
       timeout: 5s
       retries: 12
       start_period: 5s
+networks:
+  default:
+    labels: *network-ownership
 `);
 }
 
@@ -436,6 +462,12 @@ try {
     composePs = [];
   }
 } finally {
+  if (webhookServer) {
+    await new Promise((resolve) => {
+      webhookServer.close(() => resolve());
+    });
+  }
+
   const report = {
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
@@ -468,23 +500,6 @@ try {
 
   console.log(`Wrote ${path.relative(repoRoot, mdPath)}`);
   console.log(`Wrote ${path.relative(repoRoot, jsonPath)}`);
-
-  if (!keepStack) {
-    try {
-      runCompose(['down', '-v', '--remove-orphans']);
-      console.log(`Stopped and removed compose project ${projectName}`);
-    } catch (error) {
-      console.warn(`Failed to clean up compose project ${projectName}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  } else {
-    console.log(`Leaving compose project ${projectName} running because PHASE2_ALERT_RECEIVER_KEEP_STACK=true`);
-  }
-
-  if (webhookServer) {
-    await new Promise((resolve) => {
-      webhookServer.close(() => resolve());
-    });
-  }
 
   if (!keepStack) {
     rmSync(tempDir, { recursive: true, force: true });

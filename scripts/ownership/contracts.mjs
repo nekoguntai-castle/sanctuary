@@ -28,14 +28,19 @@ export const RESOURCE_CLASSES = [
   'provider_publication',
 ];
 export const CLEANUP_POLICIES = ['application_managed', 'exact_delete', 'preserve_ambiguous', 'retain', 'retain_reconcile'];
+export const PROTECTED_COMPOSE_PROJECTS = Object.freeze([
+  'sanctuary', 'beacon', 'building-monkeys', 'tax-planner', 'swarm-intelligence',
+]);
 const OPERATIONS = ['create', 'mutate', 'register', 'cleanup'];
-const DISPOSITIONS = ['migrate', 'reference_only', 'exempt'];
+const DISPOSITIONS = ['migrate', 'reference_only', 'exempt', 'deferred'];
+const PHASE_SIX_RESOURCE_CLASSES = new Set([
+  'collector_process', 'git_worktree', 'temporary_artifact',
+]);
 const REQUIRED_CALLSITE_PATHS = [
   '.github/workflows/install-test.yml',
   '.github/workflows/podman-socket-canary.yml',
   '.github/workflows/release-candidate.yml',
   '.github/workflows/verify-vectors.yml',
-  'scripts/ci/cleanup-docker-resources.sh',
   'scripts/ci/observe-runtime-image-cves.sh',
   'scripts/ci/run-extended-upgrade-fixtures.sh',
   'scripts/ops/grafana-quiescence-records.sh',
@@ -47,7 +52,6 @@ const REQUIRED_CALLSITE_PATHS = [
   'start.sh',
   'tests/install/e2e/upgrade-install.test.sh',
   'tests/install/utils/helpers.sh',
-  'uninstall.sh',
 ];
 
 function validateResource(entry, index) {
@@ -121,6 +125,11 @@ function validateCallsite(entry, index, knownClasses) {
   enumeration(entry.disposition, `${path}.disposition`, DISPOSITIONS);
   string(entry.safetyContract, `${path}.safetyContract`, { max: 512 });
   if (entry.disposition === 'exempt' && entry.safetyContract.length < 20) throw new Error(`${path}.safetyContract must justify the exemption`);
+  if (entry.disposition === 'deferred'
+      && (!PHASE_SIX_RESOURCE_CLASSES.has(entry.resourceClass)
+        || !entry.safetyContract.includes('Phase 6'))) {
+    throw new Error(`${path}.deferred is reserved for an explicit Phase 6 host-artifact migration`);
+  }
 }
 
 export function validateCallsiteInventory(inventory, contract) {

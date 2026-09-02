@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regression: purge_shared_local_images must never target the shared `:local`
-# tag.
+# Regression: legacy image purging must remain mutation-free. Exact image
+# retirement belongs to the signed cleanup coordinator.
 #
 # `docker image rm -f` untags on Docker but, on rootless Podman -- what the
 # runners have run since #668 -- stops and DELETES every container using the
@@ -14,9 +14,8 @@
 # a concurrent lane's live stack. That is what removed backend and migrate from
 # run 9110 while postgres survived (#739).
 #
-# The tag is the whole safety boundary: a lane-scoped tag is by construction
-# used only by that lane. These tests pin that the boundary cannot be crossed by
-# an unset variable, which is how it failed open before.
+# A lane-scoped tag is still mutable and is not an immutable cleanup authority.
+# These tests pin that the compatibility helper never reaches Docker.
 #
 # docker is stubbed, so nothing is removed and no daemon is needed.
 
@@ -61,15 +60,13 @@ STUB
     rm -rf "$dir"
 }
 
-# ----- 1. an unset tag is refused -------------------------------------------
-# This was the fail-open default: `${SANCTUARY_IMAGE_TAG:-local}` silently
-# purged the shared tag.
+# ----- 1. an unset tag is preserved -----------------------------------------
 result="$(run_purge '<unset>')"
 rc="${result%%|*}"; argv="${result#*|}"
-if [ "$rc" -ne 0 ]; then
-    ok 'an unset SANCTUARY_IMAGE_TAG is refused'
+if [ "$rc" -eq 0 ]; then
+    ok 'an unset SANCTUARY_IMAGE_TAG is preserved'
 else
-    bad "unset tag was accepted (rc=$rc)"
+    bad "unset tag compatibility helper failed (rc=$rc)"
 fi
 if [ -z "$argv" ]; then
     ok 'nothing is removed when the tag is unset'
@@ -77,28 +74,27 @@ else
     bad "docker was invoked despite an unset tag: ${argv:0:120}"
 fi
 
-# ----- 2. an explicit :local is refused too ---------------------------------
-# Belt and braces: the danger is the shared tag itself, however it arrives.
+# ----- 2. an explicit :local is preserved too -------------------------------
 result="$(run_purge 'local')"
 rc="${result%%|*}"; argv="${result#*|}"
-if [ "$rc" -ne 0 ] && [ -z "$argv" ]; then
-    ok 'an explicit local tag is refused and removes nothing'
+if [ "$rc" -eq 0 ] && [ -z "$argv" ]; then
+    ok 'an explicit local tag is preserved and removes nothing'
 else
-    bad "tag=local was not refused (rc=$rc argv=${argv:0:100})"
+    bad "tag=local compatibility helper mutated or failed (rc=$rc argv=${argv:0:100})"
 fi
 
-# ----- 3. a lane-scoped tag is allowed, and only that tag -------------------
+# ----- 3. a lane-scoped tag is also preserved -------------------------------
 result="$(run_purge 'sanctuary-ci-upgrade-9999-latest-stable-baseline')"
 rc="${result%%|*}"; argv="${result#*|}"
 if [ "$rc" -eq 0 ]; then
-    ok 'a lane-scoped tag is accepted'
+    ok 'a lane-scoped tag is preserved'
 else
-    bad "lane-scoped tag was refused (rc=$rc)"
+    bad "lane-scoped compatibility helper failed (rc=$rc)"
 fi
-if printf '%s' "$argv" | grep -q 'sanctuary-backend:sanctuary-ci-upgrade-9999-latest-stable-baseline'; then
-    ok 'the purge targets the lane tag'
+if [ -z "$argv" ]; then
+    ok 'the compatibility helper never invokes Docker'
 else
-    bad "lane tag not in the docker argv: ${argv:0:140}"
+    bad "lane tag reached Docker without immutable signed authority: ${argv:0:140}"
 fi
 if printf '%s' "$argv" | grep -qE 'sanctuary-[a-z-]+:local(\s|$|;)'; then
     bad "the purge also targeted :local — the shared tag must never be touched"

@@ -31,4 +31,22 @@ test('callsite contract rejects unknown fields and duplicate semantic identities
   const duplicate = structuredClone(inventory);
   duplicate.callsites.push(structuredClone(duplicate.callsites[0]));
   assert.throws(() => validateCallsiteInventory(duplicate, contract), /duplicates/);
+
+  const dockerDeferred = structuredClone(inventory);
+  const dockerEntry = dockerDeferred.callsites.find((entry) => entry.resourceClass === 'compose_container');
+  dockerEntry.disposition = 'deferred';
+  dockerEntry.safetyContract = 'Phase 6 should not defer a Docker cleanup callsite.';
+  assert.throws(
+    () => validateCallsiteInventory(dockerDeferred, contract),
+    /reserved for an explicit Phase 6 host-artifact migration/,
+  );
+
+  const vagueHostDeferred = structuredClone(inventory);
+  const hostEntry = vagueHostDeferred.callsites.find((entry) => entry.resourceClass === 'temporary_artifact');
+  hostEntry.disposition = 'deferred';
+  hostEntry.safetyContract = 'Later work will migrate this host artifact.';
+  assert.throws(
+    () => validateCallsiteInventory(vagueHostDeferred, contract),
+    /reserved for an explicit Phase 6 host-artifact migration/,
+  );
 });

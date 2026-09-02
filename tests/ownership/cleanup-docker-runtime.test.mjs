@@ -23,6 +23,7 @@ const action = {
   sequence: 1, resourceClass: 'compose_network', immutableIdentity: ID,
   action: 'remove', locatorKind: 'engine_id', locator: ID,
   ownershipDigest: canonicalSha256(owner()), observationDigest: OBSERVATION,
+  dependencyIdentities: [],
 };
 const deploymentManifest = {
   deploymentId: 'deploy-1', ownerId: 'owner-1', composeProjectName: 'fixture', legacyResources: [],
@@ -52,7 +53,7 @@ function inventory(plan) {
       resourceClass: 'compose_network', locatorKind: 'engine_id', locator: ID,
       immutableIdentity: ID, ownership: owner(), ownershipDigest: action.ownershipDigest,
       observationDigest: OBSERVATION, disposition: 'eligible', failureClasses: [],
-      references: [], contentDigests: [], running: null,
+      references: [], contentDigests: [], dependencyIdentities: [], running: null,
       active: false, protected: false, data: false,
     }],
   };

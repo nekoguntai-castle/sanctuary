@@ -1225,8 +1225,8 @@ This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanct
 # Check logs
 ./scripts/ownership/run-operator-compose.sh logs -f
 
-# Rebuild from scratch
-./scripts/ownership/run-operator-compose.sh down -v
+# Rebuild application containers while preserving data
+./scripts/ownership/run-operator-compose.sh down
 ./scripts/ownership/run-operator-compose.sh build --no-cache
 ./scripts/ownership/run-operator-compose.sh up -d
 ```
@@ -1240,9 +1240,9 @@ This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanct
 
 ### Database connection errors
 ```bash
-# Reset the database
-./scripts/ownership/run-operator-compose.sh down -v
-./scripts/ownership/run-operator-compose.sh up -d
+# Reset the deployment-managed database (external or adopted legacy volumes are preserved)
+./uninstall.sh --delete-data  # type DELETE only after making a backup
+./install.sh
 ```
 
 ### Port already in use

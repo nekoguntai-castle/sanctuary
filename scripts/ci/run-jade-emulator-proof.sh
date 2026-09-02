@@ -2,14 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/ci/provider-context.sh
-. "$SCRIPT_DIR/provider-context.sh"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+  exec "$SCRIPT_DIR/cleanup-ci-callsite.sh" auto-run \
+    --lane jade-emulator-proof --checkout-root "$PROJECT_ROOT" -- "$0" "$@"
+fi
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
 readonly manifest='config/jade-emulator-proof.json'
-readonly image='sanctuary-jade-qemu:proof'
 readonly run_id="$(ci_run_id)"
 readonly run_attempt="${SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE:-0}"
 readonly run_identity="${run_id}-${run_attempt}-$$"
+readonly image="localhost/sanctuary-jade-qemu:proof-${run_identity}"
 readonly container_prefix="sanctuary-jade-proof-${run_identity}"
 readonly attempt_dir="$(ci_workspace)/.tmp/ci-evidence/jade-emulator/${run_identity}"
 readonly proof_dir="$attempt_dir/proof"
@@ -22,7 +27,81 @@ readonly serial_port="$(jq -r '.qemu.serialPort' "$manifest")"
 readonly config_args="$(jq -r '.qemu.configArgs' "$manifest")"
 forwarder_pid=0
 container_started=0
+container_registered=0
 active_container=''
+active_container_id=''
+proof_image_id=''
+proof_image_registered=0
+
+assert_registered_transient() {
+  local container_id="$1"
+  docker inspect "$container_id" | jq -e \
+    --arg id "$container_id" --arg name "$active_container" \
+    --arg project "$SANCTUARY_PROJECT" \
+    --arg deployment "$SANCTUARY_DEPLOYMENT_ID" \
+    --arg owner "$SANCTUARY_OWNER_ID" \
+    --arg run "$SANCTUARY_OPERATION_RUN_ID" \
+    --arg created "$SANCTUARY_CLEANUP_CREATED_AT" \
+    --arg release "$SANCTUARY_RELEASE" --arg commit "$SANCTUARY_COMMIT" '
+      length == 1 and .[0].Id == $id and .[0].Name == ("/" + $name)
+      and .[0].Config.Labels["io.sanctuary.project"] == $project
+      and .[0].Config.Labels["io.sanctuary.deployment-id"] == $deployment
+      and .[0].Config.Labels["io.sanctuary.owner-id"] == $owner
+      and .[0].Config.Labels["io.sanctuary.resource-class"] == "compose_container"
+      and .[0].Config.Labels["io.sanctuary.lifecycle"] == "obsolete"
+      and .[0].Config.Labels["io.sanctuary.cleanup-policy"] == "exact_delete"
+      and .[0].Config.Labels["io.sanctuary.created-at"] == $created
+      and .[0].Config.Labels["io.sanctuary.created-by-release"] == $release
+      and .[0].Config.Labels["io.sanctuary.created-by-commit"] == $commit
+      and .[0].Config.Labels["io.sanctuary.creation-run-id"] == $run
+    ' >/dev/null
+}
+
+container_absence_proven() {
+  local container_id="$1" listed
+  if docker container inspect "$container_id" >/dev/null 2>&1; then
+    return 1
+  fi
+  listed="$(docker container ls -a --no-trunc \
+    --filter "id=$container_id" --format '{{.ID}}')" || return 2
+  [ -z "$listed" ]
+}
+
+record_registered_transient_retirement() {
+  local container_id="$1" evidence_name="$2" postcondition="$3"
+  case "$postcondition" in
+    absent|already-absent) ;;
+    *) return 1 ;;
+  esac
+  jq -n --arg containerId "$container_id" --arg postcondition "$postcondition" \
+    '{containerId: $containerId, ownership: "verified", postcondition: $postcondition}' \
+    > "$diagnostics_dir/registered-transient-${evidence_name}.json"
+}
+
+retire_registered_transient() {
+  local container_id="$1" evidence_name="$2" identity_was_verified="${3:-0}" absence_status=0 stop_status=0
+  if ! assert_registered_transient "$container_id"; then
+    container_absence_proven "$container_id" || absence_status=$?
+    if [ "$absence_status" -ne 0 ]; then
+      echo "Jade container absence is ambiguous: $container_id (exit=$absence_status)" >&2
+      return 1
+    fi
+    if [ "$identity_was_verified" -ne 1 ]; then
+      echo "Jade container disappeared before ownership was verified: $container_id" >&2
+      return 1
+    fi
+    record_registered_transient_retirement "$container_id" "$evidence_name" already-absent
+    return 0
+  fi
+  timeout --foreground --kill-after=10s 30s docker stop --timeout 10 "$container_id" >/dev/null \
+    || stop_status=$?
+  container_absence_proven "$container_id" || absence_status=$?
+  if [ "$absence_status" -ne 0 ]; then
+    echo "Daemon-atomic Jade container removal is unproven: $container_id (stop=$stop_status, inspect=$absence_status)" >&2
+    return 1
+  fi
+  record_registered_transient_retirement "$container_id" "$evidence_name" absent
+}
 
 case "$container_prefix" in
   sanctuary-jade-proof-[A-Za-z0-9._-]*) ;;
@@ -30,18 +109,31 @@ case "$container_prefix" in
 esac
 
 cleanup() {
-  local status=$?
-  jq -n --argjson exitCode "$status" '{exitCode: $exitCode}' > "$diagnostics_dir/run-status.json"
+  local subject_status=$? cleanup_status=0 final_status
+  trap - EXIT
   if [ "$forwarder_pid" -ne 0 ]; then
     kill "$forwarder_pid" >/dev/null 2>&1 || true
     wait "$forwarder_pid" >/dev/null 2>&1 || true
   fi
   if [ "$container_started" -eq 1 ]; then
-    timeout --foreground --kill-after=10s 30s docker logs "$active_container" \
+    timeout --foreground --kill-after=10s 30s docker logs "$active_container_id" \
       > "$diagnostics_dir/${active_container}.log" 2>&1 || true
-    timeout --foreground --kill-after=10s 30s docker stop --timeout 10 "$active_container" >/dev/null || true
+    retire_registered_transient \
+      "$active_container_id" "$active_container" "$container_registered" || cleanup_status=$?
   fi
-  return "$status"
+  if [ "$proof_image_registered" -eq 1 ]; then
+    retire_exact_built_image "$image" "$proof_image_id" "$run_identity" || cleanup_status=$?
+  fi
+  final_status="$subject_status"
+  if [ "$cleanup_status" -ne 0 ]; then
+    echo "Jade registered-transient retirement failed (exit=$cleanup_status)" >&2
+    [ "$final_status" -ne 0 ] || final_status="$cleanup_status"
+  fi
+  jq -n --argjson subjectExitCode "$subject_status" \
+    --argjson cleanupExitCode "$cleanup_status" --argjson exitCode "$final_status" \
+    '{subjectExitCode: $subjectExitCode, cleanupExitCode: $cleanupExitCode, exitCode: $exitCode}' \
+    > "$diagnostics_dir/run-status.json"
+  exit "$final_status"
 }
 
 if ! mkdir -p "$(dirname "$attempt_dir")" || ! mkdir "$attempt_dir"; then
@@ -49,7 +141,14 @@ if ! mkdir -p "$(dirname "$attempt_dir")" || ! mkdir "$attempt_dir"; then
   exit 1
 fi
 mkdir "$proof_dir" "$diagnostics_dir" "$source_dir"
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+
+export SANCTUARY_PROJECT='jade-emulator-proof'
+export SANCTUARY_PROJECT_DIR="$PROJECT_ROOT"
+export SANCTUARY_OPERATION_RUN_ID="run-jade-emulator-${run_identity}"
+export SANCTUARY_RESOURCE_LIFECYCLE='obsolete'
+ownership_label_args compose_container exact_delete
+readonly -a container_ownership_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
 
 readonly ci_environment_file="$(ci_env_file)"
 if [ "$ci_environment_file" != '/dev/stdout' ]; then
@@ -155,33 +254,95 @@ if ! grep -Fxq "FROM $expected_builder" "$source_dir/Dockerfile.qemu"; then
   exit 1
 fi
 
+build_status=0
 timeout --foreground --kill-after=30s 2700s docker buildx build \
   --load \
   --platform "$platform" \
+  --label "io.sanctuary.build-id=$run_identity" \
   --build-arg "QEMU_CONFIG_ARGS=$config_args" \
   --file "$source_dir/Dockerfile.qemu" \
   --tag "$image" \
-  "$source_dir"
+  "$source_dir" || build_status=$?
+if ! proof_image_id="$(recover_exact_loaded_image "$image" "$run_identity")"; then
+  [ "$build_status" -eq 0 ] && exit 1
+  exit "$build_status"
+fi
+register_exact_built_image "$image" "$proof_image_id"
+proof_image_registered=1
+[ "$build_status" -eq 0 ] || exit "$build_status"
 docker image inspect "$image" > "$proof_dir/image-inspect.json"
 if [ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" != "$platform" ]; then
   echo 'Built Jade QEMU image platform drift' >&2
   exit 1
 fi
 timeout --foreground --kill-after=10s 60s docker run --rm --platform "$platform" \
+  "${container_ownership_labels[@]}" \
   --entrypoint sha256sum "$image" /jade/build/jade.bin /jade/build/jade.elf /flash_image.bin \
   > "$proof_dir/firmware.sha256"
 timeout --foreground --kill-after=10s 60s docker run --rm --platform "$platform" \
+  "${container_ownership_labels[@]}" \
   "$image" qemu-system-xtensa --version > "$proof_dir/qemu-version.txt"
+
+resolve_jade_created_container() {
+  local container_name="$1" cidfile="$2" create_status="$3"
+  local cid_id='' recovered_id invalid_cidfile=0 recovery_status=0
+  if [ -f "$cidfile" ]; then
+    cid_id="$(tr -d '\r\n' < "$cidfile")"
+    if ! [[ "$cid_id" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "Jade QEMU cidfile contains an invalid container ID" >&2
+      cid_id=''
+      invalid_cidfile=1
+    fi
+  fi
+  recovered_id="$(recover_exact_created_container "$container_name")" || recovery_status=$?
+  if [ "$recovery_status" -ne 0 ]; then
+    [ "$create_status" -ne 0 ] && return "$create_status"
+    return "$recovery_status"
+  fi
+  if [ -n "$cid_id" ] && [ "$cid_id" != "$recovered_id" ]; then
+    echo "Jade QEMU cidfile disagrees with the exact created container" >&2
+    printf '%s\n' "$recovered_id"
+    return 1
+  fi
+  printf '%s\n' "$recovered_id" > "$cidfile"
+  printf '%s\n' "$recovered_id"
+  [ "$invalid_cidfile" -eq 0 ] || return 1
+}
 
 for network in mainnet testnet; do
   active_container="${container_prefix}-${network}"
+  active_cidfile="$attempt_dir/container-${network}.cid"
+  active_create_output="$attempt_dir/container-${network}.create-output"
   if docker inspect "$active_container" >/dev/null 2>&1; then
     echo "Refusing to replace existing Jade proof container $active_container" >&2
     exit 1
   fi
-  timeout --foreground --kill-after=10s 60s docker run --rm --detach \
-    --name "$active_container" --platform "$platform" "$image" >/dev/null
-  container_started=1
+  create_status=0
+  timeout --foreground --kill-after=10s 60s docker create --rm \
+    --cidfile "$active_cidfile" --name "$active_container" --platform "$platform" \
+    "${container_ownership_labels[@]}" "$image" > "$active_create_output" || create_status=$?
+  resolve_status=0
+  active_container_id="$(resolve_jade_created_container \
+    "$active_container" "$active_cidfile" "$create_status")" || resolve_status=$?
+  if [[ "$active_container_id" =~ ^[0-9a-f]{64}$ ]]; then
+    container_started=1
+  fi
+  [ "$container_started" -eq 1 ] \
+    || {
+      echo "Jade QEMU creation produced no durable container ID" >&2
+      [ "$resolve_status" -ne 0 ] && exit "$resolve_status"
+      [ "$create_status" -ne 0 ] && exit "$create_status"
+      exit 1
+    }
+  assert_registered_transient "$active_container_id"
+  register_owned_resource compose_container obsolete exact_delete engine_id \
+    "$active_container_id" "$active_container_id" "$SANCTUARY_OPERATION_RUN_ID"
+  container_registered=1
+  [ "$resolve_status" -eq 0 ] || exit "$resolve_status"
+  [ "$create_status" -eq 0 ] || exit "$create_status"
+  [ "$(tr -d '\r\n' < "$active_create_output")" = "$active_container_id" ] \
+    || { echo "Jade QEMU create output disagrees with its durable container ID" >&2; exit 1; }
+  timeout --foreground --kill-after=10s 60s docker start "$active_container_id" >/dev/null
   controller_ready=0
   for _ in $(seq 1 300); do
     if timeout --foreground --kill-after=2s 3s docker exec "$active_container" \
@@ -237,10 +398,11 @@ for network in mainnet testnet; do
   kill "$forwarder_pid" >/dev/null 2>&1 || true
   wait "$forwarder_pid" >/dev/null 2>&1 || true
   forwarder_pid=0
-  timeout --foreground --kill-after=10s 30s docker logs "$active_container" \
+  timeout --foreground --kill-after=10s 30s docker logs "$active_container_id" \
     > "$diagnostics_dir/${active_container}.log" 2>&1 || true
-  timeout --foreground --kill-after=10s 30s docker stop --timeout 10 "$active_container" >/dev/null
+  retire_registered_transient "$active_container_id" "$network" "$container_registered"
   container_started=0
+  container_registered=0
 done
 
 proof_sources_text=''

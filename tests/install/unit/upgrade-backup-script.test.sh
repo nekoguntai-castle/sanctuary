@@ -94,6 +94,7 @@ setup_fake_project() {
   DOCKER_LOG="$TEST_TMP_DIR/docker.log"
 
   mkdir -p "$FAKE_BIN" "$INSTALL_DIR" "$RUNTIME_DIR" "$SSL_DIR" "$OUTPUT_DIR"
+  chmod 700 "$RUNTIME_DIR"
   printf 'services:\n  postgres:\n    image: postgres:16-alpine\n' > "$INSTALL_DIR/docker-compose.yml"
   cat > "$RUNTIME_DIR/sanctuary.env" <<'EOF'
 POSTGRES_PASSWORD=test-password

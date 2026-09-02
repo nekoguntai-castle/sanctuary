@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wait for a lane's migration container to finish, then for its backend to
-# answer. This is phase 2 of run-e2e-lane-phases.sh, extracted so it can be
+# answer. This helper keeps migration waiting consistent across callers and can be
 # tested against a stubbed docker.
 #
 # It was previously an inline `bash -c` string, and carried a defect that the

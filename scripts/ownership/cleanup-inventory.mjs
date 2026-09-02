@@ -6,6 +6,7 @@ import { DOCKER_RESOURCE_CLASSES } from './docker-observation.mjs';
 import { readRegistrations } from './registration.mjs';
 import { ARTIFACT_SCHEMA_VERSIONS, validateArtifact } from './schemas.mjs';
 import { buildCleanupExecutionContext } from './cleanup-execution-context.mjs';
+import { PROTECTED_COMPOSE_PROJECTS } from './contracts.mjs';
 
 const LABEL = 'io.sanctuary.';
 const HARD_REFUSALS = Object.freeze({
@@ -13,9 +14,6 @@ const HARD_REFUSALS = Object.freeze({
   default_builder: 'default_builder', unlabeled: 'unlabeled', malformed: 'malformed',
   unregistered: 'unregistered', referenced: 'referenced',
 });
-const PROTECTED_PROJECTS = Object.freeze([
-  'sanctuary', 'beacon', 'building-monkeys', 'tax-planner', 'swarm-intelligence',
-]);
 
 function ownershipFromLabels(resource) {
   if (resource.ownershipState !== 'owned') return null;
@@ -42,11 +40,13 @@ function policyFor(contract, resourceClass) {
 }
 
 function addOwnershipFailures(failures, resource) {
-  if (['unlabeled', 'legacy_unlabeled'].includes(resource.ownershipState)) failures.add('unlabeled');
+  const externallyRegistered = resource.classifications.includes('externally_registered');
+  if (!externallyRegistered && ['unlabeled', 'legacy_unlabeled'].includes(resource.ownershipState)) failures.add('unlabeled');
   else if (resource.ownershipState !== 'owned') {
-    failures.add(resource.ownershipState === 'malformed' ? 'malformed' : 'unregistered');
+    if (!externallyRegistered) failures.add(resource.ownershipState === 'malformed' ? 'malformed' : 'unregistered');
   }
   for (const classification of resource.classifications) {
+    if (externallyRegistered && classification === 'unlabeled') continue;
     if (HARD_REFUSALS[classification]) failures.add(HARD_REFUSALS[classification]);
   }
 }
@@ -73,7 +73,7 @@ function addRegistrationFailures(failures, resource, ownership) {
 }
 
 function cleanupDisposition(failures, ownership) {
-  if (['retain', 'retain_reconcile'].includes(ownership?.cleanupPolicy)) {
+  if (['retain', 'retain_reconcile', 'preserve_ambiguous'].includes(ownership?.cleanupPolicy)) {
     return { disposition: 'retain', failureClasses: ['policy_retained'] };
   }
   if (failures.size > 0) return { disposition: 'refused', failureClasses: [...failures].sort() };
@@ -87,7 +87,6 @@ function dockerDecision(resource, ownership, policy) {
   const failures = new Set();
   addOwnershipFailures(failures, resource);
   addRegistrationFailures(failures, resource, ownership);
-  if (resource.resourceClass === 'oci_image' && resource.runtime?.referenceCount > 0) failures.add('referenced');
   if (ownership && !policy.cleanupPolicies.includes(ownership.cleanupPolicy)) failures.add('policy_mismatch');
   return cleanupDisposition(failures, ownership);
 }
@@ -101,15 +100,40 @@ function observedContainerRunning(resource) {
     && typeof resource.runtime?.running === 'boolean' ? resource.runtime.running : null;
 }
 
-function dockerRow(resource, contract) {
-  const ownership = ownershipFromLabels(resource);
-  const decision = dockerDecision(resource, ownership, policyFor(contract, resource.resourceClass));
+function dockerEvidence(resource) {
   const references = [...(resource.references ?? resource.runtime?.references ?? [])].sort();
   const contentDigests = [...new Set([
     ...(resource.contentDigests ?? resource.runtime?.contentDigests ?? []),
     ...[resource.registration?.registrationId, resource.registration?.metadataDigest]
       .filter((value) => /^[a-f0-9]{64}$/.test(value ?? '')),
   ])].sort();
+  const dependencyIdentities = [...new Set(resource.runtime?.dependencyIdentities ?? [])].sort();
+  return { references, contentDigests, dependencyIdentities };
+}
+
+function dockerObservationDigest(resource, evidence) {
+  return canonicalSha256({
+    resourceClass: resource.resourceClass,
+    locator: resource.locator,
+    immutableIdentity: resource.immutableIdentity,
+    ownershipState: resource.ownershipState,
+    classifications: resource.classifications,
+    runtime: resource.runtime,
+    registration: resource.registration ?? null,
+    ...evidence,
+  });
+}
+
+function dockerOwnership(resource, project) {
+  const labeled = ownershipFromLabels(resource);
+  if (labeled || !resource.classifications.includes('externally_registered')) return labeled;
+  return registeredOwnership(resource.registration, project);
+}
+
+function dockerRow(resource, contract, project) {
+  const ownership = dockerOwnership(resource, project);
+  const decision = dockerDecision(resource, ownership, policyFor(contract, resource.resourceClass));
+  const evidence = dockerEvidence(resource);
   return {
     resourceClass: resource.resourceClass,
     locatorKind: dockerLocatorKind(resource.resourceClass),
@@ -117,20 +141,9 @@ function dockerRow(resource, contract) {
     immutableIdentity: resource.immutableIdentity,
     ownership,
     ownershipDigest: ownership === null ? null : canonicalSha256(ownership),
-    observationDigest: canonicalSha256({
-      resourceClass: resource.resourceClass,
-      locator: resource.locator,
-      immutableIdentity: resource.immutableIdentity,
-      ownershipState: resource.ownershipState,
-      classifications: resource.classifications,
-      runtime: resource.runtime,
-      registration: resource.registration ?? null,
-      references,
-      contentDigests,
-    }),
+    observationDigest: dockerObservationDigest(resource, evidence),
     ...decision,
-    references,
-    contentDigests,
+    ...evidence,
     running: observedContainerRunning(resource),
     active: resource.classifications.includes('current'),
     protected: resource.classifications.includes('protected'),
@@ -181,6 +194,7 @@ function registrationRow(classification, contract, project) {
     }),
     disposition,
     failureClasses: [policyEnabled ? registrationFailure(classification) : 'policy_mismatch'],
+    dependencyIdentities: [],
     references: [...registration.referenceIds].sort(),
     contentDigests: [registration.metadataDigest].sort(),
     running: null,
@@ -233,12 +247,30 @@ function consolidateRows(rows) {
       ])].sort(),
       references: [...new Set([...existing.references, ...row.references])].sort(),
       contentDigests: [...new Set([...existing.contentDigests, ...row.contentDigests])].sort(),
+      dependencyIdentities: [...new Set([
+        ...existing.dependencyIdentities, ...row.dependencyIdentities,
+      ])].sort(),
       active: existing.active || row.active,
       protected: existing.protected || row.protected,
       data: existing.data || row.data,
     });
   }
   return [...grouped.values()];
+}
+
+function enforceDockerDependencies(rows) {
+  const eligibleContainers = new Set(rows.filter((row) => (
+    row.resourceClass === 'compose_container' && row.disposition === 'eligible'
+  )).map((row) => row.immutableIdentity));
+  return rows.map((row) => {
+    if (!['compose_network', 'compose_volume', 'oci_image'].includes(row.resourceClass)
+        || row.dependencyIdentities.length === 0 || row.disposition !== 'eligible') return row;
+    if (row.dependencyIdentities.every((identity) => eligibleContainers.has(identity))) return row;
+    return {
+      ...row, disposition: 'refused', protected: true,
+      failureClasses: [...new Set([...row.failureClasses, 'shared'])].sort(),
+    };
+  });
 }
 
 function assertManifestBinding(deploymentManifest, runManifest) {
@@ -284,7 +316,8 @@ function deploymentStateAmbiguities(observation, expectedMutationLockOwnerDigest
     adapter: 'deployment-state', resourceClass: null, failureClass: 'unsupported', scope: 'unregistered-deployment',
   }];
   if (observation.value?.registered === true
-      && ![observation.value.active, observation.value.pending, observation.value.prepared].some(Boolean)) return [{
+      && ![observation.value.active, observation.value.pending, observation.value.prepared].some(Boolean)
+      && (observation.value.retired?.length ?? 0) === 0) return [{
     adapter: 'deployment-state', resourceClass: null, failureClass: 'unsupported', scope: 'orphaned-deployment-state',
   }];
   if (observation.value?.mutationLock?.state === 'locked'
@@ -312,11 +345,24 @@ function manifestLabels(deploymentManifest, resourceClass) {
   } };
 }
 
-function authoritativeSelectors(deploymentManifest, registrations) {
+function authoritativeSelectors(deploymentManifest, registrations, legacyFixtureWitnessDigest = null) {
   const selectors = Object.fromEntries(DOCKER_RESOURCE_CLASSES.map((resourceClass) => (
     [resourceClass, resourceClass === 'buildkit_cache' ? [] : [manifestLabels(deploymentManifest, resourceClass)]]
   )));
   for (const registration of registrations) {
+    const witnessedCompose = ['compose_container', 'compose_network', 'compose_volume']
+      .includes(registration.resourceClass)
+      && registration.metadataDigest === legacyFixtureWitnessDigest
+      && registration.lifecycle === 'obsolete'
+      && registration.cleanupPolicy === 'exact_delete'
+      && registration.referenceIds.length === 1
+      && registration.referenceIds[0] === registration.operationRunId;
+    if (witnessedCompose) {
+      selectors[registration.resourceClass].push({
+        locator: registration.resourceClass === 'compose_volume'
+          ? registration.locator : registration.immutableIdentity,
+      });
+    }
     if (registration.resourceClass === 'oci_image') {
       selectors.oci_image.push(registration.locatorKind === 'reference'
         ? { reference: registration.locator } : { locator: registration.immutableIdentity });
@@ -333,12 +379,15 @@ function authoritativeSelectors(deploymentManifest, registrations) {
 export function buildCleanupInventoryExecutionContext({
   deploymentManifest, registrations = [], engine = 'docker', daemonContextFingerprint,
   protectedProjects = [], dataVolumeNames = [], sharedImmutableIdentities = [], selectors,
+  legacyFixtureWitnessDigest = null,
 }) {
   const target = targetRegistrations(registrations, deploymentManifest);
   return buildCleanupExecutionContext({
     engine, daemonContextFingerprint,
-    selectors: selectors ?? authoritativeSelectors(deploymentManifest, target),
-    protectedProjects: [...new Set([...PROTECTED_PROJECTS, ...protectedProjects])].sort(),
+    selectors: selectors ?? authoritativeSelectors(
+      deploymentManifest, target, legacyFixtureWitnessDigest,
+    ),
+    protectedProjects: [...new Set([...PROTECTED_COMPOSE_PROJECTS, ...protectedProjects])].sort(),
     dataVolumeNames, sharedImmutableIdentities, registrations: target,
   });
 }
@@ -385,7 +434,9 @@ function dockerRegistrations(registrations, deploymentManifest) {
 async function collectAdapters({ deploymentManifest, dockerAdapter, dockerOptions, registrationRoot, registrationOptions }) {
   const verified = loadRegistrations(registrationRoot);
   const target = targetRegistrations(verified.registrations, deploymentManifest);
-  const selectors = authoritativeSelectors(deploymentManifest, target);
+  const selectors = authoritativeSelectors(
+    deploymentManifest, target, dockerOptions.legacyFixtureWitnessDigest,
+  );
   const docker = Promise.resolve().then(() => dockerAdapter.inventory({
     ...dockerOptions,
     selectors,
@@ -426,7 +477,7 @@ export async function inventoryCleanupResources({
     ))
     ? [deploymentManifest.deploymentId] : [];
   const protectedProjects = [...new Set([
-    ...PROTECTED_PROJECTS, ...(dockerOptions.protectedProjects ?? []),
+    ...PROTECTED_COMPOSE_PROJECTS, ...(dockerOptions.protectedProjects ?? []),
   ])].sort();
   const { dockerResult, registrationResult, target, selectors } = await collectAdapters({
     dockerAdapter,
@@ -459,11 +510,13 @@ export async function inventoryCleanupResources({
     adapter: 'deployment-state', resourceClass: null, failureClass: 'identity_changed',
     scope: (beforeState.digest ?? canonicalSha256({ state: 'unavailable' })).slice(0, 32),
   });
-  const resources = consolidateRows([
-    ...dockerResources.map((resource) => dockerRow(resource, ownershipContract)),
+  const resources = enforceDockerDependencies(consolidateRows([
+    ...dockerResources.map((resource) => dockerRow(
+      resource, ownershipContract, deploymentManifest.composeProjectName,
+    )),
     ...registrations.filter((entry) => entry.disposition !== 'absent')
       .map((entry) => registrationRow(entry, ownershipContract, deploymentManifest.composeProjectName)),
-  ]).sort((left, right) => `${left.resourceClass}:${left.immutableIdentity}:${left.locator}`
+  ])).sort((left, right) => `${left.resourceClass}:${left.immutableIdentity}:${left.locator}`
     .localeCompare(`${right.resourceClass}:${right.immutableIdentity}:${right.locator}`));
   const executionContext = buildCleanupInventoryExecutionContext({
     deploymentManifest, registrations: target,

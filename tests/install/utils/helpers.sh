@@ -48,6 +48,30 @@ log_debug() {
     fi
 }
 
+# Standalone Docker-producing install lanes must acquire the same ephemeral,
+# receipt-bound authority as their workflow callers before creating resources.
+install_e2e_cleanup_auto_run() {
+    local lane="$1"
+    local checkout_root="$2"
+    local subject="$3"
+    local argument
+    shift 3
+
+    for argument in "$@"; do
+        case "$argument" in
+            --keep-containers|--skip-cleanup)
+                log_error "$argument is incompatible with receipt-bound cleanup"
+                return 2
+                ;;
+        esac
+    done
+    [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ] || return 0
+
+    exec "$checkout_root/scripts/ci/cleanup-ci-callsite.sh" auto-run \
+        --lane "$lane" --checkout-root "$checkout_root" \
+        --authority-mode deployment_managed_by_subject -- "$subject" "$@"
+}
+
 # ============================================
 # Docker Helper Functions
 # ============================================
@@ -95,19 +119,6 @@ run_project_compose() {
     fi
 
     "${compose_cmd[@]}" "$@"
-}
-
-cleanup_docker_resources() {
-    local helper_dir
-    local project_root
-    local cleanup_script
-
-    helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    project_root="$(cd "$helper_dir/../../.." && pwd)"
-    cleanup_script="$project_root/scripts/ci/cleanup-docker-resources.sh"
-
-    [ -x "$cleanup_script" ] || return 127
-    SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true bash "$cleanup_script" "$@"
 }
 
 # Get container name for a service (supports dynamic project names)
@@ -404,73 +415,18 @@ get_container_status() {
     echo ""
 }
 
-# Stop and remove all Sanctuary containers
+# Legacy test teardown is intentionally refused. Docker-producing CI subjects
+# run beneath cleanup-ci-callsite.sh, which owns the exact signed manifest and
+# performs cleanup after the subject terminates. A sourced helper has neither
+# that authority nor an immutable resource inventory.
 cleanup_containers() {
-    local project_dir="${1:-.}"
-    local project="${COMPOSE_PROJECT_NAME:-}"
-
-    if [ -z "$project" ]; then
-        log_error "cleanup_containers refused: COMPOSE_PROJECT_NAME must be set explicitly to a test-only name"
-        log_error "  Refusing to default to 'sanctuary' — that would wipe production volumes."
-        return 1
-    fi
-    if [ "$project" = "sanctuary" ]; then
-        log_error "cleanup_containers refused: project name 'sanctuary' is protected"
-        log_error "  Tests must use a unique COMPOSE_PROJECT_NAME (e.g. sanctuary-test-\$RUN_ID)."
-        return 1
-    fi
-
-    log_info "Cleaning up Sanctuary containers (project: $project)..."
-
-    (
-        cd "$project_dir"
-        if [ -n "${SANCTUARY_ENV_FILE:-}" ] && [ -f "$SANCTUARY_ENV_FILE" ]; then
-            set -a
-            source "$SANCTUARY_ENV_FILE"
-            set +a
-        elif [ -f "$project_dir/.env" ]; then
-            set -a
-            source "$project_dir/.env"
-            set +a
-        fi
-        run_project_compose "$project_dir" down -v --remove-orphans 2>/dev/null || true
-    )
-
-    # The Grafana quiescence coordinator creates its migration and control-helper
-    # containers directly with `podman create` (run-grafana-password-migration.sh,
-    # grafana-quiescence-records.sh), labelled sanctuary.grafana.* rather than as
-    # compose services -- so the `compose down --remove-orphans` above is
-    # structurally unable to see them.
-    #
-    # v0.8.64-rc4 failed on exactly that gap. The baseline install lost the podman
-    # terminal-state race, the harness retried and recovered, but the orphaned
-    # migration container survived into the upgrade phase. The upgrade rebuilds the
-    # migration image, and validate_migration_identity() compares
-    # `image = $migration_image_id`, so a container left over from the previous
-    # image can never be reconciled: the upgrade died with "the reserved migration
-    # container has an unexpected identity" and took the whole optional-profiles
-    # fixture with it.
-    #
-    # Sweep by label, not by name: it catches the migration container and the
-    # control helpers alike and survives any future rename. Scoped to this
-    # project, so it inherits the production-volume guard above.
-    local grafana_cid
-    while read -r grafana_cid; do
-        [ -n "$grafana_cid" ] || continue
-        docker rm -f "$grafana_cid" >/dev/null 2>&1 || true
-    done < <(docker ps -aq --filter "label=sanctuary.grafana.project=$project" 2>/dev/null || true)
-
-    cleanup_docker_resources --project "$project" 2>/dev/null || true
-
-    log_success "Cleanup complete"
+    log_error "cleanup_containers refused: use the receipt-bound cleanup coordinator"
+    return 1
 }
 
 cleanup_compose_project_resources() {
-    local project="$1"
-
-    [ -n "$project" ] || return 0
-
-    cleanup_docker_resources --project "$project" 2>/dev/null || true
+    log_error "cleanup_compose_project_resources refused: use the receipt-bound cleanup coordinator"
+    return 1
 }
 
 disable_compose_project_restart_policy() {
@@ -530,6 +486,47 @@ probe_monitoring_bind_sources() {
 # upgrade regressions.
 SYNC_MONITORING_STATUS="not attempted"
 
+install_container_is_absent() {
+    local container_id="$1" listed
+    docker container inspect "$container_id" >/dev/null 2>&1 && return 1
+    listed="$(docker container ls -a --no-trunc --filter "id=$container_id" --format '{{.ID}}')" || return 2
+    [ -z "$listed" ]
+}
+
+retire_install_container() {
+    local container_id="$1" action="${2:-stop}" mutation_status=0
+    case "$action" in
+        stop) docker stop "$container_id" >/dev/null 2>&1 || mutation_status=$? ;;
+        remove) docker rm -f "$container_id" >/dev/null 2>&1 || mutation_status=$? ;;
+        *) return 2 ;;
+    esac
+    install_container_is_absent "$container_id" && return 0
+    [ "$mutation_status" -eq 0 ] && return 1
+    return "$mutation_status"
+}
+
+resolve_registered_created_container() {
+    local container_name="$1" create_output="$2" create_status="$3" container_id
+    container_id="$(recover_exact_created_container "$container_name")" || {
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return 1
+    }
+    register_owned_resource compose_container obsolete exact_delete engine_id \
+        "$container_id" "$container_id" "$SANCTUARY_OPERATION_RUN_ID" || return 1
+    printf '%s\n' "$container_id"
+    [ "$create_status" -eq 0 ] || return "$create_status"
+    [ "$create_output" = "$container_id" ]
+}
+
+start_registered_install_container() {
+    local container_id="$1" start_status=0
+    docker start "$container_id" >/dev/null || start_status=$?
+    if [ "$start_status" -ne 0 ]; then
+        retire_install_container "$container_id" stop || true
+        return "$start_status"
+    fi
+}
+
 # Resolve a daemon-visible path for the monitoring configs, or echo the input
 # unchanged when no translation is available.
 #
@@ -558,7 +555,9 @@ tor_ingress_config_for_compose() {
 sync_monitoring_configs_to_daemon() {
     local project_dir="$1"
     local src="$project_dir/docker/monitoring"
-    local cid=""
+    local cid="" create_output="" create_status=0 resolve_status=0 start_status=0
+    local helper_name
+    local -a sync_ownership_labels=()
 
     if [ ! -d "$src" ]; then
         SYNC_MONITORING_STATUS="skipped: $src absent job-side"
@@ -577,14 +576,40 @@ sync_monitoring_configs_to_daemon() {
         return 0
     fi
 
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        SYNC_MONITORING_STATUS="refused: signed cleanup coordinator is required"
+        log_error "$SYNC_MONITORING_STATUS"
+        return 1
+    fi
+    helper_name="$(printf '%s' \
+        "sanctuary-monitoring-sync-${SANCTUARY_OPERATION_RUN_ID:-unknown}-$$" \
+        | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-128)"
+
     # A long-lived helper holds the bind mount open. docker cp into a *running*
     # container writes through an active bind mount, which a piped `tar` into a
     # throwaway container did not reliably do -- the first attempt at this
     # silently produced nothing and, because its output was suppressed, gave no
     # indication of why.
-    if ! cid="$(docker run -d -v "$project_dir/docker:/dst" alpine:3 sleep 300 2>&1)"; then
-        SYNC_MONITORING_STATUS="failed: helper container did not start: $cid"
-        return 0
+    ownership_label_args compose_container exact_delete || return 1
+    sync_ownership_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
+    create_output="$(docker create --rm --name "$helper_name" "${sync_ownership_labels[@]}" \
+        -v "$project_dir/docker:/dst" alpine:3 sleep 300 2>&1)" || create_status=$?
+    cid="$(resolve_registered_created_container "$helper_name" "$create_output" "$create_status")" \
+        || resolve_status=$?
+    if ! [[ "$cid" =~ ^[0-9a-f]{64}$ ]]; then
+        SYNC_MONITORING_STATUS="failed: helper container identity was not proven"
+        [ "$resolve_status" -ne 0 ] || resolve_status=1
+        return "$resolve_status"
+    fi
+    if [ "$resolve_status" -ne 0 ]; then
+        retire_install_container "$cid" stop || true
+        SYNC_MONITORING_STATUS="failed: helper create response was not successful"
+        return "$resolve_status"
+    fi
+    start_registered_install_container "$cid" || start_status=$?
+    if [ "$start_status" -ne 0 ]; then
+        SYNC_MONITORING_STATUS="failed: registered helper container did not start"
+        return "$start_status"
     fi
 
     # Clear the bogus directories Docker auto-created for earlier failed mounts.
@@ -599,7 +624,9 @@ sync_monitoring_configs_to_daemon() {
         SYNC_MONITORING_STATUS="failed: docker cp into $cid"
     fi
 
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    # The immutable ID came from this exact `run --rm`; stopping it delegates
+    # removal to the same daemon lifecycle instead of issuing a second delete.
+    retire_install_container "$cid" stop || return 1
 
     printf '[sync] %s\n' "$SYNC_MONITORING_STATUS" >&2
     return 0
@@ -658,8 +685,19 @@ initialize_install_test_ownership() {
     # A Docker-visible workspace seeds a checkout-scoped identity into GITHUB_ENV
     # before an E2E lane chooses its unique Compose project. The lane is the
     # resource authority, so replace both dependent stable identities together.
-    SANCTUARY_PROJECT="${COMPOSE_PROJECT_NAME:-sanctuary-install-test}"
-    SANCTUARY_DEPLOYMENT_ID="deploy-$SANCTUARY_PROJECT"
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        [ -n "${SANCTUARY_PROJECT:-}" ] && [ -n "${SANCTUARY_DEPLOYMENT_ID:-}" ] || {
+            log_error "Receipt-bound cleanup identity is incomplete"
+            return 1
+        }
+        if [ "${COMPOSE_PROJECT_NAME:-}" != "$SANCTUARY_PROJECT" ]; then
+            log_error "Receipt-bound cleanup project does not match COMPOSE_PROJECT_NAME"
+            return 1
+        fi
+    else
+        SANCTUARY_PROJECT="${COMPOSE_PROJECT_NAME:-sanctuary-install-test}"
+        SANCTUARY_DEPLOYMENT_ID="deploy-$SANCTUARY_PROJECT"
+    fi
     SANCTUARY_PROJECT_DIR="$identity_root"
     export SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_PROJECT_DIR
     ownership_initialize_build_identity
@@ -685,52 +723,7 @@ initialize_install_test_ownership_for_root() {
 # a lane installs two checkouts in sequence (source then target) under one
 # project name. Layer cache is untouched, so this stays cheap.
 purge_shared_local_images() {
-    local tag="${SANCTUARY_IMAGE_TAG:-}"
-
-    # Fail closed on the tag, because the tag is the entire safety boundary.
-    #
-    # `docker image rm -f` means two different things on the two engines. On
-    # Docker it untags. On rootless Podman -- what the runners actually run since
-    # #668 -- `rmi --force` STOPS AND DELETES every container using the image,
-    # across all projects, not just this lane's. Verified on Podman 5.4.2:
-    #
-    #   podman image rm -f solo-probe:local
-    #     StopSignal SIGTERM failed to stop container ... resorting to SIGKILL
-    #     Deleted: bf0226b4953f...
-    #
-    # So purging the shared `:local` tag destroys any concurrent lane's live
-    # stack. That is what removed backend and migrate from run 9110 while
-    # postgres survived (#739): a lane purged `sanctuary-*:local` at 08:01:33,
-    # inside another lane's unlocked window.
-    #
-    # A lane-scoped tag is by construction used only by this lane, so requiring
-    # one makes the blast radius this lane. `:local` is the legitimate operator
-    # default in docker-compose.yml and must keep working there -- it is purging
-    # it that is unsafe, never using it.
-    if [ -z "$tag" ] || [ "$tag" = "local" ]; then
-        log_error "Refusing to purge images for tag '${tag:-<unset>}'"
-        log_error "purge_shared_local_images force-removes images, and on rootless Podman that"
-        log_error "deletes running containers using them in EVERY project, not just this lane."
-        log_error "Call export_lane_image_tag first so the purge is scoped to this lane."
-        return 1
-    fi
-
-    # Not silenced. The previous version ended in `>/dev/null 2>&1 || true`, so
-    # the single most destructive operation in the harness left no trace in any
-    # diagnostic -- which is why #730 could rule out every other candidate and
-    # still not find it.
-    local output status=0
-    output="$(docker image rm -f \
-        "sanctuary-backend:${tag}" \
-        "sanctuary-frontend:${tag}" \
-        "sanctuary-gateway:${tag}" \
-        "sanctuary-llm-egress-proxy:${tag}" 2>&1)" || status=$?
-
-    log_info "Purged lane images for tag '${tag}' (exit ${status})"
-    [ -n "$output" ] && printf '%s\n' "$output" | sed 's/^/  [purge] /'
-
-    # A missing image is the normal first-run case, not an error.
-    return 0
+    log_info "Preserving lane images; the signed coordinator reconciles exact image identities"
 }
 
 # Guard against an install running an image built from a different ref.
@@ -791,16 +784,8 @@ force_test_compose_restart_policy_no() {
 }
 
 cleanup_compose_projects_by_prefix() {
-    local prefix="$1"
-    local exclude_project="${2:-}"
-
-    [ -n "$prefix" ] || return 0
-
-    if [ -n "$exclude_project" ]; then
-        cleanup_docker_resources --prefix "$prefix" --exclude-project "$exclude_project" 2>/dev/null || true
-    else
-        cleanup_docker_resources --prefix "$prefix" 2>/dev/null || true
-    fi
+    log_error "prefix cleanup refused: names and prefixes are not cleanup authority"
+    return 1
 }
 
 # ============================================

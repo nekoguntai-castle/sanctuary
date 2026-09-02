@@ -13,6 +13,7 @@ import { inspectDeploymentLock } from '../../scripts/ownership/deployment-lock.m
 import { DeploymentStore } from '../../scripts/ownership/deployment-store.mjs';
 import { verifySignedArtifact } from '../../scripts/ownership/cleanup-evidence.mjs';
 import { createCleanupJournal } from '../../scripts/ownership/cleanup-journal.mjs';
+import { registerResource } from '../../scripts/ownership/registration.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const CLI = path.join(ROOT, 'scripts/ownership/cleanup-cli.mjs');
@@ -62,7 +63,11 @@ case "\${1:-} \${2:-}" in
     ;;
   "network inspect")
     if [ ! -f "$FAKE_DOCKER_STATE" ]; then exit 1; fi
-    printf '[{"Id":"${TARGET_ID}","Containers":{},"Labels":{"io.sanctuary.project":"cleanup-cli-fixture","io.sanctuary.deployment-id":"%s","io.sanctuary.owner-id":"owner-1","io.sanctuary.resource-class":"compose_network","io.sanctuary.lifecycle":"obsolete","io.sanctuary.cleanup-policy":"exact_delete","io.sanctuary.created-at":"2026-08-30T00:00:00.000Z","io.sanctuary.created-by-release":"unreleased","io.sanctuary.created-by-commit":"${COMMIT}","io.sanctuary.creation-run-id":"create-obsolete"}}]\\n' "$FAKE_DEPLOYMENT_ID"
+    if [ "\${FAKE_WITNESS:-0}" = 1 ]; then
+      printf '[{"Id":"${TARGET_ID}","Containers":{},"Labels":{"com.docker.compose.project":"cleanup-cli-fixture","com.docker.compose.network":"default"}}]\\n'
+    else
+      printf '[{"Id":"${TARGET_ID}","Containers":{},"Labels":{"io.sanctuary.project":"cleanup-cli-fixture","io.sanctuary.deployment-id":"%s","io.sanctuary.owner-id":"owner-1","io.sanctuary.resource-class":"compose_network","io.sanctuary.lifecycle":"obsolete","io.sanctuary.cleanup-policy":"exact_delete","io.sanctuary.created-at":"2026-08-30T00:00:00.000Z","io.sanctuary.created-by-release":"unreleased","io.sanctuary.created-by-commit":"${COMMIT}","io.sanctuary.creation-run-id":"create-obsolete"}}]\\n' "$FAKE_DEPLOYMENT_ID"
+    fi
     ;;
   "network rm")
     if [ "$FAKE_DOCKER_MODE" = "hold" ] || [ "$FAKE_DOCKER_MODE" = "hold_ignore_term" ]; then
@@ -122,7 +127,9 @@ function waitForExit(child, timeoutMs = 15_000) {
   });
 }
 
-function executionFixture(name, { expiresInMs = 60_000, subjectExitStatus = 17 } = {}) {
+function executionFixture(name, {
+  expiresInMs = 60_000, subjectExitStatus = 17, witnessed = false,
+} = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), `cleanup-cli-execution-${name}-`));
   chmodSync(root, 0o700);
   const runtimeDirectory = path.join(root, 'runtime');
@@ -179,9 +186,20 @@ function executionFixture(name, { expiresInMs = 60_000, subjectExitStatus = 17 }
     activatedAt: new Date().toISOString(),
   });
   const keysRoot = path.join(runtimeDirectory, 'ownership/keys');
-  mkdirSync(keysRoot, { recursive: true, mode: 0o700 });
-  chmodSync(path.join(runtimeDirectory, 'ownership'), 0o700);
-  writeFileSync(path.join(keysRoot, 'public.pem'), readFileSync(evidence.publicKeyPath), { mode: 0o600 });
+  const witnessDigest = witnessed ? 'e'.repeat(64) : null;
+  if (witnessed) {
+    registerResource({
+      deploymentId, operationRunId, ownerId: manifest.ownerId,
+      resourceClass: 'compose_network', lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
+      createdAt: manifest.createdAt, createdByRelease: 'unreleased', createdByCommit: COMMIT,
+      locatorKind: 'engine_id', locator: TARGET_ID, immutableIdentity: TARGET_ID,
+      metadataDigest: witnessDigest, referenceIds: [operationRunId],
+    }, { root: path.join(runtimeDirectory, 'ownership'), checkoutRoot: ROOT });
+  } else {
+    mkdirSync(keysRoot, { recursive: true, mode: 0o700 });
+    chmodSync(path.join(runtimeDirectory, 'ownership'), 0o700);
+    writeFileSync(path.join(keysRoot, 'public.pem'), readFileSync(evidence.publicKeyPath), { mode: 0o600 });
+  }
   const trustPath = path.join(runtimeDirectory, 'ownership/deployments', deploymentId, 'cleanup-trust.json');
   chmodSync(path.dirname(trustPath), 0o700);
   writeCanonical(trustPath, {
@@ -199,6 +217,7 @@ function executionFixture(name, { expiresInMs = 60_000, subjectExitStatus = 17 }
     FAKE_DOCKER_PID: dockerPidPath, FAKE_DOCKER_LOG: dockerLogPath,
     FAKE_DOCKER_HOLD: holdPath, FAKE_DOCKER_MODE: 'normal',
     FAKE_DEPLOYMENT_ID: deploymentId,
+    FAKE_WITNESS: witnessed ? '1' : '0',
   };
   const inventoryPath = path.join(evidenceDirectory, 'inventory.json');
   const inventoryRequest = path.join(evidenceDirectory, 'inventory-request.json');
@@ -206,6 +225,7 @@ function executionFixture(name, { expiresInMs = 60_000, subjectExitStatus = 17 }
     checkoutRoot: ROOT, ownershipContractPath: CONTRACT, deploymentManifestPath: deploymentPath,
     runManifestPath: runPath, outputPath: inventoryPath, deploymentId, runtimeDirectory,
     engine: 'docker', timeoutMs: 2_000, maxOutputBytes: 64 * 1024,
+    ...(witnessed ? { legacyFixtureWitnessDigest: witnessDigest } : {}),
   });
   const inventoried = invoke('inventory', inventoryRequest, env);
   assert.equal(inventoried.status, 0, inventoried.stderr);
@@ -253,6 +273,7 @@ function executionFixture(name, { expiresInMs = 60_000, subjectExitStatus = 17 }
     timeoutMs: 2_000, maxOutputBytes: 64 * 1024,
     supervisorTimeoutMs: 10_000, supervisorGraceMs: 50, supervisorKillWaitMs: 500,
     subjectExitStatus,
+    ...(witnessed ? { legacyFixtureWitnessDigest: witnessDigest } : {}),
   };
   writeCanonical(applyRequest, request);
   return {
@@ -293,6 +314,35 @@ function inspectFixtureProjectLock(fixture) {
   const identity = canonicalSha256({ composeProjectName: 'cleanup-cli-fixture' });
   return inspectDeploymentLock(path.join(fixture.projectLockRoot, identity, 'mutation-lock'));
 }
+
+test('witness-backed legacy resource is approved, journaled, executed, and receipted canonically', () => {
+  const fixture = executionFixture('witness-canonical', { witnessed: true, subjectExitStatus: 0 });
+  try {
+    const applied = invoke('apply', fixture.applyRequest, fixture.env);
+    assert.equal(applied.status, 0, applied.stderr);
+    const receipt = verifySignedArtifact({
+      inputPath: fixture.receiptOutputPath,
+      publicKeyPath: fixture.evidence.publicKeyPath,
+      expectedFingerprint: fixture.evidence.fingerprint,
+      checkoutRoot: ROOT,
+    }).artifact;
+    assert.equal(receipt.state, 'cleaned');
+    assert.equal(receipt.actions.length, 1);
+    assert.equal(receipt.actions[0].immutableIdentity, TARGET_ID);
+    assert.equal(receipt.results.length, 1);
+    assert.equal(receipt.results[0].result, 'absent');
+    const journalPath = path.join(
+      fixture.runtimeDirectory, 'ownership/cleanup-executions', fixture.approvalDigest,
+      'action-journal.jsonl',
+    );
+    const journal = readFileSync(journalPath, 'utf8');
+    assert.match(journal, /"checkpointType":"intent"/);
+    assert.match(journal, /"checkpointType":"result"/);
+    assert.equal(existsSync(fixture.statePath), false);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
 
 test('CLI SIGKILL recovery preserves subject status, rejects a concurrent apply, and resumes after expiry',
   { timeout: 30_000 }, async (t) => {

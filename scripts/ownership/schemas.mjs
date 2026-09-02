@@ -15,6 +15,7 @@ import {
   CLEANUP_STATES as STATES,
 } from './cleanup-schema-contract.mjs';
 import { validateExecutionReceipt } from './execution-receipt-schema.mjs';
+import { validateCoordinationReceipt } from './coordination-receipt-schema.mjs';
 import {
   validateDeployment, validateRegistration, validateRun,
 } from './manifest-schema-validators.mjs';
@@ -25,6 +26,7 @@ export const ARTIFACT_TYPES = [
 ];
 const CLEANUP_SCHEMA_VERSION = '1.1.0';
 const CLEANUP_EXECUTION_SCHEMA_VERSION = '1.2.0';
+const CLEANUP_COORDINATION_SCHEMA_VERSION = '1.3.0';
 const CLEANUP_V11_TYPES = new Set(['inventory', 'cleanup_plan', 'cleanup_approval', 'cleanup_receipt']);
 export const ARTIFACT_SCHEMA_VERSIONS = Object.freeze(Object.fromEntries(
   ARTIFACT_TYPES.map((artifactType) => [artifactType, artifactType === 'inventory'
@@ -79,7 +81,7 @@ function action(value, path) {
 }
 
 function cleanupAction(value, path) {
-  object(value, path, ['sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind', 'locator', 'ownershipDigest', 'observationDigest']);
+  object(value, path, ['sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind', 'locator', 'ownershipDigest', 'observationDigest', 'dependencyIdentities']);
   integer(value.sequence, `${path}.sequence`, { min: 1 });
   enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
   identifier(value.immutableIdentity, `${path}.immutableIdentity`);
@@ -88,6 +90,8 @@ function cleanupAction(value, path) {
   string(value.locator, `${path}.locator`, { max: 1024 });
   digest(value.ownershipDigest, `${path}.ownershipDigest`);
   digest(value.observationDigest, `${path}.observationDigest`);
+  const dependencies = array(value.dependencyIdentities, `${path}.dependencyIdentities`, { max: 512 });
+  sortedUniqueStrings(dependencies, `${path}.dependencyIdentities`, digest);
 }
 
 function result(value, path) {
@@ -214,7 +218,7 @@ function validateInventoryResource(value, path, { includeRunning = false } = {})
   const keys = [
     'resourceClass', 'locatorKind', 'locator', 'immutableIdentity', 'ownership',
     'ownershipDigest', 'observationDigest', 'disposition', 'failureClasses',
-    'references', 'contentDigests', 'active', 'protected', 'data',
+    'references', 'contentDigests', 'dependencyIdentities', 'active', 'protected', 'data',
   ];
   object(value, path, includeRunning ? [...keys, 'running'] : keys);
   enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
@@ -251,6 +255,8 @@ function validateInventoryResource(value, path, { includeRunning = false } = {})
   sortedUniqueStrings(references, `${path}.references`, (entry, entryPath) => string(entry, entryPath, { max: 512 }));
   const contentDigests = array(value.contentDigests, `${path}.contentDigests`, { max: 128 });
   sortedUniqueStrings(contentDigests, `${path}.contentDigests`, digest);
+  const dependencies = array(value.dependencyIdentities, `${path}.dependencyIdentities`, { max: 512 });
+  sortedUniqueStrings(dependencies, `${path}.dependencyIdentities`, digest);
   boolean(value.active, `${path}.active`);
   boolean(value.protected, `${path}.protected`);
   boolean(value.data, `${path}.data`);
@@ -454,11 +460,17 @@ const CLEANUP_V12_VALIDATORS = {
   cleanup_receipt: validateExecutionReceipt,
 };
 
+const CLEANUP_V13_VALIDATORS = {
+  cleanup_receipt: validateCoordinationReceipt,
+};
+
 export function validateArtifact(value, { now = new Date() } = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('$ must be an object');
   enumeration(value.artifactType, '$.artifactType', ARTIFACT_TYPES);
-  const validator = value.schemaVersion === CLEANUP_EXECUTION_SCHEMA_VERSION
-    ? CLEANUP_V12_VALIDATORS[value.artifactType]
+  const validator = value.schemaVersion === CLEANUP_COORDINATION_SCHEMA_VERSION
+    ? CLEANUP_V13_VALIDATORS[value.artifactType]
+    : value.schemaVersion === CLEANUP_EXECUTION_SCHEMA_VERSION
+      ? CLEANUP_V12_VALIDATORS[value.artifactType]
     : value.schemaVersion === CLEANUP_SCHEMA_VERSION
       ? CLEANUP_V11_VALIDATORS[value.artifactType]
       : VALIDATORS[value.artifactType];

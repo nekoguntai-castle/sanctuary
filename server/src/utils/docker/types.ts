@@ -13,6 +13,9 @@ export interface ContainerInfo {
 }
 
 export interface ContainerInspect {
+  Id: string;
+  Name: string;
+  Config: { Labels?: Record<string, string> };
   State: {
     Status: string;
     Running: boolean;
@@ -28,6 +31,7 @@ export interface ContainerStatus {
   running: boolean;
   status: string;
   containerId?: string;
+  error?: string;
 }
 
 export interface ContainerActionResult {

@@ -192,7 +192,7 @@ The gateway is included in the main `docker-compose.yml` and starts automaticall
 
 ```bash
 # From project root
-docker compose up -d
+./scripts/ownership/run-operator-compose.sh up -d
 ```
 
 The gateway will be available at `http://localhost:4000` (or your configured

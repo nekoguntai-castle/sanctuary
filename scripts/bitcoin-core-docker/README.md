@@ -47,8 +47,9 @@ The build process:
 # Test the build
 docker run --rm sanctuary-bitcoind:27.0 --version
 
-# Run regtest node for testing
-docker run -d --name bitcoind-test \
+# Run a daemon-atomic regtest node in the foreground for testing.
+# Press Ctrl-C when finished; --rm makes the daemon retire this exact container.
+docker run --rm --name bitcoind-test \
   -p 18443:18443 \
   sanctuary-bitcoind:27.0 \
   -regtest -server \
@@ -61,6 +62,10 @@ curl --user test:test --data-binary \
   -H 'content-type: text/plain;' \
   http://127.0.0.1:18443/
 ```
+
+Keep that command attached in its terminal while issuing the RPC and mining
+commands below from another terminal. Do not detach the ad hoc container; a
+long-lived node belongs in Sanctuary's manifest-backed application lifecycle.
 
 ### Mine Regtest Blocks To A Chosen Address
 
@@ -87,20 +92,6 @@ Coinbase outputs need 100 confirmations before they are spendable, so
 Public testnet/testnet4 is different from local regtest: it still requires real
 proof of work. Use a faucet, or mining software/pool configuration with the
 desired payout address, if your node cannot generate blocks directly.
-
-### Use with Address Verification
-
-```bash
-# First, build the image
-./build.sh 27.0
-
-# Then use docker-compose with the self-built image
-cd ../verify-addresses
-docker compose -f docker-compose.self-built.yml up -d
-
-# Run address verification
-npm run generate
-```
 
 ## Maintainer Keys
 

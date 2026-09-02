@@ -24,7 +24,9 @@ on:
       - 'package*.json'
       - 'config/tooling/**'
       - 'config/container-image-lock.json'
+      - 'config/resource-ownership-contract.json'
       - 'scripts/ci/build-runtime-image.sh'
+      - 'scripts/ci/cleanup-ci-callsite.sh'
       - 'scripts/ci/write-runtime-image-evidence.mjs'
       - 'scripts/ci/classify-docker-build-images.sh'
       - 'scripts/ci/validate-docker-build-results.sh'
@@ -34,11 +36,14 @@ on:
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ownership/**'
       - 'scripts/ops/migrate-grafana-password.sh'
       - 'scripts/ops/run-grafana-password-migration.sh'
       - 'scripts/ops/grafana-quiescence-records.sh'
       - 'scripts/offline/bundle-common.sh'
       - 'scripts/offline/create-bundle.sh'
+      - '.github/actions/verify-cleanup-receipt/**'
+      - '.github/actions/upload-cleanup-evidence/**'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
@@ -60,7 +65,9 @@ on:
       - 'package*.json'
       - 'config/tooling/**'
       - 'config/container-image-lock.json'
+      - 'config/resource-ownership-contract.json'
       - 'scripts/ci/build-runtime-image.sh'
+      - 'scripts/ci/cleanup-ci-callsite.sh'
       - 'scripts/ci/write-runtime-image-evidence.mjs'
       - 'scripts/ci/classify-docker-build-images.sh'
       - 'scripts/ci/validate-docker-build-results.sh'
@@ -70,11 +77,14 @@ on:
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ownership/**'
       - 'scripts/ops/migrate-grafana-password.sh'
       - 'scripts/ops/run-grafana-password-migration.sh'
       - 'scripts/ops/grafana-quiescence-records.sh'
       - 'scripts/offline/bundle-common.sh'
       - 'scripts/offline/create-bundle.sh'
+      - '.github/actions/verify-cleanup-receipt/**'
+      - '.github/actions/upload-cleanup-evidence/**'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -160,13 +170,37 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
       - name: Build, smoke, and attest frontend
-        run: scripts/ci/build-runtime-image.sh frontend docker/frontend/Dockerfile . sanctuary-ci/frontend:${{ github.sha }}
+        run: >
+          scripts/ci/cleanup-ci-callsite.sh run
+          --lane runtime-image-frontend
+          --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/runtime-image-frontend"
+          --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/runtime-image-frontend"
+          -- scripts/ci/build-runtime-image.sh frontend docker/frontend/Dockerfile . sanctuary-ci/frontend
 
       - name: Upload frontend image evidence
+        if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: runtime-image-evidence-frontend
           path: .tmp/runtime-image-evidence/frontend/
+
+      - name: Require frontend final cleanup evidence
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-frontend
+
+      - name: Upload frontend cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-runtime-image-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-frontend/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-frontend
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
   build-backend:
     name: Validate backend image
@@ -198,13 +232,37 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
       - name: Build, smoke, and attest backend
-        run: scripts/ci/build-runtime-image.sh backend server/Dockerfile . sanctuary-ci/backend:${{ github.sha }}
+        run: >
+          scripts/ci/cleanup-ci-callsite.sh run
+          --lane runtime-image-backend
+          --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/runtime-image-backend"
+          --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/runtime-image-backend"
+          -- scripts/ci/build-runtime-image.sh backend server/Dockerfile . sanctuary-ci/backend
 
       - name: Upload backend image evidence
+        if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: runtime-image-evidence-backend
           path: .tmp/runtime-image-evidence/backend/
+
+      - name: Require backend final cleanup evidence
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-backend
+
+      - name: Upload backend cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-runtime-image-backend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-backend/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-backend
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
   build-gateway:
     name: Validate gateway image
@@ -220,12 +278,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
       - name: Build, smoke, and attest gateway
-        run: scripts/ci/build-runtime-image.sh gateway gateway/Dockerfile . sanctuary-ci/gateway:${{ github.sha }}
+        run: >
+          scripts/ci/cleanup-ci-callsite.sh run
+          --lane runtime-image-gateway
+          --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/runtime-image-gateway"
+          --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/runtime-image-gateway"
+          -- scripts/ci/build-runtime-image.sh gateway gateway/Dockerfile . sanctuary-ci/gateway
       - name: Upload gateway image evidence
+        if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: runtime-image-evidence-gateway
           path: .tmp/runtime-image-evidence/gateway/
+      - name: Require gateway final cleanup evidence
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-gateway
+      - name: Upload gateway cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-runtime-image-gateway-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-gateway/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-gateway
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
   build-llm-egress-proxy:
     name: Validate LLM egress proxy image
@@ -241,12 +321,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
       - name: Build, smoke, and attest LLM egress proxy
-        run: scripts/ci/build-runtime-image.sh llm-egress-proxy llm-egress-proxy/Dockerfile llm-egress-proxy sanctuary-ci/llm-egress-proxy:${{ github.sha }}
+        run: >
+          scripts/ci/cleanup-ci-callsite.sh run
+          --lane runtime-image-llm-egress-proxy
+          --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/runtime-image-llm-egress-proxy"
+          --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/runtime-image-llm-egress-proxy"
+          -- scripts/ci/build-runtime-image.sh llm-egress-proxy llm-egress-proxy/Dockerfile llm-egress-proxy sanctuary-ci/llm-egress-proxy
       - name: Upload LLM egress proxy image evidence
+        if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: runtime-image-evidence-llm-egress-proxy
           path: .tmp/runtime-image-evidence/llm-egress-proxy/
+      - name: Require LLM egress proxy final cleanup evidence
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-llm-egress-proxy
+      - name: Upload LLM egress proxy cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-runtime-image-llm-egress-proxy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-llm-egress-proxy/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-llm-egress-proxy
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
   build-grafana-migration:
     name: Validate Grafana migration image
@@ -273,13 +375,37 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
       - name: Build, smoke, and attest Grafana migration helper
-        run: scripts/ci/build-runtime-image.sh grafana-migration docker/grafana-migration/Dockerfile . sanctuary-ci/grafana-migration:${{ github.sha }}
+        run: >
+          scripts/ci/cleanup-ci-callsite.sh run
+          --lane runtime-image-grafana-migration
+          --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/runtime-image-grafana-migration"
+          --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/runtime-image-grafana-migration"
+          -- scripts/ci/build-runtime-image.sh grafana-migration docker/grafana-migration/Dockerfile . sanctuary-ci/grafana-migration
 
       - name: Upload Grafana migration image evidence
+        if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: runtime-image-evidence-grafana-migration
           path: .tmp/runtime-image-evidence/grafana-migration/
+
+      - name: Require Grafana migration final cleanup evidence
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-grafana-migration
+
+      - name: Upload Grafana migration cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-runtime-image-grafana-migration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-grafana-migration/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-grafana-migration
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
   summary:
     name: Docker image validation summary

@@ -33,7 +33,7 @@ function validateActions(actions) {
   actions.forEach((action, index) => {
     exactKeys(action, [
       'sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind',
-      'locator', 'ownershipDigest', 'observationDigest',
+      'locator', 'ownershipDigest', 'observationDigest', 'dependencyIdentities',
     ], `action ${index + 1}`);
     if (action.sequence !== index + 1) throw new TypeError('action sequences must be contiguous from one');
     for (const key of ['resourceClass', 'immutableIdentity', 'action', 'locatorKind', 'locator']) {
@@ -43,6 +43,12 @@ function validateActions(actions) {
     }
     digest(action.ownershipDigest, `action ${index + 1} ownershipDigest`);
     digest(action.observationDigest, `action ${index + 1} observationDigest`);
+    if (!Array.isArray(action.dependencyIdentities) || action.dependencyIdentities.length > 512
+        || action.dependencyIdentities.some((identity, dependencyIndex) => !DIGEST.test(identity)
+          || (dependencyIndex > 0
+            && action.dependencyIdentities[dependencyIndex - 1].localeCompare(identity) >= 0))) {
+      throw new TypeError(`action ${index + 1} dependencyIdentities are invalid`);
+    }
     const identity = `${action.resourceClass}:${action.immutableIdentity}:${action.action}`;
     if (identities.has(identity)) throw new TypeError('actions contain a duplicate mutation');
     identities.add(identity);
@@ -64,12 +70,7 @@ function validateAuthorityRunning(row) {
   }
 }
 
-function validateAuthorityRow(row, action) {
-  exactKeys(row, [
-    'resourceClass', 'locatorKind', 'locator', 'immutableIdentity', 'ownership',
-    'ownershipDigest', 'observationDigest', 'disposition', 'failureClasses',
-    'references', 'contentDigests', 'running', 'active', 'protected', 'data',
-  ], 'eligible authority row');
+function validateAuthorityOwnership(row, action) {
   exactKeys(row.ownership, [
     'project', 'deploymentId', 'ownerId', 'resourceClass', 'lifecycle',
     'cleanupPolicy', 'createdAt', 'createdByRelease', 'createdByCommit',
@@ -81,13 +82,29 @@ function validateAuthorityRow(row, action) {
       || canonicalSha256(row.ownership) !== row.ownershipDigest) {
     throw new TypeError('eligible authority row ownership digest is invalid');
   }
+}
+
+function validateAuthorityEvidence(row, action) {
   if (row.locatorKind !== action.locatorKind || row.locator !== action.locator
       || !Array.isArray(row.references) || row.references.length > 512
       || row.references.some((value) => typeof value !== 'string' || value.length > 512)
+      || !Array.isArray(row.dependencyIdentities) || row.dependencyIdentities.length > 512
+      || row.dependencyIdentities.some((value, index) => !DIGEST.test(value)
+        || (index > 0 && row.dependencyIdentities[index - 1].localeCompare(value) >= 0))
       || !Array.isArray(row.contentDigests) || row.contentDigests.length > 128
       || row.contentDigests.some((value) => typeof value !== 'string' || !DIGEST.test(value))) {
     throw new TypeError('eligible authority row locator or references are invalid');
   }
+}
+
+function validateAuthorityRow(row, action) {
+  exactKeys(row, [
+    'resourceClass', 'locatorKind', 'locator', 'immutableIdentity', 'ownership',
+    'ownershipDigest', 'observationDigest', 'disposition', 'failureClasses',
+    'references', 'contentDigests', 'dependencyIdentities', 'running', 'active', 'protected', 'data',
+  ], 'eligible authority row');
+  validateAuthorityOwnership(row, action);
+  validateAuthorityEvidence(row, action);
   validateAuthorityRunning(row);
 }
 
@@ -137,18 +154,30 @@ async function append(appendCheckpoint, record) {
 }
 
 function predecessorDigest(actions, completed, index) {
-  if (index === 0) return null;
-  const priorAction = actions[index - 1];
   const action = actions[index];
-  const prior = completed.at(-1);
-  const allowed = priorAction.resourceClass === 'compose_container'
-    && priorAction.action === 'stop'
-    && action.resourceClass === 'compose_container'
-    && action.action === 'remove'
-    && priorAction.immutableIdentity === action.immutableIdentity
-    && ['cleaned', 'absent'].includes(prior?.result)
-    && typeof prior?.resultCheckpointDigest === 'string';
-  return allowed ? prior.resultCheckpointDigest : null;
+  let requiredActions;
+  if (action.resourceClass === 'compose_container' && action.action === 'remove') {
+    const prior = actions[index - 1];
+    requiredActions = prior?.resourceClass === 'compose_container' && prior.action === 'stop'
+      && prior.immutableIdentity === action.immutableIdentity ? [prior] : [undefined];
+  } else if (['compose_network', 'compose_volume', 'oci_image'].includes(action.resourceClass)) {
+    requiredActions = action.dependencyIdentities.map((identity) => actions.slice(0, index)
+      .findLast((candidate) => candidate.resourceClass === 'compose_container'
+        && candidate.action === 'remove' && candidate.immutableIdentity === identity));
+  } else requiredActions = [];
+  if (requiredActions.length === 0) return null;
+  if (requiredActions.some((candidate) => candidate === undefined)) return undefined;
+  const proof = requiredActions.map((candidate) => {
+    const result = completed[candidate.sequence - 1];
+    if (!['cleaned', 'absent'].includes(result?.result)
+        || typeof result.resultCheckpointDigest !== 'string') return null;
+    return {
+      sequence: candidate.sequence, resourceClass: candidate.resourceClass,
+      immutableIdentity: candidate.immutableIdentity, action: candidate.action,
+      resultCheckpointDigest: result.resultCheckpointDigest,
+    };
+  });
+  return proof.some((entry) => entry === null) ? undefined : canonicalSha256(proof);
 }
 
 function categoricalMutation(value) {
@@ -290,6 +319,13 @@ export async function runCleanupActions({
       break;
     }
     const derived = predecessorDigest(actions, results, index);
+    if (derived === undefined) {
+      const recorded = await recordResult(appendCheckpoint, action, {
+        result: 'refused', failureClass: 'identity_changed', advance: false,
+      });
+      results.push(publicResult(action, recorded));
+      break;
+    }
     const first = await reload(reloadAuthority, action, 'fresh_eligibility', derived, signal);
     if (first.state !== 'eligible') {
       const recorded = await recordResult(appendCheckpoint, action, {

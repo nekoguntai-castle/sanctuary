@@ -268,6 +268,11 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/build-images.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "wallet sync replay image build" \
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --lane replay-images \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/replay-images" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/replay-images" \
+              -- \
             bash -c '
               set -euo pipefail
               scripts/ci/wallet-sync-replay-image.sh build \
@@ -285,9 +290,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Remove job-owned replay images
+      - name: Verify replay image cleanup receipt
+        id: verify_cleanup_receipt
         if: always()
-        run: docker image rm "$RC10_IMAGE" "$RC11_IMAGE" 2>/dev/null || true
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-images
+
+      - name: Upload replay image cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-images/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-images
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Upload replay image diagnostics
         if: always()
@@ -345,18 +364,6 @@ jobs:
           name: wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/wallet-sync-replay/images
 
-      - name: Load and reverify exact OCI bytes
-        env:
-          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/load-images.log" bash -c '
-            set -euo pipefail
-            scripts/ci/wallet-sync-replay-image.sh load \
-              "$IMAGE_DIR/rc10/image-receipt.json" "$RC10_IMAGE" "$RC10_REVISION"
-            scripts/ci/wallet-sync-replay-image.sh load \
-              "$IMAGE_DIR/rc11/image-receipt.json" "$RC11_IMAGE" "$RC11_REVISION"
-          '
-
       - name: Run live-shape replay and RC10 negative control
         env:
           RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
@@ -365,29 +372,45 @@ jobs:
           scripts/ci/run-with-log.sh "${EVIDENCE_DIR}.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "wallet sync live-shape replay" \
-            timeout --foreground --signal=TERM --kill-after=60s 6000s \
-            node scripts/perf/wallet-sync-high-fanout-replay.mjs \
-              --mode live \
-              --rc10-image "$RC10_IMAGE" \
-              --rc10-revision "$RC10_REVISION" \
-              --rc11-image "$RC11_IMAGE" \
-              --rc11-revision "$RC11_REVISION" \
-              --fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json \
-              --evidence-dir "$EVIDENCE_DIR"
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --lane replay-live \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/replay-live" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/replay-live" \
+              -- bash -c '
+                set -euo pipefail
+                scripts/ci/wallet-sync-replay-image.sh load \
+                  "$IMAGE_DIR/rc10/image-receipt.json" "$RC10_IMAGE" "$RC10_REVISION"
+                scripts/ci/wallet-sync-replay-image.sh load \
+                  "$IMAGE_DIR/rc11/image-receipt.json" "$RC11_IMAGE" "$RC11_REVISION"
+                timeout --foreground --signal=TERM --kill-after=60s 6000s \
+                  node scripts/perf/wallet-sync-high-fanout-replay.mjs \
+                    --mode live \
+                    --rc10-image "$RC10_IMAGE" \
+                    --rc10-revision "$RC10_REVISION" \
+                    --rc11-image "$RC11_IMAGE" \
+                    --rc11-revision "$RC11_REVISION" \
+                    --fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json \
+                    --evidence-dir "$EVIDENCE_DIR"
+              '
 
-      - name: Remove job-owned replay images
+      - name: Verify live-shape cleanup receipt
+        id: verify_cleanup_receipt
         if: always()
-        run: docker image rm "$RC10_IMAGE" "$RC11_IMAGE" 2>/dev/null || true
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-live
 
       - name: Upload live-shape replay evidence
-        if: always()
-        uses: ./.github/actions/upload-artifact
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
         with:
           name: wallet-sync-live-shape-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             .tmp/wallet-sync-replay/evidence-live/
             .tmp/wallet-sync-replay/evidence-live.log
             .tmp/job-logs/wallet-sync-live-shape/
+            ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-live/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-live
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
@@ -434,14 +457,6 @@ jobs:
           name: wallet-sync-replay-images-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/wallet-sync-replay/images
 
-      - name: Load and reverify exact OCI bytes
-        env:
-          RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/load-images.log" \
-            scripts/ci/wallet-sync-replay-image.sh load \
-              "$IMAGE_DIR/rc11/image-receipt.json" "$RC11_IMAGE" "$RC11_REVISION"
-
       - name: Run maximum-shape boundary cases
         env:
           RC11_REVISION: ${{ needs.validation-info.outputs.candidate_sha }}
@@ -450,27 +465,41 @@ jobs:
           scripts/ci/run-with-log.sh "${EVIDENCE_DIR}.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "wallet sync maximum-shape replay" \
-            timeout --foreground --signal=TERM --kill-after=60s 5100s \
-            node scripts/perf/wallet-sync-high-fanout-replay.mjs \
-              --mode max \
-              --rc11-image "$RC11_IMAGE" \
-              --rc11-revision "$RC11_REVISION" \
-              --fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json \
-              --evidence-dir "$EVIDENCE_DIR"
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --lane replay-max \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/replay-max" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/replay-max" \
+              -- bash -c '
+                set -euo pipefail
+                scripts/ci/wallet-sync-replay-image.sh load \
+                  "$IMAGE_DIR/rc11/image-receipt.json" "$RC11_IMAGE" "$RC11_REVISION"
+                timeout --foreground --signal=TERM --kill-after=60s 5100s \
+                  node scripts/perf/wallet-sync-high-fanout-replay.mjs \
+                    --mode max \
+                    --rc11-image "$RC11_IMAGE" \
+                    --rc11-revision "$RC11_REVISION" \
+                    --fixture-manifest scripts/perf/wallet-sync-persistence-manifest.json \
+                    --evidence-dir "$EVIDENCE_DIR"
+              '
 
-      - name: Remove job-owned replay image
+      - name: Verify maximum-shape cleanup receipt
+        id: verify_cleanup_receipt
         if: always()
-        run: docker image rm "$RC11_IMAGE" 2>/dev/null || true
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-max
 
       - name: Upload maximum-shape replay evidence
-        if: always()
-        uses: ./.github/actions/upload-artifact
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
         with:
           name: wallet-sync-maximum-shape-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             .tmp/wallet-sync-replay/evidence-max/
             .tmp/wallet-sync-replay/evidence-max.log
             .tmp/job-logs/wallet-sync-maximum-shapes/
+            ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-max/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/replay-max
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90
@@ -562,7 +591,13 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/fresh-install.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "fresh install e2e" \
-            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/fresh-install.test.sh --verbose"
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --authority-mode deployment_managed_by_subject \
+              --lane rc-fresh-install \
+              --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/rc-fresh-install" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/rc-fresh-install" \
+              -- bash -c 'cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/fresh-install.test.sh --verbose'
 
       - name: Show container logs on failure
         if: failure()
@@ -596,27 +631,30 @@ jobs:
             --image-lock config/container-image-lock.json \
             --output "$IMAGE_CVE_REPORT_DIR"
 
-      - name: Cleanup
+      - name: Enforce candidate image CVE cache cleanup
         if: always()
         run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for release-candidate cleanup"
+          cleanup_evidence="$IMAGE_CVE_REPORT_DIR/cache-volume-cleanup.json"
+          # Socket discovery can fail before a cache volume is attempted; CVE
+          # observation remains nonblocking in that case, but it must emit a
+          # strict categorical no-attempt result. Missing evidence is ambiguous.
+          if [ ! -e "$cleanup_evidence" ]; then
+            echo "Runtime image CVE cache cleanup evidence is missing" >&2
             exit 1
           fi
-          # Do NOT use `docker system prune`: it sweeps STOPPED containers on the
-          # shared daemon and can delete a concurrent job's Postgres `services:`
-          # container (e.g. test.yml's backend-integration lane), which Forgejo
-          # recreates empty — that job's schema then vanishes mid-run
-          # ("table public.users does not exist"). `builder prune` only touches
-          # buildkit cache, never containers/networks/volumes. Exact project-label
-          # cleanup below reclaims this RC stack without reparsing a deleted
-          # runtime environment. Mirrors install-test.yml.
-          SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS=120 \
-            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
-            docker builder prune -f || true
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+          if ! jq -e '
+            type == "object" and
+            (keys == ["failureClass", "immutableIdentity", "postcondition", "resourceClass", "result"]) and
+            .resourceClass == "compose_volume" and
+            (.immutableIdentity | type == "string" and length > 0) and
+            .failureClass == "none" and
+            ((.result == "absent" and .postcondition == "absent") or
+             (.result == "not_attempted" and .immutableIdentity == "unavailable" and
+              .postcondition == "not_attempted"))
+          ' "$cleanup_evidence" >/dev/null; then
+            echo "Runtime image CVE cache cleanup was not proven safe" >&2
+            exit 1
+          fi
 
       - name: Post-cleanup diagnostics
         if: always()
@@ -634,6 +672,24 @@ jobs:
         with:
           name: runtime-image-cves-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/ci-evidence/runtime-image-cves/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
+      - name: Verify RC fresh install cleanup receipt
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/rc-fresh-install
+
+      - name: Upload receipt-bound cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-rc-fresh-install-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/rc-fresh-install/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/rc-fresh-install
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 90

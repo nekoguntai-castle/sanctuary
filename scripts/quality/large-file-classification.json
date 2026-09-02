@@ -17,12 +17,26 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-23"
     },
+    "scripts/ownership/check-lifecycle-callsites.mjs": {
+      "category": "proof-harness",
+      "owner": "ownership-cleanup",
+      "reason": "Security-critical exhaustive lifecycle callsite proof that keeps Docker producer and cleanup discovery, structural exemptions, registry comparison, and Phase 5 migration enforcement in one auditable scanner.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-09-01"
+    },
     "scripts/perf/phase3-compose-benchmark-smoke.mjs": {
       "category": "proof-harness",
       "owner": "performance-proof",
       "reason": "Full Compose performance and scale proof harness; splitting would reduce auditability of the scenario unless a measured maintenance problem appears.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-04-15"
+    },
+    "scripts/perf/wallet-sync-high-fanout-replay.mjs": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-performance",
+      "reason": "Production-shaped high-fanout replay proof harness that keeps exact resource creation, ownership registration, workload execution, evidence capture, and cleanup handoff together for end-to-end auditability.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-09-01"
     },
     "scripts/perf/phase3-benchmark.mjs": {
       "category": "proof-harness",

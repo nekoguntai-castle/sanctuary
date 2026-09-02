@@ -16,8 +16,8 @@
 # Run: ./fresh-install.test.sh [--keep-containers]
 #
 # Options:
-#   --keep-containers  Don't clean up containers after test (useful for debugging)
-#   --skip-cleanup     Skip initial cleanup (run on existing install)
+#   --keep-containers  Refused: incompatible with receipt-bound cleanup
+#   --skip-cleanup     Refused: pre-existing resources are outside this run's receipt
 #   --verbose          Show detailed output
 # ============================================
 
@@ -29,6 +29,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Source helpers
 source "$SCRIPT_DIR/../utils/helpers.sh"
+INSTALL_E2E_ARGS=("$@")
 
 # ============================================
 # Configuration
@@ -60,6 +61,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+install_e2e_cleanup_auto_run install-fresh "$PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
@@ -163,7 +166,7 @@ setup() {
     fi
 
     # Clean up any existing installation (unless skipped)
-    if [ "$SKIP_CLEANUP" = "false" ]; then
+    if [ "$SKIP_CLEANUP" = "false" ] && [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
         log_info "Cleaning up any existing Sanctuary containers..."
         cleanup_containers "$PROJECT_ROOT" 2>/dev/null || true
     fi
@@ -178,8 +181,10 @@ teardown() {
         capture_compose_failure_diagnostics "$PROJECT_ROOT"
     fi
 
-    if [ "$KEEP_CONTAINERS" = "false" ]; then
+    if [ "$KEEP_CONTAINERS" = "false" ] && [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
         cleanup_containers "$PROJECT_ROOT" 2>/dev/null || true
+    elif [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        log_info "Deferring resource cleanup to the receipt-bound CI coordinator"
     else
         log_warning "Keeping containers running (--keep-containers specified)"
         get_container_status "$PROJECT_ROOT"

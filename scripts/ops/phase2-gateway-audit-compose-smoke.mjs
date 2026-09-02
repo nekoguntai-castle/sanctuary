@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import net from 'net';
 import path from 'path';
@@ -11,10 +11,18 @@ const repoRoot = path.resolve(scriptDir, '../..');
 const outputDir = process.env.PHASE2_GATEWAY_AUDIT_OUTPUT_DIR || path.join(repoRoot, 'docs/plans');
 const startedAt = new Date();
 const timestamp = startedAt.toISOString().replace(/[:.]/g, '-');
-const projectName = process.env.PHASE2_GATEWAY_AUDIT_PROJECT || `sanctuary-phase2-audit-${timestamp.toLowerCase()}`;
+const projectName = process.env.COMPOSE_PROJECT_NAME;
 const keepStack = process.env.PHASE2_GATEWAY_AUDIT_KEEP_STACK === 'true';
 const timeoutMs = Number(process.env.PHASE2_GATEWAY_AUDIT_TIMEOUT_MS || '240000');
 const retryMs = Number(process.env.PHASE2_GATEWAY_AUDIT_RETRY_MS || '2000');
+const coordinatedCleanup = process.env.SANCTUARY_CLEANUP_COORDINATED === '1';
+
+if (!coordinatedCleanup || !projectName) {
+  throw new Error('phase2 gateway audit smoke requires the signed cleanup coordinator package command');
+}
+if (keepStack) {
+  throw new Error('PHASE2_GATEWAY_AUDIT_KEEP_STACK is incompatible with receipt-bound cleanup');
+}
 
 const postgresUser = 'sanctuary';
 const postgresDb = 'sanctuary_phase2_audit';
@@ -104,6 +112,18 @@ function runDocker(args, options = {}) {
   }
 
   return result.stdout || '';
+}
+
+function registerComposeResources() {
+  const script = [
+    'source scripts/ownership/producer-hooks.sh',
+    'register_ci_compose_resources --defer-image-reference-retirement',
+    '--expected-image sanctuary-backend --expected-image sanctuary-gateway',
+  ].join(' ');
+  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+    cwd: repoRoot, encoding: 'utf8', env: composeEnv,
+  });
+  if (result.status !== 0) throw new Error(`Compose lifecycle registration failed: ${result.stderr}`);
 }
 
 function runCompose(args) {
@@ -378,6 +398,7 @@ let failureError = null;
 
 try {
   runCompose(['up', '-d', '--build', 'gateway']);
+  registerComposeResources();
   recordStep('compose stack started', true, `project=${projectName} gatewayPort=${gatewayPort}`);
 
   const health = await waitForGatewayHttpJson('/health');
@@ -439,21 +460,6 @@ try {
   console.log(`Wrote ${path.relative(repoRoot, mdPath)}`);
   console.log(`Wrote ${path.relative(repoRoot, jsonPath)}`);
 
-  if (!keepStack) {
-    try {
-      execFileSync('docker', [...composeArgs, 'down', '-v', '--remove-orphans'], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-        env: composeEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      console.log(`Stopped and removed compose project ${projectName}`);
-    } catch (error) {
-      console.warn(`Failed to clean up compose project ${projectName}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  } else {
-    console.log(`Leaving compose project ${projectName} running because PHASE2_GATEWAY_AUDIT_KEEP_STACK=true`);
-  }
 }
 
 if (!passed) {

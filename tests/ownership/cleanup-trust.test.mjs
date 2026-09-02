@@ -34,6 +34,19 @@ function trust(overrides = {}) {
   };
 }
 
+function ciTrust(overrides = {}) {
+  return trust({
+    trustVersion: 2,
+    authority: {
+      authorityKind: 'ci_ephemeral', provider: 'github', runId: '42', runAttempt: '1',
+      identityDigest: 'd'.repeat(64), deploymentManifestDigest: 'e'.repeat(64),
+      operationRunId: 'ci-42-1-cleanup', coordinatorStateDigest: 'f'.repeat(64),
+      composeProjectName: 'ci-42-1-project',
+    },
+    ...overrides,
+  });
+}
+
 test('deployment trust accepts only configured, role-separated fingerprints', () => {
   const state = fixture();
   writeFileSync(state.trustPath, canonicalJson(trust({
@@ -79,4 +92,21 @@ test('trust is fixed outside checkout and rejects permissive or symlink files', 
   const linkedRuntime = path.join(linkRoot, 'runtime');
   symlinkSync(state.runtimeDirectory, linkedRuntime);
   assert.throws(() => verifyCleanupTrust({ ...args, runtimeDirectory: linkedRuntime }), /symlink|requested path/);
+});
+
+test('CI trust is unusable without its exact execution authority', () => {
+  const state = fixture();
+  writeFileSync(state.trustPath, canonicalJson(ciTrust()), { mode: 0o600 });
+  const args = {
+    ...state, deploymentId: 'deploy-1', authorizationFingerprint: AUTH_A,
+    evidenceFingerprint: EVIDENCE_A, now: new Date('2026-08-31T00:00:00.000Z'),
+    operationRunId: 'ci-42-1-cleanup', deploymentManifestDigest: 'e'.repeat(64),
+  };
+  assert.throws(() => verifyCleanupTrust(args), /CI trust authority/);
+  assert.throws(() => verifyCleanupTrust({
+    ...args, expectedAuthorityIdentityDigest: '0'.repeat(64),
+  }), /CI trust authority/);
+  assert.equal(verifyCleanupTrust({
+    ...args, expectedAuthorityIdentityDigest: 'd'.repeat(64),
+  }).trust.trustVersion, 2);
 });

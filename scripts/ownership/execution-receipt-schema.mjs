@@ -11,7 +11,7 @@ import {
 function cleanupAction(value, path) {
   object(value, path, [
     'sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind',
-    'locator', 'ownershipDigest', 'observationDigest',
+    'locator', 'ownershipDigest', 'observationDigest', 'dependencyIdentities',
   ]);
   integer(value.sequence, `${path}.sequence`, { min: 1 });
   enumeration(value.resourceClass, `${path}.resourceClass`, RESOURCE_CLASSES);
@@ -21,6 +21,12 @@ function cleanupAction(value, path) {
   string(value.locator, `${path}.locator`, { max: 1024 });
   digest(value.ownershipDigest, `${path}.ownershipDigest`);
   digest(value.observationDigest, `${path}.observationDigest`);
+  const dependencies = array(value.dependencyIdentities, `${path}.dependencyIdentities`, { max: 512 });
+  dependencies.forEach((entry, index) => digest(entry, `${path}.dependencyIdentities[${index}]`));
+  unique(dependencies, `${path}.dependencyIdentities`);
+  if (dependencies.some((entry, index) => index > 0 && dependencies[index - 1].localeCompare(entry) > 0)) {
+    throw new Error(`${path}.dependencyIdentities must be sorted`);
+  }
 }
 
 function result(value, path) {

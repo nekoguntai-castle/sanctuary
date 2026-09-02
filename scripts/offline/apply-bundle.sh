@@ -18,18 +18,29 @@ APPLY_ONLY=false
 VERIFY_ONLY=false
 APPLY_LOCK_ACTIVE=false
 GENERATED_STAGE=false
+CURRENT_LOADING_IMAGE_TAR=""
 
 cleanup_apply() {
-  local status=$?
+  local status=$? recovery_status=0 lock_status=0
+  trap - EXIT
+  if [ -n "$CURRENT_LOADING_IMAGE_TAR" ] && [ "$APPLY_LOCK_ACTIVE" = true ]; then
+    recover_and_register_loaded_archive "$CURRENT_LOADING_IMAGE_TAR" || recovery_status=$?
+    CURRENT_LOADING_IMAGE_TAR=""
+  fi
   if [ "$APPLY_LOCK_ACTIVE" = true ]; then
-    deployment_lock_release || true
+    deployment_lock_release || lock_status=$?
   fi
   if [ "$GENERATED_STAGE" = true ] && [ -d "$STAGE_DIR" ]; then
     find "$STAGE_DIR" -type f -delete
     find "$STAGE_DIR" -type l -delete
     find "$STAGE_DIR" -depth -type d -empty -delete
   fi
-  return "$status"
+  if [ "$status" -eq 0 ]; then
+    if [ "$recovery_status" -ne 0 ]; then status="$recovery_status"
+    elif [ "$lock_status" -ne 0 ]; then status="$lock_status"
+    fi
+  fi
+  exit "$status"
 }
 trap cleanup_apply EXIT
 
@@ -50,6 +61,12 @@ ensure_apply_lock() {
   ownership_initialize
   deployment_lock_only_acquire
   APPLY_LOCK_ACTIVE=true
+}
+
+release_apply_lock() {
+  [ "$APPLY_LOCK_ACTIVE" = true ] || return 0
+  APPLY_LOCK_ACTIVE=false
+  deployment_lock_release
 }
 
 usage() {
@@ -271,15 +288,57 @@ validate_profile_coverage() {
 }
 
 load_bundle_images() {
-  local image_tar
+  local image_tar load_status recovery_status
 
   offline_require_tool docker
 
   while IFS= read -r image_tar; do
     [ -n "$image_tar" ] || continue
     offline_log "Loading image: ${image_tar#$STAGE_DIR/}"
-    docker load -i "$image_tar" >/dev/null
+    CURRENT_LOADING_IMAGE_TAR="$image_tar"
+    load_status=0
+    docker load -i "$image_tar" >/dev/null || load_status=$?
+    recovery_status=0
+    recover_and_register_loaded_archive "$image_tar" || recovery_status=$?
+    if [ "$recovery_status" -ne 0 ]; then
+      echo "Error: offline image load exact registration was refused: ${image_tar#$STAGE_DIR/}" >&2
+      [ "$load_status" -eq 0 ] || return "$load_status"
+      return "$recovery_status"
+    fi
+    CURRENT_LOADING_IMAGE_TAR=""
+    [ "$load_status" -eq 0 ] || return "$load_status"
   done < <(find "$STAGE_DIR/images" -type f -name '*.tar' | LC_ALL=C sort)
+}
+
+recover_and_register_loaded_archive() {
+  local image_tar="$1" inventory="$STAGE_DIR/image-inventory.tsv"
+  local archive_ref row image expected_id expected_os expected_arch expected_digest extra inspection
+  archive_ref="$(tar -xOf "$image_tar" manifest.json | jq -er \
+    'if length == 1 and (.[0].RepoTags | type == "array" and length == 1) then .[0].RepoTags[0] else error("ambiguous archive reference") end')" \
+    || return 1
+  row="$(awk -F '\t' -v ref="$archive_ref" '$2 == ref { count += 1; row = $0 } END { if (count == 1) print row }' "$inventory")"
+  [ -n "$row" ] || return 1
+  IFS=$'\t' read -r image _ expected_id expected_os expected_arch expected_digest extra <<< "$row"
+  [ -z "${extra:-}" ] || return 1
+  inspection="$(docker image inspect "$archive_ref")" || return 1
+  printf '%s' "$inspection" | jq -e --arg ref "$archive_ref" --arg id "$expected_id" \
+    --arg os "$expected_os" --arg arch "$expected_arch" '
+      length == 1 and .[0].Id == $id and ($id | test("^sha256:[0-9a-f]{64}$"))
+      and .[0].Os == $os and .[0].Architecture == $arch
+      and ((.[0].RepoTags // []) | index($ref) != null)
+    ' >/dev/null || return 1
+  local created_checkout_root=false registration_status=0
+  if [ ! -e "$INSTALL_DIR" ]; then
+    mkdir -p -- "$INSTALL_DIR" || return 1
+    created_checkout_root=true
+  fi
+  [ -d "$INSTALL_DIR" ] || return 1
+  register_owned_resource oci_image active exact_delete reference \
+    "$archive_ref" "$expected_id" "$SANCTUARY_OPERATION_RUN_ID" || registration_status=$?
+  if [ "$created_checkout_root" = true ]; then
+    rmdir -- "$INSTALL_DIR" || return 1
+  fi
+  return "$registration_status"
 }
 
 verify_loaded_images() {
@@ -307,7 +366,7 @@ register_loaded_images() {
     [ -n "$image" ] || continue
     archive_ref="$(offline_archive_image_ref "$image")"
     image_id="$(awk -F '\t' -v image="$image" '$1 == image { print $3 }' "$inventory")"
-    register_owned_resource oci_image active exact_delete engine_id "$archive_ref" "$image_id" \
+    register_owned_resource oci_image active exact_delete reference "$archive_ref" "$image_id" \
       "$SANCTUARY_OPERATION_RUN_ID"
   done < <(bundle_expected_images)
 }
@@ -376,6 +435,7 @@ main() {
 
   if [ "$APPLY_ONLY" = "true" ]; then
     apply_prepared_bundle
+    release_apply_lock
     exit 0
   fi
 
@@ -393,6 +453,7 @@ main() {
 
   prepare_bundle
   apply_prepared_bundle
+  release_apply_lock
 }
 
 main "$@"

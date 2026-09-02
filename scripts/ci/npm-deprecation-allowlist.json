@@ -20,7 +20,7 @@
       ],
       "rationale": "Firebase Admin's optional Cloud Storage client still selects uuid 9; forcing a semver-major transitive override would bypass the owner's compatibility contract.",
       "upstreamIssue": "https://github.com/googleapis/nodejs-storage/issues?q=is%3Aissue+uuid+deprecated",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "id": "google-fetch-blob-node-domexception-1",
@@ -43,7 +43,7 @@
       ],
       "rationale": "Both current direct owners inherit node-fetch 3's deprecated DOMException shim through Google-maintained packages; Firebase Admin 14 retains it through Auth and optional Firestore paths, while the runtime uses Node 24's native DOMException where application code controls the boundary.",
       "upstreamIssue": "https://github.com/googleapis/gaxios/issues?q=is%3Aissue+node-domexception",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "id": "google-rimraf-glob-10",
@@ -65,7 +65,7 @@
       ],
       "rationale": "The current OpenTelemetry detector and Firebase Admin 14 optional Firestore client both inherit rimraf 5 and glob 10 from Google-maintained packages; overriding glob across those tool boundaries would be broader than the warning sources.",
       "upstreamIssue": "https://github.com/open-telemetry/opentelemetry-js-contrib/issues/2826",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     },
     {
       "id": "trezor-stellar-base-14",
@@ -85,7 +85,7 @@
       ],
       "rationale": "The latest Trezor Connect release owns the Stellar SDK graph; removing or overriding its internal Stellar package would bypass Trezor's tested hardware-wallet dependency set.",
       "upstreamIssue": "https://github.com/trezor/trezor-suite/issues?q=is%3Aissue+stellar-base",
-      "reviewOn": "2026-08-31"
+      "reviewOn": "2026-11-29"
     }
   ]
 }

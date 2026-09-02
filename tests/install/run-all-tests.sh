@@ -11,7 +11,7 @@
 # Options:
 #   --unit-only        Run only unit tests
 #   --e2e-only         Run only E2E tests
-#   --skip-cleanup     Keep containers after tests
+#   --skip-cleanup     Refused for E2E: incompatible with receipt-bound cleanup
 #   --verbose          Show detailed output
 #   --fast             Skip slow tests
 #   --upgrade-fixture  Fixture list to pass to upgrade-install.test.sh
@@ -25,6 +25,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source helpers
 source "$SCRIPT_DIR/utils/helpers.sh"
+INSTALL_E2E_ARGS=("$@")
 
 # ============================================
 # Configuration
@@ -75,7 +76,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --unit-only      Run only unit tests"
             echo "  --e2e-only       Run only E2E tests"
-            echo "  --skip-cleanup   Keep containers after tests"
+            echo "  --skip-cleanup   Refused for E2E: cleanup is receipt-bound"
             echo "  --verbose        Show detailed output"
             echo "  --fast           Skip slow tests (upgrade)"
             echo "  --upgrade-fixture FIXTURE[,FIXTURE...]"
@@ -89,6 +90,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [ "$RUN_E2E" = "true" ]; then
+    install_e2e_cleanup_auto_run install-e2e-suite \
+        "$(cd "$SCRIPT_DIR/../.." && pwd)" "$0" "${INSTALL_E2E_ARGS[@]}"
+fi
 
 # Track results
 TOTAL_SUITES=0

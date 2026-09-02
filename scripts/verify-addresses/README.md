@@ -79,11 +79,11 @@ verifier. The default endpoints are:
 
 | Environment | RPC URL | Core-reported chain |
 | --- | --- | --- |
-| mainnet | `http://<docker-host>:19440` | `main` |
-| testnet3 | `http://<docker-host>:19441` | `test` |
-| testnet4 | `http://<docker-host>:19442` | `testnet4` |
-| signet | `http://<docker-host>:19443` | `signet` |
-| regtest | `http://<docker-host>:19444` | `regtest` |
+| mainnet | daemon-assigned published port | `main` |
+| testnet3 | daemon-assigned published port | `test` |
+| testnet4 | daemon-assigned published port | `testnet4` |
+| signet | daemon-assigned published port | `signet` |
+| regtest | daemon-assigned published port | `regtest` |
 
 Regenerate the two fixtures with the identical stack:
 

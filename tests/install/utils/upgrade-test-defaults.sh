@@ -23,3 +23,21 @@ apply_upgrade_test_network_defaults() {
     export GATEWAY_PORT
     export UPGRADE_BROWSER_HOST
 }
+
+# The cleanup coordinator's runtime holds signed ownership state, but in socket-
+# mounted CI it lives in the runner container's private temp directory. Keep
+# generated certificates under the install-test root so the host Docker daemon
+# can resolve the bind source. An explicit operator/test override still wins.
+upgrade_test_ssl_dir() {
+    local runtime_dir="$1"
+    local install_root="$2"
+    local compose_project="$3"
+
+    if [ -n "${SANCTUARY_SSL_DIR:-}" ]; then
+        printf '%s\n' "$SANCTUARY_SSL_DIR"
+    elif [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        printf '%s/ssl-%s\n' "${install_root%/}" "$compose_project"
+    else
+        printf '%s/ssl\n' "${runtime_dir%/}"
+    fi
+}

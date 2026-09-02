@@ -470,10 +470,7 @@ configure_compose_files
 case "${1:-}" in
     --stop)
         echo "Stopping Sanctuary..."
-        deployment_use_active
-        trap deployment_lock_release EXIT
-        docker compose "${COMPOSE_FILE_ARGS[@]}" down
-        deployment_lock_release
+        "$SCRIPT_DIR/scripts/ownership/run-operator-compose.sh" down
         echo "Sanctuary stopped."
         ;;
     --logs)

@@ -138,17 +138,14 @@ for lane in install-script fresh-install upgrade-install; do
   fi
 done
 
-# ----- 6. release-candidate owns no phase-runner stack lanes -----------------
-# Container-health and auth-flow belong to the canonical Install Tests gate.
-# The RC preflight retains only fresh install and must not reintroduce another
-# run-e2e-lane-phases.sh stack owner.
+# ----- 6. the retired phase runner stays absent ------------------------------
 RC_WORKFLOW="$REPO_ROOT/.github/workflows/release-candidate.yml"
 if [ ! -f "$RC_WORKFLOW" ]; then
   bad 'release-candidate.yml not found'
 else
   lane_invocations="$(grep -v '^[[:space:]]*#' "$RC_WORKFLOW" | grep -c 'run-e2e-lane-phases\.sh' || true)"
   if [ "${lane_invocations:-0}" -eq 0 ]; then
-    ok 'release-candidate has no duplicate phase-runner stack lanes'
+    ok 'release-candidate has no retired phase-runner stack lanes'
   else
     bad "release-candidate unexpectedly owns ${lane_invocations} phase-runner stack lane(s)"
   fi

@@ -20,6 +20,7 @@ function action(resourceClass, mutation, overrides = {}) {
     locator: volume ? 'sanctuary-cache' : identity,
     ownershipDigest: HEX_B,
     observationDigest: 'c'.repeat(64),
+    dependencyIdentities: [],
     ...overrides,
   };
 }
@@ -42,7 +43,7 @@ test('the allowlist emits only exact non-force Docker argv', () => {
     [action('compose_container', 'remove'), ['container', 'rm', HEX_A]],
     [action('compose_network', 'remove'), ['network', 'rm', HEX_A]],
     [action('compose_volume', 'remove'), ['volume', 'rm', 'sanctuary-cache'], volumeProof()],
-    [action('oci_image', 'remove'), ['image', 'rm', `sha256:${HEX_A}`]],
+    [action('oci_image', 'remove'), ['image', 'rm', HEX_A]],
   ];
   for (const [candidate, expected, proof] of cases) {
     const command = buildDockerMutation(candidate, { engine: 'podman', freshVolumeProof: proof });
@@ -205,7 +206,7 @@ test('postcondition contracts probe the exact approved identity', () => {
   });
 
   const removed = buildDockerPostcondition(action('oci_image', 'remove'));
-  assert.deepEqual(removed.queryArgs, ['image', 'inspect', `sha256:${HEX_A}`]);
+  assert.deepEqual(removed.queryArgs, ['image', 'inspect', HEX_A]);
   assert.deepEqual(removed.satisfiedBy, ['absent']);
 
   const volume = buildDockerPostcondition(action('compose_volume', 'remove'), {

@@ -319,8 +319,18 @@ Expected behavior:
 - Each checkout gets its own Compose project and an ephemeral host port, so two
   worktrees can run integration tests at the same time without colliding. The
   chosen port is printed as `Integration database published on localhost:<port>`.
-  Set `TEST_POSTGRES_PORT` to pin it — useful when attaching `psql` to a database
-  kept with `INTEGRATION_KEEP_DB=true` — or `COMPOSE_PROJECT_NAME` to pin the project.
+  Set `TEST_POSTGRES_PORT` to pin it when attaching `psql` during a test, or
+  `COMPOSE_PROJECT_NAME` to pin the project. `INTEGRATION_KEEP_DB=true` is refused:
+  receipt-bound integration runs always clean their registered Compose resources.
+
+CI receipt publication verifies the uploaded evidence key against the projected
+coordinator state and provider/run-bound cleanup trust under `RUNNER_TEMP`; the
+receipt's own `signerKeyId` is never the trust anchor. This protects against an
+artifact bundle or upload step substituting its own key. It does not protect
+against a malicious same-UID subject that can rewrite the runner's private runtime
+tree; CI subjects and the coordinator intentionally share the runner account, so
+that stronger isolation requires a separate privileged controller or external
+attestation service.
 
 Mitigation:
 

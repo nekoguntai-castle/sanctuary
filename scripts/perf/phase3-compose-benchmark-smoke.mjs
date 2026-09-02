@@ -14,6 +14,11 @@ import { buildMarkdown } from './phase3-compose/report.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '../..');
+const coordinatedCleanup = process.env.SANCTUARY_CLEANUP_COORDINATED === '1';
+
+if (!coordinatedCleanup || !process.env.COMPOSE_PROJECT_NAME) {
+  throw new Error('phase3 compose benchmark smoke requires the signed cleanup coordinator package command');
+}
 
 async function findAvailablePort(startPort) {
   let lastProbeError = null;
@@ -47,6 +52,10 @@ async function findAvailablePort(startPort) {
 }
 
 const config = await readPhase3ComposeBenchmarkConfig({
+  env: {
+    ...process.env,
+    PHASE3_COMPOSE_BENCHMARK_PROJECT: process.env.COMPOSE_PROJECT_NAME,
+  },
   repoRoot,
   startedAt: new Date(),
   findAvailablePort,
@@ -93,7 +102,23 @@ const {
   benchmarkEnv,
 } = config;
 
+if (keepStack) {
+  throw new Error('PHASE3_COMPOSE_BENCHMARK_KEEP_STACK is incompatible with receipt-bound cleanup');
+}
+
 const steps = [];
+
+function registerComposeResources() {
+  const script = [
+    'source scripts/ownership/producer-hooks.sh',
+    'register_ci_compose_resources --defer-image-reference-retirement',
+    '--expected-image sanctuary-backend --expected-image sanctuary-frontend',
+    '--expected-image sanctuary-gateway',
+  ].join(' ');
+  execFileSync('bash', ['-euo', 'pipefail', '-c', script], {
+    cwd: repoRoot, env: composeEnv, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
 
 function redactSensitiveText(value) {
   const text = String(value ?? '');
@@ -228,6 +253,7 @@ try {
   recordStep('compose ssl certificates', true, `SANCTUARY_SSL_DIR=${sslDir}`);
 
   runCompose(['up', '-d', '--build', 'frontend', 'gateway', 'migrate']);
+  registerComposeResources();
   recordStep('compose stack started', true, `project=${projectName} apiPort=${httpsPort} gatewayPort=${gatewayPort}`);
 
   const migrationState = await waitForMigrateExit();
@@ -341,17 +367,6 @@ try {
 
   console.log(`Wrote ${relativePath(mdPath)}`);
   console.log(`Wrote ${relativePath(jsonPath)}`);
-
-  if (!keepStack) {
-    try {
-      runCompose(['down', '-v', '--remove-orphans']);
-      console.log(`Stopped and removed compose project ${projectName}`);
-    } catch (error) {
-      console.warn(`Failed to clean up compose project ${projectName}: ${getErrorMessage(error)}`);
-    }
-  } else {
-    console.log(`Leaving compose project ${projectName} running because PHASE3_COMPOSE_BENCHMARK_KEEP_STACK=true`);
-  }
 
   if (!keepStack && ownsSslDir) {
     try {

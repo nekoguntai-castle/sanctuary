@@ -9,7 +9,7 @@ const VOLUME_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$/;
 const PHASES = new Set(['fresh_eligibility', 'pre_mutation_reinspection']);
 const ACTION_KEYS = [
   'sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind',
-  'locator', 'ownershipDigest', 'observationDigest',
+  'locator', 'ownershipDigest', 'observationDigest', 'dependencyIdentities',
 ];
 const VOLUME_PROOF_KEYS = [
   'resourceClass', 'locatorKind', 'locator', 'immutableIdentity', 'ownershipDigest',
@@ -28,16 +28,23 @@ function digest(value, label) {
   if (typeof value !== 'string' || !DIGEST.test(value)) throw new TypeError(`${label} must be a SHA-256 digest`);
 }
 
-function validateAction(action) {
-  exactObject(action, ACTION_KEYS, 'Docker cleanup action');
-  if (!Number.isSafeInteger(action.sequence) || action.sequence < 1) throw new TypeError('action sequence is invalid');
-  digest(action.ownershipDigest, 'action ownershipDigest');
-  digest(action.observationDigest, 'action observationDigest');
+function validateActionDependencies(action) {
+  if (!Array.isArray(action.dependencyIdentities) || action.dependencyIdentities.length > 512
+      || action.dependencyIdentities.some((identity, index) => !DIGEST.test(identity)
+        || (index > 0 && action.dependencyIdentities[index - 1].localeCompare(identity) >= 0))) {
+    throw new TypeError('action dependency identities are invalid');
+  }
+}
+
+function validateActionMutation(action) {
   const pair = `${action.resourceClass}:${action.action}`;
   if (!['compose_container:stop', 'compose_container:remove', 'compose_network:remove',
     'compose_volume:remove', 'oci_image:remove'].includes(pair)) {
     throw new TypeError('action is not an allowed Docker mutation');
   }
+}
+
+function validateActionIdentity(action) {
   if (action.resourceClass === 'compose_volume') {
     if (action.locatorKind !== 'name' || !VOLUME_NAME.test(action.locator)
         || !DIGEST.test(action.immutableIdentity)) throw new TypeError('volume action identity is invalid');
@@ -46,6 +53,16 @@ function validateAction(action) {
   const pattern = action.resourceClass === 'oci_image' ? IMAGE_ID : ENGINE_ID;
   if (action.locatorKind !== 'engine_id' || !pattern.test(action.locator)
       || action.locator !== action.immutableIdentity) throw new TypeError('Docker action immutable ID is invalid');
+}
+
+function validateAction(action) {
+  exactObject(action, ACTION_KEYS, 'Docker cleanup action');
+  if (!Number.isSafeInteger(action.sequence) || action.sequence < 1) throw new TypeError('action sequence is invalid');
+  digest(action.ownershipDigest, 'action ownershipDigest');
+  digest(action.observationDigest, 'action observationDigest');
+  validateActionDependencies(action);
+  validateActionMutation(action);
+  validateActionIdentity(action);
 }
 
 function validateApprovedActions(actions) {
@@ -72,18 +89,28 @@ function isStopRemovePair(prior, action) {
     && prior.immutableIdentity === action.immutableIdentity;
 }
 
-function predecessorDerivation(action, approvedActions, predecessorResultDigest) {
-  if (predecessorResultDigest === null) {
+function requiredDependencies(action, approvedActions) {
+  if (action.resourceClass === 'compose_container' && action.action === 'remove') {
     const prior = approvedActions[action.sequence - 2];
-    if (isStopRemovePair(prior, action)) return { allowed: false, derived: null };
-    return { allowed: true, derived: null };
+    return isStopRemovePair(prior, action) ? [action.immutableIdentity] : null;
   }
+  if (!['compose_network', 'compose_volume', 'oci_image'].includes(action.resourceClass)) return [];
+  const priorRemovals = new Set(approvedActions.slice(0, action.sequence - 1)
+    .filter((candidate) => candidate.resourceClass === 'compose_container'
+      && candidate.action === 'remove')
+    .map((candidate) => candidate.immutableIdentity));
+  return action.dependencyIdentities.every((identity) => priorRemovals.has(identity))
+    ? action.dependencyIdentities : null;
+}
+
+function predecessorDerivation(action, approvedActions, predecessorResultDigest) {
+  const required = requiredDependencies(action, approvedActions);
+  if (required === null) return { allowed: false, derived: null };
+  if (required.length === 0) return { allowed: predecessorResultDigest === null, derived: null };
   if (typeof predecessorResultDigest !== 'string' || !DIGEST.test(predecessorResultDigest)) {
     return { allowed: false, derived: null };
   }
-  const prior = approvedActions[action.sequence - 2];
-  const allowed = isStopRemovePair(prior, action);
-  return { allowed, derived: allowed ? predecessorResultDigest : null };
+  return { allowed: true, derived: predecessorResultDigest };
 }
 
 function registrationIdentityFailure(action, proof) {
@@ -135,15 +162,31 @@ function ambiguityFailure(ambiguities) {
   return 'query_failed';
 }
 
+function rowIdentityChanged(row, action) {
+  return row.resourceClass !== action.resourceClass
+    || row.immutableIdentity !== action.immutableIdentity
+    || row.locatorKind !== action.locatorKind
+    || row.locator !== action.locator
+    || row.ownershipDigest !== action.ownershipDigest
+    || !Array.isArray(row.dependencyIdentities)
+    || row.dependencyIdentities.some((identity) => !DIGEST.test(identity));
+}
+
+function rowHasForeignDependency(row, action) {
+  return action.dependencyIdentities.length > 0
+    && row.dependencyIdentities.some((identity) => !action.dependencyIdentities.includes(identity));
+}
+
+function unsafeRowFailure(row) {
+  if (row.disposition === 'eligible' && !row.active && !row.protected && !row.data
+      && Array.isArray(row.failureClasses) && row.failureClasses.length === 0) return null;
+  return row.failureClasses?.[0] ?? 'identity_changed';
+}
+
 function rowFailure(row, action) {
-  if (row.resourceClass !== action.resourceClass || row.immutableIdentity !== action.immutableIdentity
-      || row.locatorKind !== action.locatorKind || row.locator !== action.locator
-      || row.ownershipDigest !== action.ownershipDigest) return 'identity_changed';
-  if (row.disposition !== 'eligible' || row.active || row.protected || row.data
-      || !Array.isArray(row.failureClasses) || row.failureClasses.length !== 0) {
-    return row.failureClasses?.[0] ?? 'identity_changed';
-  }
-  return null;
+  if (rowIdentityChanged(row, action)) return 'identity_changed';
+  if (rowHasForeignDependency(row, action)) return 'shared';
+  return unsafeRowFailure(row);
 }
 
 function validateReloadRequest(action, phase, approvedActions, loadInventory) {
@@ -206,6 +249,11 @@ export async function reloadDockerActionAuthority({
   }
   if (derivation.derived === null && row.observationDigest !== action.observationDigest) {
     return Object.freeze({ state: 'refused', failureClass: 'identity_changed' });
+  }
+  if (derivation.derived !== null
+      && ['compose_network', 'compose_volume', 'oci_image'].includes(action.resourceClass)
+      && row.dependencyIdentities.length > 0) {
+    return Object.freeze({ state: 'refused', failureClass: 'shared' });
   }
   return Object.freeze({ state: 'eligible', row, derivedFromResultDigest: derivation.derived });
 }

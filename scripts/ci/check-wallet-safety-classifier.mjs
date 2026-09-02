@@ -81,6 +81,7 @@ function validateProofCommands(workflowText) {
   for (const command of [
     'hardware-emulator-source-inventory.mjs validate',
     'scripts/verify-psbt',
+    'scripts/ci/run-psbt-core-subject.sh live',
     'npm run verify',
     'psbt.signed-vectors.test.ts',
     'psbt.hardware-signed-vectors.test.ts',

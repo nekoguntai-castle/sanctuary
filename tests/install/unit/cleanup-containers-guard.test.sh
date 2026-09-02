@@ -116,10 +116,8 @@ test_refuses_unset_project_name() {
 
   assert_equals "1" "$exit_code" \
     "cleanup_containers must exit 1 when COMPOSE_PROJECT_NAME is unset" || return 1
-  assert_contains "$output" "COMPOSE_PROJECT_NAME must be set explicitly" \
-    "error message should explain the missing env var" || return 1
-  assert_contains "$output" "would wipe production volumes" \
-    "error message should explain the consequence" || return 1
+  assert_contains "$output" "use the receipt-bound cleanup coordinator" \
+    "error message should name the required cleanup authority" || return 1
 }
 
 test_refuses_protected_sanctuary_project_name() {
@@ -130,8 +128,8 @@ test_refuses_protected_sanctuary_project_name() {
 
   assert_equals "1" "$exit_code" \
     "cleanup_containers must exit 1 when COMPOSE_PROJECT_NAME equals 'sanctuary'" || return 1
-  assert_contains "$output" "'sanctuary' is protected" \
-    "error message should name the protected project" || return 1
+  assert_contains "$output" "use the receipt-bound cleanup coordinator" \
+    "even an explicit project name must not authorize legacy cleanup" || return 1
 }
 
 test_refuses_empty_project_name() {
@@ -207,7 +205,7 @@ test_compose_file_has_explicit_name() {
 #
 # Sweep by label rather than by name: it catches the migration container and the
 # control helpers alike, and survives any future rename.
-test_cleanup_removes_out_of_band_grafana_containers() {
+test_cleanup_refuses_out_of_band_grafana_sweep() {
   local tmp; tmp="$(mktemp -d)"
   local calls="$tmp/docker.calls"
   cat > "$tmp/docker" <<'STUB'
@@ -231,10 +229,7 @@ STUB
     cleanup_containers "$tmp" >/dev/null 2>&1 || true
   )
 
-  grep -q "label=sanctuary.grafana.project=" "$calls" \
-    || { rm -rf "$tmp"; return 1; }
-  grep -q "rm -f grafana-orphan-cid" "$calls" \
-    || { rm -rf "$tmp"; return 1; }
+  [ ! -s "$calls" ] || { rm -rf "$tmp"; return 1; }
   rm -rf "$tmp"
   return 0
 }
@@ -250,7 +245,7 @@ main() {
   run_test "run_project_compose passes -p when env is set" test_run_project_compose_passes_explicit_project_flag
   run_test "run_project_compose uses active manifest operator path" test_run_project_compose_uses_manifest_operator_path
   run_test "docker-compose.yml declares name: sanctuary explicitly" test_compose_file_has_explicit_name
-  run_test "cleanup removes out-of-band grafana containers" test_cleanup_removes_out_of_band_grafana_containers
+  run_test "cleanup refuses out-of-band grafana sweeps" test_cleanup_refuses_out_of_band_grafana_sweep
 
   echo ""
   echo "Total:  $TESTS_RUN"

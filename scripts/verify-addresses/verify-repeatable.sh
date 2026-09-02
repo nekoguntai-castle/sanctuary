@@ -15,20 +15,36 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 # shellcheck source=scripts/ci/docker-endpoint-lib.sh
 source "$repo_root/scripts/ci/docker-endpoint-lib.sh"
+# shellcheck source=scripts/ci/provider-context.sh
+source "$repo_root/scripts/ci/provider-context.sh"
+# shellcheck source=scripts/ownership/producer-hooks.sh
+source "$repo_root/scripts/ownership/producer-hooks.sh"
+
+if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]]; then
+  cleanup_lane="address-$mode"
+  exec "$repo_root/scripts/ci/cleanup-ci-callsite.sh" auto-run \
+    --lane "$cleanup_lane" \
+    --checkout-root "$repo_root" \
+    -- "$script_dir/verify-repeatable.sh" "$mode"
+fi
+
 rpc_user=''
 rpc_pass=''
 core_identity=''
 started_bitcoind=0
+core_override_file=''
+core_compose=()
 python_image_id=''
 python_iid_file=''
 python_image_loaded=0
+python_image_registered=0
 
 published_host="$(sanctuary_current_docker_published_host)"
-rpc_url_mainnet="http://${published_host}:19440"
-rpc_url_testnet3="http://${published_host}:19441"
-rpc_url_testnet4="http://${published_host}:19442"
-rpc_url_signet="http://${published_host}:19443"
-rpc_url_regtest="http://${published_host}:19444"
+rpc_url_mainnet=''
+rpc_url_testnet3=''
+rpc_url_testnet4=''
+rpc_url_signet=''
+rpc_url_regtest=''
 core_image='bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78'
 core_canonical_image="docker.io/bitcoin/bitcoin@${core_image##*@}"
 pinned_node_version='24.19.0'
@@ -62,16 +78,111 @@ require_command() {
   fi
 }
 
-cleanup() {
+resolve_cleanup_image_id() {
+  local cleanup_image_id="$python_image_id" listed invalid_iid=0
+  if [[ -z "$cleanup_image_id" && -n "$python_iid_file" && -f "$python_iid_file" ]]; then
+    cleanup_image_id="$(tr -d '\r\n' < "$python_iid_file")"
+  fi
+  if [[ -n "$cleanup_image_id" ]]; then
+    if [[ "$cleanup_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      printf '%s\n' "$cleanup_image_id"
+      return 0
+    fi
+    cleanup_image_id=''
+    invalid_iid=1
+  fi
+  cleanup_image_id="$(docker image inspect --format '{{.Id}}' "$python_image" 2>/dev/null)" \
+    || cleanup_image_id=''
+  if [[ -n "$cleanup_image_id" ]]; then
+    [[ "$cleanup_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    printf '%s\n' "$cleanup_image_id"
+    return 0
+  fi
+  listed="$(docker image ls --no-trunc --filter "reference=$python_image" --format '{{.ID}}')" \
+    || return 1
+  if [[ -z "$listed" ]]; then
+    [[ "$invalid_iid" -eq 0 ]] || return 1
+    return 0
+  fi
+  [[ "$listed" != *$'\n'* && "$listed" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  printf '%s\n' "$listed"
+}
+
+image_reference_is_absent() {
+  local exact_reference="$1" exact_id="$2" listed observed
+  if observed="$(docker image inspect --format '{{.Id}}' "$exact_reference" 2>/dev/null)"; then
+    [[ "$observed" == "$exact_id" ]] || return 1
+    return 1
+  fi
+  listed="$(docker image ls --no-trunc --filter "reference=$exact_reference" --format '{{.ID}}')" \
+    || return 2
+  while IFS= read -r observed; do
+    [[ -z "$observed" ]] && continue
+    [[ "$observed" =~ ^sha256:[0-9a-f]{64}$ ]] || return 2
+    return 1
+  done <<< "$listed"
+}
+
+register_python_image() {
+  local image_registration_root
+  image_registration_root="$(ci_temp_dir)/sanctuary-image-registrations/$SANCTUARY_OPERATION_RUN_ID"
+  (
+    SANCTUARY_OWNERSHIP_ROOT="$image_registration_root"
+    export SANCTUARY_OWNERSHIP_ROOT
+    register_owned_resource oci_image obsolete exact_delete name \
+      "$python_image" "$python_image_id" "$SANCTUARY_OPERATION_RUN_ID"
+  )
+}
+
+cleanup_python_image() {
+  local cleanup_image_id='' removal_status=0 absence_status=0
+  [[ "$python_image_loaded" -eq 1 ]] || return 0
+  cleanup_image_id="$(resolve_cleanup_image_id)" || {
+    printf 'Python verifier image identity is unavailable or ambiguous.\n' >&2
+    return 1
+  }
   if [[ -n "$python_iid_file" ]]; then
     rm -f "$python_iid_file" || true
   fi
-  if [[ "$python_image_loaded" -eq 1 ]]; then
-    docker image rm "$python_image" >/dev/null 2>&1 || true
+  [[ -n "$cleanup_image_id" ]] || return 0
+  if [[ "$python_image_registered" -eq 0 ]]; then
+    python_image_id="$cleanup_image_id"
+    register_python_image >/dev/null \
+      || {
+        printf 'Refusing unregistered Python verifier image cleanup: %s\n' "$cleanup_image_id" >&2
+        return 1
+      }
   fi
+  # The run owns only its unique reference. The immutable image content may also
+  # be retained by a shared base tag, so deleting by ID would cross that boundary.
+  docker image rm "$python_image" >/dev/null 2>&1 || removal_status=$?
+  image_reference_is_absent "$python_image" "$cleanup_image_id" || absence_status=$?
+  if [[ "$absence_status" -ne 0 ]]; then
+    printf 'Registered Python verifier image reference absence is unproven: %s at %s (exit=%s)\n' \
+      "$python_image" "$cleanup_image_id" "$absence_status" >&2
+    return 1
+  fi
+  if [[ "$removal_status" -ne 0 ]]; then
+    printf 'Python verifier image removal failed even though exact absence reconciled: %s (exit=%s)\n' \
+      "$cleanup_image_id" "$removal_status" >&2
+    return 1
+  fi
+}
+
+cleanup() {
+  local subject_status=$? cleanup_status=0 final_status
+  trap - EXIT
+  cleanup_python_image || cleanup_status=$?
   if [[ "$started_bitcoind" -eq 1 && "${VERIFY_ADDRESSES_KEEP_BITCOIND:-0}" != "1" ]]; then
-    docker compose -f "$script_dir/docker-compose.yml" down
+    printf 'Bitcoin Core resources are retained for receipt-bound coordinator cleanup.\n'
   fi
+  [[ -z "$core_override_file" ]] || rm -f "$core_override_file"
+  final_status="$subject_status"
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    printf 'Address verifier registered cleanup failed (exit=%s).\n' "$cleanup_status" >&2
+    [[ "$final_status" -ne 0 ]] || final_status="$cleanup_status"
+  fi
+  exit "$final_status"
 }
 
 install_node_dependencies() {
@@ -111,6 +222,48 @@ generate_rpc_credentials() {
   export BITCOIN_RPC_USER="$rpc_user"
   export BITCOIN_RPC_PASS="$rpc_pass"
   export VERIFY_ADDRESSES_CORE_IDENTITY="$core_identity"
+  if [[ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]]; then
+    export SANCTUARY_PROJECT="$(ownership_sanitize_id "$core_identity")"
+    export SANCTUARY_OPERATION_RUN_ID="run-${identity_nonce}"
+    export SANCTUARY_RESOURCE_LIFECYCLE='obsolete'
+  fi
+  ownership_initialize
+}
+
+prepare_core_compose() {
+  core_override_file="$(mktemp "${TMPDIR:-/tmp}/sanctuary-address-core-ownership.XXXXXX.yml")"
+  chmod 600 "$core_override_file"
+  cat > "$core_override_file" <<'YAML'
+x-sanctuary-container-ownership: &sanctuary-container-ownership
+  io.sanctuary.project: ${SANCTUARY_PROJECT:?}
+  io.sanctuary.deployment-id: ${SANCTUARY_DEPLOYMENT_ID:?}
+  io.sanctuary.owner-id: ${SANCTUARY_OWNER_ID:?}
+  io.sanctuary.resource-class: compose_container
+  io.sanctuary.lifecycle: ${SANCTUARY_RESOURCE_LIFECYCLE:?}
+  io.sanctuary.cleanup-policy: exact_delete
+  io.sanctuary.created-at: ${SANCTUARY_CLEANUP_CREATED_AT:?}
+  io.sanctuary.created-by-release: ${SANCTUARY_RELEASE:?}
+  io.sanctuary.created-by-commit: ${SANCTUARY_COMMIT:?}
+  io.sanctuary.creation-run-id: ${SANCTUARY_OPERATION_RUN_ID:?}
+x-sanctuary-network-ownership: &sanctuary-network-ownership
+  <<: *sanctuary-container-ownership
+  io.sanctuary.resource-class: compose_network
+services:
+  core-mainnet:
+    labels: *sanctuary-container-ownership
+  core-testnet3:
+    labels: *sanctuary-container-ownership
+  core-testnet4:
+    labels: *sanctuary-container-ownership
+  core-signet:
+    labels: *sanctuary-container-ownership
+  core-regtest:
+    labels: *sanctuary-container-ownership
+networks:
+  default:
+    labels: *sanctuary-network-ownership
+YAML
+  core_compose=(docker compose -f "$script_dir/docker-compose.yml" -f "$core_override_file")
 }
 
 build_python_verifier() {
@@ -136,19 +289,51 @@ build_python_verifier() {
     printf 'Python verifier build returned invalid image ID: %s\n' "$python_image_id" >&2
     exit 1
   fi
+  register_python_image
+  python_image_registered=1
 }
 
 start_bitcoin_core() {
   require_command docker
+  prepare_core_compose
   started_bitcoind=1
-  docker compose -f "$script_dir/docker-compose.yml" up -d --pull always
+  "${core_compose[@]}" up -d --pull always
   assert_pinned_core_containers
+  resolve_core_rpc_urls
+}
+
+resolve_published_rpc_url() {
+  local service="$1" mapping port url_host
+  mapping="$("${core_compose[@]}" port "$service" 18443)"
+  if [[ -z "$mapping" || "$mapping" == *$'\n'* ]]; then
+    printf 'Bitcoin Core service %s has an unavailable or ambiguous RPC mapping\n' "$service" >&2
+    return 1
+  fi
+  port="${mapping##*:}"
+  if [[ ! "$port" =~ ^[0-9]+$ || "$port" -lt 1 || "$port" -gt 65535 ]]; then
+    printf 'Bitcoin Core service %s returned an invalid RPC mapping: %s\n' \
+      "$service" "$mapping" >&2
+    return 1
+  fi
+  url_host="$published_host"
+  if [[ "$url_host" == *:* && "$url_host" != \[*\] ]]; then
+    url_host="[$url_host]"
+  fi
+  printf 'http://%s:%s\n' "$url_host" "$port"
+}
+
+resolve_core_rpc_urls() {
+  rpc_url_mainnet="$(resolve_published_rpc_url core-mainnet)"
+  rpc_url_testnet3="$(resolve_published_rpc_url core-testnet3)"
+  rpc_url_testnet4="$(resolve_published_rpc_url core-testnet4)"
+  rpc_url_signet="$(resolve_published_rpc_url core-signet)"
+  rpc_url_regtest="$(resolve_published_rpc_url core-regtest)"
 }
 
 assert_pinned_core_containers() {
   local service container_id configured_image configured_command
   for service in core-mainnet core-testnet3 core-testnet4 core-signet core-regtest; do
-    container_id="$(docker compose -f "$script_dir/docker-compose.yml" ps -q "$service")"
+    container_id="$("${core_compose[@]}" ps -q "$service")"
     if [[ -z "$container_id" ]]; then
       printf 'Pinned Bitcoin Core service %s has no container\n' "$service" >&2
       exit 1
@@ -213,7 +398,7 @@ wait_for_bitcoin_core() {
   done
 
   if [[ "$started_bitcoind" -eq 1 ]]; then
-    docker compose -f "$script_dir/docker-compose.yml" logs
+    "${core_compose[@]}" logs
   fi
   printf 'Bitcoin Core %s RPC did not become ready on the expected chain.\n' "$environment" >&2
   exit 1

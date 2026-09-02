@@ -19,7 +19,8 @@ function cleanupAction(overrides = {}) {
   return {
     sequence: 1, resourceClass: 'compose_container', immutableIdentity: ID,
     action: 'remove', locatorKind: 'engine_id', locator: ID,
-    ownershipDigest: HASH, observationDigest: OTHER, ...overrides,
+    ownershipDigest: HASH, observationDigest: OTHER,
+    dependencyIdentities: [], ...overrides,
   };
 }
 

@@ -52,7 +52,7 @@ x-sanctuary-network-ownership: &sanctuary-network-ownership
 x-sanctuary-volume-ownership: &sanctuary-volume-ownership
   <<: *sanctuary-container-ownership
   io.sanctuary.resource-class: compose_volume
-  io.sanctuary.cleanup-policy: preserve_ambiguous
+  io.sanctuary.cleanup-policy: ${SANCTUARY_VOLUME_CLEANUP_POLICY:-preserve_ambiguous}
 
 services:
   # ============================================
@@ -226,6 +226,14 @@ services:
 
       # Logging (debug, info, warn, error)
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      SANCTUARY_PROJECT: ${SANCTUARY_PROJECT:?SANCTUARY_PROJECT is required}
+      SANCTUARY_DEPLOYMENT_ID: ${SANCTUARY_DEPLOYMENT_ID:?SANCTUARY_DEPLOYMENT_ID is required}
+      SANCTUARY_OWNER_ID: ${SANCTUARY_OWNER_ID:?SANCTUARY_OWNER_ID is required}
+      SANCTUARY_RESOURCE_LIFECYCLE: ${SANCTUARY_RESOURCE_LIFECYCLE:-deployment}
+      SANCTUARY_CLEANUP_CREATED_AT: ${SANCTUARY_CLEANUP_CREATED_AT:?SANCTUARY_CLEANUP_CREATED_AT is required}
+      SANCTUARY_RELEASE: ${SANCTUARY_RELEASE:?SANCTUARY_RELEASE is required}
+      SANCTUARY_COMMIT: ${SANCTUARY_COMMIT:?SANCTUARY_COMMIT is required}
+      SANCTUARY_OPERATION_RUN_ID: ${SANCTUARY_OPERATION_RUN_ID:?SANCTUARY_OPERATION_RUN_ID is required}
 
       # Database with connection pool and timeout settings:
       # - connection_limit: max pool size (default 30, configurable via DB_POOL_SIZE)

@@ -40,6 +40,7 @@ function inventoryResource(overrides = {}) {
     failureClasses: [],
     references: [],
     contentDigests: [],
+    dependencyIdentities: [],
     running: true,
     active: false,
     protected: false,
@@ -77,6 +78,7 @@ function action(overrides = {}) {
     locator: 'container-1',
     ownershipDigest: HASH,
     observationDigest: HASH,
+    dependencyIdentities: [],
     ...overrides,
   };
 }

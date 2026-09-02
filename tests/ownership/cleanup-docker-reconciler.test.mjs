@@ -29,7 +29,8 @@ function action(sequence, resourceClass, mutation, overrides = {}) {
   return {
     sequence, resourceClass, immutableIdentity, action: mutation,
     locatorKind: volume ? 'name' : 'engine_id', locator: volume ? 'cache-volume' : immutableIdentity,
-    ownershipDigest: canonicalSha256(owner), observationDigest: B, ...overrides,
+    ownershipDigest: canonicalSha256(owner), observationDigest: B,
+    dependencyIdentities: [], ...overrides,
   };
 }
 
@@ -40,6 +41,7 @@ function row(candidate, overrides = {}) {
     locator: candidate.locator, immutableIdentity: candidate.immutableIdentity,
     ownership: owner, ownershipDigest: canonicalSha256(owner), observationDigest: candidate.observationDigest,
     disposition: 'eligible', failureClasses: [], references: [], contentDigests: [],
+    dependencyIdentities: [],
     running: candidate.resourceClass === 'compose_container' ? true : null,
     active: false, protected: false, data: false, ...overrides,
   };
@@ -121,6 +123,39 @@ test('only the immediate matching container stop-to-remove derivation is admitte
     action: network, phase: 'fresh_eligibility', predecessorResultDigest: predecessor,
     approvedActions: [network], loadInventory: async () => inventory([row(network)]),
   }), { state: 'refused', failureClass: 'identity_changed' });
+});
+
+test('network, volume, and image transitions require exact approved container removals', async () => {
+  const stop = action(1, 'compose_container', 'stop');
+  const remove = action(2, 'compose_container', 'remove');
+  const predecessor = 'e'.repeat(64);
+  for (const [resourceClass, proofLoader] of [
+    ['compose_network', undefined],
+    ['compose_volume', async ({ action: candidate }) => volumeProof(candidate)],
+    ['oci_image', undefined],
+  ]) {
+    const dependent = action(3, resourceClass, 'remove', { dependencyIdentities: [A] });
+    const approvedActions = [stop, remove, dependent];
+    const clearedRow = row(dependent, {
+      observationDigest: C, dependencyIdentities: [],
+      ...(resourceClass === 'compose_volume' ? { contentDigests: [B, C] } : {}),
+    });
+    assert.deepEqual(await reloadDockerActionAuthority({
+      action: dependent, phase: 'fresh_eligibility', predecessorResultDigest: predecessor,
+      approvedActions, loadInventory: async () => inventory([clearedRow]),
+      ...(proofLoader ? { loadVolumeRegistrationProof: proofLoader } : {}),
+    }), { state: 'eligible', row: clearedRow, derivedFromResultDigest: predecessor });
+
+    const foreignRow = row(dependent, {
+      observationDigest: C, dependencyIdentities: [C],
+      ...(resourceClass === 'compose_volume' ? { contentDigests: [B, C] } : {}),
+    });
+    assert.deepEqual(await reloadDockerActionAuthority({
+      action: dependent, phase: 'fresh_eligibility', predecessorResultDigest: predecessor,
+      approvedActions, loadInventory: async () => inventory([foreignRow]),
+      ...(proofLoader ? { loadVolumeRegistrationProof: proofLoader } : {}),
+    }), { state: 'refused', failureClass: 'shared' });
+  }
 });
 
 test('authority reload fails closed on partial, duplicate, drifted, or unsafe inventories', async () => {

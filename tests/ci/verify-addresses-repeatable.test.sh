@@ -31,6 +31,10 @@ if [ "${1:-}" = "--version" ]; then
   printf 'v%s\n' "${VERIFY_STUB_BOOTSTRAP_VERSION:-24.18.1}"
   exit 0
 fi
+if [[ "${1:-}" == */register-resource.mjs ]]; then
+  printf '%s\n' "$*" >> "${VERIFY_STUB_REGISTRATION_LOG:?}"
+  exit 0
+fi
 exit 2
 EOF
   chmod +x "$bin_dir/node"
@@ -68,6 +72,10 @@ if [ "${1:-}" = "-e" ]; then
   count=$((count + 1))
   printf '%s\n' "$count" > "$counter_file"
   printf '%064x' "$count"
+  exit 0
+fi
+if [[ "${1:-}" == */register-resource.mjs ]]; then
+  printf '%s\n' "$*" >> "${VERIFY_STUB_REGISTRATION_LOG:?}"
   exit 0
 fi
 exit 2
@@ -129,6 +137,18 @@ if [ "$1" = "compose" ]; then
       printf 'fixture-%s\n' "${3:?}"
       exit 0
       ;;
+    port)
+      [ "${3:-}" = "18443" ] || exit 2
+      case "${2:-}" in
+        core-mainnet) printf '0.0.0.0:29440\n' ;;
+        core-testnet3) printf '0.0.0.0:29441\n' ;;
+        core-testnet4) printf '0.0.0.0:29442\n' ;;
+        core-signet) printf '0.0.0.0:29443\n' ;;
+        core-regtest) printf '0.0.0.0:29444\n' ;;
+        *) exit 2 ;;
+      esac
+      exit 0
+      ;;
   esac
 fi
 if [ "$1" = "build" ]; then
@@ -168,17 +188,32 @@ if [ "$1" = "buildx" ] && [ "${2:-}" = "build" ]; then
     fi
     printf '%s\n' "$image_id" > "$iid_file"
   else
-    printf '%s\n' 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' > "$iid_file"
+    image_id='sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+    printf '%s\n' "$image_id" > "$iid_file"
+    printf '%s\n' "$image_id" > "${VERIFY_STUB_DOCKER_CLEANUP_LOG:?}.image-state"
+  fi
+  if [ "${VERIFY_STUB_BUILDX_FAIL_WITHOUT_IID_AFTER_LOAD:-0}" = "1" ]; then
+    : > "$iid_file"
+    exit 96
   fi
   [ "${VERIFY_STUB_BUILDX_FAIL_AFTER_LOAD:-0}" != "1" ] || exit 97
   exit 0
 fi
 if [ "$1" = "image" ] && [ "${2:-}" = "rm" ]; then
   printf '%s\n' "$*" >> "${VERIFY_STUB_DOCKER_CLEANUP_LOG:?}"
+  [ "${VERIFY_STUB_IMAGE_RM_SURVIVES:-0}" != "1" ] || exit 18
   if [ -n "${VERIFY_STUB_DOCKER_STATE_DIR:-}" ]; then
-    tag_key="$(printf '%s' "$3" | tr '/:' '__')"
-    image_id="$(cat "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key" 2>/dev/null || true)"
-    rm -f "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key"
+    if [[ "$3" == sha256:* ]]; then
+      image_id="$3"
+      for tag_file in "$VERIFY_STUB_DOCKER_STATE_DIR"/tags/*; do
+        [ -e "$tag_file" ] || continue
+        [ "$(cat "$tag_file")" != "$image_id" ] || rm -f "$tag_file"
+      done
+    else
+      tag_key="$(printf '%s' "$3" | tr '/:' '__')"
+      image_id="$(cat "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key" 2>/dev/null || true)"
+      rm -f "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key"
+    fi
     if [ -n "$image_id" ]; then
       image_referenced=0
       for tag_file in "$VERIFY_STUB_DOCKER_STATE_DIR"/tags/*; do
@@ -187,6 +222,50 @@ if [ "$1" = "image" ] && [ "${2:-}" = "rm" ]; then
       done
       [ "$image_referenced" -eq 1 ] || rm -f "$VERIFY_STUB_DOCKER_STATE_DIR/images/${image_id#sha256:}"
     fi
+  fi
+  if [ -z "${VERIFY_STUB_DOCKER_STATE_DIR:-}" ]; then
+    rm -f "${VERIFY_STUB_DOCKER_CLEANUP_LOG:?}.image-state"
+  fi
+  [ "${VERIFY_STUB_IMAGE_RM_RESPONSE_LOSS:-0}" != "1" ] || exit 19
+  exit 0
+fi
+if [ "$1" = "image" ] && [ "${2:-}" = "inspect" ]; then
+  target="${@: -1}"
+  image_id=''
+  if [ -n "${VERIFY_STUB_DOCKER_STATE_DIR:-}" ]; then
+    if [[ "$target" == sha256:* ]]; then
+      [ -e "$VERIFY_STUB_DOCKER_STATE_DIR/images/${target#sha256:}" ] || exit 1
+      image_id="$target"
+    else
+      tag_key="$(printf '%s' "$target" | tr '/:' '__')"
+      [ -f "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key" ] || exit 1
+      image_id="$(cat "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key")"
+    fi
+  else
+    state_file="${VERIFY_STUB_DOCKER_CLEANUP_LOG:?}.image-state"
+    [ -f "$state_file" ] || exit 1
+    image_id="$(cat "$state_file")"
+  fi
+  if [[ "$*" == *'--format'* ]]; then printf '%s\n' "$image_id"; else printf '{}\n'; fi
+  exit 0
+fi
+if [ "$1" = "image" ] && [ "${2:-}" = "ls" ]; then
+  [ "${VERIFY_STUB_IMAGE_LIST_FAIL:-0}" != "1" ] || exit 20
+  if [ -n "${VERIFY_STUB_DOCKER_STATE_DIR:-}" ]; then
+    if [[ "$*" == *'reference='* ]]; then
+      reference="$(printf '%s\n' "$*" | sed -n 's/.*reference=\([^ ]*\).*/\1/p')"
+      tag_key="$(printf '%s' "$reference" | tr '/:' '__')"
+      [ ! -f "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key" ] \
+        || cat "$VERIFY_STUB_DOCKER_STATE_DIR/tags/$tag_key"
+    else
+      for image_file in "$VERIFY_STUB_DOCKER_STATE_DIR"/images/*; do
+        [ -e "$image_file" ] || continue
+        printf 'sha256:%s\n' "${image_file##*/}"
+      done
+    fi
+  else
+    state_file="${VERIFY_STUB_DOCKER_CLEANUP_LOG:?}.image-state"
+    [ ! -f "$state_file" ] || cat "$state_file"
   fi
   exit 0
 fi
@@ -247,11 +326,11 @@ if [[ "$payload" == *getnetworkinfo* ]]; then
 fi
 case "$url" in
   *:"${VERIFY_STUB_WRONG_CHAIN_PORT:-never}"/) printf '{"result":{"chain":"wrong"}}\n' ;;
-  *:19440/) printf '{"result":{"chain":"main"}}\n' ;;
-  *:19441/) printf '{"result":{"chain":"test"}}\n' ;;
-  *:19442/) printf '{"result":{"chain":"testnet4"}}\n' ;;
-  *:19443/) printf '{"result":{"chain":"signet"}}\n' ;;
-  *:19444/) printf '{"result":{"chain":"regtest"}}\n' ;;
+  *:29440/) printf '{"result":{"chain":"main"}}\n' ;;
+  *:29441/) printf '{"result":{"chain":"test"}}\n' ;;
+  *:29442/) printf '{"result":{"chain":"testnet4"}}\n' ;;
+  *:29443/) printf '{"result":{"chain":"signet"}}\n' ;;
+  *:29444/) printf '{"result":{"chain":"regtest"}}\n' ;;
   *) exit 1 ;;
 esac
 EOF
@@ -264,19 +343,41 @@ main() {
 
   local fixture_root="$TEST_TEMP_DIR/repo"
   mkdir -p "$fixture_root/scripts/verify-addresses/implementations" "$fixture_root/scripts/ci"
+  mkdir -p "$fixture_root/scripts/ownership"
   cp "$SCRIPT" "$fixture_root/scripts/verify-addresses/verify-repeatable.sh"
   cp "$ROOT_DIR/scripts/ci/docker-endpoint-lib.sh" "$fixture_root/scripts/ci/docker-endpoint-lib.sh"
+  cp "$ROOT_DIR/scripts/ci/provider-context.sh" "$fixture_root/scripts/ci/provider-context.sh"
+  cp "$ROOT_DIR/scripts/ownership/producer-hooks.sh" "$fixture_root/scripts/ownership/producer-hooks.sh"
   cp "$ROOT_DIR/scripts/verify-addresses/implementations/go.mod" \
     "$fixture_root/scripts/verify-addresses/implementations/go.mod"
   cp "$ROOT_DIR/scripts/verify-addresses/implementations/go.sum" \
     "$fixture_root/scripts/verify-addresses/implementations/go.sum"
   SCRIPT="$fixture_root/scripts/verify-addresses/verify-repeatable.sh"
   bash -n "$SCRIPT"
+  grep -F -- 'cleanup-ci-callsite.sh" auto-run' "$SCRIPT" >/dev/null ||
+    fail 'expected every uncoordinated invocation to enter the signed cleanup coordinator'
+  if grep -Eq 'docker compose .* down|"\$\{core_compose\[@\]\}" down' "$SCRIPT"; then
+    fail 'expected the verifier to contain no direct Compose teardown'
+  fi
+  grep -F -- 'retained for receipt-bound coordinator cleanup' "$SCRIPT" >/dev/null ||
+    fail 'expected Core cleanup to remain receipt-bound after the subject exits'
+  grep -F -- 'io.sanctuary.resource-class: compose_container' "$SCRIPT" >/dev/null ||
+    fail 'expected the transient Core services to receive the common ownership envelope'
+  grep -F -- 'io.sanctuary.resource-class: compose_network' "$SCRIPT" >/dev/null ||
+    fail 'expected the transient Core network to receive the common ownership envelope'
+  if grep -Eq 'BITCOIN_RPC_PORT_|1944[0-4]:18443' \
+    "$ROOT_DIR/scripts/verify-addresses/docker-compose.yml"; then
+    fail 'expected Docker to allocate collision-free verifier RPC host ports'
+  fi
   write_stubs
   mkdir -p "$TEST_TEMP_DIR/runner"
   : > "$TEST_TEMP_DIR/random-counter"
   : > "$TEST_TEMP_DIR/core-launch-id"
   : > "$TEST_TEMP_DIR/core-launch-auth"
+  : > "$TEST_TEMP_DIR/registration-log"
+  export SANCTUARY_OWNERSHIP_TOOL_DIR="$ROOT_DIR/scripts/ownership"
+  export VERIFY_STUB_REGISTRATION_LOG="$TEST_TEMP_DIR/registration-log"
+  export SANCTUARY_CLEANUP_COORDINATED=1
 
   run_with_core_image() {
     local inspected_image="$1"
@@ -361,13 +462,15 @@ main() {
   grep -F -- "--tag $verifier_tag" "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
     fail 'expected a unique per-run Python verifier tag to retain the immutable image'
   [ "$(cat "$TEST_TEMP_DIR/docker-cleanup-log")" = "image rm $verifier_tag" ] ||
-    fail 'expected cleanup to remove only the unique per-run Python verifier tag'
+    fail 'expected cleanup to remove only the registered run-unique Python verifier tag'
+  grep -F -- '--class oci_image --lifecycle obsolete --policy exact_delete' "$TEST_TEMP_DIR/registration-log" >/dev/null ||
+    fail 'expected the immutable Python verifier image to be registered before cleanup'
   grep -F -- '--iidfile' "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
     fail 'expected the Python verifier build to capture its immutable image ID'
 
   [ "$(wc -l < "$TEST_TEMP_DIR/curl-log")" = "10" ] ||
     fail 'expected chain and identity checks for all five Core environments'
-  for port in 19440 19441 19442 19443 19444; do
+  for port in 29440 29441 29442 29443 29444; do
     grep -F -- ":$port/" "$TEST_TEMP_DIR/curl-log" >/dev/null ||
       fail "expected readiness check on port $port"
   done
@@ -395,23 +498,65 @@ main() {
     fail 'expected consecutive verifier runs to use distinct retention tags'
   grep -F -- "--tag $second_verifier_tag" "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
     fail 'expected the second verifier build to use its own retention tag'
-  [ "$(grep -Fxc -- "image rm $verifier_tag" "$TEST_TEMP_DIR/docker-cleanup-log")" = 1 ] ||
-    fail 'expected the first verifier run to remove its own tag exactly once'
-  [ "$(grep -Fxc -- "image rm $second_verifier_tag" "$TEST_TEMP_DIR/docker-cleanup-log")" = 1 ] ||
-    fail 'expected the second verifier run to remove its own tag exactly once'
+  [ "$(wc -l < "$TEST_TEMP_DIR/docker-cleanup-log")" = 2 ] ||
+    fail 'expected consecutive verifier runs to remove two exact registered tags'
+  grep -Fqx -- "image rm $verifier_tag" "$TEST_TEMP_DIR/docker-cleanup-log" ||
+    fail 'expected the first registered verifier tag to be retired'
+  grep -Fqx -- "image rm $second_verifier_tag" "$TEST_TEMP_DIR/docker-cleanup-log" ||
+    fail 'expected the second registered verifier tag to be retired'
 
   : > "$TEST_TEMP_DIR/docker-cleanup-log"
   if VERIFY_STUB_BUILDX_FAIL_AFTER_LOAD=1 \
     run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/failed-buildx-endpoint-log" >/dev/null 2>&1; then
     fail 'expected the interrupted Buildx fixture to fail'
   fi
+  interrupted_tag="$(tail -n 1 "$TEST_TEMP_DIR/docker-build-log" \
+    | sed -n 's/.*--tag \([^ ]*\).*/\1/p')"
   interrupted_cleanup="$(cat "$TEST_TEMP_DIR/docker-cleanup-log")"
-  [[ "$interrupted_cleanup" =~ ^image\ rm\ sanctuary/verify-addresses-python:3\.13\.5-bip-utils-2\.12\.1-v1-[0-9a-f]{64}$ ]] ||
-    fail 'expected an interrupted Buildx load to release its unique retention tag'
-  [ "$interrupted_cleanup" != "image rm $second_verifier_tag" ] ||
-    fail 'expected interrupted cleanup not to remove another invocation tag'
+  [ "$interrupted_cleanup" = "image rm $interrupted_tag" ] ||
+    fail 'expected an interrupted Buildx load to release its exact unique tag'
+
+  : > "$TEST_TEMP_DIR/docker-cleanup-log"
+  if VERIFY_STUB_BUILDX_FAIL_WITHOUT_IID_AFTER_LOAD=1 \
+    run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/no-iid-endpoint-log" >/dev/null 2>&1; then
+    fail 'expected the response-lost Buildx fixture without an IID to fail'
+  fi
+  no_iid_tag="$(tail -n 1 "$TEST_TEMP_DIR/docker-build-log" \
+    | sed -n 's/.*--tag \([^ ]*\).*/\1/p')"
+  [ "$(cat "$TEST_TEMP_DIR/docker-cleanup-log")" = "image rm $no_iid_tag" ] ||
+    fail 'expected unique-tag recovery to retire the exact reference without an IID response'
+
+  : > "$TEST_TEMP_DIR/docker-cleanup-log"
+  if failure_output="$(VERIFY_STUB_IMAGE_LIST_FAIL=1 \
+    run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/query-failure-endpoint-log" 2>&1)"; then
+    fail 'expected an ambiguous post-removal image query to fail the verifier'
+  fi
+  grep -F -- 'Registered Python verifier image reference absence is unproven:' <<< "$failure_output" >/dev/null ||
+    fail 'expected image-list query ambiguity to block successful cleanup evidence'
+
+  : > "$TEST_TEMP_DIR/docker-cleanup-log"
+  if failure_output="$(VERIFY_STUB_IMAGE_RM_RESPONSE_LOSS=1 \
+    run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/rm-response-loss-endpoint-log" 2>&1)"; then
+    fail 'expected a nonzero image removal response to fail even after absence reconciliation'
+  fi
+  grep -F -- 'removal failed even though exact absence reconciled' <<< "$failure_output" >/dev/null ||
+    fail 'expected reconciled image-removal failure to remain visible and blocking'
+
+  : > "$TEST_TEMP_DIR/docker-cleanup-log"
+  if failure_output="$(VERIFY_STUB_IMAGE_RM_SURVIVES=1 \
+    run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/rm-survivor-endpoint-log" 2>&1)"; then
+    fail 'expected a surviving registered verifier image to fail cleanup'
+  fi
+  grep -F -- 'Registered Python verifier image reference absence is unproven:' <<< "$failure_output" >/dev/null ||
+    fail 'expected a surviving exact image to block successful cleanup evidence'
+  rm -f "$TEST_TEMP_DIR/docker-cleanup-log.image-state"
 
   mkdir -p "$TEST_TEMP_DIR/docker-state"
+  shared_tag_file="$TEST_TEMP_DIR/docker-state/tags/sanctuary_verify-addresses-python_3.13.5-bip-utils-2.12.1-v1"
+  mkdir -p "$TEST_TEMP_DIR/docker-state/tags" "$TEST_TEMP_DIR/docker-state/images"
+  printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+    > "$shared_tag_file"
+  touch "$TEST_TEMP_DIR/docker-state/images/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   overlap_ready="$TEST_TEMP_DIR/overlap-a-ready"
   overlap_release="$TEST_TEMP_DIR/overlap-a-release"
   run_overlapping_verifier a \
@@ -438,10 +583,15 @@ main() {
   if ! wait "$overlap_a_pid"; then
     fail 'expected the first verifier image to remain reachable while the second invocation retargeted and cleaned up'
   fi
-  [ -z "$(find "$TEST_TEMP_DIR/docker-state/tags" -type f -print -quit)" ] ||
-    fail 'expected overlapping verifier cleanup to leave no owned retention tags'
-  [ -z "$(find "$TEST_TEMP_DIR/docker-state/images" -type f -print -quit)" ] ||
-    fail 'expected overlapping verifier cleanup to release both uniquely retained images'
+  [ "$(find "$TEST_TEMP_DIR/docker-state/tags" -type f -print | wc -l)" = 1 ] ||
+    fail 'expected overlapping verifier cleanup to leave only the shared base tag'
+  [ "$(cat "$shared_tag_file")" = \
+    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ] ||
+    fail 'expected cleanup to preserve shared image content referenced by the base tag'
+  [ "$(find "$TEST_TEMP_DIR/docker-state/images" -type f -print | wc -l)" = 1 ] ||
+    fail 'expected only shared image content to survive overlapping cleanup'
+  [ -e "$TEST_TEMP_DIR/docker-state/images/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ] ||
+    fail 'expected the shared image ID to remain available'
 
   if failure_output="$(VERIFY_STUB_BUILDX_UNAVAILABLE=1 \
     run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/no-buildx-endpoint-log" 2>&1)"; then
@@ -510,13 +660,14 @@ main() {
   if PATH="$TEST_TEMP_DIR/bin:$PATH" \
     RUNNER_TEMP="$TEST_TEMP_DIR/runner" \
     VERIFY_STUB_DOCKER_BUILD_LOG="$TEST_TEMP_DIR/docker-build-log" \
+    VERIFY_STUB_DOCKER_CLEANUP_LOG="$TEST_TEMP_DIR/docker-cleanup-log" \
     VERIFY_STUB_CORE_LAUNCH_ID="$TEST_TEMP_DIR/core-launch-id" \
     VERIFY_STUB_CORE_LAUNCH_AUTH="$TEST_TEMP_DIR/core-launch-auth" \
     VERIFY_STUB_HOST_PYTHON_USED="$TEST_TEMP_DIR/host-python-used" \
     VERIFY_STUB_RANDOM_COUNTER="$TEST_TEMP_DIR/random-counter" \
     VERIFY_STUB_ENDPOINT_LOG="$TEST_TEMP_DIR/should-not-exist" \
     VERIFY_STUB_CURL_LOG="$TEST_TEMP_DIR/curl-log" \
-    VERIFY_STUB_WRONG_CHAIN_PORT=19442 \
+    VERIFY_STUB_WRONG_CHAIN_PORT=29442 \
     bash "$SCRIPT" verify >/dev/null 2>&1; then
     fail 'expected a wrong Core chain to fail closed'
   fi
@@ -528,6 +679,7 @@ main() {
     RUNNER_TEMP="$TEST_TEMP_DIR/runner" \
     SANCTUARY_DOCKER_PUBLISHED_HOST=203.0.113.10 \
     VERIFY_STUB_DOCKER_BUILD_LOG="$TEST_TEMP_DIR/docker-build-log" \
+    VERIFY_STUB_DOCKER_CLEANUP_LOG="$TEST_TEMP_DIR/docker-cleanup-log" \
     VERIFY_STUB_CORE_LAUNCH_ID="$TEST_TEMP_DIR/core-launch-id" \
     VERIFY_STUB_CORE_LAUNCH_AUTH="$TEST_TEMP_DIR/core-launch-auth" \
     VERIFY_STUB_HOST_PYTHON_USED="$TEST_TEMP_DIR/host-python-used" \

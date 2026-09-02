@@ -1,158 +1,54 @@
-import {
-  closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
-import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
+import { canonicalJson, canonicalSha256 } from './canonical-json.mjs';
 import { sha256 } from './crypto.mjs';
 import { assertDeploymentLock } from './deployment-lock.mjs';
+import {
+  retireActiveEphemeralRevision, retireFailedEphemeralRevision,
+} from './deployment-ephemeral-retirement.mjs';
+import {
+  ensureOwnerDirectory, fsyncDirectory, readCanonical, readOptional, readStableBytes,
+  writeAtomic, writeCreateOnly,
+} from './deployment-store-io.mjs';
+import {
+  assertDeploymentId, assertDigest, assertPointer, deploymentIdentityRecord,
+  identityRecordsMatch, pendingIsActivating, preparedMatchesPending,
+  validDeploymentIdentifier, validateDefinitionBundle, withoutDigest,
+} from './deployment-store-validation.mjs';
 import { validateArtifact } from './schemas.mjs';
+import { PROTECTED_COMPOSE_PROJECTS } from './contracts.mjs';
+import { assertProjectMutationLock } from './project-lock.mjs';
 
-const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
 const DEPLOY_STAGES = ['prepared', 'build_started', 'build_completed', 'postgres_started', 'password_reconciled', 'stack_started', 'health_verified', 'activating'];
 const ROLLBACK_STAGES = ['rollback_prepared', 'rollback_stack_started', 'rollback_health_verified', 'rollback_activating'];
 
-function ensureOwnerDirectory(directory) {
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const resolved = path.resolve(directory);
-  if (realpathSync(directory) !== resolved) throw new Error(`state path must not traverse a symlink: ${resolved}`);
-  const info = lstatSync(resolved);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`state path is not a real directory: ${resolved}`);
-  if (typeof process.getuid === 'function' && info.uid !== process.getuid()) throw new Error(`state path is not owned by this user: ${resolved}`);
-  if ((info.mode & 0o077) !== 0) throw new Error(`state path must be owner-only: ${resolved}`);
-  return resolved;
-}
-
-function fsyncDirectory(directory) {
-  const descriptor = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY);
-  try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
-}
-
-function writeAll(descriptor, bytes) {
-  let offset = 0;
-  while (offset < bytes.length) {
-    const written = writeSync(descriptor, bytes, offset);
-    if (written === 0) throw new Error('state write made no progress');
-    offset += written;
-  }
-}
-
-function readStableBytes(filePath) {
-  const before = lstatSync(filePath);
-  if (!before.isFile() || before.isSymbolicLink()) throw new Error(`snapshot must be a regular non-symlink file: ${filePath}`);
-  const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const opened = fstatSync(descriptor);
-    const bytes = readFileSync(descriptor);
-    const after = fstatSync(descriptor);
-    const finalPath = lstatSync(filePath);
-    if (opened.dev !== before.dev || opened.ino !== before.ino || after.dev !== before.dev
-      || after.ino !== before.ino || finalPath.dev !== before.dev || finalPath.ino !== before.ino
-      || after.size !== bytes.length || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
-      throw new Error(`snapshot identity changed while reading: ${filePath}`);
-    }
-    return bytes;
-  } finally { closeSync(descriptor); }
-}
-
-function writeCreateOnly(filePath, bytes) {
-  const descriptor = openSync(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try { writeAll(descriptor, bytes); fsyncSync(descriptor); } finally { closeSync(descriptor); }
-  fsyncDirectory(path.dirname(filePath));
-}
-
-function writeAtomic(filePath, bytes) {
-  const temporary = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  writeCreateOnly(temporary, bytes);
-  try { renameSync(temporary, filePath); } catch (error) {
-    try { unlinkSync(temporary); } catch {}
-    throw error;
-  }
-  fsyncDirectory(path.dirname(filePath));
-}
-
-function readCanonical(filePath) {
-  const info = lstatSync(filePath);
-  if (!info.isFile() || info.isSymbolicLink()) throw new Error(`state file must be a regular non-symlink file: ${filePath}`);
-  const bytes = readFileSync(filePath);
-  const value = parseStrictJson(bytes);
-  if (!canonicalJson(value).equals(bytes)) throw new Error(`state file is not canonical JSON: ${filePath}`);
-  return { value, digest: canonicalSha256(value) };
-}
-
-function readOptional(filePath) {
-  try { return readCanonical(filePath); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-}
-
-function assertPointer(value, kind) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${kind} pointer is malformed`);
-  if (value.deploymentId === undefined || value.deploymentId === '') throw new Error(`${kind} pointer lacks deployment identity`);
-  if (!Number.isSafeInteger(value.generation) || value.generation < 1) throw new Error(`${kind} pointer generation is invalid`);
-  assertDigest(value.manifestDigest, `${kind} pointer manifestDigest`);
-}
-
-function assertDigest(value, label, { nullable = false } = {}) {
-  if (nullable && value === null) return;
-  if (!/^[a-f0-9]{64}$/.test(value ?? '')) throw new Error(`${label} must be a SHA-256 digest`);
-}
-
-function withoutDigest(definition) {
-  const { definitionDigest: _ignored, ...unsigned } = definition;
-  return unsigned;
-}
-
-function preparedMatchesPending(prepared, pending) {
-  return pending.mode === 'deploy'
-    && pending.generation === prepared.generation
-    && pending.manifestDigest === prepared.manifestDigest
-    && pending.priorActiveDigest === prepared.priorActiveDigest;
-}
-
-function pendingIsActivating(pending) {
-  return (pending.mode === 'deploy' && pending.stage === 'activating')
-    || (pending.mode === 'rollback' && pending.stage === 'rollback_activating');
-}
-
-function validateDefinitionBundle({ definition, snapshots }) {
-  assertDigest(definition.definitionDigest, 'definitionDigest');
-  if (canonicalSha256(withoutDigest(definition)) !== definition.definitionDigest) throw new Error('definitionDigest does not match definition');
-  if (!Array.isArray(definition.overlays) || !Array.isArray(snapshots) || definition.overlays.length !== snapshots.length) {
-    throw new Error('definition overlays and snapshots must have equal lengths');
-  }
-  definition.overlays.forEach((overlay, index) => {
-    const snapshot = snapshots[index];
-    if (!Buffer.isBuffer(snapshot.bytes) || snapshot.snapshotPath !== overlay.snapshotPath || snapshot.sourcePath !== overlay.sourcePath) {
-      throw new Error(`snapshot ${index} does not match its definition entry`);
-    }
-    if (sha256(snapshot.bytes) !== overlay.sha256) throw new Error(`snapshot ${index} digest mismatch`);
-    if (path.isAbsolute(overlay.snapshotPath) || overlay.snapshotPath.split('/').some((part) => ['', '.', '..'].includes(part))) {
-      throw new Error(`snapshot ${index} path is unsafe`);
-    }
-  });
-}
-
 export class DeploymentStore {
   constructor({ runtimeDirectory, deploymentId }) {
-    if (!ID.test(deploymentId ?? '')) throw new Error('deploymentId has an invalid format');
+    assertDeploymentId(deploymentId);
     this.deploymentId = deploymentId;
-    this.root = path.join(path.resolve(runtimeDirectory), 'ownership', 'deployments', deploymentId);
+    this.runtimeDirectory = path.resolve(runtimeDirectory);
+    this.root = path.join(this.runtimeDirectory, 'ownership', 'deployments', deploymentId);
     this.revisions = path.join(this.root, 'revisions');
     this.lockPath = path.join(this.root, 'mutation-lock');
     this.activePath = path.join(this.root, 'active-revision.json');
     this.pendingPath = path.join(this.root, 'pending-revision.json');
     this.preparedPath = path.join(this.root, 'prepared-revision.json');
     this.identityPath = path.join(this.root, 'identity.json');
+    this.retiredRevisions = path.join(this.root, 'retired-revisions');
   }
 
   initialize(identity) {
     ensureOwnerDirectory(this.root);
     ensureOwnerDirectory(this.revisions);
-    if (typeof identity?.projectDirectory !== 'string' || typeof identity?.composeProjectName !== 'string') {
-      throw new Error('deployment identity requires projectDirectory and composeProjectName');
-    }
-    const record = { ...identity, identityVersion: 1, deploymentId: this.deploymentId };
+    const record = deploymentIdentityRecord(this.deploymentId, identity);
     if (!existsSync(this.identityPath)) writeCreateOnly(this.identityPath, canonicalJson(record));
-    else if (!canonicalJson(readCanonical(this.identityPath).value).equals(canonicalJson(record))) throw new Error('deployment identity does not match existing store');
+    else {
+      const existing = readCanonical(this.identityPath).value;
+      if (!identityRecordsMatch(existing, record)) {
+        throw new Error('deployment identity does not match existing store');
+      }
+      return existing;
+    }
     return record;
   }
 
@@ -173,7 +69,10 @@ export class DeploymentStore {
     const pending = readOptional(this.pendingPath);
     if (!pending) return null;
     assertPointer(pending.value, 'pending');
-    if (pending.value.deploymentId !== this.deploymentId || !ID.test(pending.value.operationRunId ?? '')) throw new Error('pending pointer identity mismatch');
+    if (pending.value.deploymentId !== this.deploymentId
+        || !validDeploymentIdentifier(pending.value.operationRunId)) {
+      throw new Error('pending pointer identity mismatch');
+    }
     if (!['deploy', 'rollback'].includes(pending.value.mode)) throw new Error('pending pointer mode is invalid');
     const manifest = this.readManifest(pending.value.generation);
     if (manifest.manifestDigest !== pending.value.manifestDigest) throw new Error('pending pointer manifest digest mismatch');
@@ -356,6 +255,86 @@ export class DeploymentStore {
     return { prepared, preparedDigest: canonicalSha256(prepared) };
   }
 
+  activatePreparedEphemeralRevision({
+    operationRunId, lockToken, projectLockToken, expectedPreparedDigest,
+    now = () => new Date(),
+  }) {
+    this.assertLocked(lockToken, operationRunId);
+    const identity = this.readIdentity();
+    assertProjectMutationLock(
+      this.runtimeDirectory, identity.composeProjectName, projectLockToken, operationRunId,
+    );
+    if (identity.identityVersion !== 2 || identity.deploymentScope !== 'ci_ephemeral'
+        || PROTECTED_COMPOSE_PROJECTS.includes(identity.composeProjectName)) {
+      throw new Error('prepared activation is restricted to unprotected CI-ephemeral deployments');
+    }
+    if (this.readPending()) throw new Error('ephemeral activation refuses a pending revision');
+    const prepared = readOptional(this.preparedPath);
+    const active = this.readActive();
+    const generation = prepared?.value.generation ?? active?.value.generation;
+    if (!generation) throw new Error('prepared ephemeral revision is missing');
+    const transitionDirectory = path.join(
+      this.revisions, String(generation), 'transitions', operationRunId,
+    );
+    ensureOwnerDirectory(transitionDirectory);
+    const transitionPath = path.join(transitionDirectory, 'ephemeral-activation.json');
+    const existingTransition = readOptional(transitionPath);
+    if (!prepared) {
+      if (!active || !existingTransition
+          || existingTransition.value.preparedDigest !== expectedPreparedDigest
+          || existingTransition.value.manifestDigest !== active.value.manifestDigest) {
+        throw new Error('prepared ephemeral activation compare-and-swap failed');
+      }
+      return { active: active.value, activeDigest: active.digest };
+    }
+    if (active && existingTransition
+        && prepared.digest === expectedPreparedDigest
+        && existingTransition.value.preparedDigest === expectedPreparedDigest
+        && existingTransition.value.manifestDigest === active.value.manifestDigest
+        && canonicalJson(existingTransition.value.nextActive).equals(canonicalJson(active.value))) {
+      unlinkSync(this.preparedPath);
+      fsyncDirectory(this.root);
+      return { active: active.value, activeDigest: active.digest };
+    }
+    if (prepared.digest !== expectedPreparedDigest || prepared.value.priorActiveDigest !== null
+        || active !== null) {
+      throw new Error('prepared ephemeral activation compare-and-swap failed');
+    }
+    const revision = this.readManifest(prepared.value.generation, { verifySnapshots: true });
+    if (revision.manifestDigest !== prepared.value.manifestDigest
+        || revision.manifest.legacyResources.length !== 0) {
+      throw new Error('prepared ephemeral revision is not exact and legacy-free');
+    }
+    const activatedAt = now().toISOString();
+    const nextActive = {
+      pointerVersion: 1, deploymentId: this.deploymentId,
+      generation: prepared.value.generation, manifestDigest: prepared.value.manifestDigest,
+      activatedAt,
+    };
+    const transition = {
+      transitionVersion: 1, mode: 'ephemeral_activation', operationRunId,
+      preparedDigest: prepared.digest, manifestDigest: prepared.value.manifestDigest,
+      nextActive,
+    };
+    if (existingTransition) {
+      const stable = {
+        ...transition, nextActive: {
+          ...transition.nextActive, activatedAt: existingTransition.value.nextActive.activatedAt,
+        },
+      };
+      if (!canonicalJson(existingTransition.value).equals(canonicalJson(stable))) {
+        throw new Error('prepared ephemeral activation transition collision');
+      }
+    } else writeCreateOnly(transitionPath, canonicalJson(transition));
+    const recorded = readCanonical(transitionPath).value;
+    writeAtomic(this.activePath, canonicalJson(recorded.nextActive));
+    unlinkSync(this.preparedPath);
+    fsyncDirectory(this.root);
+    return {
+      active: recorded.nextActive, activeDigest: canonicalSha256(recorded.nextActive),
+    };
+  }
+
   resumePreparedRevision({ operationRunId, lockToken, expectedPreparedDigest, expectedDefinitionDigest, now = () => new Date() }) {
     this.assertLocked(lockToken, operationRunId);
     if (this.readPending()) throw new Error('a deployment revision is already pending');
@@ -415,6 +394,14 @@ export class DeploymentStore {
     return { active, activeDigest: canonicalSha256(active) };
   }
 
+  retireEphemeralRevision(options) {
+    return retireActiveEphemeralRevision(this, options);
+  }
+
+  retireFailedEphemeralRevision(options) {
+    return retireFailedEphemeralRevision(this, options);
+  }
+
   readManifest(generation, { verifySnapshots = false } = {}) {
     if (!Number.isSafeInteger(generation) || generation < 1) throw new Error('generation must be a positive safe integer');
     const revisionRoot = path.join(this.revisions, String(generation));
@@ -435,11 +422,32 @@ export class DeploymentStore {
     return { manifest, manifestDigest, revisionRoot };
   }
 
+  readRetired() {
+    if (!existsSync(this.retiredRevisions)) return [];
+    return readdirSync(this.retiredRevisions, { withFileTypes: true }).map((entry) => {
+      if (!entry.isFile() || !/^[1-9][0-9]*\.json$/.test(entry.name)) {
+        throw new Error(`ambiguous retired revision entry: ${entry.name}`);
+      }
+      const record = readCanonical(path.join(this.retiredRevisions, entry.name));
+      if (record.value.deploymentId !== this.deploymentId
+          || record.value.generation !== Number(entry.name.slice(0, -5))) {
+        throw new Error(`retired revision identity mismatch: ${entry.name}`);
+      }
+      return record;
+    }).sort((left, right) => left.value.generation - right.value.generation);
+  }
+
   inspect() {
-    if (!existsSync(this.revisions)) return { deploymentId: this.deploymentId, registered: false, active: null, pending: null, prepared: null };
+    if (!existsSync(this.revisions)) return {
+      deploymentId: this.deploymentId, registered: false,
+      active: null, pending: null, prepared: null, retired: [],
+    };
     const active = this.readActive();
     const pending = this.readPending();
     const prepared = readOptional(this.preparedPath);
-    return { deploymentId: this.deploymentId, registered: true, active, pending, prepared, nextGeneration: this.nextGeneration() };
+    return {
+      deploymentId: this.deploymentId, registered: true, active, pending, prepared,
+      retired: this.readRetired(), nextGeneration: this.nextGeneration(),
+    };
   }
 }

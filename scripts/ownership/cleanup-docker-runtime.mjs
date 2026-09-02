@@ -81,6 +81,7 @@ function assertApprovedRuntimeContext(plan, deploymentManifest, registrations, a
     protectedProjects: options.protectedProjects ?? [],
     dataVolumeNames: options.dataVolumeNames ?? [],
     sharedImmutableIdentities: options.sharedImmutableIdentities ?? [],
+    legacyFixtureWitnessDigest: options.legacyFixtureWitnessDigest ?? null,
   });
   if (context.fingerprint !== plan.contextFingerprint) {
     throw new Error('runtime Docker authority does not match approved cleanup context');

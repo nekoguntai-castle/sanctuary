@@ -284,6 +284,7 @@ test_setup_generates_and_preserves_password() {
     local env_file="$runtime/sanctuary.env"
     local compose_project="sanctuary-grafana-migration-test-$$"
     mkdir "$runtime"
+    chmod 700 "$runtime"
 
     env -u GRAFANA_PASSWORD \
         SANCTUARY_RUNTIME_DIR="$runtime" SANCTUARY_ENV_FILE="$env_file" \

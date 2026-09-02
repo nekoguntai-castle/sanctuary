@@ -164,6 +164,7 @@ run_start() {
     local status
     shift
     mkdir -p "$case_dir/ssl" "$case_dir/runtime"
+    chmod 700 "$case_dir/runtime"
     : > "$case_dir/ssl/fullchain.pem"
     : > "$case_dir/ssl/privkey.pem"
     : > "$case_dir/docker.log"

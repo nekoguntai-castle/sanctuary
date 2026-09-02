@@ -12,21 +12,20 @@ PSBT bugs can result in **lost funds** or **stuck transactions**. This verificat
 
 ## Quick Start
 
-### 1. Start Bitcoin Core (for full verification)
+### 1. Run the receipt-bound Bitcoin Core proof
 
 ```bash
-cd scripts/verify-psbt
-docker compose up -d
+export DIAGNOSTIC_DIR="$PWD/.tmp/ci-diagnostics/verify-psbt-local"
+export VERIFY_PSBT_CORE_IMAGE="$(node -p 'require("./scripts/verify-psbt/proof-manifest.json").coreImage')"
+mkdir -p "$DIAGNOSTIC_DIR"
+scripts/ci/cleanup-ci-callsite.sh auto-run \
+  --lane verify-psbt-live --checkout-root "$PWD" -- \
+  scripts/ci/run-psbt-core-subject.sh live
 ```
 
-The compose file pins Bitcoin Core 29.0 by image digest. Generation fails unless
-the operator explicitly attests that pinned-container mode and the exact image
-from `proof-manifest.json` are in use:
-
-```bash
-export VERIFY_PSBT_CORE_PROVENANCE_MODE=pinned-container
-export VERIFY_PSBT_CORE_IMAGE="$(node -p 'require("./proof-manifest.json").coreImage')"
-```
+The subject pins Bitcoin Core 29.0 by the digest in `proof-manifest.json`,
+attests the exact runtime image, and publishes signed cleanup evidence. It also
+runs generation, verification, and the server replay tests described below.
 
 ### 2. Generate Extended Vectors
 
@@ -74,7 +73,7 @@ npm test -- --run tests/unit/services/bitcoin/psbt.verified.test.ts
 
 ```
 scripts/verify-psbt/
-├── docker-compose.yml      # Bitcoin Core container
+├── ../ci/run-psbt-core-subject.sh # Receipt-bound Bitcoin Core proof subject
 ├── proof-manifest.json     # Exact Core image digest and runtime identity
 ├── provenance.ts           # Fail-closed live runtime attestation
 ├── implementations/
@@ -188,19 +187,15 @@ Located at `implementations/sanctuary.ts`:
 
 ### Bitcoin Core Not Starting
 
-```bash
-# Check container logs
-docker compose logs bitcoin-core
-
-# Restart container
-docker compose restart bitcoin-core
-```
+The live proof container is owned by the `verify-vectors` workflow. Inspect its
+uploaded diagnostics rather than starting or restarting the retired standalone
+Compose stack.
 
 ### RPC Connection Failed
 
 ```bash
-# Verify Bitcoin Core is ready
-docker exec bitcoin-core bitcoin-cli -regtest getblockchaininfo
+# Verify the workflow-owned Bitcoin Core container is ready
+docker exec "$VERIFY_PSBT_CORE_CONTAINER_ID" bitcoin-cli -regtest getblockchaininfo
 ```
 
 ### Tests Failing on Valid PSBTs
@@ -208,7 +203,7 @@ docker exec bitcoin-core bitcoin-cli -regtest getblockchaininfo
 1. Check that the PSBT is complete base64 (not truncated)
 2. Verify against Bitcoin Core manually:
    ```bash
-   docker exec bitcoin-core bitcoin-cli -regtest decodepsbt "<psbt>"
+   docker exec "$VERIFY_PSBT_CORE_CONTAINER_ID" bitcoin-cli -regtest decodepsbt "<psbt>"
    ```
 3. Check for version incompatibilities in bitcoinjs-lib
 

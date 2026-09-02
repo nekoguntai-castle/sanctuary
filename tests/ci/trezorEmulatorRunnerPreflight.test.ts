@@ -71,8 +71,12 @@ printf '%s\\n' '${expectedCommit}'
   );
   writeExecutable(
     "docker",
-    `#!/usr/bin/env bash
+`#!/usr/bin/env bash
 set -euo pipefail
+state='${workspace}/mock-container-state'
+labels_file='${workspace}/mock-container-labels'
+name_file='${workspace}/mock-container-name'
+container_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 if [ "\${1:-}" = 'context' ]; then
   printf '%s\\n' 'unix:///var/run/docker.sock'
 elif [ "\${1:-}" = 'version' ]; then
@@ -81,26 +85,53 @@ elif [ "\${1:-}" = 'version' ]; then
   else
     printf '%s\\n' '{"Client":{"Version":"28.0.0","ApiVersion":"1.48","Os":"linux","Arch":"amd64"},"Server":{"Version":"28.0.0","ApiVersion":"1.48","MinAPIVersion":"1.24","Os":"linux","Arch":"amd64"}}'
   fi
-elif [ "\${1:-}" = 'inspect' ]; then
-  if [ ! -f '${workspace}/mock-container-started' ]; then exit 1; fi
+elif [ "\${1:-}" = 'inspect' ] || { [ "\${1:-}" = 'container' ] && [ "\${2:-}" = 'inspect' ]; }; then
+  if [ ! -f "$state" ]; then exit 1; fi
   if [[ "$*" == *'{{.State.Running}}'* ]]; then
     exit "\${MOCK_STATE_INSPECT_STATUS:-1}"
   fi
-  printf '[{"Image":"${expectedConfigDigest}","State":{"Running":true}}]\\n'
+  labels="$(jq -Rn '[inputs | capture("(?<key>[^=]+)=(?<value>.*)") | {(.key): .value}] | add' < "$labels_file")"
+  container_name="$(cat "$name_file")"
+  container_state="$(cat "$state")"
+  jq -n --arg id "$container_id" --arg name "/$container_name" \
+    --arg image '${expectedConfigDigest}' --arg status "$container_state" --argjson labels "$labels" \
+    '[{Id:$id,Name:$name,Image:$image,Config:{Labels:$labels},State:{Status:$status,Running:($status == "started")}}]'
 elif [ "\${1:-}" = 'pull' ]; then
   exit 0
-elif [ "\${1:-}" = 'run' ]; then
-  printf 'PODMAN_RUN_ARGS:%s\\n' "$*" >&2
-  if [ "\${MOCK_RUN_SUCCEEDS:-0}" = '1' ]; then
-    touch '${workspace}/mock-container-started'
-    printf '%s\\n' 'container-id'
+elif [ "\${1:-}" = 'create' ]; then
+  printf 'PODMAN_CREATE_ARGS:%s\\n' "$*" >&2
+  if [ "\${MOCK_RUN_SUCCEEDS:-0}" = '1' ] || [ "\${MOCK_CREATE_RESPONSE_LOSS:-0}" = '1' ]; then
+    : > "$labels_file"
+    cidfile=''
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --cidfile) cidfile="$2"; shift 2 ;;
+        --label) printf '%s\\n' "$2" >> "$labels_file"; shift 2 ;;
+        --name) printf '%s\\n' "$2" > "$name_file"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    printf 'created\\n' > "$state"
+    printf '%s\\n' "$container_id" > "$cidfile"
+    if [ "\${MOCK_CREATE_RESPONSE_LOSS:-0}" = '1' ]; then exit 74; fi
+    printf '%s\\n' "$container_id"
     exit 0
   fi
   exit 73
+elif [ "\${1:-}" = 'start' ]; then
+  printf 'started\\n' > "$state"
+  printf '%s\\n' "$container_id"
+elif [ "\${1:-}" = 'container' ] && [ "\${2:-}" = 'ls' ]; then
+  [ ! -f "$state" ] || printf '%s\\n' "$container_id"
 elif [ "\${1:-}" = 'exec' ]; then
   exit 1
 elif [ "\${1:-}" = 'logs' ]; then
   exit 0
+elif [ "\${1:-}" = 'stop' ]; then
+  printf '%s\\n' "$*" > '${workspace}/stop-invocation'
+  if [ "\${MOCK_STOP_LEAVES_PRESENT:-0}" != '1' ]; then rm -f "$state"; fi
+  if [ "\${MOCK_STOP_RESPONSE_LOSS:-0}" = '1' ]; then exit 74; fi
+  printf '%s\\n' "$container_id"
 elif [ "\${1:-}" = 'rm' ] && [ "\${2:-}" = '-f' ]; then
   exit 0
 elif [ "\${1:-}" = 'image' ] && [ "\${2:-}" = 'inspect' ]; then
@@ -140,6 +171,8 @@ const runProof = (
         SANCTUARY_CI_RUN_ID_OVERRIDE: runId,
         SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: "1",
         SANCTUARY_CI_HEAD_SHA_OVERRIDE: expectedCommit,
+        SANCTUARY_CLEANUP_COORDINATED: "1",
+        SANCTUARY_OWNERSHIP_ROOT: path.join(workspace, "ownership"),
         ...overrides,
       },
     },
@@ -221,15 +254,58 @@ describe("Trezor emulator proof runner preflight", () => {
       MOCK_DOCKER_ENGINE: "podman",
     });
 
-    expect(result.status).toBe(73);
-    expect(result.stderr).toContain("PODMAN_RUN_ARGS:run -d --platform");
-    expect(result.stderr).not.toContain("PODMAN_RUN_ARGS:run --rm");
-    const runArguments = result.stderr.match(/PODMAN_RUN_ARGS:[^\n]*/)?.[0];
-    expect(runArguments).not.toContain(" -p ");
-    expect(runArguments).not.toContain("--network");
-    expect(runArguments).toContain(
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stderr).toContain("PODMAN_CREATE_ARGS:create --rm --cidfile");
+    const createArguments = result.stderr.match(/PODMAN_CREATE_ARGS:[^\n]*/)?.[0];
+    expect(createArguments).not.toContain(" -p ");
+    expect(createArguments).not.toContain("--network");
+    expect(createArguments).toContain(
       ".venv/bin/python src/main.py",
     );
+  });
+
+  it("retires the durable exact ID when create loses its response", () => {
+    const result = runProof("create-response-loss", {
+      MOCK_DOCKER_ENGINE: "podman",
+      MOCK_CREATE_RESPONSE_LOSS: "1",
+    });
+
+    expect(result.status).toBe(74);
+    expect(readFileSync(path.join(workspace, "stop-invocation"), "utf8"))
+      .toContain("stop --timeout 10 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const evidence = path.join(
+      workspace,
+      ".tmp/ci-evidence/trezor-emulator/create-response-loss-1/diagnostics/registered-transient.json",
+    );
+    expect(readFileSync(evidence, "utf8")).toContain('"postcondition": "absent"');
+  });
+
+  it("accepts a lost stop response only when exact absence is proven", () => {
+    const result = runProof("stop-response-loss", {
+      MOCK_DOCKER_ENGINE: "podman",
+      MOCK_CREATE_RESPONSE_LOSS: "1",
+      MOCK_STOP_RESPONSE_LOSS: "1",
+    });
+
+    expect(result.status).toBe(74);
+    const evidence = path.join(
+      workspace,
+      ".tmp/ci-evidence/trezor-emulator/stop-response-loss-1/diagnostics/registered-transient.json",
+    );
+    expect(readFileSync(evidence, "utf8")).toContain('"postcondition": "absent"');
+  });
+
+  it("fails cleanup when a lost stop response leaves the container present", () => {
+    const result = runProof("stop-response-ambiguous", {
+      MOCK_DOCKER_ENGINE: "podman",
+      MOCK_CREATE_RESPONSE_LOSS: "1",
+      MOCK_STOP_RESPONSE_LOSS: "1",
+      MOCK_STOP_LEAVES_PRESENT: "1",
+    });
+
+    expect(result.status).toBe(74);
+    expect(result.stderr).toContain("removal is unproven");
+    expect(result.stderr).toContain("stop=74");
   });
 
   it("preserves diagnostics and fails fast when the controller container exits", () => {
@@ -238,6 +314,8 @@ describe("Trezor emulator proof runner preflight", () => {
       `#!/usr/bin/env bash
 set -euo pipefail
 state='${workspace}/container-state'
+labels_file='${workspace}/container-labels'
+name_file='${workspace}/container-name'
 config_digest='${expectedConfigDigest}'
 if [ "\${1:-}" = 'context' ]; then
   printf '%s\n' 'unix:///var/run/docker.sock'
@@ -245,10 +323,23 @@ elif [ "\${1:-}" = 'version' ]; then
   printf '%s\n' '{"Client":{"Version":"28.0.0","ApiVersion":"1.48","Os":"linux","Arch":"amd64"},"Server":{"Version":"5.4.2","ApiVersion":"1.41","MinAPIVersion":"1.24","Os":"linux","Arch":"amd64","Components":[{"Name":"Podman Engine","Version":"5.4.2"}]}}'
 elif [ "\${1:-}" = 'image' ] && [ "\${2:-}" = 'inspect' ]; then
   printf '[{"RepoDigests":["ghcr.io/trezor/trezor-user-env@${expectedImageDigest}"],"Id":"%s","Os":"linux","Architecture":"amd64"}]\n' "$config_digest"
-elif [ "\${1:-}" = 'run' ]; then
+elif [ "\${1:-}" = 'create' ]; then
+  printf 'created' > "$state"
+  : > "$labels_file"
+  while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --cidfile) cidfile="$2"; shift 2 ;;
+        --label) printf '%s\n' "$2" >> "$labels_file"; shift 2 ;;
+        --name) printf '%s\n' "$2" > "$name_file"; shift 2 ;;
+        *) shift ;;
+    esac
+  done
+  printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$cidfile"
+  printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+elif [ "\${1:-}" = 'start' ]; then
   printf 'started' > "$state"
-  printf '%s\n' 'container-id'
-elif [ "\${1:-}" = 'inspect' ]; then
+  printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+elif [ "\${1:-}" = 'inspect' ] || { [ "\${1:-}" = 'container' ] && [ "\${2:-}" = 'inspect' ]; }; then
   if [ ! -f "$state" ]; then exit 1; fi
   if [[ "$*" == *'{{.State.Running}}'* ]]; then
     printf '%s\n' 'false'
@@ -256,14 +347,20 @@ elif [ "\${1:-}" = 'inspect' ]; then
     printf 'inspected' > "$state"
     printf '[{"Image":"%s","State":{"Running":true}}]\n' "$config_digest"
   else
-    printf '[{"Image":"%s","State":{"Running":false,"ExitCode":137,"OOMKilled":true,"Error":""}}]\n' "$config_digest"
+    labels="$(jq -Rn '[inputs | capture("(?<key>[^=]+)=(?<value>.*)") | {(.key): .value}] | add' < "$labels_file")"
+    jq -n --arg id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+      --arg name "/$(cat "$name_file")" --arg image "$config_digest" --argjson labels "$labels" \
+      '[{Id:$id,Name:$name,Image:$image,Config:{Labels:$labels},State:{Status:"created",Running:false,ExitCode:137,OOMKilled:true,Error:""}}]'
   fi
+elif [ "\${1:-}" = 'container' ] && [ "\${2:-}" = 'ls' ]; then
+  [ ! -f "$state" ] || printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 elif [ "\${1:-}" = 'exec' ]; then
   exit 1
 elif [ "\${1:-}" = 'logs' ]; then
   printf '%s\n' 'controller process exited'
-elif [ "\${1:-}" = 'rm' ] && [ "\${2:-}" = '-f' ]; then
-  printf '%s\n' "$*" > '${workspace}/remove-invocation'
+elif [ "\${1:-}" = 'stop' ]; then
+  printf '%s\n' "$*" > '${workspace}/stop-invocation'
+  rm -f "$state"
 else
   echo "Unexpected docker invocation: $*" >&2
   exit 91
@@ -282,18 +379,19 @@ fi
       workspace,
       ".tmp/ci-evidence/trezor-emulator/early-container-exit-1/diagnostics",
     );
-    expect(
-      readFileSync(
-        path.join(diagnostics, "container-terminal-inspect.json"),
-        "utf8",
-      ),
-    ).toContain('"OOMKilled":true');
+    expect(JSON.parse(readFileSync(
+      path.join(diagnostics, "container-terminal-inspect.json"),
+      "utf8",
+    ))[0].State.OOMKilled).toBe(true);
     expect(
       readFileSync(path.join(diagnostics, "trezor-user-env.log"), "utf8"),
     ).toContain("controller process exited");
     expect(
-      readFileSync(path.join(workspace, "remove-invocation"), "utf8"),
-    ).toContain("rm -f sanctuary-trezor-proof-early-container-exit-1");
+      readFileSync(path.join(workspace, "stop-invocation"), "utf8"),
+    ).toContain("stop --timeout 10 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(
+      readFileSync(path.join(diagnostics, "registered-transient.json"), "utf8"),
+    ).toContain('"postcondition": "absent"');
   });
 
   it("distinguishes a readiness inspect failure from a container exit", () => {

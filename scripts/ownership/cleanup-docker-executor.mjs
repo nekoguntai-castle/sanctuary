@@ -2,7 +2,7 @@ import { URL } from 'node:url';
 
 const ACTION_KEYS = Object.freeze([
   'sequence', 'resourceClass', 'immutableIdentity', 'action', 'locatorKind',
-  'locator', 'ownershipDigest', 'observationDigest',
+  'locator', 'ownershipDigest', 'observationDigest', 'dependencyIdentities',
 ]);
 
 const SUPERVISOR_OUTCOMES = new Set([
@@ -45,6 +45,11 @@ function validateBaseAction(action) {
   }
   validateDigest(action.ownershipDigest, 'cleanup action ownershipDigest');
   validateDigest(action.observationDigest, 'cleanup action observationDigest');
+  if (!Array.isArray(action.dependencyIdentities) || action.dependencyIdentities.length > 512
+      || action.dependencyIdentities.some((identity, index) => !DIGEST.test(identity)
+        || (index > 0 && action.dependencyIdentities[index - 1].localeCompare(identity) >= 0))) {
+    throw new TypeError('cleanup action dependency identities must be bounded, unique, sorted digests');
+  }
 }
 
 function validateEngineIdAction(action, allowedAction) {
@@ -102,6 +107,11 @@ function frozenArgs(...values) {
   return Object.freeze(values);
 }
 
+function engineLocator(action) {
+  return action.resourceClass === 'oci_image'
+    ? action.locator.slice('sha256:'.length) : action.locator;
+}
+
 function invalidGlobalArgsShape(engine, values) {
   return !Array.isArray(values) || values.length !== 2
     || values[0] !== (engine === 'docker' ? '--host' : '--url')
@@ -144,7 +154,7 @@ function mutationArgs(action, freshVolumeProof) {
   }
   if (action.resourceClass === 'oci_image') {
     validateImageAction(action);
-    return frozenArgs('image', 'rm', action.locator);
+    return frozenArgs('image', 'rm', engineLocator(action));
   }
   throw new TypeError(`${action.resourceClass} has no Docker mutation adapter`);
 }
@@ -180,7 +190,7 @@ function postconditionFor(action) {
     locatorKind: 'engine_id',
     locator: action.locator,
     immutableIdentity: action.immutableIdentity,
-    queryArgs: frozenArgs(noun, 'inspect', action.locator),
+    queryArgs: frozenArgs(noun, 'inspect', engineLocator(action)),
     satisfiedBy: Object.freeze(['absent']),
   });
 }

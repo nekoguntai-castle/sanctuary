@@ -29,6 +29,12 @@ on:
       - 'scripts/ci/create-isolated-workspace.sh'
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/cleanup-docker-resources.sh'
+      - 'scripts/ci/cleanup-ci-callsite.sh'
+      - 'scripts/ci/run-compose-e2e-subject.sh'
+      - 'scripts/ownership/**'
+      - 'tests/ownership/**'
+      - 'config/resource-ownership-contract.json'
+      - 'config/resource-lifecycle-callsites.json'
       - 'scripts/ci/install-test-ports.sh'
       - 'scripts/ci/provider-context.sh'
       - 'scripts/ci/redactor.sh'
@@ -42,6 +48,8 @@ on:
       - 'scripts/ci/run-install-unit-tests.sh'
       - 'scripts/ci/retry-command.sh'
       - '.github/actions/setup-node-toolchain/**'
+      - '.github/actions/verify-cleanup-receipt/**'
+      - '.github/actions/upload-cleanup-evidence/**'
       - 'tests/ci/lib/**'
       - 'tests/ci/check-workflow-composition.test.sh'
       - 'tests/install/**'
@@ -70,6 +78,12 @@ on:
       - 'scripts/ci/create-isolated-workspace.sh'
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/cleanup-docker-resources.sh'
+      - 'scripts/ci/cleanup-ci-callsite.sh'
+      - 'scripts/ci/run-compose-e2e-subject.sh'
+      - 'scripts/ownership/**'
+      - 'tests/ownership/**'
+      - 'config/resource-ownership-contract.json'
+      - 'config/resource-lifecycle-callsites.json'
       - 'scripts/ci/install-test-ports.sh'
       - 'scripts/ci/provider-context.sh'
       - 'scripts/ci/redactor.sh'
@@ -83,6 +97,8 @@ on:
       - 'scripts/ci/run-install-unit-tests.sh'
       - 'scripts/ci/retry-command.sh'
       - '.github/actions/setup-node-toolchain/**'
+      - '.github/actions/verify-cleanup-receipt/**'
+      - '.github/actions/upload-cleanup-evidence/**'
       - 'tests/ci/lib/**'
       - 'tests/ci/check-workflow-composition.test.sh'
       - 'tests/install/**'
@@ -109,11 +125,6 @@ on:
           - container-health
           - auth-flow
           - release-critical
-      keep_containers:
-        description: 'Keep containers after test for debugging'
-        required: false
-        default: false
-        type: boolean
       upgrade_source_ref:
         description: 'Optional older git ref or tag to install before upgrading to the checked-out ref'
         required: false
@@ -178,6 +189,7 @@ jobs:
       run_container_health: ${{ steps.check.outputs.run_container_health }}
       run_auth_flow: ${{ steps.check.outputs.run_auth_flow }}
       run_reuse_stack: ${{ steps.check.outputs.run_reuse_stack }}
+      run_ownership_cleanup: ${{ steps.check.outputs.run_ownership_cleanup }}
       run_upgrade_baseline: ${{ steps.check.outputs.run_upgrade_baseline }}
       run_upgrade_extended: ${{ steps.check.outputs.run_upgrade_extended }}
       upgrade_baseline_refs: ${{ steps.check.outputs.upgrade_baseline_refs }}
@@ -247,6 +259,67 @@ jobs:
           path: ${{ env.JOB_LOG_DIR }}
           retention-days: 14
           if-no-files-found: ignore
+
+  ownership-cleanup-acceptance:
+    name: Ownership Cleanup Real Docker Acceptance
+    runs-on: [ubuntu-22.04, docker-socket]
+    timeout-minutes: 15
+    needs: determine-scope
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.determine-scope.outputs.run_ownership_cleanup == 'true'
+    env:
+      SANCTUARY_RUN_DOCKER_ACCEPTANCE: 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
+
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
+      - name: Run real-resource cleanup and interruption proof
+        env:
+          SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/sanctuary-cleanup-acceptance
+        run: node --test tests/ownership/cleanup-docker-real.test.mjs
+
+      - name: Verify projected acceptance receipts
+        if: always()
+        env:
+          SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/sanctuary-cleanup-acceptance
+        run: |
+          test -s "$SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR/recovered-upload.json"
+          test -s "$SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR/recovered-upload.json.sig"
+          test -s "$SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR/recovered-upload.sha256"
+          test -s "$SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR/second-run-upload.json"
+          test -s "$SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR/evidence-public.pem"
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { verifySignedArtifact } from './scripts/ownership/cleanup-evidence.mjs';
+          import { publicKeyFingerprint } from './scripts/ownership/crypto.mjs';
+          import { readFileSync } from 'node:fs';
+          const root = process.env.SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR;
+          const publicKeyPath = path.join(root, 'evidence-public.pem');
+          const expectedFingerprint = publicKeyFingerprint(readFileSync(publicKeyPath));
+          for (const name of ['recovered-upload', 'second-run-upload']) {
+            verifySignedArtifact({
+              inputPath: path.join(root, `${name}.json`), publicKeyPath,
+              expectedFingerprint, checkoutRoot: process.cwd(),
+            });
+          }
+          NODE
+
+      - name: Upload cleanup acceptance receipts
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: cleanup-real-docker-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-acceptance/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
   # ============================================
   # Fresh Install E2E Test
@@ -321,37 +394,33 @@ jobs:
 
       - name: Run fresh install test
         if: github.event_name != 'pull_request'
-        env:
-          KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
+          subject=(bash -c 'cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/fresh-install.test.sh --verbose')
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/fresh-install.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "fresh install e2e" \
-            bash -c "
-              cd \"$SANCTUARY_INSTALL_WORKSPACE\"
-              if [ \"\${KEEP_CONTAINERS:-false}\" = \"true\" ]; then
-                ./tests/install/e2e/fresh-install.test.sh --keep-containers --verbose
-              else
-                ./tests/install/e2e/fresh-install.test.sh --verbose
-              fi
-            "
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --authority-mode deployment_managed_by_subject \
+              --lane fresh-install \
+              --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/fresh-install" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/fresh-install" \
+              -- "${subject[@]}"
 
       - name: Run install script test
         if: github.event_name != 'pull_request'
-        env:
-          KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
+          subject=(bash -c 'cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/install-script.test.sh --verbose')
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-script.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "install script e2e" \
-            bash -c "
-              cd \"$SANCTUARY_INSTALL_WORKSPACE\"
-              if [ \"\${KEEP_CONTAINERS:-false}\" = \"true\" ]; then
-                ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
-              else
-                ./tests/install/e2e/install-script.test.sh --verbose
-              fi
-            "
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --authority-mode deployment_managed_by_subject \
+              --lane install-script \
+              --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/install-script" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/install-script" \
+              -- "${subject[@]}"
 
       - name: Show container logs on failure
         if: failure() && github.event_name != 'pull_request'
@@ -395,16 +464,25 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Cleanup
-        if: always() && github.event_name != 'pull_request' && github.event.inputs.keep_containers != 'true'
-        run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for fresh-install cleanup"
-            exit 1
-          fi
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+      - name: Verify install cleanup receipts
+        id: verify_cleanup_receipt
+        if: always() && github.event_name != 'pull_request'
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          children: 'true'
+
+      - name: Upload install cleanup evidence
+        if: always() && github.event_name != 'pull_request' && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-install-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts
+          children: 'true'
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Cleanup isolated install workspace
         if: always() && github.event_name != 'pull_request'
@@ -529,59 +607,24 @@ jobs:
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
 
-      - name: Start reusable stack
+      - name: Run receipt-bound reusable stack subject
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        env:
+          RUN_HEALTH: ${{ needs.determine-scope.outputs.run_container_health }}
+          RUN_AUTH: ${{ needs.determine-scope.outputs.run_auth_flow }}
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-stack.log" \
+          subject=(scripts/ci/run-compose-e2e-subject.sh \
+            --workspace "$SANCTUARY_STACK_WORKSPACE" --mode install-stack \
+            --run-health "${RUN_HEALTH:-false}" --run-auth "${RUN_AUTH:-false}")
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-stack.log" \
             scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "install stack startup" \
-            bash -c '
-            cd "$SANCTUARY_STACK_WORKSPACE"
-            JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-            ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-
-            ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-            GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-            WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
-            POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-            LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
-            REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-
-            source tests/install/utils/helpers.sh
-            SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"
-            mkdir -p "$SANCTUARY_SSL_DIR"
-            SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-            export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
-            bash docker/nginx/ssl/generate-certs.sh localhost
-
-            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
-              GATEWAY_SECRET="$GATEWAY_SECRET" WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET" \
-              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-              LLM_EGRESS_PROXY_SECRET="$LLM_EGRESS_PROXY_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-              SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-              docker compose up -d --build
-
-            timeout 120 bash -c "until docker compose ps migrate --format \"{{.Status}}\" 2>/dev/null | grep -q \"Exited\"; do sleep 5; done" || true
-            sleep 30
-          '
-
-      - name: Run container health tests
-        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && needs.determine-scope.outputs.run_container_health == 'true'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "install stack container health" \
-            bash -c 'cd "$SANCTUARY_STACK_WORKSPACE" && ./tests/install/e2e/container-health.test.sh --verbose'
-
-      - name: Run auth flow tests
-        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && needs.determine-scope.outputs.run_auth_flow == 'true'
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "install stack auth flow" \
-            bash -c 'cd "$SANCTUARY_STACK_WORKSPACE" && ./tests/install/e2e/auth-flow.test.sh --verbose'
+            scripts/ci/time-command.sh "install stack subject" \
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --lane install-stack \
+              --checkout-root "$SANCTUARY_STACK_WORKSPACE" \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/install-stack" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/install-stack" \
+              -- "${subject[@]}"
 
       - name: Show container logs on failure
         if: failure() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
@@ -612,16 +655,23 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Cleanup
-        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && github.event.inputs.keep_containers != 'true'
-        run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for stack cleanup"
-            exit 1
-          fi
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+      - name: Verify install stack cleanup receipt
+        id: verify_cleanup_receipt
+        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/install-stack
+
+      - name: Upload install stack cleanup evidence
+        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-install-stack-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/install-stack/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/install-stack
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Cleanup isolated stack workspace
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
@@ -679,51 +729,18 @@ jobs:
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
 
-      - name: Start containers
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "container health start" \
-            bash -c '
-            cd "$SANCTUARY_HEALTH_WORKSPACE"
-            # Generate all required secrets
-            JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-            ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-
-            ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-            GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-            WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
-            POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-            LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
-            REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-
-            # Generate SSL certs
-            source tests/install/utils/helpers.sh
-            SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"
-            mkdir -p "$SANCTUARY_SSL_DIR"
-            SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-            export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
-            bash docker/nginx/ssl/generate-certs.sh localhost
-
-            # Start containers
-            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
-              GATEWAY_SECRET="$GATEWAY_SECRET" WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET" \
-              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-              LLM_EGRESS_PROXY_SECRET="$LLM_EGRESS_PROXY_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-              SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              docker compose up -d --build
-
-            # Wait for startup
-            sleep 30
-          '
-
-      - name: Run container health tests
+      - name: Run receipt-bound container health subject
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
             scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "container health e2e" \
-            bash -c 'cd "$SANCTUARY_HEALTH_WORKSPACE" && ./tests/install/e2e/container-health.test.sh --verbose'
+            scripts/ci/time-command.sh "container health subject" \
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --lane container-health \
+              --checkout-root "$SANCTUARY_HEALTH_WORKSPACE" \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/container-health" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/container-health" \
+              -- scripts/ci/run-compose-e2e-subject.sh \
+                --workspace "$SANCTUARY_HEALTH_WORKSPACE" --mode container-health
 
       - name: Show container logs on failure
         if: failure()
@@ -754,16 +771,23 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Cleanup
+      - name: Verify container health cleanup receipt
+        id: verify_cleanup_receipt
         if: always()
-        run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for health cleanup"
-            exit 1
-          fi
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/container-health
+
+      - name: Upload container health cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-container-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/container-health/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/container-health
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Cleanup isolated health workspace
         if: always()
@@ -823,55 +847,18 @@ jobs:
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
 
-      - name: Start containers
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "auth flow start" \
-            bash -c '
-            cd "$SANCTUARY_AUTH_WORKSPACE"
-            # Generate all required secrets
-            JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-            ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-
-            ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-            GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
-            WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
-            POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-            LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
-            REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
-
-            # Generate SSL certs
-            source tests/install/utils/helpers.sh
-            SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"
-            mkdir -p "$SANCTUARY_SSL_DIR"
-            SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-            export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
-            bash docker/nginx/ssl/generate-certs.sh localhost
-
-            # Start containers with higher rate limits for testing
-            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
-              GATEWAY_SECRET="$GATEWAY_SECRET" WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET" \
-              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-              LLM_EGRESS_PROXY_SECRET="$LLM_EGRESS_PROXY_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-              SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-              docker compose up -d --build
-
-            # Wait for migration to complete
-            timeout 120 bash -c "until docker compose ps migrate --format \"{{.Status}}\" 2>/dev/null | grep -q \"Exited\"; do sleep 5; done" || true
-
-            # Wait for services
-            sleep 30
-          '
-
-      - name: Run auth flow tests
+      - name: Run receipt-bound auth flow subject
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
             scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "auth flow e2e" \
-            bash -c 'cd "$SANCTUARY_AUTH_WORKSPACE" && ./tests/install/e2e/auth-flow.test.sh --verbose'
+            scripts/ci/time-command.sh "auth flow subject" \
+            scripts/ci/cleanup-ci-callsite.sh run \
+              --lane auth-flow \
+              --checkout-root "$SANCTUARY_AUTH_WORKSPACE" \
+              --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/auth-flow" \
+              --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/auth-flow" \
+              -- scripts/ci/run-compose-e2e-subject.sh \
+                --workspace "$SANCTUARY_AUTH_WORKSPACE" --mode auth-flow
 
       - name: Show container logs on failure
         if: failure()
@@ -900,16 +887,23 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Cleanup
+      - name: Verify auth flow cleanup receipt
+        id: verify_cleanup_receipt
         if: always()
-        run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for auth cleanup"
-            exit 1
-          fi
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/auth-flow
+
+      - name: Upload auth flow cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-auth-flow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/auth-flow/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/auth-flow
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Cleanup isolated auth workspace
         if: always()
@@ -1012,7 +1006,7 @@ jobs:
               upgrade_args+=(--verify-force-rebuild)
             fi
 
-            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${source_label}-baseline"
+            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${GITHUB_RUN_ATTEMPT}-${source_label}-baseline"
             export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
             export SANCTUARY_UPGRADE_FIXTURE="baseline"
             export SANCTUARY_UPGRADE_ARTIFACT_DIR="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/.tmp/upgrade-artifacts/${source_label}-baseline"
@@ -1024,15 +1018,20 @@ jobs:
             set +a
             rm -f "$port_env"
 
-            cleanup() {
-              SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-                bash "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
-            }
-            trap cleanup EXIT
-
             local status
             local log_path="${JOB_LOG_DIR}/upgrade-baseline-${source_label}.log"
-            if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
+            local cleanup_lane="upgrade-${port_offset}"
+            local cleanup_runtime="$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/${cleanup_lane}"
+            local cleanup_artifacts="$RUNNER_TEMP/sanctuary-cleanup-artifacts/upgrade-baseline/${cleanup_lane}"
+            if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/cleanup-ci-callsite.sh" run \
+                 --authority-mode deployment_managed_by_subject \
+                 --legacy-fixture-creation-witness \
+                 --lane "$cleanup_lane" \
+                 --checkout-root "$PWD" \
+                 --runtime "$cleanup_runtime" \
+                 --artifact-dir "$cleanup_artifacts" \
+                 -- \
+                 "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
                  scripts/ci/with-runner-lock.sh e2e \
                  scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" \
                  ./tests/install/e2e/upgrade-install.test.sh "${upgrade_args[@]}"; then
@@ -1043,12 +1042,7 @@ jobs:
               docker compose logs --tail 50 postgres 2>&1 || true
               docker compose logs --tail 100 backend 2>&1 || true
             fi
-            trap - EXIT
-            if upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"; then
-              return 0
-            else
-              return "$?"
-            fi
+            return "$status"
           }
 
           IFS=',' read -ra selected_refs <<< "$UPGRADE_BASELINE_REFS"
@@ -1077,6 +1071,26 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-upgrade-dind.log" \
             scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Verify upgrade baseline cleanup receipts
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-baseline
+          children: 'true'
+
+      - name: Upload upgrade baseline cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-upgrade-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-baseline/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-baseline
+          children: 'true'
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Write upgrade baseline timing summary
         if: always()
@@ -1204,6 +1218,26 @@ jobs:
           path: .tmp/upgrade-artifacts/
           if-no-files-found: ignore
 
+      - name: Verify extended upgrade cleanup receipts
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended
+          children: 'true'
+
+      - name: Upload extended upgrade cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-upgrade-extended-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended
+          children: 'true'
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
       - name: Write extended upgrade diagnostic summary
         if: always()
         continue-on-error: true
@@ -1247,68 +1281,6 @@ jobs:
           fi
           echo "Extended upgrade fixtures passed: ${SELECTED_EXTENDED_FIXTURES:-none}."
 
-  docker-resource-cleanup:
-    name: Docker Resource Cleanup
-    runs-on: [ubuntu-22.04, docker-socket]
-    timeout-minutes: 15
-    needs: [determine-scope, fresh-install-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test]
-    if: always() && github.event_name != 'pull_request'
-    env:
-      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/docker-resource-cleanup
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          clean: false
-
-      - name: Check Docker
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
-            scripts/ci/wait-for-docker.sh
-
-      - name: Sweep runner leftovers
-        run: |
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash scripts/ci/cleanup-docker-resources.sh --runner-leftovers || \
-            echo "::warning::Runner leftover cleanup did not complete"
-
-      - name: Verify current-run Docker cleanup
-        if: github.event.inputs.keep_containers != 'true'
-        run: |
-          SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-            bash scripts/ci/cleanup-docker-resources.sh \
-            --verify-empty \
-            --prefix sanctuary-ci-fresh-${{ github.run_id }} \
-            --prefix sanctuary-ci-stack-${{ github.run_id }} \
-            --prefix sanctuary-ci-health-${{ github.run_id }} \
-            --prefix sanctuary-ci-auth-${{ github.run_id }} \
-            --prefix sanctuary-ci-upgrade-${{ github.run_id }}
-
-      - name: Post-cleanup DIND diagnostics
-        if: always()
-        continue-on-error: true
-        env:
-          SANCTUARY_CI_PROJECT_PREFIXES: >-
-            sanctuary-ci-fresh-${{ github.run_id }}
-            sanctuary-ci-stack-${{ github.run_id }}
-            sanctuary-ci-health-${{ github.run_id }}
-            sanctuary-ci-auth-${{ github.run_id }}
-            sanctuary-ci-upgrade-${{ github.run_id }}
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup-dind.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Upload cleanup diagnostic logs
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: diag-docker-resource-cleanup-${{ github.run_id }}
-          path: ${{ env.JOB_LOG_DIR }}
-          retention-days: 14
-          if-no-files-found: ignore
-
   # ============================================
   # Test Summary
   # ============================================
@@ -1316,7 +1288,7 @@ jobs:
     name: Install Test Summary
     runs-on: ubuntu-22.04
     timeout-minutes: 15
-    needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test, docker-resource-cleanup]
+    needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test]
     if: always()
 
     steps:

@@ -1590,6 +1590,7 @@ test_setup_script_retries_corrupt_buildkit_cache_with_fake_docker() {
     local output=""
 
     mkdir -p "$fakebin" "$(dirname "$env_file")" "$ssl_dir"
+    chmod 700 "$fixture_dir/runtime"
 
     cat > "$fakebin/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -1670,11 +1671,6 @@ if [ "$1" = "compose" ]; then
     esac
 fi
 
-if [ "$1" = "builder" ] && [ "${2:-}" = "prune" ]; then
-    printf 'builder prune:%s\n' "${*:2}" >> "$log_file"
-    exit 0
-fi
-
 if [ "$1" = "image" ] && [ "${2:-}" = "inspect" ]; then
     case "${3:-}" in
         sanctuary-*) exit 0 ;;
@@ -1726,8 +1722,8 @@ EOF
         "setup.sh should run an initial compose build" || return 1
     assert_contains "$log" "docker pull:tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459" \
         "setup.sh should explicitly pull a missing digest-pinned runtime image" || return 1
-    assert_contains "$log" "builder prune:prune --force" \
-        "setup.sh should clear builder cache before retrying" || return 1
+    assert_not_contains "$log" "builder prune:" \
+        "setup.sh should preserve the shared builder cache" || return 1
     assert_contains "$log" "compose build:--no-cache" \
         "setup.sh should retry the failed build with --no-cache" || return 1
     assert_contains "$log" "compose up:-d --no-build postgres" \
@@ -1736,6 +1732,8 @@ EOF
         "setup.sh should start the full stack without rebuilding after build" || return 1
     assert_contains "$output" "Docker builder cache appears to be corrupt" \
         "setup.sh should explain the targeted BuildKit cache recovery" || return 1
+    assert_contains "$output" "Preserving the shared builder cache" \
+        "setup.sh should explain that cache recovery is non-destructive" || return 1
     assert_contains "$output" "::error title=CI timing::compose build completed in" \
         "setup.sh should time failed compose builds without hiding the exit code" || return 1
     assert_contains "$output" "::notice title=CI timing::compose build cache-recovery retry completed in" \
@@ -1867,6 +1865,15 @@ test_uninstall_script_has_keep_data_option() {
     fi
 }
 
+test_uninstall_script_has_separate_delete_data_option() {
+    local contents
+    contents="$(cat "$UNINSTALL_SCRIPT")"
+    assert_contains "$contents" '--delete-data' \
+        "uninstall.sh should require an explicit data-deletion option" || return 1
+    assert_contains "$contents" 'KEEP_DATA=true' \
+        "uninstall.sh should preserve data by default"
+}
+
 test_uninstall_script_has_confirmation() {
     if grep -q "DELETE\|confirm" "$UNINSTALL_SCRIPT"; then
         return 0
@@ -1877,12 +1884,41 @@ test_uninstall_script_has_confirmation() {
 }
 
 test_uninstall_script_removes_volumes() {
-    if grep -q "docker.*volume\|down -v" "$UNINSTALL_SCRIPT"; then
-        return 0
-    else
-        echo -e "${RED}ASSERTION FAILED:${NC} uninstall.sh should remove Docker volumes"
-        return 1
-    fi
+    local contents
+    contents="$(cat "$UNINSTALL_SCRIPT")"
+    assert_contains "$contents" 'operator_compose+=(--confirm-data-delete)' \
+        "uninstall data deletion must require a separate explicit decision" || return 1
+    assert_contains "$contents" 'operator_compose+=(--volumes)' \
+        "uninstall should delete only active Compose deployment volumes" || return 1
+    assert_not_contains "$contents" 'docker volume rm' \
+        "uninstall must not delete volumes by legacy names" || return 1
+    assert_contains "$contents" 'external or legacy volumes were preserved' \
+        "uninstall must disclose that external legacy data remains preserved"
+}
+
+test_uninstall_script_never_prunes_shared_images() {
+    local contents
+    contents="$(cat "$UNINSTALL_SCRIPT")"
+    assert_not_contains "$contents" "docker image prune" \
+        "uninstall.sh must preserve daemon-global dangling images" || return 1
+    assert_not_contains "$contents" "docker rmi" \
+        "uninstall.sh must not delete mutable image tags"
+}
+
+test_uninstall_script_does_not_recommend_recursive_checkout_deletion() {
+    local contents
+    contents="$(cat "$UNINSTALL_SCRIPT")"
+    assert_not_contains "$contents" "rm -rf" \
+        "uninstall.sh must not recommend unrecoverable recursive checkout deletion"
+}
+
+test_uninstall_script_uses_active_operator_authority() {
+    local contents
+    contents="$(cat "$UNINSTALL_SCRIPT")"
+    assert_contains "$contents" 'scripts/ownership/run-operator-compose.sh' \
+        "uninstall must enter through the active deployment wrapper" || return 1
+    assert_not_contains "$contents" 'docker compose' \
+        "uninstall must not reconstruct Compose authority directly"
 }
 
 # ============================================
@@ -1918,6 +1954,19 @@ test_setup_threads_upgrade_mode_into_first_manifest_inspection() {
     resolve_start_body="$(sed -n '/^resolve_start_deployment()/,/^}/p' "$START_SCRIPT")"
     assert_contains "$resolve_start_body" 'deployment_verify_legacy_preconditions' \
         "start.sh must revalidate legacy identities after every deployment resume" || return 1
+}
+
+test_setup_binds_subject_cleanup_before_managed_mutation() {
+    local begin_line bind_line verify_line
+    begin_line="$(grep -nF 'deployment_begin "$OPT_ENABLE_MONITORING"' "$SETUP_SCRIPT" | cut -d: -f1)"
+    bind_line="$(grep -nF 'node "$PROJECT_DIR/scripts/ownership/ci-cleanup-coordinator.mjs"' "$SETUP_SCRIPT" | cut -d: -f1)"
+    verify_line="$(awk -v start="$begin_line" \
+        'NR > start && /deployment_verify_legacy_preconditions/ { print NR; exit }' "$SETUP_SCRIPT")"
+    [ -n "$begin_line" ] && [ -n "$bind_line" ] && [ -n "$verify_line" ] \
+        && [ "$begin_line" -lt "$bind_line" ] && [ "$bind_line" -lt "$verify_line" ] || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh must bind the exact subject manifest immediately after deployment_begin"
+        return 1
+    }
 }
 
 test_setup_refuses_legacy_attachment_with_invalid_runtime_identity() {
@@ -2400,6 +2449,75 @@ test_fresh_install_initializes_ownership_identity() {
     done
 }
 
+test_install_e2e_entrypoints_use_cleanup_auto_run() {
+    local entrypoint contents
+    for entrypoint in \
+        "$PROJECT_ROOT/tests/install/run-all-tests.sh" \
+        "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh" \
+        "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh" \
+        "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"; do
+        contents="$(cat "$entrypoint")"
+        assert_contains "$contents" 'install_e2e_cleanup_auto_run ' \
+            "$(basename "$entrypoint") should enter receipt-bound cleanup" || return 1
+        assert_contains "$contents" 'INSTALL_E2E_ARGS=("$@")' \
+            "$(basename "$entrypoint") should preserve its original arguments" || return 1
+    done
+}
+
+test_install_e2e_cleanup_auto_run_delegates_and_preserves_status() {
+    local fixture="$TEST_TMP_DIR/install-cleanup-auto-run"
+    local log="$fixture/args.log"
+    local status
+    mkdir -p "$fixture/scripts/ci"
+    cat > "$fixture/scripts/ci/cleanup-ci-callsite.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$INSTALL_CLEANUP_TEST_LOG"
+exit 37
+EOF
+    chmod +x "$fixture/scripts/ci/cleanup-ci-callsite.sh"
+
+    set +e
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        INSTALL_CLEANUP_TEST_LOG="$log" \
+            install_e2e_cleanup_auto_run install-fixture "$fixture" /exact/subject --verbose exact-spec
+    ) >/dev/null 2>&1
+    status=$?
+    set -e
+
+    assert_equals "37" "$status" "cleanup auto-run should preserve coordinator status" || return 1
+    assert_equals "auto-run" "$(sed -n '1p' "$log")" "cleanup facade mode should be auto-run" || return 1
+    grep -qx -- '--lane' "$log" && grep -qx 'install-fixture' "$log" \
+        && grep -qx -- '--checkout-root' "$log" && grep -qx "$fixture" "$log" \
+        && grep -qx -- '--authority-mode' "$log" \
+        && grep -qx 'deployment_managed_by_subject' "$log" \
+        && grep -qx -- '--' "$log" && grep -qx '/exact/subject' "$log" \
+        && grep -qx -- '--verbose' "$log" && grep -qx 'exact-spec' "$log"
+}
+
+test_install_e2e_cleanup_auto_run_refuses_keep_semantics() {
+    local status
+    set +e
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        install_e2e_cleanup_auto_run install-fixture "$TEST_TMP_DIR/missing" \
+            /exact/subject --keep-containers
+    ) >/dev/null 2>&1
+    status=$?
+    set -e
+    assert_equals "2" "$status" "keep-containers should fail before cleanup authority creation" || return 1
+
+    set +e
+    (
+        source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+        install_e2e_cleanup_auto_run install-fixture "$TEST_TMP_DIR/missing" \
+            /exact/subject --skip-cleanup
+    ) >/dev/null 2>&1
+    status=$?
+    set -e
+    assert_equals "2" "$status" "skip-cleanup should fail before cleanup authority creation"
+}
+
 test_env_example_has_setup_instructions() {
     if grep -qi "install.sh\|setup.sh" "$ENV_EXAMPLE"; then
         return 0
@@ -2579,13 +2697,18 @@ main() {
     run_test "uninstall script is executable" test_uninstall_script_is_executable
     run_test "uninstall script has --force option" test_uninstall_script_has_force_option
     run_test "uninstall script has --keep-data option" test_uninstall_script_has_keep_data_option
+    run_test "uninstall script separately opts into data deletion" test_uninstall_script_has_separate_delete_data_option
     run_test "uninstall script has confirmation" test_uninstall_script_has_confirmation
     run_test "uninstall script removes volumes" test_uninstall_script_removes_volumes
+    run_test "uninstall script preserves shared images" test_uninstall_script_never_prunes_shared_images
+    run_test "uninstall script avoids recursive checkout deletion" test_uninstall_script_does_not_recommend_recursive_checkout_deletion
+    run_test "uninstall script uses active operator authority" test_uninstall_script_uses_active_operator_authority
     echo ""
 
     echo -e "${YELLOW}Test Suite: scripts/setup.sh${NC}"
     run_test "setup script exists" test_setup_script_exists
     run_test "setup threads upgrade mode into ownership inspection" test_setup_threads_upgrade_mode_into_first_manifest_inspection
+    run_test "setup binds coordinated subject before managed mutation" test_setup_binds_subject_cleanup_before_managed_mutation
     run_test "setup refuses legacy attachment without existing runtime env" test_setup_refuses_legacy_attachment_without_preexisting_runtime_env
     run_test "setup refuses legacy attachment with invalid runtime identity" test_setup_refuses_legacy_attachment_with_invalid_runtime_identity
     run_test "setup script has secret fallbacks" test_setup_script_has_secret_fallbacks
@@ -2609,6 +2732,9 @@ main() {
     run_test ".env.example exists" test_env_example_exists
     run_test ".env.example has all required secrets" test_env_example_has_all_required_secrets
     run_test "fresh install initializes ownership identity" test_fresh_install_initializes_ownership_identity
+    run_test "install E2E entrypoints use cleanup auto-run" test_install_e2e_entrypoints_use_cleanup_auto_run
+    run_test "install cleanup auto-run delegates and preserves status" test_install_e2e_cleanup_auto_run_delegates_and_preserves_status
+    run_test "install cleanup auto-run refuses keep semantics" test_install_e2e_cleanup_auto_run_refuses_keep_semantics
     run_test ".env.example has setup instructions" test_env_example_has_setup_instructions
     echo ""
 

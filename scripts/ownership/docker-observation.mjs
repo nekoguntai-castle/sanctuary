@@ -29,6 +29,21 @@ function lines(output) {
   return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
+function boundedDependencyIdentities(output, operation) {
+  const identities = [...new Set(lines(output))].sort();
+  if (identities.length > 512) {
+    throw Object.assign(new Error(`${operation} exceeds the bounded dependency limit`), {
+      category: 'output_limit', operation,
+    });
+  }
+  if (identities.some((identity) => !DIGEST_PATTERN.test(identity))) {
+    throw Object.assign(new Error(`${operation} returned a malformed immutable identity`), {
+      category: 'malformed_output', operation,
+    });
+  }
+  return identities;
+}
+
 function exactObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${label} must be an object`);
   return value;
@@ -192,15 +207,17 @@ function volumeIdentity(record) {
 
 export function dockerImmutableIdentity(resourceClass, record) {
   if (resourceClass === 'compose_volume') return volumeIdentity(record);
-  const identity = record.Id ?? record.ID ?? record.id;
+  const observed = record.Id ?? record.ID ?? record.id;
+  const identity = resourceClass === 'oci_image' && /^[a-f0-9]{64}$/.test(observed)
+    ? `sha256:${observed}` : observed;
   const valid = resourceClass === 'oci_image' ? /^sha256:[a-f0-9]{64}$/.test(identity) : /^[a-f0-9]{12,64}$/.test(identity);
   if (!valid) throw Object.assign(new Error('inspect lacks an immutable ID'), { category: 'malformed_output' });
   return identity;
 }
 
 function ownershipState(labels, resourceClass) {
-  const sanctuary = Object.keys(labels).filter((key) => key.startsWith('io.sanctuary.'));
-  if (sanctuary.length === 0) return Object.keys(labels).some((key) => key.startsWith('com.docker.compose.')) ? 'legacy_unlabeled' : 'unlabeled';
+  const runtimeOwnership = REQUIRED_OWNERSHIP_LABELS.filter((key) => Object.hasOwn(labels, key));
+  if (runtimeOwnership.length === 0) return Object.keys(labels).some((key) => key.startsWith('com.docker.compose.')) ? 'legacy_unlabeled' : 'unlabeled';
   const complete = REQUIRED_OWNERSHIP_LABELS.every((key) => typeof labels[key] === 'string' && labels[key].length > 0);
   if (!complete || labels['io.sanctuary.resource-class'] !== resourceClass) return 'malformed';
   try {
@@ -227,7 +244,8 @@ function registeredMetadata(options, resourceClass, immutableIdentity, locator) 
   const shared = matches.some((entry) => entry.lifecycle === 'shared')
     || new Set(matches.map((entry) => entry.operationRunId).filter(Boolean)).size > 1;
   const retained = matches.some((entry) => entry.cleanupPolicy === 'retain' || entry.cleanupPolicy === 'retain_reconcile');
-  return { ...matches.at(-1), referenceIds, ownerIds, lifecycle: shared ? 'shared' : matches.at(-1).lifecycle,
+  return { ...matches.at(-1), registrationCount: matches.length,
+    referenceIds, ownerIds, lifecycle: shared ? 'shared' : matches.at(-1).lifecycle,
     cleanupPolicy: retained ? 'retain' : matches.at(-1).cleanupPolicy };
 }
 
@@ -236,7 +254,8 @@ function registrationProof(registration) {
   const keys = [
     'registrationId', 'deploymentId', 'operationRunId', 'ownerId', 'resourceClass',
     'lifecycle', 'cleanupPolicy', 'locatorKind', 'locator', 'immutableIdentity',
-    'metadataDigest', 'referenceIds', 'signerKeyId',
+    'metadataDigest', 'referenceIds', 'signerKeyId', 'createdAt',
+    'createdByRelease', 'createdByCommit',
   ];
   return Object.fromEntries(keys.filter((key) => registration[key] !== undefined)
     .map((key) => [key, registration[key]]));
@@ -266,9 +285,7 @@ function classifyProduction(result, labels, registration, options) {
 
 function classifyVolume(result, record, identity, registration, options, runtime) {
   const volumeName = record.Name ?? record.name;
-  if (runtime.attachmentCount > 0 || registration.data === true || options.dataVolumeNames?.includes(volumeName)) {
-    result.add(registration.data === true || options.dataVolumeNames?.includes(volumeName) ? 'data' : 'shared');
-  }
+  if (registration.data === true || options.dataVolumeNames?.includes(volumeName)) result.add('data');
   const nonce = registration.creationNonce ?? registration.operationRunId;
   const registered = registration.immutableIdentity === identity && registration.locator === volumeName
     && typeof nonce === 'string' && nonce.length > 0;
@@ -276,15 +293,70 @@ function classifyVolume(result, record, identity, registration, options, runtime
   if (!registered) result.add('protected');
 }
 
-function classifyImage(result, record, identity, registration, runtime) {
-  if (runtime.referenceCount > 0) {
-    result.add('referenced');
-    result.add('shared');
+function validImageProvenance(labels) {
+  const version = labels['org.opencontainers.image.version'];
+  const buildId = labels['io.sanctuary.build-id'];
+  return labels['org.opencontainers.image.source'] === 'https://github.com/nekoguntai-castle/sanctuary'
+    && /^[a-f0-9]{40}$/.test(labels['org.opencontainers.image.revision'] ?? '')
+    && /^[a-f0-9]{64}$/.test(labels['dev.sanctuary.image-lock-sha256'] ?? '')
+    && typeof version === 'string' && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(version)
+    && typeof buildId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(buildId);
+}
+
+function exclusiveImageRegistrationAuthority(identity, registration) {
+  return registration.immutableIdentity === identity
+    && registration.registrationCount === 1
+    && registration.lifecycle === 'obsolete'
+    && registration.cleanupPolicy === 'exact_delete'
+    && registration.referenceIds?.length === 1
+    && registration.referenceIds[0] === registration.operationRunId;
+}
+
+function exclusivelyRegisteredImage(identity, registration, runtime) {
+  if (!exclusiveImageRegistrationAuthority(identity, registration)) return false;
+  if (registration.locatorKind === 'engine_id') {
+    return registration.locator === identity
+      && runtime.tags.length === 0
+      && runtime.digests.length === 0;
   }
-  if (registration.release === true || runtime.tags.some((tag) => !tag.endsWith(':local'))) result.add('protected');
+  if (registration.locatorKind !== 'reference') return false;
+  const tag = registration.locator;
+  const slash = tag.lastIndexOf('/');
+  const colon = tag.lastIndexOf(':');
+  const repository = colon > slash ? tag.slice(0, colon) : tag;
+  const intrinsicDigests = runtime.digests.length <= 1
+    && runtime.digests.every((digest) => digest.startsWith(`${repository}@sha256:`));
+  return runtime.tags.length === 1
+    && runtime.tags[0] === tag
+    && intrinsicDigests;
+}
+
+function exclusivelyRegisteredLegacyFixture(resourceClass, identity, locator, registration, options) {
+  if (!['compose_container', 'compose_network', 'compose_volume'].includes(resourceClass)
+      || !/^[a-f0-9]{64}$/.test(options.legacyFixtureWitnessDigest ?? '')
+      || registration.metadataDigest !== options.legacyFixtureWitnessDigest
+      || registration.immutableIdentity !== identity
+      || registration.registrationCount !== 1
+      || registration.lifecycle !== 'obsolete'
+      || registration.cleanupPolicy !== 'exact_delete'
+      || registration.referenceIds?.length !== 1
+      || registration.referenceIds[0] !== registration.operationRunId) return false;
+  return resourceClass === 'compose_volume'
+    ? registration.locatorKind === 'name' && registration.locator === locator
+    : registration.locatorKind === 'engine_id' && registration.locator === identity;
+}
+
+function classifyImage(result, labels, identity, registration, runtime) {
   const registered = registration.immutableIdentity === identity;
   result.add(registered ? 'registered' : 'unregistered');
-  if (!registered) result.add('protected');
+  const external = ownershipState(labels, 'oci_image') === 'unlabeled'
+    && validImageProvenance(labels)
+    && exclusivelyRegisteredImage(identity, registration, runtime);
+  if (external) result.add('externally_registered');
+  if (registration.release === true || !external) {
+    result.add('protected');
+  }
+  return external;
 }
 
 function imageReferenceFields(record) {
@@ -310,24 +382,42 @@ function classifications(resourceClass, record, labels, identity, locator, optio
   classifyProduction(result, labels, registration, options);
   if (['retain', 'retain_reconcile', 'preserve_ambiguous'].includes(labels['io.sanctuary.cleanup-policy'])) result.add('protected');
   if (resourceClass === 'compose_container' && runtime.running) result.add('running');
-  if (resourceClass === 'compose_network' && runtime.endpointCount > 0) result.add('shared');
   if (resourceClass === 'compose_volume') classifyVolume(result, record, identity, registration, options, runtime);
-  if (resourceClass === 'oci_image') classifyImage(result, record, identity, registration, runtime);
-  if (['unlabeled', 'legacy_unlabeled', 'malformed', 'current', 'shared', 'data'].some((value) => result.has(value))) result.add('protected');
+  const externalImage = resourceClass === 'oci_image'
+    && classifyImage(result, labels, identity, registration, runtime);
+  const externalFixture = exclusivelyRegisteredLegacyFixture(
+    resourceClass, identity, locator, registration, options,
+  );
+  if (externalFixture) {
+    result.add('externally_registered');
+    result.delete('protected');
+  }
+  if ((!externalImage && !externalFixture
+      && ['unlabeled', 'legacy_unlabeled'].some((value) => result.has(value)))
+      || ['malformed', 'current', 'shared', 'data'].some((value) => result.has(value))) result.add('protected');
   return [...result].sort();
 }
 
 function relationshipState(run, engine, resourceClass, record, identity) {
   if (resourceClass === 'compose_network') {
-    const refs = lines(query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `network=${identity}`, '--format', '{{.ID}}'], 'network endpoint list'));
-    return { endpointCount: new Set(refs).size };
+    const dependencyIdentities = boundedDependencyIdentities(
+      query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `network=${identity}`, '--format', '{{.ID}}'], 'network endpoint list'),
+      'network endpoint list',
+    );
+    return { endpointCount: dependencyIdentities.length, dependencyIdentities };
   }
   if (resourceClass === 'compose_volume') {
-    const refs = lines(query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `volume=${record.Name ?? record.name}`, '--format', '{{.ID}}'], 'volume attachment list'));
-    return { attachmentCount: new Set(refs).size };
+    const dependencyIdentities = boundedDependencyIdentities(
+      query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `volume=${record.Name ?? record.name}`, '--format', '{{.ID}}'], 'volume attachment list'),
+      'volume attachment list',
+    );
+    return { attachmentCount: dependencyIdentities.length, dependencyIdentities };
   }
   if (resourceClass === 'oci_image') {
-    const refs = lines(query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `ancestor=${identity}`, '--format', '{{.ID}}'], 'image reference list'));
+    const dependencyIdentities = boundedDependencyIdentities(
+      query(run, engine, ['container', 'ls', '--all', '--no-trunc', '--filter', `ancestor=${identity}`, '--format', '{{.ID}}'], 'image reference list'),
+      'image reference list',
+    );
     const { tags, digests } = imageReferenceFields(record);
     const references = [...new Set([...tags, ...digests])].sort();
     const contentDigests = [...new Set([
@@ -338,7 +428,10 @@ function relationshipState(run, engine, resourceClass, record, identity) {
     if (references.length > 256 || contentDigests.length > 256) {
       throw Object.assign(new Error('image reference observation exceeds the bounded limit'), { category: 'output_limit', operation: 'image reference inventory' });
     }
-    return { referenceCount: new Set(refs).size, references, contentDigests, tags: [...tags].sort() };
+    return {
+      referenceCount: dependencyIdentities.length, dependencyIdentities,
+      references, contentDigests, tags: [...tags].sort(), digests: [...digests].sort(),
+    };
   }
   const running = record.State?.Running;
   if (typeof running !== 'boolean') throw Object.assign(new Error('container inspect lacks a boolean running state'), { category: 'malformed_output' });

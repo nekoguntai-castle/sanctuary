@@ -121,6 +121,55 @@ else
     bad 'COMPOSE_PROJECT_NAME must be overridable, not forced'
 fi
 
+# --- 7. every uncoordinated run delegates to cleanup auto-run ----------------
+if grep -q 'cleanup-ci-callsite.sh' "$RUNNER" && grep -q -- '--lane integration-tests' "$RUNNER" \
+    && grep -q 'SANCTUARY_CLEANUP_COORDINATED' "$RUNNER" && grep -q 'auto-run' "$RUNNER"; then
+    ok 'local and provider integration resources use cleanup auto-run'
+else
+    bad 'every integration run must enter cleanup auto-run before Compose'
+fi
+
+if grep -qE '(^|[[:space:]])down([[:space:]]|$)' "$RUNNER"; then
+    bad 'run-integration-tests.sh still performs direct Compose teardown'
+else
+    ok 'run-integration-tests.sh has no direct Compose teardown'
+fi
+
+delegate_root="$(mktemp -d "${TMPDIR:-/tmp}/integration-cleanup-delegate.XXXXXX")"
+mkdir -p "$delegate_root/scripts/ci" "$delegate_root/scripts/ownership"
+cp "$RUNNER" "$delegate_root/scripts/run-integration-tests.sh"
+cat > "$delegate_root/scripts/ci/cleanup-ci-callsite.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$SANCTUARY_DELEGATE_LOG"
+exit 37
+EOF
+chmod +x "$delegate_root/scripts/ci/cleanup-ci-callsite.sh"
+delegate_log="$delegate_root/delegate.log"
+SANCTUARY_DELEGATE_LOG="$delegate_log" \
+  "$delegate_root/scripts/run-integration-tests.sh" exact-spec >/dev/null 2>&1
+delegate_status=$?
+if [ "$delegate_status" -eq 37 ] \
+    && [ "$(sed -n '1p' "$delegate_log")" = auto-run ] \
+    && grep -qx -- '--lane' "$delegate_log" \
+    && grep -qx 'integration-tests' "$delegate_log" \
+    && grep -qx -- '--checkout-root' "$delegate_log" \
+    && grep -qx -- '--' "$delegate_log" \
+    && grep -qx 'exact-spec' "$delegate_log"; then
+    ok 'a normal local run delegates exact subject arguments and preserves coordinator status'
+else
+    bad "local cleanup delegation was incomplete (status=$delegate_status)"
+fi
+
+keep_output="$delegate_root/keep-db.out"
+if SANCTUARY_CLEANUP_COORDINATED=1 INTEGRATION_KEEP_DB=true \
+    "$RUNNER" >"$keep_output" 2>&1; then
+  bad 'receipt-bound integration unexpectedly accepted INTEGRATION_KEEP_DB=true'
+elif grep -q 'incompatible with mandatory receipt-bound cleanup' "$keep_output"; then
+  ok 'receipt-bound integration refuses misleading database retention mode'
+else
+  bad 'database retention refusal did not explain the receipt-bound conflict'
+fi
+
 echo
 echo "===================="
 echo "Passed: $PASS"

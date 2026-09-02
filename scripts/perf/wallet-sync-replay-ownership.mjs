@@ -28,7 +28,7 @@ export function replayOwnershipLabels(resourceClass, cleanupPolicy = 'exact_dele
     'io.sanctuary.deployment-id': owner.deployment,
     'io.sanctuary.owner-id': owner.owner,
     'io.sanctuary.resource-class': resourceClass,
-    'io.sanctuary.lifecycle': 'active',
+    'io.sanctuary.lifecycle': 'obsolete',
     'io.sanctuary.cleanup-policy': cleanupPolicy,
     'io.sanctuary.created-at': CREATED_AT,
     'io.sanctuary.created-by-release': owner.release,
@@ -40,21 +40,14 @@ export function replayOwnershipLabels(resourceClass, cleanupPolicy = 'exact_dele
 
 export function registerReplayResource(resourceClass, name, immutableIdentity, cleanupPolicy = 'exact_delete') {
   const root = process.env.SANCTUARY_OWNERSHIP_ROOT;
-  if (!root) return;
+  if (!root) throw new Error('Replay resource registration requires coordinated ownership authority');
   const owner = identity();
   registerResource({
     deploymentId: owner.deployment, operationRunId: owner.run, ownerId: owner.owner,
-    resourceClass, lifecycle: 'active', cleanupPolicy, createdAt: CREATED_AT,
+    resourceClass, lifecycle: 'obsolete', cleanupPolicy, createdAt: CREATED_AT,
     createdByRelease: owner.release, createdByCommit: owner.commit,
-    locatorKind: 'name', locator: name, immutableIdentity,
-    metadataDigest: createHash('sha256').update(`${resourceClass}\0${name}`).digest('hex'),
+    locatorKind: 'engine_id', locator: immutableIdentity, immutableIdentity,
+    metadataDigest: createHash('sha256').update(`${resourceClass}\0${name}\0${immutableIdentity}`).digest('hex'),
     referenceIds: [owner.run],
   }, { root: resolve(root), checkoutRoot: REPO_ROOT });
-}
-
-export function inspectOwnedId(kind, name, operation) {
-  const args = kind === 'network'
-    ? ['docker', 'network', 'inspect', '--format', '{{.Id}}', name]
-    : ['docker', 'inspect', '--format', '{{.Id}}', name];
-  return operation(args);
 }

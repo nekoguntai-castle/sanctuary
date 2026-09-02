@@ -5,15 +5,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { canonicalJson } from '../../scripts/ownership/canonical-json.mjs';
+import { canonicalJson, canonicalSha256, parseStrictJson } from '../../scripts/ownership/canonical-json.mjs';
 import { resolveDeploymentDefinition, composeArguments } from '../../scripts/ownership/deployment-definition.mjs';
 import {
   acquireDeploymentLock, assertDeploymentLock, DeploymentLockConflict, heartbeatDeploymentLock, inspectDeploymentLock,
-  readProcessStartIdentity, recoverStaleDeploymentLock, releaseDeploymentLock,
+  parseLinuxProcessIdentity, processIdentityMatches, readProcessStartIdentity,
+  recoverStaleDeploymentLock, releaseDeploymentLock,
 } from '../../scripts/ownership/deployment-lock.mjs';
 import { DeploymentStore } from '../../scripts/ownership/deployment-store.mjs';
+import {
+  acquireProjectMutationLock, releaseProjectMutationLock,
+} from '../../scripts/ownership/project-lock.mjs';
 
-function fixture() {
+function fixture(identity = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-store-project-'));
   const runtimeDirectory = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-store-runtime-'));
   writeFileSync(path.join(root, 'docker-compose.yml'), 'services:\n  app:\n    image: one:test\n');
@@ -23,7 +27,9 @@ function fixture() {
     commit: 'a'.repeat(40), policyDigest: 'b'.repeat(64), contextFingerprint: 'c'.repeat(64),
   };
   const store = new DeploymentStore({ runtimeDirectory, deploymentId: 'deployment-1' });
-  store.initialize({ projectDirectory: root, composeProjectName: path.basename(root).toLowerCase() });
+  store.initialize({
+    projectDirectory: root, composeProjectName: path.basename(root).toLowerCase(), ...identity,
+  });
   return { root, runtimeDirectory, definitionOptions, store };
 }
 
@@ -79,6 +85,20 @@ test('controller PID and start identity survive a short-lived CLI helper and rej
   }), /start identity mismatch/);
 });
 
+test('Linux process identity treats defunct controllers as non-runnable', () => {
+  const stat = (state, startIdentity) => `42 (cleanup controller) ${[
+    state, ...Array(18).fill('0'), startIdentity,
+  ].join(' ')}`;
+  const live = parseLinuxProcessIdentity(stat('S', '1234'));
+  const zombie = parseLinuxProcessIdentity(stat('Z', '1234'));
+  const dead = parseLinuxProcessIdentity(stat('X', '1234'));
+  assert.deepEqual(live, { startIdentity: 'linux-boot-ticks:1234', runnable: true });
+  assert.equal(processIdentityMatches(live, live.startIdentity), true);
+  assert.equal(processIdentityMatches(live, 'linux-boot-ticks:5678'), false);
+  assert.equal(processIdentityMatches(zombie, zombie.startIdentity), false);
+  assert.equal(processIdentityMatches(dead, dead.startIdentity), false);
+});
+
 test('immutable snapshots survive source replacement and activation is CAS health-gated', () => {
   const fixtureState = fixture();
   const owner = acquireDeploymentLock(fixtureState.store.lockPath, { operationRunId: 'run-1' });
@@ -95,6 +115,68 @@ test('immutable snapshots survive source replacement and activation is CAS healt
   assert.equal(active.active.generation, 1);
   assert.equal(fixtureState.store.inspect().pending, null);
   releaseDeploymentLock(fixtureState.store.lockPath, owner.token, 'run-1');
+});
+
+test('ephemeral retirement is exact, durable, idempotent, and refuses stale writers', () => {
+  const ciRunIdentityDigest = 'd'.repeat(64);
+  const fixtureState = fixture({ deploymentScope: 'ci_ephemeral', ciRunIdentityDigest });
+  const operationRunId = 'ci-42-1-retire';
+  const project = acquireProjectMutationLock(
+    fixtureState.runtimeDirectory, fixtureState.store.readIdentity().composeProjectName,
+    { operationRunId },
+  );
+  const owner = acquireDeploymentLock(fixtureState.store.lockPath, {
+    operationRunId, token: project.token,
+  });
+  const prepared = fixtureState.store.prepareRevision({
+    bundle: resolveDeploymentDefinition(fixtureState.definitionOptions), expectedActiveDigest: null,
+    operationRunId, lockToken: owner.token,
+  });
+  const finalized = fixtureState.store.finalizePreparedRevision({
+    operationRunId, lockToken: owner.token, expectedPendingDigest: prepared.pendingDigest,
+  });
+  fixtureState.store.activatePreparedEphemeralRevision({
+    operationRunId, lockToken: owner.token, projectLockToken: project.token,
+    expectedPreparedDigest: finalized.preparedDigest,
+  });
+  const active = fixtureState.store.readActive();
+  const runManifest = {
+    schemaVersion: '1.0.0', artifactType: 'run_manifest',
+    deploymentId: fixtureState.store.deploymentId, operationRunId,
+    ownerId: fixtureState.definitionOptions.ownerId, generation: 1,
+    startedAt: '2026-08-30T23:59:58.000Z', heartbeatAt: '2026-08-30T23:59:59.000Z',
+    terminalAt: '2026-08-31T00:00:00.000Z', controllerIdentity: ciRunIdentityDigest,
+    deploymentDigest: active.value.manifestDigest,
+  };
+  const runManifestDigest = canonicalSha256(runManifest);
+  assert.throws(() => fixtureState.store.retireEphemeralRevision({
+    operationRunId, lockToken: owner.token, expectedGeneration: 1,
+    expectedManifestDigest: active.value.manifestDigest,
+    expectedActivePointerDigest: 'f'.repeat(64), expectedRunManifestDigest: runManifestDigest,
+    runManifest, projectLockToken: project.token,
+  }), /compare-and-swap/);
+  const retired = fixtureState.store.retireEphemeralRevision({
+    operationRunId, lockToken: owner.token, expectedGeneration: 1,
+    expectedManifestDigest: active.value.manifestDigest,
+    expectedActivePointerDigest: active.digest, expectedRunManifestDigest: runManifestDigest,
+    runManifest, projectLockToken: project.token,
+    now: () => new Date('2026-08-31T00:00:00.000Z'),
+  });
+  assert.equal(fixtureState.store.readActive(), null);
+  assert.deepEqual(parseStrictJson(readFileSync(retired.retiredPath)), retired.retired);
+  const retried = fixtureState.store.retireEphemeralRevision({
+    operationRunId, lockToken: owner.token, expectedGeneration: 1,
+    expectedManifestDigest: active.value.manifestDigest,
+    expectedActivePointerDigest: active.digest, expectedRunManifestDigest: runManifestDigest,
+    runManifest, projectLockToken: project.token,
+    now: () => new Date('2027-01-01T00:00:00.000Z'),
+  });
+  assert.equal(retried.retiredDigest, retired.retiredDigest);
+  releaseDeploymentLock(fixtureState.store.lockPath, owner.token, operationRunId);
+  releaseProjectMutationLock(
+    fixtureState.runtimeDirectory, fixtureState.store.readIdentity().composeProjectName,
+    project.token, operationRunId,
+  );
 });
 
 test('write-ahead transition retries reuse the recorded next pointer', () => {

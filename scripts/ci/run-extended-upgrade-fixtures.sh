@@ -80,6 +80,7 @@ run_fixture() {
       run_id="$SANCTUARY_CI_EXTENDED_UPGRADE_RUN_ID"
       original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${SANCTUARY_CI_WORKSPACE_OVERRIDE:-$PWD}}"
       original_workspace="$(cd "$original_workspace" && pwd -P)"
+      source scripts/ci/provider-context.sh
       source tests/install/utils/upgrade-selection.sh
 
       export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${run_id}-${source_label}-${fixture}"
@@ -101,28 +102,27 @@ run_fixture() {
       set +a
       rm -f "$port_env"
 
-      cleanup() {
-        SANCTUARY_PRE_MANIFEST_NONPRODUCTION=true \
-          bash "$original_workspace/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
-      }
-      trap cleanup EXIT
-
       status=0
-      if scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "upgrade extended ${source_ref} ${fixture}" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "$fixture" --verbose; then
+      cleanup_lane="extended-${fixture}"
+      cleanup_temp="$(ci_temp_dir)"
+      cleanup_identity="${run_id}-$(ci_run_attempt)"
+      cleanup_runtime="$cleanup_temp/sanctuary-cleanup/${cleanup_identity}/${cleanup_lane}"
+      cleanup_artifacts="$cleanup_temp/sanctuary-cleanup-artifacts/upgrade-extended/${cleanup_lane}"
+      if "$original_workspace/scripts/ci/cleanup-ci-callsite.sh" run \
+          --authority-mode deployment_managed_by_subject \
+          --lane "$cleanup_lane" \
+          --checkout-root "$PWD" \
+          --runtime "$cleanup_runtime" \
+          --artifact-dir "$cleanup_artifacts" \
+          -- scripts/ci/with-runner-lock.sh e2e \
+             scripts/ci/time-command.sh "upgrade extended ${source_ref} ${fixture}" \
+             ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "$fixture" --verbose; then
         status=0
       else
         status="$?"
-        docker compose ps || true
-        docker compose logs --tail 50 postgres 2>&1 || true
-        docker compose logs --tail 100 backend 2>&1 || true
       fi
 
-      trap - EXIT
-      if upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"; then
-        exit 0
-      else
-        exit "$?"
-      fi
+      exit "$status"
     '
   ) || status="$?"
   echo "::endgroup::"

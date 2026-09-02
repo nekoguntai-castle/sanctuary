@@ -11,8 +11,6 @@ project_dir="$1"
 shift
 compose_args=("$@")
 export SANCTUARY_PROJECT_DIR="$project_dir"
-ownership_registration_enabled=false
-[ -z "${SANCTUARY_OWNERSHIP_ROOT:-}" ] || ownership_registration_enabled=true
 
 readonly migration_script_sha256="499bcae312b11e1d66fbff0ca02ef02ce299505cbe93370de66aeda380115429"
 readonly canonical_lock_root="/tmp/sanctuary-grafana-quiescence-locks"
@@ -97,20 +95,85 @@ resolve_migration_image() {
     migration_image_id="$image_id"
 }
 
+inspect_compose_volume() {
+    local volume="$1" logical_name="$2"
+    docker volume inspect "$volume" | jq -ceS \
+        --arg name "$volume" --arg compose_project "$resolved_project" \
+        --arg logical "$logical_name" --arg project "$SANCTUARY_PROJECT" \
+        --arg deployment "$SANCTUARY_DEPLOYMENT_ID" --arg owner "$SANCTUARY_OWNER_ID" '
+        if length == 1
+            and .[0].Name == $name
+            and (.[0].Driver | type == "string" and length > 0)
+            and (.[0].Scope | type == "string" and length > 0)
+            and (.[0].Mountpoint | type == "string" and length > 0)
+            and (.[0].CreatedAt | type == "string" and length > 0)
+            and (.[0].Labels | type == "object")
+            and .[0].Labels["com.docker.compose.project"] == $compose_project
+            and .[0].Labels["com.docker.compose.volume"] == $logical
+            and .[0].Labels["io.sanctuary.project"] == $project
+            and .[0].Labels["io.sanctuary.deployment-id"] == $deployment
+            and .[0].Labels["io.sanctuary.owner-id"] == $owner
+            and ([
+                .[0].Labels["io.sanctuary.project"],
+                .[0].Labels["io.sanctuary.deployment-id"],
+                .[0].Labels["io.sanctuary.owner-id"]
+            ] | all(type == "string" and test("^[a-z0-9][a-z0-9._:-]{0,127}$")))
+            and .[0].Labels["io.sanctuary.resource-class"] == "compose_volume"
+            and .[0].Labels["io.sanctuary.lifecycle"] == "active"
+            and .[0].Labels["io.sanctuary.cleanup-policy"] == "preserve_ambiguous"
+            and (.[0].Labels["io.sanctuary.created-at"] | type == "string"
+                and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.000Z$"))
+            and (.[0].Labels["io.sanctuary.created-by-release"] == "unreleased"
+                or (.[0].Labels["io.sanctuary.created-by-release"] | type == "string"
+                    and test("^[a-z0-9][a-z0-9._:-]{0,127}$")))
+            and (.[0].Labels["io.sanctuary.created-by-commit"] | type == "string"
+                and test("^[0-9a-f]{40}$"))
+            and (.[0].Labels["io.sanctuary.creation-run-id"] | type == "string"
+                and test("^[a-z0-9][a-z0-9._:-]{0,127}$"))
+        then [.[0] | {
+            Name, Driver, Scope, Mountpoint, CreatedAt, Options, Labels
+        }] else error("unexpected Grafana volume identity") end'
+}
+
+stable_compose_volume_identity() {
+    local volume="$1" logical_name="$2" first_identity second_identity
+    first_identity="$(inspect_compose_volume "$volume" "$logical_name")" || return 1
+    second_identity="$(inspect_compose_volume "$volume" "$logical_name")" || return 1
+    [ "$first_identity" = "$second_identity" ] || return 1
+    printf '%s\n' "$first_identity"
+}
+
+register_compose_volume() {
+    local volume="$1" identity="$2" fingerprint
+    fingerprint="$(printf '%s' "$identity" | ci_compose_volume_identity)" \
+        || fail "Grafana volume fingerprinting failed."
+    register_owned_resource compose_volume active preserve_ambiguous name \
+        "$volume" "$fingerprint" "$SANCTUARY_OPERATION_RUN_ID" \
+        || fail "Grafana volume registration failed."
+}
+
 ensure_compose_volume() {
-    local volume="$1" logical_name="$2" identity
-    if ! docker volume inspect "$volume" >/dev/null 2>&1; then
-        docker volume create \
-            --label "com.docker.compose.project=$resolved_project" \
-            --label "com.docker.compose.volume=$logical_name" \
-            "$volume" >/dev/null \
-            || fail "Grafana $logical_name volume creation failed."
+    local volume="$1" logical_name="$2" identity create_status=0
+    ownership_initialize
+    if identity="$(stable_compose_volume_identity "$volume" "$logical_name" 2>/dev/null)"; then
+        register_compose_volume "$volume" "$identity"
+        return 0
     fi
-    identity="$(docker volume inspect --format \
-        '{{.Name}}|{{index .Labels "com.docker.compose.project"}}|{{index .Labels "com.docker.compose.volume"}}' \
-        "$volume")" || fail "Grafana $logical_name volume identity is unavailable."
-    [ "$identity" = "$volume|$resolved_project|$logical_name" ] \
-        || fail "Grafana $logical_name volume has an unexpected identity."
+
+    local SANCTUARY_RESOURCE_LIFECYCLE=active
+    ownership_label_args compose_volume preserve_ambiguous
+    docker volume create \
+        "${OWNERSHIP_LABEL_ARGS[@]}" \
+        --label "com.docker.compose.project=$resolved_project" \
+        --label "com.docker.compose.volume=$logical_name" \
+        "$volume" >/dev/null || create_status=$?
+
+    identity="$(stable_compose_volume_identity "$volume" "$logical_name" 2>/dev/null)" \
+        || fail "Grafana $logical_name volume identity is unavailable, unexpected, or unstable."
+    register_compose_volume "$volume" "$identity"
+    if [ "$create_status" -ne 0 ]; then
+        echo "Recovered Grafana $logical_name volume after a lost create response." >&2
+    fi
 }
 
 ensure_control_volume() {
@@ -122,7 +185,7 @@ ensure_control_volume() {
 inspect_migration_container() {
     docker container inspect --format \
         '{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{.Image}}|{{index .Config.Labels "sanctuary.grafana.role"}}|{{index .Config.Labels "sanctuary.grafana.project"}}|{{index .Config.Labels "sanctuary.grafana.data-volume"}}|{{index .Config.Labels "sanctuary.grafana.control-volume"}}|{{index .Config.Labels "sanctuary.grafana.token"}}|{{index .Config.Labels "sanctuary.grafana.container-id"}}|{{index .Config.Labels "sanctuary.grafana.generation"}}' \
-        "$migration_container"
+        "${1:-$migration_container}"
 }
 
 validate_migration_identity() {
@@ -147,7 +210,7 @@ remove_terminal_migration_container() {
     [ "$exit_code" = "0" ] || outcome_status=rolled-back
     validate_outcome "$token" "$outcome_status" "$container_id" "$generation" \
         || fail "a prior Grafana credential migration has no valid daemon-visible outcome."
-    docker container rm "$id" >/dev/null \
+    retire_migration_container "$id" "$token" "$container_id" "$generation" \
         || fail "the terminal migration container could not be removed."
     cleanup_control_artifacts "$token"
     container_is_absent "$migration_container" \
@@ -186,7 +249,7 @@ remove_reclaimed_migration() {
     IFS='|' read -r id state exit_code image role project data_volume control_volume inspected_token inspected_container inspected_generation <<< "$identity"
     case "$state" in
         created|exited)
-            docker container rm "$id" >/dev/null \
+            retire_migration_container "$id" "$token" "$container_id" "$generation" \
                 || recover_reclaimed_removal_failure "$expected_id" "$token" "$container_id" "$generation"
             ;;
         running) wait_and_remove_reclaimed_migration "$expected_id" "$token" "$container_id" "$generation" ;;
@@ -244,8 +307,10 @@ assert_stopped_identity() {
 
 create_migration_container() {
     local token="$1" grafana_container_id="$2" generation="$3"
-    ownership_label_args collector_process exact_delete
-    docker container create --pull never --name "$migration_container" \
+    local id create_output identity create_status=0 output_status=0
+    local SANCTUARY_RESOURCE_LIFECYCLE=obsolete
+    ownership_label_args compose_container exact_delete
+    create_output="$(docker container create --pull never --name "$migration_container" \
         "${OWNERSHIP_LABEL_ARGS[@]}" \
         --label sanctuary.grafana.role=password-migration \
         --label "sanctuary.grafana.project=$resolved_project" \
@@ -264,7 +329,29 @@ create_migration_container() {
         -e "SANCTUARY_GRAFANA_QUIESCENCE_GENERATION=$generation" \
         --mount "type=volume,src=$resolved_data_volume,dst=/var/lib/grafana" \
         --mount "type=volume,src=$resolved_control_volume,dst=/var/lib/sanctuary-grafana-control" \
-        "$migration_image_id"
+        "$migration_image_id")" || create_status=$?
+    id="$(recover_exact_created_container "$migration_container")" || {
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return 1
+    }
+    [ "$create_status" -ne 0 ] || [ "$create_output" = "$id" ] || output_status=1
+    identity="$(inspect_migration_container "$id")" || {
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return 1
+    }
+    assert_launched_migration "$identity" "$id" "$token" "$grafana_container_id" "$generation" || {
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return 1
+    }
+    register_transient_container "$id" \
+        || fail "created migration container registration failed."
+    if [ "$create_status" -ne 0 ] || [ "$output_status" -ne 0 ]; then
+        retire_migration_container "$id" "$token" "$grafana_container_id" "$generation" \
+            || fail "recovered migration container could not be removed."
+        [ "$create_status" -ne 0 ] && return "$create_status"
+        return "$output_status"
+    fi
+    printf '%s\n' "$id"
 }
 
 assert_launched_migration() {
@@ -365,9 +452,6 @@ run_migration() {
         || fail "launched migration container identity is unavailable."
     assert_launched_migration "$identity" "$id" "$token" "$grafana_container_id" "$generation" \
         || fail "launched migration container identity does not match its lease."
-    if [ "$ownership_registration_enabled" = true ]; then
-        register_owned_resource collector_process active exact_delete name "$migration_container" "$id" "$SANCTUARY_OPERATION_RUN_ID"
-    fi
     if ! docker container start "$id" >/dev/null; then
         record_abandoned_start "$id" "$token" "$grafana_container_id" "$generation"
         fail "migration container start failed; reserved state requires reconciliation."
@@ -382,7 +466,7 @@ run_migration() {
         || fail "migration container terminal state is inconsistent (state=$last_observed_migration_state exit_code=$last_observed_migration_exit_code wait_code=$wait_code)."
     IFS='|' read -r _ state exit_code _ <<< "$identity"
     validate_migration_outcome "$token" "$exit_code" "$grafana_container_id" "$generation"
-    docker container rm "$id" >/dev/null \
+    retire_migration_container "$id" "$token" "$grafana_container_id" "$generation" \
         || fail "completed migration container could not be removed."
     cleanup_control_artifacts "$token"
     container_is_absent "$migration_container" \

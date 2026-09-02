@@ -190,11 +190,23 @@ case "$1" in
     exit 0
     ;;
   load)
-    exit 0
+    load_count="$(grep -c '^load ' "$SANCTUARY_FAKE_DOCKER_LOG" || true)"
+    if [ -n "${SANCTUARY_FAKE_LOAD_FAIL_AT:-}" ] \
+        && [ "$load_count" -eq "$SANCTUARY_FAKE_LOAD_FAIL_AT" ]; then
+      exit "${SANCTUARY_FAKE_LOAD_STATUS:-1}"
+    fi
+    if [ -n "${SANCTUARY_FAKE_LOAD_SIGNAL_AT:-}" ] \
+        && [ "$load_count" -eq "$SANCTUARY_FAKE_LOAD_SIGNAL_AT" ]; then
+      kill -TERM "$PPID"
+      sleep 0.1
+      exit 143
+    fi
+    [ -z "${SANCTUARY_FAKE_LOAD_FAIL_AT:-}" ] || exit 0
+    exit "${SANCTUARY_FAKE_LOAD_STATUS:-0}"
     ;;
   image)
     if [ "${2:-}" = "tag" ]; then
-      exit 0
+      exit "${SANCTUARY_FAKE_TAG_STATUS:-0}"
     fi
     if [ "${2:-}" = "inspect" ]; then
       image="${@: -1}"
@@ -223,8 +235,8 @@ case "$1" in
         *'{{.Id}} {{.Os}} {{.Architecture}}'*) printf '%s %s %s\n' "$image_id" "$image_os" "$image_arch" ;;
         *'{{.Id}}'*) printf '%s\n' "$image_id" ;;
         *'{{.Os}}/{{.Architecture}}'*) printf '%s/%s\n' "$image_os" "$image_arch" ;;
-        *) printf '[{"Id":"%s","Os":"%s","Architecture":"%s","RepoDigests":%s}]\n' \
-          "$image_id" "$image_os" "$image_arch" "$repo_digests" ;;
+        *) printf '[{"Id":"%s","Os":"%s","Architecture":"%s","RepoTags":["%s"],"RepoDigests":%s}]\n' \
+          "$image_id" "$image_os" "$image_arch" "$image" "$repo_digests" ;;
       esac
       exit 0
     fi
@@ -626,6 +638,130 @@ test_apply_validates_loaded_runtime_image_platform() {
   return "$failures"
 }
 
+test_apply_load_response_loss_registers_exact_active_image_and_preserves_failure() {
+  setup_inventory_bundle
+  local status=0 registrations apply_output
+  apply_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$TEST_TMP_DIR/ownership" SANCTUARY_FAKE_LOAD_STATUS=23 \
+    "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply 2>&1)" || status=$?
+  [ "$status" -eq 23 ] || { echo "$apply_output" >&2; teardown_bundle_workspace; return 1; }
+  registrations="$(find "$TEST_TMP_DIR/ownership/registrations/oci_image" -name '*.json' 2>/dev/null)"
+  [ "$(wc -w <<< "$registrations")" -eq 1 ] \
+    && jq -e '.resourceClass == "oci_image" and .lifecycle == "active" and .locatorKind == "reference" and .immutableIdentity == "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
+      $registrations >/dev/null
+  local result=$?
+  teardown_bundle_workspace
+  return "$result"
+}
+
+test_apply_load_failure_precedes_ambiguous_recovery_status() {
+  setup_inventory_bundle
+  local status=0 apply_output
+  apply_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$TEST_TMP_DIR/ownership" SANCTUARY_FAKE_LOAD_STATUS=23 \
+    SANCTUARY_FAKE_IMAGE_ID="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
+    "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply 2>&1)" || status=$?
+  [ "$status" -eq 23 ] || { echo "$apply_output" >&2; teardown_bundle_workspace; return 1; }
+  teardown_bundle_workspace
+}
+
+test_apply_reports_lock_release_failure_after_success() {
+  setup_inventory_bundle
+  local status=0 apply_output real_node
+  real_node="$(command -v node)"
+  cat > "$FAKE_BIN/node" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == */deployment-session.mjs && "${2:-}" = release ]]; then exit 37; fi
+exec "$SANCTUARY_REAL_NODE" "$@"
+EOF
+  chmod +x "$FAKE_BIN/node"
+  apply_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_REAL_NODE="$real_node" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$TEST_TMP_DIR/ownership" \
+    "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply 2>&1)" || status=$?
+  [ "$status" -eq 37 ] || { echo "$apply_output" >&2; teardown_bundle_workspace; return 1; }
+  teardown_bundle_workspace
+}
+
+test_apply_registers_each_successful_load_before_a_later_archive_fails() {
+  setup_inventory_bundle
+  local status=0 registrations apply_output
+  apply_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$TEST_TMP_DIR/ownership" SANCTUARY_FAKE_LOAD_STATUS=23 \
+    SANCTUARY_FAKE_LOAD_FAIL_AT=2 \
+    "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply 2>&1)" || status=$?
+  [ "$status" -eq 23 ] || { echo "$apply_output" >&2; teardown_bundle_workspace; return 1; }
+  registrations="$(find "$TEST_TMP_DIR/ownership/registrations/oci_image" -name '*.json' 2>/dev/null)"
+  [ "$(wc -w <<< "$registrations")" -ge 2 ] \
+    && jq -se 'all(.[]; .locatorKind == "reference")' $registrations >/dev/null
+  local result=$?
+  teardown_bundle_workspace
+  return "$result"
+}
+
+test_apply_recovers_and_registers_a_load_interrupted_after_daemon_commit() {
+  setup_inventory_bundle
+  local status=0 registrations apply_output
+  apply_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$TEST_TMP_DIR/ownership" SANCTUARY_FAKE_LOAD_SIGNAL_AT=1 \
+    "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply 2>&1)" || status=$?
+  [ "$status" -eq 143 ] || { echo "$apply_output" >&2; teardown_bundle_workspace; return 1; }
+  registrations="$(find "$TEST_TMP_DIR/ownership/registrations/oci_image" -name '*.json' 2>/dev/null)"
+  [ "$(wc -w <<< "$registrations")" -eq 1 ] \
+    && jq -e '.locatorKind == "reference" and .immutableIdentity == "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
+      $registrations >/dev/null
+  local result=$?
+  teardown_bundle_workspace
+  return "$result"
+}
+
+test_create_tag_response_loss_proves_alias_and_preserves_failure() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local tag output status=0 create_output
+  tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
+  [ -n "$tag" ] || { teardown_bundle_workspace; return 0; }
+  output="$TEST_TMP_DIR/offline.tar.gz"
+  create_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_TAG_STATUS=24 \
+    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+      2>&1)" || status=$?
+  [ "$status" -eq 24 ] || echo "$create_output" >&2
+  [ "$status" -eq 24 ] && grep -Fq 'image inspect postgres:16-alpine' "$DOCKER_LOG" \
+    && ! grep -F 'save -o ' "$DOCKER_LOG" | grep -Fq 'postgres:16-alpine'
+  local result=$?
+  teardown_bundle_workspace
+  return "$result"
+}
+
+test_create_tag_failure_precedes_ambiguous_alias_verification() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local tag output status=0 create_output
+  tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
+  [ -n "$tag" ] || { teardown_bundle_workspace; return 0; }
+  output="$TEST_TMP_DIR/offline.tar.gz"
+  create_output="$(PATH="$FAKE_BIN:$PATH" SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_TAG_STATUS=24 \
+    SANCTUARY_FAKE_RUNTIME_IMAGE_ID="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
+    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only \
+      2>&1)" || status=$?
+  [ "$status" -eq 24 ] || echo "$create_output" >&2
+  local result=0
+  [ "$status" -eq 24 ] || result=1
+  teardown_bundle_workspace
+  return "$result"
+}
+
 test_create_full_bundle_builds_and_saves_migration_without_pull() {
   TEST_TMP_DIR="$(mktemp -d)"
   setup_fake_docker
@@ -892,6 +1028,13 @@ main() {
   run_test "apply accepts signed inventory via runtime refs" test_apply_accepts_signed_inventory_via_runtime_refs
   run_test "apply validates loaded runtime image ID" test_apply_validates_loaded_runtime_image_id
   run_test "apply validates loaded runtime image platform" test_apply_validates_loaded_runtime_image_platform
+  run_test "apply recovers load response loss and preserves status" test_apply_load_response_loss_registers_exact_active_image_and_preserves_failure
+  run_test "apply preserves load failure over ambiguous recovery" test_apply_load_failure_precedes_ambiguous_recovery_status
+  run_test "apply reports lock release failure after success" test_apply_reports_lock_release_failure_after_success
+  run_test "apply registers earlier loads before a later failure" test_apply_registers_each_successful_load_before_a_later_archive_fails
+  run_test "apply registers an interrupted daemon-committed load" test_apply_recovers_and_registers_a_load_interrupted_after_daemon_commit
+  run_test "create proves tag response loss and preserves status" test_create_tag_response_loss_proves_alias_and_preserves_failure
+  run_test "create preserves tag failure over ambiguous alias verification" test_create_tag_failure_precedes_ambiguous_alias_verification
   run_test "full bundle builds and saves local Grafana migration image" test_create_full_bundle_builds_and_saves_migration_without_pull
   run_test "create bundle signs outer archive" test_create_bundle_signs_outer_archive
   run_test "fresh bootstrap ignores unrelated database volume" test_fresh_bootstrap_ignores_unrelated_database_volume

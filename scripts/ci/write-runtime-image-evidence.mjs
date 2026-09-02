@@ -13,6 +13,17 @@ const ROLE_LOCKFILES = {
   'grafana-migration': [],
 };
 
+const OWNERSHIP_ENV = {
+  'io.sanctuary.project': 'SANCTUARY_PROJECT',
+  'io.sanctuary.deployment-id': 'SANCTUARY_DEPLOYMENT_ID',
+  'io.sanctuary.owner-id': 'SANCTUARY_OWNER_ID',
+  'io.sanctuary.lifecycle': 'SANCTUARY_RESOURCE_LIFECYCLE',
+  'io.sanctuary.created-at': 'SANCTUARY_CLEANUP_CREATED_AT',
+  'io.sanctuary.created-by-release': 'SANCTUARY_RELEASE',
+  'io.sanctuary.created-by-commit': 'SANCTUARY_COMMIT',
+  'io.sanctuary.creation-run-id': 'SANCTUARY_OPERATION_RUN_ID',
+};
+
 function fail(message) {
   throw new Error(`runtime-image-evidence: ${message}`);
 }
@@ -48,6 +59,26 @@ function docker(args, options = {}) {
   return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options }).trim();
 }
 
+function transientOwnershipArgs() {
+  if (process.env.SANCTUARY_CLEANUP_COORDINATED !== '1') {
+    fail('signed cleanup coordinator authority is required');
+  }
+  const labels = {
+    'io.sanctuary.resource-class': 'compose_container',
+    'io.sanctuary.cleanup-policy': 'exact_delete',
+  };
+  for (const [label, variable] of Object.entries(OWNERSHIP_ENV)) {
+    const value = process.env[variable];
+    if (!value) fail(`${variable} is required for transient ownership`);
+    labels[label] = value;
+  }
+  return Object.entries(labels).flatMap(([key, value]) => ['--label', `${key}=${value}`]);
+}
+
+function runTransientContainer(args) {
+  return docker(['run', '--rm', ...transientOwnershipArgs(), ...args]);
+}
+
 function inspectImage(image) {
   const parsed = JSON.parse(docker(['image', 'inspect', image]));
   if (!Array.isArray(parsed) || parsed.length !== 1) fail(`expected one inspected image for ${image}`);
@@ -71,8 +102,7 @@ function assertImageIdentity(inspect, options, imageLockSha) {
 
 function smokeImage(options) {
   if (options.role === 'frontend') {
-    docker([
-      'run', '--rm',
+    runTransientContainer([
       '--env', 'ENABLE_SSL=false',
       '--env', 'BACKEND_HOST=127.0.0.1',
       options.image, 'nginx', '-t',
@@ -85,7 +115,7 @@ function smokeImage(options) {
     'llm-egress-proxy': ['sh', '-c', 'node --version && test -f dist/index.js'],
     'grafana-migration': ['sh', '-c', 'test -x /opt/sanctuary/migrate-grafana-password.sh'],
   };
-  docker(['run', '--rm', '--entrypoint', checks[options.role][0], options.image, ...checks[options.role].slice(1)]);
+  runTransientContainer(['--entrypoint', checks[options.role][0], options.image, ...checks[options.role].slice(1)]);
 }
 
 function imagePackages(image) {
@@ -94,7 +124,7 @@ function imagePackages(image) {
     "elif command -v dpkg-query >/dev/null 2>&1; then dpkg-query -W -f='${Package}=${Version}\\n';",
     'else exit 0; fi',
   ].join(' ');
-  const output = docker(['run', '--rm', '--entrypoint', 'sh', image, '-c', command]);
+  const output = runTransientContainer(['--entrypoint', 'sh', image, '-c', command]);
   return output.split('\n').map(value => value.trim()).filter(Boolean).sort();
 }
 

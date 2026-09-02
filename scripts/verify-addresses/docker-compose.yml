@@ -25,7 +25,7 @@ services:
       - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
       - -chain=main
     ports:
-      - "${BITCOIN_RPC_PORT_MAINNET:-19440}:18443"
+      - "18443"
     healthcheck:
       test: [CMD, bitcoin-cli, -chain=main, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
       interval: 5s
@@ -49,7 +49,7 @@ services:
       - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
       - -chain=test
     ports:
-      - "${BITCOIN_RPC_PORT_TESTNET3:-19441}:18443"
+      - "18443"
     healthcheck:
       test: [CMD, bitcoin-cli, -chain=test, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
       interval: 5s
@@ -73,7 +73,7 @@ services:
       - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
       - -chain=testnet4
     ports:
-      - "${BITCOIN_RPC_PORT_TESTNET4:-19442}:18443"
+      - "18443"
     healthcheck:
       test: [CMD, bitcoin-cli, -chain=testnet4, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
       interval: 5s
@@ -97,7 +97,7 @@ services:
       - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
       - -chain=signet
     ports:
-      - "${BITCOIN_RPC_PORT_SIGNET:-19443}:18443"
+      - "18443"
     healthcheck:
       test: [CMD, bitcoin-cli, -chain=signet, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
       interval: 5s
@@ -121,7 +121,7 @@ services:
       - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
       - -chain=regtest
     ports:
-      - "${BITCOIN_RPC_PORT_REGTEST:-19444}:18443"
+      - "18443"
     healthcheck:
       test: [CMD, bitcoin-cli, -chain=regtest, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
       interval: 5s

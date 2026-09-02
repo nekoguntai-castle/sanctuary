@@ -65,6 +65,10 @@ allow_file_path() {
     # CI helper tests legitimately export GITHUB_* envs as fixtures
     tests/ci/*.test.sh|tests/ci/*.test.mjs)
       return 0 ;;
+    # Cleanup authority tests must exercise provider environment fixtures
+    # directly; production ownership code still goes through provider-context.
+    tests/ownership/ci-cleanup-*.test.mjs|tests/ownership/phase-smoke-cleanup-composition.test.mjs)
+      return 0 ;;
     # Documentation discusses these names; not load-bearing
     *.md|*.mdx)
       return 0 ;;

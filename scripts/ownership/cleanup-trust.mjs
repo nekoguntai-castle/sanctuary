@@ -16,6 +16,27 @@ function exactKeys(value, expected) {
   }
 }
 
+function validateAuthority(value) {
+  exactKeys(value, [
+    'authorityKind', 'provider', 'runId', 'runAttempt', 'identityDigest',
+    'deploymentManifestDigest', 'operationRunId', 'coordinatorStateDigest',
+    'composeProjectName',
+  ]);
+  const validProviderAuthority = (value.authorityKind === 'ci_ephemeral'
+      && ['github', 'forgejo'].includes(value.provider))
+    || (value.authorityKind === 'local_ephemeral' && value.provider === 'local');
+  if (!validProviderAuthority) {
+    throw new Error('cleanup trust CI authority kind or provider is invalid');
+  }
+  for (const key of ['runId', 'runAttempt', 'operationRunId', 'composeProjectName']) {
+    if (!DEPLOYMENT_ID.test(value[key] ?? '')) throw new Error(`cleanup trust authority ${key} is invalid`);
+  }
+  for (const key of ['identityDigest', 'deploymentManifestDigest', 'coordinatorStateDigest']) {
+    if (!FINGERPRINT.test(value[key] ?? '')) throw new Error(`cleanup trust authority ${key} is invalid`);
+  }
+  return value;
+}
+
 function timestamp(value, label) {
   const parsed = new Date(value);
   if (typeof value !== 'string' || Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
@@ -39,11 +60,13 @@ export function cleanupTrustPath(runtimeDirectory, deploymentId) {
 }
 
 export function validateCleanupTrust(value, { deploymentId, now = new Date() } = {}) {
-  exactKeys(value, [
+  const fields = [
     'trustVersion', 'deploymentId', 'validFrom', 'validUntil',
     'authorizationFingerprints', 'evidenceFingerprints',
-  ]);
-  if (value.trustVersion !== 1 || value.deploymentId !== deploymentId) {
+  ];
+  if (value?.trustVersion === 2) fields.push('authority');
+  exactKeys(value, fields);
+  if (![1, 2].includes(value.trustVersion) || value.deploymentId !== deploymentId) {
     throw new Error('cleanup trust identity or version is invalid');
   }
   const validFrom = timestamp(value.validFrom, 'validFrom');
@@ -56,6 +79,7 @@ export function validateCleanupTrust(value, { deploymentId, now = new Date() } =
   if (authorization.some((fingerprint) => evidence.includes(fingerprint))) {
     throw new Error('cleanup trust authorization and evidence keys must be distinct');
   }
+  if (value.trustVersion === 2) validateAuthority(value.authority);
   const instant = now instanceof Date ? now : new Date(now);
   if (Number.isNaN(instant.getTime()) || instant < validFrom || instant > validUntil) {
     throw new Error('cleanup trust configuration is not currently valid');
@@ -78,7 +102,8 @@ function assertOwnerOnly(filePath) {
 
 export function verifyCleanupTrust({
   runtimeDirectory, checkoutRoot, deploymentId,
-  authorizationFingerprint, evidenceFingerprint, now = new Date(),
+  authorizationFingerprint, evidenceFingerprint, expectedAuthorityIdentityDigest = null,
+  operationRunId = null, deploymentManifestDigest = null, now = new Date(),
 }) {
   const filePath = cleanupTrustPath(runtimeDirectory, deploymentId);
   assertOwnerOnly(filePath);
@@ -86,6 +111,17 @@ export function verifyCleanupTrust({
   const trust = parseStrictJson(bytes);
   if (!canonicalJson(trust).equals(bytes)) throw new Error('cleanup trust configuration must be canonical JSON');
   validateCleanupTrust(trust, { deploymentId, now });
+  if (trust.trustVersion === 2) {
+    if (expectedAuthorityIdentityDigest === null
+        || trust.authority.identityDigest !== expectedAuthorityIdentityDigest
+        || (operationRunId !== null && trust.authority.operationRunId !== operationRunId)
+        || (deploymentManifestDigest !== null
+          && trust.authority.deploymentManifestDigest !== deploymentManifestDigest)) {
+      throw new Error('cleanup CI trust authority does not match the expected execution authority');
+    }
+  } else if (expectedAuthorityIdentityDigest !== null) {
+    throw new Error('production cleanup trust cannot satisfy CI execution authority');
+  }
   if (!trust.authorizationFingerprints.includes(authorizationFingerprint)
       || !trust.evidenceFingerprints.includes(evidenceFingerprint)) {
     throw new Error('cleanup signing fingerprints are not accepted by deployment trust');

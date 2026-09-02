@@ -2,8 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/ci/provider-context.sh
-. "$SCRIPT_DIR/provider-context.sh"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != 1 ]; then
+  exec "$SCRIPT_DIR/cleanup-ci-callsite.sh" auto-run \
+    --lane trezor-emulator-proof --checkout-root "$PROJECT_ROOT" -- "$0" "$@"
+fi
+# shellcheck source=scripts/ownership/producer-hooks.sh
+. "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
 readonly proof_manifest='config/trezor-emulator-proof.json'
 jq -e '
@@ -58,6 +63,8 @@ readonly docker_metadata_timeout_seconds=60
 readonly docker_start_timeout_seconds=180
 readonly docker_pull_timeout_seconds=2100
 container_started=0
+container_registered=0
+container_id=''
 forwarder_pid=0
 published_host=''
 controller_port=''
@@ -98,14 +105,14 @@ if [ "$runner_os" != "$EXPECTED_RUNNER_OS" ] || [ "$runner_arch" != "$EXPECTED_R
 fi
 
 cleanup() {
-  local status=$?
+  local subject_status=$? cleanup_status=0 final_status
+  trap - EXIT
   if [ -f "$diagnostics_dir/junit-trezor-emulator.xml" ]; then
     sed -i \
       -e 's/all all all all all all all all all all all all/[REDACTED TEST MNEMONIC]/g' \
       -e 's/ hostname="[^"]*"/ hostname="[REDACTED RUNNER]"/g' \
       "$diagnostics_dir/junit-trezor-emulator.xml"
   fi
-  jq -n --argjson exitCode "$status" '{exitCode: $exitCode}' > "$diagnostics_dir/run-status.json"
   if [ "$forwarder_pid" -ne 0 ]; then
     kill "$forwarder_pid" >/dev/null 2>&1 || true
     for _ in $(seq 1 50); do
@@ -120,15 +127,90 @@ cleanup() {
     wait "$forwarder_pid" >/dev/null 2>&1 || true
   fi
   if [ "$container_started" -eq 1 ]; then
-    timeout --foreground --kill-after=10s 30s docker inspect "$container_name" \
+    timeout --foreground --kill-after=10s 30s docker inspect "$container_id" \
       > "$diagnostics_dir/container-terminal-inspect.json" 2>&1 || true
-    timeout --foreground --kill-after=10s 30s docker logs "$container_name" 2>&1 \
+    timeout --foreground --kill-after=10s 30s docker logs "$container_id" 2>&1 \
       | sed 's/all all all all all all all all all all all all/[REDACTED TEST MNEMONIC]/g' \
       > "$diagnostics_dir/trezor-user-env.log" || true
-    timeout --foreground --kill-after=10s 30s \
-      docker rm -f "$container_name" >/dev/null || true
+    retire_registered_transient "$container_id" "$container_registered" || cleanup_status=$?
   fi
-  return "$status"
+  final_status="$subject_status"
+  if [ "$cleanup_status" -ne 0 ]; then
+    echo "Trezor registered-transient retirement failed (exit=$cleanup_status)" >&2
+    [ "$final_status" -ne 0 ] || final_status="$cleanup_status"
+  fi
+  jq -n --argjson subjectExitCode "$subject_status" \
+    --argjson cleanupExitCode "$cleanup_status" --argjson exitCode "$final_status" \
+    '{subjectExitCode: $subjectExitCode, cleanupExitCode: $cleanupExitCode, exitCode: $exitCode}' \
+    > "$diagnostics_dir/run-status.json"
+  exit "$final_status"
+}
+
+assert_registered_transient() {
+  local exact_id="$1"
+  docker inspect "$exact_id" | jq -e \
+    --arg id "$exact_id" --arg name "$container_name" --arg project "$SANCTUARY_PROJECT" \
+    --arg deployment "$SANCTUARY_DEPLOYMENT_ID" --arg owner "$SANCTUARY_OWNER_ID" \
+    --arg run "$SANCTUARY_OPERATION_RUN_ID" --arg created "$SANCTUARY_CLEANUP_CREATED_AT" \
+    --arg release "$SANCTUARY_RELEASE" --arg commit "$SANCTUARY_COMMIT" '
+      length == 1 and .[0].Id == $id and .[0].Name == ("/" + $name)
+      and .[0].Config.Labels["io.sanctuary.project"] == $project
+      and .[0].Config.Labels["io.sanctuary.deployment-id"] == $deployment
+      and .[0].Config.Labels["io.sanctuary.owner-id"] == $owner
+      and .[0].Config.Labels["io.sanctuary.resource-class"] == "compose_container"
+      and .[0].Config.Labels["io.sanctuary.lifecycle"] == "obsolete"
+      and .[0].Config.Labels["io.sanctuary.cleanup-policy"] == "exact_delete"
+      and .[0].Config.Labels["io.sanctuary.created-at"] == $created
+      and .[0].Config.Labels["io.sanctuary.created-by-release"] == $release
+      and .[0].Config.Labels["io.sanctuary.created-by-commit"] == $commit
+      and .[0].Config.Labels["io.sanctuary.creation-run-id"] == $run
+    ' >/dev/null
+}
+
+container_absence_proven() {
+  local exact_id="$1" listed
+  if docker container inspect "$exact_id" >/dev/null 2>&1; then
+    return 1
+  fi
+  listed="$(docker container ls -a --no-trunc \
+    --filter "id=$exact_id" --format '{{.ID}}')" || return 2
+  [ -z "$listed" ]
+}
+
+record_registered_transient_retirement() {
+  local exact_id="$1" postcondition="$2"
+  case "$postcondition" in
+    absent|already-absent) ;;
+    *) return 1 ;;
+  esac
+  jq -n --arg containerId "$exact_id" --arg postcondition "$postcondition" \
+    '{containerId: $containerId, ownership: "verified", postcondition: $postcondition}' \
+    > "$diagnostics_dir/registered-transient.json"
+}
+
+retire_registered_transient() {
+  local exact_id="$1" identity_was_verified="${2:-0}" absence_status=0 stop_status=0
+  if ! assert_registered_transient "$exact_id"; then
+    container_absence_proven "$exact_id" || absence_status=$?
+    if [ "$absence_status" -ne 0 ]; then
+      echo "Trezor container absence is ambiguous: $exact_id (exit=$absence_status)" >&2
+      return 1
+    fi
+    if [ "$identity_was_verified" -ne 1 ]; then
+      echo "Trezor container disappeared before ownership was verified: $exact_id" >&2
+      return 1
+    fi
+    record_registered_transient_retirement "$exact_id" already-absent
+    return 0
+  fi
+  timeout --foreground --kill-after=10s 30s docker stop --timeout 10 "$exact_id" >/dev/null \
+    || stop_status=$?
+  container_absence_proven "$exact_id" || absence_status=$?
+  if [ "$absence_status" -ne 0 ]; then
+    echo "Daemon-atomic Trezor container removal is unproven: $exact_id (stop=$stop_status, inspect=$absence_status)" >&2
+    return 1
+  fi
+  record_registered_transient_retirement "$exact_id" absent
 }
 
 run_bounded_docker() {
@@ -293,6 +375,13 @@ if [ "$ci_environment_file" != '/dev/stdout' ]; then
 fi
 trap cleanup EXIT
 
+export SANCTUARY_PROJECT='trezor-emulator-proof'
+export SANCTUARY_PROJECT_DIR="$PROJECT_ROOT"
+export SANCTUARY_OPERATION_RUN_ID="run-trezor-emulator-${run_identity}"
+export SANCTUARY_RESOURCE_LIFECYCLE='obsolete'
+ownership_label_args compose_container exact_delete
+readonly -a container_ownership_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
+
 if docker inspect "$container_name" >/dev/null 2>&1; then
   echo "Refusing to replace existing container $container_name" >&2
   exit 1
@@ -320,7 +409,9 @@ else
 fi
 printf '%s\n' "$trezor_image_inspect_json" > "$proof_dir/image-inspect.json"
 
-trezor_run_args=(run -d --platform "$TREZOR_PLATFORM")
+trezor_create_args=(
+  create --rm --cidfile "$attempt_dir/container.cid" --platform "$TREZOR_PLATFORM"
+)
 if [ "$docker_is_podman" = 'true' ]; then
   trezor_transport='docker-exec-loopback'
 else
@@ -328,7 +419,7 @@ else
   readonly publish_binding
   IFS=$'\t' read -r publish_bind_ip published_host <<< "$publish_binding"
   readonly publish_bind_ip
-  trezor_run_args+=(
+  trezor_create_args+=(
     -p "${publish_bind_ip}::9001/tcp"
     -p "${publish_bind_ip}::21326/tcp"
   )
@@ -336,24 +427,71 @@ fi
 # The attested image already contains its locked virtual environment. Bypass
 # the default `uv run` command so proof startup cannot re-resolve direct URL
 # dependencies from the network and drift or fail before the emulator starts.
-trezor_run_args+=(
+trezor_create_args+=(
   --name "$container_name"
+  "${container_ownership_labels[@]}"
   "$TREZOR_IMAGE"
   .venv/bin/python
   src/main.py
 )
 
-if run_bounded_docker "start Trezor User Env container" "$docker_start_timeout_seconds" \
-  "${trezor_run_args[@]}" >/dev/null; then
+create_status=0
+run_bounded_docker "create Trezor User Env container" "$docker_start_timeout_seconds" \
+  "${trezor_create_args[@]}" > "$attempt_dir/container-create-output" || create_status=$?
+
+resolve_trezor_created_container() {
+  local cidfile="$1" create_status="$2" cid_id='' recovered_id invalid_cidfile=0
+  if [ -f "$cidfile" ]; then
+    cid_id="$(tr -d '\r\n' < "$cidfile")"
+    if ! [[ "$cid_id" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "Trezor User Env cidfile contains an invalid container ID" >&2
+      cid_id=''
+      invalid_cidfile=1
+    fi
+  fi
+  recovered_id="$(recover_exact_created_container "$container_name")" || {
+    [ "$create_status" -ne 0 ] && return "$create_status"
+    return 1
+  }
+  if [ -n "$cid_id" ] && [ "$cid_id" != "$recovered_id" ]; then
+    echo "Trezor User Env cidfile disagrees with the exact created container" >&2
+    printf '%s\n' "$recovered_id"
+    return 1
+  fi
+  printf '%s\n' "$recovered_id" > "$cidfile"
+  printf '%s\n' "$recovered_id"
+  [ "$invalid_cidfile" -eq 0 ] || return 1
+}
+
+resolve_status=0
+container_id="$(resolve_trezor_created_container \
+  "$attempt_dir/container.cid" "$create_status")" || resolve_status=$?
+if [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
   container_started=1
-else
-  start_status=$?
-  timeout --foreground --kill-after=10s 30s docker rm -f "$container_name" >/dev/null 2>&1 || true
-  exit "$start_status"
 fi
+if [ "$container_started" -ne 1 ]; then
+  echo "Trezor User Env creation produced no durable container ID" >&2
+  [ "$resolve_status" -ne 0 ] && exit "$resolve_status"
+  [ "$create_status" -ne 0 ] && exit "$create_status"
+  exit 1
+fi
+assert_registered_transient "$container_id"
+register_owned_resource compose_container obsolete exact_delete engine_id \
+  "$container_id" "$container_id" "$SANCTUARY_OPERATION_RUN_ID"
+container_registered=1
+[ "$resolve_status" -eq 0 ] || exit "$resolve_status"
+if [ "$create_status" -ne 0 ]; then
+  exit "$create_status"
+fi
+if [ "$(tr -d '\r\n' < "$attempt_dir/container-create-output")" != "$container_id" ]; then
+  echo "Trezor User Env create output disagrees with its durable container ID" >&2
+  exit 1
+fi
+run_bounded_docker "start Trezor User Env container" "$docker_start_timeout_seconds" \
+  start "$container_id" >/dev/null
 readonly container_inspect_json="$(
   run_bounded_docker "inspect Trezor User Env container" \
-    "$docker_metadata_timeout_seconds" inspect "$container_name"
+    "$docker_metadata_timeout_seconds" inspect "$container_id"
 )"
 readonly container_image_id="$(jq -er '.[0].Image' <<< "$container_inspect_json")"
 if [ "$container_image_id" != "$TREZOR_IMAGE_CONFIG_DIGEST" ]; then

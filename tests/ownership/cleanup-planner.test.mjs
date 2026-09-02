@@ -21,6 +21,7 @@ function resource(resourceClass, immutableIdentity, overrides = {}) {
     resourceClass, locatorKind: 'engine_id', locator: immutableIdentity, immutableIdentity,
     ownership, ownershipDigest: canonicalSha256(ownership), observationDigest: HASH,
     disposition: 'eligible', failureClasses: [], references: [], contentDigests: [],
+    dependencyIdentities: [],
     running: resourceClass === 'compose_container' ? true : null,
     active: false, protected: false, data: false, ...overrides,
   };

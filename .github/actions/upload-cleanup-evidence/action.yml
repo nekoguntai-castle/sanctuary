@@ -1,0 +1,49 @@
+name: Upload cleanup evidence
+description: Upload integrity-verified cleanup evidence before enforcing a successful terminal state.
+inputs:
+  name:
+    description: Artifact name.
+    required: true
+  path:
+    description: Files uploaded as cleanup evidence.
+    required: true
+  cleanup-root:
+    description: Cleanup artifact directory, or parent directory when children is true.
+    required: true
+  children:
+    description: Verify successful cleanup in every immediate child directory.
+    required: false
+    default: 'false'
+  retention-days:
+    description: Days to retain the artifact.
+    required: false
+    default: '90'
+  if-no-files-found:
+    description: Behavior when no files match.
+    required: false
+    default: error
+  include-hidden-files:
+    description: Include hidden files.
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Upload verified cleanup evidence
+      uses: ./.github/actions/upload-artifact
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+
+    # This intentionally runs after upload: ambiguous, cancelled, and refused
+    # receipts remain available for diagnosis while still making cleanup a
+    # distinct required workflow result.
+    - name: Require successful cleanup state
+      uses: ./.github/actions/verify-cleanup-receipt
+      with:
+        root: ${{ inputs.cleanup-root }}
+        children: ${{ inputs.children }}
+        require-cleanup-success: 'true'

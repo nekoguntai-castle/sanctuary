@@ -172,6 +172,10 @@ describe("Trezor emulator proof test configuration", () => {
       path.join(repoRoot, "scripts/ci/run-trezor-emulator-proof.sh"),
       "utf8",
     );
+    const workflow = readFileSync(
+      path.join(repoRoot, ".github/workflows/verify-vectors.yml"),
+      "utf8",
+    );
 
     expect(runner).toContain('readonly proof_dir="${attempt_dir}/proof"');
     expect(runner).toContain(
@@ -196,22 +200,75 @@ describe("Trezor emulator proof test configuration", () => {
     );
     expect(runner).toContain("trezor_image_is_attested");
     expect(runner).toContain("Using preloaded Trezor User Env image");
-    expect(runner).toContain('.venv/bin/python');
-    expect(runner).toContain('src/main.py');
-    expect(runner).not.toContain('trezor_run_args+=(--name "$container_name" "$TREZOR_IMAGE")');
+    expect(runner).toContain(".venv/bin/python");
+    expect(runner).toContain("src/main.py");
+    expect(runner).not.toContain(
+      'trezor_run_args+=(--name "$container_name" "$TREZOR_IMAGE")',
+    );
     expect(runner).toContain("run_bounded_docker");
     expect(runner).toContain("start Trezor User Env container");
-    expect(runner).not.toContain("run --rm -d");
+    expect(runner).toContain(
+      'create --rm --cidfile "$attempt_dir/container.cid"',
+    );
+    expect(runner).toContain('start "$container_id"');
+    expect(runner).toContain(
+      "create output disagrees with its durable container ID",
+    );
+    expect(runner).toContain(
+      'recover_exact_created_container "$container_name"',
+    );
+    expect(runner).toContain("|| resolve_status=$?");
+    expect(runner).toContain(
+      "Trezor User Env cidfile contains an invalid container ID",
+    );
+    expect(runner).toContain(
+      "Trezor User Env cidfile disagrees with the exact created container",
+    );
+    expect(
+      runner.indexOf('recover_exact_created_container "$container_name"'),
+    ).toBeLessThan(runner.indexOf("container_registered=1"));
+    expect(runner.indexOf("container_registered=1")).toBeLessThan(
+      runner.indexOf('[ "$resolve_status" -eq 0 ] || exit "$resolve_status"'),
+    );
+    expect(runner).toContain(
+      "ownership_label_args compose_container exact_delete",
+    );
+    expect(runner).toContain('.[0].Name == ("/" + $name)');
+    expect(runner).toContain(
+      "register_owned_resource compose_container obsolete exact_delete engine_id",
+    );
     expect(runner).toContain("Trezor User Env exited before readiness");
-    expect(runner).toContain("Unable to inspect Trezor User Env readiness state");
+    expect(runner).toContain(
+      "Unable to inspect Trezor User Env readiness state",
+    );
     expect(runner).toContain("container-terminal-inspect.json");
-    expect(runner).toContain('docker rm -f "$container_name"');
+    expect(runner).toContain('retire_registered_transient "$container_id"');
+    expect(runner).toContain("container_absence_proven");
+    expect(runner).toContain("|| stop_status=$?");
+    expect(runner).toContain("stop=$stop_status, inspect=$absence_status");
+    expect(runner).toContain("container ls -a --no-trunc");
+    expect(runner).toContain("subjectExitCode: $subjectExitCode");
+    expect(runner).toContain("cleanupExitCode: $cleanupExitCode");
+    expect(runner).toContain('exit "$final_status"');
+    expect(runner).not.toMatch(
+      /retire_registered_transient[^\n]+(?:\|\| true|>\/dev\/null 2>&1)/,
+    );
+    expect(runner).not.toContain('docker rm -f "$container_name"');
     expect(runner).toContain("docker_start_timeout_seconds=180");
     expect(runner).toContain("TREZOR_IMAGE_CONFIG_DIGEST");
     expect(runner).toContain("TREZOR_CONNECT_INTEGRITY");
     expect(runner).toContain("TREZOR_CONNECT_WEB_INTEGRITY");
     expect(runner).toContain("[REDACTED TEST MNEMONIC]");
     expect(runner).toContain("[REDACTED RUNNER]");
+    expect(runner).toContain('cleanup-ci-callsite.sh" auto-run');
+    expect(runner).toContain("--lane trezor-emulator-proof");
+    expect(workflow).toContain("Verify Trezor emulator cleanup receipt");
+    expect(workflow).toContain(
+      "cleanup-trezor-emulator-${{ github.run_id }}-${{ github.run_attempt }}",
+    );
+    expect(workflow).toContain(
+      "uses: ./.github/actions/verify-cleanup-receipt",
+    );
     expect(runner).toMatch(
       /controller_command '\{"type":"emulator-setup"[^\n]+>\/dev\/null/,
     );

@@ -18,7 +18,8 @@
 #   - OpenSSL
 #   - curl
 #
-# Run: ./install-script.test.sh [--keep-containers] [--verbose]
+# Run: ./install-script.test.sh [--verbose]
+# (`--keep-containers` is refused because cleanup is receipt-bound.)
 # ============================================
 
 set -e
@@ -30,6 +31,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # Source helpers
 source "$SCRIPT_DIR/../utils/helpers.sh"
 source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
+INSTALL_E2E_ARGS=("$@")
 
 # ============================================
 # Configuration
@@ -56,6 +58,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+install_e2e_cleanup_auto_run install-script "$PROJECT_ROOT" "$0" "${INSTALL_E2E_ARGS[@]}"
 
 # Test configuration
 HTTPS_PORT="${HTTPS_PORT:-8443}"
@@ -143,8 +147,10 @@ setup() {
     fi
 
     # Clean up any existing installation
-    log_info "Cleaning up any existing Sanctuary containers..."
-    cleanup_containers "$PROJECT_ROOT" 2>/dev/null || true
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_info "Cleaning up any existing Sanctuary containers..."
+        cleanup_containers "$PROJECT_ROOT" 2>/dev/null || true
+    fi
 
     # Remove any existing .env file to simulate fresh install
     if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -171,8 +177,10 @@ teardown() {
         capture_compose_failure_diagnostics "$PROJECT_ROOT"
     fi
 
-    if [ "$KEEP_CONTAINERS" = "false" ]; then
+    if [ "$KEEP_CONTAINERS" = "false" ] && [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
         cleanup_containers "$PROJECT_ROOT" 2>/dev/null || true
+    elif [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        log_info "Deferring resource cleanup to the receipt-bound CI coordinator"
     else
         log_warning "Keeping containers running (--keep-containers specified)"
         get_container_status "$PROJECT_ROOT"
@@ -537,12 +545,13 @@ test_docker_compose_standalone() {
     cd "$PROJECT_ROOT"
     load_test_runtime_env || return 1
 
-    # Stop containers first
-    docker compose down 2>/dev/null || true
+    # Exercise the active deployment lifecycle without deleting its registered
+    # network or volumes. Final cleanup remains the coordinator's responsibility.
+    run_project_compose "$PROJECT_ROOT" stop 2>/dev/null || true
 
     # Try to start with the runtime env file exported, without relying on repo-root .env
     log_info "Starting containers with standalone docker compose..."
-    if ! docker compose up -d 2>&1; then
+    if ! run_project_compose "$PROJECT_ROOT" up -d 2>&1; then
         log_error "docker compose up failed when using runtime env file"
         return 1
     fi

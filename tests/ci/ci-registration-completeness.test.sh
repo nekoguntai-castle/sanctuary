@@ -153,6 +153,11 @@ for path in "$REPO_ROOT"/tests/ci/*.test.sh; do
   if grep -rqE "(bash|\./)[[:space:]]*tests/ci/${name}" "$WORKFLOW_DIR"; then
     continue
   fi
+  if [ "$name" != "$(basename "$WORKFLOW_COMPOSITION_TEST")" ] \
+      && grep -qF "$name" "$WORKFLOW_COMPOSITION_TEST" \
+      && grep -rqE '(bash|\./)[[:space:]]*tests/ci/check-workflow-composition\.test\.sh' "$WORKFLOW_DIR"; then
+    continue
+  fi
   # A suite may be run indirectly: install-test.yml and release-candidate.yml now
   # both call scripts/ci/run-install-unit-tests.sh rather than enumerating suites,
   # which is what stopped the two lists drifting apart (install-test listed 15,
@@ -272,6 +277,10 @@ while IFS= read -r path; do
   rel="${path#"$REPO_ROOT"/}"
   count_install=$((count_install + 1))
   if grep -rqE "(bash|\./)[[:space:]]*${rel}" "$WORKFLOW_DIR"; then
+    continue
+  fi
+  if grep -rqF 'scripts/ci/run-compose-e2e-subject.sh' "$WORKFLOW_DIR" \
+      && grep -qF "./${rel}" "$REPO_ROOT/scripts/ci/run-compose-e2e-subject.sh"; then
     continue
   fi
   # tests/install/unit/* are executed by the shared suite runner via a glob, so

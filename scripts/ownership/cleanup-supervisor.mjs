@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { accessSync, constants as fsConstants, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { liveNodeExecutable } from './runtime-executable.mjs';
 
 export const DEFAULT_SUPERVISOR_TIMEOUT_MS = 30_000;
 export const DEFAULT_SUPERVISOR_GRACE_MS = 2_000;
@@ -10,6 +13,9 @@ const OUTCOMES = new Set([
   'success', 'command_failed', 'timeout', 'cancelled', 'output_limit',
   'command_unavailable', 'permission_denied', 'spawn_failed', 'quiescence_failed',
 ]);
+const LINUX_PARENT_DEATH_LAUNCHERS = Object.freeze(['/usr/bin/setpriv', '/bin/setpriv']);
+const PROCESS_GROUP_LAUNCHER = fileURLToPath(new URL('./cleanup-process-group-launcher.mjs', import.meta.url));
+const LAUNCHER_STATUS_LIMIT = 1_024;
 
 function positiveInteger(value, label) {
   if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${label} must be a positive integer`);
@@ -34,6 +40,52 @@ function spawnFailure(error) {
   if (error?.code === 'ENOENT') return 'command_unavailable';
   if (error?.code === 'EACCES') return 'permission_denied';
   return 'spawn_failed';
+}
+
+function executableStatus(filePath) {
+  try {
+    accessSync(filePath, fsConstants.X_OK);
+    return 'available';
+  } catch (error) {
+    return error?.code === 'EACCES' ? 'permission_denied' : 'command_unavailable';
+  }
+}
+
+function resolveExecutable(executable, { cwd, env }) {
+  const workingDirectory = cwd ?? process.cwd();
+  if (executable.includes('/')) {
+    const resolved = path.resolve(workingDirectory, executable);
+    const status = executableStatus(resolved);
+    return status === 'available' ? { executable: resolved } : { outcome: status };
+  }
+  const searchPath = env?.PATH ?? process.env.PATH ?? '/usr/bin:/bin';
+  let permissionDenied = false;
+  for (const directory of searchPath.split(path.delimiter)) {
+    const candidate = path.resolve(workingDirectory, directory || '.', executable);
+    const status = executableStatus(candidate);
+    if (status === 'available') return { executable: candidate };
+    if (status === 'permission_denied') permissionDenied = true;
+  }
+  return { outcome: permissionDenied ? 'permission_denied' : 'command_unavailable' };
+}
+
+function parentDeathLaunch(executable, args, options) {
+  const command = resolveExecutable(executable, options);
+  if (command.outcome) return command;
+  const launcher = LINUX_PARENT_DEATH_LAUNCHERS.find((candidate) => (
+    executableStatus(candidate) === 'available'
+  ));
+  if (!launcher) return { outcome: 'command_unavailable' };
+  const launcherKillWaitMs = Math.max(1, Math.floor(options.killWaitMs / 2));
+  return {
+    executable: launcher,
+    args: [
+      '--pdeathsig', 'SIGTERM', '--', liveNodeExecutable(), PROCESS_GROUP_LAUNCHER,
+      '--grace-ms', String(options.graceMs), '--kill-wait-ms', String(launcherKillWaitMs),
+      '--expected-ppid', String(process.pid),
+      '--', command.executable, ...args,
+    ],
+  };
 }
 
 function signalGroup(pid, signal) {
@@ -99,12 +151,16 @@ export function runSupervisedCleanupCommand(executable, args, options = {}) {
     throw new TypeError('signal must be an AbortSignal');
   }
   if (options.signal?.aborted) return Promise.resolve(publicResult('cancelled'));
+  const launch = parentDeathLaunch(executable, args, { ...options, graceMs, killWaitMs });
+  if (launch.outcome) return Promise.resolve(publicResult(launch.outcome));
 
   return new Promise((resolve) => {
     let child;
     let settled = false;
     let terminationOutcome = null;
     let outputBytes = 0;
+    let launcherStatusBytes = 0;
+    let launcherStatus = '';
     let timeout;
     let graceTimeout;
     let killWaitTimeout;
@@ -125,9 +181,9 @@ export function runSupervisedCleanupCommand(executable, args, options = {}) {
     };
     const kill = () => {
       if (!child?.pid || settled) return;
-      try { signalGroup(child.pid, 'SIGKILL'); } catch { terminationOutcome = 'quiescence_failed'; }
+      try { signalGroup(child.pid, 'SIGUSR2'); } catch { terminationOutcome = 'quiescence_failed'; }
       killWaitTimeout = setTimeout(() => {
-        try { signalGroup(child.pid, 'SIGKILL'); } catch {}
+        try { signalGroup(child.pid, 'SIGUSR2'); } catch {}
         finish(publicResult('quiescence_failed'));
       }, killWaitMs);
     };
@@ -188,15 +244,34 @@ export function runSupervisedCleanupCommand(executable, args, options = {}) {
       outputBytes += Buffer.byteLength(chunk);
       if (outputBytes > maxOutputBytes) terminate('output_limit');
     };
+    const countLauncherStatus = (chunk) => {
+      launcherStatusBytes += Buffer.byteLength(chunk);
+      if (launcherStatusBytes > LAUNCHER_STATUS_LIMIT) {
+        terminationOutcome = 'quiescence_failed';
+        kill();
+        return;
+      }
+      launcherStatus += chunk.toString('utf8');
+    };
+    const launcherReportedOrphan = (code, signal) => {
+      if (launcherStatus === '') return false;
+      const parsed = JSON.parse(launcherStatus);
+      if (parsed?.orphaned !== true
+          || Object.keys(parsed).sort().join('\0') !== 'code\0orphaned\0signal'
+          || parsed.code !== code || parsed.signal !== signal) {
+        throw new Error('cleanup launcher status is invalid');
+      }
+      return true;
+    };
 
     try {
-      child = (options.spawn ?? spawn)(executable, args, {
+      child = (options.spawn ?? spawn)(launch.executable, launch.args, {
         cwd: options.cwd,
         env: options.env,
         detached: true,
         shell: false,
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
       });
     } catch (error) {
       finish(publicResult(spawnFailure(error)));
@@ -205,10 +280,19 @@ export function runSupervisedCleanupCommand(executable, args, options = {}) {
 
     child.stdout?.on('data', countOutput);
     child.stderr?.on('data', countOutput);
+    child.stdio?.[3]?.on('data', countLauncherStatus);
     child.once('error', (error) => finish(publicResult(spawnFailure(error))));
     child.once('close', (code, signal) => {
       if (terminationOutcome) finishAfterGroupExit(code, signal);
-      else finishAfterGroupExit(code, signal, code === 0 ? 'success' : 'command_failed');
+      else {
+        let reportedOrphan;
+        try { reportedOrphan = launcherReportedOrphan(code, signal); } catch {
+          finishAfterGroupExit(code, signal, 'quiescence_failed');
+          return;
+        }
+        finishAfterGroupExit(code, signal, code === 125 || reportedOrphan ? 'quiescence_failed'
+          : code === 0 ? 'success' : 'command_failed');
+      }
     });
     options.signal?.addEventListener('abort', abort, { once: true });
     if (options.signal?.aborted) abort();

@@ -114,11 +114,53 @@ resolve_frontend_backend_network() {
     printf '%s\n' "$shared_networks"
 }
 
+register_coordinated_container() {
+    local container_name="$1" expected_id="$2" facts lifecycle policy
+    facts="$(docker container inspect "$expected_id")" || return 1
+    lifecycle="$(printf '%s' "$facts" | jq -er --arg id "$expected_id" --arg name "/$container_name" \
+        --arg project "$SANCTUARY_PROJECT" --arg deployment "$SANCTUARY_DEPLOYMENT_ID" \
+        --arg owner "$SANCTUARY_OWNER_ID" --arg created "$SANCTUARY_CLEANUP_CREATED_AT" \
+        --arg release "$SANCTUARY_RELEASE" --arg commit "$SANCTUARY_COMMIT" \
+        --arg run "$SANCTUARY_OPERATION_RUN_ID" '
+        if length == 1 and .[0].Id == $id and .[0].Name == $name and
+           .[0].State.Status == "running" and .[0].State.Running == true and
+           .[0].Config.Labels["io.sanctuary.project"] == $project and
+           .[0].Config.Labels["io.sanctuary.deployment-id"] == $deployment and
+           .[0].Config.Labels["io.sanctuary.owner-id"] == $owner and
+           .[0].Config.Labels["io.sanctuary.resource-class"] == "compose_container" and
+           .[0].Config.Labels["io.sanctuary.created-at"] == $created and
+           .[0].Config.Labels["io.sanctuary.created-by-release"] == $release and
+           .[0].Config.Labels["io.sanctuary.created-by-commit"] == $commit and
+           .[0].Config.Labels["io.sanctuary.creation-run-id"] == $run and
+           .[0].Config.Labels["io.sanctuary.cleanup-policy"] == "exact_delete"
+        then .[0].Config.Labels["io.sanctuary.lifecycle"] else error("tuple mismatch") end' \
+        2>/dev/null)" || return 1
+    [[ "$lifecycle" =~ ^[a-z][a-z0-9_-]*$ ]] || return 1
+    policy="exact_delete"
+    register_owned_resource compose_container "$lifecycle" "$policy" engine_id \
+        "$expected_id" "$expected_id" "$SANCTUARY_OPERATION_RUN_ID"
+}
+
+remove_coordinated_container() {
+    local container_id="$1" remove_status=0
+    docker rm -f "$container_id" >/dev/null || remove_status=$?
+    install_container_is_absent "$container_id" && return 0
+    [ "$remove_status" -eq 0 ] && return 1
+    return "$remove_status"
+}
+
 assert_frontend_proxy_recovers_after_backend_recreate_inner() {
     local browser_base_url="$1"
     local holder_container="$2"
     local frontend_container backend_container frontend_id backend_id backend_image network old_ip
     local new_backend_container new_backend_id new_ip attempt
+    local holder_output holder_create_status=0 holder_resolve_status=0 holder_start_status=0
+
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Backend replacement requires the signed cleanup coordinator"
+        return 1
+    fi
+    FRONTEND_PROXY_HOLDER_ID=""
 
     frontend_container="$(get_container_name frontend)"
     backend_container="$(get_container_name backend)"
@@ -136,11 +178,26 @@ assert_frontend_proxy_recovers_after_backend_recreate_inner() {
     assert_authenticated_me_response "$browser_base_url" || return 1
     assert_authenticated_websocket_handshake "$browser_base_url" || return 1
 
-    docker rm -f "$backend_container" >/dev/null || return 1
-    docker run -d --name "$holder_container" \
+    register_coordinated_container "$backend_container" "$backend_id" || return 1
+    remove_coordinated_container "$backend_id" || return 1
+    ownership_label_args compose_container exact_delete || return 1
+    holder_output="$(docker create --rm --name "$holder_container" \
         --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
+        "${OWNERSHIP_LABEL_ARGS[@]}" \
         --network "$network" --ip "$old_ip" \
-        --entrypoint sh "$backend_image" -c 'sleep 300' >/dev/null || return 1
+        --entrypoint sh "$backend_image" -c 'sleep 300')" || holder_create_status=$?
+    FRONTEND_PROXY_HOLDER_ID="$(resolve_registered_created_container \
+        "$holder_container" "$holder_output" "$holder_create_status")" || holder_resolve_status=$?
+    if ! [[ "$FRONTEND_PROXY_HOLDER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+        log_error "Backend IP holder identity was not proven"
+        return 1
+    fi
+    if [ "$holder_resolve_status" -ne 0 ]; then
+        retire_install_container "$FRONTEND_PROXY_HOLDER_ID" stop || true
+        return "$holder_resolve_status"
+    fi
+    start_registered_install_container "$FRONTEND_PROXY_HOLDER_ID" || holder_start_status=$?
+    [ "$holder_start_status" -eq 0 ] || return "$holder_start_status"
     run_project_compose "$PROJECT_ROOT" up -d --no-deps backend >/dev/null || return 1
 
     new_backend_container="$(get_container_name backend)"
@@ -182,14 +239,20 @@ assert_frontend_proxy_recovers_after_backend_recreate() {
     local holder_container="${COMPOSE_PROJECT_NAME}-backend-ip-holder-${TEST_ID}"
     local status
 
-    docker rm -f "$holder_container" >/dev/null 2>&1 || true
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Backend replacement requires the signed cleanup coordinator"
+        return 1
+    fi
+    FRONTEND_PROXY_HOLDER_ID=""
     if assert_frontend_proxy_recovers_after_backend_recreate_inner "$browser_base_url" "$holder_container"; then
         status=0
     else
         status=$?
     fi
 
-    docker rm -f "$holder_container" >/dev/null 2>&1 || true
+    if [ -n "$FRONTEND_PROXY_HOLDER_ID" ]; then
+        remove_coordinated_container "$FRONTEND_PROXY_HOLDER_ID" >/dev/null 2>&1 || true
+    fi
     if ! run_project_compose "$PROJECT_ROOT" up -d --no-deps backend >/dev/null; then
         log_error "Could not restore the backend after the replacement regression"
         [ "$status" -ne 0 ] && return "$status"

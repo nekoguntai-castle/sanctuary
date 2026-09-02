@@ -696,6 +696,8 @@ jobs:
           bash -n scripts/ci/with-runner-lock.sh
           bash -n scripts/ci/aggregate-runner-locks.sh
           bash -n scripts/ci/run-extended-upgrade-fixtures.sh
+          bash -n scripts/ci/run-ci-compose-subject.sh
+          bash -n scripts/ci/run-psbt-core-subject.sh
           bash -n scripts/ci/wait-for-docker.sh
           bash -n scripts/ci/backend-coverage-merge.sh
           bash -n scripts/ci/backend-coverage-shard.sh
@@ -703,6 +705,9 @@ jobs:
           bash -n scripts/ci/observe-runtime-image-cves.sh
           bash -n scripts/ci/check-llm-egress-proxy-shared-isolation.sh
           bash -n scripts/ci/cleanup-docker-resources.sh
+          bash -n scripts/ci/cleanup-ci-callsite.sh
+          bash -n scripts/ci/run-compose-e2e-subject.sh
+          bash -n scripts/ci/run-docker-test-subject.sh
           bash -n scripts/ci/install-playwright-chromium.sh
           bash -n scripts/ci/retry-playwright-infrastructure-failure.sh
           bash -n scripts/ci/retry-vitest-infrastructure-failure.sh
@@ -798,8 +803,7 @@ jobs:
           bash -n tests/ci/write-diagnostic-summary.test.sh
           bash -n tests/ci/git-default-branch.test.sh
           bash -n tests/ci/check-workflow-composition.test.sh
-          bash -n tests/ci/e2e-lane-lock-coverage.test.sh
-          bash -n scripts/ci/run-e2e-lane-phases.sh
+          bash -n tests/ci/podman-socket-canary-composition.test.sh
           bash -n scripts/ci/wait-for-migration.sh
           bash -n tests/ci/wait-for-migration.test.sh
           bash -n scripts/ci/check-workflows-test-only.sh
@@ -814,6 +818,7 @@ jobs:
           node tests/ci/check-npm-install-scripts.test.mjs
           node --test tests/ci/check-critical-mutation-config.test.mjs
           node --test tests/ci/wallet-sync-database-readiness.test.mjs
+          node --test tests/ci/wallet-sync-replay-cleanup.test.mjs
           # Also runs the call-site gate against the real checkout, so an
           # unprotected or unreviewed `npm ci` fails here.
           node tests/ci/check-npm-ci-callsites.test.mjs
@@ -899,7 +904,6 @@ jobs:
           bash tests/ci/git-default-branch.test.sh
           bash tests/ci/check-workflow-composition.test.sh
           bash tests/ci/workflows-test-only.test.sh
-          bash tests/ci/e2e-lane-lock-coverage.test.sh
           # One canonical aggregate owns every release policy/distribution test.
           # Keep this invocation converged with package.json as the suite grows.
           npm run test:release-distribution

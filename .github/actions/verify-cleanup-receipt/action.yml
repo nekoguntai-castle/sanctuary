@@ -1,0 +1,67 @@
+name: Verify cleanup receipt
+description: Require and cryptographically verify signed planning and final cleanup upload receipts.
+inputs:
+  root:
+    description: Cleanup artifact directory, or parent directory when children is true.
+    required: true
+  children:
+    description: Verify every immediate child directory.
+    required: false
+    default: 'false'
+  require-cleanup-success:
+    description: Require each final receipt to report cleaned, no_op, or recovered.
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        CLEANUP_RECEIPT_CHILDREN: ${{ inputs.children }}
+        CLEANUP_RECEIPT_REQUIRE_SUCCESS: ${{ inputs.require-cleanup-success }}
+        CLEANUP_RECEIPT_ROOT: ${{ inputs.root }}
+      run: |
+        set -euo pipefail
+        case "$CLEANUP_RECEIPT_CHILDREN" in
+          true|false) ;;
+          *) echo "children must be true or false" >&2; exit 1 ;;
+        esac
+        case "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" in
+          true|false) ;;
+          *) echo "require-cleanup-success must be true or false" >&2; exit 1 ;;
+        esac
+        verify_directory() {
+          local root="$1" name
+          test -d "$root"
+          test ! -L "$root"
+          for name in planning-upload final-upload; do
+            for file in "$name.json" "$name.json.sig" "$name.sha256"; do
+              test -f "$root/$file"
+              test ! -L "$root/$file"
+              test -s "$root/$file"
+            done
+            test -f "$root/evidence-public.pem"
+            test ! -L "$root/evidence-public.pem"
+            test -s "$root/evidence-public.pem"
+          done
+          node scripts/ownership/verify-ci-cleanup-upload.mjs \
+            --artifact-root "$root" \
+            --runtime-root "$RUNNER_TEMP/sanctuary-cleanup" \
+            --checkout-root "$GITHUB_WORKSPACE"
+          if [ "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" = true ]; then
+            jq -e '.state == "cleaned" or .state == "no_op" or .state == "recovered"' \
+              "$root/final-upload.json" >/dev/null
+          fi
+        }
+        if [ "$CLEANUP_RECEIPT_CHILDREN" = true ]; then
+          shopt -s nullglob dotglob
+          directories=("$CLEANUP_RECEIPT_ROOT"/*)
+          test "${#directories[@]}" -gt 0
+          for directory in "${directories[@]}"; do
+            test ! -L "$directory"
+            test -d "$directory"
+            verify_directory "$directory"
+          done
+        else
+          verify_directory "$CLEANUP_RECEIPT_ROOT"
+        fi

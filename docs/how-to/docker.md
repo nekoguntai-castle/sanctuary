@@ -128,9 +128,12 @@ nano .env
 # Or using the ownership-aware Compose wrapper directly
 ./scripts/ownership/run-operator-compose.sh down
 
-# Stop and remove volumes (CAUTION: deletes database!)
-./scripts/ownership/run-operator-compose.sh down -v
+# Remove the active deployment and its managed data (requires a separate DELETE confirmation)
+./uninstall.sh --delete-data
 ```
+
+The uninstall command preserves external or previously adopted legacy volumes;
+their names alone are not deletion authority.
 
 ### View Logs
 
@@ -232,14 +235,11 @@ labels:
 ### Reset everything
 
 ```bash
-# Stop all containers and remove volumes
-./scripts/ownership/run-operator-compose.sh down -v
+# Remove the exact active deployment and its non-external managed volumes
+./uninstall.sh --delete-data
 
-# Remove all images
-./scripts/ownership/run-operator-compose.sh down --rmi all
-
-# Start fresh
-./scripts/ownership/run-operator-compose.sh up -d --build
+# Install and start fresh; shared images and build cache remain preserved
+./install.sh
 ```
 
 ## Environment Variables

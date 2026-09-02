@@ -29,6 +29,7 @@ run_upgrade=false
 run_upgrade_baseline=false
 run_upgrade_extended=false
 run_reuse_stack=false
+run_ownership_cleanup=false
 upgrade_baseline_refs=''
 upgrade_extended_fixtures=''
 upgrade_baseline_refs_set=false
@@ -51,6 +52,7 @@ emit_outputs() {
     echo "run_upgrade_baseline=$run_upgrade_baseline"
     echo "run_upgrade_extended=$run_upgrade_extended"
     echo "run_reuse_stack=$run_reuse_stack"
+    echo "run_ownership_cleanup=$run_ownership_cleanup"
     echo "upgrade_baseline_refs=$upgrade_baseline_refs"
     echo "upgrade_extended_fixtures=$upgrade_extended_fixtures"
     echo "scope=$scope"
@@ -122,6 +124,12 @@ enable_upgrade_extended() {
 enable_upgrade() {
   enable_upgrade_baseline
   enable_upgrade_extended
+}
+
+enable_ownership_cleanup() {
+  should_run=true
+  run_unit=true
+  run_ownership_cleanup=true
 }
 
 enable_standard_stack() {
@@ -428,6 +436,11 @@ while IFS= read -r file; do
       ;;
     .github/workflows/install-test.yml)
       classify_install_workflow_change
+      ;;
+    config/resource-ownership-contract.json|config/resource-lifecycle-callsites.json|scripts/ownership/*|tests/ownership/*|scripts/ci/cleanup-ci-callsite.sh|scripts/ci/run-compose-e2e-subject.sh)
+      enable_ownership_cleanup
+      add_scope ownership-cleanup
+      reason="Ownership cleanup architecture changed"
       ;;
     tests/install/unit/*|tests/install/utils/classify-install-scope.sh|tests/install/utils/classify-install-workflow-diff.sh|scripts/ci/run-install-unit-tests.sh|scripts/ci/retry-command.sh|.github/actions/setup-node-toolchain/*|tests/ci/lib/*|tests/ci/check-workflow-composition.test.sh)
       enable_unit

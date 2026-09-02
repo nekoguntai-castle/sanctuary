@@ -31,18 +31,26 @@ function fsyncDirectory(directory) {
   try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
 }
 
-function linuxStartIdentity(pid) {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    const close = stat.lastIndexOf(')');
-    const fields = stat.slice(close + 2).split(' ');
-    return fields[19] ? `linux-boot-ticks:${fields[19]}` : null;
-  } catch { return null; }
+export function parseLinuxProcessIdentity(stat) {
+  const close = stat.lastIndexOf(')');
+  const fields = stat.slice(close + 2).split(' ');
+  return fields[19] ? {
+    startIdentity: `linux-boot-ticks:${fields[19]}`,
+    runnable: !['Z', 'X'].includes(fields[0]),
+  } : null;
+}
+
+export function processIdentityMatches(observation, expectedStartIdentity) {
+  return observation.runnable && observation.startIdentity === expectedStartIdentity;
+}
+
+function linuxProcessIdentity(pid) {
+  try { return parseLinuxProcessIdentity(readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch { return null; }
 }
 
 export function readProcessStartIdentity(pid = process.pid) {
-  const linux = linuxStartIdentity(pid);
-  if (linux) return linux;
+  const linux = linuxProcessIdentity(pid);
+  if (linux) return linux.startIdentity;
   const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' });
   const start = result.status === 0 ? result.stdout.trim() : '';
   if (!start) throw new Error(`cannot determine process start identity for PID ${pid}`);
@@ -54,6 +62,8 @@ function processMatches(owner) {
     if (error.code === 'ESRCH') return false;
     if (error.code !== 'EPERM') throw error;
   }
+  const linux = linuxProcessIdentity(owner.pid);
+  if (linux) return processIdentityMatches(linux, owner.processStartIdentity);
   try { return readProcessStartIdentity(owner.pid) === owner.processStartIdentity; } catch { return null; }
 }
 

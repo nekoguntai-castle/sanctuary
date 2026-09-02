@@ -14,6 +14,7 @@ import { buildCleanupInventoryExecutionContext } from '../../scripts/ownership/c
 import { verifySignedArtifact, writeSignedArtifact } from '../../scripts/ownership/cleanup-evidence.mjs';
 import { applyCleanupExecution } from '../../scripts/ownership/cleanup-execution.mjs';
 import { buildCleanupPlan, buildPlanningReceipt } from '../../scripts/ownership/cleanup-planner.mjs';
+import { buildCleanupUploadReceipt } from '../../scripts/ownership/cleanup-upload-receipt.mjs';
 import { recoverCleanupExecution } from '../../scripts/ownership/cleanup-recovery.mjs';
 import { publicKeyFingerprint } from '../../scripts/ownership/crypto.mjs';
 import { observeDockerResources } from '../../scripts/ownership/docker-observation.mjs';
@@ -27,13 +28,16 @@ import {
 const enabled = process.env.SANCTUARY_RUN_DOCKER_ACCEPTANCE === 'true';
 const checkoutRoot = path.resolve(import.meta.dirname, '../..');
 const HASH = 'a'.repeat(64);
-const contract = { resourceClasses: [{
-  classId: 'compose_network', dependsOn: [], cleanupPolicies: ['exact_delete'],
-}] };
+const contract = { resourceClasses: [
+  { classId: 'compose_container', dependsOn: [], cleanupPolicies: ['exact_delete'] },
+  { classId: 'compose_network', dependsOn: ['compose_container'], cleanupPolicies: ['exact_delete'] },
+  { classId: 'compose_volume', dependsOn: ['compose_container'], cleanupPolicies: ['exact_delete'] },
+  { classId: 'oci_image', dependsOn: ['compose_container'], cleanupPolicies: ['exact_delete'] },
+] };
 
 function docker(args, options = {}) {
   return execFileSync('docker', args, {
-    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options,
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000, ...options,
   }).trim();
 }
 
@@ -66,6 +70,19 @@ function signAndVerifyArtifact(artifact, signerValue, outputPath) {
   });
   assert.equal(verified.digest, written.digest);
   return verified.artifact;
+}
+
+function publishAcceptanceEvidence(receipt, signerValue, name) {
+  const root = process.env.SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR;
+  if (!root) return;
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const projection = buildCleanupUploadReceipt(receipt);
+  signAndVerifyArtifact(projection, signerValue, path.join(root, `${name}.json`));
+  const publicPath = path.join(root, 'evidence-public.pem');
+  const publicBytes = readFileSync(signerValue.publicKeyPath);
+  if (existsSync(publicPath)) {
+    assert.deepEqual(readFileSync(publicPath), publicBytes);
+  } else writeFileSync(publicPath, publicBytes, { mode: 0o600 });
 }
 
 function ownershipLabels({ project, deploymentId, ownerId, resourceClass, lifecycle, createdAt,
@@ -105,12 +122,32 @@ function ownershipFromObservation(resource) {
   };
 }
 
-function eligibleRow(resource) {
-  const ownership = ownershipFromObservation(resource);
+function eligibleRow(resource, project) {
+  const ownership = resource.classifications.includes('externally_registered') ? {
+    project,
+    deploymentId: resource.registration.deploymentId,
+    ownerId: resource.registration.ownerId,
+    resourceClass: resource.registration.resourceClass,
+    lifecycle: resource.registration.lifecycle,
+    cleanupPolicy: resource.registration.cleanupPolicy,
+    createdAt: resource.registration.createdAt,
+    createdByRelease: resource.registration.createdByRelease,
+    createdByCommit: resource.registration.createdByCommit,
+    creationRunId: resource.registration.operationRunId,
+    immutableIdentity: resource.registration.immutableIdentity,
+  } : ownershipFromObservation(resource);
   const references = [...(resource.runtime?.references ?? [])].sort();
-  const contentDigests = [...(resource.runtime?.contentDigests ?? [])].sort();
+  const contentDigests = [...new Set([
+    ...(resource.runtime?.contentDigests ?? []),
+    ...[resource.registration?.registrationId, resource.registration?.metadataDigest]
+      .filter((value) => /^[a-f0-9]{64}$/.test(value ?? '')),
+  ])].sort();
+  const dependencyIdentities = [...new Set(
+    resource.runtime?.dependencyIdentities ?? [],
+  )].sort();
+  const locatorKind = resource.resourceClass === 'compose_volume' ? 'name' : 'engine_id';
   return {
-    resourceClass: resource.resourceClass, locatorKind: 'engine_id', locator: resource.locator,
+    resourceClass: resource.resourceClass, locatorKind, locator: resource.locator,
     immutableIdentity: resource.immutableIdentity, ownership,
     ownershipDigest: canonicalSha256(ownership),
     observationDigest: canonicalSha256({
@@ -118,9 +155,12 @@ function eligibleRow(resource) {
       immutableIdentity: resource.immutableIdentity, ownershipState: resource.ownershipState,
       classifications: resource.classifications, runtime: resource.runtime,
       registration: resource.registration ?? null, references, contentDigests,
+      dependencyIdentities,
     }),
     disposition: 'eligible', failureClasses: [], references, contentDigests,
-    active: false, protected: false, data: false, running: null,
+    dependencyIdentities,
+    active: false, protected: false, data: false,
+    running: resource.resourceClass === 'compose_container' ? resource.runtime.running : null,
   };
 }
 
@@ -151,23 +191,44 @@ function approvedBinding({ deploymentId, operationRunId, ownerId, project,
 }
 
 function registerVolume({ root, deploymentId, ownerId, operationRunId, locator,
-  immutableIdentity, lifecycle, referenceIds }) {
+  immutableIdentity, lifecycle, referenceIds, createdAt }) {
   return registerResource({
     deploymentId, operationRunId, ownerId, resourceClass: 'compose_volume', lifecycle,
     cleanupPolicy: lifecycle === 'shared' ? 'retain' : 'exact_delete',
-    createdAt: new Date().toISOString(), createdByRelease: 'unreleased',
+    createdAt, createdByRelease: 'unreleased',
     createdByCommit: 'c'.repeat(40), locatorKind: 'name', locator, immutableIdentity,
     metadataDigest: canonicalSha256({ locator, immutableIdentity }), referenceIds,
   }, { root, checkoutRoot });
 }
 
-function exactSelectors({ targetId, currentId, unlabeledId, sharedVolume, dataVolume }) {
+function registerImage({ root, deploymentId, ownerId, operationRunId, locator, immutableIdentity,
+  createdAt, locatorKind = 'reference' }) {
+  return registerResource({
+    deploymentId, operationRunId, ownerId, resourceClass: 'oci_image',
+    lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
+    createdAt, createdByRelease: 'unreleased',
+    createdByCommit: 'c'.repeat(40), locatorKind,
+    locator, immutableIdentity,
+    metadataDigest: canonicalSha256({ immutableIdentity }), referenceIds: [operationRunId],
+  }, { root, checkoutRoot });
+}
+
+function exactSelectors({ targetContainerId, targetId, currentId, unlabeledId,
+  targetVolume, sharedVolume, dataVolume, targetImageId }) {
   return {
-    compose_container: [],
+    compose_container: [targetContainerId].filter(Boolean).map((locator) => ({ locator })),
     compose_network: [targetId, currentId, unlabeledId].filter(Boolean).map((locator) => ({ locator })),
-    compose_volume: [sharedVolume, dataVolume].filter(Boolean).map((locator) => ({ locator })),
-    oci_image: [], buildkit_cache: [],
+    compose_volume: [targetVolume, sharedVolume, dataVolume]
+      .filter(Boolean).map((locator) => ({ locator })),
+    oci_image: [targetImageId].filter(Boolean).map((locator) => ({ locator })),
+    buildkit_cache: [],
   };
+}
+
+function actionSelectors(action) {
+  const selectors = exactSelectors({});
+  selectors[action.resourceClass] = [{ locator: action.locator }];
+  return selectors;
 }
 
 function observe(options) {
@@ -186,6 +247,14 @@ function classed(resources, locator, classification) {
 
 function removeCreated(inContext, created) {
   const failures = [];
+  for (const identity of created.containers) {
+    const removed = spawnSync('docker', inContext(['rm', '-f', identity]), {
+      encoding: 'utf8', timeout: 30_000,
+    });
+    if (removed.status !== 0 && dockerExists(inContext, 'container', identity)) {
+      failures.push(`container ${identity}: ${removed.stderr.trim() || removed.error?.code || 'unknown failure'}`);
+    }
+  }
   for (const identity of created.networks) {
     const removed = spawnSync('docker', inContext(['network', 'rm', identity]), {
       encoding: 'utf8', timeout: 30_000,
@@ -202,11 +271,19 @@ function removeCreated(inContext, created) {
       failures.push(`volume ${name}: ${removed.stderr.trim() || removed.error?.code || 'unknown failure'}`);
     }
   }
+  for (const identity of created.images) {
+    const removed = spawnSync('docker', inContext(['image', 'rm', '-f', identity]), {
+      encoding: 'utf8', timeout: 30_000,
+    });
+    if (removed.status !== 0 && dockerExists(inContext, 'image', identity)) {
+      failures.push(`image ${identity}: ${removed.stderr.trim() || removed.error?.code || 'unknown failure'}`);
+    }
+  }
   if (failures.length > 0) throw new Error(`real Docker fixture cleanup failed: ${failures.join('; ')}`);
 }
 
 test('real Docker coordinator deletes one exact ID, recovers durably, and preserves protected resources',
-  { skip: !enabled, timeout: 300_000 }, async () => {
+  { skip: !enabled, timeout: 900_000 }, async () => {
     const contextName = docker(['context', 'show']);
     const inContext = (args) => ['--context', contextName, ...args];
     const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -217,10 +294,14 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
     const operationRunId = `cleanup-${suffix}`;
     const createdAt = new Date().toISOString();
     const targetName = `sanctuary-cleanup-target-${suffix}`;
+    const targetContainerName = `sanctuary-cleanup-container-${suffix}`;
+    const targetVolume = `sanctuary-cleanup-volume-${suffix}`;
     const currentName = `sanctuary-cleanup-current-${suffix}`;
     const unlabeledName = `sanctuary-cleanup-unlabeled-${suffix}`;
     const sharedVolume = `sanctuary-cleanup-shared-${suffix}`;
     const dataVolume = `sanctuary-cleanup-data-${suffix}`;
+    const targetImageTag = `localhost/sanctuary-cleanup-image-${suffix}:replay`;
+    const sharedImageTag = `localhost/sanctuary-cleanup-image-${suffix}:shared`;
     const runtimeDirectory = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-cleanup-runtime-'));
     const registrationRoot = path.join(runtimeDirectory, 'ownership');
     const signingRoot = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-cleanup-signing-'));
@@ -229,7 +310,7 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
     const receiptSigner = signer(signingRoot);
     const authorizationSigner = signer(signingRoot, 'authorization');
     assert.notEqual(receiptSigner.signerKeyId, authorizationSigner.signerKeyId);
-    const created = { networks: [], volumes: [] };
+    const created = { containers: [], networks: [], volumes: [], images: [] };
     try {
       const targetId = docker(inContext(['network', 'create', ...labelArgs(ownershipLabels({
         project, deploymentId, ownerId, resourceClass: 'compose_network', lifecycle: 'obsolete',
@@ -244,6 +325,11 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
       const unlabeledId = docker(inContext(['network', 'create', unlabeledName]));
       created.networks.push(unlabeledId);
       docker(inContext(['volume', 'create', ...labelArgs(ownershipLabels({
+        project, deploymentId, ownerId, resourceClass: 'compose_volume', lifecycle: 'obsolete',
+        createdAt, creationRunId: `create-volume-${suffix}`,
+      })), targetVolume]));
+      created.volumes.push(targetVolume);
+      docker(inContext(['volume', 'create', ...labelArgs(ownershipLabels({
         project, deploymentId, ownerId, resourceClass: 'compose_volume', lifecycle: 'shared',
         createdAt, creationRunId: `shared-a-${suffix}`, cleanupPolicy: 'retain',
       })), sharedVolume]));
@@ -254,26 +340,101 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
       })), dataVolume]));
       created.volumes.push(dataVolume);
 
-      const volumeBootstrap = observe({ selectors: exactSelectors({ sharedVolume, dataVolume }) });
+      const imageLabels = labelArgs({
+        'org.opencontainers.image.source': 'https://github.com/nekoguntai-castle/sanctuary',
+        'org.opencontainers.image.version': '0.8.69',
+        'org.opencontainers.image.revision': 'c'.repeat(40),
+        'io.sanctuary.build-id': `distinct-build-lane-${suffix}`,
+        'dev.sanctuary.image-lock-sha256': 'd'.repeat(64),
+      });
+      const imageContext = path.join(signingRoot, 'image-context');
+      mkdirSync(imageContext, { mode: 0o700 });
+      writeFileSync(path.join(imageContext, 'Dockerfile'), [
+        'FROM alpine:latest',
+        'ARG SANCTUARY_ACCEPTANCE_REVISION=target',
+        'LABEL io.sanctuary.acceptance-revision=$SANCTUARY_ACCEPTANCE_REVISION',
+        `CMD ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]`,
+        '',
+      ].join('\n'));
+      docker(inContext([
+        'buildx', 'build', '--quiet', '--load', '--tag', targetImageTag, ...imageLabels, imageContext,
+      ]));
+      const observedImageId = docker(inContext([
+        'image', 'inspect', '--format', '{{.Id}}', targetImageTag,
+      ]));
+      const targetImageId = observedImageId.startsWith('sha256:')
+        ? observedImageId : `sha256:${observedImageId}`;
+      assert.match(targetImageId, /^sha256:[a-f0-9]{64}$/);
+      created.images.push(targetImageId);
+      registerImage({
+        root: registrationRoot, deploymentId, ownerId,
+        operationRunId: `create-image-${suffix}`, locator: targetImageId,
+        locatorKind: 'engine_id',
+        immutableIdentity: targetImageId, createdAt,
+      });
+      docker(inContext(['image', 'tag', targetImageId, sharedImageTag]));
+      const sharedImageObservation = observe({
+        selectors: exactSelectors({ targetImageId }), registrations: readRegistrations(registrationRoot),
+      });
+      classed(sharedImageObservation.resources, targetImageId, 'protected');
+      docker(inContext(['image', 'rm', sharedImageTag]));
+      docker(inContext([
+        'buildx', 'build', '--quiet', '--load', '--tag', targetImageTag,
+        '--build-arg', 'SANCTUARY_ACCEPTANCE_REVISION=replacement',
+        ...imageLabels, imageContext,
+      ]));
+      const replacementImageId = docker(inContext([
+        'image', 'inspect', '--format', '{{.Id}}', targetImageTag,
+      ]));
+      assert.notEqual(replacementImageId, targetImageId);
+      created.images.push(replacementImageId);
+      assert.equal(docker(inContext([
+        'image', 'inspect', '--format', '{{len .RepoTags}}', targetImageId,
+      ])), '0');
+      const targetContainerId = docker(inContext(['run', '--detach',
+        ...labelArgs(ownershipLabels({
+          project, deploymentId, ownerId, resourceClass: 'compose_container',
+          lifecycle: 'obsolete', createdAt, creationRunId: `create-container-${suffix}`,
+        })), '--name', targetContainerName, '--network', targetName,
+        '--mount', `type=volume,source=${targetVolume},target=/data`, targetImageId,
+      ]));
+      created.containers.push(targetContainerId);
+
+      const volumeBootstrap = observe({
+        selectors: exactSelectors({ targetVolume, sharedVolume, dataVolume }),
+      });
+      const targetVolumeIdentity = classed(
+        volumeBootstrap.resources, targetVolume, 'unregistered',
+      ).immutableIdentity;
       const sharedIdentity = classed(volumeBootstrap.resources, sharedVolume, 'unregistered').immutableIdentity;
       const dataIdentity = classed(volumeBootstrap.resources, dataVolume, 'unregistered').immutableIdentity;
       registerVolume({ root: registrationRoot, deploymentId, ownerId,
+        operationRunId: `create-volume-${suffix}`, locator: targetVolume,
+        immutableIdentity: targetVolumeIdentity, lifecycle: 'obsolete',
+        referenceIds: [`create-volume-${suffix}`], createdAt });
+      registerVolume({ root: registrationRoot, deploymentId, ownerId,
         operationRunId: `shared-a-${suffix}`, locator: sharedVolume,
         immutableIdentity: sharedIdentity, lifecycle: 'shared',
-        referenceIds: [`shared-a-${suffix}`, `shared-b-${suffix}`] });
+        referenceIds: [`shared-a-${suffix}`, `shared-b-${suffix}`], createdAt });
       registerVolume({ root: registrationRoot, deploymentId, ownerId,
         operationRunId: `shared-b-${suffix}`, locator: sharedVolume,
         immutableIdentity: sharedIdentity, lifecycle: 'shared',
-        referenceIds: [`shared-a-${suffix}`, `shared-b-${suffix}`] });
+        referenceIds: [`shared-a-${suffix}`, `shared-b-${suffix}`], createdAt });
       registerVolume({ root: registrationRoot, deploymentId, ownerId,
         operationRunId: `data-${suffix}`, locator: dataVolume,
-        immutableIdentity: dataIdentity, lifecycle: 'active', referenceIds: [`data-${suffix}`] });
+        immutableIdentity: dataIdentity, lifecycle: 'active', referenceIds: [`data-${suffix}`], createdAt });
       const registrations = () => readRegistrations(registrationRoot);
-      const selectors = exactSelectors({ targetId, currentId, unlabeledId, sharedVolume, dataVolume });
+      const selectors = exactSelectors({
+        targetContainerId, targetId, currentId, unlabeledId,
+        targetVolume, sharedVolume, dataVolume, targetImageId,
+      });
       const beforeObservation = observe({ selectors, registrations: registrations(),
         currentDeploymentIds: [currentDeploymentId], dataVolumeNames: [dataVolume] });
       const target = classed(beforeObservation.resources, targetId, 'owned');
       assert.deepEqual(target.classifications, ['owned']);
+      const targetContainer = classed(beforeObservation.resources, targetContainerId, 'owned');
+      const targetVolumeResource = classed(beforeObservation.resources, targetVolume, 'owned');
+      const targetImage = classed(beforeObservation.resources, targetImageId, 'externally_registered');
       classed(beforeObservation.resources, currentId, 'current');
       classed(beforeObservation.resources, sharedVolume, 'shared');
       classed(beforeObservation.resources, unlabeledId, 'unlabeled');
@@ -284,7 +445,9 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
         daemonContextFingerprint: beforeObservation.daemonContextFingerprint,
         registrations: registrations(),
       });
-      const inventoryBefore = inventory(binding, [eligibleRow(target)], createdAt);
+      const inventoryBefore = inventory(binding, [
+        targetContainer, target, targetVolumeResource, targetImage,
+      ].map((resource) => eligibleRow(resource, project)), createdAt);
       const plan = buildCleanupPlan(inventoryBefore, contract, { policyDigest: HASH });
       const dryRunReceipt = buildPlanningReceipt(inventoryBefore, plan, {
         signerKeyId: receiptSigner.signerKeyId,
@@ -306,16 +469,24 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
 set -euo pipefail
 printf '%s' "$$" > ${JSON.stringify(wrapperPidPath)}
 ${JSON.stringify(realDocker)} "$@"
-sleep 300 &
+sleep 10 &
 wait "$!"
 `, { mode: 0o700 });
       const runtime = createCleanupDockerRuntime({
         plan, deploymentManifest: binding.deploymentManifest,
-        loadInventory: async () => inventoryBefore,
+        loadInventory: async ({ action }) => {
+          const fresh = observe({
+            selectors: actionSelectors(action),
+            registrations: registrations(),
+          });
+          return inventory(binding, fresh.resources.map(
+            (resource) => eligibleRow(resource, project),
+          ), new Date().toISOString());
+        },
         loadRegistrations: registrations, registrationRoot,
         observationOptions: {
           runCommand: (_engine, args) => execFileSync(realDocker, args, {
-            encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+            encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
           }),
         },
         supervisor: (_engine, args, options) => runSupervisedCleanupCommand(
@@ -324,9 +495,16 @@ wait "$!"
         supervisorOptions: { timeoutMs: 2_000, graceMs: 200, killWaitMs: 2_000 },
       });
       const buildInventoryAfter = async () => {
-        const after = observe({ selectors: exactSelectors({ targetId }), registrations: registrations() });
-        assert.equal(after.resources.length, 0);
-        return inventory(binding, [], new Date().toISOString());
+        const after = observe({
+          selectors: exactSelectors({
+            targetContainerId, targetId, targetVolume, targetImageId,
+          }),
+          registrations: registrations(),
+        });
+        assert.equal(after.resources.length, 0, JSON.stringify(after.resources));
+        return inventory(binding, after.resources.map(
+          (resource) => eligibleRow(resource, project),
+        ), new Date().toISOString());
       };
       await assert.rejects(() => applyCleanupExecution({
         runtimeDirectory, checkoutRoot, inventoryBefore, plan, approval, dryRunReceipt,
@@ -337,9 +515,15 @@ wait "$!"
         },
       }), /simulated finalized crash/);
       assert.equal(dockerExists(inContext, 'network', targetId), false);
+      assert.equal(dockerExists(inContext, 'container', targetContainerId), false);
+      assert.equal(dockerExists(inContext, 'volume', targetVolume), false);
+      assert.equal(dockerExists(inContext, 'image', targetImageId), false);
       const wrapperPid = Number.parseInt(readFileSync(wrapperPidPath, 'ascii'), 10);
       assert.equal(cleanupProcessGroupHasRunnableMember(wrapperPid), false);
       created.networks = created.networks.filter((identity) => identity !== targetId);
+      created.containers = created.containers.filter((identity) => identity !== targetContainerId);
+      created.volumes = created.volumes.filter((identity) => identity !== targetVolume);
+      created.images = created.images.filter((identity) => identity !== targetImageId);
 
       const recovered = await recoverCleanupExecution({
         runtimeDirectory, checkoutRoot, inventoryBefore, plan, approval, dryRunReceipt,
@@ -360,10 +544,17 @@ wait "$!"
       });
       assert.equal(verified.digest, recovered.receiptDigest);
       assert.equal(verified.artifact.state, 'cleaned');
-      assert.deepEqual(verified.artifact.results.map((entry) => entry.result), ['absent']);
+      publishAcceptanceEvidence(verified.artifact, receiptSigner, 'recovered-upload');
+      assert.equal(verified.artifact.results.length, 5);
+      assert.deepEqual(
+        verified.artifact.results.map((entry) => entry.result),
+        ['cleaned', 'absent', 'absent', 'absent', 'absent'],
+      );
       assert.equal(readFileSync(`${recovered.receiptOutputPath.slice(0, -5)}.sha256`, 'ascii'), recovered.receiptDigest);
       const replayObservation = observe({
-        selectors: exactSelectors({ targetId }), registrations: registrations(),
+        selectors: exactSelectors({
+          targetContainerId, targetId, targetVolume, targetImageId,
+        }), registrations: registrations(),
       });
       const replayInventory = inventory({
         deploymentId, operationRunId: `replay-${suffix}`,
@@ -375,6 +566,7 @@ wait "$!"
       });
       assert.equal(replayReceipt.state, 'no_op');
       signAndVerifyArtifact(replayReceipt, receiptSigner, path.join(signingRoot, 'no-op-replay.json'));
+      publishAcceptanceEvidence(replayReceipt, receiptSigner, 'second-run-upload');
       assert.equal(existsSync(path.join(registrationRoot, '.registration-lock')), false);
       for (const [noun, identity] of [['network', currentId], ['network', unlabeledId],
         ['volume', sharedVolume], ['volume', dataVolume]]) {
@@ -398,7 +590,7 @@ test('real Docker pre-abort records a signed cancellation without touching the e
     chmodSync(runtimeDirectory, 0o700);
     chmodSync(signingRoot, 0o700);
     const receiptSigner = signer(signingRoot);
-    const created = { networks: [], volumes: [] };
+    const created = { containers: [], networks: [], volumes: [], images: [] };
     try {
       const createdAt = new Date().toISOString();
       const deploymentId = `cancel-deploy-${suffix}`;
@@ -448,6 +640,99 @@ test('real Docker pre-abort records a signed cancellation without touching the e
         inputPath: result.receiptOutputPath, publicKeyPath: receiptSigner.publicKeyPath,
         expectedFingerprint: receiptSigner.signerKeyId, checkoutRoot,
       }).artifact.state, 'cancelled');
+    } finally {
+      removeCreated(inContext, created);
+      rmSync(runtimeDirectory, { recursive: true, force: true });
+      rmSync(signingRoot, { recursive: true, force: true });
+    }
+  });
+
+test('real Docker cancellation after one action preserves the second exact resource',
+  { skip: !enabled, timeout: 120_000 }, async () => {
+    const contextName = docker(['context', 'show']);
+    const inContext = (args) => ['--context', contextName, ...args];
+    const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
+    const runtimeDirectory = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-mid-cancel-runtime-'));
+    const registrationRoot = path.join(runtimeDirectory, 'ownership');
+    const signingRoot = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-mid-cancel-signing-'));
+    chmodSync(runtimeDirectory, 0o700);
+    chmodSync(signingRoot, 0o700);
+    const receiptSigner = signer(signingRoot);
+    const created = { containers: [], networks: [], volumes: [], images: [] };
+    try {
+      const createdAt = new Date().toISOString();
+      const deploymentId = `mid-cancel-deploy-${suffix}`;
+      const operationRunId = `mid-cancel-operation-${suffix}`;
+      const ownerId = `mid-cancel-owner-${suffix}`;
+      const project = `mid-cancel-project-${suffix}`;
+      for (const index of [1, 2]) {
+        const identity = docker(inContext(['network', 'create', ...labelArgs(ownershipLabels({
+          project, deploymentId, ownerId, resourceClass: 'compose_network',
+          lifecycle: 'obsolete', createdAt, creationRunId: `mid-cancel-create-${suffix}-${index}`,
+        })), `sanctuary-mid-cancel-${index}-${suffix}`]));
+        created.networks.push(identity);
+      }
+      const selectors = {
+        ...exactSelectors({}),
+        compose_network: created.networks.map((locator) => ({ locator })),
+      };
+      const observed = observe({ selectors });
+      const binding = approvedBinding({
+        deploymentId, operationRunId, ownerId, project,
+        daemonContextFingerprint: observed.daemonContextFingerprint,
+      });
+      const inventoryBefore = inventory(
+        binding, observed.resources.map((resource) => eligibleRow(resource)), createdAt,
+      );
+      const plan = buildCleanupPlan(inventoryBefore, contract, { policyDigest: HASH });
+      assert.equal(plan.actions.length, 2);
+      const dryRunReceipt = buildPlanningReceipt(inventoryBefore, plan, {
+        signerKeyId: receiptSigner.signerKeyId,
+      });
+      const approval = buildCleanupApproval(plan, dryRunReceipt, {
+        signerKeyId: receiptSigner.signerKeyId, nonce: `mid-cancel-approval-${suffix}`,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      });
+      ensureRegistrationKeys(registrationRoot);
+      const registrations = () => readRegistrations(registrationRoot);
+      const runtime = createCleanupDockerRuntime({
+        plan, deploymentManifest: binding.deploymentManifest,
+        loadInventory: async ({ action }) => {
+          const fresh = observe({ selectors: actionSelectors(action), registrations: registrations() });
+          return inventory(binding, fresh.resources.map(
+            (resource) => eligibleRow(resource, project),
+          ), new Date().toISOString());
+        },
+        loadRegistrations: registrations, registrationRoot,
+      });
+      const controller = new AbortController();
+      let firstResultRecorded = false;
+      const result = await applyCleanupExecution({
+        runtimeDirectory, checkoutRoot, inventoryBefore, plan, approval, dryRunReceipt,
+        ...receiptSigner, reloadAuthority: runtime.reloadAuthority, mutate: runtime.mutate,
+        reconcile: runtime.reconcile, signal: controller.signal,
+        afterBoundary: async (boundary) => {
+          if (boundary === 'checkpoint_result' && !firstResultRecorded) {
+            firstResultRecorded = true;
+            controller.abort('SIGTERM');
+          }
+        },
+        buildInventoryAfter: async () => {
+          const after = observe({ selectors, registrations: registrations() });
+          return inventory(binding, after.resources.map(
+            (resource) => eligibleRow(resource, project),
+          ), new Date().toISOString());
+        },
+      });
+      const firstIdentity = plan.actions[0].immutableIdentity;
+      const secondIdentity = plan.actions[1].immutableIdentity;
+      assert.equal(result.state, 'cancelled');
+      assert.equal(dockerExists(inContext, 'network', firstIdentity), false);
+      assert.equal(dockerExists(inContext, 'network', secondIdentity), true);
+      assert.deepEqual(
+        result.receipt.results.map((entry) => entry.failureClass), ['none', 'cancelled'],
+      );
+      created.networks = created.networks.filter((identity) => identity !== firstIdentity);
     } finally {
       removeCreated(inContext, created);
       rmSync(runtimeDirectory, { recursive: true, force: true });

@@ -21,33 +21,68 @@ require_revision() {
   fi
 }
 
-inspect_label() {
-  docker image inspect --format "{{index .Config.Labels \"$2\"}}" "$1"
+archive_image_id() {
+  tar -xOf "$1" manifest.json | node -e '
+    let input = "";
+    process.stdin.on("data", chunk => { input += chunk; });
+    process.stdin.on("end", () => {
+      const manifest = JSON.parse(input);
+      const config = manifest.length === 1 ? manifest[0]?.Config : null;
+      const match = /^blobs\/sha256\/([0-9a-f]{64})$/.exec(config ?? "");
+      if (!match) process.exit(1);
+      process.stdout.write(`sha256:${match[1]}`);
+    });
+  '
 }
 
-verify_loaded_image() {
-  local image_ref="$1"
-  local revision="$2"
-  local image_lock_sha256="$3"
-  local actual_revision actual_image_lock
-
-  actual_revision="$(inspect_label "$image_ref" org.opencontainers.image.revision)"
-  actual_image_lock="$(inspect_label "$image_ref" dev.sanctuary.image-lock-sha256)"
-  if [ "$actual_revision" != "$revision" ] || [ "$actual_image_lock" != "$image_lock_sha256" ]; then
-    echo "wallet-sync replay image identity mismatch for $image_ref" >&2
-    echo "expected revision=$revision image_lock=$image_lock_sha256" >&2
-    echo "actual revision=$actual_revision image_lock=$actual_image_lock" >&2
-    exit 1
-  fi
+verify_exact_loaded_image() {
+  local image_ref="$1" expected_image_id="$2" revision="$3" image_lock_sha256="$4"
+  local listed inspection
+  listed="$(docker image ls --no-trunc --filter "reference=$image_ref" --format '{{.ID}}')" || return 1
+  [ "$listed" = "$expected_image_id" ] || return 1
+  inspection="$(docker image inspect "$image_ref")" || return 1
+  INSPECTION="$inspection" node - "$image_ref" "$expected_image_id" "$revision" "$image_lock_sha256" <<'NODE'
+const [reference, expectedId, revision, imageLock] = process.argv.slice(2);
+const records = JSON.parse(process.env.INSPECTION);
+if (!Array.isArray(records) || records.length !== 1) process.exit(1);
+const image = records[0];
+const labels = image.Config?.Labels ?? {};
+if (image.Id !== expectedId
+  || JSON.stringify(image.RepoTags ?? []) !== JSON.stringify([reference])
+  || (image.RepoDigests ?? []).length !== 0
+  || labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary'
+  || labels['org.opencontainers.image.revision'] !== revision
+  || labels['dev.sanctuary.image-lock-sha256'] !== imageLock
+  || !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'] ?? '')
+  || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'] ?? '')) process.exit(1);
+NODE
 }
 
-register_loaded_image() {
-  local image_ref="$1" source_root="$2" image_id
+register_loaded_image() (
+  local image_ref="$1" source_root="$2" image_id="$3"
   SANCTUARY_PROJECT_DIR="$source_root"
   ownership_initialize
-  image_id="$(docker image inspect --format '{{.Id}}' "$image_ref")"
   SANCTUARY_PROJECT_DIR="$source_root" \
-    register_owned_resource oci_image active exact_delete name "$image_ref" "$image_id" "$SANCTUARY_OPERATION_RUN_ID"
+    register_owned_resource oci_image obsolete \
+      exact_delete reference "$image_ref" "$image_id" "$SANCTUARY_OPERATION_RUN_ID"
+)
+
+load_and_register_image() {
+  local archive="$1" image_ref="$2" expected_image_id="$3" revision="$4"
+  local image_lock_sha256="$5" source_root="$6" load_status=0 registration_status=0
+  docker load --input "$archive" || load_status=$?
+  if ! verify_exact_loaded_image "$image_ref" "$expected_image_id" "$revision" "$image_lock_sha256"; then
+    echo "wallet-sync replay image recovery is ambiguous for $image_ref" >&2
+    [ "$load_status" -ne 0 ] && return "$load_status"
+    return 1
+  fi
+  register_loaded_image "$image_ref" "$source_root" "$expected_image_id" || registration_status=$?
+  if [ "$load_status" -ne 0 ]; then
+    [ "$registration_status" -eq 0 ] \
+      || echo "wallet-sync replay image recovery registration failed for $image_ref" >&2
+    return "$load_status"
+  fi
+  return "$registration_status"
 }
 
 register_replay_evidence() {
@@ -65,7 +100,7 @@ build_image() {
   local image_ref="$3"
   local output_dir="$4"
   local image_lock="$source_root/config/container-image-lock.json"
-  local image_lock_sha256 temporary_archive manifest_digest digest_hex archive archive_sha256 receipt build_version build_id
+  local image_lock_sha256 temporary_archive manifest_digest digest_hex archive archive_sha256 receipt build_version build_id expected_image_id
 
   require_revision "$revision"
   [ -f "$source_root/server/Dockerfile" ] || { echo "missing server Dockerfile under $source_root" >&2; exit 1; }
@@ -117,16 +152,16 @@ build_image() {
   archive="$output_dir/wallet-sync-replay-$revision-$digest_hex.oci.tar"
   mv "$temporary_archive" "$archive"
   archive_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
+  expected_image_id="$(archive_image_id "$archive")"
 
-  docker load --input "$archive"
-  verify_loaded_image "$image_ref" "$revision" "$image_lock_sha256"
-  register_loaded_image "$image_ref" "$source_root"
+  load_and_register_image "$archive" "$image_ref" "$expected_image_id" \
+    "$revision" "$image_lock_sha256" "$source_root"
   register_replay_evidence "$source_root" "$archive" "$archive_sha256"
 
   receipt="$output_dir/image-receipt.json"
-  node - "$receipt" "$archive" "$archive_sha256" "$manifest_digest" "$image_ref" "$revision" "$image_lock_sha256" <<'NODE'
+  node - "$receipt" "$archive" "$archive_sha256" "$manifest_digest" "$image_ref" "$revision" "$image_lock_sha256" "$expected_image_id" <<'NODE'
 const { writeFileSync } = require('node:fs');
-const [receipt, archive, archiveSha256, manifestDigest, imageRef, revision, imageLockSha256] = process.argv.slice(2);
+const [receipt, archive, archiveSha256, manifestDigest, imageRef, revision, imageLockSha256, imageId] = process.argv.slice(2);
 writeFileSync(receipt, `${JSON.stringify({
   schemaVersion: 'sanctuary.wallet-sync-replay-image.v1',
   archive: require('node:path').basename(archive),
@@ -135,6 +170,7 @@ writeFileSync(receipt, `${JSON.stringify({
   imageRef,
   revision,
   imageLockSha256,
+  imageId,
 }, null, 2)}\n`);
 NODE
 }
@@ -144,7 +180,7 @@ load_image() {
   local receipt="$1"
   local image_ref="$2"
   local revision="$3"
-  local receipt_dir archive archive_sha256 manifest_digest image_lock_sha256 actual_archive_sha actual_manifest
+  local receipt_dir archive archive_sha256 manifest_digest image_lock_sha256 expected_image_id actual_archive_sha actual_manifest
 
   require_revision "$revision"
   [ -f "$receipt" ] || { echo "missing wallet-sync replay image receipt: $receipt" >&2; exit 1; }
@@ -159,16 +195,18 @@ if (basename(receipt.archive ?? '') !== receipt.archive) process.exit(1);
 if (!/^[0-9a-f]{64}$/.test(receipt.archiveSha256 ?? '')) process.exit(1);
 if (!/^sha256:[0-9a-f]{64}$/.test(receipt.manifestDigest ?? '')) process.exit(1);
 if (!/^[0-9a-f]{64}$/.test(receipt.imageLockSha256 ?? '')) process.exit(1);
-for (const key of ['archive', 'archiveSha256', 'manifestDigest', 'imageLockSha256']) {
+if (!/^sha256:[0-9a-f]{64}$/.test(receipt.imageId ?? '')) process.exit(1);
+for (const key of ['archive', 'archiveSha256', 'manifestDigest', 'imageLockSha256', 'imageId']) {
   process.stdout.write(`${receipt[key]}\n`);
 }
 NODE
   )
-  [ "${#fields[@]}" -eq 4 ] || { echo "invalid wallet-sync replay image receipt" >&2; exit 1; }
+  [ "${#fields[@]}" -eq 5 ] || { echo "invalid wallet-sync replay image receipt" >&2; exit 1; }
   archive="$receipt_dir/${fields[0]}"
   archive_sha256="${fields[1]}"
   manifest_digest="${fields[2]}"
   image_lock_sha256="${fields[3]}"
+  expected_image_id="${fields[4]}"
   [ -f "$archive" ] || { echo "missing OCI archive named by receipt: $archive" >&2; exit 1; }
 
   actual_archive_sha="$(sha256sum "$archive" | cut -d ' ' -f 1)"
@@ -181,18 +219,21 @@ NODE
     echo "wallet-sync replay OCI artifact digest mismatch" >&2
     exit 1
   fi
+  [ "$(archive_image_id "$archive")" = "$expected_image_id" ] \
+    || { echo "wallet-sync replay archive image identity mismatch" >&2; exit 1; }
 
-  docker load --input "$archive"
-  verify_loaded_image "$image_ref" "$revision" "$image_lock_sha256"
-  register_loaded_image "$image_ref" "$(git rev-parse --show-toplevel)"
+  load_and_register_image "$archive" "$image_ref" "$expected_image_id" \
+    "$revision" "$image_lock_sha256" "$(git rev-parse --show-toplevel)"
   register_replay_evidence "$(git rev-parse --show-toplevel)" "$archive" "$archive_sha256"
 }
 
-command="${1:-}"
-[ "$#" -gt 0 ] || usage
-shift
-case "$command" in
-  build) build_image "$@" ;;
-  load) load_image "$@" ;;
-  *) usage ;;
-esac
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  command="${1:-}"
+  [ "$#" -gt 0 ] || usage
+  shift
+  case "$command" in
+    build) build_image "$@" ;;
+    load) load_image "$@" ;;
+    *) usage ;;
+  esac
+fi

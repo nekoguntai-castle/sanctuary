@@ -65,7 +65,7 @@ assert_contains_in_order() {
 
   # Do not pipe a large value into grep -q under pipefail: grep exits after a
   # match and can leave the producer reporting SIGPIPE, inverting the result.
-  if grep -Eq "$pattern" <<<"$normalized"; then
+  if grep -Eq -- "$pattern" <<<"$normalized"; then
     PASS=$((PASS + 1))
     echo "PASS: $label"
   else
@@ -628,11 +628,60 @@ assert_runner_parser_rejects_post_comment_drift() {
 RC="$REPO_ROOT/.github/workflows/release-candidate.yml"
 REPLAY_HOST_CHECK="$REPO_ROOT/scripts/ci/check-wallet-sync-replay-host.sh"
 REPLAY_IMAGE_HELPER="$REPO_ROOT/scripts/ci/wallet-sync-replay-image.sh"
-PHASE_RUNNER="$REPO_ROOT/scripts/ci/run-e2e-lane-phases.sh"
+CLEANUP_RECEIPT_ACTION="$REPO_ROOT/.github/actions/verify-cleanup-receipt/action.yml"
+CLEANUP_EVIDENCE_UPLOAD_ACTION="$REPO_ROOT/.github/actions/upload-cleanup-evidence/action.yml"
 RELEASE_GATES="$REPO_ROOT/docs/reference/release-gates.md"
 UPGRADE_ROADMAP="$REPO_ROOT/docs/plans/upgrade-testing-roadmap.md"
 CI_STRATEGY="$REPO_ROOT/docs/reference/ci-cd-strategy.md"
 INSTALL_README="$REPO_ROOT/tests/install/README.md"
+
+assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+  "shared cleanup receipt gate verifies exact signed artifacts against provider-bound trust" \
+  'for name in planning-upload final-upload' \
+  '"$name.json" "$name.json.sig" "$name.sha256"' \
+  'test -s "$root/evidence-public.pem"' \
+  "node scripts/ownership/verify-ci-cleanup-upload.mjs" \
+  '--artifact-root "$root"' \
+  '--runtime-root "$RUNNER_TEMP/sanctuary-cleanup"' \
+  '--checkout-root "$GITHUB_WORKSPACE"'
+
+assert_not_contains "$CLEANUP_RECEIPT_ACTION" \
+  "shared cleanup receipt gate never trusts a receipt-declared signer fingerprint" \
+  "jq -er '.signerKeyId'"
+
+assert_contains_in_order "$CLEANUP_EVIDENCE_UPLOAD_ACTION" \
+  "cleanup evidence is uploaded before its terminal state becomes a required result" \
+  'uses: ./.github/actions/upload-artifact' \
+  'uses: ./.github/actions/verify-cleanup-receipt' \
+  "require-cleanup-success: 'true'"
+
+assert_occurrence_count "$RC" \
+  "release-candidate binds every cleanup evidence upload to its verification root" \
+  'cleanup-root:' 4
+
+assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+  "shared cleanup receipt gate supports strict child receipt sets" \
+  'CLEANUP_RECEIPT_CHILDREN' \
+  'shopt -s nullglob dotglob' \
+  'directories=' \
+  'test ! -L "$directory"' \
+  'test -d' \
+  'verify_directory "$directory"'
+
+assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+  "shared cleanup receipt gate rejects invalid boolean inputs and symlink artifacts" \
+  'case "$CLEANUP_RECEIPT_CHILDREN" in' \
+  'case "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" in' \
+  'test ! -L "$root"' \
+  'test ! -L "$root/$file"' \
+  'test ! -L "$root/evidence-public.pem"'
+
+assert_contains_in_order "$CLEANUP_RECEIPT_ACTION" \
+  "shared cleanup receipt gate can require successful final cleanup state" \
+  'CLEANUP_RECEIPT_REQUIRE_SUCCESS' \
+  'if [ "$CLEANUP_RECEIPT_REQUIRE_SUCCESS" = true ]; then' \
+  '.state == "cleaned" or .state == "no_op" or .state == "recovered"' \
+  '"$root/final-upload.json"'
 
 assert_occurrence_count "$RC" \
   "release-candidate disables restart for CI-created Compose stacks" \
@@ -657,11 +706,15 @@ assert_contains_in_order "$RC" \
   'SANCTUARY_SOURCE_COMMIT=$CANDIDATE_SHA' \
   'SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha' \
   "Run fresh install test" \
+  'scripts/ci/cleanup-ci-callsite.sh run' \
   "Observe candidate image CVEs" \
   'scripts/ci/observe-runtime-image-cves.sh' \
-  "Cleanup" \
+  "Enforce candidate image CVE cache cleanup" \
+  'cache-volume-cleanup.json' \
   "Upload candidate image CVE observation" \
   'name: runtime-image-cves-${{ github.run_id }}-${{ github.run_attempt }}' \
+  "Upload receipt-bound cleanup evidence" \
+  'name: cleanup-rc-fresh-install-${{ github.run_id }}-${{ github.run_attempt }}' \
   "retention-days: 90"
 
 assert_named_job_step_contains "$RC" \
@@ -671,6 +724,25 @@ assert_named_job_step_contains "$RC" \
   "if: always()" \
   "continue-on-error: true" \
   "timeout-minutes: 5"
+
+assert_named_job_step_contains_in_order "$RC" \
+  "fresh-install-test" \
+  "Enforce candidate image CVE cache cleanup" \
+  "release-candidate blocks malformed or failed cache cleanup evidence" \
+  'if: always()' \
+  'cache-volume-cleanup.json' \
+  'evidence is missing' \
+  'keys == ["failureClass", "immutableIdentity", "postcondition", "resourceClass", "result"]' \
+  '.failureClass == "none"' \
+  '.result == "absent" and .postcondition == "absent"' \
+  '.result == "not_attempted" and .immutableIdentity == "unavailable"' \
+  'exit 1'
+
+assert_named_job_step_not_contains "$RC" \
+  "fresh-install-test" \
+  "Enforce candidate image CVE cache cleanup" \
+  "release-candidate cache cleanup gate is blocking" \
+  "continue-on-error"
 
 assert_named_job_step_contains "$RC" \
   "fresh-install-test" \
@@ -692,12 +764,6 @@ assert_contains_in_order "$RELEASE_GATES" \
   'status is `observed`, `partial`, or `unavailable`' \
   'do not feed `Validation' \
   "cannot approve or block a release"
-
-assert_contains_in_order "$PHASE_RUNNER" \
-  "phase runner logs each stack phase in order" \
-  "start-containers.log" \
-  "wait-migration.log" \
-  '"${LANE} e2e"'
 
 assert_contains_in_order "$RC" \
   "release-candidate tag-scoped workflow concurrency" \
@@ -798,17 +864,15 @@ done
 
 assert_named_job_step_contains "$RC" \
   "wallet-sync-live-shape" \
-  "Remove job-owned replay images" \
-  "live-shape gate tears down only its exact loaded subjects" \
-  "if: always()" \
-  'docker image rm "$RC10_IMAGE" "$RC11_IMAGE"'
+  "Run live-shape replay and RC10 negative control" \
+  "live-shape gate delegates image and container cleanup to the coordinator" \
+  'scripts/ci/cleanup-ci-callsite.sh run'
 
 assert_named_job_step_contains "$RC" \
   "wallet-sync-maximum-shapes" \
-  "Remove job-owned replay image" \
-  "maximum-shape gate tears down only its exact loaded subject" \
-  "if: always()" \
-  'docker image rm "$RC11_IMAGE"'
+  "Run maximum-shape boundary cases" \
+  "maximum-shape gate delegates image and container cleanup to the coordinator" \
+  'scripts/ci/cleanup-ci-callsite.sh run'
 
 assert_named_job_step_contains "$RC" \
   "wallet-sync-replay-images" \
@@ -823,14 +887,19 @@ assert_contains_in_order "$REPLAY_HOST_CHECK" \
   'minimum_disk_kib=$((15 * 1024 * 1024))'
 
 assert_contains_in_order "$REPLAY_IMAGE_HELPER" \
-  "wallet-sync replay helper exports and reverifies digest-addressed OCI bytes" \
+  "wallet-sync replay helper exports digest-addressed OCI bytes before loading" \
   'docker buildx build' \
   '--output "type=docker,dest=$temporary_archive"' \
   'required_entry in oci-layout index.json manifest.json' \
   'manifest_digest="$(tar -xOf "$temporary_archive" index.json' \
   'archive_sha256="$(sha256sum "$archive"' \
+  'load_and_register_image "$archive" "$image_ref" "$expected_image_id"'
+
+assert_contains_in_order "$REPLAY_IMAGE_HELPER" \
+  "wallet-sync replay load helper reverifies before registering immutable image ownership" \
+  'load_and_register_image()' \
   'docker load --input "$archive"' \
-  'verify_loaded_image "$image_ref" "$revision" "$image_lock_sha256"'
+  'verify_exact_loaded_image "$image_ref" "$expected_image_id" "$revision" "$image_lock_sha256"'
 
 assert_named_job_step_contains "$RC" \
   "wallet-sync-live-shape" \
@@ -839,6 +908,25 @@ assert_named_job_step_contains "$RC" \
   "if: always()" \
   "if-no-files-found: error" \
   "retention-days: 90"
+
+for cleanup_gate in \
+  'wallet-sync-replay-images|Verify replay image cleanup receipt|Upload replay image cleanup evidence' \
+  'wallet-sync-live-shape|Verify live-shape cleanup receipt|Upload live-shape replay evidence' \
+  'wallet-sync-maximum-shapes|Verify maximum-shape cleanup receipt|Upload maximum-shape replay evidence' \
+  'fresh-install-test|Verify RC fresh install cleanup receipt|Upload receipt-bound cleanup evidence'; do
+  IFS='|' read -r cleanup_job verify_step upload_step <<< "$cleanup_gate"
+  assert_named_job_step_contains "$RC" "$cleanup_job" "$verify_step" \
+    "release-candidate $cleanup_job requires final signed cleanup evidence" \
+    'if: always()' \
+    'final-upload.json final-upload.json.sig final-upload.sha256 evidence-public.pem'
+  assert_contains_in_order "$RC" \
+    "release-candidate $cleanup_job verifies cleanup evidence before upload" \
+    "- name: $verify_step" \
+    "- name: $upload_step"
+  assert_named_job_step_contains "$RC" "$cleanup_job" "$upload_step" \
+    "release-candidate $cleanup_job suppresses unverified cleanup uploads" \
+    "steps.verify_cleanup_receipt.outcome == 'success'"
+done
 
 assert_named_job_step_contains "$RC" \
   "wallet-sync-maximum-shapes" \
@@ -953,19 +1041,12 @@ assert_contains_in_order "$RC" \
   "Write fresh install diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"'
 
-assert_contains_in_order "$RC" \
-  "release-candidate exact cleanup verification" \
-  "fresh-install-test:" \
-  '--project "$project" --verify-empty'
-
-for rc_job in fresh-install-test; do
-  assert_named_job_step_contains "$RC" "$rc_job" "Cleanup" \
-    "release-candidate $rc_job uses exact label cleanup" \
-    '--project "$project" --verify-empty'
-  assert_named_job_step_not_contains "$RC" "$rc_job" "Cleanup" \
-    "release-candidate $rc_job has one cleanup owner" \
-    'docker compose down'
-done
+assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install test" \
+  "release-candidate fresh install uses the supervised coordinator run" \
+  'scripts/ci/cleanup-ci-callsite.sh run'
+assert_named_job_step_not_contains "$RC" "fresh-install-test" "Run fresh install test" \
+  "release-candidate fresh install has no direct cleanup owner" \
+  'cleanup-docker-resources.sh'
 
 # release-candidate.yml deliberately does not run an upgrade matrix or
 # upgrade-full-recovery job — install-test.yml's serialized chain owns
@@ -974,6 +1055,9 @@ done
 
 # --- install-test.yml -------------------------------------------------------
 IT="$REPO_ROOT/.github/workflows/install-test.yml"
+assert_occurrence_count "$IT" \
+  "install-test binds every cleanup evidence upload to its verification root" \
+  'cleanup-root:' 6
 
 assert_not_contains "$IT" \
   "stable tags do not launch a duplicate install matrix" \
@@ -1022,6 +1106,17 @@ assert_occurrence_count "$IT" \
   "install-test triggers on composition contract changes" \
   "'tests/ci/check-workflow-composition.test.sh'" \
   2
+
+for ownership_trigger in \
+  "'scripts/ci/cleanup-ci-callsite.sh'" \
+  "'scripts/ci/run-compose-e2e-subject.sh'" \
+  "'scripts/ownership/**'" \
+  "'tests/ownership/**'" \
+  "'config/resource-lifecycle-callsites.json'"; do
+  assert_occurrence_count "$IT" \
+    "install-test PR and push scopes include ownership input $ownership_trigger" \
+    "$ownership_trigger" 2
+done
 
 assert_occurrence_count "$REPO_ROOT/.github/workflows/release-candidate.yml" \
   "release-candidate unit lane runs the same shared suite runner" \
@@ -1084,19 +1179,29 @@ assert_contains_in_order "$REPO_ROOT/tests/install/e2e/upgrade-install.test.sh" 
   'force_test_compose_restart_policy_no "$PROJECT_ROOT"' \
   'run_install_script "$PROJECT_ROOT"'
 
-assert_contains_in_order "$IT" \
-  "install-test fresh-install-test composition" \
-  "scripts/ci/run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
+assert_named_job_step_contains_in_order "$IT" "fresh-install-test" "Run fresh install test" \
+  "install-test fresh-install-test coordinator composition" \
+  'subject=(bash -c' \
+  'scripts/ci/run-with-log.sh' \
+  'scripts/ci/with-runner-lock.sh e2e' \
   'scripts/ci/time-command.sh "fresh install e2e"' \
-  "fresh-install.test.sh"
+  'scripts/ci/cleanup-ci-callsite.sh run' \
+  '-- "${subject[@]}"'
+assert_named_job_step_contains "$IT" "fresh-install-test" "Run fresh install test" \
+  "install-test fresh install selects subject-managed deployment authority" \
+  '--authority-mode deployment_managed_by_subject'
 
-assert_contains_in_order "$IT" \
-  "install-test install-script composition" \
-  "scripts/ci/run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
+assert_named_job_step_contains_in_order "$IT" "fresh-install-test" "Run install script test" \
+  "install-test install-script coordinator composition" \
+  'subject=(bash -c' \
+  'scripts/ci/run-with-log.sh' \
+  'scripts/ci/with-runner-lock.sh e2e' \
   'scripts/ci/time-command.sh "install script e2e"' \
-  "install-script.test.sh"
+  'scripts/ci/cleanup-ci-callsite.sh run' \
+  '-- "${subject[@]}"'
+assert_named_job_step_contains "$IT" "fresh-install-test" "Run install script test" \
+  "install-test install script selects subject-managed deployment authority" \
+  '--authority-mode deployment_managed_by_subject'
 
 assert_contains_in_order "$IT" \
   "install-test upgrade-baseline composition" \
@@ -1105,6 +1210,19 @@ assert_contains_in_order "$IT" \
   "scripts/ci/with-runner-lock.sh e2e" \
   "scripts/ci/time-command.sh" \
   'upgrade-install.test.sh "${upgrade_args[@]}"'
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test baseline upgrade selects subject-managed deployment authority" \
+  '--authority-mode deployment_managed_by_subject'
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test baseline upgrade proves run-local legacy fixture creation" \
+  '--legacy-fixture-creation-witness'
+assert_occurrence_count "$IT" \
+  "install-test scopes legacy fixture creation authority to one baseline wrapper" \
+  '--legacy-fixture-creation-witness' 1
+
+assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install test" \
+  "release-candidate fresh install selects subject-managed deployment authority" \
+  '--authority-mode deployment_managed_by_subject'
 
 assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
   "install-test force rebuild is gated by the release classifier" \
@@ -1122,21 +1240,70 @@ assert_occurrence_count "$IT" \
   "install-test selects the release force rebuild once" \
   'upgrade_should_verify_force_rebuild' 1
 
-for install_job in fresh-install-test install-stack-smoke container-health-test auth-flow-test; do
-  assert_named_job_step_contains "$IT" "$install_job" "Cleanup" \
-    "install-test $install_job uses exact label cleanup" \
-    '--project "$project" --verify-empty'
-  assert_named_job_step_not_contains "$IT" "$install_job" "Cleanup" \
-    "install-test $install_job has one cleanup owner" \
-    'docker compose down'
+for coordinator_step in \
+  'fresh-install-test|Run fresh install test' \
+  'fresh-install-test|Run install script test' \
+  'install-stack-smoke|Run receipt-bound reusable stack subject' \
+  'container-health-test|Run receipt-bound container health subject' \
+  'auth-flow-test|Run receipt-bound auth flow subject'; do
+  IFS='|' read -r install_job step_name <<< "$coordinator_step"
+  assert_named_job_step_contains "$IT" "$install_job" "$step_name" \
+    "install-test $install_job/$step_name uses supervised receipt-bound cleanup" \
+    'scripts/ci/cleanup-ci-callsite.sh run'
+  assert_named_job_step_not_contains "$IT" "$install_job" "$step_name" \
+    "install-test $install_job/$step_name has no direct cleanup owner" \
+    'cleanup-docker-resources.sh'
+done
+
+for retired_phase in 'cleanup-ci-callsite.sh prepare' 'cleanup-ci-callsite.sh finish'; do
+  assert_not_contains "$IT" "install-test retires stale coordinator phase: $retired_phase" "$retired_phase"
+  assert_not_contains "$RC" "release-candidate retires stale coordinator phase: $retired_phase" "$retired_phase"
+done
+
+for cleanup_upload in \
+  'fresh-install-test|Upload install cleanup evidence' \
+  'install-stack-smoke|Upload install stack cleanup evidence' \
+  'container-health-test|Upload container health cleanup evidence' \
+  'auth-flow-test|Upload auth flow cleanup evidence' \
+  'upgrade-baseline-test|Upload upgrade baseline cleanup evidence' \
+  'upgrade-extended-fixture-test|Upload extended upgrade cleanup evidence'; do
+  IFS='|' read -r upload_job upload_step <<< "$cleanup_upload"
+  assert_named_job_step_config "$IT" \
+    "install-test $upload_job uploads complete signed cleanup artifacts" \
+    "$upload_job" "$upload_step" \
+    'uses: ./.github/actions/upload-cleanup-evidence' \
+    'if-no-files-found: error' \
+    'include-hidden-files: true' \
+    'retention-days: 90'
+done
+
+for cleanup_gate in \
+  'fresh-install-test|Verify install cleanup receipts|Upload install cleanup evidence' \
+  'install-stack-smoke|Verify install stack cleanup receipt|Upload install stack cleanup evidence' \
+  'container-health-test|Verify container health cleanup receipt|Upload container health cleanup evidence' \
+  'auth-flow-test|Verify auth flow cleanup receipt|Upload auth flow cleanup evidence' \
+  'upgrade-baseline-test|Verify upgrade baseline cleanup receipts|Upload upgrade baseline cleanup evidence' \
+  'upgrade-extended-fixture-test|Verify extended upgrade cleanup receipts|Upload extended upgrade cleanup evidence'; do
+  IFS='|' read -r cleanup_job verify_step upload_step <<< "$cleanup_gate"
+  assert_named_job_step_contains "$IT" "$cleanup_job" "$verify_step" \
+    "install-test $cleanup_job requires final signed cleanup evidence" \
+    'if: always()' \
+    'final-upload.json final-upload.json.sig final-upload.sha256 evidence-public.pem'
+  assert_contains_in_order "$IT" \
+    "install-test $cleanup_job verifies cleanup evidence before upload" \
+    "- name: $verify_step" \
+    "- name: $upload_step"
+  assert_named_job_step_contains "$IT" "$cleanup_job" "$upload_step" \
+    "install-test $cleanup_job suppresses unverified cleanup uploads" \
+    "steps.verify_cleanup_receipt.outcome == 'success'"
 done
 
 assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
-  "install-test baseline wrapper verifies label cleanup" \
-  '--project "$COMPOSE_PROJECT_NAME" --verify-empty'
+  "install-test baseline wrapper uses receipt-bound cleanup" \
+  'scripts/ci/cleanup-ci-callsite.sh" run'
 assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
   "install-test baseline wrapper preserves fixture status through cleanup" \
-  'upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"'
+  'return "$status"'
 assert_named_job_step_not_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
   "install-test baseline wrapper leaves graceful teardown to the test" \
   'docker compose down'
@@ -1176,6 +1343,8 @@ assert_contains_in_order "$IT" \
 
 assert_contains_in_order "$IT" \
   "install-test Docker jobs require the docker-socket capability label" \
+  "ownership-cleanup-acceptance:" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "fresh-install-test:" \
   "runs-on: [ubuntu-22.04, docker-socket]" \
   "install-script-test:" \
@@ -1191,25 +1360,23 @@ assert_contains_in_order "$IT" \
   "upgrade-extended-fixture-test:" \
   "runs-on: [ubuntu-22.04, docker-socket]" \
   "upgrade-extended-test:" \
-  "runs-on: [ubuntu-22.04, docker-socket]" \
-  "docker-resource-cleanup:" \
   "runs-on: [ubuntu-22.04, docker-socket]"
 
-assert_contains_in_order "$IT" \
-  "install stack supplies the diagnostics secret" \
-  "WORKER_DIAGNOSTICS_SECRET=\$(openssl rand -hex 32)" \
-  'WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET"' \
-  "docker compose up -d --build"
+COMPOSE_E2E_SUBJECT="$REPO_ROOT/scripts/ci/run-compose-e2e-subject.sh"
+assert_not_contains "$IT" \
+  "install-test has no keep-containers bypass around receipt-bound cleanup" \
+  'keep_containers'
+
+assert_contains_in_order "$COMPOSE_E2E_SUBJECT" \
+  "receipt-bound Compose subject owns secret generation and stack startup" \
+  'WORKER_DIAGNOSTICS_SECRET="$(openssl rand -hex 32)"' \
+  '"WORKER_DIAGNOSTICS_SECRET=$WORKER_DIAGNOSTICS_SECRET"' \
+  'env "${compose_env[@]}" docker compose up -d --build'
 
 assert_occurrence_count "$IT" \
-  "every install-test ad hoc stack generates the diagnostics secret" \
-  'WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)' \
-  3
-
-assert_occurrence_count "$IT" \
-  "every install-test ad hoc stack supplies the diagnostics secret" \
-  'WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET"' \
-  3
+  "workflow scope and all reusable stack lanes include the common supervised subject" \
+  'scripts/ci/run-compose-e2e-subject.sh' \
+  5
 
 assert_contains_in_order "$IT" \
   "install-test unit diagnostics" \
@@ -1258,10 +1425,10 @@ assert_contains_in_order "$IT" \
   "install-test stack smoke diagnostics" \
   "install-stack-smoke:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-stack-smoke' \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-stack.log"' \
-  'scripts/ci/time-command.sh "install stack startup"' \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log"' \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log"' \
+  "Run receipt-bound reusable stack subject" \
+  'scripts/ci/run-compose-e2e-subject.sh' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-stack.log"' \
+  'scripts/ci/time-command.sh "install stack subject"' \
   "Write install stack diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Stack Smoke"' \
   "diag-install-stack-smoke"
@@ -1270,10 +1437,10 @@ assert_contains_in_order "$IT" \
   "install-test container health diagnostics" \
   "container-health-test:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health' \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log"' \
-  'scripts/ci/time-command.sh "container health start"' \
+  "Run receipt-bound container health subject" \
   'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log"' \
-  'scripts/ci/time-command.sh "container health e2e"' \
+  'scripts/ci/time-command.sh "container health subject"' \
+  'scripts/ci/run-compose-e2e-subject.sh' \
   "Write container health diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Container Health"' \
   "diag-container-health"
@@ -1282,10 +1449,10 @@ assert_contains_in_order "$IT" \
   "install-test auth flow diagnostics" \
   "auth-flow-test:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow' \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log"' \
-  'scripts/ci/time-command.sh "auth flow start"' \
+  "Run receipt-bound auth flow subject" \
   'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log"' \
-  'scripts/ci/time-command.sh "auth flow e2e"' \
+  'scripts/ci/time-command.sh "auth flow subject"' \
+  'scripts/ci/run-compose-e2e-subject.sh' \
   "Write auth flow diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Auth Flow"' \
   "diag-auth-flow"
@@ -1328,22 +1495,18 @@ assert_contains_in_order "$IT" \
   'if [ "$SELECTED_UPGRADE_FAILED" = "true" ]; then'
 
 assert_contains_in_order "$IT" \
-  "install-test cleanup DIND telemetry" \
-  "docker-resource-cleanup:" \
-  "Check Docker" \
-  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log"' \
-  "scripts/ci/wait-for-docker.sh" \
-  "Sweep runner leftovers" \
-  "--runner-leftovers" \
-  "Verify current-run Docker cleanup" \
-  "--verify-empty" \
-  "Post-cleanup DIND diagnostics" \
-  'sanctuary-ci-fresh-${{ github.run_id }}' \
-  'sanctuary-ci-stack-${{ github.run_id }}' \
-  'sanctuary-ci-health-${{ github.run_id }}' \
-  'sanctuary-ci-auth-${{ github.run_id }}' \
-  'sanctuary-ci-upgrade-${{ github.run_id }}' \
-  'diag-docker-resource-cleanup-${{ github.run_id }}'
+  "install-test ownership acceptance proves and uploads signed recovery evidence" \
+  "ownership-cleanup-acceptance:" \
+  "github.event_name == 'pull_request'" \
+  "run_ownership_cleanup == 'true'" \
+  "Run real-resource cleanup and interruption proof" \
+  'SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/sanctuary-cleanup-acceptance' \
+  "Verify projected acceptance receipts" \
+  'SANCTUARY_CLEANUP_ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/sanctuary-cleanup-acceptance' \
+  'verifySignedArtifact({' \
+  "Upload cleanup acceptance receipts" \
+  'include-hidden-files: true' \
+  'retention-days: 90'
 
 # --- buildx-action ownership regression -------------------------------------
 # Fresh-install does not own image construction. The one build-once replay job
@@ -1373,6 +1536,24 @@ assert_named_job_not_contains "$RC" \
 # fork-worker termination errors. Keep vector workflow server tests on the
 # repo's stable CI Vitest entrypoint.
 VV="$REPO_ROOT/.github/workflows/verify-vectors.yml"
+
+assert_contains_in_order "$VV" \
+  "verify-vectors fails fast on checked-in PSBT proof drift" \
+  "Verify wallet-safety classifier completeness" \
+  "Verify hardware emulator source inventory" \
+  "Install PSBT proof verifier dependencies" \
+  "Verify pinned Bitcoin Core PSBT proof" \
+  "Verify Go toolchain" \
+  "Wait for Docker" \
+  "Run pinned Jade vendor protocol harness" \
+  "Install server dependencies" \
+  "Prove PSBT account-binding invariants by mutation" \
+  "Prove exact transaction fee invariants by mutation" \
+  "Run cross-implementation address verifier"
+assert_occurrence_count "$VV" \
+  "verify-vectors binds every cleanup evidence upload to its verification root" \
+  'cleanup-root:' 8
+PSBT_SUBJECT="$REPO_ROOT/scripts/ci/run-psbt-core-subject.sh"
 verify_vector_default_vitest="$(grep -n 'npm run test:run --' "$VV" || true)"
 if [ -n "$verify_vector_default_vitest" ]; then
   FAIL=$((FAIL + 1))
@@ -2318,57 +2499,129 @@ assert_occurrence_count "$VV" \
 
 assert_named_job_step_contains "$VV" \
   "verify-vectors" \
-  "Start isolated pinned Bitcoin Core for live PSBT proof" \
-  "live PSBT proof attests the running image ID" \
-  'actual_image_id="$(docker inspect'
+  "Run PSBT cleanup subject failure-path tests" \
+  "verify-vectors executes PSBT lifecycle failure-path regressions" \
+  "node --test tests/ci/psbt-core-subject.test.mjs"
 
-assert_named_job_step_contains "$VV" \
+assert_named_job_step_contains_in_order "$VV" \
   "verify-vectors" \
-  "Start isolated pinned Bitcoin Core for live PSBT proof" \
-  "live PSBT proof resolves the expected pinned image ID" \
-  'expected_image_id="$(docker image inspect'
+  "Run receipt-bound live Bitcoin Core PSBT proof" \
+  "live PSBT proof delegates its complete lifetime to one coordinator subject" \
+  'scripts/ci/cleanup-ci-callsite.sh run --lane verify-psbt-live' \
+  '-- scripts/ci/run-psbt-core-subject.sh live'
 
-assert_named_job_step_contains "$VV" \
-  "verify-vectors" \
-  "Start isolated pinned Bitcoin Core for live PSBT proof" \
-  "live PSBT proof attests the pulled repository digest" \
-  'docker image inspect "$VERIFY_PSBT_CORE_IMAGE"'
-
-assert_named_job_step_contains "$VV" \
+assert_named_job_step_contains_in_order "$VV" \
   "regenerate-psbt-vectors" \
-  "Attest Bitcoin Core image" \
-  "manual regeneration attests the running image ID" \
-  'actual_image_id="$(docker inspect'
+  "Run receipt-bound regenerated Bitcoin Core PSBT proof" \
+  "regenerated PSBT proof delegates its complete lifetime to one coordinator subject" \
+  'scripts/ci/cleanup-ci-callsite.sh run --lane regenerate-psbt' \
+  '-- scripts/ci/run-psbt-core-subject.sh regenerate'
 
-assert_named_job_step_contains "$VV" \
-  "regenerate-psbt-vectors" \
-  "Attest Bitcoin Core image" \
-  "manual regeneration attests the pulled repository digest" \
-  'RepoDigests'
+for cleanup_upload in \
+  'verify-vectors|Upload live PSBT cleanup evidence' \
+  'regenerate-psbt-vectors|Upload regenerated PSBT cleanup evidence'; do
+  IFS='|' read -r cleanup_job cleanup_step <<< "$cleanup_upload"
+  assert_named_job_step_contains "$VV" "$cleanup_job" "$cleanup_step" \
+    "$cleanup_job uploads signed PSBT cleanup evidence on every exit" \
+    'if: always()'
+  assert_named_job_step_config "$VV" \
+    "$cleanup_job uploads the complete cleanup artifact directory" \
+    "$cleanup_job" "$cleanup_step" \
+    'uses: ./.github/actions/upload-cleanup-evidence' \
+    'if-no-files-found: error' \
+    'include-hidden-files: true' \
+    'retention-days: 90'
+done
 
-assert_named_job_step_contains "$VV" \
+assert_contains_in_order "$PSBT_SUBJECT" \
+  "PSBT subject fails closed before Docker mutation and stamps exact-delete ownership" \
+  'SANCTUARY_CLEANUP_COORDINATED:-0' \
+  'source "$PROJECT_ROOT/scripts/ownership/producer-hooks.sh"' \
+  'ownership_label_args compose_container exact_delete' \
+  'docker pull "$VERIFY_PSBT_CORE_IMAGE"' \
+  'docker create --cidfile "$cidfile" --name "$container_name"'
+
+assert_not_contains "$PSBT_SUBJECT" \
+  "PSBT subject leaves exact deletion exclusively to the signed coordinator" \
+  'docker create --cidfile "$cidfile" --rm'
+
+assert_contains_in_order "$PSBT_SUBJECT" \
+  "PSBT subject recovers create response loss and preserves the create failure" \
+  'durable_id="$(tr' \
+  'recovered_id="$(recover_exact_created_container "$container_name")" || {' \
+  'printf' \
+  '[ "$create_status" -eq 0 ] || return "$create_status"'
+
+assert_contains_in_order "$PSBT_SUBJECT" \
+  "PSBT subject attests its immutable image before start" \
+  'expected_image_id="$(docker image inspect "$VERIFY_PSBT_CORE_IMAGE"' \
+  'actual_image_id="$(docker inspect "$container_id"' \
+  'RepoDigests' \
+  'docker start "$container_id"'
+
+assert_contains_in_order "$PSBT_SUBJECT" \
+  "PSBT subject retains generation drift and signed-vector replay assertions" \
+  'npm run generate:signed' \
+  'git -C "$SANCTUARY_PROJECT_DIR" diff --exit-code' \
+  'tests/unit/services/bitcoin/psbt.signed-vectors.test.ts'
+
+for forbidden_cleanup in 'docker rm' 'docker stop' 'docker kill'; do
+  assert_not_contains "$VV" \
+    "verify-vectors has no direct PSBT cleanup mutation: $forbidden_cleanup" \
+    "$forbidden_cleanup"
+  assert_not_contains "$PSBT_SUBJECT" \
+    "PSBT subject leaves cleanup to the coordinator: $forbidden_cleanup" \
+    "$forbidden_cleanup"
+done
+
+assert_named_job_step_contains_in_order "$VV" \
   "verify-vectors" \
-  "Regenerate and verify live Bitcoin Core PSBT proof" \
-  "live PSBT proof regenerates signed vectors" \
-  "npm run generate:signed"
+  "Run cross-implementation address verifier" \
+  "address verifier runs under receipt-bound cleanup" \
+  'scripts/ci/cleanup-ci-callsite.sh run' \
+  '--lane address-verify'
 
-assert_named_job_step_contains "$VV" \
-  "verify-vectors" \
-  "Regenerate and verify live Bitcoin Core PSBT proof" \
-  "live PSBT proof rejects deterministic fixture drift" \
-  'git -C "$GITHUB_WORKSPACE" diff --exit-code'
+assert_named_job_step_config "$VV" \
+  "address verifier uploads complete signed cleanup evidence" \
+  "verify-vectors" "Upload address verifier cleanup evidence" \
+  'uses: ./.github/actions/upload-cleanup-evidence' \
+  'if-no-files-found: error' \
+  'include-hidden-files: true' \
+  'retention-days: 90'
 
-assert_named_job_step_contains "$VV" \
-  "verify-vectors" \
-  "Replay live Bitcoin Core PSBT vectors" \
-  "live PSBT proof replays signed vectors" \
-  "tests/unit/services/bitcoin/psbt.signed-vectors.test.ts"
+assert_named_job_step_contains_in_order "$VV" \
+  "regenerate-vectors" \
+  "Generate address vectors with pinned verifier stack" \
+  "address vector generation runs under receipt-bound cleanup" \
+  'scripts/ci/cleanup-ci-callsite.sh run' \
+  '--lane address-generate'
 
-assert_named_job_step_contains "$VV" \
-  "verify-vectors" \
-  "Stop isolated Bitcoin Core" \
-  "live PSBT proof cleanup runs unconditionally" \
-  "if: always()"
+assert_named_job_step_config "$VV" \
+  "address vector generation uploads complete signed cleanup evidence" \
+  "regenerate-vectors" "Upload generated address verifier cleanup evidence" \
+  'uses: ./.github/actions/upload-cleanup-evidence' \
+  'if-no-files-found: error' \
+  'include-hidden-files: true' \
+  'retention-days: 90'
+
+for cleanup_gate in \
+  'verify-vectors|Verify address verifier cleanup receipt|Upload address verifier cleanup evidence|verify_address_cleanup' \
+  'verify-vectors|Verify live PSBT cleanup receipt|Upload live PSBT cleanup evidence|verify_live_psbt_cleanup' \
+  'regenerate-vectors|Verify generated address cleanup receipt|Upload generated address verifier cleanup evidence|verify_cleanup_receipt' \
+  'regenerate-psbt-vectors|Verify regenerated PSBT cleanup receipt|Upload regenerated PSBT cleanup evidence|verify_cleanup_receipt'; do
+  IFS='|' read -r cleanup_job verify_step upload_step verify_id <<< "$cleanup_gate"
+  assert_named_job_step_contains "$VV" "$cleanup_job" "$verify_step" \
+    "verify-vectors $cleanup_job requires final signed cleanup evidence" \
+    'if: always()' \
+    'final-upload.json final-upload.json.sig final-upload.sha256 evidence-public.pem'
+  assert_contains_in_order "$VV" \
+    "verify-vectors $cleanup_job verifies cleanup evidence before upload" \
+    "- name: $verify_step" \
+    "- name: $upload_step"
+  assert_named_job_step_contains "$VV" "$cleanup_job" "$upload_step" \
+    "verify-vectors $cleanup_job suppresses unverified cleanup uploads" \
+    "steps.$verify_id.outcome == 'success'"
+done
 
 assert_contains_in_order "$VV" \
   "regenerate-vectors diagnostic coverage" \
@@ -2389,23 +2642,27 @@ assert_contains_in_order "$VV" \
   "regenerate-psbt-vectors:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-psbt-vectors' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/start-bitcoin-core.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-bitcoin-core.log"' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log"' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-psbt-dependencies.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-psbt-vectors.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-signed-psbt-vectors.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/verify-generated-psbt-vectors.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-psbt-vector-changes.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-signed-psbt-vector-changes.log"' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/run-psbt-vector-tests.log"' \
+  "Run receipt-bound regenerated Bitcoin Core PSBT proof" \
+  "Upload regenerated PSBT cleanup evidence" \
   "Write regenerate PSBT vector diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Regenerate PSBT Vectors"' \
   "Upload regenerate PSBT vector diagnostics" \
   "ci-diagnostics-regenerate-psbt-vectors"
 
+assert_contains_in_order "$PSBT_SUBJECT" \
+  "regenerated PSBT subject retains proof diagnostics" \
+  '"$SCRIPT_DIR/run-with-log.sh" "$DIAGNOSTIC_DIR/generate-psbt-vectors.log"' \
+  '"$SCRIPT_DIR/run-with-log.sh" "$DIAGNOSTIC_DIR/generate-signed-psbt-vectors.log"' \
+  '"$SCRIPT_DIR/run-with-log.sh" "$DIAGNOSTIC_DIR/verify-generated-psbt-vectors.log"' \
+  '"$DIAGNOSTIC_DIR/run-psbt-vector-tests.log"'
+
 # --- docker-build diagnostic coverage ----------------------------------------
 DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build binds every cleanup evidence upload to its verification root" \
+  'cleanup-root:' 5
 
 for docker_input in \
   "'src/**'" \
@@ -2414,6 +2671,16 @@ for docker_input in \
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
     "docker-build triggers for $docker_input" \
     "$docker_input" \
+    2
+done
+
+for docker_ownership_input in \
+  "'config/resource-ownership-contract.json'" \
+  "'scripts/ci/cleanup-ci-callsite.sh'" \
+  "'scripts/ownership/**'"; do
+  assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build triggers for ownership input $docker_ownership_input" \
+    "$docker_ownership_input" \
     2
 done
 
@@ -2559,6 +2826,35 @@ assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Run pinned Jade QEMU proof" \
   "npm run test:jade-emulator-proof"
 
+assert_named_job_step_config "$VV" \
+  "Jade protocol harness verifies signed cleanup evidence" \
+  "verify-vectors" "Verify Jade protocol cleanup receipt" \
+  'uses: ./.github/actions/verify-cleanup-receipt' \
+  'root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/jade-protocol-harness'
+
+assert_named_job_step_config "$VV" \
+  "Jade protocol harness uploads cleanup evidence strictly" \
+  "verify-vectors" "Upload Jade protocol cleanup evidence" \
+  'uses: ./.github/actions/upload-cleanup-evidence' \
+  'if-no-files-found: error' \
+  'include-hidden-files: true' \
+  'retention-days: 90'
+
+assert_contains_in_order "$VV" \
+  "Jade protocol cleanup receipt is verified before upload" \
+  "Run pinned Jade vendor protocol harness" \
+  "Verify Jade protocol cleanup receipt" \
+  "Upload Jade protocol cleanup evidence"
+
+assert_named_job_step_contains "$VV" "verify-vectors" "Upload Jade protocol cleanup evidence" \
+  "Jade protocol suppresses unverified cleanup uploads" \
+  "steps.verify_jade_protocol_cleanup.outcome == 'success'"
+
+assert_occurrence_count "$VV" \
+  "all vector cleanup uploads require a successful verifier" \
+  ".outcome == 'success'" \
+  8
+
 assert_named_job_step_contains "$VV" \
   "verify-jade-emulator" \
   "Run pinned Jade QEMU proof" \
@@ -2691,9 +2987,13 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build frontend runnable evidence" \
   "build-frontend:" \
   "Build, smoke, and attest frontend" \
-  'scripts/ci/build-runtime-image.sh frontend docker/frontend/Dockerfile . sanctuary-ci/frontend:${{ github.sha }}' \
+  'scripts/ci/cleanup-ci-callsite.sh run' \
+  '--lane runtime-image-frontend' \
+  '-- scripts/ci/build-runtime-image.sh frontend docker/frontend/Dockerfile . sanctuary-ci/frontend' \
   "Upload frontend image evidence" \
-  "runtime-image-evidence-frontend"
+  "runtime-image-evidence-frontend" \
+  "Upload frontend cleanup evidence" \
+  'cleanup-runtime-image-frontend-${{ github.run_id }}-${{ github.run_attempt }}'
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build backend endpoint resolution" \
@@ -2707,9 +3007,13 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build backend runnable evidence" \
   "build-backend:" \
   "Build, smoke, and attest backend" \
-  'scripts/ci/build-runtime-image.sh backend server/Dockerfile . sanctuary-ci/backend:${{ github.sha }}' \
+  'scripts/ci/cleanup-ci-callsite.sh run' \
+  '--lane runtime-image-backend' \
+  '-- scripts/ci/build-runtime-image.sh backend server/Dockerfile . sanctuary-ci/backend' \
   "Upload backend image evidence" \
-  "runtime-image-evidence-backend"
+  "runtime-image-evidence-backend" \
+  "Upload backend cleanup evidence" \
+  'cleanup-runtime-image-backend-${{ github.run_id }}-${{ github.run_attempt }}'
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build all five shipped images emit evidence" \
@@ -2737,8 +3041,56 @@ assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
 
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build runtime evidence invocation count" \
-  "run: scripts/ci/build-runtime-image.sh " \
+  "-- scripts/ci/build-runtime-image.sh " \
   5
+
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build cleanup coordinator invocation count" \
+  "scripts/ci/cleanup-ci-callsite.sh run" \
+  5
+
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build signed cleanup evidence upload count" \
+  "name: cleanup-runtime-image-" \
+  5
+
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build final signed cleanup evidence gate count" \
+  "name: Require " \
+  5
+
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build final cleanup evidence file contract count" \
+  "uses: ./.github/actions/verify-cleanup-receipt" \
+  5
+
+for runtime_cleanup_upload in \
+  'build-frontend|Upload frontend cleanup evidence' \
+  'build-backend|Upload backend cleanup evidence' \
+  'build-gateway|Upload gateway cleanup evidence' \
+  'build-llm-egress-proxy|Upload LLM egress proxy cleanup evidence' \
+  'build-grafana-migration|Upload Grafana migration cleanup evidence'; do
+  IFS='|' read -r runtime_job runtime_step <<< "$runtime_cleanup_upload"
+  assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
+    "$runtime_job" "$runtime_step" \
+    "docker-build $runtime_job uploads cleanup evidence on every subject exit" \
+    'if: always()'
+  assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
+    "$runtime_job" "$runtime_step" \
+    "docker-build $runtime_job suppresses unverified cleanup uploads" \
+    "steps.verify_cleanup_receipt.outcome == 'success'"
+  assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build $runtime_job uploads complete signed cleanup evidence" \
+    "$runtime_job" "$runtime_step" \
+    'uses: ./.github/actions/upload-cleanup-evidence' \
+    'if-no-files-found: error' \
+    'include-hidden-files: true' \
+    'retention-days: 90'
+done
+
+assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build never reuses a commit-only validation tag" \
+  ':${{ github.sha }}'
 
 for docker_timeout_contract in \
   "detect-image-scope:|timeout-minutes: 10" \
@@ -2840,6 +3192,12 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "node tests/ci/check-npm-ci-callsites.test.mjs"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality executes wallet-sync replay cleanup regressions" \
+  "node --test tests/ci/wallet-sync-database-readiness.test.mjs" \
+  "node --test tests/ci/wallet-sync-replay-cleanup.test.mjs" \
+  "node tests/ci/check-npm-ci-callsites.test.mjs"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality runs on direct main pushes" \
   "on:" \
   "push:" \
@@ -2925,7 +3283,7 @@ declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=2
   [test.yml]=10
-  [verify-vectors.yml]=8
+  [verify-vectors.yml]=7
 )
 for workflow in "${!strict_install_counts[@]}"; do
   assert_occurrence_count \
@@ -3581,6 +3939,15 @@ assert_test_run_ci_jobs_prepare_server() {
 assert_test_run_ci_guard_fixtures
 assert_test_run_ci_guard_fails_on_invalid_yaml
 assert_test_run_ci_jobs_prepare_server
+
+if bash "$SCRIPT_DIR/podman-socket-canary-composition.test.sh"; then
+  PASS=$((PASS + 1))
+  echo "PASS: Podman socket canary uses receipt-bound cleanup"
+else
+  FAIL=$((FAIL + 1))
+  FAILURES+=("Podman socket canary lifecycle composition failed")
+  echo "FAIL: Podman socket canary lifecycle composition" >&2
+fi
 
 check_interpreter_heredocs
 

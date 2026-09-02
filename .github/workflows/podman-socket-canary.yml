@@ -15,15 +15,8 @@ name: Podman Socket Canary
 # longer a Docker-in-Docker runner to compare against; the informational
 # cmd-array result in probe 6 is what a Docker baseline used to provide.
 #
-# Manual dispatch only. Every probe is non-fatal and reports its verdict; the
-# summary job decides pass/fail so a single missing API endpoint produces a
-# diagnosis rather than an opaque red.
-#
-# History worth keeping: run 8602 failed probe 2 on the wrong socket path, and
-# 8603 passed after both the path fix and a valid_volumes change — confounding
-# the two. Run 8605 isolated it with valid_volumes back at []: the allowlist
-# governs mounts the RUNNER makes into job containers, not compose mounts issued
-# to the daemon from inside a job, so it was never the blocker.
+# Every probe is non-fatal and records a diagnostic verdict; the summary decides
+# pass/fail, while the coordinator independently gates cleanup success.
 
 on:
   workflow_dispatch:
@@ -41,6 +34,8 @@ on:
   push:
     paths:
       - '.github/workflows/podman-socket-canary.yml'
+      - '.github/actions/upload-cleanup-evidence/**'
+      - '.github/actions/verify-cleanup-receipt/**'
 
 # No `permissions:` block: Forgejo Actions does not support it, and
 # tests/ci/check-workflow-composition.test.sh enforces its absence. Repository
@@ -60,10 +55,9 @@ jobs:
     runs-on: ${{ inputs.runner_label || 'docker' }}
     timeout-minutes: 20
     env:
-      PROBE_NET: podman-canary-net-${{ github.run_id }}
-      PROXY_NAME: podman-canary-proxy-${{ github.run_id }}
-      PG_NAME: podman-canary-pg-${{ github.run_id }}
-      PUB_NAME: podman-canary-pub-${{ github.run_id }}
+      PROXY_NAME: podman-canary-proxy-${{ github.run_id }}-${{ github.run_attempt }}
+      PG_NAME: podman-canary-pg-${{ github.run_id }}-${{ github.run_attempt }}
+      PUB_NAME: podman-canary-pub-${{ github.run_id }}-${{ github.run_attempt }}
       RESULTS: ${{ github.workspace }}/.tmp/canary-results
       SOCKET_PATH_OVERRIDE: ${{ inputs.socket_path_override }}
 
@@ -77,6 +71,8 @@ jobs:
         run: |
           mkdir -p "$RESULTS"
           : > "$RESULTS/verdicts.tsv"
+          echo "CLEANUP_RUNTIME_ROOT=$RUNNER_TEMP/sanctuary-cleanup/podman-canary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "CLEANUP_ARTIFACT_ROOT=$RUNNER_TEMP/sanctuary-cleanup-artifacts/podman-canary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
           echo "Recording probe verdicts to $RESULTS/verdicts.tsv"
 
       # ---------------------------------------------------------------
@@ -102,22 +98,22 @@ jobs:
 
       # ---------------------------------------------------------------
       # Probe 2 — can the daemon socket be bind-mounted into a container?
-      # This is the crux. `docker-compose.yml:779` mounts the socket into
-      # docker-proxy. Two things can block it on the Podman runner:
-      #   - the source path differs (no /var/run/docker.sock)
-      #   - the runner's `valid_volumes` allowlist is empty
-      # Resolves the real socket path from DOCKER_HOST, then tries the mount.
+      # Resolve the daemon-side socket path and prove it is mountable.
       # ---------------------------------------------------------------
       - name: 'Probe 2: socket bind-mount into a container'
         id: mount
         continue-on-error: true
         run: |
+          scripts/ci/cleanup-ci-callsite.sh run --engine docker --lane podman-canary-mount \
+            --checkout-root "$GITHUB_WORKSPACE" --runtime "$CLEANUP_RUNTIME_ROOT/mount" \
+            --artifact-dir "$CLEANUP_ARTIFACT_ROOT/mount" \
+            -- bash -euo pipefail <<'SUBJECT'
           set -x
-          # The -v source is resolved by the DAEMON on the host, not inside this
-          # job container, so DOCKER_HOST as seen from here is not a reliable
-          # guide (run 8602 fell back to /var/run/docker.sock and failed). Try
-          # the known rootless Podman socket first, then the Docker default, and
-          # report which one worked.
+          source scripts/ownership/producer-hooks.sh
+          ownership_label_args compose_container exact_delete
+          container_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
+          # The daemon resolves -v sources on the host, so try the known rootless
+          # Podman path before the Docker default and report which one worked.
           candidates="${SOCKET_PATH_OVERRIDE:-} /run/user/1001/podman/podman.sock /var/run/docker.sock"
           echo "DOCKER_HOST as seen from the job: ${DOCKER_HOST:-<unset>}"
 
@@ -125,7 +121,7 @@ jobs:
           for sock in $candidates; do
             [ -n "$sock" ] || continue
             echo "--- trying $sock"
-            if docker run --rm -v "$sock:/var/run/docker.sock:ro" \
+            if docker run --rm "${container_labels[@]}" -v "$sock:/var/run/docker.sock:ro" \
                 docker.io/library/alpine:3.20 test -S /var/run/docker.sock; then
               found="$sock"
               break
@@ -141,6 +137,7 @@ jobs:
               "$candidates" >> "$RESULTS/verdicts.tsv"
             exit 1
           fi
+          SUBJECT
 
       # ---------------------------------------------------------------
       # Probe 3 — docker-socket-proxy against the compat API
@@ -157,7 +154,14 @@ jobs:
         env:
           CANARY_SOCKET_PATH: ${{ steps.mount.outputs.socket_path }}
         run: |
+          scripts/ci/cleanup-ci-callsite.sh run --engine docker --lane podman-canary-proxy \
+            --checkout-root "$GITHUB_WORKSPACE" --runtime "$CLEANUP_RUNTIME_ROOT/proxy" \
+            --artifact-dir "$CLEANUP_ARTIFACT_ROOT/proxy" \
+            -- bash -euo pipefail <<'SUBJECT'
           set -x
+          source scripts/ownership/producer-hooks.sh
+          ownership_label_args compose_container exact_delete
+          container_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
           sock="${CANARY_SOCKET_PATH}"
           # Guard: without a mountable socket this probe cannot run at all, and
           # an empty -v source produces a confusing docker error instead of a
@@ -166,9 +170,7 @@ jobs:
             printf 'proxy-start\tSKIP\tno mountable socket from probe 2\n' >> "$RESULTS/verdicts.tsv"
             exit 0
           fi
-          docker network create "$PROBE_NET" || true
-
-          docker run -d --name "$PROXY_NAME" --network "$PROBE_NET" \
+          docker run -d "${container_labels[@]}" --name "$PROXY_NAME" \
             -e CONTAINERS=1 -e POST=1 -e IMAGES=1 -e NETWORKS=1 \
             -e VOLUMES=0 -e EXEC=0 -e SWARM=0 -e NODES=0 -e SERVICES=0 \
             -e TASKS=0 -e SECRETS=0 -e CONFIGS=0 -e PLUGINS=0 -e SYSTEM=0 \
@@ -193,9 +195,9 @@ jobs:
 
           probe() {
             name="$1"; path="$2"; want="$3"
-            code="$(docker run --rm --network "$PROBE_NET" docker.io/curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b \
+            code="$(docker run --rm "${container_labels[@]}" --network "container:$PROXY_NAME" docker.io/curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b \
               -s -o /dev/null -w '%{http_code}' --max-time 15 \
-              "http://${PROXY_NAME}:2375${path}" || echo 000)"
+              "http://127.0.0.1:2375${path}" || echo 000)"
             echo "$name -> $code (want $want)"
             if [ "$code" = "$want" ]; then
               printf 'api%s\tpass\t%s returned %s\n' "$name" "$path" "$code" >> "$RESULTS/verdicts.tsv"
@@ -213,6 +215,7 @@ jobs:
           # endpoint being absent. A 404 here means Podman lacks the endpoint.
           probe '-volumes'    '/v1.41/volumes'         403
           probe '-info'       '/v1.41/info'            403
+          SUBJECT
 
       # ---------------------------------------------------------------
       # Probe 4 — port publishing
@@ -224,12 +227,19 @@ jobs:
       - name: 'Probe 4: published port reachable from the job'
         continue-on-error: true
         run: |
+          scripts/ci/cleanup-ci-callsite.sh run --engine docker --lane podman-canary-publish \
+            --checkout-root "$GITHUB_WORKSPACE" --runtime "$CLEANUP_RUNTIME_ROOT/publish" \
+            --artifact-dir "$CLEANUP_ARTIFACT_ROOT/publish" \
+            -- bash -euo pipefail <<'SUBJECT'
           set -x
-          docker run -d --name "$PUB_NAME" -p 18099:80 docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+          source scripts/ownership/producer-hooks.sh
+          ownership_label_args compose_container exact_delete
+          pub_port="$((20000 + (GITHUB_RUN_ID % 20000)))"
+          docker run -d "${OWNERSHIP_LABEL_ARGS[@]}" --name "$PUB_NAME" -p "${pub_port}:80" docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
           ok=false
           for host in 127.0.0.1 host.containers.internal host.docker.internal; do
             for _ in $(seq 1 10); do
-              if curl -fsS --max-time 3 "http://${host}:18099/" >/dev/null 2>&1; then
+              if curl -fsS --max-time 3 "http://${host}:${pub_port}/" >/dev/null 2>&1; then
                 echo "reachable via $host"
                 printf 'port-publish\tpass\treachable via %s\n' "$host" >> "$RESULTS/verdicts.tsv"
                 ok=true
@@ -243,6 +253,7 @@ jobs:
               >> "$RESULTS/verdicts.tsv"
             exit 1
           fi
+          SUBJECT
 
       # ---------------------------------------------------------------
       # Probe 5 — volume uid mapping
@@ -253,14 +264,31 @@ jobs:
       - name: 'Probe 5: postgres on a named volume (uid mapping)'
         continue-on-error: true
         run: |
+          scripts/ci/cleanup-ci-callsite.sh run --engine docker --lane podman-canary-volume \
+            --checkout-root "$GITHUB_WORKSPACE" --runtime "$CLEANUP_RUNTIME_ROOT/volume" \
+            --artifact-dir "$CLEANUP_ARTIFACT_ROOT/volume" \
+            -- bash -euo pipefail <<'SUBJECT'
           set -x
-          docker volume create "$PG_NAME" || true
-          docker run -d --name "$PG_NAME" \
+          source scripts/ownership/producer-hooks.sh
+          ownership_label_args compose_volume exact_delete
+          create_and_register_owned_volume "$PG_NAME" "${OWNERSHIP_LABEL_ARGS[@]}"
+          ownership_label_args compose_container exact_delete
+          docker run --rm -d "${OWNERSHIP_LABEL_ARGS[@]}" --name "$PG_NAME" \
             -e POSTGRES_PASSWORD=canary \
             -e POSTGRES_USER=canary \
             -e POSTGRES_DB=canary \
             -v "$PG_NAME:/var/lib/postgresql/data" \
             docker.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+
+          stop_postgres() {
+            docker exec -u postgres "$PG_NAME" \
+              pg_ctl -D /var/lib/postgresql/data -m fast stop >/dev/null 2>&1 || true
+            for _ in $(seq 1 30); do
+              docker inspect "$PG_NAME" >/dev/null 2>&1 || return 0
+              sleep 0.2
+            done
+          }
+          trap stop_postgres EXIT
 
           ready=false
           for _ in $(seq 1 30); do
@@ -279,34 +307,41 @@ jobs:
               >> "$RESULTS/verdicts.tsv"
             exit 1
           fi
+          SUBJECT
 
       # ---------------------------------------------------------------
       # Probe 6 — compose healthcheck shell form
-      # The gap that let this canary pass 10/10 on x300 while a real Podman
-      # incompatibility sat in docker-compose.yml: a healthcheck written as
-      # ["CMD","sh","-c",<script>] does not survive the compose -> Podman compat
-      # path when <script> contains shell syntax. It reaches sh truncated and
-      # every probe fails with a syntax error, marking the container
-      # permanently unhealthy (install-test run 8667).
-      #
-      # cmd-shell is the form the compose file now relies on, so its failure is
-      # a real failure. cmd-array is recorded informationally: it documents
-      # whether this engine has the quirk at all, which is what makes a
-      # side-by-side run against the DIND runner meaningful.
+      # CMD-SHELL is the production contract and is gating. CMD+sh -c remains
+      # informational because Podman's compat path may truncate shell syntax.
       # ---------------------------------------------------------------
       - name: 'Probe 6: compose healthcheck shell form'
         continue-on-error: true
-        env:
-          HC_PROJECT: hc-canary-${{ github.run_id }}
         run: |
+          scripts/ci/cleanup-ci-callsite.sh run --engine docker --lane podman-canary-health \
+            --checkout-root "$GITHUB_WORKSPACE" --runtime "$CLEANUP_RUNTIME_ROOT/health" \
+            --artifact-dir "$CLEANUP_ARTIFACT_ROOT/health" \
+            -- bash -euo pipefail <<'SUBJECT'
           set -x
           cat > /tmp/hc-canary.yml <<'COMPOSE'
+          x-container-ownership: &container-ownership
+            io.sanctuary.project: "${SANCTUARY_PROJECT}"
+            io.sanctuary.deployment-id: "${SANCTUARY_DEPLOYMENT_ID}"
+            io.sanctuary.owner-id: "${SANCTUARY_OWNER_ID}"
+            io.sanctuary.resource-class: compose_container
+            io.sanctuary.lifecycle: "${SANCTUARY_RESOURCE_LIFECYCLE}"
+            io.sanctuary.cleanup-policy: exact_delete
+            io.sanctuary.created-at: "${SANCTUARY_CLEANUP_CREATED_AT}"
+            io.sanctuary.created-by-release: "${SANCTUARY_RELEASE}"
+            io.sanctuary.created-by-commit: "${SANCTUARY_COMMIT}"
+            io.sanctuary.creation-run-id: "${SANCTUARY_OPERATION_RUN_ID}"
           services:
             hcshell:
               image: docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
               environment:
                 TLS_ENABLED: "true"
               command: ["sleep", "180"]
+              network_mode: none
+              labels: *container-ownership
               healthcheck:
                 test: ["CMD-SHELL", 'if [ "$$TLS_ENABLED" = "true" ]; then exit 0; else exit 1; fi']
                 interval: 5s
@@ -318,6 +353,8 @@ jobs:
               environment:
                 TLS_ENABLED: "true"
               command: ["sleep", "180"]
+              network_mode: none
+              labels: *container-ownership
               healthcheck:
                 test: ["CMD", "sh", "-c", 'if [ "$$TLS_ENABLED" = "true" ]; then exit 0; else exit 1; fi']
                 interval: 5s
@@ -326,14 +363,14 @@ jobs:
                 start_period: 2s
           COMPOSE
 
-          docker compose -f /tmp/hc-canary.yml -p "$HC_PROJECT" up -d
+          docker compose -f /tmp/hc-canary.yml -p "$COMPOSE_PROJECT_NAME" up -d
 
           # Poll for up to 60s; a healthcheck needs several intervals to settle.
           settle() {
-            svc="$1"; want_healthy="$2"
+            svc="$1"
             for _ in $(seq 1 12); do
               st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
-                    "${HC_PROJECT}-${svc}-1" 2>/dev/null || echo missing)"
+                    "${COMPOSE_PROJECT_NAME}-${svc}-1" 2>/dev/null || echo missing)"
               [ "$st" = "healthy" ] && break
               sleep 5
             done
@@ -343,7 +380,7 @@ jobs:
           shell_state="$(settle hcshell)"
           array_state="$(settle hcarray)"
           docker inspect -f '{{range .State.Health.Log}}exit={{.ExitCode}} out={{.Output}}{{end}}' \
-            "${HC_PROJECT}-hcarray-1" 2>/dev/null | head -c 300 || true
+            "${COMPOSE_PROJECT_NAME}-hcarray-1" 2>/dev/null | head -c 300 || true
 
           if [ "$shell_state" = "healthy" ]; then
             printf 'healthcheck-cmd-shell\tpass\tconditional survived, container healthy\n' >> "$RESULTS/verdicts.tsv"
@@ -355,8 +392,7 @@ jobs:
           # Informational only: never fails the canary.
           printf 'healthcheck-cmd-array\tinfo\tCMD+sh -c conditional state: %s (unhealthy here means this engine has the truncation quirk)\n' \
             "$array_state" >> "$RESULTS/verdicts.tsv"
-
-          docker compose -f /tmp/hc-canary.yml -p "$HC_PROJECT" down -v || true
+          SUBJECT
 
       # ---------------------------------------------------------------
       # Verdict
@@ -406,14 +442,22 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # ---------------------------------------------------------------
-      # Cleanup — scoped to this run only. Never use an unscoped prune here:
-      # this runner executes concurrent jobs and an unscoped cleanup has
-      # previously wiped a neighbouring job's Postgres.
-      # ---------------------------------------------------------------
-      - name: Cleanup (scoped to this run)
+      - name: Verify signed cleanup evidence
+        id: verify_cleanup_receipt
         if: always()
-        run: |
-          docker rm -f "$PROXY_NAME" "$PG_NAME" "$PUB_NAME" 2>/dev/null || true
-          docker volume rm -f "$PG_NAME" 2>/dev/null || true
-          docker network rm "$PROBE_NET" 2>/dev/null || true
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/podman-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          children: 'true'
+
+      - name: Upload signed cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: podman-canary-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/podman-canary-${{ github.run_id }}-${{ github.run_attempt }}/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/podman-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          children: 'true'
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
