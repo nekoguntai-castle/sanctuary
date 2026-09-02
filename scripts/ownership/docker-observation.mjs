@@ -312,6 +312,44 @@ function exclusiveImageRegistrationAuthority(identity, registration) {
     && registration.referenceIds[0] === registration.operationRunId;
 }
 
+function imageTagParts(reference) {
+  const slash = reference.lastIndexOf('/');
+  const colon = reference.lastIndexOf(':');
+  if (colon <= slash) return null;
+  return { repository: reference.slice(0, colon), tag: reference.slice(colon + 1) };
+}
+
+function implicitRepositoryForms(repository) {
+  const forms = new Set([repository]);
+  const firstComponent = repository.split('/')[0];
+  const explicitlyQualified = firstComponent === 'localhost'
+    || firstComponent.includes('.') || firstComponent.includes(':');
+  if (!explicitlyQualified) {
+    forms.add(`localhost/${repository}`);
+    forms.add(repository.includes('/') ? `docker.io/${repository}` : `docker.io/library/${repository}`);
+  }
+  return forms;
+}
+
+function equivalentImageRepository(left, right) {
+  const leftForms = implicitRepositoryForms(left);
+  return [...implicitRepositoryForms(right)].some((candidate) => leftForms.has(candidate));
+}
+
+function equivalentImageTag(left, right) {
+  const leftParts = imageTagParts(left);
+  const rightParts = imageTagParts(right);
+  return leftParts !== null && rightParts !== null
+    && leftParts.tag === rightParts.tag
+    && equivalentImageRepository(leftParts.repository, rightParts.repository);
+}
+
+function oneImageRepositoryFamily(repositories) {
+  return repositories.every((left) => repositories.every((right) => (
+    equivalentImageRepository(left, right)
+  )));
+}
+
 function exclusivelyRegisteredImage(identity, registration, runtime) {
   if (!exclusiveImageRegistrationAuthority(identity, registration)) return false;
   if (registration.locatorKind === 'engine_id') {
@@ -321,14 +359,17 @@ function exclusivelyRegisteredImage(identity, registration, runtime) {
   }
   if (registration.locatorKind !== 'reference') return false;
   const tag = registration.locator;
-  const slash = tag.lastIndexOf('/');
-  const colon = tag.lastIndexOf(':');
-  const repository = colon > slash ? tag.slice(0, colon) : tag;
-  const intrinsicDigests = runtime.digests.length <= 1
-    && runtime.digests.every((digest) => digest.startsWith(`${repository}@sha256:`));
+  const repository = imageTagParts(tag)?.repository ?? tag;
+  const observedTags = [...runtime.tags, ...(runtime.inspectedTags ?? [])];
+  const repositories = [repository,
+    ...observedTags.map((reference) => imageTagParts(reference)?.repository ?? reference),
+    ...runtime.digests.map((digest) => digest.slice(0, digest.lastIndexOf('@'))),
+  ];
   return runtime.tags.length === 1
-    && runtime.tags[0] === tag
-    && intrinsicDigests;
+    && runtime.digests.length <= 1
+    && equivalentImageTag(runtime.tags[0], tag)
+    && observedTags.every((reference) => equivalentImageTag(reference, tag))
+    && oneImageRepositoryFamily(repositories);
 }
 
 function exclusivelyRegisteredLegacyFixture(resourceClass, identity, locator, registration, options) {
@@ -388,12 +429,12 @@ function parseImageReferenceWitness(output) {
   const byIdentity = new Map();
   for (const row of rows) {
     const fields = row.split('\t');
-    if (fields.length !== 4) throw Object.assign(new Error('image reference witness is malformed'), {
+    if (fields.length !== 3) throw Object.assign(new Error('image reference witness is malformed'), {
       category: 'malformed_output', operation: 'image reference witness',
     });
-    const [rawIdentity, repository, tag, digest] = fields;
+    const [rawIdentity, repository, tag] = fields;
     const identity = normalizeImageListIdentity(rawIdentity);
-    const references = byIdentity.get(identity) ?? { tags: new Set(), digests: new Set() };
+    const references = byIdentity.get(identity) ?? { tags: new Set() };
     if (tag !== '<none>') {
       const reference = `${repository}:${tag}`;
       if (repository === '<none>') throw Object.assign(new Error('image tag witness lacks a repository'), {
@@ -401,16 +442,6 @@ function parseImageReferenceWitness(output) {
       });
       validateReference(reference);
       references.tags.add(reference);
-    }
-    if (digest !== '<none>') {
-      const reference = `${repository}@${digest}`;
-      if (repository === '<none>' || !/^sha256:[a-f0-9]{64}$/.test(digest)) {
-        throw Object.assign(new Error('image digest witness is malformed'), {
-          category: 'malformed_output', operation: 'image reference witness',
-        });
-      }
-      validateReference(reference);
-      references.digests.add(reference);
     }
     byIdentity.set(identity, references);
   }
@@ -424,16 +455,16 @@ function listedImageReferences(context, labels, identity) {
   }
   if (!context.imageReferenceWitnesses.has(buildId)) {
     const output = query(context.run, context.engine, [
-      'image', 'ls', '--all', '--no-trunc', '--digests',
+      'image', 'ls', '--all', '--no-trunc',
       '--filter', `label=io.sanctuary.build-id=${buildId}`,
-      '--format', '{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Digest}}',
+      '--format', '{{.ID}}\t{{.Repository}}\t{{.Tag}}',
     ], 'image reference witness');
     context.imageReferenceWitnesses.set(buildId, parseImageReferenceWitness(output));
   }
   const references = context.imageReferenceWitnesses.get(buildId).get(identity);
   return references ? {
-    tags: [...references.tags].sort(), digests: [...references.digests].sort(),
-  } : { tags: [], digests: [] };
+    tags: [...references.tags].sort(),
+  } : { tags: [] };
 }
 
 function classifications(resourceClass, record, labels, identity, locator, options, runtime) {
@@ -485,8 +516,9 @@ function relationshipState(context, resourceClass, record, labels, identity) {
     );
     const inspected = imageReferenceFields(record);
     const listed = listedImageReferences(context, labels, identity);
-    const tags = [...new Set([...inspected.tags, ...listed.tags])].sort();
-    const digests = [...new Set([...inspected.digests, ...listed.digests])].sort();
+    const tags = [...new Set(listed.tags.length > 0 ? listed.tags : inspected.tags)].sort();
+    const inspectedTags = [...new Set(inspected.tags)].sort();
+    const digests = [...new Set(inspected.digests)].sort();
     const references = [...new Set([...tags, ...digests])].sort();
     const contentDigests = [...new Set([
       identity,
@@ -498,7 +530,8 @@ function relationshipState(context, resourceClass, record, labels, identity) {
     }
     return {
       referenceCount: dependencyIdentities.length, dependencyIdentities,
-      references, contentDigests, tags: [...tags].sort(), digests: [...digests].sort(),
+      references, contentDigests, tags: [...tags].sort(), inspectedTags,
+      digests: [...digests].sort(),
     };
   }
   const running = record.State?.Running;

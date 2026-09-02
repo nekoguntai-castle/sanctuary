@@ -30,7 +30,7 @@ const tuple = (resourceClass, extra = {}) => ({
 function fixtureRun({
   drift = false, malformed = false, volumeIdentityDrift = false,
   safetyDrift = null, lifecycle = 'active', imageTags, imageDigests,
-  imageLabels, imageContainerReferences, imageListTags, imageListDigests,
+  imageLabels, imageContainerReferences, imageListTags,
 } = {}) {
   const calls = [];
   let containerLists = 0;
@@ -62,17 +62,10 @@ function fixtureRun({
       imageWitnesses += 1;
       const tags = safetyDrift === 'image_tag' && imageWitnesses > 1
         ? ['sanctuary:local', 'sanctuary:release'] : (imageListTags ?? imageTags ?? ['sanctuary:local']);
-      const digests = imageListDigests ?? imageDigests ?? [];
-      return [
-        ...tags.map((tag) => {
-          const separator = tag.lastIndexOf(':');
-          return `${IMAGE}\t${tag.slice(0, separator)}\t${tag.slice(separator + 1)}\t<none>`;
-        }),
-        ...digests.map((digest) => {
-          const separator = digest.lastIndexOf('@');
-          return `${IMAGE}\t${digest.slice(0, separator)}\t<none>\t${digest.slice(separator + 1)}`;
-        }),
-      ].join('\n');
+      return tags.map((tag) => {
+        const separator = tag.lastIndexOf(':');
+        return `${IMAGE}\t${tag.slice(0, separator)}\t${tag.slice(separator + 1)}`;
+      }).join('\n');
     }
     if (joined.startsWith('image ls')) return `${IMAGE}\n`;
     if (joined.startsWith('container ls') && joined.includes('volume=')) {
@@ -449,6 +442,83 @@ test('stable image-list evidence supplies references omitted by image inspect', 
     registrations: [replayImageRegistration(authority)],
     runCommand: fixtureRun({
       imageTags: [], imageDigests: [],
+      imageListTags: ['wallet-sync-replay:test', 'shared:keep'],
+      imageLabels: replayImageProvenance(), imageContainerReferences: [],
+    }).run,
+  });
+  assert.ok(aliased.resources[0].classifications.includes('protected'));
+  assert.ok(!aliased.resources[0].classifications.includes('externally_registered'));
+});
+
+test('Podman-qualified list evidence preserves one exact short-name registration', () => {
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'replay-live-deployment',
+    'io.sanctuary.owner-id': 'replay-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'replay-live-run',
+  });
+  const registration = replayImageRegistration(authority);
+  const accepted = [
+    {
+      imageTags: [], imageListTags: ['wallet-sync-replay:test'],
+      imageDigests: [`localhost/wallet-sync-replay@${IMAGE}`],
+    },
+    {
+      imageTags: ['localhost/wallet-sync-replay:test'],
+      imageListTags: ['wallet-sync-replay:test'],
+      imageDigests: [`localhost/wallet-sync-replay@${IMAGE}`],
+    },
+    {
+      imageTags: ['localhost/wallet-sync-replay:test'],
+      imageListTags: ['localhost/wallet-sync-replay:test'],
+      imageDigests: [`localhost/wallet-sync-replay@${IMAGE}`],
+    },
+    {
+      imageTags: ['docker.io/library/wallet-sync-replay:test'],
+      imageListTags: ['wallet-sync-replay:test'],
+      imageDigests: [`docker.io/library/wallet-sync-replay@${IMAGE}`],
+    },
+  ];
+  for (const fixture of accepted) {
+    const observed = observeDockerResources({
+      selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+      registrations: [registration],
+      runCommand: fixtureRun({
+        ...fixture,
+        imageLabels: replayImageProvenance(), imageContainerReferences: [],
+      }).run,
+    });
+    assert.equal(observed.complete, true);
+    assert.deepEqual(observed.resources[0].runtime.tags, fixture.imageListTags);
+    assert.deepEqual(observed.resources[0].classifications, [
+      'externally_registered', 'registered', 'unlabeled',
+    ]);
+  }
+
+  for (const fixture of [
+    { imageTags: ['other/wallet-sync-replay:test'], imageDigests: [] },
+    { imageTags: ['localhost/wallet-sync-replay:test'], imageDigests: [`other/wallet-sync-replay@${IMAGE}`] },
+    { imageTags: ['localhost/wallet-sync-replay:test'], imageDigests: [
+      `localhost/wallet-sync-replay@${IMAGE}`, `localhost/wallet-sync-replay@sha256:${'1'.repeat(64)}`,
+    ] },
+  ]) {
+    const protectedResult = observeDockerResources({
+      selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+      registrations: [registration],
+      runCommand: fixtureRun({
+        ...fixture, imageListTags: ['wallet-sync-replay:test'],
+        imageLabels: replayImageProvenance(), imageContainerReferences: [],
+      }).run,
+    });
+    assert.ok(protectedResult.resources[0].classifications.includes('protected'));
+    assert.ok(!protectedResult.resources[0].classifications.includes('externally_registered'));
+  }
+
+  const aliased = observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [registration],
+    runCommand: fixtureRun({
+      imageTags: ['localhost/wallet-sync-replay:test'], imageDigests: [],
       imageListTags: ['wallet-sync-replay:test', 'shared:keep'],
       imageLabels: replayImageProvenance(), imageContainerReferences: [],
     }).run,
