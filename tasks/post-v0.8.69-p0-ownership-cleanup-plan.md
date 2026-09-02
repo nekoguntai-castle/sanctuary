@@ -1,6 +1,6 @@
 # Post-v0.8.69 P0 Ownership Manifest and Cleanup-Receipt Plan
 
-Status: implementation in progress; PRs 1–5 plus the Compose compatibility hotfix have landed; PR 6 is locally verified and awaiting protected-PR delivery
+Status: completed through protected PR #999; final acceptance and fail-closed resource disposition recorded below
 Date: 2026-08-30
 Planning baseline: `origin/main` at `ee8baab03c4113c50f80183ff3aea068bc3c1ddc`
 Backlog source: `tasks/todo.md`, “P0 — telemetry, overload protection, and ownership”
@@ -759,6 +759,17 @@ Exact-head and landed-main CI, including Fresh Install, remain delivery gates.
 Six full review passes converged on 2026-08-30. The final architecture/trust and
 sequencing/rollout passes independently returned `CLEAN`; no verified actionable
 P0-P2 plan comment remains.
+
+Implementation completed through protected PRs #989-#999. The six planned phases,
+three landed-main CI compatibility corrections, and the manifest-bound legacy
+Grafana correction are merged. Exact-main local generation 2 is healthy and the
+routed API returns HTTP 200. The final resource sweep removed only an independently
+reverified empty test network. Four obsolete Fresh Install stacks were deliberately
+retained because their private cleanup authority roots had already been lost; this
+is the plan's explicit host/disk-loss fail-closed outcome, not permission to infer
+authority from labels or logs. The unlabeled local install/upgrade stack was also
+retained. Detailed merge, verification, rebuild, and disposition evidence is in
+`tasks/implement-merge-ownership-cleanup-ledger.md`.
 
 Accepted improvements applied:
 
