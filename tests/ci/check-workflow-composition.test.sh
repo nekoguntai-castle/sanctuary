@@ -1240,6 +1240,9 @@ for isolated_step in \
     "install-test $install_job/$step_name uses one signed isolated subject" \
     "scripts/ci/run-in-isolated-workspace.sh --docker-visible $label"
 done
+assert_named_job_contains "$IT" "fresh-install-test" \
+  "combined install job reserves measured cleanup receipt finalization time" \
+  'timeout-minutes: 45'
 assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
   "install E2E driver retains supervised receipt-bound Docker cleanup" \
   '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run' \

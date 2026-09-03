@@ -343,7 +343,10 @@ jobs:
       (needs.determine-scope.outputs.run_fresh_install == 'true' ||
        needs.determine-scope.outputs.run_install_script == 'true') &&
       (needs.unit-tests.result == 'success' || needs.unit-tests.result == 'skipped')
-    timeout-minutes: 30
+    # Measured rootless-Docker cleanup can extend beyond the former 30-minute
+    # budget after the application assertions pass. Preserve time for the
+    # receipt verification and artifact upload instead of killing finalization.
+    timeout-minutes: 45
     env:
       COMPOSE_PROJECT_NAME: sanctuary-ci-fresh-${{ github.run_id }}
       HTTPS_PORT: '15443'

@@ -29,15 +29,5 @@ apply_upgrade_test_network_defaults() {
 # generated certificates under the install-test root so the host Docker daemon
 # can resolve the bind source. An explicit operator/test override still wins.
 upgrade_test_ssl_dir() {
-    local runtime_dir="$1"
-    local install_root="$2"
-    local compose_project="$3"
-
-    if [ -n "${SANCTUARY_SSL_DIR:-}" ]; then
-        printf '%s\n' "$SANCTUARY_SSL_DIR"
-    elif [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
-        printf '%s/ssl-%s\n' "${install_root%/}" "$compose_project"
-    else
-        printf '%s/ssl\n' "${runtime_dir%/}"
-    fi
+    resolve_install_test_ssl_dir "$@"
 }

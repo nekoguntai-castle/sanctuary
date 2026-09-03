@@ -367,6 +367,7 @@ function dockerCreationClasses(text) {
   const engine = String.raw`(?:docker|podman)`;
   const compose = String.raw`${engine}\s+compose`;
   const composeWrapper = String.raw`(?:run_project_compose|compose_output|runCompose|COMPOSE_COMMAND|composeArgs|run-compose\.sh|run-operator-compose\.sh)`;
+  const producerText = text.replace(/--no-build\b/g, '');
   if (matches(text, [
     new RegExp(String.raw`\b${engine}\s+(?:container\s+)?create\b`),
     new RegExp(String.raw`\b${engine}\s+run\b`),
@@ -400,7 +401,7 @@ function dockerCreationClasses(text) {
     new RegExp(String.raw`["']${engine}["']\s*,\s*["']volume["']\s*,\s*["']create["']`),
     /\/(?:v\d+(?:\.\d+)*\/)?volumes\/create\b/,
   ])) classes.add('compose_volume');
-  const buildsImage = matches(text, [
+  const buildsImage = matches(producerText, [
     new RegExp(String.raw`\b${engine}\s+(?:(?:buildx|builder)\s+)?build\b`),
     new RegExp(String.raw`\b(?:${compose}|${composeWrapper})\b.{0,320}\bbuild\b`),
     new RegExp(String.raw`["']${engine}["']\s*,\s*["'](?:(?:buildx|builder)["']\s*,\s*["'])?build["']`),

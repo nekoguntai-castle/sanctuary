@@ -473,6 +473,18 @@ docker compose -p exact up -d --build
   }), /stale lifecycle callsite/);
 });
 
+test('Compose --no-build creates runtime resources without reporting an image build', () => {
+  const source = fixture({
+    'no-build.sh': 'run_project_compose "$PROJECT_ROOT" up -d --no-build\n',
+  });
+
+  assert.deepEqual(scanLifecycleCallsites(source).findings, [
+    { path: 'no-build.sh', resourceClass: 'compose_container', operation: 'create', mechanism: 'producer' },
+    { path: 'no-build.sh', resourceClass: 'compose_network', operation: 'create', mechanism: 'producer' },
+    { path: 'no-build.sh', resourceClass: 'compose_volume', operation: 'create', mechanism: 'producer' },
+  ]);
+});
+
 test('arbitrary builders and detached run --rm producers are not daemon-atomic exemptions', () => {
   const source = fixture({
     'builder.sh': 'docker buildx build --load --tag exact:image .\n',

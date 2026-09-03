@@ -48,6 +48,36 @@ log_debug() {
     fi
 }
 
+resolve_install_test_runtime() {
+    local default_runtime="$1"
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        if [ -z "${SANCTUARY_RUNTIME_DIR:-}" ]; then
+            log_error "Coordinated install test requires SANCTUARY_RUNTIME_DIR" >&2
+            return 2
+        fi
+        printf '%s\n' "$SANCTUARY_RUNTIME_DIR"
+        return 0
+    fi
+    printf '%s\n' "${TEST_RUNTIME_DIR:-$default_runtime}"
+}
+
+# Socket-mounted CI engines cannot see the runner container's private temp
+# directory. Keep deployment authority in that runtime, but place generated TLS
+# files under the Docker-visible install root when cleanup is coordinated.
+resolve_install_test_ssl_dir() {
+    local runtime_dir="$1"
+    local install_root="$2"
+    local compose_project="$3"
+
+    if [ -n "${SANCTUARY_SSL_DIR:-}" ]; then
+        printf '%s\n' "$SANCTUARY_SSL_DIR"
+    elif [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        printf '%s/ssl-%s\n' "${install_root%/}" "$compose_project"
+    else
+        printf '%s/ssl\n' "${runtime_dir%/}"
+    fi
+}
+
 # Standalone Docker-producing install lanes must acquire the same ephemeral,
 # receipt-bound authority as their workflow callers before creating resources.
 install_e2e_cleanup_auto_run() {

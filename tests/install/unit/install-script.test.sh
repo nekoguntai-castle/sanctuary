@@ -2508,6 +2508,51 @@ test_install_e2e_entrypoints_use_cleanup_auto_run() {
         echo -e "${RED}ASSERTION FAILED:${NC} Fresh registration must run immediately after Compose Up and before consumers"
         return 1
     fi
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
+        'run_test "Cleanup Resource Registration" test_cleanup_resource_registration' \
+        "install-script should register partial or complete Compose resources before cleanup" || return 1
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
+        'setup_cleanup_registration_exit_trap "register_install_cleanup_resources"' \
+        "install-script should register partial resources when interrupted" || return 1
+    if ! awk '
+        /^register_install_cleanup_resources\(\)/ { function_start = NR }
+        function_start > 0 && /load_test_runtime_env \|\| return 1/ { runtime = NR }
+        function_start > 0 && /register_ci_compose_resources/ { registration = NR; exit }
+        END { exit !(function_start > 0 && function_start < runtime && runtime < registration) }
+    ' "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} Install Script registration must load installer-refreshed provenance"
+        return 1
+    fi
+    assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
+        'registration_args=(--interrupt-fallback "${registration_args[@]}")' \
+        "install-script interruption fallback should fit the coordinator grace" || return 1
+    for entrypoint in sanctuary-backend sanctuary-frontend sanctuary-gateway sanctuary-llm-egress-proxy; do
+        assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
+            "--expected-image $entrypoint" \
+            "install-script should register its $entrypoint image" || return 1
+    done
+    for volume in backup_data postgres_data redis_data support_capture_runtime; do
+        assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
+            "--expected-volume $volume" \
+            "install-script should register its $volume volume" || return 1
+    done
+    if ! awk '
+        /run_test "Install Script Creates Runtime Env"/ { install = NR }
+        /run_test "Cleanup Resource Registration"/ { registration = NR }
+        /run_test "Env File Has Required Secrets"/ { env = NR }
+        END { exit !(install > 0 && install < registration && registration < env) }
+    ' "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} Install Script registration must run immediately after install.sh and before consumers"
+        return 1
+    fi
+    if ! awk '
+        /^test_docker_compose_standalone\(\)/ { function_start = NR }
+        function_start > 0 && /run_project_compose "\$PROJECT_ROOT" up -d --no-build/ { compose_up = NR; exit }
+        END { exit !(function_start > 0 && function_start < compose_up) }
+    ' "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} Install Script standalone restart must preserve registered image identities"
+        return 1
+    fi
     assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/auth-flow.test.sh")" \
         'CURRENT_PASSWORD="${SANCTUARY_AUTH_CURRENT_PASSWORD:-}"' \
         "auth-flow should accept the aggregate's known current password" || return 1
@@ -2518,6 +2563,55 @@ test_install_e2e_entrypoints_use_cleanup_auto_run() {
             'install_e2e_cleanup_auto_run deployment_managed_by_subject' \
             "$(basename "$entrypoint") should let the installer bind deployment authority" || return 1
     done
+}
+
+test_install_e2e_runtime_preserves_coordinator_authority() {
+    local helper="$PROJECT_ROOT/tests/install/utils/helpers.sh"
+    local actual status
+
+    actual=$(SANCTUARY_CLEANUP_COORDINATED=1 \
+        SANCTUARY_RUNTIME_DIR=/tmp/coordinator-runtime \
+        TEST_RUNTIME_DIR=/tmp/standalone-override \
+        bash -c 'source "$1"; resolve_install_test_runtime /tmp/default-runtime' _ "$helper")
+    assert_equals "/tmp/coordinator-runtime" "$actual" \
+        "coordinated install test should retain its authority runtime" || return 1
+
+    actual=$(TEST_RUNTIME_DIR=/tmp/standalone-override \
+        bash -c 'source "$1"; resolve_install_test_runtime /tmp/default-runtime' _ "$helper")
+    assert_equals "/tmp/standalone-override" "$actual" \
+        "standalone install test should retain its explicit runtime" || return 1
+
+    set +e
+    SANCTUARY_CLEANUP_COORDINATED=1 SANCTUARY_RUNTIME_DIR= \
+        bash -c 'source "$1"; resolve_install_test_runtime /tmp/default-runtime' \
+        _ "$helper" >/dev/null 2>&1
+    status=$?
+    set -e
+    assert_equals "2" "$status" \
+        "coordinated install test should refuse missing runtime authority"
+}
+
+test_install_e2e_tls_uses_docker_visible_storage() {
+    local helper="$PROJECT_ROOT/tests/install/utils/helpers.sh"
+    local actual
+
+    actual=$(SANCTUARY_CLEANUP_COORDINATED=1 SANCTUARY_SSL_DIR= \
+        bash -c 'source "$1"; resolve_install_test_ssl_dir /tmp/private /workspace/install ci-project' \
+        _ "$helper")
+    assert_equals "/workspace/install/ssl-ci-project" "$actual" \
+        "coordinated install TLS should stay outside the runner-private runtime" || return 1
+
+    actual=$(SANCTUARY_CLEANUP_COORDINATED=1 SANCTUARY_SSL_DIR=/explicit/ssl \
+        bash -c 'source "$1"; resolve_install_test_ssl_dir /tmp/private /workspace/install ci-project' \
+        _ "$helper")
+    assert_equals "/explicit/ssl" "$actual" \
+        "explicit install TLS storage should remain authoritative" || return 1
+
+    actual=$(SANCTUARY_CLEANUP_COORDINATED=0 SANCTUARY_SSL_DIR= \
+        bash -c 'source "$1"; resolve_install_test_ssl_dir /ordinary/runtime /workspace/install ci-project' \
+        _ "$helper")
+    assert_equals "/ordinary/runtime/ssl" "$actual" \
+        "standalone install TLS should remain runtime-local"
 }
 
 test_cleanup_registration_exit_trap_preserves_interrupt_status() {
@@ -2898,6 +2992,8 @@ main() {
     run_test ".env.example has all required secrets" test_env_example_has_all_required_secrets
     run_test "fresh install initializes ownership identity" test_fresh_install_initializes_ownership_identity
     run_test "install E2E entrypoints use cleanup auto-run" test_install_e2e_entrypoints_use_cleanup_auto_run
+    run_test "install E2E runtime preserves coordinator authority" test_install_e2e_runtime_preserves_coordinator_authority
+    run_test "install E2E TLS uses Docker-visible storage" test_install_e2e_tls_uses_docker_visible_storage
     run_test "cleanup registration exit trap preserves interruption" test_cleanup_registration_exit_trap_preserves_interrupt_status
     run_test "install cleanup auto-run delegates and preserves status" test_install_e2e_cleanup_auto_run_delegates_and_preserves_status
     run_test "install cleanup auto-run omits subject authority for coordinator mode" test_install_e2e_cleanup_auto_run_omits_subject_authority_for_coordinator_mode

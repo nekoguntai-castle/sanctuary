@@ -74,11 +74,10 @@ initialize_install_test_ownership
 # daemon cannot alias each other's images (#719).
 export_lane_image_tag
 TEST_ROOT=$(prepare_install_test_root "$(default_install_test_root "$PROJECT_ROOT")")
-TEST_RUNTIME_DIR="${TEST_RUNTIME_DIR:-$TEST_ROOT/sanctuary-install-runtime-${TEST_ID}}"
-TEST_DOCKER_RUNTIME_DIR=$(docker_visible_path "$TEST_RUNTIME_DIR")
+TEST_RUNTIME_DIR=$(resolve_install_test_runtime "$TEST_ROOT/sanctuary-install-runtime-${TEST_ID}")
 TEST_ENV_FILE="$TEST_RUNTIME_DIR/sanctuary.env"
-TEST_SSL_DIR="$TEST_RUNTIME_DIR/ssl"
-TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$TEST_DOCKER_RUNTIME_DIR/ssl}"
+TEST_SSL_DIR=$(resolve_install_test_ssl_dir "$TEST_RUNTIME_DIR" "$TEST_ROOT" "$COMPOSE_PROJECT_NAME")
+TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$(docker_visible_path "$TEST_SSL_DIR")}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test state
@@ -86,6 +85,17 @@ TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
 declare -a FAILED_TESTS
+compose_registered=false
+readonly -a COMPOSE_REGISTRATION_ARGS=(
+    --expected-image sanctuary-backend
+    --expected-image sanctuary-frontend
+    --expected-image sanctuary-gateway
+    --expected-image sanctuary-llm-egress-proxy
+    --expected-volume backup_data
+    --expected-volume postgres_data
+    --expected-volume redis_data
+    --expected-volume support_capture_runtime
+)
 
 load_test_runtime_env() {
     if [ ! -f "$TEST_ENV_FILE" ]; then
@@ -167,6 +177,7 @@ setup() {
     fi
 
     setup_cleanup_trap "teardown"
+    setup_cleanup_registration_exit_trap "register_install_cleanup_resources"
 }
 
 teardown() {
@@ -266,6 +277,41 @@ test_install_script_creates_env() {
 
     log_success "Runtime env file created successfully"
     return 0
+}
+
+# ============================================
+# Test: Cleanup Resource Registration
+# ============================================
+
+test_cleanup_resource_registration() {
+    log_info "Registering exact Install Script resources for receipt-bound cleanup..."
+
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Install Script resource registration requires coordinated cleanup"
+        return 1
+    fi
+
+    register_install_cleanup_resources
+}
+
+register_install_cleanup_resources() {
+    if [ "$compose_registered" = "true" ]; then
+        return 0
+    fi
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ]; then
+        log_error "Install Script resource registration requires coordinated cleanup"
+        return 1
+    fi
+    # setup.sh refreshes checkout-derived build provenance and persists it in
+    # the runtime env. Register against that authoritative post-install tuple,
+    # not the parent harness's pre-install values.
+    load_test_runtime_env || return 1
+    local -a registration_args=("${COMPOSE_REGISTRATION_ARGS[@]}")
+    if [ "${SANCTUARY_INSTALL_TEST_SIGNALLED:-0}" = "1" ]; then
+        registration_args=(--interrupt-fallback "${registration_args[@]}")
+    fi
+    register_ci_compose_resources "${registration_args[@]}" || return $?
+    compose_registered=true
 }
 
 # ============================================
@@ -550,7 +596,10 @@ test_docker_compose_standalone() {
 
     # Try to start with the runtime env file exported, without relying on repo-root .env
     log_info "Starting containers with standalone docker compose..."
-    if ! run_project_compose "$PROJECT_ROOT" up -d 2>&1; then
+    # install.sh already built the exact images registered for cleanup. This
+    # assertion exercises standalone runtime-env consumption, so rebuilding
+    # here would add unrelated work and replace those signed immutable IDs.
+    if ! run_project_compose "$PROJECT_ROOT" up -d --no-build 2>&1; then
         log_error "docker compose up failed when using runtime env file"
         return 1
     fi
@@ -598,6 +647,9 @@ main() {
     # Run tests in order
     run_test "Install Script Exists" test_install_script_exists
     run_test "Install Script Creates Runtime Env" test_install_script_creates_env
+    # This runs even when install.sh recorded a failure so any partially created
+    # exact resources receive signed registration before coordinator cleanup.
+    run_test "Cleanup Resource Registration" test_cleanup_resource_registration
     run_test "Env File Has Required Secrets" test_env_file_has_secrets
     run_test "Containers Started" test_containers_started
     run_test "Database Healthy" test_database_healthy
