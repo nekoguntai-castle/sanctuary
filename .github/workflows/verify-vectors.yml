@@ -19,6 +19,11 @@ on:
   # address, wallet-policy, or hardware integration boundary. In particular,
   # shared/constants/walletPolicy.ts is verifier input and must always trigger
   # this workflow on PRs, merge queues, and landed main-branch commits.
+  # Positive path filters remain forbidden at this trigger level. A
+  # documentation-only early exit is instead computed per-run by the
+  # determine-verify-scope job below (scripts/ci/classify-verify-vectors-scope.sh),
+  # which fails closed to "run the proofs" on anything it cannot prove is
+  # documentation-only.
   pull_request:
     branches: [main]
 
@@ -56,7 +61,65 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  determine-verify-scope:
+    name: Determine Verify Vectors Scope
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors-determine-scope
+    outputs:
+      run_verify_vectors: ${{ steps.classify.outputs.run_verify_vectors }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      # The classifier is bash + git only; the pinned Node toolchain is not
+      # needed here and the ubuntu-22.04 label does not carry it.
+      - name: Classify verify-vectors scope
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-verify-vectors-scope.log"
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "classify verify-vectors scope"
+          bash ${{ github.workspace }}/scripts/ci/classify-verify-vectors-scope.sh
+
+      - name: Write verify-vectors scope failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "verify-vectors-determine-scope-failure.log"
+          "Verify Vectors Determine Scope"
+
+      - name: Write verify-vectors scope diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Vectors Determine Scope"
+
+      - name: Upload verify-vectors scope diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-verify-vectors-determine-scope
+          path: .tmp/ci-diagnostics/verify-vectors-determine-scope/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   verify-vectors:
+    needs: [determine-verify-scope]
+    if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'
     runs-on: docker-socket
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a
@@ -937,20 +1000,49 @@ jobs:
 
   # Summary job
   summary:
-    needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]
+    needs: [determine-verify-scope, verify-vectors, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     if: always()
 
     steps:
       - name: Check results
+        env:
+          RUN_VERIFY_VECTORS: ${{ needs.determine-verify-scope.outputs.run_verify_vectors }}
+          DETERMINE_VERIFY_SCOPE: ${{ needs.determine-verify-scope.result }}
+          VERIFY_VECTORS: ${{ needs.verify-vectors.result }}
+          VERIFY_TREZOR_EMULATOR: ${{ needs.verify-trezor-emulator.result }}
+          VERIFY_LEDGER_EMULATOR: ${{ needs.verify-ledger-emulator.result }}
+          VERIFY_JADE_EMULATOR: ${{ needs.verify-jade-emulator.result }}
         run: |
-          if [ "${{ needs.verify-vectors.result }}" == "success" ] && \
-             [ "${{ needs.verify-trezor-emulator.result }}" == "success" ] && \
-             [ "${{ needs.verify-ledger-emulator.result }}" == "success" ] && \
-             [ "${{ needs.verify-jade-emulator.result }}" == "success" ]; then
-            echo "✅ All address verification tests passed"
-          else
-            echo "❌ Address verification tests failed"
+          echo "RUN_VERIFY_VECTORS=$RUN_VERIFY_VECTORS"
+          echo "DETERMINE_VERIFY_SCOPE=$DETERMINE_VERIFY_SCOPE"
+          echo "VERIFY_VECTORS=$VERIFY_VECTORS"
+          echo "VERIFY_TREZOR_EMULATOR=$VERIFY_TREZOR_EMULATOR"
+          echo "VERIFY_LEDGER_EMULATOR=$VERIFY_LEDGER_EMULATOR"
+          echo "VERIFY_JADE_EMULATOR=$VERIFY_JADE_EMULATOR"
+
+          if [ "$DETERMINE_VERIFY_SCOPE" != "success" ]; then
+            echo "::error::Determine Verify Vectors Scope result was $DETERMINE_VERIFY_SCOPE; expected success"
             exit 1
           fi
+
+          if [ "$VERIFY_VECTORS" == "success" ] && \
+             [ "$VERIFY_TREZOR_EMULATOR" == "success" ] && \
+             [ "$VERIFY_LEDGER_EMULATOR" == "success" ] && \
+             [ "$VERIFY_JADE_EMULATOR" == "success" ]; then
+            echo "✅ All address verification tests passed"
+            exit 0
+          fi
+
+          if [ "$RUN_VERIFY_VECTORS" == "false" ] && \
+             [ "$VERIFY_VECTORS" == "skipped" ] && \
+             [ "$VERIFY_TREZOR_EMULATOR" == "skipped" ] && \
+             [ "$VERIFY_LEDGER_EMULATOR" == "skipped" ] && \
+             [ "$VERIFY_JADE_EMULATOR" == "skipped" ]; then
+            echo "documentation-only change; funds-safety proofs intentionally skipped"
+            exit 0
+          fi
+
+          echo "❌ Address verification tests failed"
+          exit 1

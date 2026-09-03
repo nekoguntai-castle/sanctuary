@@ -645,6 +645,7 @@ jobs:
           bash -n scripts/ci/classify-docker-build-images.sh
           bash -n scripts/ci/validate-docker-build-results.sh
           bash -n scripts/ci/classify-quality-scope.sh
+          bash -n scripts/ci/classify-verify-vectors-scope.sh
           bash -n scripts/ci/classify-integration-failure.sh
           bash -n scripts/ci/browser-e2e-groups.sh
           bash -n scripts/ci/backend-integration-groups.sh
@@ -749,6 +750,7 @@ jobs:
           bash -n tests/ci/classify-docker-build-images.test.sh
           bash -n tests/ci/validate-docker-build-results.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
+          bash -n tests/ci/classify-verify-vectors-scope.test.sh
           bash -n tests/ci/classify-integration-failure.test.sh
           bash -n tests/ci/browser-e2e-groups.test.sh
           bash -n tests/ci/backend-integration-groups.test.sh
@@ -853,6 +855,7 @@ jobs:
           bash tests/ci/classify-docker-build-images.test.sh
           bash tests/ci/validate-docker-build-results.test.sh
           bash tests/ci/classify-quality-scope.test.sh
+          bash tests/ci/classify-verify-vectors-scope.test.sh
           bash tests/ci/classify-integration-failure.test.sh
           bash tests/ci/browser-e2e-groups.test.sh
           bash tests/ci/backend-integration-groups.test.sh

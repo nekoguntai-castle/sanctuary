@@ -1794,6 +1794,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/classify-verify-vectors-scope.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/ci/cleanup-docker-resources.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",

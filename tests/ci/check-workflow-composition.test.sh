@@ -2925,9 +2925,11 @@ assert_named_job_step_contains "$VV" \
   "if-no-files-found: error"
 
 assert_contains_in_order "$VV" \
-  "vector summary requires software, Trezor, Ledger, and Jade proofs" \
+  "vector summary requires the scope classifier, software, Trezor, Ledger, and Jade proofs" \
   "summary:" \
-  "needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]" \
+  "needs: [determine-verify-scope, verify-vectors, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]" \
+  '${{ needs.determine-verify-scope.outputs.run_verify_vectors }}' \
+  '${{ needs.determine-verify-scope.result }}' \
   '${{ needs.verify-vectors.result }}' \
   '${{ needs.verify-trezor-emulator.result }}' \
   '${{ needs.verify-ledger-emulator.result }}' \
@@ -2937,6 +2939,37 @@ assert_named_job_not_contains "$VV" \
   "summary" \
   "vector summary does not consume the shadow classifier" \
   "classify-hardware-emulator-shadow"
+
+assert_contains_in_order "$VV" \
+  "verify-vectors defines a documentation-only scope classifier job" \
+  "determine-verify-scope:" \
+  "Determine Verify Vectors Scope" \
+  "run_verify_vectors:" \
+  "Classify verify-vectors scope" \
+  "scripts/ci/classify-verify-vectors-scope.sh" \
+  "verify-vectors:" \
+  "needs: [determine-verify-scope]" \
+  "if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'"
+
+assert_named_job_contains "$VV" \
+  "verify-vectors" \
+  "verify-vectors job depends on the scope classifier" \
+  "needs: [determine-verify-scope]"
+
+assert_named_job_contains "$VV" \
+  "verify-vectors" \
+  "verify-vectors job is gated by a fail-open-to-run comparison" \
+  "if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'"
+
+assert_named_job_step_contains "$VV" \
+  "summary" \
+  "Check results" \
+  "vector summary reports the documentation-only skip reason" \
+  "documentation-only change; funds-safety proofs intentionally skipped"
+
+assert_not_contains "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors determine-scope job still has no path-filter blind spots" \
+  "paths:"
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Trezor emulator lock has a dedicated measured timeout" \
