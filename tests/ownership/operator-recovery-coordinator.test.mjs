@@ -69,6 +69,16 @@ function rawContainer(running) {
   };
 }
 
+function rawVolume(name, identity) {
+  const value = rawNetwork(networkId);
+  return {
+    ...value, resourceClass: 'compose_volume', locator: name, immutableIdentity: identity,
+    labels: { ...value.labels, 'io.sanctuary.resource-class': 'compose_volume' },
+    classifications: ['owned'],
+    runtime: { attachmentCount: 0, dependencyIdentities: [] },
+  };
+}
+
 test('preparation starts correlation freshness and approval TTL after slow observation', async () => {
   const authorizationKeys = keys();
   const evidenceKeys = keys();
@@ -380,4 +390,59 @@ test('coordinator prepares without mutation, revalidates under locks, then remov
   assert.equal(executed.receipt.state, 'cleaned');
   assert.equal(present, false);
   assert.equal(executed.receipt.queryResultCoreDigest, originalCorrelation.queryResultCoreDigest);
+});
+
+test('execute accepts compose_volume resources whose name order differs from their identity order', async () => {
+  const authorizationKeys = keys();
+  const evidenceKeys = keys();
+  const trust = buildHostRecoveryTrust({
+    trustId: 'host-recovery', validFrom: '2026-09-02T09:00:00.000Z',
+    validUntil: '2026-09-03T09:00:00.000Z',
+    authorizationFingerprints: [authorizationKeys.fingerprint],
+    evidenceFingerprints: [evidenceKeys.fingerprint],
+  });
+  let clock = new Date('2026-09-02T10:00:00.000Z');
+  const originalCorrelation = await observeForgejoProviderCorrelation(correlationOptions(() => clock));
+  // Locator (name) order and immutableIdentity (digest) order deliberately disagree:
+  // by name, a_vol < b_vol; by digest, b_vol's identity (00...) sorts before a_vol's (ff...).
+  const allVolumes = [
+    rawVolume('a_vol', 'ff'.repeat(32)),
+    rawVolume('b_vol', '00'.repeat(32)),
+  ];
+  const removed = new Set();
+  const observe = async (options) => {
+    const present = allVolumes.filter((entry) => !removed.has(entry.locator));
+    const volumeLocator = options.selectors?.compose_volume?.[0]?.locator;
+    return {
+      complete: true, engine: 'docker', selectors: options.selectors,
+      daemonContextFingerprint: daemonFingerprint,
+      engineGlobalArgs: ['--host', 'unix:///var/run/docker.sock'],
+      resources: volumeLocator
+        ? present.filter((entry) => entry.locator === volumeLocator) : present,
+      ambiguities: [],
+    };
+  };
+  const prepared = await prepareOperatorRecoverySession({
+    trust, target, expectedCounts: { compose_container: 0, compose_network: 0, compose_volume: 2 },
+    policyDigest: canonicalSha256({ contract: 'operator-recovery-v1' }),
+    sourceCommit: commit, sourceExecutionId: 'local-source-1',
+    correlationEvidence: originalCorrelation, authorizationKeys, evidenceKeys,
+    observe, now: () => clock,
+  });
+  clock = new Date('2026-09-02T10:00:01.000Z');
+  const executed = await executePreparedOperatorRecovery({
+    prepared, trust, authorizationKeys, evidenceKeys,
+    correlationOptions: correlationOptions(() => clock), observe,
+    runtimeDirectory: mkdtempSync(path.join(tmpdir(), 'operator-recovery-volume-order-')),
+    now: () => clock,
+    resolveDaemonAuthority: () => ({
+      fingerprint: daemonFingerprint, engineGlobalArgs: ['--host', 'unix:///var/run/docker.sock'],
+    }),
+    supervisor: async (engine, args) => {
+      removed.add(args[args.length - 1]);
+      return { outcome: 'success' };
+    },
+  });
+  assert.equal(executed.receipt.state, 'cleaned');
+  assert.equal(removed.size, 2);
 });

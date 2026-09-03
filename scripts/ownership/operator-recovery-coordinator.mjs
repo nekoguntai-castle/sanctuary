@@ -24,11 +24,21 @@ import {
 import { buildOperatorRecoveryActions, createOperatorRecoveryRuntime } from './operator-recovery-runtime.mjs';
 import {
   buildOperatorRecoveryApproval, buildOperatorRecoveryAssertion,
-  buildOperatorRecoveryScope, validateOperatorRecoveryApproval,
+  buildOperatorRecoveryScope, resourceOrder, validateOperatorRecoveryApproval,
   validateOperatorRecoveryAssertion, validateOperatorRecoveryExecutionReceipt,
   validateOperatorRecoveryScope,
 } from './operator-recovery-schema.mjs';
 import { executeOperatorRecoverySession } from './operator-recovery-session.mjs';
+
+// The observer and the scope builder sort resources by different keys (observer:
+// resourceClass+locator; scope: resourceClass+immutableIdentity+locator). For
+// compose_volume, locator (name) and immutableIdentity (digest) can sort
+// differently, so a re-observation that matches the approved scope in content
+// can still differ in array order. Canonical hashing is order-sensitive, so
+// both sides are normalized to the schema's resource order before comparison.
+function canonicalResourceOrderDigest(resources) {
+  return canonicalSha256([...resources].sort(resourceOrder));
+}
 
 export function operatorRecoverySurvivorProjection(journal, resources, actions) {
   if (!journal?.records || !Array.isArray(resources) || !Array.isArray(actions)) {
@@ -325,7 +335,8 @@ export async function executePreparedOperatorRecovery({
         ...(volumeNonces[0] ? { attestationNonce: volumeNonces[0] } : {}),
       });
       if (lockedObservation.daemonContextFingerprint !== values.scope.daemonContextFingerprint
-          || canonicalSha256(lockedObservation.resources) !== canonicalSha256(values.scope.resources)) {
+          || canonicalResourceOrderDigest(lockedObservation.resources)
+            !== canonicalResourceOrderDigest(values.scope.resources)) {
         throw new Error('operator recovery target changed after approval');
       }
     } else {

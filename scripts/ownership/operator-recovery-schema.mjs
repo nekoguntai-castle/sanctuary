@@ -181,7 +181,7 @@ function validateRecoveryResource(value, path) {
   if (value.resourceClass === 'compose_volume') identifier(value.attestationNonce, `${path}.attestationNonce`);
 }
 
-function resourceOrder(left, right) {
+export function resourceOrder(left, right) {
   return left.resourceClass.localeCompare(right.resourceClass)
     || left.immutableIdentity.localeCompare(right.immutableIdentity)
     || left.locator.localeCompare(right.locator);
