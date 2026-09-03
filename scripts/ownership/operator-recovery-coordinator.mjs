@@ -136,20 +136,35 @@ function evidenceSigner(trust, evidenceKeys) {
   return fingerprint;
 }
 
+async function resolvePreparationCorrelation(correlationEvidence, observeCorrelation) {
+  const hasEvidence = correlationEvidence !== undefined;
+  const hasObserver = observeCorrelation !== undefined;
+  if (hasEvidence === hasObserver || (hasObserver && typeof observeCorrelation !== 'function')) {
+    throw new TypeError('operator recovery preparation requires exactly one correlation source');
+  }
+  return hasObserver ? observeCorrelation() : correlationEvidence;
+}
+
 /** Create signed, nonmutating authority and approval artifacts for one exact stack. */
 export async function prepareOperatorRecoverySession({
   trust, target, expectedCounts, policyDigest, sourceCommit, sourceExecutionId,
-  correlationEvidence, authorizationKeys, evidenceKeys,
+  correlationEvidence, observeCorrelation, authorizationKeys, evidenceKeys,
   observe, observationOptions = {}, operationRunId = `operator-${randomUUID()}`,
   now = () => new Date(), ttlMs = 5 * 60_000,
 } = {}) {
-  const instant = now();
-  validateProviderCorrelationEvidence(correlationEvidence, { now: instant });
   const authorizationKeyId = authorizationSigner(trust, authorizationKeys);
   const evidenceKeyId = evidenceSigner(trust, evidenceKeys);
+  const observed = await buildOperatorRecoveryObservation({
+    target, expectedCounts, observe, observationOptions,
+  });
+  const resolvedCorrelation = await resolvePreparationCorrelation(
+    correlationEvidence, observeCorrelation,
+  );
+  const instant = now();
+  validateProviderCorrelationEvidence(resolvedCorrelation, { now: instant });
   const window = approvalWindow(instant, ttlMs);
   const correlationEnvelope = sign(
-    correlationEvidence, authorizationKeys, authorizationKeyId,
+    resolvedCorrelation, authorizationKeys, authorizationKeyId,
     (value) => validateProviderCorrelationEvidence(value, { now: instant }),
   );
   const assertion = buildOperatorRecoveryAssertion({
@@ -158,16 +173,13 @@ export async function prepareOperatorRecoverySession({
     historicalTerminalityAuthority: 'operator_assertion_only',
     ...window, trustDigest: canonicalSha256(trust),
     providerCorrelationEvidenceDigest: correlationEnvelope.artifactDigest,
-    queryResultCoreDigest: correlationEvidence.queryResultCoreDigest,
+    queryResultCoreDigest: resolvedCorrelation.queryResultCoreDigest,
     signerKeyId: authorizationKeyId,
   });
   const assertionEnvelope = sign(
     assertion, authorizationKeys, authorizationKeyId,
     (value) => validateOperatorRecoveryAssertion(value, { trust, now: instant }),
   );
-  const observed = await buildOperatorRecoveryObservation({
-    target, expectedCounts, observe, observationOptions,
-  });
   const scope = buildOperatorRecoveryScope({
     trust, assertion, scopeId: `scope-${randomUUID()}`, ...target, operationRunId,
     observedAt: window.issuedAt, expiresAt: window.expiresAt,
@@ -175,7 +187,7 @@ export async function prepareOperatorRecoverySession({
     daemonContextFingerprint: observed.daemonContextFingerprint,
     operatorAssertionDigest: assertionEnvelope.artifactDigest,
     providerCorrelationEvidenceDigest: correlationEnvelope.artifactDigest,
-    queryResultCoreDigest: correlationEvidence.queryResultCoreDigest,
+    queryResultCoreDigest: resolvedCorrelation.queryResultCoreDigest,
     resources: observed.resources, signerKeyId: authorizationKeyId,
   });
   const scopeEnvelope = sign(

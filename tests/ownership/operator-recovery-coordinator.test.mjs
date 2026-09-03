@@ -69,6 +69,62 @@ function rawContainer(running) {
   };
 }
 
+test('preparation starts correlation freshness and approval TTL after slow observation', async () => {
+  const authorizationKeys = keys();
+  const evidenceKeys = keys();
+  const trust = buildHostRecoveryTrust({
+    trustId: 'host-recovery', validFrom: '2026-09-02T09:00:00.000Z',
+    validUntil: '2026-09-03T09:00:00.000Z',
+    authorizationFingerprints: [authorizationKeys.fingerprint],
+    evidenceFingerprints: [evidenceKeys.fingerprint],
+  });
+  let clock = new Date('2026-09-02T10:00:00.000Z');
+  let correlationObservedAt;
+  let correlationObservations = 0;
+  let preparing = true;
+  let present = true;
+  const observe = async (options) => {
+    if (preparing) clock = new Date('2026-09-02T10:02:00.000Z');
+    return {
+      complete: true, engine: 'docker', selectors: options.selectors,
+      daemonContextFingerprint: daemonFingerprint,
+      engineGlobalArgs: ['--host', 'unix:///var/run/docker.sock'],
+      resources: present ? [rawNetwork()] : [], ambiguities: [],
+    };
+  };
+  const prepared = await prepareOperatorRecoverySession({
+    trust, target, expectedCounts: { compose_container: 0, compose_network: 1, compose_volume: 0 },
+    policyDigest: canonicalSha256({ contract: 'operator-recovery-v1' }),
+    sourceCommit: commit, sourceExecutionId: 'local-source-1',
+    observeCorrelation: async () => {
+      correlationObservations += 1;
+      correlationObservedAt = clock.toISOString();
+      return observeForgejoProviderCorrelation(correlationOptions(() => clock));
+    },
+    authorizationKeys, evidenceKeys,
+    observe,
+    now: () => clock,
+  });
+
+  assert.equal(correlationObservedAt, '2026-09-02T10:02:00.000Z');
+  assert.equal(correlationObservations, 1);
+  assert.equal(prepared.correlationEnvelope.artifact.observedAt, correlationObservedAt);
+  assert.equal(prepared.approvalEnvelope.artifact.issuedAt, correlationObservedAt);
+  preparing = false;
+  clock = new Date('2026-09-02T10:02:01.000Z');
+  const executed = await executePreparedOperatorRecovery({
+    prepared, trust, authorizationKeys, evidenceKeys,
+    correlationOptions: correlationOptions(() => clock), observe,
+    runtimeDirectory: mkdtempSync(path.join(tmpdir(), 'operator-recovery-freshness-')),
+    now: () => clock,
+    resolveDaemonAuthority: () => ({
+      fingerprint: daemonFingerprint, engineGlobalArgs: ['--host', 'unix:///var/run/docker.sock'],
+    }),
+    supervisor: async () => { present = false; return { outcome: 'success' }; },
+  });
+  assert.equal(executed.receipt.state, 'cleaned');
+});
+
 test('journal projection preserves and validates a container stopped before its remove action', async () => {
   const initial = await buildOperatorRecoveryObservation({
     target, expectedCounts: { compose_container: 1, compose_network: 0, compose_volume: 0 },

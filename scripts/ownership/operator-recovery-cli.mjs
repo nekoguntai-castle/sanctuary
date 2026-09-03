@@ -323,11 +323,11 @@ async function runRecovery(request, checkoutRoot, command) {
   }
   if (command === 'prepare') {
     const providerOptions = correlationOptions(request.provider, () => new Date());
-    const correlationEvidence = await observeForgejoProviderCorrelation(providerOptions);
     const prepared = await prepareOperatorRecoverySession({
       trust, ...keys, target: request.target, expectedCounts: request.expectedCounts,
       policyDigest: canonicalSha256(contract), sourceCommit: request.sourceCommit,
-      sourceExecutionId: request.sourceExecutionId, correlationEvidence,
+      sourceExecutionId: request.sourceExecutionId,
+      observeCorrelation: () => observeForgejoProviderCorrelation(providerOptions),
       ttlMs: request.ttlMs,
     });
     persistPreparedOperatorRecovery(request.evidenceDirectory, prepared, checkoutRoot);
