@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -7,6 +10,9 @@ import {
   findLockPaths,
   parseExceptionConfig,
   runAuditTarget,
+  runGate,
+  AUDIT_NPM_ENV,
+  AUDIT_TARGET_ATTEMPTS,
 } from '../../scripts/ci/npm-audit-gate.mjs';
 
 test('default audit targets keep the standalone docs site at its canonical path', () => {
@@ -354,19 +360,107 @@ test('exception schema rejects malformed, duplicate, and unsupported entries', (
   assert.throws(() => parsedExceptions([exception({ ghsa: 'CVE-2026-1' })]), /canonical GHSA/);
 });
 
-test('audit execution rejects malformed reports, network failures, and unsupported schemas', () => {
+test('audit execution rejects malformed reports, network failures, and unsupported schemas', async () => {
+  const once = { attempts: 1 };
   const spawn = (_command, _args, _options) => ({ status: 1, stdout: 'not-json', stderr: '' });
-  assert.throws(() => runAuditTarget(target(), '.', spawn), /malformed JSON/);
-  assert.throws(
-    () => runAuditTarget(target(), '.', () => ({ status: 1, stdout: JSON.stringify({ error: { code: 'ENETDOWN' } }) })),
-    /unsupported or failed report/,
+  await assert.rejects(() => runAuditTarget(target(), '.', spawn), /malformed JSON/);
+  await assert.rejects(
+    () => runAuditTarget(target(), '.', () => ({ status: 1, stdout: JSON.stringify({ error: { code: 'ENETDOWN' } }) }), once),
+    /unsupported or failed report \(ENETDOWN: no summary\) after 1 attempts/,
   );
-  assert.throws(
+  // Registry failures carry a summary; the message must name it so a CI log
+  // distinguishes an unreachable advisory endpoint from a schema change.
+  await assert.rejects(
+    () => runAuditTarget(target(), '.', () => ({
+      status: 1,
+      stdout: JSON.stringify({ error: { code: 'E503', summary: '503 Service Unavailable - POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk' } }),
+    }), once),
+    /unsupported or failed report \(E503: 503 Service Unavailable - POST https:\/\/registry\.npmjs\.org\/-\/npm\/v1\/security\/advisories\/bulk\)/,
+  );
+  await assert.rejects(
+    () => runAuditTarget(target(), '.', () => ({ status: 1, stdout: JSON.stringify({ error: 'boom' }) }), once),
+    /unsupported or failed report \(error: boom\)/,
+  );
+  // A socket timeout leaves `error.summary` empty and names the endpoint only
+  // in the top-level message.
+  await assert.rejects(
+    () => runAuditTarget(target(), '.', () => ({
+      status: 1,
+      stdout: JSON.stringify({ message: 'network timeout at: https://registry.npmjs.org/-/npm/v1/security/advisories/bulk', error: { summary: '', detail: '' } }),
+    }), once),
+    /\(unknown code: network timeout at: https:\/\/registry\.npmjs\.org\/-\/npm\/v1\/security\/advisories\/bulk\) after 1 attempts/,
+  );
+  await assert.rejects(
     () => runAuditTarget(target(), '.', () => ({ status: 2, stdout: JSON.stringify(report()) })),
     /exit status 2/,
   );
-  assert.throws(
+  await assert.rejects(
     () => runAuditTarget(target(), '.', () => ({ error: new Error('spawn failed'), stdout: '' })),
     /unable to execute/,
   );
+});
+
+test('audit execution retries registry error reports with a short npm fetch timeout', async () => {
+  // The advisory endpoint stalls intermittently and npm never retries the
+  // POST, so the gate must retry the target itself and cap each request.
+  const registryError = { status: 1, stdout: JSON.stringify({ error: { code: 'ERR_SOCKET_TIMEOUT', summary: 'stalled' } }) };
+  const calls = [];
+  const sleeps = [];
+  const flaky = (_command, _args, options) => {
+    calls.push(options);
+    return calls.length < 3 ? registryError : { status: 0, stdout: JSON.stringify(report()) };
+  };
+  const result = await runAuditTarget(target(), '.', flaky, { sleep: (ms) => sleeps.push(ms) });
+  assert.equal(result.auditReportVersion, 2);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(sleeps, [2000, 2000]);
+  for (const options of calls) {
+    assert.equal(options.env.npm_config_fetch_timeout, AUDIT_NPM_ENV.npm_config_fetch_timeout);
+    assert.equal(options.env.PATH, process.env.PATH);
+  }
+
+  // Exhausting the budget reports the attempt count; the default budget is
+  // the exported constant so the workflow retry loop can reason about it.
+  let exhausted = 0;
+  await assert.rejects(
+    () => runAuditTarget(target(), '.', () => { exhausted += 1; return registryError; }, { sleep: () => {} }),
+    new RegExp(`ERR_SOCKET_TIMEOUT: stalled\\) after ${AUDIT_TARGET_ATTEMPTS} attempts`),
+  );
+  assert.equal(exhausted, AUDIT_TARGET_ATTEMPTS);
+
+  // A schema mismatch is not a registry fault and must not be retried.
+  let schemaCalls = 0;
+  await assert.rejects(
+    () => runAuditTarget(target(), '.', () => { schemaCalls += 1; return { status: 0, stdout: JSON.stringify({ auditReportVersion: 1 }) }; }, { sleep: () => {} }),
+    /unsupported or failed report$/,
+  );
+  assert.equal(schemaCalls, 1);
+  await assert.rejects(() => runAuditTarget(target(), '.', flaky, { attempts: 0 }), /positive integer/);
+});
+
+test('gate audits every target concurrently and keeps declaration order', async () => {
+  // Eight sequential registry waits do not fit the job budget when the
+  // advisory endpoint stalls; the gate must overlap them.
+  const root = mkdtempSync(path.join(os.tmpdir(), 'npm-audit-gate-concurrency-'));
+  writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify(lock()));
+  const configPath = path.join(root, 'exceptions.json');
+  writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, exceptions: [] }));
+  const started = [];
+  let inFlight = 0;
+  let peak = 0;
+  const releases = new Map();
+  const auditRunner = (auditTarget, repoRoot) => new Promise((resolveAudit) => {
+    assert.equal(repoRoot, root);
+    started.push(auditTarget.label);
+    inFlight += 1;
+    peak = Math.max(peak, inFlight);
+    releases.set(auditTarget.label, () => { inFlight -= 1; resolveAudit(report({})); });
+  });
+  const targets = [target({ label: 'a' }), target({ label: 'b' }), target({ label: 'c' })];
+  const gate = runGate({ repoRoot: root, configPath, targets, auditRunner, currentDate: NOW });
+  await new Promise((resolveTick) => setImmediate(resolveTick));
+  assert.deepEqual(started, ['a', 'b', 'c']);
+  assert.equal(peak, 3);
+  for (const label of ['c', 'a', 'b']) releases.get(label)();
+  assert.deepEqual(await gate, { targetCount: 3, exceptionCount: 0 });
 });

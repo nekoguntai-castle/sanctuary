@@ -9,15 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.8.70] - 2026-09-04
+
+### Added
+
 - Added immutable deployment generations, canonical mutation locking, signed
   producer registrations, and application lifecycle authority references.
+- Added a signed operator lost-authority recovery path with exact cleanup
+  receipts and closeout for orphaned CI stacks.
+- Added an additive `operational` projection to `GET /api/v1/bitcoin/status`:
+  configured mode, the transport that actually answered (pool, singleton, or
+  singleton fallback with a bounded reason), the observed route server, and
+  freshness-aware per-server availability with failover primary/preferred/next
+  roles.
 
 ### Changed
 
 - Routed setup, start, stop, upgrade backup, and offline apply through retained
   Compose definitions and stamped Compose/OCI resources with ownership metadata.
+- Failover-only Electrum pools now route requests to the highest-priority
+  eligible server instead of the first idle socket, with deterministic
+  `(priority, id)` ordering and primary failback without a pool restart.
+- Redesigned the dashboard Node Status card around the operational projection:
+  mode-specific headlines, a strategy badge, honest pool-fallback and
+  unknown-health states, a `Last known` treatment for stale data, and an
+  accessible server disclosure with text role and availability.
 
 ### Fixed
+
+- Connectivity failures on the status endpoint now return the selected network,
+  configured mode, and topology instead of a bare error envelope.
+- The Node Status card no longer presents socket lease counts as server health
+  or shows a previous network's servers after a network switch.
 
 ## [0.8.69] - 2026-08-30
 

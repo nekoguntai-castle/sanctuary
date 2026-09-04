@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -117,6 +117,21 @@ export function parseExceptionConfig(raw, currentDate = new Date()) {
   return exceptions;
 }
 
+function nonEmptyString(value) {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+// npm emits two shapes: `{ error: { code, summary, detail } }` for registry
+// status errors and `{ message, error: { summary: '', detail: '' } }` for
+// socket timeouts, where only the top-level message names the endpoint.
+function describeAuditError(report) {
+  const { error } = report;
+  if (!isPlainObject(error)) return `error: ${String(error)}`;
+  const code = nonEmptyString(error.code) ?? 'unknown code';
+  const summary = nonEmptyString(error.summary) ?? nonEmptyString(report.message) ?? 'no summary';
+  return `${code}: ${summary}`;
+}
+
 function parseAuditOutput(stdout, status, label) {
   let report;
   try {
@@ -125,20 +140,88 @@ function parseAuditOutput(stdout, status, label) {
     throw new Error(`${label}: npm audit returned malformed JSON: ${error.message}`);
   }
   if (status !== 0 && status !== 1) throw new Error(`${label}: npm audit failed with exit status ${String(status)}`);
-  if (!isPlainObject(report) || report.error !== undefined || report.auditReportVersion !== 2 || !isPlainObject(report.vulnerabilities)) {
-    throw new Error(`${label}: npm audit returned an unsupported or failed report`);
+  if (isPlainObject(report) && report.error !== undefined) {
+    // npm reports registry/network failures as `{ error: { code, summary, detail } }`
+    // with exit status 1. Surface the code and summary so a CI log names the
+    // failing registry call instead of a bare "failed report".
+    throw new AuditReportError(`${label}: npm audit returned an unsupported or failed report (${describeAuditError(report)})`, true);
+  }
+  if (!isPlainObject(report) || report.auditReportVersion !== 2 || !isPlainObject(report.vulnerabilities)) {
+    throw new AuditReportError(`${label}: npm audit returned an unsupported or failed report`, false);
   }
   return report;
 }
 
-export function runAuditTarget(target, repoRoot = REPO_ROOT, spawn = spawnSync) {
-  const result = spawn('npm', target.args, {
-    cwd: resolve(repoRoot, target.cwd),
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
+// npm's default fetch timeout is five minutes and it never retries the
+// advisory POST, so one stalled registry response costs the whole budget.
+// Cap each request at a minute (the endpoint answers in 10-50 s when it
+// answers at all) and let the per-target loop below retry the stalls.
+export const AUDIT_NPM_ENV = Object.freeze({
+  npm_config_fetch_timeout: '60000',
+});
+export const AUDIT_TARGET_ATTEMPTS = 6;
+const AUDIT_RETRY_DELAY_MS = 2000;
+
+function sleepMs(ms) {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
+
+// Async stand-in for spawnSync's result shape so the retry loop below can run
+// every target concurrently: the audits are independent and spend nearly all
+// of their time waiting on the registry, so wall time is one target's worst
+// case instead of the sum of eight. execFile enforces the output cap itself,
+// so this wrapper never signals the child.
+function spawnCollect(command, args, options) {
+  return new Promise((resolveSpawn) => {
+    execFile(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      encoding: options.encoding,
+      maxBuffer: options.maxBuffer,
+    }, (error, stdout, stderr) => {
+      // A non-zero exit is reported through `error.code` as a number; that is
+      // an ordinary audit result (1 = findings), not an execution failure.
+      if (error && typeof error.code === 'number' && !error.killed) {
+        resolveSpawn({ error: null, status: error.code, stdout, stderr });
+        return;
+      }
+      resolveSpawn({ error, status: error ? null : 0, stdout, stderr });
+    });
   });
-  if (result.error) throw new Error(`${target.label}: unable to execute npm audit: ${result.error.message}`);
-  return parseAuditOutput(result.stdout, result.status, target.label);
+}
+
+class AuditReportError extends Error {
+  constructor(message, retriable) {
+    super(message);
+    this.retriable = retriable;
+  }
+}
+
+export async function runAuditTarget(target, repoRoot = REPO_ROOT, spawn = spawnCollect, {
+  attempts = AUDIT_TARGET_ATTEMPTS,
+  sleep = sleepMs,
+} = {}) {
+  if (!Number.isInteger(attempts) || attempts < 1) throw new Error(`${target.label}: attempts must be a positive integer`);
+  for (let attempt = 1; ; attempt += 1) {
+    const result = await spawn('npm', target.args, {
+      cwd: resolve(repoRoot, target.cwd),
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      env: { ...process.env, ...AUDIT_NPM_ENV },
+    });
+    if (result.error) throw new Error(`${target.label}: unable to execute npm audit: ${result.error.message}`);
+    try {
+      return parseAuditOutput(result.stdout, result.status, target.label);
+    } catch (error) {
+      if (!(error instanceof AuditReportError) || !error.retriable || attempt >= attempts) {
+        if (error instanceof AuditReportError && error.retriable) {
+          throw new Error(`${error.message} after ${attempt} attempts`);
+        }
+        throw error;
+      }
+      await sleep(AUDIT_RETRY_DELAY_MS);
+    }
+  }
 }
 
 function validateVulnerability(name, vulnerability) {
@@ -360,7 +443,7 @@ export function evaluateReports({ reports, targets, locks, exceptions }) {
   if (unused.length > 0) throw new Error(`unused audit exceptions: ${unused.join(', ')}`);
 }
 
-export function runGate({
+export async function runGate({
   repoRoot = REPO_ROOT,
   configPath = DEFAULT_CONFIG,
   targets = DEFAULT_TARGETS,
@@ -370,10 +453,13 @@ export function runGate({
   const exceptions = parseExceptionConfig(readFileSync(configPath, 'utf8'), currentDate);
   const reports = new Map();
   const locks = new Map();
-  for (const target of targets) {
-    reports.set(target.label, auditRunner(target, repoRoot));
+  // Every target audits concurrently; results are stored in declaration order
+  // so evaluation and its error messages stay deterministic.
+  const audited = await Promise.all(targets.map((target) => auditRunner(target, repoRoot)));
+  targets.forEach((target, index) => {
+    reports.set(target.label, audited[index]);
     locks.set(target.lockfile, readLock(repoRoot, target.lockfile, locks));
-  }
+  });
   evaluateReports({ reports, targets, locks, exceptions });
   return { targetCount: targets.length, exceptionCount: exceptions.length };
 }
@@ -384,7 +470,7 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    const result = runGate();
+    const result = await runGate();
     const rootLabel = relative(process.cwd(), REPO_ROOT).split(sep).join('/') || '.';
     console.log(`npm audit gate passed for ${result.targetCount} targets from ${rootLabel}; ${result.exceptionCount} exceptions used`);
   } catch (error) {
