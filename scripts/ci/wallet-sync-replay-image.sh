@@ -5,6 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ownership/producer-hooks.sh
 . "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
+# Provenance labels the cleanup coordinator needs before it will treat an
+# unlabeled image as externally registered (docker-observation.mjs
+# validImageProvenance). The current server/Dockerfile emits them itself; the
+# pinned historical rc10 tree emits only revision and image lock, so the build
+# stamps all five with --label for every source tree. Printed one argument per
+# line for mapfile.
+replay_provenance_label_args() {
+  local revision="$1" image_lock_sha256="$2" build_version="$3" build_id="$4"
+  printf '%s\n' \
+    --label "org.opencontainers.image.source=https://github.com/nekoguntai-castle/sanctuary" \
+    --label "org.opencontainers.image.revision=$revision" \
+    --label "dev.sanctuary.image-lock-sha256=$image_lock_sha256" \
+    --label "org.opencontainers.image.version=$build_version" \
+    --label "io.sanctuary.build-id=$build_id"
+}
+
 # Read the package version of a source root given as any path (relative to the
 # caller's working directory or absolute). A bare require(path) would be a
 # module-name lookup and fail for relative roots such as the workflow's
@@ -166,6 +182,8 @@ build_image() {
   image_lock_sha256="$(sha256sum "$image_lock" | cut -d ' ' -f 1)"
   build_version="$(replay_source_version "$source_root")"
   build_id="${SANCTUARY_OPERATION_RUN_ID:-replay-${revision:0:12}}"
+  local -a provenance_label_args
+  mapfile -t provenance_label_args < <(replay_provenance_label_args "$revision" "$image_lock_sha256" "$build_version" "$build_id")
   temporary_archive="$output_dir/.wallet-sync-replay-$revision.oci.tar"
   # The Docker exporter emits an OCI layout (oci-layout/index.json/blobs) plus
   # manifest.json, allowing the exact archived bytes to be loaded by the
@@ -178,6 +196,7 @@ build_image() {
     --build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha256" \
     --build-arg "SANCTUARY_BUILD_VERSION=$build_version" \
     --build-arg "SANCTUARY_BUILD_ID=$build_id" \
+    "${provenance_label_args[@]}" \
     --provenance=false \
     --sbom=false \
     --output "type=docker,dest=$temporary_archive" \

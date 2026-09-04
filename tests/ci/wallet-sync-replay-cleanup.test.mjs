@@ -622,3 +622,28 @@ test('loaded image verification still refuses a wrong source label when one is p
   assert.match(output, /source label/);
   assert.match(output, /status=1/);
 });
+
+test('build stamps provenance labels so a historical source tree yields a cleanable image', () => {
+  // v0.8.70-rc5 (run 14721): both replay images built and registered, but the
+  // cleanup coordinator refused the rc10 image (protected/unlabeled/
+  // unregistered). An unlabeled image is only externally registered when its
+  // labels prove provenance (source, revision, image lock, version, build-id);
+  // the pinned rc10 Dockerfile emits only revision and image lock, so the
+  // build must stamp all five with --label regardless of the source tree.
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    replay_provenance_label_args "${'1'.repeat(40)}" "${'2'.repeat(64)}" 0.8.70 run-14721-1-images
+  `, '_', helper], { encoding: 'utf8' });
+  assert.deepEqual(output.split('\n').filter(Boolean), [
+    '--label', 'org.opencontainers.image.source=https://github.com/nekoguntai-castle/sanctuary',
+    '--label', `org.opencontainers.image.revision=${'1'.repeat(40)}`,
+    '--label', `dev.sanctuary.image-lock-sha256=${'2'.repeat(64)}`,
+    '--label', 'org.opencontainers.image.version=0.8.70',
+    '--label', 'io.sanctuary.build-id=run-14721-1-images',
+  ]);
+  const source = readFileSync(helper, 'utf8');
+  assert.match(source, /docker buildx build \\\n(?:.*\\\n)*?\s+"\$\{provenance_label_args\[@\]\}" \\\n/,
+    'build_image must pass the provenance labels to docker buildx build');
+});
