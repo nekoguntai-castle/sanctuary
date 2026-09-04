@@ -133,6 +133,13 @@ if [ "$status" -ne 0 ]; then
 else
   assert_file_exists "$diag/post-action-failure.log" "post-action breadcrumb log" || true
   assert_contains "$diag/post-action-failure.log.status.json" '"wrapped_exit": 1' "post-action breadcrumb sidecar" || true
+  # sanctuary#1009: verify-vectors run 14568 (job 184154) failed via a podman
+  # "context deadline exceeded" copying SUMMARY.md out of the job container
+  # after every captured verification step had already succeeded. The generic
+  # breadcrumb text left that indistinguishable from an actual proof
+  # regression; it must name this as a post-verification runner/infra fault.
+  assert_contains "$diag/post-action-failure.log" "captured verification step(s) succeeded" "post-verification infra wording" || true
+  assert_contains "$diag/post-action-failure.log" "not a proof regression" "post-verification infra wording" || true
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 

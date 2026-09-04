@@ -1,7 +1,7 @@
 # Dashboard Network Status Card Redesign Plan
 
 Date: 2026-08-31
-Status: PR A merged (#1007, 2cab474b56); PR B implemented, pending merge
+Status: Complete — PR A merged (#1007, 2cab474b56), PR B merged (#1008, 525369c8a5)
 Baseline inspected: `5ab35aa71013bbace8021f6340e4cd69a62b404e`
 Delivery shape: two serial, independently revertible protected PRs
 

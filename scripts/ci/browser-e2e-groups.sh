@@ -40,6 +40,7 @@ list_group_specs() {
         tests/e2e/console-drawer-smoke.spec.ts \
         tests/e2e/dashboard-price-blocks.spec.ts \
         tests/e2e/network-sync-toggle-dark.spec.ts \
+        tests/e2e/node-status-card-responsive.spec.ts \
         tests/e2e/settings-persistence.spec.ts \
         tests/e2e/user-journeys.spec.ts \
         tests/e2e/wallet-sharing-privacy.spec.ts \

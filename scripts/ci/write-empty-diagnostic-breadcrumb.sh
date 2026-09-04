@@ -70,6 +70,35 @@ has_failed_sidecar() {
   return 1
 }
 
+# sanctuary#1009: verify-vectors run 14568 failed via a podman "context
+# deadline exceeded" copying SUMMARY.md out of the job container, after every
+# wrapped verification step had already exited 0. That failure looked
+# identical, in the generic breadcrumb below, to an actual proof regression.
+# Count succeeded sidecars so the breadcrumb can name the run as a
+# post-verification runner/infrastructure fault instead.
+count_succeeded_sidecars() {
+  local status_path
+  local wrapped_exit
+  local count=0
+
+  if [ ! -d "$DIAGNOSTIC_DIR" ]; then
+    echo 0
+    return 0
+  fi
+
+  while IFS= read -r -d '' status_path; do
+    wrapped_exit="$(
+      sed -n 's/^[[:space:]]*"wrapped_exit"[[:space:]]*:[[:space:]]*\(-\{0,1\}[0-9][0-9]*\).*/\1/p' "$status_path" 2>/dev/null |
+        head -n 1
+    )"
+    if [ -n "$wrapped_exit" ] && [ "$wrapped_exit" -eq 0 ]; then
+      count=$((count + 1))
+    fi
+  done < <(find "$DIAGNOSTIC_DIR" -type f -name '*.log.status.json' -print0 2>/dev/null)
+
+  echo "$count"
+}
+
 if has_failed_sidecar; then
   echo "write-empty-diagnostic-breadcrumb: failed diagnostic sidecar already exists; breadcrumb not needed"
   exit 0
@@ -83,7 +112,25 @@ SIDECAR_TMP="$SIDECAR_PATH.$$.tmp"
 STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 ENDED_AT="$STARTED_AT"
 
-cat >"$LOG_PATH" <<LOG
+SUCCEEDED_SIDECARS="$(count_succeeded_sidecars)"
+
+if [ "$SUCCEEDED_SIDECARS" -gt 0 ]; then
+  cat >"$LOG_PATH" <<LOG
+Diagnostic breadcrumb: $TITLE failed without a failed run-with-log.sh sidecar.
+Diagnostic directory: $DIAGNOSTIC_DIR
+
+All $SUCCEEDED_SIDECARS captured verification step(s) succeeded (wrapped_exit
+0); this job failure is a post-verification runner/infrastructure fault --
+not a proof regression. Known causes on this repo: the runner's own
+container-to-host artifact copy (e.g. SUMMARY.md, GITHUB_PATH) timing out
+against a hung podman/docker socket, or job teardown being interrupted after
+verification finished.
+
+Inspect the Forgejo task output and the runner/DIND state for the missing
+failure context.
+LOG
+else
+  cat >"$LOG_PATH" <<LOG
 Diagnostic breadcrumb: $TITLE failed without a failed run-with-log.sh sidecar.
 Diagnostic directory: $DIAGNOSTIC_DIR
 
@@ -94,6 +141,7 @@ terminating the job before run-with-log.sh could write a failed sidecar.
 Inspect the Forgejo task output and the runner/DIND state for the missing
 failure context.
 LOG
+fi
 
 cat >"$SIDECAR_TMP" <<JSON
 {
