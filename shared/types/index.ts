@@ -15,3 +15,4 @@ export * from './domain';
 export * from './api';
 export * from './logger';
 export * from './websocket';
+export * from './nodeOperationalStatus';

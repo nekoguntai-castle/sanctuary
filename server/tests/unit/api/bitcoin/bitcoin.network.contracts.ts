@@ -110,7 +110,7 @@ export const registerBitcoinNetworkRouteTests = () => {
       });
 
       it('should include default host when node config is not available', async () => {
-        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(null);
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(null);
         mockElectrumClient.isConnected.mockReturnValue(true);
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'ElectrumX', protocol: '1.4' });
         mockElectrumClient.getBlockHeight.mockResolvedValue(850000);
@@ -121,13 +121,23 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.body.host).toBe('electrum.blockstream.info');
       });
 
+      it('returns the minimal legacy envelope only when configuration itself could not be read', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockRejectedValueOnce(new Error('db unavailable'));
+
+        const response = await request(app).get('/bitcoin/status');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ connected: false, error: 'db unavailable' });
+      });
+
       it('should return disconnected status on error', async () => {
-        mockNodeClient.getNodeClient.mockRejectedValue(new Error('Connection failed'));
+        mockElectrumClient.connect.mockRejectedValueOnce(new Error('Connection failed'));
 
         const response = await request(app).get('/bitcoin/status');
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('connected', false);
+        expect(response.body).toHaveProperty('operational');
       });
 
       it('should return disconnected status when the Electrum version is unavailable', async () => {
@@ -139,11 +149,37 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({
           connected: false,
-          error: 'Unable to read signet Electrum server version',
+          error: 'Unable to read signet Electrum server status',
         });
       });
 
       it('should fall back to singleton status check when pool status fails', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce({
+          id: 'default',
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          poolEnabled: true,
+          explorerUrl: 'https://mempool.space',
+          mainnetMode: 'pool',
+          mainnetPoolMin: 1,
+          mainnetPoolMax: 5,
+          servers: [
+            {
+              id: 'mainnet-server-1',
+              label: 'Mainnet Server',
+              host: 'mainnet.example.com',
+              port: 50002,
+              useSsl: true,
+              priority: 1,
+              enabled: true,
+              network: 'mainnet',
+              isHealthy: true,
+              lastHealthCheck: null,
+            },
+          ],
+        });
         mockElectrumPool.isPoolInitialized.mockImplementationOnce(() => {
           throw new Error('Pool health failed');
         });
@@ -157,6 +193,10 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body.connected).toBe(true);
         expect(response.body.server).toBe('ElectrumX');
+        expect(response.body.operational.route).toMatchObject({
+          transport: 'singleton_fallback',
+          fallbackReason: 'pool_probe_failed',
+        });
       });
 
       it('returns selected testnet3 singleton status with configured host', async () => {
@@ -177,7 +217,6 @@ export const registerBitcoinNetworkRouteTests = () => {
           explorerUrl: 'https://mempool.space/testnet',
           pool: expect.objectContaining({ enabled: false }),
         });
-        expect(mockNodeClient.getNodeClient).toHaveBeenCalledWith('testnet3');
       });
 
       it('returns configured explorer URL for testnet4 status', async () => {
@@ -352,59 +391,86 @@ export const registerBitcoinNetworkRouteTests = () => {
         );
       });
 
-      it('uses default display and pool limits when mode config cannot be loaded', async () => {
-        const lastHealthCheck = '2026-01-01T00:00:00.000Z';
-        mockPrismaClient.nodeConfig.findFirst
-          .mockResolvedValueOnce({
-            id: 'default',
-            type: 'electrum',
-            host: 'electrum.example.com',
-            port: 50002,
-            useSsl: true,
-            explorerUrl: 'https://mempool.space',
-            servers: [
-              {
-                id: 'testnet3-server-1',
-                label: 'Observed Testnet3',
-                host: 'observed-testnet3.example.com',
-                port: 60002,
-                useSsl: true,
-                priority: null,
-                enabled: true,
-                network: 'testnet3',
-                isHealthy: null,
-                lastHealthCheck,
-              },
-            ],
-          })
-          .mockRejectedValueOnce(new Error('mode config unavailable'));
+      it('reports disconnected with route:null when node config is absent and the environment-default singleton attempt fails', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(null);
+        mockElectrumClient.connect.mockRejectedValueOnce(new Error('unreachable'));
+
+        const response = await request(app).get('/bitcoin/status?network=testnet3');
+
+        expect(response.status).toBe(200);
+        expect(response.body.connected).toBe(false);
+        expect(response.body.operational.route).toBeNull();
+        expect(response.body.pool).toBeNull();
+      });
+
+      it('attempts the environment-default singleton and reports one repository read when node config is entirely absent', async () => {
+        // A3: only one repository read feeds the whole attempt. There is no
+        // second `nodeConfig.findFirst` call for mode config any more.
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(null);
+        mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'ElectrumX', protocol: '1.4' });
+        mockElectrumClient.getBlockHeight.mockResolvedValue(900000);
+
+        const response = await request(app).get('/bitcoin/status?network=testnet3');
+
+        expect(response.status).toBe(200);
+        expect(mockPrismaClient.nodeConfig.findFirst).toHaveBeenCalledTimes(1);
+        expect(response.body).toMatchObject({
+          connected: true,
+          network: 'testnet3',
+          pool: null,
+        });
+        expect(response.body.operational).toMatchObject({
+          configuredMode: 'singleton',
+          route: { transport: 'singleton', serverId: null },
+        });
+      });
+
+      it('derives mode, topology, and the direct fallback connection from one snapshot even if the DB would answer differently on a second read', async () => {
+        // A3: the repository is read exactly once per attempt. Configure the
+        // mock to answer differently on a hypothetical second call so any
+        // accidental second read would produce inconsistent output.
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce({
+          id: 'default',
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          explorerUrl: 'https://mempool.space',
+          testnet3Enabled: true,
+          testnet3Mode: 'singleton',
+          testnet3SingletonHost: 'testnet.example.com',
+          testnet3SingletonPort: 60002,
+          testnet3SingletonSsl: true,
+          servers: [],
+        });
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce({
+          id: 'default',
+          type: 'electrum',
+          host: 'different-electrum.example.com',
+          port: 50003,
+          useSsl: false,
+          explorerUrl: 'https://mempool.space',
+          testnet3Enabled: true,
+          testnet3Mode: 'pool',
+          servers: [],
+        });
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
         mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_001);
 
         const response = await request(app).get('/bitcoin/status?network=testnet3');
 
         expect(response.status).toBe(200);
+        expect(mockPrismaClient.nodeConfig.findFirst).toHaveBeenCalledTimes(1);
         expect(response.body).toMatchObject({
           connected: true,
           network: 'testnet3',
-          host: 'electrum.blockstream.info',
+          host: 'testnet.example.com',
           useSsl: true,
-          pool: expect.objectContaining({
-            enabled: false,
-            minConnections: 1,
-            maxConnections: 5,
-          }),
+          pool: expect.objectContaining({ enabled: false }),
         });
-        expect(response.body.pool.stats.servers).toEqual([
-          expect.objectContaining({
-            serverId: 'testnet3-server-1',
-            isHealthy: false,
-            lastHealthCheck: new Date(lastHealthCheck),
-          }),
-        ]);
+        expect(response.body.operational.configuredMode).toBe('singleton');
       });
     });
-
     describe('GET /bitcoin/silent-payments/readiness', () => {
       it('returns Silent Payments readiness for the selected network', async () => {
         mockSilentPayments.getSilentPaymentReadiness.mockResolvedValueOnce({

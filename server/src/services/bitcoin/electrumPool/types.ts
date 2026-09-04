@@ -240,6 +240,11 @@ export interface ElectrumPoolFeatureScope {
  */
 export interface PooledConnectionHandle {
   client: ElectrumClient;
+  /** Configured identity of the server this handle's socket is bound to. */
+  readonly serverId: string;
+  readonly serverLabel: string;
+  readonly serverHost: string;
+  readonly serverPort: number;
   release(): void;
   withClient<T>(fn: (client: ElectrumClient) => Promise<T>): Promise<T>;
 }

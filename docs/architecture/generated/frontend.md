@@ -54,6 +54,7 @@ n_shared_types_api_ts["api.ts"]
 n_shared_types_domain_ts["domain.ts"]
 n_shared_types_index_ts["index.ts"]
 n_shared_types_logger_ts["logger.ts"]
+n_shared_types_nodeOperationalStatus_ts["nodeOperationalStatus.ts"]
 n_shared_types_websocket_ts["websocket.ts"]
 end
 subgraph n_shared_utils["utils"]
@@ -475,6 +476,7 @@ n_shared_types_domain_ts-->n_shared_constants_walletIdentity_ts
 n_shared_types_index_ts-->n_shared_types_api_ts
 n_shared_types_index_ts-->n_shared_types_domain_ts
 n_shared_types_index_ts-->n_shared_types_logger_ts
+n_shared_types_index_ts-->n_shared_types_nodeOperationalStatus_ts
 n_shared_types_index_ts-->n_shared_types_websocket_ts
 n_shared_utils_bitcoin_ts-->n_shared_constants_bitcoin_ts
 n_shared_utils_bitcoin_ts-->n_shared_constants_walletIdentity_ts

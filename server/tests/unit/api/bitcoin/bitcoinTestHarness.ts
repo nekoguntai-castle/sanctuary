@@ -99,8 +99,16 @@ vi.mock('../../../../src/services/hardwareWalletCapabilities', async (importOrig
   ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
   assertWalletHardwareCapabilityById: bitcoinApiMocks.mockAssertWalletHardwareCapabilityById,
 }));
+vi.mock('../../../../src/services/bitcoin/networkIdentity', () => ({
+  verifyNodeClientNetwork: vi.fn().mockResolvedValue(undefined),
+  getExpectedGenesisHash: vi.fn().mockReturnValue('mock-genesis-hash'),
+}));
+
 vi.mock('../../../../src/services/bitcoin/electrum', () => ({
   getElectrumClient: () => mockElectrumClient,
+  ElectrumClient: vi.fn().mockImplementation(function ElectrumClient() {
+    return mockElectrumClient;
+  }),
 }));
 vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({
   getElectrumPoolAsync: () => Promise.resolve(mockElectrumPool),

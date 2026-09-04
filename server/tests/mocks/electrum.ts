@@ -205,12 +205,22 @@ export const mockElectrumPool = {
   acquire: vi.fn().mockImplementation(() =>
     Promise.resolve({
       client: mockElectrumClient,
+      serverId: 'server-1',
+      serverLabel: 'Test Server',
+      serverHost: 'electrum.example.com',
+      serverPort: 50002,
       release: vi.fn(),
       withClient: vi.fn().mockImplementation((fn: (client: typeof mockElectrumClient) => Promise<unknown>) =>
         fn(mockElectrumClient)
       ),
     })
   ),
+  getCircuitHealth: vi.fn().mockReturnValue({ state: 'closed' }),
+  getOperationalConfigSnapshot: vi.fn().mockReturnValue({
+    loadBalancing: 'round_robin',
+    healthCheckIntervalMs: 30000,
+    enabled: true,
+  }),
   getSubscriptionConnection: vi.fn().mockResolvedValue(mockElectrumClient),
   getPoolStats: vi.fn().mockReturnValue({
     totalConnections: 2,

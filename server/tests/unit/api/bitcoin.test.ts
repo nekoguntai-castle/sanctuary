@@ -8,6 +8,7 @@ import { beforeAll, beforeEach, describe } from 'vitest';
 import { registerBitcoinAddressRouteTests } from './bitcoin/bitcoin.address.contracts';
 import { registerBitcoinFeeRouteTests } from './bitcoin/bitcoin.fee.contracts';
 import { registerBitcoinNetworkRouteTests } from './bitcoin/bitcoin.network.contracts';
+import { registerBitcoinNetworkOperationalRouteTests } from './bitcoin/bitcoin.network.operational.contracts';
 import { registerBitcoinSyncRouteTests } from './bitcoin/bitcoin.sync.contracts';
 import { registerBitcoinTransactionRouteTests } from './bitcoin/bitcoin.transaction.contracts';
 import { setupBitcoinApiApp, setupBitcoinApiMocks } from './bitcoin/bitcoinTestHarness';
@@ -17,6 +18,7 @@ describe('Bitcoin API', () => {
   beforeEach(setupBitcoinApiMocks);
 
   registerBitcoinNetworkRouteTests();
+  registerBitcoinNetworkOperationalRouteTests();
   registerBitcoinFeeRouteTests();
   registerBitcoinAddressRouteTests();
   registerBitcoinTransactionRouteTests();

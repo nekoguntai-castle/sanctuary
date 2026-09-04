@@ -71,7 +71,6 @@ import {
   type SyncStatus,
   type SyncPriority,
   type ConnectionMode,
-  type LoadBalancingStrategy,
   type PrivacyGrade,
   type HealthStatus,
   type Quorum,
@@ -93,7 +92,15 @@ import type {
 } from "@sanctuary/shared/types/api";
 export { AUTH_CSRF_SESSION_STALE_CODE } from "@sanctuary/shared/types/api";
 import type { PendingTransactionType } from "@sanctuary/shared/constants/transactions";
-import type { NodeMempoolEstimator } from "@sanctuary/shared/constants/nodeConfig";
+import type {
+  NodeMempoolEstimator,
+  NodePoolLoadBalancing,
+} from "@sanctuary/shared/constants/nodeConfig";
+
+// Canonical source: shared/constants/nodeConfig.ts (`NodePoolLoadBalancing`).
+// Kept as a named alias here so existing `LoadBalancingStrategy` imports
+// across the frontend continue to work unchanged.
+export type LoadBalancingStrategy = NodePoolLoadBalancing;
 import type {
   SyncExecutionOwner,
   WalletSyncFailureClass,
@@ -117,7 +124,6 @@ export type {
   SyncPriority,
   NodeMempoolEstimator,
   ConnectionMode,
-  LoadBalancingStrategy,
   PrivacyGrade,
   HealthStatus,
   Quorum,

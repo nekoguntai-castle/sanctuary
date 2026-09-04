@@ -57,7 +57,7 @@
     },
     {
       "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
-      "functionName": "cleanupIdleConnections",
+      "functionName": "evictConnection",
       "issue": "non-terminal-catch",
       "count": 1,
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
@@ -165,10 +165,19 @@
     },
     {
       "file": "server/src/services/bitcoin/networkStatusService.ts",
-      "functionName": "readNetworkBackendStatus",
+      "functionName": "attemptPool",
       "issue": "non-terminal-catch",
       "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "reason": "Status-attempt probe failure intentionally falls back to the explicit singleton path (A3); the caught error is logged and the function proceeds to attemptSingletonFallback rather than swallowing it silently.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/networkStatus/directClient.ts",
+      "functionName": "probeDirectSingleton",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Attempt-scoped direct singleton status probe: a connect/RPC failure is logged and reported as ok:false to the caller rather than thrown, so the route can still return a normal disconnected envelope (A3).",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },

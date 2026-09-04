@@ -22,13 +22,14 @@ import type {
   ProxyConfig,
   BackoffConfig,
   NetworkType,
+  LoadBalancingStrategy,
 } from './types';
 import {
   DEFAULT_POOL_CONFIG,
   DEFAULT_BACKOFF_CONFIG,
   createDefaultServerState,
 } from './types';
-import { selectServer } from './serverSelector';
+import { selectServer, sortServersCanonically } from './serverSelector';
 import {
   recordHealthCheckResult,
   updateServerHealthInDb,
@@ -57,6 +58,18 @@ import {
   processWaitingQueue,
 } from './acquisitionQueue';
 import { computePoolStats, exportMetrics } from './metricsExporter';
+import {
+  currentFailoverTarget,
+  rerouteAfterFailoverTargetFailure,
+  acquireByEvictingBackupForFailoverTarget,
+} from './failoverAcquisition';
+import {
+  getEffectiveMinConnections,
+  getEffectiveMaxConnections,
+  getOperationalConfigSnapshot,
+  applyHealthCheckResults,
+  recordHealthCheckResultsForCycle,
+} from './poolHealthCycle';
 import { getSubscriptionConnection as getSubscriptionConn } from './subscriptionConnection';
 import { loadPoolConfigFromDatabase } from './poolConfig';
 import { createElectrumPoolCircuitBreaker } from './poolCircuitBreaker';
@@ -118,9 +131,7 @@ export class ElectrumPool extends EventEmitter {
     });
   }
 
-  /**
-   * Get circuit breaker health for monitoring
-   */
+  // Get circuit breaker health for monitoring
   getCircuitHealth() {
     return this.circuitBreaker.getHealth();
   }
@@ -130,7 +141,7 @@ export class ElectrumPool extends EventEmitter {
    */
   setServers(servers: ServerConfig[]): void {
     const oldServerIds = new Set(this.servers.map(s => s.id));
-    this.servers = servers.filter(s => s.enabled).sort((a, b) => a.priority - b.priority);
+    this.servers = sortServersCanonically(servers.filter(s => s.enabled));
     const newServerIds = new Set(this.servers.map(s => s.id));
 
     // Initialize stats for each server
@@ -158,10 +169,7 @@ export class ElectrumPool extends EventEmitter {
     });
   }
 
-  /**
-   * Disconnect all connections to a specific server
-   * Used when a server is disabled or removed from the pool
-   */
+  // Disconnect all connections to a specific server (server disabled/removed)
   disconnectServerConnections(serverId: string): void {
     disconnectServerConnections(serverId, this.connections, this.subscriptionConnectionId);
   }
@@ -179,30 +187,22 @@ export class ElectrumPool extends EventEmitter {
     }
   }
 
-  /**
-   * Get current proxy configuration
-   */
+  // Get current proxy configuration
   getProxyConfig(): ProxyConfig | null {
     return this.proxyConfig;
   }
 
-  /**
-   * Check if proxy (Tor) is enabled
-   */
+  // Check if proxy (Tor) is enabled
   isProxyEnabled(): boolean {
     return this.proxyConfig?.enabled ?? false;
   }
 
-  /**
-   * Set the network identifier for this pool (used for metrics)
-   */
+  // Set the network identifier for this pool (used for metrics)
   setNetwork(network: NetworkType): void {
     this.network = network;
   }
 
-  /**
-   * Get the network this pool is configured for
-   */
+  // Get the network this pool is configured for
   getNetwork(): NetworkType {
     return this.network;
   }
@@ -212,9 +212,7 @@ export class ElectrumPool extends EventEmitter {
    * This ensures even distribution across all configured servers at startup.
    */
   getEffectiveMinConnections(): number {
-    const serverCount = this.servers.length;
-    if (serverCount === 0) return this.config.minConnections;
-    return Math.max(this.config.minConnections, serverCount);
+    return getEffectiveMinConnections(this.config, this.servers.length);
   }
 
   /**
@@ -222,14 +220,10 @@ export class ElectrumPool extends EventEmitter {
    * This ensures the pool can maintain at least 1 connection per server.
    */
   getEffectiveMaxConnections(): number {
-    const serverCount = this.servers.length;
-    if (serverCount === 0) return this.config.maxConnections;
-    return Math.max(this.config.maxConnections, serverCount);
+    return getEffectiveMaxConnections(this.config, this.servers.length);
   }
 
-  /**
-   * Get the list of configured servers
-   */
+  // Get the list of configured servers
   getServers(): ServerConfig[] {
     return [...this.servers];
   }
@@ -465,8 +459,13 @@ export class ElectrumPool extends EventEmitter {
 
     const timeoutMs = options.timeoutMs ?? this.config.acquisitionTimeoutMs;
 
+    // Under failover_only, prefer capacity on the current eligible primary
+    // over an idle backup socket. Other strategies keep unconstrained
+    // first-idle behaviour.
+    const failoverTarget = this.currentFailoverTarget();
+
     // Try to get an idle connection
-    const conn = this.findIdleConnection();
+    const conn = this.findIdleConnection(failoverTarget?.id);
     if (conn) {
       return this.activateConnection(conn, options.purpose, startTime);
     }
@@ -478,15 +477,34 @@ export class ElectrumPool extends EventEmitter {
     ) {
       this.pendingAcquisitionConnections++;
       try {
-        const newConn = await this.createConnection(undefined, false, true);
+        const newConn = await this.createConnection(failoverTarget ?? undefined, false, true);
         return this.activateConnection(newConn, options.purpose, startTime);
       } catch (error) {
         log.warn('Failed to create new connection', { error: getErrorMessage(error) });
         if (this.isShuttingDown) throw error;
+        if (failoverTarget) {
+          const rerouted = await this.rerouteAfterFailoverTargetFailure(
+            failoverTarget,
+            error,
+            options.purpose,
+            startTime,
+          );
+          if (rerouted) return rerouted;
+        }
         // Fall through to queue
       } finally {
         this.pendingAcquisitionConnections--;
       }
+    } else if (failoverTarget) {
+      // At effective capacity with no idle target socket: prefer evicting
+      // an idle backup socket over starving the request until periodic
+      // idle cleanup happens to free one.
+      const evicted = await this.acquireByEvictingBackupForFailoverTarget(
+        failoverTarget,
+        options.purpose,
+        startTime,
+      );
+      if (evicted) return evicted;
     }
 
     // Queue the request
@@ -569,9 +587,7 @@ export class ElectrumPool extends EventEmitter {
     return stats.idleConnections > 0 || stats.totalConnections < this.getEffectiveMaxConnections();
   }
 
-  /**
-   * Check if the pool is initialized
-   */
+  // Check if the pool is initialized
   isPoolInitialized(): boolean {
     return this.isInitialized;
   }
@@ -590,9 +606,7 @@ export class ElectrumPool extends EventEmitter {
     recordServerSuccess(serverId, this.servers, this.serverStats, this.backoffConfig);
   }
 
-  /**
-   * Check if a server is currently in cooldown
-   */
+  // Check if a server is currently in cooldown
   isServerInCooldown(serverId: string): boolean {
     return isServerInCooldown(serverId, this.serverStats);
   }
@@ -610,18 +624,14 @@ export class ElectrumPool extends EventEmitter {
     return getServerBackoffState(serverId, this.serverStats);
   }
 
-  /**
-   * Manually reset backoff state for a server (e.g., after manual health check)
-   */
+  // Manually reset backoff state for a server (e.g., after manual health check)
   resetServerBackoff(serverId: string): void {
     resetServerBackoff(serverId, this.servers, this.serverStats);
   }
 
   // Private helper methods
 
-  /**
-   * Select a server based on load balancing strategy with backoff awareness
-   */
+  // Select a server based on load balancing strategy with backoff awareness
   private selectServer(): ServerConfig | null {
     return selectServer(
       this.servers,
@@ -678,9 +688,7 @@ export class ElectrumPool extends EventEmitter {
     }
   }
 
-  /**
-   * Activate a connection for use
-   */
+  // Activate a connection for use
   private activateConnection(
     conn: PooledConnection,
     purpose: string | undefined,
@@ -696,13 +704,13 @@ export class ElectrumPool extends EventEmitter {
     );
   }
 
-  /**
-   * Process the waiting queue when a connection becomes available
-   */
+  // Process the waiting queue when a connection becomes available
   private processWaitingQueue(): void {
     processWaitingQueue(
       this.waitingQueue,
-      () => this.findIdleConnection(),
+      // Re-evaluate the failover target at drain time so a released backup
+      // socket cannot satisfy a request whose primary is still eligible.
+      () => this.findIdleConnection(this.currentFailoverTarget()?.id),
       (conn, purpose, startTime) => this.activateConnection(conn, purpose, startTime),
     );
   }
@@ -720,40 +728,15 @@ export class ElectrumPool extends EventEmitter {
     );
 
     // Record health check results (only first success/failure per server per cycle)
-    for (const [serverId, results] of serverHealthResults) {
-      /* v8 ignore start -- aggregate branch details are covered in healthChecker helper tests */
-      if (results.success > 0 && results.fail === 0) {
-        // Only record once per server per cycle
-        recordHealthCheckResult(this.serverStats, serverId, true, results.latencyMs);
-      } else if (results.fail > 0 && results.success === 0) {
-        recordHealthCheckResult(this.serverStats, serverId, false, results.latencyMs);
-      }
-      /* v8 ignore stop */
-    }
+    recordHealthCheckResultsForCycle(serverHealthResults, this.serverStats);
 
     // Update per-server health stats and database
-    for (const [serverId, results] of serverHealthResults) {
-      const stats = this.serverStats.get(serverId);
-      if (stats) {
-        stats.lastHealthCheck = new Date();
-
-        // If all connections to this server failed, mark unhealthy and record failure
-        if (results.fail > 0 && results.success === 0) {
-          stats.isHealthy = false;
-          // Record failure for backoff (once per server per cycle, not per connection)
-          this.recordServerFailure(serverId, 'error');
-          // Update database (fire and forget)
-          updateServerHealthInDb(serverId, false, stats.consecutiveFailures);
-          log.warn(`Server ${serverId} marked unhealthy after all connections failed health check`);
-        } else {
-          // At least one success - mark healthy and record success
-          stats.isHealthy = true;
-          // Record success for backoff recovery (once per server per cycle, not per connection)
-          this.recordServerSuccess(serverId);
-          updateServerHealthInDb(serverId, true, 0);
-        }
-      }
-    }
+    applyHealthCheckResults(
+      serverHealthResults,
+      this.serverStats,
+      (serverId, errorType) => this.recordServerFailure(serverId, errorType),
+      (serverId) => this.recordServerSuccess(serverId),
+    );
 
     // After checking existing connections, ensure each server has at least one connection
     await this.ensureMinimumConnections();
@@ -762,10 +745,7 @@ export class ElectrumPool extends EventEmitter {
     this.exportMetrics();
   }
 
-  /**
-   * Export pool metrics to Prometheus
-   * Called after each health check cycle
-   */
+  // Export pool metrics to Prometheus (called after each health check cycle)
   private exportMetrics(): void {
     const poolStats = this.getPoolStats();
     const circuitState = this.circuitBreaker.getHealth().state;
@@ -826,12 +806,13 @@ export class ElectrumPool extends EventEmitter {
 
   private async wakeWaitingRequestsAfterConnectionLoss(): Promise<void> {
     if (this.isShuttingDown || this.waitingQueue.length === 0) return;
+    const failoverTarget = this.currentFailoverTarget();
     if (
-      !this.findIdleConnection()
+      !this.findIdleConnection(failoverTarget?.id)
       && this.connections.size + this.pendingAcquisitionConnections
         < this.getEffectiveMaxConnections()
     ) {
-      await this.createConnection().catch((error) => {
+      await this.createConnection(failoverTarget ?? undefined).catch((error) => {
         log.warn('Failed to restore capacity for queued pool requests', {
           error: getErrorMessage(error),
         });
@@ -840,16 +821,91 @@ export class ElectrumPool extends EventEmitter {
     this.processWaitingQueue();
   }
 
-  /**
-   * Wrapper for testability and internal reuse.
-   */
-  private findIdleConnection(): PooledConnection | null {
-    return findIdleConnection(this.connections);
+  // Wrapper for testability and internal reuse.
+  private findIdleConnection(serverId?: string): PooledConnection | null {
+    return findIdleConnection(this.connections, serverId);
   }
 
   /**
-   * Wrapper for testability and internal reuse.
+   * The failover target the pool would currently route to, or null when the
+   * strategy is not failover_only or no enabled servers exist. Pure/cheap:
+   * never mutates roundRobinIndex and never calls the weighted selector.
    */
+  private currentFailoverTarget(): ServerConfig | null {
+    return currentFailoverTarget(this.config.loadBalancing, this.servers, this.serverStats);
+  }
+
+  /**
+   * After a failed connection attempt to the current failover target,
+   * re-evaluate the target once. If it changed and an idle socket exists
+   * for the new target, hand it out immediately instead of leaving a dead
+   * primary starving every request until periodic health checks catch up.
+   * Returns null when no immediate alternative exists (caller falls
+   * through to the queue).
+   */
+  private async rerouteAfterFailoverTargetFailure(
+    failedTarget: ServerConfig,
+    error: unknown,
+    purpose: string | undefined,
+    startTime: number,
+  ): Promise<PooledConnectionHandle | null> {
+    return rerouteAfterFailoverTargetFailure(
+      failedTarget,
+      error,
+      purpose,
+      startTime,
+      this.config.loadBalancing,
+      this.servers,
+      this.serverStats,
+      (serverId, errorType) => this.recordServerFailure(serverId, errorType),
+      (serverId) => this.findIdleConnection(serverId),
+      (conn, p, s) => this.activateConnection(conn, p, s),
+    );
+  }
+
+  /**
+   * Under failover_only, when the pool is already at effective capacity and
+   * the current failover target has no idle socket, evict one idle
+   * non-target, non-dedicated backup socket and create a connection to the
+   * target with the freed slot. Delegates to failoverAcquisition.ts; see
+   * that module for the full eviction/reroute rationale.
+   */
+  private async acquireByEvictingBackupForFailoverTarget(
+    failoverTarget: ServerConfig,
+    purpose: string | undefined,
+    startTime: number,
+  ): Promise<PooledConnectionHandle | null> {
+    return acquireByEvictingBackupForFailoverTarget(
+      failoverTarget,
+      purpose,
+      startTime,
+      this.connections,
+      this.config.loadBalancing,
+      this.servers,
+      this.serverStats,
+      (serverId, errorType) => this.recordServerFailure(serverId, errorType),
+      (serverId) => this.findIdleConnection(serverId),
+      (conn, p, s) => this.activateConnection(conn, p, s),
+      (target) => this.createConnection(target, false, true),
+      () => this.isShuttingDown,
+      () => { this.pendingAcquisitionConnections++; },
+      () => { this.pendingAcquisitionConnections--; },
+    );
+  }
+
+  /**
+   * Read-only snapshot of the live operational configuration, for the
+   * status projector.
+   */
+  getOperationalConfigSnapshot(): {
+    loadBalancing: LoadBalancingStrategy;
+    healthCheckIntervalMs: number;
+    enabled: boolean;
+  } {
+    return getOperationalConfigSnapshot(this.config);
+  }
+
+  // Wrapper for testability and internal reuse.
   private async reconnectConnection(conn: PooledConnection): Promise<void> {
     await reconnectConnection(
       conn,
@@ -862,16 +918,12 @@ export class ElectrumPool extends EventEmitter {
     );
   }
 
-  /**
-   * Wrapper for testability and interval scheduling.
-   */
+  // Wrapper for testability and interval scheduling.
   private cleanupIdleConnections(): void {
     cleanupIdleConnections(this.connections, this.config.idleTimeoutMs, this.getEffectiveMinConnections());
   }
 
-  /**
-   * Wrapper for testability and interval scheduling.
-   */
+  // Wrapper for testability and interval scheduling.
   private async sendKeepalives(): Promise<void> {
     await sendKeepalives(this.connections, this.isShuttingDown);
   }

@@ -1,6 +1,13 @@
 import { BITCOIN_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
 import { WALLET_SCRIPT_TYPE_VALUES } from "@sanctuary/shared/constants/walletIdentity";
 import { MOBILE_API_REQUEST_LIMITS } from "@sanctuary/shared/schemas/mobileApiRequests";
+import { NODE_POOL_LOAD_BALANCING_VALUES } from "@sanctuary/shared/constants/nodeConfig";
+import {
+  SERVER_AVAILABILITY_VALUES,
+  POOL_FALLBACK_REASON_VALUES,
+} from "@sanctuary/shared/types/nodeOperationalStatus";
+
+export { SERVER_AVAILABILITY_VALUES, POOL_FALLBACK_REASON_VALUES };
 import { ELECTRUM_SERVER_USAGE_VALUES } from "../../../services/bitcoin/electrum/capabilities";
 
 export { syncSchemas } from "./bitcoinSync";
@@ -31,17 +38,224 @@ export const bitcoinSchemas = {
       protocol: { type: "string" },
       blockHeight: { type: "integer" },
       network: { type: "string" },
+      host: { type: "string" },
+      useSsl: { type: "boolean" },
       explorerUrl: { type: "string" },
       confirmationThreshold: { type: "integer" },
       deepConfirmationThreshold: { type: "integer" },
       error: { type: "string" },
       pool: {
-        type: "object",
-        nullable: true,
-        additionalProperties: true,
+        oneOf: [{ type: "null" }, { $ref: "#/components/schemas/BitcoinStatusPool" }],
+      },
+      // Present for normal connected/disconnected envelopes; omitted only in
+      // the minimal legacy envelope emitted when configuration read itself
+      // failed (`{ connected: false, error }`).
+      operational: {
+        oneOf: [{ type: "null" }, { $ref: "#/components/schemas/NodeOperationalStatus" }],
       },
     },
     required: ["connected"],
+  },
+  BitcoinStatusServerStats: {
+    type: "object",
+    properties: {
+      serverId: { type: "string" },
+      label: { type: "string" },
+      host: { type: "string" },
+      port: { type: "integer" },
+      connectionCount: { type: "integer" },
+      healthyConnections: { type: "integer" },
+      totalRequests: { type: "integer" },
+      failedRequests: { type: "integer" },
+      isHealthy: { type: "boolean" },
+      lastHealthCheck: { type: "string", format: "date-time", nullable: true },
+      consecutiveFailures: { type: "integer" },
+      backoffLevel: { type: "integer" },
+      cooldownUntil: { type: "string", format: "date-time", nullable: true },
+      weight: { type: "number" },
+      // Legacy raw health-check history; kept loosely typed since it is
+      // internal diagnostic detail, not part of the public contract.
+      healthHistory: {
+        type: "array",
+        items: { type: "object", additionalProperties: true },
+      },
+      serverUsage: {
+        type: "string",
+        enum: [...ELECTRUM_SERVER_USAGE_VALUES],
+      },
+      supportsVerbose: { type: "boolean", nullable: true },
+      supportsSilentPaymentsV0: { type: "boolean", nullable: true },
+      lastCapabilityCheck: { type: "string", format: "date-time", nullable: true },
+      lastCapabilityError: { type: "string", nullable: true },
+    },
+    required: [
+      "serverId",
+      "label",
+      "host",
+      "port",
+      "connectionCount",
+      "healthyConnections",
+      "totalRequests",
+      "failedRequests",
+      "isHealthy",
+      "lastHealthCheck",
+      "consecutiveFailures",
+      "backoffLevel",
+      "cooldownUntil",
+      "weight",
+      "healthHistory",
+    ],
+    additionalProperties: true,
+  },
+  BitcoinStatusPoolStats: {
+    type: "object",
+    properties: {
+      totalConnections: { type: "integer" },
+      activeConnections: { type: "integer" },
+      idleConnections: { type: "integer" },
+      waitingRequests: { type: "integer" },
+      totalAcquisitions: { type: "integer" },
+      averageAcquisitionTimeMs: { type: "number" },
+      healthCheckFailures: { type: "integer" },
+      serverCount: { type: "integer" },
+      servers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/BitcoinStatusServerStats" },
+      },
+    },
+    required: [
+      "totalConnections",
+      "activeConnections",
+      "idleConnections",
+      "waitingRequests",
+      "totalAcquisitions",
+      "averageAcquisitionTimeMs",
+      "healthCheckFailures",
+      "serverCount",
+      "servers",
+    ],
+    additionalProperties: true,
+  },
+  BitcoinStatusPool: {
+    type: "object",
+    properties: {
+      enabled: { type: "boolean" },
+      minConnections: { type: "integer" },
+      maxConnections: { type: "integer" },
+      configuredMin: { type: "integer" },
+      configuredMax: { type: "integer" },
+      stats: {
+        oneOf: [{ type: "null" }, { $ref: "#/components/schemas/BitcoinStatusPoolStats" }],
+      },
+    },
+    required: ["enabled", "minConnections", "maxConnections", "stats"],
+    additionalProperties: true,
+  },
+  ServerAvailability: {
+    type: "string",
+    enum: [...SERVER_AVAILABILITY_VALUES],
+  },
+  PoolFallbackReason: {
+    type: "string",
+    enum: [...POOL_FALLBACK_REASON_VALUES],
+  },
+  NodeRouteObservation: {
+    oneOf: [
+      {
+        type: "object",
+        properties: {
+          transport: { type: "string", enum: ["pool"] },
+          observedAt: { type: "string", format: "date-time" },
+          serverId: { type: "string" },
+        },
+        required: ["transport", "observedAt", "serverId"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          transport: { type: "string", enum: ["singleton"] },
+          observedAt: { type: "string", format: "date-time" },
+          serverId: { type: "null" },
+        },
+        required: ["transport", "observedAt", "serverId"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          transport: { type: "string", enum: ["singleton_fallback"] },
+          observedAt: { type: "string", format: "date-time" },
+          serverId: { type: "null" },
+          fallbackReason: { $ref: "#/components/schemas/PoolFallbackReason" },
+        },
+        required: ["transport", "observedAt", "serverId", "fallbackReason"],
+        additionalProperties: false,
+      },
+    ],
+  },
+  OperationalServer: {
+    type: "object",
+    properties: {
+      serverId: { type: "string" },
+      label: { type: "string" },
+      host: { type: "string" },
+      port: { type: "integer" },
+      priority: { type: "integer" },
+      availability: { $ref: "#/components/schemas/ServerAvailability" },
+      checkedAt: { type: "string", format: "date-time", nullable: true },
+    },
+    required: ["serverId", "label", "host", "port", "priority", "availability", "checkedAt"],
+    additionalProperties: false,
+  },
+  PoolOperationalStatus: {
+    type: "object",
+    properties: {
+      strategy: {
+        type: "string",
+        enum: [...NODE_POOL_LOAD_BALANCING_VALUES],
+      },
+      online: { type: "integer", minimum: 0 },
+      offline: { type: "integer", minimum: 0 },
+      cooldown: { type: "integer", minimum: 0 },
+      unchecked: { type: "integer", minimum: 0 },
+      stale: { type: "integer", minimum: 0 },
+      primaryServerId: { type: "string", nullable: true },
+      preferredServerId: { type: "string", nullable: true },
+      nextFailoverServerId: { type: "string", nullable: true },
+      servers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/OperationalServer" },
+      },
+    },
+    required: [
+      "strategy",
+      "online",
+      "offline",
+      "cooldown",
+      "unchecked",
+      "stale",
+      "primaryServerId",
+      "preferredServerId",
+      "nextFailoverServerId",
+      "servers",
+    ],
+    additionalProperties: false,
+  },
+  NodeOperationalStatus: {
+    type: "object",
+    properties: {
+      configuredMode: { type: "string", enum: ["singleton", "pool"] },
+      attemptedAt: { type: "string", format: "date-time" },
+      route: {
+        oneOf: [{ type: "null" }, { $ref: "#/components/schemas/NodeRouteObservation" }],
+      },
+      pool: {
+        oneOf: [{ type: "null" }, { $ref: "#/components/schemas/PoolOperationalStatus" }],
+      },
+    },
+    required: ["configuredMode", "attemptedAt", "route", "pool"],
+    additionalProperties: false,
   },
   SilentPaymentReadinessBlocker: {
     type: "string",

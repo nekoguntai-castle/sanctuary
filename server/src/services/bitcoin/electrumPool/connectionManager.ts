@@ -242,6 +242,21 @@ export function disconnectServerConnections(
 }
 
 /**
+ * Close and remove a single connection from the pool map.
+ * Shared lifecycle step for idle-timeout cleanup and forced eviction --
+ * keeps the disconnect/state/delete sequence identical between callers.
+ */
+function evictConnection(connections: Map<string, PooledConnection>, id: string, conn: PooledConnection): void {
+  conn.state = 'closed';
+  try {
+    conn.client.disconnect();
+  } catch (e) {
+    log.debug('Disconnect failed during eviction (non-critical)', { error: String(e) });
+  }
+  connections.delete(id);
+}
+
+/**
  * Clean up idle connections that have exceeded the idle timeout.
  * Won't go below the effective minimum connection count.
  */
@@ -262,15 +277,31 @@ export function cleanupIdleConnections(
     const idleTime = now - conn.lastUsedAt.getTime();
     if (idleTime > idleTimeoutMs) {
       log.debug(`Closing idle connection ${id} (idle for ${idleTime}ms)`);
-      conn.state = 'closed';
-      try {
-        conn.client.disconnect();
-      } catch (e) {
-        log.debug('Disconnect failed during idle cleanup (non-critical)', { error: String(e) });
-      }
-      connections.delete(id);
+      evictConnection(connections, id, conn);
     }
   }
+}
+
+/**
+ * Evict one idle, non-dedicated connection to a server other than
+ * `targetServerId`, freeing pool capacity for a failover-target connection
+ * attempt. Never touches the dedicated subscription connection or an
+ * active socket (both are excluded by the idle+non-dedicated filter).
+ * Returns true if a connection was evicted, false if no eligible idle
+ * backup socket exists.
+ */
+export function evictIdleConnectionForFailoverTarget(
+  connections: Map<string, PooledConnection>,
+  targetServerId: string,
+): boolean {
+  for (const [id, conn] of connections) {
+    if (conn.isDedicated || conn.state !== 'idle') continue;
+    if (conn.serverId === targetServerId) continue;
+    log.debug(`Evicting idle backup connection ${id} (${conn.serverId}) to free capacity for failover target ${targetServerId}`);
+    evictConnection(connections, id, conn);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -347,15 +378,20 @@ export async function ensureMinimumConnections(
 }
 
 /**
- * Find an idle non-dedicated connection from the pool
+ * Find an idle non-dedicated connection from the pool.
+ *
+ * @param serverId When provided, only an idle connection to that specific
+ *   server satisfies the search (used by strategy-aware acquisition so a
+ *   healthy primary is not skipped in favor of an idle backup socket).
  */
 export function findIdleConnection(
   connections: Map<string, PooledConnection>,
+  serverId?: string,
 ): PooledConnection | null {
   for (const conn of connections.values()) {
-    if (conn.state === 'idle' && !conn.isDedicated && conn.client.isConnected()) {
-      return conn;
-    }
+    if (conn.state !== 'idle' || conn.isDedicated || !conn.client.isConnected()) continue;
+    if (serverId !== undefined && conn.serverId !== serverId) continue;
+    return conn;
   }
   return null;
 }

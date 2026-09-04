@@ -53,6 +53,10 @@ export function activateConnection(
 
   return {
     client: conn.client,
+    serverId: conn.serverId,
+    serverLabel: conn.serverLabel,
+    serverHost: conn.serverHost,
+    serverPort: conn.serverPort,
     release,
     async withClient<T>(fn: (client: ElectrumClient) => Promise<T>): Promise<T> {
       try {
@@ -89,6 +93,10 @@ export function activateConnectionSingleMode(
 
   return {
     client: conn.client,
+    serverId: conn.serverId,
+    serverLabel: conn.serverLabel,
+    serverHost: conn.serverHost,
+    serverPort: conn.serverPort,
     release,
     async withClient<T>(fn: (client: ElectrumClient) => Promise<T>): Promise<T> {
       return await fn(conn.client);

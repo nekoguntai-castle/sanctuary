@@ -9,8 +9,21 @@ import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningCo
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { FeeEstimates } from '@sanctuary/shared/types/api';
+import type { NodePoolLoadBalancing } from '@sanctuary/shared/constants/nodeConfig';
+import type {
+  ServerAvailability,
+  PoolFallbackReason,
+  NodeRouteObservation,
+  OperationalServer,
+  PoolOperationalStatus,
+  NodeOperationalStatus,
+} from '@sanctuary/shared/types/nodeOperationalStatus';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
 import type { WalletSyncRequestResult } from './sync';
+
+// Re-export the canonical strategy union (see src/types/index.ts's
+// `LoadBalancingStrategy` alias for the same underlying type).
+export type { NodePoolLoadBalancing };
 import {
   BatchTransactionResponseSchema,
   CPFPTransactionResponseSchema,
@@ -66,6 +79,15 @@ export interface PoolStats {
   servers: ServerStats[];
 }
 
+export type {
+  ServerAvailability,
+  PoolFallbackReason,
+  NodeRouteObservation,
+  OperationalServer,
+  PoolOperationalStatus,
+  NodeOperationalStatus,
+};
+
 export interface BitcoinStatus {
   connected: boolean;
   server?: string;
@@ -86,6 +108,9 @@ export interface BitcoinStatus {
     configuredMax?: number;
     stats: PoolStats | null;
   } | null;
+  // Omitted only in the minimal legacy envelope emitted when the node
+  // configuration read itself failed (`{ connected: false, error }`).
+  operational?: NodeOperationalStatus | null;
 }
 
 export interface AddressInfo {

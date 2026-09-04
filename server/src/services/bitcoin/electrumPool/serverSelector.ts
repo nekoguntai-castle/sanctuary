@@ -21,6 +21,25 @@ type ServerStats = Map<string, ServerState>;
 type PoolConnections = Map<string, PooledConnection>;
 type RoundRobinIndex = { value: number };
 
+/**
+ * Canonical ordering for general-pool servers: ascending priority, then
+ * ascending server id for deterministic tie-breaking. Equal priorities must
+ * never yield a different runtime vs. displayed primary.
+ */
+export const compareServerOrder = <T extends { priority: number; id: string }>(a: T, b: T): number => {
+  if (a.priority !== b.priority) return a.priority - b.priority;
+  if (a.id < b.id) return -1;
+  if (a.id > b.id) return 1;
+  return 0;
+};
+
+/**
+ * Sort servers in canonical (priority, serverId) order. Pure; does not
+ * mutate the input array.
+ */
+export const sortServersCanonically = (servers: ServerConfig[]): ServerConfig[] =>
+  [...servers].sort(compareServerOrder);
+
 const getAvailableServers = (
   servers: ServerConfig[],
   serverStats: ServerStats,
@@ -82,6 +101,50 @@ const selectCooldownFallbackServer = (
 
 const getCooldownUntilMs = (server: ServerConfig, serverStats: ServerStats): number => {
   return serverStats.get(server.id)?.cooldownUntil?.getTime() || 0;
+};
+
+/**
+ * Pure failover selection: choose the highest-priority eligible server in
+ * canonical (priority, serverId) order, falling back to the documented
+ * cooldown/all-unhealthy rules. Reuses the exact eligibility and fallback
+ * helpers used by `selectServer` so the rules live in one place. Never
+ * mutates `roundRobinIndex` and is cheap enough to call for read-only
+ * routing snapshots.
+ *
+ * @param excludeServerId When provided, that server is removed from the
+ *   candidate set entirely (used to answer "who is next after X").
+ */
+export const selectFailoverServer = (
+  servers: ServerConfig[],
+  serverStats: ServerStats,
+  now: number,
+  excludeServerId?: string,
+): ServerConfig | null =>
+  selectFailoverServerFromSorted(sortServersCanonically(servers), serverStats, now, excludeServerId);
+
+/**
+ * Same rules as {@link selectFailoverServer}, but skips the sort: `sortedServers`
+ * must already be in canonical (priority, serverId) order. Use this on a hot
+ * path where the caller already holds a canonically-sorted server list (e.g.
+ * `ElectrumPool.servers` after `setServers`), to avoid re-sorting on every call.
+ *
+ * @param excludeServerId When provided, that server is removed from the
+ *   candidate set entirely (used to answer "who is next after X").
+ */
+export const selectFailoverServerFromSorted = (
+  sortedServers: ServerConfig[],
+  serverStats: ServerStats,
+  now: number,
+  excludeServerId?: string,
+): ServerConfig | null => {
+  const ordered = excludeServerId
+    ? sortedServers.filter(server => server.id !== excludeServerId)
+    : sortedServers;
+  const available = getAvailableServers(ordered, serverStats, now);
+  if (available.length > 0) {
+    return available[0];
+  }
+  return selectFallbackServer(ordered, serverStats, now);
 };
 
 const selectAvailableServer = (

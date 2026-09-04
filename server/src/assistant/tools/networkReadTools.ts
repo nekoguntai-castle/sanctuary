@@ -133,14 +133,14 @@ export const bitcoinNetworkStatusTool: AssistantReadToolDefinition<typeof bitcoi
         tool: bitcoinNetworkStatusTool,
         context,
         data: { status },
-        summary: status.blockHeight === undefined
+        summary: !status.connected || status.blockHeight === undefined
           ? 'Bitcoin network status returned without a block height.'
           : `Current Bitcoin block height is ${status.blockHeight}.`,
         facts: [
           { label: 'connected', value: status.connected },
           { label: 'network', value: status.network },
-          { label: 'block_height', value: status.blockHeight ?? null },
-          { label: 'server', value: status.server },
+          { label: 'block_height', value: status.connected ? (status.blockHeight ?? null) : null },
+          { label: 'server', value: status.connected ? status.server : null },
         ],
         provenanceSources: [{ type: 'computed', label: 'bitcoin_network_status' }],
       });

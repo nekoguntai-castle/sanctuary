@@ -72,6 +72,11 @@ router.get('/status', asyncHandler(async (req: Request, res: Response) => {
   try {
     res.json(await getBitcoinNetworkStatus(network));
   } catch (error) {
+    // Only a configuration-read failure inside getBitcoinNetworkStatus should
+    // reach here: a failed connectivity check returns its own normal
+    // disconnected envelope (network/pool/operational with route:null), so
+    // this minimal legacy envelope is reserved for when configuration itself
+    // could not be read.
     res.json({
       connected: false,
       error: getErrorMessage(error),

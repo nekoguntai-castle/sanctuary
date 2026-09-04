@@ -621,6 +621,27 @@ describe('assistant read-tool executors', () => {
     expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
   });
 
+  it('reports null server/block_height facts for a resolved (non-thrown) disconnected status', async () => {
+    const context = createContext();
+    mocks.getBitcoinNetworkStatus.mockResolvedValueOnce({
+      connected: false,
+      error: 'Unable to read mainnet Electrum server status',
+      network: 'mainnet',
+      explorerUrl: 'https://mempool.space',
+      pool: null,
+      operational: { configuredMode: 'singleton', attemptedAt: '2026-01-01T00:00:00.000Z', route: null, pool: null },
+    });
+
+    const network = await assistantReadToolRegistry.execute('get_bitcoin_network_status', {}, context);
+
+    expect(network.facts.summary).toBe('Bitcoin network status returned without a block height.');
+    expect(network.facts.items).toEqual(expect.arrayContaining([
+      { label: 'connected', value: false },
+      { label: 'block_height', value: null },
+      { label: 'server', value: null },
+    ]));
+  });
+
   it('summarizes network status without block height when the backend omits height data', async () => {
     const context = createContext();
     mocks.getBitcoinNetworkStatus.mockResolvedValueOnce({
