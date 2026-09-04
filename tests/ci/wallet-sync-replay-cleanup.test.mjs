@@ -495,7 +495,8 @@ test('build stamps the source version from a relative source root', () => {
 test('loaded image verification accepts the containerd image store identity', () => {
   // v0.8.70-rc2 (run 14664): the runner's Docker 29 daemon uses the containerd
   // image store, which reports a loaded image's ID as its manifest digest and
-  // lists a repo digest for it. The archive-derived config digest is still an
+  // lists a repo digest for it, and (rc3, run 14693) reports the tag and the
+  // repo digest fully qualified as docker.io/library/…. The archive-derived config digest is still an
   // exact identity of the same bytes, so the gate must accept either form and
   // register the ID the daemon actually uses.
   const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
@@ -508,11 +509,9 @@ test('loaded image verification accepts the containerd image store identity', ()
     docker_manifest="$3"
     docker() {
       if [ "$1 $2" = 'load --input' ]; then echo "Loaded image: docker.io/library/replay:test"; return; fi
-      if [ "$1 $2" = 'image ls' ]; then printf '%s
-' "$docker_manifest"; return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf '%s\n' "$docker_manifest"; return; fi
       if [ "$1 $2" = 'image inspect' ]; then
-        printf '%s
-' '[{"Id":"'"$docker_manifest"'","RepoTags":["replay:test"],"RepoDigests":["replay@'"$docker_manifest"'"],"Config":{"Labels":{"org.opencontainers.image.source":"https://github.com/nekoguntai-castle/sanctuary","org.opencontainers.image.version":"0.8.70","org.opencontainers.image.revision":"${'1'.repeat(40)}","io.sanctuary.build-id":"build-run","dev.sanctuary.image-lock-sha256":"${'2'.repeat(64)}"}}}]'
+        printf '%s\n' '[{"Id":"'"$docker_manifest"'","RepoTags":["docker.io/library/replay:test"],"RepoDigests":["docker.io/library/replay@'"$docker_manifest"'"],"Config":{"Labels":{"org.opencontainers.image.source":"https://github.com/nekoguntai-castle/sanctuary","org.opencontainers.image.version":"0.8.70","org.opencontainers.image.revision":"${'1'.repeat(40)}","io.sanctuary.build-id":"build-run","dev.sanctuary.image-lock-sha256":"${'2'.repeat(64)}"}}}]'
         return
       fi
       return 99
@@ -538,8 +537,7 @@ test('loaded image verification still refuses an identity that matches neither d
       if [ "$1 $2" = 'load --input' ]; then return; fi
       if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d
 ' 9; return; fi
-      if [ "$1 $2" = 'image inspect' ]; then printf '%s
-' '[{"Id":"sha256:${'9'.repeat(64)}","RepoTags":["replay:test"],"RepoDigests":[],"Config":{"Labels":{}}}]'; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s\n' '[{"Id":"sha256:${'9'.repeat(64)}","RepoTags":["replay:test"],"RepoDigests":[],"Config":{"Labels":{}}}]'; return; fi
       return 99
     }
     register_owned_resource() { printf 'unexpected-registration
@@ -551,5 +549,28 @@ test('loaded image verification still refuses an identity that matches neither d
   `, '_', helper], { encoding: 'utf8' });
   assert.doesNotMatch(output, /unexpected-registration/);
   assert.match(output, /recovery is ambiguous/);
+  assert.match(output, /status=1/);
+});
+
+test('loaded image verification still refuses a second tag even when qualified', () => {
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d\n' 0; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s\n' '[{"Id":"sha256:${'0'.repeat(64)}","RepoTags":["docker.io/library/replay:test","docker.io/library/shared:test"],"RepoDigests":[],"Config":{"Labels":{}}}]'; return; fi
+      return 99
+    }
+    register_owned_resource() { printf 'unexpected-registration\n'; }
+    set +e
+    load_and_register_image /tmp/archive replay:test "sha256:${'0'.repeat(64)}" \
+      "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp 2>&1
+    printf 'status=%s\n' "$?"
+  `, '_', helper], { encoding: 'utf8' });
+  assert.doesNotMatch(output, /unexpected-registration/);
+  assert.match(output, /RepoTags/);
   assert.match(output, /status=1/);
 });

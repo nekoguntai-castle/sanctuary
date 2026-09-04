@@ -70,15 +70,27 @@ if (!Array.isArray(records) || records.length !== 1) process.exit(1);
 const image = records[0];
 const labels = image.Config?.Labels ?? {};
 const repository = reference.replace(/:[^/:]+$/, '');
+// The containerd image store reports references fully qualified
+// (docker.io/library/name:tag); the classic store reports them as given.
+// Both name the same single image, so accept exactly one of the two forms.
+const qualify = (name) => {
+  const first = name.split('/')[0];
+  const hasRegistry = name.includes('/') && (first.includes('.') || first.includes(':') || first === 'localhost');
+  if (hasRegistry) return name;
+  return name.includes('/') ? `docker.io/${name}` : `docker.io/library/${name}`;
+};
+const repoTags = image.RepoTags ?? [];
+const repoTagsExact = repoTags.length === 1 && (repoTags[0] === reference || repoTags[0] === qualify(reference));
 const repoDigests = image.RepoDigests ?? [];
 const repoDigestsExact = repoDigests.length === 0
-  || (repoDigests.length === 1 && manifestDigest !== '' && repoDigests[0] === `${repository}@${manifestDigest}`);
+  || (repoDigests.length === 1 && manifestDigest !== ''
+    && (repoDigests[0] === `${repository}@${manifestDigest}` || repoDigests[0] === `${qualify(repository)}@${manifestDigest}`));
 const fail = (reason) => {
   process.stderr.write(`wallet-sync replay image inspection rejected for ${reference}: ${reason}\n`);
   process.exit(1);
 };
 if (image.Id !== listedId) fail(`inspect Id ${image.Id} differs from listed ${listedId}`);
-if (JSON.stringify(image.RepoTags ?? []) !== JSON.stringify([reference])) fail(`RepoTags ${JSON.stringify(image.RepoTags ?? [])}`);
+if (!repoTagsExact) fail(`RepoTags ${JSON.stringify(repoTags)}`);
 if (!repoDigestsExact) fail(`RepoDigests ${JSON.stringify(repoDigests)}`);
 if (labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary') fail('source label');
 if (labels['org.opencontainers.image.revision'] !== revision) fail('revision label');
