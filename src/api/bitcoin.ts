@@ -194,10 +194,21 @@ export async function getSilentPaymentReadiness(
 }
 
 /**
- * Get Bitcoin network status
+ * Get Bitcoin network status.
+ *
+ * The backend always echoes the requested `network` on the current contract,
+ * but a legacy minimal envelope (`{ connected: false, error }`, emitted only
+ * when the node configuration read itself failed) predates that field. Fill
+ * it in from the network this call actually requested rather than trusting
+ * anything the response claims — never overwrite a network already present,
+ * since that would be the backend's own (truthful) answer.
  */
 export async function getStatus(network: BitcoinStatusNetwork = 'mainnet'): Promise<BitcoinStatus> {
-  return apiClient.get<BitcoinStatus>('/bitcoin/status', { network });
+  const status = await apiClient.get<BitcoinStatus>('/bitcoin/status', { network });
+  if (status.network !== undefined) {
+    return status;
+  }
+  return { ...status, network };
 }
 
 /**

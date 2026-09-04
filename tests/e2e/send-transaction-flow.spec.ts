@@ -251,6 +251,33 @@ const getSharedResponse: SendApiResponder = (
           servers: [],
         },
       },
+      operational: {
+        configuredMode: "pool",
+        attemptedAt: "2026-03-11T00:00:00.000Z",
+        route: { transport: "pool", observedAt: "2026-03-11T00:00:00.000Z", serverId: "e2e-server-1" },
+        pool: {
+          strategy: "round_robin",
+          online: 1,
+          offline: 0,
+          cooldown: 0,
+          unchecked: 0,
+          stale: 0,
+          primaryServerId: null,
+          preferredServerId: null,
+          nextFailoverServerId: null,
+          servers: [
+            {
+              serverId: "e2e-server-1",
+              label: "Primary",
+              host: "electrum.example",
+              port: 50002,
+              priority: 1,
+              availability: "online",
+              checkedAt: "2026-03-11T00:00:00.000Z",
+            },
+          ],
+        },
+      },
     });
   }
   if (requestKey === "GET /bitcoin/fees") {

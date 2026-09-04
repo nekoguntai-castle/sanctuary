@@ -59,6 +59,9 @@ const INITIAL_STATE = {
   feesLoading: false,
   bitcoinStatusData: undefined,
   statusLoading: false,
+  statusIsPlaceholderData: false,
+  statusError: null as unknown,
+  statusDataUpdatedAt: 0,
   bitcoinStatusNetworks: [],
   mempoolNetworks: [],
   mempoolDataData: undefined,
@@ -157,7 +160,13 @@ vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
   useFeeEstimates: () => ({ data: state.feeEstimatesData, isLoading: state.feesLoading, isError: state.feesIsError }),
   useBitcoinStatus: (network: string) => {
     state.bitcoinStatusNetworks.push(network);
-    return { data: state.bitcoinStatusData, isLoading: state.statusLoading };
+    return {
+      data: state.bitcoinStatusData,
+      isLoading: state.statusLoading,
+      isPlaceholderData: state.statusIsPlaceholderData,
+      error: state.statusError,
+      dataUpdatedAt: state.statusDataUpdatedAt,
+    };
   },
   useMempoolData: (network: string) => {
     state.mempoolNetworks.push(network);
@@ -311,8 +320,11 @@ export const resetState = () => {
 
   state.feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4 };
   state.feesLoading = false;
-  state.bitcoinStatusData = { connected: true, explorerUrl: 'https://mempool.space' };
+  state.bitcoinStatusData = { connected: true, explorerUrl: 'https://mempool.space', network: 'mainnet' };
   state.statusLoading = false;
+  state.statusIsPlaceholderData = false;
+  state.statusError = null;
+  state.statusDataUpdatedAt = Date.now();
   state.bitcoinStatusNetworks = [];
   state.mempoolNetworks = [];
   state.mempoolDataData = {

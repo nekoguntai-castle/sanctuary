@@ -31,4 +31,37 @@ describe("Bitcoin API", () => {
       network: "testnet3",
     });
   });
+
+  describe("getStatus network normalization", () => {
+    it("fills in the requested network when the response omits it (minimal legacy envelope)", async () => {
+      mockGet.mockResolvedValue({ connected: false, error: "config read failed" });
+
+      await expect(bitcoinApi.getStatus("testnet3")).resolves.toEqual({
+        connected: false,
+        error: "config read failed",
+        network: "testnet3",
+      });
+    });
+
+    it("defaults to mainnet when called with no network argument", async () => {
+      mockGet.mockResolvedValue({ connected: false, error: "config read failed" });
+
+      await expect(bitcoinApi.getStatus()).resolves.toEqual({
+        connected: false,
+        error: "config read failed",
+        network: "mainnet",
+      });
+    });
+
+    it("never overwrites a network already present on the response", async () => {
+      mockGet.mockResolvedValue({ connected: true, network: "signet" });
+
+      // Requested mainnet, but the backend's own (truthful) answer says signet —
+      // that must survive untouched.
+      await expect(bitcoinApi.getStatus("mainnet")).resolves.toEqual({
+        connected: true,
+        network: "signet",
+      });
+    });
+  });
 });

@@ -17,6 +17,7 @@ import {
   buildBlockNotification,
   buildConfirmationNotification,
   buildMempoolSnapshot,
+  buildNodeStatusQueryData,
   buildTransactionNotification,
   countWalletsByNetwork,
   formatFeeRate,
@@ -27,6 +28,7 @@ import {
   toDashboardFeeEstimate,
   neverAnswered,
 } from './dashboardDataModel';
+import { useNodeStatusFreshness } from './useNodeStatusFreshness';
 
 const log = createLogger('Dashboard');
 
@@ -79,7 +81,8 @@ export function useDashboardData() {
   // React Query hooks for data fetching
   const { data: apiWallets, isLoading: walletsLoading, isError: walletsFetchFailed } = useWallets();
   const { data: feeEstimates, isError: feesError } = useFeeEstimates(selectedNetwork);
-  const { data: bitcoinStatus, isLoading: statusLoading } = useBitcoinStatus(selectedNetwork);
+  const bitcoinStatusQuery = useBitcoinStatus(selectedNetwork);
+  const { data: bitcoinStatus, isLoading: statusLoading } = bitcoinStatusQuery;
   const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing, isError: mempoolFetchFailed } = useMempoolData(selectedNetwork);
 
   // Use stable empty arrays when data is undefined to prevent re-renders
@@ -175,6 +178,31 @@ export function useDashboardData() {
 
   // Derive node status from Bitcoin status
   const nodeStatus = getNodeStatus(statusLoading, bitcoinStatus);
+
+  // Normalized data → presenter boundary for the node status card (PR B
+  // interface contract). Query-derived fields first; the freshness verdict
+  // (isLastKnown) is layered on separately because it needs a scheduled
+  // re-evaluation React Query itself does not provide.
+  const nodeStatusQueryData = buildNodeStatusQueryData(selectedNetwork, bitcoinStatusQuery);
+  const { isLastKnown } = useNodeStatusFreshness({
+    dataUpdatedAt: nodeStatusQueryData.dataUpdatedAt,
+    error: nodeStatusQueryData.error,
+    network: selectedNetwork,
+  });
+  // Memoized so the object identity is stable when nothing has actually
+  // changed — buildNodeStatusQueryData returns a fresh object every render.
+  const nodeStatusQuery = useMemo(
+    () => ({ ...nodeStatusQueryData, isLastKnown }),
+    [
+      nodeStatusQueryData.network,
+      nodeStatusQueryData.data,
+      nodeStatusQueryData.isPlaceholderData,
+      nodeStatusQueryData.isLoading,
+      nodeStatusQueryData.error,
+      nodeStatusQueryData.dataUpdatedAt,
+      isLastKnown,
+    ],
+  );
 
   // Derive mempool blocks from React Query data
   const { mempoolBlocks, queuedBlocksSummary, lastMempoolUpdate } = buildMempoolSnapshot(mempoolData);
@@ -358,6 +386,7 @@ export function useDashboardData() {
     formatFeeRate,
     nodeStatus,
     bitcoinStatus,
+    nodeStatusQuery,
     mempoolBlocks,
     queuedBlocksSummary,
     lastMempoolUpdate,

@@ -1,237 +1,160 @@
-import React, { useState } from 'react';
-import type { ReactNode } from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 import { TabNetwork } from '../NetworkTabs';
-import { BitcoinStatus } from '../../api/bitcoin';
 import { formatNetworkTitle, getNetworkColorClass } from '../../app/networks';
 import { TelemetryCard } from './TelemetryCard';
 import { ShowMoreToggle } from '../ui/ShowMoreToggle';
-
-type NodeStatusValue = 'unknown' | 'checking' | 'connected' | 'error';
+import { buildNodeStatusCardModel } from './nodeStatusCardModel';
+import type { NodeStatusCardModel, NodeStatusServerRow, NodeStatusTone } from './nodeStatusCardModel';
+import type { NodeStatusQueryState } from './hooks/dashboardDataModel';
 
 interface NodeStatusCardProps {
   selectedNetwork: TabNetwork;
-  nodeStatus: NodeStatusValue;
-  bitcoinStatus: BitcoinStatus | undefined;
+  query: NodeStatusQueryState;
 }
 
-const STATUS_PRESENTATION: Record<
-  NodeStatusValue,
-  { label: string; dot: string; text: string; icon: typeof CheckCircle2 | null }
-> = {
-  connected: {
-    label: 'Connected',
-    dot: 'bg-success-500 animate-connected-glow',
-    text: 'text-success-600',
-    icon: CheckCircle2,
-  },
-  error: {
-    label: 'Error',
-    dot: 'bg-rose-500',
-    text: 'text-rose-600 dark:text-rose-400',
-    icon: XCircle,
-  },
-  checking: {
-    label: 'Checking...',
-    dot: 'bg-warning-500 animate-checking-glow',
-    text: 'text-sanctuary-400',
-    icon: null,
-  },
-  unknown: {
-    label: 'Unknown',
-    dot: 'bg-sanctuary-400',
-    text: 'text-sanctuary-400',
-    icon: null,
-  },
+const SERVERS_REGION_ID = 'node-status-servers';
+
+const TONE_TEXT_CLASS: Record<NodeStatusTone, string> = {
+  neutral: 'text-sanctuary-400',
+  checking: 'text-sanctuary-400',
+  success: 'text-success-600',
+  warning: 'text-warning-600',
+  error: 'text-rose-600 dark:text-rose-400',
 };
 
-/**
- * Takes the server array directly rather than digging it back out of
- * `bitcoinStatus`: the caller has already established it is non-empty, and a
- * second guard here would be unreachable.
- */
-function ServerList({ servers }: { servers: NonNullable<NonNullable<NonNullable<BitcoinStatus['pool']>['stats']>['servers']> }) {
+const TONE_DOT_CLASS: Record<NodeStatusTone, string> = {
+  neutral: 'bg-sanctuary-400',
+  checking: 'bg-warning-500 animate-checking-glow',
+  success: 'bg-success-500 animate-connected-glow',
+  warning: 'bg-warning-500',
+  error: 'bg-rose-500',
+};
+
+function BadgeRow({ model, selectedNetwork }: { model: NodeStatusCardModel; selectedNetwork: TabNetwork }) {
   return (
-    <ul className="space-y-0.5">
-      {servers.map((server) => (
-        <li key={server.serverId} className="flex items-center text-[10px]">
-          <span
-            className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${
-              !server.lastHealthCheck
-                ? 'bg-sanctuary-400'
-                : server.isHealthy
-                  ? 'bg-success-500'
-                  : 'bg-warning-500'
-            }`}
-            aria-hidden="true"
-          />
-          <span className="text-sanctuary-500 truncate max-w-[120px]">{server.label}</span>
-          <span className="text-sanctuary-400 ml-1">
-            ({server.connectionCount} conn{server.connectionCount !== 1 ? 's' : ''})
-          </span>
-        </li>
+    <span className="flex items-center gap-1">
+      {model.badges.map((badge) => (
+        <span
+          key={`${badge.kind}-${badge.label}`}
+          title={badge.label}
+          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded truncate max-w-[96px] ${
+            badge.kind === 'network'
+              ? getNetworkColorClass(selectedNetwork, 'subtleBadge')
+              : 'bg-sanctuary-100 text-sanctuary-600 dark:bg-sanctuary-800 dark:text-sanctuary-300'
+          }`}
+        >
+          {badge.label}
+        </span>
       ))}
-    </ul>
+    </span>
   );
 }
 
-/**
- * The per-server list moved behind a disclosure.
- *
- * Expanded by default it made this the tallest card in a row of three, at a
- * third of the page width, for detail that answers a question most readers are
- * not asking. The headline — connected or not, and at what height — is what
- * the dashboard is for; the server breakdown is a drill-down.
- */
-function NodeDetail({
-  bitcoinStatus,
-  nodeStatus,
-  selectedNetwork,
-}: {
-  bitcoinStatus: BitcoinStatus | undefined;
-  nodeStatus: NodeStatusValue;
-  selectedNetwork: TabNetwork;
-}) {
+function ServerRowView({ row }: { row: NodeStatusServerRow }) {
+  return (
+    <li className="flex items-center text-[10px] gap-1.5">
+      <span
+        className={`w-1.5 h-1.5 rounded-full shrink-0 ${TONE_DOT_CLASS[row.tone].split(' ')[0]}`}
+        aria-hidden="true"
+      />
+      {row.role && (
+        <span className="text-sanctuary-400 shrink-0">{row.role}</span>
+      )}
+      <span className="text-sanctuary-500 truncate max-w-[100px]" title={row.label}>
+        {row.label}
+      </span>
+      <span className={`ml-auto shrink-0 ${TONE_TEXT_CLASS[row.tone]}`}>{row.availability}</span>
+    </li>
+  );
+}
+
+function NodeDetail({ model }: { model: NodeStatusCardModel }) {
   const [expanded, setExpanded] = useState(false);
 
-  if (nodeStatus !== 'connected' && nodeStatus !== 'checking') {
-    return (
-      <p className="text-sanctuary-400">
-        Open Admin → Node Config to review {formatNetworkTitle(selectedNetwork)} settings.
-      </p>
-    );
-  }
-
-  const servers = bitcoinStatus?.pool?.stats?.servers;
-
-  if (!bitcoinStatus || !servers || servers.length === 0) {
+  if (model.detail.kind === 'none') {
     return null;
   }
+
+  if (model.detail.kind === 'guidance') {
+    return <p className="text-sanctuary-400">{model.detail.text}</p>;
+  }
+
+  // `kind: 'servers'` is only ever produced with a non-empty `rows` array —
+  // every builder in nodeStatusCard/{balanced,failover}.ts falls back to
+  // `{ kind: 'none' }` when there are no rows to show.
+  const { rows, guidance } = model.detail;
 
   return (
     <>
       <ShowMoreToggle
         expanded={expanded}
         onToggle={() => setExpanded(!expanded)}
-        collapsedLabel={`${servers.length} server${servers.length === 1 ? '' : 's'}`}
+        collapsedLabel={`${rows.length} server${rows.length === 1 ? '' : 's'}`}
         expandedLabel="Hide servers"
+        controls={SERVERS_REGION_ID}
       />
       {expanded && (
-        <div className="mt-2">
-          <ServerList servers={servers} />
+        <div id={SERVERS_REGION_ID} className="mt-2">
+          <ul className="space-y-0.5">
+            {rows.map((row) => (
+              <ServerRowView key={row.serverId} row={row} />
+            ))}
+          </ul>
+          {guidance && <p className="text-sanctuary-400 mt-1">{guidance}</p>}
         </div>
       )}
     </>
   );
 }
 
-function NodeSupportLine({
-  bitcoinStatus,
-  nodeStatus,
-  selectedNetwork,
-}: {
-  bitcoinStatus: BitcoinStatus | undefined;
-  nodeStatus: NodeStatusValue;
-  selectedNetwork: TabNetwork;
-}) {
-  if (nodeStatus !== 'connected' || !bitcoinStatus) {
-    // Keeps the original wording: the reason, not just the remedy. A card that
-    // only says "go and configure it" does not tell the reader whether the
-    // node is misconfigured, unreachable, or simply still being checked.
-    const label = formatNetworkTitle(selectedNetwork);
-    return (
-      <span>
-        {nodeStatus === 'checking'
-          ? 'Checking configured Electrum server...'
-          : bitcoinStatus?.error || `${label} node status is unavailable`}
-      </span>
-    );
-  }
-
-  const pool = bitcoinStatus.pool;
-
-  // Each figure keeps a word in front of it. The old card used a `Height:` /
-  // `Pool:` label column; dropping the column to save vertical space is fine,
-  // dropping the words is not — a bare "871,204 · 3/4" is unreadable.
-  const parts: ReactNode[] = [];
-
-  if (bitcoinStatus.blockHeight) {
-    parts.push(
-      <span key="height">
-        <span className="text-sanctuary-400">height </span>
-        {bitcoinStatus.blockHeight.toLocaleString()}
-      </span>
-    );
-  }
-
-  if (pool?.enabled) {
-    parts.push(
-      <span key="pool" title="Active / total pool connections">
-        <span className="text-sanctuary-400">pool </span>
-        {pool.stats ? `${pool.stats.activeConnections}/${pool.stats.totalConnections}` : 'initializing'}
-      </span>
-    );
-  } else if (bitcoinStatus.host) {
-    parts.push(
-      <span key="host" className="truncate max-w-[150px]" title={bitcoinStatus.host}>
-        {bitcoinStatus.useSsl && <span className="text-success-500 mr-1">🔒</span>}
-        {bitcoinStatus.host}
-      </span>
-    );
-  }
-
+function SupportLine({ model }: { model: NodeStatusCardModel }) {
   return (
-    <span className="flex items-center gap-2 font-mono tabular-nums">
-      {parts.map((part, index) => (
-        <React.Fragment key={index}>
+    <span className="flex items-center gap-2 font-mono tabular-nums flex-wrap">
+      {model.support.map((item, index) => (
+        <React.Fragment key={item.key}>
           {index > 0 && <span className="text-sanctuary-300 dark:text-sanctuary-600">·</span>}
-          {part}
+          <span className={item.tone ? TONE_TEXT_CLASS[item.tone] : undefined}>{item.value}</span>
         </React.Fragment>
       ))}
     </span>
   );
 }
 
-export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
-  selectedNetwork,
-  nodeStatus,
-  bitcoinStatus,
-}) => {
-  const presentation = STATUS_PRESENTATION[nodeStatus];
-  const StatusIcon = presentation.icon;
+export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({ selectedNetwork, query }) => {
+  const model = useMemo(
+    () => buildNodeStatusCardModel({ ...query, selectedNetwork }),
+    [query, selectedNetwork],
+  );
 
   return (
     <TelemetryCard
       title="Node Status"
       testId="telemetry-node"
-      titleAdornment={
-        <span
-          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getNetworkColorClass(selectedNetwork, 'subtleBadge')}`}
-        >
-          {selectedNetwork.toUpperCase()}
-        </span>
-      }
+      titleAdornment={<BadgeRow model={model} selectedNetwork={selectedNetwork} />}
       headline={
-        <span className={`flex items-center gap-2 text-lg ${presentation.text}`}>
-          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${presentation.dot}`} aria-hidden="true" />
-          {StatusIcon && <StatusIcon className="w-4 h-4 shrink-0" aria-hidden="true" />}
-          {presentation.label}
+        <span className={`flex items-center gap-2 text-lg ${TONE_TEXT_CLASS[model.tone]}`}>
+          <span
+            className={`h-2.5 w-2.5 rounded-full shrink-0 ${TONE_DOT_CLASS[model.tone]}`}
+            aria-hidden="true"
+          />
+          {model.headline}
         </span>
       }
       support={
-        <NodeSupportLine
-          bitcoinStatus={bitcoinStatus}
-          nodeStatus={nodeStatus}
-          selectedNetwork={selectedNetwork}
-        />
+        <>
+          <SupportLine model={model} />
+          {model.lastKnown && (
+            <div className="mt-1 text-warning-600">
+              <span>{model.lastKnown.summary}</span>{' '}
+              <span>{`${model.lastKnown.evidenceLabel} ${model.lastKnown.evidenceAt}`}</span>
+            </div>
+          )}
+        </>
       }
-      detail={
-        <NodeDetail
-          bitcoinStatus={bitcoinStatus}
-          nodeStatus={nodeStatus}
-          selectedNetwork={selectedNetwork}
-        />
-      }
+      detail={<NodeDetail model={model} />}
     />
   );
 };
+
+/** Retained for callers formatting a network name outside this card. */
+export { formatNetworkTitle };

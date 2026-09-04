@@ -28,6 +28,19 @@ vi.mock('../../../src/components/NetworkTabs', () => ({
   ),
 }));
 
+// NodeStatusCard's own status/copy/disclosure behavior is covered exhaustively
+// in NodeStatusCard.test.tsx against the `query` contract; here we only need
+// to prove Dashboard wires the right `selectedNetwork`/`query` through.
+vi.mock('../../../src/components/Dashboard/NodeStatusCard', () => ({
+  NodeStatusCard: (props: any) => (
+    <div data-testid="node-status-card">
+      {props.selectedNetwork}:{props.query?.data?.connected ? 'connected' : 'not-connected'}:
+      {props.query?.data?.host ?? ''}:{props.query?.data?.error ?? ''}:
+      {props.query?.data?.blockHeight ?? ''}
+    </div>
+  ),
+}));
+
 vi.mock('../../../src/components/Dashboard/MempoolSection', () => ({
   MempoolSection: (props: any) => (
     <div data-testid="mempool-section">
@@ -99,7 +112,25 @@ vi.mock('lucide-react', () => ({
   WifiOff: () => <span data-testid="wifi-off-icon" />,
 }));
 
-const makeDashboardState = (overrides: Partial<any> = {}) => ({
+// Derives the `nodeStatusQuery` the mocked NodeStatusCard reads from the
+// legacy `nodeStatus`/`bitcoinStatus`/`selectedNetwork` fields most scenarios
+// in this file already set, so existing overrides keep working without every
+// call site building the query contract by hand. A scenario needing more
+// control can still override `nodeStatusQuery` directly.
+function deriveNodeStatusQuery(state: Record<string, unknown>) {
+  const network = (state.selectedNetwork as string) ?? 'mainnet';
+  return {
+    network,
+    data: state.bitcoinStatus ? { network, ...(state.bitcoinStatus as object) } : undefined,
+    isPlaceholderData: false,
+    isLoading: state.nodeStatus === 'checking',
+    error: null,
+    dataUpdatedAt: state.bitcoinStatus ? Date.now() : 0,
+    isLastKnown: false,
+  };
+}
+
+const makeDashboardStateBase = (overrides: Partial<any> = {}) => ({
   btcPrice: 100000,
   priceChange24h: 2.34,
   currencySymbol: '$',
@@ -166,6 +197,14 @@ const makeDashboardState = (overrides: Partial<any> = {}) => ({
   ...overrides,
 });
 
+const makeDashboardState = (overrides: Partial<any> = {}) => {
+  const state = makeDashboardStateBase(overrides);
+  return {
+    ...state,
+    nodeStatusQuery: (overrides as Record<string, unknown>).nodeStatusQuery ?? deriveNodeStatusQuery(state),
+  };
+};
+
 describe('Dashboard render branches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -193,13 +232,7 @@ describe('Dashboard render branches', () => {
 
     expect(screen.getByText('+2.34%')).toBeInTheDocument();
     expect(screen.getByTestId('trending-up')).toBeInTheDocument();
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-    expect(screen.getByText('900,000')).toBeInTheDocument();
-    expect(screen.getByText('2/3')).toBeInTheDocument();
-    // The per-server breakdown sits behind a disclosure now.
-    await userEvent.click(screen.getByRole('button', { name: /server/ }));
-    expect(screen.getByText('Primary')).toBeInTheDocument();
-    expect(screen.getByText('(2 conns)')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent(/^mainnet:connected/);
 
     // The unit is stated once on the card header rather than per tier.
     expect(screen.getByText('sat/vB')).toBeInTheDocument();
@@ -244,8 +277,7 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('-1.11%')).toBeInTheDocument();
     expect(screen.getByTestId('trending-down')).toBeInTheDocument();
     // The Host:/Height: label column is gone; the host stands on its own.
-    expect(screen.getByText('electrum.example')).toBeInTheDocument();
-    expect(screen.getByText('🔒')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('electrum.example');
 
     mocks.dashboardData = makeDashboardState({
       nodeStatus: 'error',
@@ -255,22 +287,21 @@ describe('Dashboard render branches', () => {
       },
     });
     rerender(<Dashboard />);
-    expect(screen.getByText('Error')).toBeInTheDocument();
-    expect(screen.getByText('Server offline')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('Server offline');
 
     mocks.dashboardData = makeDashboardState({
       nodeStatus: 'checking',
       bitcoinStatus: { connected: false },
     });
     rerender(<Dashboard />);
-    expect(screen.getByText('Checking...')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('not-connected');
 
     mocks.dashboardData = makeDashboardState({
       nodeStatus: 'unknown',
       bitcoinStatus: undefined,
     });
     rerender(<Dashboard />);
-    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('not-connected');
   });
 
   it('renders non-mainnet price and unavailable node status with null price change', async () => {
@@ -290,8 +321,7 @@ describe('Dashboard render branches', () => {
     // Testnet coins have no price, so the card is omitted rather than rendering
     // a placeholder explaining its own emptiness.
     expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
-    expect(screen.getByText('Testnet3 node status is unavailable')).toBeInTheDocument();
-    expect(screen.getByText('Open Admin → Node Config to review Testnet3 settings.')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent(/^testnet3:not-connected/);
     expect(screen.queryByText('Update Available: v2.0.0')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
@@ -300,7 +330,7 @@ describe('Dashboard render branches', () => {
     expect(navigate).toHaveBeenCalledWith('/admin/node-config');
   });
 
-  it('renders mainnet null price change placeholder and pool initializing state', () => {
+  it('renders mainnet null price change placeholder', () => {
     mocks.dashboardData = makeDashboardState({
       isMainnet: true,
       selectedNetwork: 'mainnet',
@@ -320,49 +350,14 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('---')).toBeInTheDocument();
     expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
-    expect(screen.getByText(/initializing/)).toBeInTheDocument();
   });
 
-  it('renders server health edge states and singular/plural connection labels', async () => {
-    mocks.dashboardData = makeDashboardState({
-      bitcoinStatus: {
-        connected: true,
-        blockHeight: 900000,
-        pool: {
-          enabled: true,
-          stats: {
-            activeConnections: 1,
-            totalConnections: 3,
-            servers: [
-              {
-                serverId: 'srv-null-check',
-                label: 'Unchecked',
-                connectionCount: 1,
-                healthyConnections: 0,
-                isHealthy: false,
-                lastHealthCheck: null,
-              },
-              {
-                serverId: 'srv-unhealthy',
-                label: 'Unhealthy',
-                connectionCount: 2,
-                healthyConnections: 0,
-                isHealthy: false,
-                lastHealthCheck: '2026-02-15T12:00:00.000Z',
-              },
-            ],
-          },
-        },
-      },
-    });
-    render(<Dashboard />);
-
-    await userEvent.click(screen.getByRole('button', { name: /server/ }));
-    expect(screen.getByText('Unchecked')).toBeInTheDocument();
-    expect(screen.getByText('Unhealthy')).toBeInTheDocument();
-    expect(screen.getByText('(1 conn)')).toBeInTheDocument();
-    expect(screen.getByText('(2 conns)')).toBeInTheDocument();
-  });
+  // Per-server health-state rendering (Unchecked/Unhealthy, singular/plural
+  // connection counts, role/availability text) now lives in NodeStatusCard's
+  // own presenter model and is covered exhaustively in
+  // nodeStatusCardModel.test.ts and NodeStatusCard.test.tsx against the
+  // `query` contract; NodeStatusCard is mocked in this file so Dashboard-level
+  // tests only assert wiring.
 
   it('renders fee estimation with undefined rates (no estSats tooltip)', () => {
     mocks.dashboardData = makeDashboardState({
@@ -517,7 +512,7 @@ describe('Dashboard render branches', () => {
     render(<Dashboard />);
 
     expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
-    expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('Signet sync is off');
   });
 
   it('renders configured testnet3 node details from selected-network status', () => {
@@ -537,9 +532,8 @@ describe('Dashboard render branches', () => {
     render(<Dashboard />);
 
     expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-    expect(screen.getByText('4,500,000')).toBeInTheDocument();
-    expect(screen.getByText('testnet.example.com')).toBeInTheDocument();
-    expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent(/^testnet3:connected/);
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('testnet.example.com');
+    expect(screen.getByTestId('node-status-card')).toHaveTextContent('4500000');
   });
 });

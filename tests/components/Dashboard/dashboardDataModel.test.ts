@@ -1,11 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildNodeStatusQueryData,
   formatFeeRate,
   mapApiWalletToDashboardWallet,
   neverAnswered,
+  normalizeQueryError,
+  type BitcoinStatusQueryLike,
 } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
+import type { BitcoinStatus } from '../../../src/api/bitcoin';
 import type { Wallet } from '../../../src/types';
+
+function makeQuery(overrides: Partial<BitcoinStatusQueryLike> = {}): BitcoinStatusQueryLike {
+  return {
+    data: undefined,
+    isPlaceholderData: false,
+    isLoading: false,
+    error: null,
+    dataUpdatedAt: 0,
+    ...overrides,
+  };
+}
+
+function makeStatus(overrides: Partial<BitcoinStatus> = {}): BitcoinStatus {
+  return { connected: true, network: 'mainnet', ...overrides };
+}
 
 describe('formatFeeRate', () => {
   it('formats rates by magnitude', () => {
@@ -110,5 +129,96 @@ describe('mapApiWalletToDashboardWallet', () => {
       preparedFullResyncGeneration: 2,
       processedFullResyncGeneration: 1,
     });
+  });
+});
+
+describe('normalizeQueryError', () => {
+  it('returns null for null/undefined', () => {
+    expect(normalizeQueryError(null)).toBeNull();
+    expect(normalizeQueryError(undefined)).toBeNull();
+  });
+
+  it('passes an Error instance through unchanged', () => {
+    const err = new Error('boom');
+    expect(normalizeQueryError(err)).toBe(err);
+  });
+
+  it('wraps a non-Error value in an Error carrying its message', () => {
+    const result = normalizeQueryError('plain string failure');
+    expect(result).toBeInstanceOf(Error);
+    expect(result?.message).toBe('plain string failure');
+  });
+});
+
+describe('buildNodeStatusQueryData', () => {
+  it('surfaces data when the response network matches and is not a placeholder', () => {
+    const status = makeStatus({ network: 'testnet3' });
+    const result = buildNodeStatusQueryData('testnet3', makeQuery({ data: status, dataUpdatedAt: 1000 }));
+
+    expect(result).toEqual({
+      network: 'testnet3',
+      data: status,
+      isPlaceholderData: false,
+      isLoading: false,
+      error: null,
+      dataUpdatedAt: 1000,
+    });
+  });
+
+  it('hides data and reports isPlaceholderData when the response network does not match the selected network', () => {
+    // Invariant 9: previous-network data must never appear under the newly
+    // selected network badge.
+    const staleMainnetData = makeStatus({ network: 'mainnet' });
+    const result = buildNodeStatusQueryData(
+      'signet',
+      makeQuery({ data: staleMainnetData, dataUpdatedAt: 5000 })
+    );
+
+    expect(result.data).toBeUndefined();
+    expect(result.isPlaceholderData).toBe(true);
+    expect(result.dataUpdatedAt).toBe(0);
+  });
+
+  it('hides data when React Query reports isPlaceholderData even if the network matches', () => {
+    // Cross-network placeholder data from keepPreviousData carries the
+    // *previous* network's shape but React Query may not yet have updated
+    // `data.network` synchronously with the query key; either way, placeholder
+    // data is never treated as current same-network data.
+    const status = makeStatus({ network: 'testnet4' });
+    const result = buildNodeStatusQueryData(
+      'testnet4',
+      makeQuery({ data: status, isPlaceholderData: true, dataUpdatedAt: 2000 })
+    );
+
+    expect(result.data).toBeUndefined();
+    expect(result.isPlaceholderData).toBe(true);
+    expect(result.dataUpdatedAt).toBe(0);
+  });
+
+  it('reports isLoading and no data before the first response', () => {
+    const result = buildNodeStatusQueryData('mainnet', makeQuery({ isLoading: true }));
+
+    expect(result).toEqual({
+      network: 'mainnet',
+      data: undefined,
+      isPlaceholderData: true,
+      isLoading: true,
+      error: null,
+      dataUpdatedAt: 0,
+    });
+  });
+
+  it('preserves retained same-network data and surfaces the error on a transient refetch failure', () => {
+    const status = makeStatus({ network: 'mainnet', connected: true });
+    const err = new Error('network unreachable');
+    const result = buildNodeStatusQueryData(
+      'mainnet',
+      makeQuery({ data: status, dataUpdatedAt: 3000, error: err })
+    );
+
+    expect(result.data).toBe(status);
+    expect(result.isPlaceholderData).toBe(false);
+    expect(result.dataUpdatedAt).toBe(3000);
+    expect(result.error).toBe(err);
   });
 });

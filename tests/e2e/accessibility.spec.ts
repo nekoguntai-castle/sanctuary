@@ -125,6 +125,33 @@ const BITCOIN_STATUS_RESPONSE = {
       servers: [],
     },
   },
+  operational: {
+    configuredMode: 'pool',
+    attemptedAt: '2026-03-11T00:00:00.000Z',
+    route: { transport: 'pool', observedAt: '2026-03-11T00:00:00.000Z', serverId: 'a11y-server-1' },
+    pool: {
+      strategy: 'round_robin',
+      online: 1,
+      offline: 0,
+      cooldown: 0,
+      unchecked: 0,
+      stale: 0,
+      primaryServerId: null,
+      preferredServerId: null,
+      nextFailoverServerId: null,
+      servers: [
+        {
+          serverId: 'a11y-server-1',
+          label: 'Primary',
+          host: 'electrum.example',
+          port: 50002,
+          priority: 1,
+          availability: 'online',
+          checkedAt: '2026-03-11T00:00:00.000Z',
+        },
+      ],
+    },
+  },
 };
 
 const WALLET_STATS_RESPONSE = {
@@ -631,6 +658,26 @@ test.describe('Accessibility', () => {
 
     await disclosure.click();
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('node status server disclosure exposes aria-expanded/aria-controls to the revealed region', async ({ page }) => {
+    const unhandledRequests = await mockA11yApi(page);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/');
+
+    const toggle = page.getByRole('button', { name: /server/i });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const controlsId = await toggle.getAttribute('aria-controls');
+    expect(controlsId).toBe('node-status-servers');
+    await expect(page.locator(`#${controlsId}`)).toHaveCount(0);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator(`#${controlsId}`)).toHaveCount(1);
+    await expect(page.locator(`#${controlsId}`)).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });

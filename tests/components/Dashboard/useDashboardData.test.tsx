@@ -211,6 +211,133 @@ describe('useDashboardData', () => {
     expect(result.current.selectedNetwork).toBe('mainnet');
   });
 
+  describe('nodeStatusQuery (PR B data → presenter boundary)', () => {
+    it('surfaces same-network data as current when not a placeholder', async () => {
+      state.bitcoinStatusData = { connected: true, network: 'mainnet', blockHeight: 900000 };
+      state.statusDataUpdatedAt = Date.now();
+
+      const { result } = renderHook(() => useDashboardData());
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.nodeStatusQuery.network).toBe('mainnet');
+      expect(result.current.nodeStatusQuery.data).toEqual(state.bitcoinStatusData);
+      expect(result.current.nodeStatusQuery.isPlaceholderData).toBe(false);
+      expect(result.current.nodeStatusQuery.isLoading).toBe(false);
+      expect(result.current.nodeStatusQuery.error).toBeNull();
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(false);
+    });
+
+    it('never reuses the previous network topology under the newly selected network badge', async () => {
+      // Invariant 9. Simulates React Query's keepPreviousData mid-switch: the
+      // retained payload still carries the *old* network, and/or React Query
+      // flags it as placeholder.
+      state.activeNetworkState = 'testnet3';
+      state.bitcoinStatusData = { connected: true, network: 'mainnet', blockHeight: 900000 };
+      state.statusIsPlaceholderData = true;
+
+      const { result } = renderHook(() => useDashboardData());
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.nodeStatusQuery.network).toBe('testnet3');
+      expect(result.current.nodeStatusQuery.data).toBeUndefined();
+      expect(result.current.nodeStatusQuery.isPlaceholderData).toBe(true);
+    });
+
+    it('rapid network switching never leaks the prior network server labels/strategy into the new network', async () => {
+      state.activeNetworkState = 'mainnet';
+      state.bitcoinStatusData = { connected: true, network: 'mainnet', server: 'mainnet-primary' };
+      state.statusDataUpdatedAt = Date.now();
+
+      const { result, rerender } = renderHook(() => useDashboardData());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.nodeStatusQuery.data?.server).toBe('mainnet-primary');
+
+      // Switch networks; React Query has not resolved the new network's query
+      // yet, so it keeps serving the mainnet payload as placeholder data.
+      act(() => {
+        state.activeNetworkState = 'signet';
+        state.statusIsPlaceholderData = true;
+      });
+      rerender();
+
+      expect(result.current.nodeStatusQuery.network).toBe('signet');
+      expect(result.current.nodeStatusQuery.data).toBeUndefined();
+      expect(result.current.nodeStatusQuery.isPlaceholderData).toBe(true);
+
+      // The signet query now resolves.
+      act(() => {
+        state.bitcoinStatusData = { connected: true, network: 'signet', server: 'signet-primary' };
+        state.statusIsPlaceholderData = false;
+        state.statusDataUpdatedAt = Date.now();
+      });
+      rerender();
+
+      expect(result.current.nodeStatusQuery.data?.server).toBe('signet-primary');
+    });
+
+    it('preserves retained same-network data and surfaces the error on a transient refetch failure, then recovers', async () => {
+      state.bitcoinStatusData = { connected: true, network: 'mainnet', blockHeight: 900000 };
+      state.statusDataUpdatedAt = Date.now();
+
+      const { result, rerender } = renderHook(() => useDashboardData());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(false);
+
+      // Transient refetch failure: React Query retains the last good data.
+      act(() => {
+        state.statusError = new Error('Electrum timeout');
+      });
+      rerender();
+
+      expect(result.current.nodeStatusQuery.data).toEqual(state.bitcoinStatusData);
+      expect(result.current.nodeStatusQuery.error).toBeInstanceOf(Error);
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(true);
+
+      // Repeated failure: still last-known, data still retained.
+      act(() => {
+        state.statusError = new Error('Electrum timeout again');
+      });
+      rerender();
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(true);
+      expect(result.current.nodeStatusQuery.data).toEqual(state.bitcoinStatusData);
+
+      // Recovery: a successful refresh returns immediately to current.
+      act(() => {
+        state.statusError = null;
+        state.statusDataUpdatedAt = Date.now();
+      });
+      rerender();
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(false);
+      expect(result.current.nodeStatusQuery.error).toBeNull();
+    });
+
+    it('treats data older than two 60s polling windows as last-known even without an error', async () => {
+      state.bitcoinStatusData = { connected: true, network: 'mainnet' };
+      state.statusDataUpdatedAt = Date.now();
+
+      const { result, rerender } = renderHook(() => useDashboardData());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(false);
+
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      rerender();
+
+      expect(result.current.nodeStatusQuery.isLastKnown).toBe(true);
+    });
+  });
+
   it('covers loading/unknown/error node status for the active mainnet view', async () => {
     state.walletsData = [];
     state.walletsLoading = true;

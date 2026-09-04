@@ -1,432 +1,486 @@
 import userEvent from '@testing-library/user-event';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeStatusCard } from '../../../src/components/Dashboard/NodeStatusCard';
+import type { NodeStatusQueryState } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
+import type {
+  BitcoinStatus,
+  NodeOperationalStatus,
+  NodePoolLoadBalancing,
+  NodeRouteObservation,
+  OperationalServer,
+  PoolOperationalStatus,
+  ServerAvailability,
+} from '../../../src/api/bitcoin';
 
 vi.mock('lucide-react', () => ({
-  Zap: () => <span data-testid="zap-icon" />,
-  CheckCircle2: () => <span data-testid="connected-icon" />,
-  XCircle: () => <span data-testid="error-icon" />,
-  // ShowMoreToggle draws the server-list disclosure chevron.
   ChevronDown: () => <span data-testid="chevron-down-icon" />,
   ChevronUp: () => <span data-testid="chevron-up-icon" />,
 }));
 
+const NOW = Date.parse('2026-09-03T12:00:00.000Z');
+
+function makeServer(
+  serverId: string,
+  availability: ServerAvailability,
+  overrides: Partial<OperationalServer> = {},
+): OperationalServer {
+  return {
+    serverId,
+    label: `Server ${serverId}`,
+    host: `${serverId}.example`,
+    port: 50001,
+    priority: 1,
+    availability,
+    checkedAt: '2026-09-03T11:59:00.000Z',
+    ...overrides,
+  };
+}
+
+interface PoolRoles {
+  primaryServerId: string | null;
+  preferredServerId: string | null;
+  nextFailoverServerId: string | null;
+}
+
+const EMPTY_ROLES: PoolRoles = { primaryServerId: null, preferredServerId: null, nextFailoverServerId: null };
+
+function countsFromServers(servers: OperationalServer[]) {
+  const base = { online: 0, offline: 0, cooldown: 0, unchecked: 0, stale: 0 };
+  for (const s of servers) {
+    base[s.availability] += 1;
+  }
+  return base;
+}
+
+function makePool(
+  strategy: NodePoolLoadBalancing,
+  servers: OperationalServer[],
+  roles: Partial<PoolRoles> = EMPTY_ROLES,
+): PoolOperationalStatus {
+  return { strategy, ...countsFromServers(servers), ...EMPTY_ROLES, ...roles, servers };
+}
+
+function makeOperational(overrides: {
+  configuredMode: 'singleton' | 'pool';
+  route?: NodeRouteObservation | null;
+  pool?: PoolOperationalStatus | null;
+}): NodeOperationalStatus {
+  return { attemptedAt: '2026-09-03T11:59:30.000Z', route: null, pool: null, ...overrides };
+}
+
+const STATUS_DEFAULTS: BitcoinStatus = { connected: true, network: 'mainnet', pool: null };
+
+function makeStatus(overrides: Partial<BitcoinStatus> = {}): BitcoinStatus {
+  return { ...STATUS_DEFAULTS, ...overrides };
+}
+
+function makeQuery(overrides: Partial<NodeStatusQueryState> = {}): NodeStatusQueryState {
+  return {
+    network: 'mainnet',
+    data: undefined,
+    isPlaceholderData: false,
+    isLoading: false,
+    error: null,
+    dataUpdatedAt: NOW,
+    isLastKnown: false,
+    ...overrides,
+  };
+}
+
+function renderCard(query: NodeStatusQueryState, selectedNetwork: NodeStatusQueryState['network'] = 'mainnet') {
+  return render(<NodeStatusCard selectedNetwork={selectedNetwork} query={query} />);
+}
+
 describe('NodeStatusCard', () => {
-  it('renders nothing in PoolDisplay when pool is disabled and host is empty', () => {
-    const { container } = render(
-      <NodeStatusCard
-        selectedNetwork="mainnet"
-        nodeStatus="connected"
-        bitcoinStatus={{
-          connected: true,
-          blockHeight: 900000,
-          host: '',
-          pool: { enabled: false, minConnections: 1, maxConnections: 3, stats: null },
-        }}
-      />,
-    );
-
-    // Pool disabled + no host -> PoolDisplay returns null, so no Host/Pool row
-    expect(screen.queryByText('Host:')).not.toBeInTheDocument();
-    expect(screen.queryByText('Pool:')).not.toBeInTheDocument();
-
-    // The card itself still renders with the connected status
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-    expect(container.querySelector('[data-testid="connected-icon"]')).toBeInTheDocument();
+  it('renders Checking… while loading with no data', () => {
+    renderCard(makeQuery({ isLoading: true }));
+    expect(screen.getByText('Checking…')).toBeInTheDocument();
   });
 
-  describe('StatusIndicator', () => {
-    it('shows connected indicator for configured non-mainnet status', () => {
-      const { container } = render(
-        <NodeStatusCard
-          selectedNetwork="testnet3"
-          nodeStatus="connected"
-          bitcoinStatus={undefined}
-        />,
-      );
-
-      const indicator = container.querySelector('.animate-connected-glow');
-      expect(indicator).toBeInTheDocument();
-    });
-
-    it('shows error indicator for error status', () => {
-      const { container } = render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="error"
-          bitcoinStatus={{ connected: false, error: 'Connection refused' }}
-        />,
-      );
-
-      const indicator = container.querySelector('.bg-rose-500.rounded-full');
-      expect(indicator).toBeInTheDocument();
-    });
-
-    it('shows checking indicator for checking status', () => {
-      const { container } = render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="checking"
-          bitcoinStatus={undefined}
-        />,
-      );
-
-      const indicator = container.querySelector('.animate-checking-glow');
-      expect(indicator).toBeInTheDocument();
-    });
-
-    it('shows default indicator for unknown status', () => {
-      const { container } = render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="unknown"
-          bitcoinStatus={undefined}
-        />,
-      );
-
-      const indicators = container.querySelectorAll('.bg-sanctuary-400.rounded-full');
-      expect(indicators.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('StatusLabel', () => {
-    it('shows Error label with icon for error status', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="error"
-          bitcoinStatus={{ connected: false }}
-        />,
-      );
-
-      expect(screen.getByText('Error')).toBeInTheDocument();
-    });
-
-    it('shows Checking... label for checking status', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="checking"
-          bitcoinStatus={undefined}
-        />,
-      );
-
-      expect(screen.getByText('Checking...')).toBeInTheDocument();
-    });
-
-    it('shows Unknown label for unknown status', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="unknown"
-          bitcoinStatus={undefined}
-        />,
-      );
-
-      expect(screen.getByText('Unknown')).toBeInTheDocument();
-    });
-  });
-
-  describe('PoolDisplay', () => {
-    const baseServer = {
-      host: 'a.com',
-      port: 50001,
-      healthyConnections: 0,
-      totalRequests: 0,
-      failedRequests: 0,
-      consecutiveFailures: 0,
-      backoffLevel: 0,
-      cooldownUntil: null,
-      weight: 1,
-      healthHistory: [] as never[],
-    };
-
-    it('shows host with SSL indicator when pool is disabled but host is set', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="connected"
-          bitcoinStatus={{
-            connected: true,
-            blockHeight: 800000,
-            host: 'electrum.example.com',
-            useSsl: true,
-            pool: { enabled: false, minConnections: 1, maxConnections: 3, stats: null },
-          }}
-        />,
-      );
-
-      expect(screen.getByText('electrum.example.com')).toBeInTheDocument();
-      expect(screen.getByText('🔒')).toBeInTheDocument();
-    });
-
-    it('shows host without SSL indicator when useSsl is false', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="connected"
-          bitcoinStatus={{
-            connected: true,
-            blockHeight: 800000,
-            host: 'electrum.example.com',
-            useSsl: false,
-            pool: { enabled: false, minConnections: 1, maxConnections: 3, stats: null },
-          }}
-        />,
-      );
-
-      expect(screen.getByText('electrum.example.com')).toBeInTheDocument();
-      expect(screen.queryByText('🔒')).not.toBeInTheDocument();
-    });
-
-    it('shows pool stats when pool is enabled with stats', async () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="connected"
-          bitcoinStatus={{
-            connected: true,
-            blockHeight: 800000,
-            pool: {
-              enabled: true,
-              minConnections: 1,
-              maxConnections: 5,
-              stats: {
-                activeConnections: 3,
-                totalConnections: 5,
-                idleConnections: 2,
-                waitingRequests: 0,
-                totalAcquisitions: 100,
-                averageAcquisitionTimeMs: 5,
-                healthCheckFailures: 0,
-                serverCount: 2,
-                servers: [
-                  { ...baseServer, serverId: 's1', label: 'server1', connectionCount: 2, healthyConnections: 2, totalRequests: 100, isHealthy: true, lastHealthCheck: '2026-01-01' },
-                  { ...baseServer, serverId: 's2', label: 'server2', host: 'b.com', connectionCount: 1, healthyConnections: 1, totalRequests: 50, failedRequests: 5, isHealthy: false, lastHealthCheck: '2026-01-01' },
-                ],
-              },
-            },
-          }}
-        />,
-      );
-
-      expect(screen.getByText('pool')).toBeInTheDocument();
-      expect(screen.getByText(/3\/5/)).toBeInTheDocument();
-      // The per-server breakdown is a drill-down now: expanded by default it
-      // made this the tallest card in the row for detail most readers are not
-      // asking for.
-      expect(screen.queryByText('server1')).not.toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: /2 servers/ }));
-
-      expect(screen.getByText('server1')).toBeInTheDocument();
-      expect(screen.getByText('server2')).toBeInTheDocument();
-      expect(screen.getByText(/2 conns/)).toBeInTheDocument();
-      expect(screen.getByText(/1 conn\b/)).toBeInTheDocument();
-    });
-
-    it('shows initializing when pool is enabled but stats is null', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="connected"
-          bitcoinStatus={{
-            connected: true,
-            blockHeight: 800000,
-            pool: {
-              enabled: true,
-              minConnections: 1,
-              maxConnections: 3,
-              stats: null,
-            },
-          }}
-        />,
-      );
-
-      expect(screen.getByText('pool')).toBeInTheDocument();
-      expect(screen.getByText(/initializing/)).toBeInTheDocument();
-    });
-
-    it('shows server with no health check as neutral indicator', async () => {
-      const { container } = render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="connected"
-          bitcoinStatus={{
-            connected: true,
-            blockHeight: 800000,
-            pool: {
-              enabled: true,
-              minConnections: 1,
-              maxConnections: 3,
-              stats: {
-                activeConnections: 1,
-                totalConnections: 1,
-                idleConnections: 0,
-                waitingRequests: 0,
-                totalAcquisitions: 0,
-                averageAcquisitionTimeMs: 0,
-                healthCheckFailures: 0,
-                serverCount: 1,
-                servers: [
-                  { ...baseServer, serverId: 's1', label: 'unchecked', connectionCount: 0, isHealthy: false, lastHealthCheck: null },
-                ],
-              },
-            },
-          }}
-        />,
-      );
-
-      await userEvent.click(screen.getByRole('button', { name: /1 server/ }));
-
-      expect(screen.getByText('unchecked')).toBeInTheDocument();
-      // The unchecked server should use bg-sanctuary-400 (neutral) not bg-success-500 or bg-warning-500
-      const serverDots = container.querySelectorAll('.w-1\\.5.h-1\\.5.rounded-full');
-      expect(serverDots.length).toBe(1);
-    });
-  });
-
-  describe('MainnetContent', () => {
-    it('shows block height when connected with bitcoinStatus', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="connected"
-          bitcoinStatus={{
-            connected: true,
+  describe('singleton', () => {
+    it('shows Operational when reachable', () => {
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            host: 'node.example',
             blockHeight: 900000,
-            host: 'electrum.example.com',
-            pool: { enabled: false, minConnections: 1, maxConnections: 1, stats: null },
-          }}
-        />,
+            operational: makeOperational({
+              configuredMode: 'singleton',
+              route: { transport: 'singleton', observedAt: 'x', serverId: null },
+            }),
+          }),
+        }),
       );
-
-      // The label column is gone; each figure keeps a word in front of it.
-      expect(screen.getByText('height')).toBeInTheDocument();
-      expect(screen.getByText('900,000')).toBeInTheDocument();
+      expect(screen.getByText('Operational')).toBeInTheDocument();
+      expect(screen.getByText('Single server', { exact: false })).toBeInTheDocument();
+      expect(screen.getByText(/height 900,000/)).toBeInTheDocument();
     });
 
-    it('shows error message when node status is error with error string', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="error"
-          bitcoinStatus={{ connected: false, error: 'Connection timeout' }}
-        />,
+    it('shows Offline with sanitized error copy only', () => {
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            connected: false,
+            host: 'node.example',
+            error: 'Connection refused',
+            operational: makeOperational({ configuredMode: 'singleton', route: null }),
+          }),
+        }),
       );
-
-      expect(screen.getByText('Connection timeout')).toBeInTheDocument();
+      expect(screen.getByText('Offline')).toBeInTheDocument();
+      expect(screen.getByText('Connection refused')).toBeInTheDocument();
     });
 
-    it('does not show error message when no error string', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="error"
-          bitcoinStatus={{ connected: false }}
-        />,
+    it('points to Admin -> Node Config when not configured', () => {
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            connected: false,
+            host: undefined,
+            operational: makeOperational({ configuredMode: 'singleton', route: null }),
+          }),
+        }),
       );
-
-      expect(screen.queryByText('Connection timeout')).not.toBeInTheDocument();
+      expect(screen.getByText('Node not configured')).toBeInTheDocument();
+      expect(screen.getAllByText(/Admin → Node Config/).length).toBeGreaterThan(0);
     });
   });
 
-  describe('NetworkUnavailableContent', () => {
-    it('shows unavailable testnet3 status without claiming it is unconfigured', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="testnet3"
-          nodeStatus="unknown"
-          bitcoinStatus={undefined}
-        />,
+  describe('balanced pool', () => {
+    it('renders 3 of 3 online for 0-active/3-idle sockets with fresh all-online health evidence', () => {
+      const servers = [makeServer('a', 'online'), makeServer('b', 'online'), makeServer('c', 'online')];
+      const pool = makePool('least_connections', servers);
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
       );
-
-      expect(screen.getByText('Testnet3 node status is unavailable')).toBeInTheDocument();
-      expect(screen.queryByText('Testnet3 node not configured')).not.toBeInTheDocument();
-      expect(screen.getByText('Open Admin \u2192 Node Config to review Testnet3 settings.')).toBeInTheDocument();
+      expect(screen.getByText('3 of 3 online')).toBeInTheDocument();
+      expect(screen.getAllByText('Least connections', { exact: false }).length).toBeGreaterThan(0);
     });
 
-    it('shows signet error message from the network status API', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="signet"
-          nodeStatus="error"
-          bitcoinStatus={{ connected: false, error: 'Signet sync is off' }}
-        />,
+    it('renders degraded status with visible text independent of color', () => {
+      const servers = [makeServer('a', 'online'), makeServer('b', 'offline'), makeServer('c', 'unchecked')];
+      const pool = makePool('round_robin', servers);
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
       );
-
-      expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
+      expect(screen.getByText('1 of 3 online')).toBeInTheDocument();
+      expect(screen.getByText('1 unavailable')).toBeInTheDocument();
+      expect(screen.getByText('1 unknown')).toBeInTheDocument();
     });
 
-    it('shows checking copy while a non-mainnet status request is in flight', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="testnet3"
-          nodeStatus="checking"
-          bitcoinStatus={undefined}
-        />,
-      );
-
-      expect(screen.getByText('Checking configured Electrum server...')).toBeInTheDocument();
-    });
-
-    it('shows configured testnet3 Electrum host when connected', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="testnet3"
-          nodeStatus="connected"
-          bitcoinStatus={{
+    it('legacy pool response (connected, pool.enabled, stats, no operational) uses transport-neutral copy', () => {
+      renderCard(
+        makeQuery({
+          data: makeStatus({
             connected: true,
-            blockHeight: 4500000,
-            host: 'testnet.example.com',
-            useSsl: true,
-            pool: { enabled: false, minConnections: 1, maxConnections: 1, stats: null },
-          }}
-        />,
+            pool: {
+              enabled: true,
+              minConnections: 1,
+              maxConnections: 3,
+              stats: {
+                totalConnections: 3,
+                activeConnections: 2,
+                idleConnections: 1,
+                waitingRequests: 0,
+                totalAcquisitions: 1,
+                averageAcquisitionTimeMs: 1,
+                healthCheckFailures: 0,
+                serverCount: 3,
+                servers: [],
+              },
+            },
+            operational: undefined,
+          }),
+        }),
       );
-
-      expect(screen.getByText('Connected')).toBeInTheDocument();
-      expect(screen.getByText('4,500,000')).toBeInTheDocument();
-      expect(screen.getByText('testnet.example.com')).toBeInTheDocument();
-      expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Network operational')).toBeInTheDocument();
+      expect(screen.queryByText(/Primary/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/In use/)).not.toBeInTheDocument();
+      expect(screen.getByText('Pool route unknown', { exact: false })).toBeInTheDocument();
     });
   });
 
-  describe('network badge', () => {
-    it('shows MAINNET badge for mainnet', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="mainnet"
-          nodeStatus="checking"
-          bitcoinStatus={undefined}
-        />,
+  describe('failover pool', () => {
+    it('primary in use', () => {
+      const servers = [makeServer('primary', 'online'), makeServer('backup', 'online', { priority: 2 })];
+      const pool = makePool('failover_only', servers, {
+        primaryServerId: 'primary',
+        preferredServerId: 'primary',
+        nextFailoverServerId: 'backup',
+      });
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'primary' },
+              pool,
+            }),
+          }),
+        }),
       );
-
-      expect(screen.getByText('MAINNET')).toBeInTheDocument();
+      expect(screen.getByText('Primary online')).toBeInTheDocument();
+      expect(screen.getByText('Failover', { exact: false })).toBeInTheDocument();
     });
 
-    it('shows TESTNET3 badge for testnet3', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="testnet3"
-          nodeStatus="unknown"
-          bitcoinStatus={undefined}
-        />,
+    it('backup in use (failover active)', () => {
+      const servers = [
+        makeServer('primary', 'offline', { priority: 1 }),
+        makeServer('backup', 'online', { priority: 2 }),
+      ];
+      const pool = makePool('failover_only', servers, {
+        primaryServerId: 'primary',
+        preferredServerId: 'backup',
+        nextFailoverServerId: null,
+      });
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'backup' },
+              pool,
+            }),
+          }),
+        }),
       );
-
-      expect(screen.getByText('TESTNET3')).toBeInTheDocument();
+      expect(screen.getByText('Failover active')).toBeInTheDocument();
+      expect(screen.getByText('No further standby', { exact: false })).toBeInTheDocument();
     });
 
-    it('shows SIGNET badge for signet', () => {
-      render(
-        <NodeStatusCard
-          selectedNetwork="signet"
-          nodeStatus="unknown"
-          bitcoinStatus={undefined}
-        />,
+    it('no route (no server answered)', () => {
+      const servers = [makeServer('primary', 'offline'), makeServer('backup', 'cooldown')];
+      const pool = makePool('failover_only', servers, {
+        primaryServerId: 'primary',
+        preferredServerId: 'backup',
+        nextFailoverServerId: null,
+      });
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            connected: false,
+            operational: makeOperational({ configuredMode: 'pool', route: null, pool }),
+          }),
+        }),
+      );
+      expect(screen.getByText('No server available')).toBeInTheDocument();
+    });
+  });
+
+  describe('pool fallback and unknown', () => {
+    it('renders No servers configured for an empty pool', () => {
+      const pool = makePool('round_robin', []);
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            connected: false,
+            operational: makeOperational({ configuredMode: 'pool', route: null, pool }),
+          }),
+        }),
+      );
+      expect(screen.getByText('No servers configured')).toBeInTheDocument();
+    });
+  });
+
+  describe('long labels', () => {
+    it('truncates a long server label visually but keeps the full text accessible via title', async () => {
+      const longLabel = 'A Very Long Electrum Server Label That Would Overflow The Card Layout';
+      const servers = [
+        makeServer('a', 'online', { label: longLabel }),
+        makeServer('b', 'online'),
+      ];
+      const pool = makePool('failover_only', servers, {
+        primaryServerId: 'a',
+        preferredServerId: 'a',
+        nextFailoverServerId: 'b',
+      });
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
       );
 
-      expect(screen.getByText('SIGNET')).toBeInTheDocument();
+      const toggle = screen.getByRole('button', { name: /server/i });
+      await userEvent.click(toggle);
+      const rows = screen.getAllByRole('listitem');
+      const longRow = rows.find((row) => row.textContent?.includes(longLabel.slice(0, 10)));
+      expect(longRow).toBeDefined();
+      const labelEl = within(longRow as HTMLElement).getByTitle(longLabel);
+      expect(labelEl).toHaveClass('truncate');
+      expect(labelEl.textContent).toBe(longLabel);
     });
+  });
+
+  describe('disclosure', () => {
+    function renderExpandable() {
+      const servers = [makeServer('a', 'online'), makeServer('b', 'online')];
+      const pool = makePool('round_robin', servers);
+      return renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
+      );
+    }
+
+    it('toggles via Enter and Space and links aria-controls to the revealed region', async () => {
+      const user = userEvent.setup();
+      renderExpandable();
+
+      const toggle = screen.getByRole('button', { name: /2 servers/i });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      const controlsId = toggle.getAttribute('aria-controls');
+      expect(controlsId).toBe('node-status-servers');
+      expect(document.getElementById(controlsId as string)).toBeNull();
+
+      toggle.focus();
+      await user.keyboard('{Enter}');
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      const region = document.getElementById(controlsId as string);
+      expect(region).not.toBeNull();
+
+      await user.keyboard(' ');
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(document.getElementById(controlsId as string)).toBeNull();
+    });
+
+    it('shows role and availability as text, not just color, for each server row', async () => {
+      const servers = [makeServer('primary', 'online'), makeServer('backup', 'offline')];
+      const pool = makePool('failover_only', servers, {
+        primaryServerId: 'primary',
+        preferredServerId: 'primary',
+        nextFailoverServerId: 'backup',
+      });
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'primary' },
+              pool,
+            }),
+          }),
+        }),
+      );
+      const toggle = screen.getByRole('button', { name: /server/i });
+      await userEvent.click(toggle);
+      expect(screen.getByText('In use')).toBeInTheDocument();
+      expect(screen.getByText('Next')).toBeInTheDocument();
+      expect(screen.getAllByText('Online').length).toBeGreaterThan(0);
+      expect(screen.getByText('Offline')).toBeInTheDocument();
+    });
+  });
+
+  describe('last known', () => {
+    it('renders "Last known: <summary>" with an evidence label and timestamp', () => {
+      const servers = [makeServer('a', 'online')];
+      const pool = makePool('round_robin', servers);
+      renderCard(
+        makeQuery({
+          isLastKnown: true,
+          dataUpdatedAt: NOW - 5 * 60_000,
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: '2026-09-03T11:55:00.000Z', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
+      );
+      // The presenter already prefixes the summary; the view must not add a second "Last known:".
+      const line = screen.getByText(/^Last known:/);
+      expect(line).toHaveTextContent('Last known: 1 of 1 online');
+      expect(line.textContent).not.toMatch(/Last known: Last known/);
+    });
+  });
+
+  describe('branch coverage', () => {
+    it('renders a disclosure with no trailing guidance line for a clean pool', async () => {
+      const servers = [makeServer('a', 'online'), makeServer('b', 'online')];
+      const pool = makePool('round_robin', servers);
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
+      );
+      const toggle = screen.getByRole('button', { name: /2 servers/i });
+      await userEvent.click(toggle);
+      expect(screen.queryByText(/Open Admin/)).not.toBeInTheDocument();
+    });
+
+    it('renders the disclosure guidance line when servers need attention', async () => {
+      const servers = [makeServer('a', 'online'), makeServer('b', 'offline')];
+      const pool = makePool('round_robin', servers);
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            operational: makeOperational({
+              configuredMode: 'pool',
+              route: { transport: 'pool', observedAt: 'x', serverId: 'a' },
+              pool,
+            }),
+          }),
+        }),
+      );
+      const toggle = screen.getByRole('button', { name: /2 servers/i });
+      await userEvent.click(toggle);
+      expect(screen.getByText(/Open Admin → Node Config to review server health\./)).toBeInTheDocument();
+    });
+
+    it('renders a support item with no title attribute', () => {
+      renderCard(
+        makeQuery({
+          data: makeStatus({
+            host: 'node.example',
+            operational: makeOperational({
+              configuredMode: 'singleton',
+              route: { transport: 'singleton', observedAt: 'x', serverId: null },
+            }),
+          }),
+        }),
+      );
+      const supportText = screen.getByText(/Connected to node.example/);
+      expect(supportText.getAttribute('title')).toBeNull();
+    });
+  });
+
+  it('has no aria-live regions anywhere on the card', () => {
+    const { container } = renderCard(makeQuery({ isLoading: true }));
+    expect(container.querySelector('[aria-live]')).toBeNull();
   });
 });

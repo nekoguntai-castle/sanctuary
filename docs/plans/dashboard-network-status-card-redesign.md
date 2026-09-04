@@ -1,7 +1,7 @@
 # Dashboard Network Status Card Redesign Plan
 
 Date: 2026-08-31
-Status: PR A in progress (A1/A2 done; A3–A5 in progress)
+Status: PR A merged (#1007, 2cab474b56); PR B implemented, pending merge
 Baseline inspected: `5ab35aa71013bbace8021f6340e4cd69a62b404e`
 Delivery shape: two serial, independently revertible protected PRs
 
@@ -457,14 +457,14 @@ Primary files and tests:
 
 PR A verification gate:
 
-- [ ] Run focused Electrum selector, connection, acquisition, node-client, status
+- [x] Run focused Electrum selector, connection, acquisition, node-client, status
       route, and OpenAPI suites.
-- [ ] Run `cd server && npm run typecheck:tests && npx tsc --noEmit`.
-- [ ] Run `cd server && npx vitest run --coverage tests/unit` and retain backend
+- [x] Run `cd server && npm run typecheck:tests && npx tsc --noEmit`.
+- [x] Run `cd server && npx vitest run --coverage tests/unit` and retain backend
       unit coverage thresholds.
-- [ ] Run applicable lint/static gates, especially API/OpenAPI, Bitcoin network
+- [x] Run applicable lint/static gates, especially API/OpenAPI, Bitcoin network
       boundaries, safety catch guards, architecture, complexity, and diff check.
-- [ ] Independently review routing transitions, release/error paths, fallback
+- [x] Independently review routing transitions, release/error paths, fallback
       provenance, health freshness, null/empty topology, and secret-safe errors.
 
 PR A acceptance:
@@ -479,14 +479,14 @@ PR A acceptance:
 
 ### B1. Normalize selected-network status data
 
-- [ ] At the API/query boundary, ensure every response carries the requested
+- [x] At the API/query boundary, ensure every response carries the requested
       network when consuming a legacy minimal response.
-- [ ] Surface React Query placeholder state and require response network to match
+- [x] Surface React Query placeholder state and require response network to match
       the active dashboard network before presenting routing details; otherwise
       show `Checking…` and never reuse the previous network's topology. Keep the
       selected network badge, but omit the strategy badge until matching-network
       configuration arrives.
-- [ ] Preserve stale same-network data on transient refetch failure rather than
+- [x] Preserve stale same-network data on transient refetch failure rather than
       blanking it, but pass query error and update time into the presenter. Render
       `Last known: <summary>` plus a truthful evidence timestamp in a warning
       treatment as soon as a retained-data refetch fails. Use `observed
@@ -495,22 +495,22 @@ PR A acceptance:
       for a minimal legacy response. Do not continue
       presenting the frozen projection as live, and do not reclassify backend
       server health from the frontend's polling interval.
-- [ ] Treat a response as last-known after two missed 60-second polling windows
+- [x] Treat a response as last-known after two missed 60-second polling windows
       even without an error (for example, after background-tab throttling). Use
       React Query's local update time for this response-level boundary and the
       backend `observedAt` only for displayed evidence time. A successful refresh
       returns immediately to current presentation.
-- [ ] Implement that boundary with a small response-freshness hook/controller:
+- [x] Implement that boundary with a small response-freshness hook/controller:
       schedule a one-shot update for `dataUpdatedAt + 120s`, recalculate on focus
       or `visibilitychange`, and cancel/reschedule on new data, network change, or
       unmount. Prove with fake timers that last-known appears without a query
       event, foreground return reevaluates immediately, and a rapid switch cannot
       fire the prior network's timer.
-- [ ] Do not treat cross-network placeholder data as same-network retained data.
+- [x] Do not treat cross-network placeholder data as same-network retained data.
       Cover repeated refetch failure and recovery with a controlled clock. Add a
       rapid switch between networks with different modes and prove neither the
       prior server labels nor prior strategy badge appears.
-- [ ] Validate and format all evidence timestamps defensively. Add aged/retained
+- [x] Validate and format all evidence timestamps defensively. Add aged/retained
       route-success, route-null, and minimal-legacy tests proving no blank time,
       `Invalid Date`, or false `observed` label can render.
 
@@ -527,70 +527,70 @@ Primary files and tests:
 
 ### B2. Build a pure presentation model
 
-- [ ] Add a small, exhaustive presenter adjacent to `NodeStatusCard` that maps
+- [x] Add a small, exhaustive presenter adjacent to `NodeStatusCard` that maps
       singleton, balanced, failover, fallback, checking, unknown, and legacy
       response shapes to badges, headline, tone, support items, and server rows.
-- [ ] Apply presentation precedence explicitly: mismatched/initial response →
+- [x] Apply presentation precedence explicitly: mismatched/initial response →
       retained/aged wrapper → successful singleton fallback → configuration gap
       → route failure → successful singleton/balanced/failover health presentation.
       Response currency wraps every matching response, including configuration
       gaps. A
       route failure cannot look operational merely because recent health checks
       remain successful.
-- [ ] Do not let the existing `nodeStatus === 'error'` shortcut collapse a rich
+- [x] Do not let the existing `nodeStatus === 'error'` shortcut collapse a rich
       `connected: false` operational response into generic Error. Use the
       mode/topology route-failure models whenever present; reserve generic Error
       for minimal legacy/configuration-read failure.
-- [ ] Keep parsing/state derivation out of JSX and keep every edited/new function
+- [x] Keep parsing/state derivation out of JSX and keep every edited/new function
       below `CCN <= 15`; use discriminated helpers rather than nested branches.
-- [ ] Derive balanced counts only from the operational projection. Keep
+- [x] Derive balanced counts only from the operational projection. Keep
       `offline`, `cooldown`, `unchecked`, and `stale` separate in arithmetic;
       derive compact unavailable/unknown copy only after verifying the exact
       counts sum to total.
-- [ ] Use `primaryServerId`, `preferredServerId`, `nextFailoverServerId`, and
+- [x] Use `primaryServerId`, `preferredServerId`, `nextFailoverServerId`, and
       `route.serverId` for failover labels. Do not infer roles from connection
       counts or the `server` software string, and do not invent a separate
       effective-server field.
-- [ ] In backup-active failover, keep all three requested facts collapsed and
+- [x] In backup-active failover, keep all three requested facts collapsed and
       visible: configured primary plus state, observed route, and next failover
       candidate (or `No further standby`). Allow the compact region to wrap only
       as proven by responsive tests.
-- [ ] In failover singleton fallback, keep primary/state, singleton route, and
+- [x] In failover singleton fallback, keep primary/state, singleton route, and
       `Next pool retry <preferred>` visible without disclosure; handle null
       preferred target as `No pool server available`.
-- [ ] Resolve preferred IDs only against the returned operational topology. If a
+- [x] Resolve preferred IDs only against the returned operational topology. If a
       malformed/additive payload references a missing ID, preserve primary and
       singleton facts and render `Next pool retry unknown` rather than crashing,
       omitting the fact, or inventing a label.
-- [ ] Split failover `route: null`: say `No server available` only when every
+- [x] Split failover `route: null`: say `No server available` only when every
       candidate has fresh offline/cooldown evidence; if any candidate is unchecked
       or stale, say `Failover health unknown` and `No server answered` without
       claiming definitive unavailability.
-- [ ] If any pool has `route: null` but one or more fresh-online server results,
+- [x] If any pool has `route: null` but one or more fresh-online server results,
       show `Status check failed` and qualify the count as `recently online`; do not
       use the normal operational headline. For failover, render the preferred
       target as `Preferred pool retry`, preserve primary/state separately unless
       it is the same server, and suppress `Next` or any historical-attempt claim.
-- [ ] For balanced `route: null` with zero online and any unchecked/stale evidence,
+- [x] For balanced `route: null` with zero online and any unchecked/stale evidence,
       show `Health unknown` plus `No server answered` and the compact
       unavailable/unknown counts. Reserve `Checking…` for an in-flight query;
       test all-unchecked, offline+unchecked, and cooldown+stale as completed
       failures distinct from initial load and fallback.
-- [ ] Provide a safe legacy pool presentation when additive fields are absent:
+- [x] Provide a safe legacy pool presentation when additive fields are absent:
       transport-neutral `Network operational` plus `Pool route unknown` and an
       optional configured-server count, never the old lease ratio or a claim that
       pool, primary, or a configured server answered. The legacy backend can hide
       singleton fallback behind `pool.enabled: true`.
-- [ ] Handle null stats, empty server arrays, zero configured servers, missing
+- [x] Handle null stats, empty server arrays, zero configured servers, missing
       block height, missing host, long labels, and unknown enum data defensively.
-- [ ] Give zero eligible pool servers and a singleton missing a usable host
+- [x] Give zero eligible pool servers and a singleton missing a usable host
       explicit configuration-gap models with Admin guidance; these branches win
       before `0 of 0`, offline, unknown, and disclosure logic.
-- [ ] When an empty pool has a successful singleton fallback with reason
+- [x] When an empty pool has a successful singleton fallback with reason
       `pool_empty`, combine both truths: `Pool fallback active`, the singleton
       host in use, and `no pool servers configured`, with Admin guidance in detail.
       Do not let the empty-pool branch suppress active fallback.
-- [ ] Render configured-mode badges independently of answering transport; prove
+- [x] Render configured-mode badges independently of answering transport; prove
       disconnected pool, pool fallback, disconnected singleton, and minimal
       legacy envelopes.
 
@@ -602,18 +602,18 @@ Suggested files:
 
 ### B3. Render the shallow, accessible card
 
-- [ ] Keep `TelemetryCard` and dashboard grid structure unchanged.
-- [ ] Add the strategy badge beside the existing network badge without allowing
+- [x] Keep `TelemetryCard` and dashboard grid structure unchanged.
+- [x] Add the strategy badge beside the existing network badge without allowing
       long labels to overflow at phone, tablet, or three-column desktop widths.
-- [ ] Replace the generic connected headline and lease fraction with the
+- [x] Replace the generic connected headline and lease fraction with the
       mode-specific presentation table defined above.
-- [ ] Keep server topology collapsed by default. Give the revealed region a
+- [x] Keep server topology collapsed by default. Give the revealed region a
       stable ID and pass `controls` to `ShowMoreToggle` so `aria-expanded` and
       `aria-controls` describe the true disclosure.
-- [ ] Put textual role and availability beside each decorative dot. Do not add
+- [x] Put textual role and availability beside each decorative dot. Do not add
       `aria-live` to the whole 60-second-refreshing card; if a concise live state
       is added, limit it to the headline and prove it does not repeat details.
-- [ ] Preserve the existing guidance to Admin Node Config for unavailable/error
+- [x] Preserve the existing guidance to Admin Node Config for unavailable/error
       states and keep error copy sanitized.
 
 Primary files and tests:
@@ -626,8 +626,8 @@ Primary files and tests:
 
 ### B4. Cover mode/state, accessibility, and visuals
 
-- [ ] Replace literal `Connected` and `2/3` assertions with semantic assertions.
-- [ ] Add table-driven unit coverage for singleton; balanced all-online,
+- [x] Replace literal `Connected` and `2/3` assertions with semantic assertions.
+- [x] Add table-driven unit coverage for singleton; balanced all-online,
       degraded, all-offline, mixed unknown/stale/cooldown, initializing, empty,
       and legacy; failover primary, backup→tertiary, backup with no alternate,
       recovery, no-route all-unavailable, no-route all-unchecked, no-route
@@ -636,27 +636,27 @@ Primary files and tests:
       empty-pool fallback, aged/error empty-pool and missing-singleton responses,
       and fallback with preferred backup, preferred primary, null preferred, and
       missing preferred ID.
-- [ ] Prove `0 active / 3 idle` renders `3 of 3 online` when health evidence says
+- [x] Prove `0 active / 3 idle` renders `3 of 3 online` when health evidence says
       all three servers are online.
-- [ ] Test long labels, disclosure keyboard behavior, `aria-expanded`,
+- [x] Test long labels, disclosure keyboard behavior, `aria-expanded`,
       `aria-controls`, and visible status text independent of color.
-- [ ] Inventory every E2E `/bitcoin/status` mock and every `activeConnections`
+- [x] Inventory every E2E `/bitcoin/status` mock and every `activeConnections`
       fixture. Update all pool response fixtures to the additive contract so
       they do not accidentally exercise the legacy branch; keep one focused
       unit test for legacy compatibility.
-- [ ] Include a legacy `connected: true`, `pool.enabled: true`, raw-stats response
+- [x] Include a legacy `connected: true`, `pool.enabled: true`, raw-stats response
       with no operational projection and prove the UI says neither pool/primary
       nor any configured server is in use.
-- [ ] Add representative round-robin and failover fixtures rather than trying to
+- [x] Add representative round-robin and failover fixtures rather than trying to
       encode every mode in the single canonical dashboard screenshot.
-- [ ] Add a mixed general/both/silent-payments fixture proving only general-pool-
+- [x] Add a mixed general/both/silent-payments fixture proving only general-pool-
       eligible servers affect the dashboard denominator and roles.
-- [ ] Update accessibility coverage for the Node Status disclosure.
-- [ ] Move the exact dashboard PNG baseline to an ignored temporary backup,
+- [x] Update accessibility coverage for the Node Status disclosure.
+- [x] Move the exact dashboard PNG baseline to an ignored temporary backup,
       regenerate the canonical 1280×720 light screenshot, inspect the decoded
       image, and restore the backup if the render test fails. Do not rely on a
       passing 1% pixel tolerance as proof the layout changed correctly.
-- [ ] Add repeatable focused Playwright evidence at 375×812, 768×1024, and
+- [x] Add repeatable focused Playwright evidence at 375×812, 768×1024, and
       1280×720 using long server labels. Assert no element bounding box escapes
       the card/container and the page has no horizontal overflow. Separately prove
       the chosen truncation or wrapping keeps full accessible label text and does
@@ -675,18 +675,18 @@ Relevant E2E surfaces include:
 
 PR B verification gate:
 
-- [ ] Run focused presenter, `NodeStatusCard`, dashboard render/data, query, and
+- [x] Run focused presenter, `NodeStatusCard`, dashboard render/data, query, and
       accessibility tests first.
-- [ ] Run `npm run typecheck:app && npm run typecheck:tests && npx tsc --noEmit`.
-- [ ] Run `npx vitest run --coverage` and retain frontend coverage thresholds.
-- [ ] Run `npm run lint:app`, `npm run build`, applicable static/complexity gates,
+- [x] Run `npm run typecheck:app && npm run typecheck:tests && npx tsc --noEmit`.
+- [x] Run `npx vitest run --coverage` and retain frontend coverage thresholds.
+- [x] Run `npm run lint:app`, `npm run build`, applicable static/complexity gates,
       and `git diff --check`.
-- [ ] Without starting Vite on the host, serve the built `dist/` through an
+- [x] Without starting Vite on the host, serve the built `dist/` through an
       ignored throwaway static-server/Playwright config with no `webServer` block;
       run focused Chromium dashboard render and accessibility cases.
-- [ ] Inspect the regenerated PNG rather than trusting the tolerance alone, and
+- [x] Inspect the regenerated PNG rather than trusting the tolerance alone, and
       record the named light/dark and three-viewport responsive evidence.
-- [ ] Independently review semantic accuracy, network-switch races, fallback and
+- [x] Independently review semantic accuracy, network-switch races, fallback and
       unknown states, keyboard/screen-reader behavior, responsive overflow,
       test-fixture completeness, and unintended telemetry-card changes.
 

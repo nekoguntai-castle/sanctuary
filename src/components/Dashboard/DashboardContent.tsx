@@ -55,6 +55,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
     formatFeeRate,
     nodeStatus,
     bitcoinStatus,
+    nodeStatusQuery,
     mempoolBlocks,
     queuedBlocksSummary,
     lastMempoolUpdate,
@@ -204,8 +205,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
 
         <NodeStatusCard
           selectedNetwork={selectedNetwork}
-          nodeStatus={nodeStatus}
-          bitcoinStatus={bitcoinStatus}
+          query={nodeStatusQuery}
         />
       </div>
 

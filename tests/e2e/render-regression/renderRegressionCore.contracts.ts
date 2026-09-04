@@ -40,10 +40,10 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   // the telemetry row reflows to two cards rather than leaving a blank slot.
   await expect(page.getByText("Bitcoin Price")).toHaveCount(0);
   await expect(page.getByText("Fee Estimation")).toBeVisible();
-  await expect(page.getByText(/^Connected$/)).toBeVisible();
-  await expect(page.getByRole("main").getByText("900,123").last()).toBeVisible();
-  // The Pool:/Height: label column collapsed into one support line.
-  await expect(page.getByText("2/3")).toBeVisible();
+  await expect(page.getByText("1 of 1 online")).toBeVisible();
+  await expect(page.getByRole("main").getByText(/height 900,123/)).toBeVisible();
+  // The strategy badge sits beside the network badge on the card header now.
+  await expect(page.getByTitle("Round robin")).toBeVisible();
   await expectChromiumMainScreenshot(page, "dashboard-testnet-shell.png");
 
   expect(unhandledRequests).toEqual([]);

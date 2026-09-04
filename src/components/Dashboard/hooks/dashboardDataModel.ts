@@ -11,6 +11,7 @@ import {
 import type { Notification } from '../../NotificationToast';
 import type { TabNetwork } from '../../NetworkTabs';
 import type {
+  BitcoinDashboardNetwork,
   BitcoinStatus,
   BlockData,
   FeeEstimates,
@@ -20,6 +21,7 @@ import type {
 import type { RecentTransaction } from '../../../api/transactions/types';
 import { toTabNetwork } from '../../../app/networks';
 import type { SoundEvent } from '../../../hooks/useNotificationSound';
+import { getErrorMessage } from '@sanctuary/shared/utils/errors';
 
 export interface DashboardFeeEstimate {
   fast: number;
@@ -186,6 +188,82 @@ export function getNodeStatus(
   if (statusLoading) return 'checking';
   if (bitcoinStatus === undefined) return 'unknown';
   return bitcoinStatus.connected ? 'connected' : 'error';
+}
+
+/**
+ * Data → presenter boundary for the node status card (PR B interface
+ * contract). `data`/`isPlaceholderData`/`isLoading`/`error`/`dataUpdatedAt`
+ * describe the query as it relates to `network`; `isLastKnown` is the
+ * freshness verdict layered on top by `useNodeStatusFreshness`.
+ */
+export interface NodeStatusQueryState {
+  /** Requested dashboard network for this observation. */
+  network: BitcoinDashboardNetwork;
+  /** Response data, or undefined before first success/on network mismatch. */
+  data: BitcoinStatus | undefined;
+  /** True while React Query is serving placeholder (previous-network) data. */
+  isPlaceholderData: boolean;
+  /** True on the initial load (no data at all yet). */
+  isLoading: boolean;
+  /** Last refetch error, if the latest attempt failed while retained data exists. */
+  error: Error | null;
+  /** React Query dataUpdatedAt (ms epoch) for the retained data; 0 when none. */
+  dataUpdatedAt: number;
+  /** True when retained data is older than two polling windows (120s) or a refetch failed. */
+  isLastKnown: boolean;
+}
+
+/** The subset of a React Query result this module needs; kept minimal for testability. */
+export interface BitcoinStatusQueryLike {
+  data: BitcoinStatus | undefined;
+  isPlaceholderData: boolean;
+  isLoading: boolean;
+  error: unknown;
+  dataUpdatedAt: number;
+}
+
+/**
+ * Normalizes an arbitrary query error (React Query does not constrain its
+ * `error` field's type) into `Error | null` for the presenter boundary.
+ */
+export function normalizeQueryError(error: unknown): Error | null {
+  if (error == null) {
+    return null;
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(getErrorMessage(error));
+}
+
+/**
+ * Builds the query-derived half of `NodeStatusQueryState` (everything but
+ * freshness verdict, which `useNodeStatusFreshness` computes separately since
+ * it needs a scheduled re-evaluation React Query itself does not provide).
+ *
+ * Invariant 9: previous-network data must never appear under the newly
+ * selected network badge. A response only counts as "current" when it both
+ * carries the requested network (guaranteed non-legacy by `getStatus`'s
+ * normalization) and is not React Query's `keepPreviousData` placeholder from
+ * a still-in-flight switch. Anything else reports `data: undefined` and
+ * `isPlaceholderData: true` so the presenter shows `Checking…` rather than
+ * reusing stale topology.
+ */
+export function buildNodeStatusQueryData(
+  selectedNetwork: BitcoinDashboardNetwork,
+  query: BitcoinStatusQueryLike
+): Omit<NodeStatusQueryState, 'isLastKnown'> {
+  const isCurrentNetworkData = query.data !== undefined && query.data.network === selectedNetwork;
+  const dataIsUsable = isCurrentNetworkData && !query.isPlaceholderData;
+
+  return {
+    network: selectedNetwork,
+    data: dataIsUsable ? query.data : undefined,
+    isPlaceholderData: !dataIsUsable,
+    isLoading: query.isLoading,
+    error: normalizeQueryError(query.error),
+    dataUpdatedAt: dataIsUsable ? query.dataUpdatedAt : 0,
+  };
 }
 
 export function buildMempoolSnapshot(mempoolData: MempoolData | undefined): MempoolSnapshot {
