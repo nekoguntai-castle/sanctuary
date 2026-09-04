@@ -513,7 +513,12 @@ jobs:
     # into docker-proxy, which rootless Podman runners cannot provide.
     runs-on: [ubuntu-22.04, docker-socket]
     needs: validation-info
-    timeout-minutes: 30
+    # On a tag push this job shares the e2e runner lock with install-test.yml's
+    # fresh-install job (fresh install + install script), which held it for
+    # 26 minutes on v0.8.70-rc2 with a cold image cache; this job then needs
+    # ~11 minutes of its own plus receipt finalisation. 30 minutes expired
+    # before the lock was released (run 14664).
+    timeout-minutes: 60
     env:
       COMPOSE_PROJECT_NAME: sanctuary-rc-fresh-${{ github.run_id }}
       HTTPS_PORT: '15543'

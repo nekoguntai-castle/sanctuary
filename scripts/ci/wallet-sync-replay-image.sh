@@ -49,27 +49,44 @@ archive_image_id() {
   '
 }
 
+# Prove the daemon holds exactly the archived image under exactly one tag, and
+# print the identity the daemon uses for it. The classic graphdriver store
+# reports the config digest (manifest.json Config); the containerd image store
+# reports the manifest digest (index.json) and lists it as a repo digest. Both
+# are content addresses of the same archived bytes, so either is exact.
 verify_exact_loaded_image() {
   local image_ref="$1" expected_image_id="$2" revision="$3" image_lock_sha256="$4"
-  local listed inspection
+  local manifest_digest="${5:-}" listed inspection
   listed="$(docker image ls --no-trunc --filter "reference=$image_ref" --format '{{.ID}}')" || return 1
-  [ "$listed" = "$expected_image_id" ] || return 1
+  if [ "$listed" != "$expected_image_id" ] && { [ -z "$manifest_digest" ] || [ "$listed" != "$manifest_digest" ]; }; then
+    echo "wallet-sync replay image identity mismatch for $image_ref: daemon lists '$listed', archive config $expected_image_id, archive manifest ${manifest_digest:-unknown}" >&2
+    return 1
+  fi
   inspection="$(docker image inspect "$image_ref")" || return 1
-  INSPECTION="$inspection" node - "$image_ref" "$expected_image_id" "$revision" "$image_lock_sha256" <<'NODE'
-const [reference, expectedId, revision, imageLock] = process.argv.slice(2);
+  INSPECTION="$inspection" node - "$image_ref" "$listed" "$manifest_digest" "$revision" "$image_lock_sha256" <<'NODE' || return 1
+const [reference, listedId, manifestDigest, revision, imageLock] = process.argv.slice(2);
 const records = JSON.parse(process.env.INSPECTION);
 if (!Array.isArray(records) || records.length !== 1) process.exit(1);
 const image = records[0];
 const labels = image.Config?.Labels ?? {};
-if (image.Id !== expectedId
-  || JSON.stringify(image.RepoTags ?? []) !== JSON.stringify([reference])
-  || (image.RepoDigests ?? []).length !== 0
-  || labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary'
-  || labels['org.opencontainers.image.revision'] !== revision
-  || labels['dev.sanctuary.image-lock-sha256'] !== imageLock
-  || !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'] ?? '')
-  || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'] ?? '')) process.exit(1);
+const repository = reference.replace(/:[^/:]+$/, '');
+const repoDigests = image.RepoDigests ?? [];
+const repoDigestsExact = repoDigests.length === 0
+  || (repoDigests.length === 1 && manifestDigest !== '' && repoDigests[0] === `${repository}@${manifestDigest}`);
+const fail = (reason) => {
+  process.stderr.write(`wallet-sync replay image inspection rejected for ${reference}: ${reason}\n`);
+  process.exit(1);
+};
+if (image.Id !== listedId) fail(`inspect Id ${image.Id} differs from listed ${listedId}`);
+if (JSON.stringify(image.RepoTags ?? []) !== JSON.stringify([reference])) fail(`RepoTags ${JSON.stringify(image.RepoTags ?? [])}`);
+if (!repoDigestsExact) fail(`RepoDigests ${JSON.stringify(repoDigests)}`);
+if (labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary') fail('source label');
+if (labels['org.opencontainers.image.revision'] !== revision) fail('revision label');
+if (labels['dev.sanctuary.image-lock-sha256'] !== imageLock) fail('image-lock label');
+if (!/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'] ?? '')) fail('version label');
+if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'] ?? '')) fail('build-id label');
 NODE
+  printf '%s' "$listed"
 }
 
 register_loaded_image() (
@@ -83,14 +100,16 @@ register_loaded_image() (
 
 load_and_register_image() {
   local archive="$1" image_ref="$2" expected_image_id="$3" revision="$4"
-  local image_lock_sha256="$5" source_root="$6" load_status=0 registration_status=0
+  local image_lock_sha256="$5" source_root="$6" manifest_digest="${7:-}"
+  local load_status=0 registration_status=0 daemon_image_id
   docker load --input "$archive" || load_status=$?
-  if ! verify_exact_loaded_image "$image_ref" "$expected_image_id" "$revision" "$image_lock_sha256"; then
+  if ! daemon_image_id="$(verify_exact_loaded_image "$image_ref" "$expected_image_id" "$revision" "$image_lock_sha256" "$manifest_digest")"; then
     echo "wallet-sync replay image recovery is ambiguous for $image_ref" >&2
     [ "$load_status" -ne 0 ] && return "$load_status"
     return 1
   fi
-  register_loaded_image "$image_ref" "$source_root" "$expected_image_id" || registration_status=$?
+  # Register the identity the daemon reports so exact_delete cleanup resolves it.
+  register_loaded_image "$image_ref" "$source_root" "$daemon_image_id" || registration_status=$?
   if [ "$load_status" -ne 0 ]; then
     [ "$registration_status" -eq 0 ] \
       || echo "wallet-sync replay image recovery registration failed for $image_ref" >&2
@@ -169,7 +188,7 @@ build_image() {
   expected_image_id="$(archive_image_id "$archive")"
 
   load_and_register_image "$archive" "$image_ref" "$expected_image_id" \
-    "$revision" "$image_lock_sha256" "$source_root"
+    "$revision" "$image_lock_sha256" "$source_root" "$manifest_digest"
   register_replay_evidence "$source_root" "$archive" "$archive_sha256"
 
   receipt="$output_dir/image-receipt.json"
@@ -237,7 +256,7 @@ NODE
     || { echo "wallet-sync replay archive image identity mismatch" >&2; exit 1; }
 
   load_and_register_image "$archive" "$image_ref" "$expected_image_id" \
-    "$revision" "$image_lock_sha256" "$(git rev-parse --show-toplevel)"
+    "$revision" "$image_lock_sha256" "$(git rev-parse --show-toplevel)" "$manifest_digest"
   register_replay_evidence "$(git rev-parse --show-toplevel)" "$archive" "$archive_sha256"
 }
 

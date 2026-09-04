@@ -317,6 +317,20 @@ export FAKE_DOCKER_LEGACY=yes
 deployment_begin no no no
 [ "$SANCTUARY_DEPLOYMENT_STATE" = active ]
 [ "$SANCTUARY_DEPLOYMENT_GENERATION" = 1 ]
+# An unchanged active revision replays every operator stage: `start.sh --rebuild`
+# on v0.8.70-rc2 skipped build and up because stage "active" had no rank and the
+# gate silently answered "not before" (install-test run 14662, force rebuild gate).
+for stage in build_completed postgres_started password_reconciled stack_started health_verified; do
+  if ! deployment_stage_before "$stage" 2>"$TEST_ROOT/stage-before.err"; then
+    echo "active revision must run operator stage $stage" >&2
+    exit 1
+  fi
+  if [ -s "$TEST_ROOT/stage-before.err" ]; then
+    echo "active revision stage check emitted diagnostics:" >&2
+    cat "$TEST_ROOT/stage-before.err" >&2
+    exit 1
+  fi
+done
 deployment_lock_release
 
 # A new controller can resume the exact pending generation after interruption.

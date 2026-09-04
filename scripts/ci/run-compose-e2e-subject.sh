@@ -31,6 +31,11 @@ esac
 }
 
 cd "$workspace"
+# The install-test helpers resolve the ownership producer hook and the
+# install-test root from PROJECT_ROOT; this subject's project is the
+# isolated workspace it was pointed at (v0.8.70-rc2, run 14662).
+PROJECT_ROOT="$PWD"
+export PROJECT_ROOT
 
 readonly -a compose_registration_args=(
   --expected-image sanctuary-backend

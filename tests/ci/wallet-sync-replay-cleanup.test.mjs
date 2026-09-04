@@ -491,3 +491,65 @@ test('build stamps the source version from a relative source root', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('loaded image verification accepts the containerd image store identity', () => {
+  // v0.8.70-rc2 (run 14664): the runner's Docker 29 daemon uses the containerd
+  // image store, which reports a loaded image's ID as its manifest digest and
+  // lists a repo digest for it. The archive-derived config digest is still an
+  // exact identity of the same bytes, so the gate must accept either form and
+  // register the ID the daemon actually uses.
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const configDigest = `sha256:${'0'.repeat(64)}`;
+  const manifestDigest = `sha256:${'3'.repeat(64)}`;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker_manifest="$3"
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then echo "Loaded image: docker.io/library/replay:test"; return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf '%s
+' "$docker_manifest"; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then
+        printf '%s
+' '[{"Id":"'"$docker_manifest"'","RepoTags":["replay:test"],"RepoDigests":["replay@'"$docker_manifest"'"],"Config":{"Labels":{"org.opencontainers.image.source":"https://github.com/nekoguntai-castle/sanctuary","org.opencontainers.image.version":"0.8.70","org.opencontainers.image.revision":"${'1'.repeat(40)}","io.sanctuary.build-id":"build-run","dev.sanctuary.image-lock-sha256":"${'2'.repeat(64)}"}}}]'
+        return
+      fi
+      return 99
+    }
+    register_owned_resource() { printf 'registration=%s
+' "$*"; }
+    export SANCTUARY_OPERATION_RUN_ID=replay-containerd-run
+    load_and_register_image /tmp/archive replay:test "$2"       "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp "$3"
+    printf 'status=%s
+' "$?"
+  `, '_', helper, configDigest, manifestDigest], { encoding: 'utf8' });
+  assert.match(output, new RegExp(`registration=oci_image obsolete exact_delete reference replay:test ${manifestDigest} replay-containerd-run`));
+  assert.match(output, /status=0/);
+});
+
+test('loaded image verification still refuses an identity that matches neither digest', () => {
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d
+' 9; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s
+' '[{"Id":"sha256:${'9'.repeat(64)}","RepoTags":["replay:test"],"RepoDigests":[],"Config":{"Labels":{}}}]'; return; fi
+      return 99
+    }
+    register_owned_resource() { printf 'unexpected-registration
+'; }
+    set +e
+    load_and_register_image /tmp/archive replay:test "sha256:${'0'.repeat(64)}"       "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp "sha256:${'3'.repeat(64)}" 2>&1
+    printf 'status=%s
+' "$?"
+  `, '_', helper], { encoding: 'utf8' });
+  assert.doesNotMatch(output, /unexpected-registration/);
+  assert.match(output, /recovery is ambiguous/);
+  assert.match(output, /status=1/);
+});

@@ -117,6 +117,10 @@ deployment_stage_rank() {
 }
 
 deployment_stage_before() {
+  # Only a pending revision has completed stages to skip. An active revision
+  # (unchanged definition) replays every operator stage: `up` is idempotent and
+  # `--rebuild` must really rebuild. Stage "active" has no rank on purpose.
+  [ "${SANCTUARY_DEPLOYMENT_STATE:-}" = pending ] || return 0
   [ "$(deployment_stage_rank "$SANCTUARY_DEPLOYMENT_STAGE")" -lt "$(deployment_stage_rank "$1")" ]
 }
 

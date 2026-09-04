@@ -1224,6 +1224,31 @@ test_install_workflow_uses_run_scoped_ssl_dirs() {
     "install workflow checkout steps should not pre-clean shared runner workspaces"
 }
 
+test_compose_subject_binds_project_root_before_ownership_init() {
+  # v0.8.70-rc2 (run 14662): Install Stack Smoke died in 6 s with
+  # "Current checkout ownership producer hook is unavailable" because the
+  # supervised Compose subject called initialize_install_test_ownership without
+  # PROJECT_ROOT; the initializer resolves the producer hook from it.
+  local subject="$PROJECT_ROOT/scripts/ci/run-compose-e2e-subject.sh" bind_line init_line
+  bind_line="$(grep -n '^PROJECT_ROOT="$PWD"$' "$subject" | head -n1 | cut -d: -f1)"
+  init_line="$(grep -n '^initialize_install_test_ownership$' "$subject" | head -n1 | cut -d: -f1)"
+  if [ -z "$bind_line" ] || [ -z "$init_line" ] || [ "$bind_line" -ge "$init_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} compose subject must bind PROJECT_ROOT to the workspace before initializing ownership (bind=${bind_line:-none}, init=${init_line:-none})"
+    return 1
+  fi
+  assert_contains "$(grep -n '^export PROJECT_ROOT$' "$subject" || true)" 'export PROJECT_ROOT' \
+    "compose subject must export PROJECT_ROOT for the producer hooks it sources"
+
+  # The initializer must name the root it could not use.
+  local output
+  if output="$(cd "$TEST_TMP_DIR" && PROJECT_ROOT= TARGET_PROJECT_ROOT= bash -c 'source "$1"; initialize_install_test_ownership' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh" 2>&1)"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} ownership initialization must refuse an unset project root"
+    return 1
+  fi
+  assert_contains "$output" "unset" "refusal must say the project root is unset"
+}
+
 test_upgrade_ssl_dir_keeps_coordinator_runtime_off_docker_mounts() {
   local harness_contents
   local selected
@@ -2457,6 +2482,7 @@ main() {
   run_test "prepare install root refuses broad existing root" test_prepare_install_root_refuses_broad_existing_root
   run_test "prepare install root uses coordinated private runtime for tmp" test_prepare_install_root_uses_coordinated_private_runtime_for_tmp
   run_test "prepare install root names the broad parent it refuses" test_prepare_install_root_names_the_broad_parent_it_refuses
+  run_test "compose subject binds project root before ownership init" test_compose_subject_binds_project_root_before_ownership_init
   run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume
   run_test "install test host resolves default" test_install_test_host_resolves_default
   run_test "install test host honors override" test_install_test_host_honors_override

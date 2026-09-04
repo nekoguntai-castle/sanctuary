@@ -720,7 +720,7 @@ export_lane_image_tag() {
 initialize_install_test_ownership() {
     local identity_root="${TARGET_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
     if [ -z "$identity_root" ] || [ ! -f "$identity_root/scripts/ownership/producer-hooks.sh" ]; then
-        log_error "Current checkout ownership producer hook is unavailable"
+        log_error "Current checkout ownership producer hook is unavailable: PROJECT_ROOT/TARGET_PROJECT_ROOT is ${identity_root:-unset}, expected <root>/scripts/ownership/producer-hooks.sh" >&2
         return 1
     fi
 

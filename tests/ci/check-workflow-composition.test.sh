@@ -1253,6 +1253,13 @@ done
 assert_named_job_contains "$IT" "fresh-install-test" \
   "combined install job reserves measured cleanup receipt finalization time" \
   'timeout-minutes: 45'
+# v0.8.70-rc2 (run 14664): on a tag push the RC fresh-install job serialises
+# behind install-test.yml's fresh-install job (fresh install + install script,
+# 26 min on a cold image cache) via the shared e2e runner lock, then needs
+# ~11 min of its own. A 30-minute budget expired before the lock was released.
+assert_named_job_contains "$RC" "fresh-install-test" \
+  "release-candidate fresh install budgets the shared e2e lock wait plus its own run" \
+  'timeout-minutes: 60'
 assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
   "install E2E driver retains supervised receipt-bound Docker cleanup" \
   '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run' \
