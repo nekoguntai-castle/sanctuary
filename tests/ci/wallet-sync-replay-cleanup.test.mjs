@@ -574,3 +574,51 @@ test('loaded image verification still refuses a second tag even when qualified',
   assert.match(output, /RepoTags/);
   assert.match(output, /status=1/);
 });
+
+test('loaded image verification accepts a historical source tree that only labels revision and image lock', () => {
+  // The rc10 replay image is built from the pinned historical revision, whose
+  // server/Dockerfile labels only org.opencontainers.image.revision and
+  // dev.sanctuary.image-lock-sha256 (v0.8.70-rc4, run 14706: "source label").
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d\n' 0; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s\n' '[{"Id":"sha256:${'0'.repeat(64)}","RepoTags":["docker.io/library/replay:test"],"RepoDigests":[],"Config":{"Labels":{"org.opencontainers.image.revision":"${'1'.repeat(40)}","dev.sanctuary.image-lock-sha256":"${'2'.repeat(64)}"}}}]'; return; fi
+      return 99
+    }
+    register_owned_resource() { printf 'registration=%s\n' "$*"; }
+    export SANCTUARY_OPERATION_RUN_ID=replay-historical-run
+    load_and_register_image /tmp/archive replay:test "sha256:${'0'.repeat(64)}" \
+      "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp
+    printf 'status=%s\n' "$?"
+  `, '_', helper], { encoding: 'utf8' });
+  assert.match(output, /registration=oci_image obsolete exact_delete reference replay:test sha256:0{64} replay-historical-run/);
+  assert.match(output, /status=0/);
+});
+
+test('loaded image verification still refuses a wrong source label when one is present', () => {
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d\n' 0; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s\n' '[{"Id":"sha256:${'0'.repeat(64)}","RepoTags":["replay:test"],"RepoDigests":[],"Config":{"Labels":{"org.opencontainers.image.source":"https://example.invalid/other","org.opencontainers.image.revision":"${'1'.repeat(40)}","dev.sanctuary.image-lock-sha256":"${'2'.repeat(64)}"}}}]'; return; fi
+      return 99
+    }
+    register_owned_resource() { printf 'unexpected-registration\n'; }
+    set +e
+    load_and_register_image /tmp/archive replay:test "sha256:${'0'.repeat(64)}" \
+      "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp 2>&1
+    printf 'status=%s\n' "$?"
+  `, '_', helper], { encoding: 'utf8' });
+  assert.doesNotMatch(output, /unexpected-registration/);
+  assert.match(output, /source label/);
+  assert.match(output, /status=1/);
+});

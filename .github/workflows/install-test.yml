@@ -355,6 +355,11 @@ jobs:
       PORT_OFFSET: '0'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-fresh-install
       SANCTUARY_CI_DEBUG_TRACE: '1'
+      # A starved e2e lock wait must fail inside the 45-minute job budget so the
+      # diagnostics upload runs and the log names the lock (v0.8.70-rc3/rc4).
+      # 25 minutes covers the release-candidate fresh install (~12 min) that
+      # shares the lock on a tag push; each acquisition gets its own budget.
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1500'
 
     steps:
       - name: Note PR install E2E coverage

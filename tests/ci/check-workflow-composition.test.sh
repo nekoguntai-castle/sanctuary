@@ -1260,6 +1260,16 @@ assert_named_job_contains "$IT" "fresh-install-test" \
 assert_named_job_contains "$RC" "fresh-install-test" \
   "release-candidate fresh install budgets the shared e2e lock wait plus its own run" \
   'timeout-minutes: 60'
+# v0.8.70-rc3/rc4 (runs 14691, 14704): a starved e2e lock wait outlives the
+# 45/60-minute job budgets, the job is killed before its diagnostics upload,
+# and the log never names the lock. Declare a lock budget below the job budget
+# so starvation fails fast with "runner-lock: timeout e2e" in the captured log.
+assert_named_job_contains "$IT" "fresh-install-test" \
+  "install-test fresh install bounds its e2e lock wait below the job budget" \
+  "SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1500'"
+assert_named_job_contains "$RC" "fresh-install-test" \
+  "release-candidate fresh install bounds its e2e lock wait below the job budget" \
+  "SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1800'"
 assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
   "install E2E driver retains supervised receipt-bound Docker cleanup" \
   '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run' \

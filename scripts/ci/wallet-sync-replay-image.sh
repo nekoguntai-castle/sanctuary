@@ -92,11 +92,18 @@ const fail = (reason) => {
 if (image.Id !== listedId) fail(`inspect Id ${image.Id} differs from listed ${listedId}`);
 if (!repoTagsExact) fail(`RepoTags ${JSON.stringify(repoTags)}`);
 if (!repoDigestsExact) fail(`RepoDigests ${JSON.stringify(repoDigests)}`);
-if (labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary') fail('source label');
+// Every source tree labels revision and image lock (the build-arg contract).
+// The source, version, and build-id labels arrived with producer stamping;
+// the pinned historical rc10 tree predates them, so require them exactly
+// when present and tolerate their absence.
 if (labels['org.opencontainers.image.revision'] !== revision) fail('revision label');
 if (labels['dev.sanctuary.image-lock-sha256'] !== imageLock) fail('image-lock label');
-if (!/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'] ?? '')) fail('version label');
-if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'] ?? '')) fail('build-id label');
+if ('org.opencontainers.image.source' in labels
+  && labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary') fail('source label');
+if ('org.opencontainers.image.version' in labels
+  && !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'])) fail('version label');
+if ('io.sanctuary.build-id' in labels
+  && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'])) fail('build-id label');
 NODE
   printf '%s' "$listed"
 }

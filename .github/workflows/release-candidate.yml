@@ -526,6 +526,10 @@ jobs:
       GATEWAY_PORT: '15100'
       PORT_OFFSET: '0'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/fresh-install
+      # Fail a starved e2e lock wait inside the 60-minute job budget so the
+      # diagnostics upload runs and the log names the lock (v0.8.70-rc3/rc4).
+      # 30 minutes covers install-test's fresh install plus install script.
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1800'
       IMAGE_CVE_REPORT_DIR: ${{ github.workspace }}/.tmp/ci-evidence/runtime-image-cves
       SANCTUARY_CI_DEBUG_TRACE: '1'
 
