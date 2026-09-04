@@ -1044,6 +1044,16 @@ assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install tes
 assert_named_job_step_not_contains "$RC" "fresh-install-test" "Run fresh install test" \
   "release-candidate fresh install has no direct cleanup owner" \
   'cleanup-docker-resources.sh'
+# v0.8.70-rc1 (run 14651): the subject inherited the runner's GITHUB_WORKSPACE,
+# whose .tmp is mode 755, so prepare_install_test_root refused the test root and
+# the lane died in 6 s. install-test.yml's run-in-isolated-workspace.sh points
+# GITHUB_WORKSPACE at the owner-only isolated clone; the RC lane must do the same.
+assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install test" \
+  "release-candidate fresh install rebinds GITHUB_WORKSPACE to the isolated clone" \
+  'export GITHUB_WORKSPACE="$SANCTUARY_INSTALL_WORKSPACE"'
+assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install test" \
+  "release-candidate fresh install exposes the isolated clone as the CI workspace override" \
+  'SANCTUARY_CI_WORKSPACE_OVERRIDE="$SANCTUARY_INSTALL_WORKSPACE"'
 
 # release-candidate.yml deliberately does not run an upgrade matrix or
 # upgrade-full-recovery job — install-test.yml's serialized chain owns

@@ -945,13 +945,23 @@ change_password() {
 
 # Create a clean test directory
 install_owner_only_directory() {
-    local directory="$1" resolved owner mode
-    [ -d "$directory" ] && [ ! -L "$directory" ] || return 1
+    local directory="$1" resolved owner mode expected_owner
+    if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+        log_error "Install test root refused: $directory is not a real directory" >&2
+        return 1
+    fi
     resolved="$(cd "$directory" && pwd -P)" || return 1
     owner="$(stat -c '%u' -- "$directory")" || return 1
     mode="$(stat -c '%a' -- "$directory")" || return 1
-    [ "$resolved" = "$directory" ] \
-        && [ "$owner" = "${UID:-$(id -u)}" ] && [ "$mode" = "700" ]
+    expected_owner="${UID:-$(id -u)}"
+    if [ "$resolved" != "$directory" ] || [ "$owner" != "$expected_owner" ] || [ "$mode" != "700" ]; then
+        # A silent return here cost v0.8.70-rc1 its fresh-install lane: the
+        # workspace .tmp was mode 755 and the log was empty. Name the path and
+        # the exact expectation so the next refusal is diagnosable from the log.
+        # stderr: prepare_install_test_root discards the stdout of its helpers.
+        log_error "Install test root refused: $directory must be an owner-only directory (owner $expected_owner, mode 700); found owner $owner, mode $mode, resolved $resolved" >&2
+        return 1
+    fi
 }
 
 install_create_exact_private_child() {

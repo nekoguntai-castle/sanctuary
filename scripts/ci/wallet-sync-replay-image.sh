@@ -5,6 +5,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ownership/producer-hooks.sh
 . "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
+# Read the package version of a source root given as any path (relative to the
+# caller's working directory or absolute). A bare require(path) would be a
+# module-name lookup and fail for relative roots such as the workflow's
+# `.tmp/wallet-sync-replay/rc10-source`.
+replay_source_version() {
+  node -e '
+    const { resolve } = require("node:path");
+    const { readFileSync } = require("node:fs");
+    const manifest = JSON.parse(readFileSync(resolve(process.argv[1], "package.json"), "utf8"));
+    if (typeof manifest.version !== "string" || manifest.version === "") process.exit(1);
+    process.stdout.write(manifest.version);
+  ' "$1"
+}
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -112,7 +126,7 @@ build_image() {
   fi
 
   image_lock_sha256="$(sha256sum "$image_lock" | cut -d ' ' -f 1)"
-  build_version="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$source_root/package.json")"
+  build_version="$(replay_source_version "$source_root")"
   build_id="${SANCTUARY_OPERATION_RUN_ID:-replay-${revision:0:12}}"
   temporary_archive="$output_dir/.wallet-sync-replay-$revision.oci.tar"
   # The Docker exporter emits an OCI layout (oci-layout/index.json/blobs) plus

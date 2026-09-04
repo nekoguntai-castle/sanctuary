@@ -596,7 +596,17 @@ jobs:
               --checkout-root "$SANCTUARY_INSTALL_WORKSPACE" \
               --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/rc-fresh-install" \
               --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/rc-fresh-install" \
-              -- bash -c 'cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/fresh-install.test.sh --verbose'
+              -- bash -c '
+                # Mirror scripts/ci/run-in-isolated-workspace.sh: the subject must see the
+                # owner-only isolated clone as its workspace so prepare_install_test_root
+                # can create its exact private test root under it. The runner workspace
+                # .tmp is mode 755 and is refused (v0.8.70-rc1, run 14651).
+                export SANCTUARY_CI_ORIGINAL_WORKSPACE="$GITHUB_WORKSPACE"
+                export SANCTUARY_CI_ISOLATED_WORKSPACE="$SANCTUARY_INSTALL_WORKSPACE"
+                export SANCTUARY_CI_WORKSPACE_OVERRIDE="$SANCTUARY_INSTALL_WORKSPACE"
+                export GITHUB_WORKSPACE="$SANCTUARY_INSTALL_WORKSPACE"
+                cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/fresh-install.test.sh --verbose
+              '
 
       - name: Show container logs on failure
         if: failure()

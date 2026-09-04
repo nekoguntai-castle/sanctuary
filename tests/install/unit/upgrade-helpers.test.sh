@@ -1562,6 +1562,23 @@ test_prepare_install_root_refuses_broad_existing_root() {
   fi
 }
 
+test_prepare_install_root_names_the_broad_parent_it_refuses() {
+  # v0.8.70-rc1 (run 14651): the RC fresh-install job created $GITHUB_WORKSPACE/.tmp
+  # with mode 755, prepare_install_test_root returned 1 without a word, and the
+  # lane died in 6 s with an empty log. Refusals must say which path failed.
+  local workspace="$TEST_TMP_DIR/broad-parent-workspace" output
+  mkdir -m 700 "$workspace"
+  mkdir -m 755 "$workspace/.tmp"
+  if output="$(bash -c 'source "$1"; prepare_install_test_root "$2"' _       "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$workspace/.tmp/install-tests-1-2" 2>&1)"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} a 755 parent must be refused"
+    return 1
+  fi
+  assert_contains "$output" "$workspace/.tmp" \
+    "refusal must name the parent directory that is not owner-only"
+  assert_contains "$output" "700" \
+    "refusal must state the required owner-only mode"
+}
+
 test_prepare_install_root_uses_coordinated_private_runtime_for_tmp() {
   local runtime="$TEST_TMP_DIR/runtime-authority" root
   mkdir -m 700 "$runtime"
@@ -2436,6 +2453,10 @@ main() {
   run_test "install root uses workspace in actions" test_install_root_uses_workspace_in_actions
   run_test "install root uses workspace mount without actions env" test_install_root_uses_workspace_mount_without_actions_env
   run_test "install root honors explicit override" test_install_root_honors_explicit_override
+  run_test "prepare install root refuses symlink before mutating target" test_prepare_install_root_refuses_symlink_before_mutating_target
+  run_test "prepare install root refuses broad existing root" test_prepare_install_root_refuses_broad_existing_root
+  run_test "prepare install root uses coordinated private runtime for tmp" test_prepare_install_root_uses_coordinated_private_runtime_for_tmp
+  run_test "prepare install root names the broad parent it refuses" test_prepare_install_root_names_the_broad_parent_it_refuses
   run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume
   run_test "install test host resolves default" test_install_test_host_resolves_default
   run_test "install test host honors override" test_install_test_host_honors_override

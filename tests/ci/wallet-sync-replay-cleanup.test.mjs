@@ -463,3 +463,31 @@ test('replay registration signs obsolete exact-delete authority for the immutabl
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('build stamps the source version from a relative source root', () => {
+  // The RC workflow passes `.tmp/wallet-sync-replay/rc10-source` (relative to
+  // the checkout) as the rc10 source root. A bare `require(relativePath)` is a
+  // module-name lookup, not a file path, so the version stamp failed with
+  // MODULE_NOT_FOUND on v0.8.70-rc1 (run 14651) while rc11's `.` still worked.
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const root = mkdtempSync(join(tmpdir(), 'sanctuary-replay-source-'));
+  try {
+    const output = execFileSync('bash', ['-c', String.raw`
+      set -euo pipefail
+      source "$1"
+      cd "$2"
+      mkdir -p nested/source
+      printf '{"version":"9.8.7"}
+' > nested/source/package.json
+      replay_source_version nested/source
+      printf '
+'
+      replay_source_version "$2/nested/source"
+      printf '
+'
+    `, '_', helper, root], { encoding: 'utf8' });
+    assert.equal(output, '9.8.7\n9.8.7\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
