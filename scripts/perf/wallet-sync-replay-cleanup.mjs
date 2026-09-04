@@ -6,11 +6,42 @@ function missingDockerIdentity(error) {
   return /no such (?:object|container|network):|network .* not found/i.test(detail);
 }
 
+const INSPECT_ATTEMPTS = 3;
+const INSPECT_RETRY_DELAY_MS = 500;
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// The first stderr line of a daemon error, bounded, for the upload-safe
+// evidence. Daemon errors name resources and sockets, never secrets.
+function failureDetail(error) {
+  const text = `${error?.stderr ?? ''}\n${error instanceof Error ? error.message : String(error)}`;
+  const line = text.split('\n').map((part) => part.trim())
+    .find((part) => part !== '' && !/^Command failed:/.test(part)) ?? 'unknown error';
+  return line.slice(0, 200);
+}
+
 function inspectCleanupIdentity(resource, operations) {
   const command = resource.resourceClass === 'compose_network'
     ? ['docker', 'network', 'inspect', resource.immutableIdentity]
     : ['docker', 'container', 'inspect', resource.immutableIdentity];
-  try {
+  const sleep = operations.sleep ?? sleepMs;
+  let lastError;
+  for (let attempt = 1; attempt <= INSPECT_ATTEMPTS; attempt += 1) {
+    try {
+      return inspectOnce(resource, command, operations);
+    } catch (error) {
+      if (missingDockerIdentity(error)) return { state: 'absent' };
+      lastError = error;
+      if (attempt < INSPECT_ATTEMPTS) sleep(INSPECT_RETRY_DELAY_MS);
+    }
+  }
+  return { state: 'ambiguous', failureClass: 'query_failed', failureDetail: failureDetail(lastError) };
+}
+
+function inspectOnce(resource, command, operations) {
+  {
     const output = JSON.parse(String(operations.run(command) ?? ''));
     if (!Array.isArray(output) || output.length !== 1) {
       return { state: 'ambiguous', failureClass: 'malformed' };
@@ -32,10 +63,6 @@ function inspectCleanupIdentity(resource, operations) {
       return { state: 'current', failureClass: 'ownership_changed' };
     }
     return { state: 'current', immutableIdentity: inspected.Id };
-  } catch (error) {
-    return missingDockerIdentity(error)
-      ? { state: 'absent' }
-      : { state: 'ambiguous', failureClass: 'query_failed' };
   }
 }
 
@@ -61,13 +88,14 @@ function removeCleanupResource(resource, operations) {
   operations.run(command);
 }
 
-function cleanupResult(action, result, failureClass = 'none') {
+function cleanupResult(action, result, failureClass = 'none', detail = undefined) {
   return {
     sequence: action.sequence,
     resourceClass: action.resourceClass,
     immutableIdentity: action.immutableIdentity,
     result,
     failureClass,
+    ...(detail === undefined ? {} : { failureDetail: detail }),
   };
 }
 
@@ -78,7 +106,7 @@ function executeCleanupAction(action, resource, operations) {
   const observed = inspectCleanupIdentity(resource, operations);
   if (observed.state === 'absent') return cleanupResult(action, 'absent');
   if (observed.state === 'ambiguous') {
-    return cleanupResult(action, 'ambiguous', observed.failureClass);
+    return cleanupResult(action, 'ambiguous', observed.failureClass, observed.failureDetail);
   }
   if (observed.failureClass) {
     return cleanupResult(action, 'ambiguous', observed.failureClass);
@@ -96,7 +124,7 @@ function executeCleanupAction(action, resource, operations) {
   if (postcondition.state === 'absent') return cleanupResult(action, 'cleaned');
   const failureClass = postcondition.state === 'ambiguous'
     ? postcondition.failureClass : mutationFailed ? 'mutation_failed' : 'postcondition_failed';
-  return cleanupResult(action, 'ambiguous', failureClass);
+  return cleanupResult(action, 'ambiguous', failureClass, postcondition.failureDetail);
 }
 
 export function cleanup(resources, operations) {
@@ -148,6 +176,12 @@ export function buildReplayCleanupEvidence(cleanupOutcome, rawEvidence) {
     else if (result.result === 'refused') resultCounts.refused += 1;
     else resultCounts.ambiguous += 1;
   });
+  const failureDetails = cleanupOutcome.results
+    .filter(result => result.failureDetail !== undefined)
+    .map(result => ({
+      sequence: result.sequence, resourceClass: result.resourceClass,
+      failureClass: result.failureClass, detail: result.failureDetail,
+    }));
   return {
     schemaVersion: '1.0.0',
     artifactType: 'replay_cleanup_evidence',
@@ -156,6 +190,7 @@ export function buildReplayCleanupEvidence(cleanupOutcome, rawEvidence) {
     resourceCounts: { ...resultCounts },
     resultCounts,
     failureClasses: cleanupOutcome.failureClasses,
+    ...(failureDetails.length === 0 ? {} : { failureDetails }),
     rawEvidence,
   };
 }

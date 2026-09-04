@@ -165,19 +165,25 @@ test('replay cleanup is exact, idempotent, fail-closed, and upload-safe', () => 
   assert.deepEqual(responseLoss.results.map(result => result.result), ['cleaned']);
   const queryFailed = cleanup([resources[1]], {
     run: () => { throw new Error('Cannot connect to the Docker daemon'); },
+    sleep: () => {},
   });
   assert.deepEqual(queryFailed.failureClasses, ['query_failed']);
 
+  // Fail-closed: a daemon that cannot be reached is retried for the first
+  // resource only; no later resource is ever touched.
   const failClosedCalls = [];
   const failClosed = cleanup(resources, {
     run: args => {
       failClosedCalls.push(args);
       throw new Error('Cannot connect to the Docker daemon');
     },
+    sleep: () => {},
   });
   assert.deepEqual(failClosed.results.map(result => result.result), ['ambiguous', 'refused', 'refused']);
   assert.deepEqual(failClosed.failureClasses, ['blocked_by_prior_failure', 'query_failed']);
-  assert.equal(failClosedCalls.length, 1);
+  assert.equal(failClosedCalls.length, 3);
+  assert.ok(failClosedCalls.every(args => args[1] === 'container' && args[2] === 'inspect'
+    && args.at(-1) === resources[1].immutableIdentity));
 
   const unsupported = cleanup([
     { resourceClass: 'oci_image', immutableIdentity: 'sha256:abc' },
@@ -646,4 +652,55 @@ test('build stamps provenance labels so a historical source tree yields a cleana
   const source = readFileSync(helper, 'utf8');
   assert.match(source, /docker buildx build \\\n(?:.*\\\n)*?\s+"\$\{provenance_label_args\[@\]\}" \\\n/,
     'build_image must pass the provenance labels to docker buildx build');
+});
+
+test('replay cleanup records the daemon error behind a query failure and retries transient ones', () => {
+  // v0.8.70-rc6 (run 14734): the rc10 replay's owned cleanup reported
+  // "blocked_by_prior_failure,query_failed" and aborted the lane while the
+  // signed coordinator cleaned the same four resources. The evidence carried
+  // no error text, so the cause is unknown. Record the redacted first line of
+  // the daemon error, and retry an inspect that fails for a reason other than
+  // absence before classifying it.
+  const [network, container] = resources;
+  let attempts = 0;
+  const transient = cleanup([container], {
+    run: args => {
+      if (args[1] === 'container' && args[2] === 'inspect') {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Error response from daemon: context deadline exceeded');
+        if (attempts === 2) return inspectedResource(container);
+        throw new Error(`No such container: ${args.at(-1)}`);
+      }
+      if (args[1] === 'rm') return '';
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    },
+    sleep: () => {},
+  });
+  assert.equal(transient.state, 'cleaned');
+  assert.deepEqual(transient.results.map(result => result.result), ['cleaned']);
+  assert.equal(attempts, 3);
+
+  let persistentAttempts = 0;
+  const persistent = cleanup([container, network], {
+    run: args => {
+      if (args[1] === 'container' && args[2] === 'inspect') {
+        persistentAttempts += 1;
+        const error = new Error('Command failed: docker container inspect');
+        error.stderr = 'Error response from daemon: dial unix /var/run/docker.sock: connect: permission denied\nsecond line';
+        throw error;
+      }
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    },
+    sleep: () => {},
+  });
+  assert.equal(persistent.state, 'partial');
+  assert.deepEqual(persistent.failureClasses, ['blocked_by_prior_failure', 'query_failed']);
+  assert.equal(persistentAttempts, 3);
+  assert.equal(persistent.results[0].failureDetail, 'Error response from daemon: dial unix /var/run/docker.sock: connect: permission denied');
+  assert.equal(persistent.results[1].failureDetail, undefined);
+  const evidence = buildReplayCleanupEvidence(persistent, null);
+  assert.deepEqual(evidence.failureDetails, [{
+    sequence: 1, resourceClass: 'compose_container', failureClass: 'query_failed',
+    detail: 'Error response from daemon: dial unix /var/run/docker.sock: connect: permission denied',
+  }]);
 });

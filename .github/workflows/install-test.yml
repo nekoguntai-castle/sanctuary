@@ -346,7 +346,11 @@ jobs:
     # Measured rootless-Docker cleanup can extend beyond the former 30-minute
     # budget after the application assertions pass. Preserve time for the
     # receipt verification and artifact upload instead of killing finalization.
-    timeout-minutes: 45
+    # On a contended docker-socket host the fresh install alone took 28m34s
+    # (v0.8.70-rc6, run 14732; 11m on an idle host) and the install script a
+    # further ~16m, so the combined job budgets both suites at ~2x plus
+    # finalization.
+    timeout-minutes: 90
     env:
       COMPOSE_PROJECT_NAME: sanctuary-ci-fresh-${{ github.run_id }}
       HTTPS_PORT: '15443'

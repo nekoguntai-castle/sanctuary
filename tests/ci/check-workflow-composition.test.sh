@@ -1250,9 +1250,12 @@ for isolated_step in \
     "install-test $install_job/$step_name uses one signed isolated subject" \
     "scripts/ci/run-in-isolated-workspace.sh --docker-visible $label"
 done
+# v0.8.70-rc6 (run 14732): on a contended docker-socket host the fresh install
+# alone took 28m34s (11m on the other host), so fresh install + install script
+# cannot fit 45 minutes; the job was killed before the diagnostics upload.
 assert_named_job_contains "$IT" "fresh-install-test" \
-  "combined install job reserves measured cleanup receipt finalization time" \
-  'timeout-minutes: 45'
+  "combined install job budgets both e2e suites on a contended host plus receipt finalization" \
+  'timeout-minutes: 90'
 # v0.8.70-rc2 (run 14664): on a tag push the RC fresh-install job serialises
 # behind install-test.yml's fresh-install job (fresh install + install script,
 # 26 min on a cold image cache) via the shared e2e runner lock, then needs
