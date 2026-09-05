@@ -95,6 +95,7 @@ EOF
 
 new_fixture() {
   local name="$1"
+  local rc_tag_kind="${2:-annotated}"
   local fixture="$TEST_ROOT/$name"
   mkdir -p "$fixture/scripts/release" "$fixture/scripts/ci" "$fixture/bin" "$fixture.external"
   cp "$REPO_ROOT/scripts/release/promote-release.sh" "$fixture/scripts/release/"
@@ -120,7 +121,11 @@ EOF
   git -C "$fixture" add .
   git -C "$fixture" commit -qm fixture
   git -C "$fixture" branch -M main
-  git -C "$fixture" tag -a v1.2.3-rc1 -m rc1
+  if [[ "$rc_tag_kind" == lightweight ]]; then
+    git -C "$fixture" tag v1.2.3-rc1
+  else
+    git -C "$fixture" tag -a v1.2.3-rc1 -m rc1
+  fi
   git -C "$fixture" remote add origin "$fixture/origin.git"
   git -C "$fixture" push -q origin main refs/tags/v1.2.3-rc1
   cat > "$fixture/.git/hooks/pre-push" <<'EOF'
@@ -297,6 +302,32 @@ test_retry_fetches_exact_remote_tag_when_local_missing() {
   assert_contains "$fixture/output.log" 'already promoted'
 }
 
+test_lightweight_rc_tag_is_promoted_on_identical_commit() {
+  local fixture sha remote
+  fixture="$(new_fixture lightweight lightweight)"
+  sha="$(git -C "$fixture" rev-parse HEAD)"
+  [[ "$(git -C "$fixture" cat-file -t v1.2.3-rc1)" == commit ]] || fail 'fixture RC tag is not lightweight'
+  run_promote "$fixture" > "$fixture/output.log"
+  remote="$(git -C "$fixture" ls-remote origin 'refs/tags/v1.2.3^{}' | awk '{print $1}')"
+  [[ "$remote" == "$sha" ]] || fail 'lightweight RC did not promote to the accepted commit'
+  assert_contains "$fixture/trace.log" 'stable-push-after-gates'
+}
+
+test_lightweight_rc_tag_pointing_elsewhere_on_remote_is_refused() {
+  local fixture other
+  fixture="$(new_fixture lightweight-drift lightweight)"
+  git -C "$fixture" commit -q --allow-empty -m drift
+  other="$(git -C "$fixture" rev-parse HEAD)"
+  git -C "$fixture" push -q origin "HEAD:refs/heads/drift"
+  git -C "$fixture/origin.git" update-ref refs/tags/v1.2.3-rc1 "$other"
+  git -C "$fixture" reset -q --hard v1.2.3-rc1
+  if run_promote "$fixture" > "$fixture/output.log" 2>&1; then
+    fail 'drifted remote RC tag was promoted'
+  fi
+  assert_contains "$fixture/output.log" 'remote RC tag identity does not match checkout'
+  [[ -z "$(git -C "$fixture" ls-remote origin refs/tags/v1.2.3)" ]] || fail 'drifted RC pushed stable tag'
+}
+
 test_operator_scripts_do_not_expose_verifier_overrides() {
   assert_not_contains "$REPO_ROOT/scripts/release/promote-release.sh" 'SANCTUARY_CANARY_VERIFIER'
   assert_not_contains "$REPO_ROOT/scripts/release/promote-release.sh" 'SANCTUARY_ASSET_PREPARER'
@@ -304,6 +335,8 @@ test_operator_scripts_do_not_expose_verifier_overrides() {
 }
 
 test_happy_path_proves_everything_before_stable_tag
+test_lightweight_rc_tag_is_promoted_on_identical_commit
+test_lightweight_rc_tag_pointing_elsewhere_on_remote_is_refused
 test_failed_canary_blocks_tag_mutation
 test_output_inside_any_worktree_is_rejected
 test_failed_rehearsal_blocks_tag_mutation

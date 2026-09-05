@@ -88,9 +88,17 @@ validate_checkout() {
   [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT" ]] || fail "checkout must be at $RC_TAG"
   git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main \
     || fail "$RC_TAG is not an ancestor of fresh origin/main"
-  local remote_commit
-  remote_commit="$(git ls-remote origin "refs/tags/$RC_TAG^{}" | awk 'NR == 1 {print $1}')"
-  [[ "$remote_commit" == "$RELEASE_COMMIT" ]] || fail "remote RC tag identity does not match checkout"
+  # An RC tag may be annotated (the remote lists the tag object plus a peeled
+  # commit) or lightweight (the remote lists only the commit). Require the remote
+  # ref to name the same object as the local tag, and its commit to be the
+  # release commit, so either spelling is accepted only when identical.
+  local remote_object remote_commit
+  read -r remote_object remote_commit < <(git ls-remote origin "refs/tags/$RC_TAG" "refs/tags/$RC_TAG^{}" \
+    | awk -v ref="refs/tags/$RC_TAG" '$2 == ref {object=$1} $2 == ref "^{}" {commit=$1} END {print object, commit}')
+  [[ -n "$remote_object" && "$remote_object" == "$(git rev-parse --verify "refs/tags/$RC_TAG")" ]] \
+    || fail "remote RC tag identity does not match checkout"
+  [[ "${remote_commit:-$remote_object}" == "$RELEASE_COMMIT" ]] \
+    || fail "remote RC tag identity does not match checkout"
 }
 
 validate_output_location() {
