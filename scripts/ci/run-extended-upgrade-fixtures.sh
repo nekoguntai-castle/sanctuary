@@ -108,8 +108,12 @@ run_fixture() {
       cleanup_identity="${run_id}-$(ci_run_attempt)"
       cleanup_runtime="$cleanup_temp/sanctuary-cleanup/${cleanup_identity}/${cleanup_lane}"
       cleanup_artifacts="$cleanup_temp/sanctuary-cleanup-artifacts/upgrade-extended/${cleanup_lane}"
+      # Each fixture installs from a historical source tree whose resources
+      # carry no ownership labels; the witness lets the coordinator retire
+      # them exactly, as the baseline wrapper does (v0.8.70-rc7, run 14745).
       if "$original_workspace/scripts/ci/cleanup-ci-callsite.sh" run \
           --authority-mode deployment_managed_by_subject \
+          --legacy-fixture-creation-witness \
           --lane "$cleanup_lane" \
           --checkout-root "$PWD" \
           --runtime "$cleanup_runtime" \

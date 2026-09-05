@@ -448,10 +448,13 @@ resolve_start_deployment() {
 
 wait_for_routed_api() {
     local deadline=$((SECONDS + 60)) api_url
+    # The probe runs inside the frontend container, so it must target nginx's
+    # internal listen ports (docker/nginx/docker-entrypoint.sh), not the
+    # published HTTPS_PORT/HTTP_PORT that map onto them from the host.
     if [ -f "$SSL_DIR/fullchain.pem" ]; then
-        api_url="https://localhost:${HTTPS_PORT}/api/v1/health"
+        api_url="https://localhost:${NGINX_HTTPS_PORT:-8443}/api/v1/health"
     else
-        api_url="http://localhost:${HTTP_PORT}/api/v1/health"
+        api_url="http://localhost:${NGINX_HTTP_PORT:-8080}/api/v1/health"
     fi
     echo "Verifying the browser-routed backend API..."
     while [ "$SECONDS" -lt "$deadline" ]; do

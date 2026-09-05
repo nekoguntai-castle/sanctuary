@@ -1217,6 +1217,21 @@ assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
 assert_occurrence_count "$UPGRADE_BASELINE_SUBJECT" \
   "install-test scopes legacy fixture creation authority to one baseline wrapper" \
   '--legacy-fixture-creation-witness' 1
+# v0.8.70-rc7 (run 14745): every extended fixture passed its 23 phases and every
+# receipt-bound cleanup was refused (protected/unlabeled/unregistered) because
+# the extended runner never handed the coordinator the legacy fixture witness;
+# the baseline lane, which does, cleaned 17/17. Each extended fixture installs
+# from a historical source tree, so it creates the same unlabeled resources.
+UPGRADE_EXTENDED_RUNNER="$REPO_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh"
+assert_contains_in_order "$UPGRADE_EXTENDED_RUNNER" \
+  "install-test extended fixtures witness legacy fixture creation for receipt-bound cleanup" \
+  'cleanup-ci-callsite.sh" run' \
+  '--authority-mode deployment_managed_by_subject' \
+  '--legacy-fixture-creation-witness' \
+  '--lane "$cleanup_lane"'
+assert_occurrence_count "$UPGRADE_EXTENDED_RUNNER" \
+  "install-test extended runner witnesses legacy fixture creation exactly once" \
+  '--legacy-fixture-creation-witness' 1
 
 assert_named_job_step_not_contains "$RC" "fresh-install-test" "Run fresh install test" \
   "release-candidate fresh install uses coordinator-managed deployment authority" \

@@ -1224,6 +1224,44 @@ test_install_workflow_uses_run_scoped_ssl_dirs() {
     "install workflow checkout steps should not pre-clean shared runner workspaces"
 }
 
+test_container_health_discovers_the_compose_project_not_the_literal_name() {
+  # v0.8.70-rc7 (run 14745): the coordinator names the install-stack Compose
+  # project ci-<run>-<attempt>-install-stack, so container-health.test.sh's
+  # `docker ps --filter name=sanctuary` found nothing and the lane failed with
+  # "No Sanctuary containers found" while the stack was healthy.
+  local fake_bin="$TEST_TMP_DIR/health-bin" calls="$TEST_TMP_DIR/health-calls" output
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/docker" <<'EOF2'
+#!/bin/sh
+printf '%s\n' "$*" >> "${FAKE_DOCKER_CALLS:?}"
+case "$*" in
+  *"label=com.docker.compose.project=ci-1-1-install-stack"*) printf 'abc123\n' ;;
+esac
+exit 0
+EOF2
+  chmod +x "$fake_bin/docker"
+  : > "$calls"
+  if ! output="$(PATH="$fake_bin:$PATH" FAKE_DOCKER_CALLS="$calls" COMPOSE_PROJECT_NAME=ci-1-1-install-stack \
+      bash -c 'source "$1"; compose_project_containers_exist && compose_project_network_ids' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh" 2>&1)"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} discovery must find containers by the Compose project label: $output"
+    return 1
+  fi
+  assert_equals "abc123" "$output" "network discovery must return the project's network IDs"
+  if grep -q 'name=sanctuary' "$calls"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} discovery must not filter on the literal name sanctuary"
+    return 1
+  fi
+  assert_contains "$(cat "$calls")" "label=com.docker.compose.project=ci-1-1-install-stack" \
+    "discovery must filter on the Compose project label"
+
+  local health="$PROJECT_ROOT/tests/install/e2e/container-health.test.sh"
+  if grep -q 'name=sanctuary' "$health"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} container-health.test.sh still discovers by the literal name sanctuary"
+    return 1
+  fi
+}
+
 test_compose_subject_binds_project_root_before_ownership_init() {
   # v0.8.70-rc2 (run 14662): Install Stack Smoke died in 6 s with
   # "Current checkout ownership producer hook is unavailable" because the
@@ -2483,6 +2521,7 @@ main() {
   run_test "prepare install root uses coordinated private runtime for tmp" test_prepare_install_root_uses_coordinated_private_runtime_for_tmp
   run_test "prepare install root names the broad parent it refuses" test_prepare_install_root_names_the_broad_parent_it_refuses
   run_test "compose subject binds project root before ownership init" test_compose_subject_binds_project_root_before_ownership_init
+  run_test "container health discovers the compose project" test_container_health_discovers_the_compose_project_not_the_literal_name
   run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume
   run_test "install test host resolves default" test_install_test_host_resolves_default
   run_test "install test host honors override" test_install_test_host_honors_override

@@ -436,8 +436,9 @@ test_migrate_container_completed() {
 test_container_network() {
     log_info "Testing container network..."
 
-    # Check if sanctuary-network exists (project name may vary)
-    local network_exists=$(docker network ls --filter "name=sanctuary" -q 2>/dev/null)
+    # The lane's networks carry the Compose project label; the project name is
+    # chosen by the caller or the cleanup coordinator (v0.8.70-rc7, run 14745).
+    local network_exists=$(compose_project_network_ids)
 
     if [ -z "$network_exists" ]; then
         log_error "Sanctuary network not found"
@@ -445,7 +446,7 @@ test_container_network() {
     fi
 
     # Check containers are connected (pattern matches any project name)
-    local connected=$(docker network ls --filter "name=sanctuary" -q | head -1 | xargs docker network inspect 2>/dev/null | grep -c '"Name":' || echo "0")
+    local connected=$(compose_project_network_ids | head -1 | xargs docker network inspect 2>/dev/null | grep -c '"Name":' || echo "0")
 
     if [ "$connected" -ge 3 ]; then
         log_success "Containers connected to network"
@@ -601,8 +602,8 @@ main() {
     fi
 
     # Check if containers exist
-    if ! docker ps -a --filter "name=sanctuary" -q | grep -q .; then
-        log_error "No Sanctuary containers found. Run install first."
+    if ! compose_project_containers_exist; then
+        log_error "No Sanctuary containers found for Compose project ${COMPOSE_PROJECT_NAME:-sanctuary}. Run install first."
         exit 1
     fi
 

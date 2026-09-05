@@ -169,6 +169,19 @@ run_project_compose() {
 
 # Get container name for a service (supports dynamic project names)
 # Usage: get_container_name "postgres" -> returns "sanctuary-postgres-1" or "{project}-postgres-1"
+# Discover the lane's own Compose resources by project label. The compose
+# project is whatever the caller (or the cleanup coordinator) chose, e.g.
+# ci-<run>-<attempt>-install-stack; nothing may assume the literal "sanctuary".
+compose_project_containers_exist() {
+    local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
+    docker ps -a --filter "label=com.docker.compose.project=${project}" -q 2>/dev/null | grep -q .
+}
+
+compose_project_network_ids() {
+    local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
+    docker network ls --filter "label=com.docker.compose.project=${project}" -q 2>/dev/null
+}
+
 get_container_name() {
     local service="$1"
     local project="${COMPOSE_PROJECT_NAME:-sanctuary}"

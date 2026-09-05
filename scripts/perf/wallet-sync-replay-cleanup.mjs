@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import { replayOwnershipLabels } from './wallet-sync-replay-ownership.mjs';
 
+// Absence wordings across Docker generations and image stores:
+//   "No such container: <id>" / "No such object: <id>" (classic)
+//   "no container with name or ID \"<id>\" found: no such container" (Docker 29, containerd store)
+//   "network <id> not found"
 function missingDockerIdentity(error) {
   const detail = `${error instanceof Error ? error.message : String(error)}\n${error?.stderr ?? ''}`;
-  return /no such (?:object|container|network):|network .* not found/i.test(detail);
+  return /no such (?:object|container|network)\b|no container with name or ID .* found|network .* not found/i.test(detail);
 }
 
 const INSPECT_ATTEMPTS = 3;

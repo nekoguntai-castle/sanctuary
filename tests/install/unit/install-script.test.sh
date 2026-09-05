@@ -1216,6 +1216,25 @@ test_start_script_exports_secrets() {
     fi
 }
 
+test_start_script_routed_probe_uses_nginx_internal_ports() {
+  # v0.8.70-rc7 (install-test run 14745): start.sh --rebuild rebuilt and
+  # started every container, then wait_for_routed_api probed
+  # https://localhost:${HTTPS_PORT} from inside the frontend container. That is
+  # the published host port; inside the container nginx listens on
+  # NGINX_HTTPS_PORT (8443), so the probe only works when the two coincide.
+  # setup.sh already probes the internal port; start.sh must match.
+  local body
+  body="$(extract_shell_function "wait_for_routed_api" "$START_SCRIPT")"
+  assert_contains "$body" 'https://localhost:${NGINX_HTTPS_PORT:-8443}/api/v1/health' \
+    "start.sh routed probe should target nginx's internal HTTPS port" || return 1
+  assert_contains "$body" 'http://localhost:${NGINX_HTTP_PORT:-8080}/api/v1/health' \
+    "start.sh routed probe should target nginx's internal HTTP port" || return 1
+  if grep -qE 'localhost:\$\{HTTPS_PORT\}|localhost:\$\{HTTP_PORT\}' <<< "$body"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} start.sh routed probe must not use the published host ports inside the container"
+    return 1
+  fi
+}
+
 test_start_script_reconciles_postgres_password() {
     if grep -q "scripts/reconcile-postgres-password.sh" "$START_SCRIPT" \
         && grep -q "start_compose_stack" "$START_SCRIPT" \
@@ -2911,6 +2930,7 @@ main() {
     run_test "start script checks POSTGRES_PASSWORD" test_start_script_checks_postgres_password
     run_test "start script exports secrets" test_start_script_exports_secrets
     run_test "start script reconciles Postgres password" test_start_script_reconciles_postgres_password
+    run_test "start script routed probe uses nginx internal ports" test_start_script_routed_probe_uses_nginx_internal_ports
     run_test "start script sources .env file" test_start_script_sources_env_file
     run_test "start script has .env.local fallback" test_start_script_has_env_local_fallback
     run_test "start script .env has set -a" test_start_script_env_has_set_a

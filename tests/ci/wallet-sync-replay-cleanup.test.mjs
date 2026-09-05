@@ -704,3 +704,35 @@ test('replay cleanup records the daemon error behind a query failure and retries
     detail: 'Error response from daemon: dial unix /var/run/docker.sock: connect: permission denied',
   }]);
 });
+
+test('replay cleanup treats Docker 29 containerd-store absence wording as absent', () => {
+  // v0.8.70-rc7 (run 14747): the recorded daemon error for the already-removed
+  // `--rm` migration container was
+  //   Error response from daemon: no container with name or ID "…" found: no such container
+  // which the classic `No such container:` pattern did not match, so the
+  // absent resource was classified query_failed and blocked the rest.
+  const [network, container] = resources;
+  const wordings = [
+    `Error response from daemon: no container with name or ID "${container.immutableIdentity}" found: no such container`,
+    `Error response from daemon: No such container: ${container.immutableIdentity}`,
+    `Error: No such object: ${container.immutableIdentity}`,
+  ];
+  for (const wording of wordings) {
+    const evidence = cleanup([container, network], {
+      run: args => {
+        if (args[1] === 'container' && args[2] === 'inspect') {
+          const error = new Error(`Command failed: docker container inspect ${args.at(-1)}`);
+          error.stderr = wording;
+          throw error;
+        }
+        if (args[1] === 'network' && args[2] === 'inspect') {
+          throw new Error(`Error response from daemon: network ${args.at(-1)} not found`);
+        }
+        throw new Error(`unexpected command: ${args.join(' ')}`);
+      },
+      sleep: () => { throw new Error('absence must not be retried'); },
+    });
+    assert.deepEqual(evidence.results.map(result => result.result), ['absent', 'absent'], wording);
+    assert.equal(evidence.state, 'cleaned', wording);
+  }
+});
