@@ -259,11 +259,34 @@ export function resolveLegacyDurableComposeOverlay({ composeArgs, legacyResource
   return overlay;
 }
 
+/**
+ * A long-lived install accumulates same-project resources the current
+ * definition no longer declares: a volume from a disabled profile, a network
+ * renamed by an earlier release, a stopped container of a removed service.
+ * During an upgrade they are retained and reported, never adopted or deleted.
+ * Any io.sanctuary label on such a resource means a prior manifest claimed it,
+ * so it stays a refusal for the operator to inspect.
+ */
+function retainedLeftover(kind, locator, labels, projectName, composeResource, allowUnlabeledUpgrade) {
+  if (!allowUnlabeledUpgrade || composeResource) return null;
+  if (labels['com.docker.compose.project'] !== projectName || sanctuaryLabelCount(labels) !== 0) return null;
+  const resourceLabel = kind === 'container' ? 'service' : kind;
+  const legacyName = labels[`com.docker.compose.${resourceLabel}`];
+  if (typeof legacyName !== 'string' || legacyName.length === 0) return null;
+  return { resourceClass: `compose_${kind}`, locator, composeResource: legacyName };
+}
+
 function inspectResource({
   kind, locator, inspectLocator = locator, composeResource, expected, projectName,
-  allowUnlabeledUpgrade, findings, legacyResources,
+  allowUnlabeledUpgrade, findings, legacyResources, retainedResources,
 }) {
   const inspected = inspectOne(kind, inspectLocator);
+  const leftover = retainedLeftover(kind, locator, inspected.labels, projectName, composeResource, allowUnlabeledUpgrade);
+  if (leftover) {
+    retainedResources.push(leftover);
+    process.stderr.write(`retained unowned legacy ${kind} ${locator} (${leftover.composeResource}) outside the current definition\n`);
+    return inspected;
+  }
   const lineage = lineageProblems(kind, locator, inspected.labels, projectName, composeResource);
   if (allowUnlabeledUpgrade && sanctuaryLabelCount(inspected.labels) === 0) {
     if (lineage.length > 0) findings.push(...lineage);
@@ -295,6 +318,7 @@ export function assertFirstManifestDockerResources({
   const allContainers = rows(docker(['container', 'ls', '-a', '--format', '{{.ID}}\t{{.Names}}\t{{.Label "com.docker.compose.project"}}']));
   const findings = [];
   const legacyResources = [];
+  const retainedResources = [];
   const base = {
     'io.sanctuary.project': projectLabel,
     'io.sanctuary.deployment-id': deploymentId,
@@ -305,7 +329,7 @@ export function assertFirstManifestDockerResources({
     if (!volumeNames.has(name) && composeProject !== definition.composeProjectName) continue;
     inspectResource({
       kind: 'volume', locator: name, composeResource: volumeNames.get(name), projectName: definition.composeProjectName,
-      allowUnlabeledUpgrade, findings, legacyResources,
+      allowUnlabeledUpgrade, findings, legacyResources, retainedResources,
       expected: { ...base, 'io.sanctuary.resource-class': 'compose_volume', 'io.sanctuary.cleanup-policy': 'preserve_ambiguous' },
     });
   }
@@ -313,7 +337,7 @@ export function assertFirstManifestDockerResources({
     if (!networkNames.has(name) && composeProject !== definition.composeProjectName) continue;
     inspectResource({
       kind: 'network', locator: name, inspectLocator: id, composeResource: networkNames.get(name), projectName: definition.composeProjectName,
-      allowUnlabeledUpgrade, findings, legacyResources,
+      allowUnlabeledUpgrade, findings, legacyResources, retainedResources,
       expected: { ...base, 'io.sanctuary.resource-class': 'compose_network', 'io.sanctuary.cleanup-policy': 'exact_delete' },
     });
   }
@@ -323,7 +347,7 @@ export function assertFirstManifestDockerResources({
     inspectResource({
       kind: 'container', locator: resource.name, inspectLocator: resource.id,
       composeResource: resource.serviceName, projectName: definition.composeProjectName,
-      allowUnlabeledUpgrade, findings, legacyResources,
+      allowUnlabeledUpgrade, findings, legacyResources, retainedResources,
       expected: { ...base, 'io.sanctuary.resource-class': 'compose_container', 'io.sanctuary.cleanup-policy': 'exact_delete' },
     });
   }
@@ -331,7 +355,7 @@ export function assertFirstManifestDockerResources({
   if (findings.length > 0) {
     throw new Error(`first deployment manifest refused existing legacy Docker resources:\n- ${findings.join('\n- ')}\nNo resources were relabeled, recreated, or adopted.`);
   }
-  return { inspected: true, legacyResources };
+  return { inspected: true, legacyResources, retainedResources };
 }
 
 function verifyLegacyDurableResources(legacyResources, definition, findings) {

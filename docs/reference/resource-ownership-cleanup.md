@@ -45,7 +45,11 @@ holding the canonical lock and only when the requested definition exactly
 matches the retained pending generation; completed stages are not replayed. An
 operator may instead explicitly roll back to a retained prior generation. A
 fresh process may not infer or adopt an unlabeled legacy stack; first-manifest
-inspection reports exact conflicting resources without mutating them.
+inspection reports exact conflicting resources without mutating them. During an
+upgrade, same-project resources the current definition no longer declares (a
+volume from a disabled profile, a network renamed by an earlier release, a
+stopped container of a removed service) are retained and reported when they
+carry no `io.sanctuary` label; one that carries any such label stays a refusal.
 Stop and backup use the retained snapshots rather than reconstructing overlays
 from live container names. Persistent data volumes remain preserve-only.
 

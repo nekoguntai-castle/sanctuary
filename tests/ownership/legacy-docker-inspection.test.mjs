@@ -53,11 +53,27 @@ case " $* " in
     elif [ "$FAKE_DOCKER_CASE" = renamed ]; then printf '%s\\n' '{"services":{},"networks":{"default":{"name":"sanctuary_replacement"}},"volumes":{"postgres_data":{"name":"sanctuary_postgres_data"}}}'
     elif [ "$FAKE_DOCKER_CASE" = alias ]; then printf '%s\\n' '{"services":{},"networks":{"default":{"name":"sanctuary_default"},"other":{"name":"sanctuary_default"}},"volumes":{"postgres_data":{"name":"sanctuary_postgres_data"}}}'
     else printf '%s\\n' '{"services":{"backend":{},"grafana":{"container_name":"sanctuary-grafana"}},"networks":{"default":{"name":"sanctuary_default"}},"volumes":{"postgres_data":{"name":"sanctuary_postgres_data"}}}'; fi ;;
-  " volume ls "*) [ "$FAKE_DOCKER_CASE" = empty ] || printf '%s\\n' sanctuary_postgres_data ;;
-  " network ls "*) [ "$FAKE_DOCKER_CASE" = empty ] || printf 'network-id\\tsanctuary_default\\n' ;;
-  " container ls "*) [ "$FAKE_DOCKER_CASE" = empty ] || printf 'container-id\\tsanctuary-backend-1\\tsanctuary\\n' ;;
+  " volume ls "*)
+    [ "$FAKE_DOCKER_CASE" = empty ] || printf '%s\\n' sanctuary_postgres_data
+    case "$FAKE_DOCKER_CASE" in leftover*) printf 'sanctuary_tor_hidden_service\\tsanctuary\\n' ;; esac ;;
+  " network ls "*)
+    [ "$FAKE_DOCKER_CASE" = empty ] || printf 'network-id\\tsanctuary_default\\n'
+    case "$FAKE_DOCKER_CASE" in leftover*) printf 'leftover-network-id\\tsanctuary_ai-internal\\tsanctuary\\n' ;; esac ;;
+  " container ls "*)
+    [ "$FAKE_DOCKER_CASE" = empty ] || printf 'container-id\\tsanctuary-backend-1\\tsanctuary\\n'
+    case "$FAKE_DOCKER_CASE" in leftover*) printf 'leftover-container-id\\tsanctuary-ai-proxy-1\\tsanctuary\\n' ;; esac ;;
+  " volume inspect sanctuary_tor_hidden_service ")
+    if [ "$FAKE_DOCKER_CASE" = leftover-claimed ]; then
+      printf '%s\\n' '[{"Name":"sanctuary_tor_hidden_service","Driver":"local","Scope":"local","Mountpoint":"/var/lib/containers/storage/volumes/tor/_data","CreatedAt":"2026-04-01T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"tor_hidden_service","io.sanctuary.project":"sanctuary"}}]'
+    else
+      printf '%s\\n' '[{"Name":"sanctuary_tor_hidden_service","Driver":"local","Scope":"local","Mountpoint":"/var/lib/containers/storage/volumes/tor/_data","CreatedAt":"2026-04-01T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"tor_hidden_service"}}]'
+    fi ;;
+  " network inspect leftover-network-id ")
+    printf '%s\\n' '[{"Id":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.network":"ai-internal"}}]' ;;
+  " container inspect leftover-container-id ")
+    printf '%s\\n' '[{"Id":"abababababababababababababababababababababababababababababababab","Config":{"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.service":"ai-proxy"}}}]' ;;
   " volume inspect sanctuary_postgres_data ")
-    if [ "$FAKE_DOCKER_CASE" = legacy ] || [ "$FAKE_DOCKER_CASE" = post ] || [ "$FAKE_DOCKER_CASE" = identity-changed ] || [ "$FAKE_DOCKER_CASE" = removed ]; then
+    if [ "$FAKE_DOCKER_CASE" = legacy ] || [ "$FAKE_DOCKER_CASE" = post ] || [ "$FAKE_DOCKER_CASE" = identity-changed ] || [ "$FAKE_DOCKER_CASE" = removed ] || [ "$FAKE_DOCKER_CASE" = leftover ] || [ "$FAKE_DOCKER_CASE" = leftover-claimed ]; then
       printf '%s\\n' '[{"Name":"sanctuary_postgres_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/containers/storage/volumes/postgres/_data","CreatedAt":"2026-08-30T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"postgres_data"}}]'
     elif [ "$FAKE_DOCKER_CASE" = partial ]; then
       printf '%s\\n' '[{"Name":"sanctuary_postgres_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/containers/storage/volumes/postgres/_data","CreatedAt":"2026-08-30T00:00:00Z","Options":{},"Labels":{"com.docker.compose.project":"sanctuary","com.docker.compose.volume":"postgres_data","io.sanctuary.project":"sanctuary"}}]'
@@ -70,13 +86,13 @@ case " $* " in
   " network inspect network-id "|" network inspect sanctuary_default ")
     compose_labels='{"com.docker.compose.project":"sanctuary","com.docker.compose.network":"default"}'
     if [ "$FAKE_DOCKER_CASE" = identity-changed ]; then printf '%s\\n' "[{\\"Id\\":\\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\\",\\"Labels\\":$compose_labels}]"
-    elif [ "$FAKE_DOCKER_CASE" = legacy ] || [ "$FAKE_DOCKER_CASE" = post ] || [ "$FAKE_DOCKER_CASE" = claimed ] || [ "$FAKE_DOCKER_CASE" = removed ]; then printf '%s\\n' "[{\\"Id\\":\\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\",\\"Labels\\":$compose_labels}]"
+    elif [ "$FAKE_DOCKER_CASE" = legacy ] || [ "$FAKE_DOCKER_CASE" = post ] || [ "$FAKE_DOCKER_CASE" = claimed ] || [ "$FAKE_DOCKER_CASE" = removed ] || [ "$FAKE_DOCKER_CASE" = leftover ] || [ "$FAKE_DOCKER_CASE" = leftover-claimed ]; then printf '%s\\n' "[{\\"Id\\":\\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\",\\"Labels\\":$compose_labels}]"
     elif [ "$FAKE_DOCKER_CASE" = mismatch ]; then owned="\${labels/RESOURCE_CLASS/compose_network}"; owned="\${owned/CLEANUP_POLICY/exact_delete}"; printf '[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Labels":{%s,"com.docker.compose.project":"sanctuary","com.docker.compose.network":"default"}}]\\n' "$owned" | sed 's/owner-1000/owner-other/'
     elif [ "$FAKE_DOCKER_CASE" = foreign ]; then printf '%s\\n' '[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Labels":{"com.docker.compose.project":"other","com.docker.compose.network":"default"}}]'
     else owned="\${labels/RESOURCE_CLASS/compose_network}"; owned="\${owned/CLEANUP_POLICY/exact_delete}"; printf '[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Labels":{%s,"com.docker.compose.project":"sanctuary","com.docker.compose.network":"default"}}]\\n' "$owned" ; fi ;;
   " container inspect container-id ")
     compose_labels='{"com.docker.compose.project":"sanctuary","com.docker.compose.service":"backend"}'
-    if [ "$FAKE_DOCKER_CASE" = legacy ]; then printf '%s\\n' "[{\\"Id\\":\\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\",\\"Config\\":{\\"Labels\\":$compose_labels}}]"
+    if [ "$FAKE_DOCKER_CASE" = legacy ] || [ "$FAKE_DOCKER_CASE" = leftover ] || [ "$FAKE_DOCKER_CASE" = leftover-claimed ]; then printf '%s\\n' "[{\\"Id\\":\\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\",\\"Config\\":{\\"Labels\\":$compose_labels}}]"
     elif [ "$FAKE_DOCKER_CASE" = foreign ]; then printf '%s\\n' '[{"Id":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","Config":{"Labels":{"com.docker.compose.project":"other","com.docker.compose.service":"backend"}}}]'
     else owned="\${labels/RESOURCE_CLASS/compose_container}"; owned="\${owned/CLEANUP_POLICY/exact_delete}"; printf '[{"Id":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","Config":{"Labels":{%s,"com.docker.compose.project":"sanctuary","com.docker.compose.service":"backend"}}}]\\n' "$owned" ; fi ;;
   *) printf 'unexpected command: %s\\n' "$*" >&2; exit 65 ;;
@@ -133,7 +149,7 @@ test('first-manifest inspection is read-only and refuses legacy or mismatched ex
   process.env.FAKE_DOCKER_LOG = fixture.log;
   try {
     process.env.FAKE_DOCKER_CASE = 'empty';
-    assert.deepEqual(assertFirstManifestDockerResources(identity), { inspected: true, legacyResources: [] });
+    assert.deepEqual(assertFirstManifestDockerResources(identity), { inspected: true, legacyResources: [], retainedResources: [] });
 
     process.env.FAKE_DOCKER_CASE = 'legacy';
     assert.throws(() => assertFirstManifestDockerResources(identity), (error) => {
@@ -204,6 +220,60 @@ test('first-manifest inspection is read-only and refuses legacy or mismatched ex
     assert.match(calls, /network inspect network-id/);
     assert.match(calls, /container inspect container-id/);
   } finally {
+    process.env.PATH = originalPath;
+    if (originalCase === undefined) delete process.env.FAKE_DOCKER_CASE; else process.env.FAKE_DOCKER_CASE = originalCase;
+    if (originalLog === undefined) delete process.env.FAKE_DOCKER_LOG; else process.env.FAKE_DOCKER_LOG = originalLog;
+  }
+});
+
+test('upgrade inspection retains unowned same-project leftovers outside the definition without adopting them', () => {
+  const fixture = installFakeDocker();
+  const originalPath = process.env.PATH;
+  const originalCase = process.env.FAKE_DOCKER_CASE;
+  const originalLog = process.env.FAKE_DOCKER_LOG;
+  process.env.PATH = `${fixture.root}:${originalPath}`;
+  process.env.FAKE_DOCKER_LOG = fixture.log;
+  const stderrWrites = [];
+  const originalStderrWrite = process.stderr.write;
+  process.stderr.write = (chunk, ...rest) => { stderrWrites.push(String(chunk)); return typeof rest[rest.length - 1] === 'function' ? rest[rest.length - 1]() : true; };
+  try {
+    // A long-lived install keeps a Tor volume from a disabled profile, a network
+    // renamed by an earlier release, and a stopped container of a removed service.
+    process.env.FAKE_DOCKER_CASE = 'leftover';
+    const upgrade = assertFirstManifestDockerResources({ ...identity, allowUnlabeledUpgrade: true });
+    assert.equal(upgrade.legacyResources.length, 3);
+    assert.deepEqual(upgrade.legacyResources.map((entry) => entry.locator).sort(), [
+      'sanctuary-backend-1', 'sanctuary_default', 'sanctuary_postgres_data',
+    ]);
+    assert.deepEqual(upgrade.retainedResources, [
+      { resourceClass: 'compose_volume', locator: 'sanctuary_tor_hidden_service', composeResource: 'tor_hidden_service' },
+      { resourceClass: 'compose_network', locator: 'sanctuary_ai-internal', composeResource: 'ai-internal' },
+      { resourceClass: 'compose_container', locator: 'sanctuary-ai-proxy-1', composeResource: 'ai-proxy' },
+    ]);
+    const reported = stderrWrites.join('');
+    assert.match(reported, /retained unowned legacy volume sanctuary_tor_hidden_service \(tor_hidden_service\) outside the current definition/);
+    assert.match(reported, /retained unowned legacy network sanctuary_ai-internal \(ai-internal\)/);
+    assert.match(reported, /retained unowned legacy container sanctuary-ai-proxy-1 \(ai-proxy\)/);
+    assert.equal(legacyDurableComposeOverlay(upgrade.legacyResources).toString().includes('tor_hidden_service'), false);
+
+    // A first manifest that is not an upgrade still refuses them.
+    assert.throws(() => assertFirstManifestDockerResources(identity), (error) => {
+      assert.match(error.message, /volume sanctuary_tor_hidden_service: com\.docker\.compose\.volume does not match <unknown>/);
+      assert.match(error.message, /network sanctuary_ai-internal: com\.docker\.compose\.network does not match <unknown>/);
+      return true;
+    });
+
+    // A leftover carrying any io.sanctuary label is partially claimed, never silently retained.
+    process.env.FAKE_DOCKER_CASE = 'leftover-claimed';
+    assert.throws(
+      () => assertFirstManifestDockerResources({ ...identity, allowUnlabeledUpgrade: true }),
+      /volume sanctuary_tor_hidden_service: com\.docker\.compose\.volume does not match <unknown>/,
+    );
+
+    const calls = readFileSync(fixture.log, 'utf8');
+    assert.doesNotMatch(calls, /\b(create|rm|remove|update|up|down|run)\b/);
+  } finally {
+    process.stderr.write = originalStderrWrite;
     process.env.PATH = originalPath;
     if (originalCase === undefined) delete process.env.FAKE_DOCKER_CASE; else process.env.FAKE_DOCKER_CASE = originalCase;
     if (originalLog === undefined) delete process.env.FAKE_DOCKER_LOG; else process.env.FAKE_DOCKER_LOG = originalLog;
