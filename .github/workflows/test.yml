@@ -1647,6 +1647,11 @@ jobs:
     needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
+      # A starved e2e lock wait must fail inside the job budget so the
+      # diagnostics upload runs and the log names the lock (issue #1020). The
+      # lock is shared with the render lane and every release-candidate replay
+      # lane; 40 minutes leaves the remaining budget for the suite itself.
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '2400'
 
     services:
       postgres:
@@ -1861,6 +1866,9 @@ jobs:
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/render-e2e
+      # See full-browser-e2e-tests: bound the shared e2e lock wait below the
+      # job budget so lock starvation is named rather than killed (#1020).
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1500'
 
     steps:
       - name: Checkout repository

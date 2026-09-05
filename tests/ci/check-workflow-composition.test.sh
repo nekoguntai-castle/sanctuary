@@ -762,6 +762,33 @@ assert_contains_in_order "$RELEASE_GATES" \
   'do not feed `Validation' \
   "cannot approve or block a release"
 
+# Issue #1020: release lanes that only run on RC tags let seven regressions
+# reach v0.8.70's candidates. A PR that touches the release surface must run
+# the same lanes on its exact head commit.
+assert_contains_in_order "$RC" \
+  "release-candidate runs as smoke on pull requests touching the release surface" \
+  "pull_request:" \
+  "branches: [main]" \
+  "paths:" \
+  "- 'scripts/ci/**'" \
+  "- 'scripts/ownership/**'" \
+  "- 'tests/install/**'" \
+  "- '.github/workflows/**'" \
+  "- '**/Dockerfile'" \
+  "- 'docker-compose*.yml'" \
+  "- 'docker/compose/**'" \
+  "- 'start.sh'" \
+  "- 'install.sh'" \
+  "- 'scripts/setup.sh'" \
+  "workflow_call:"
+
+assert_contains_in_order "$RC" \
+  "release-candidate pull-request smoke validates the exact PR head commit" \
+  'PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}' \
+  "pull_request)" \
+  'Pull request head is not a full SHA' \
+  'candidate_ref="$PR_HEAD_SHA"'
+
 assert_contains_in_order "$RC" \
   "release-candidate tag-scoped workflow concurrency" \
   "concurrency:" \

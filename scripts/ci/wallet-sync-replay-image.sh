@@ -72,54 +72,65 @@ archive_image_id() {
 # are content addresses of the same archived bytes, so either is exact.
 verify_exact_loaded_image() {
   local image_ref="$1" expected_image_id="$2" revision="$3" image_lock_sha256="$4"
-  local manifest_digest="${5:-}" listed inspection
+  local manifest_digest="${5:-}" listed inspection identity_failure=''
   listed="$(docker image ls --no-trunc --filter "reference=$image_ref" --format '{{.ID}}')" || return 1
+  # Evaluate every check and report all failures in one run: v0.8.70-rc2
+  # through rc5 each surfaced exactly one of identity, tags, digests, and
+  # labels per ~2.5 h release cycle because the first mismatch returned early
+  # (issue #1020).
   if [ "$listed" != "$expected_image_id" ] && { [ -z "$manifest_digest" ] || [ "$listed" != "$manifest_digest" ]; }; then
-    echo "wallet-sync replay image identity mismatch for $image_ref: daemon lists '$listed', archive config $expected_image_id, archive manifest ${manifest_digest:-unknown}" >&2
-    return 1
+    identity_failure="daemon lists '$listed', archive config $expected_image_id, archive manifest ${manifest_digest:-unknown}"
   fi
   inspection="$(docker image inspect "$image_ref")" || return 1
-  INSPECTION="$inspection" node - "$image_ref" "$listed" "$manifest_digest" "$revision" "$image_lock_sha256" <<'NODE' || return 1
+  INSPECTION="$inspection" IDENTITY_FAILURE="$identity_failure" \
+    node - "$image_ref" "$listed" "$manifest_digest" "$revision" "$image_lock_sha256" <<'NODE' || return 1
 const [reference, listedId, manifestDigest, revision, imageLock] = process.argv.slice(2);
-const records = JSON.parse(process.env.INSPECTION);
-if (!Array.isArray(records) || records.length !== 1) process.exit(1);
-const image = records[0];
-const labels = image.Config?.Labels ?? {};
-const repository = reference.replace(/:[^/:]+$/, '');
-// The containerd image store reports references fully qualified
-// (docker.io/library/name:tag); the classic store reports them as given.
-// Both name the same single image, so accept exactly one of the two forms.
-const qualify = (name) => {
-  const first = name.split('/')[0];
-  const hasRegistry = name.includes('/') && (first.includes('.') || first.includes(':') || first === 'localhost');
-  if (hasRegistry) return name;
-  return name.includes('/') ? `docker.io/${name}` : `docker.io/library/${name}`;
-};
-const repoTags = image.RepoTags ?? [];
-const repoTagsExact = repoTags.length === 1 && (repoTags[0] === reference || repoTags[0] === qualify(reference));
-const repoDigests = image.RepoDigests ?? [];
-const repoDigestsExact = repoDigests.length === 0
-  || (repoDigests.length === 1 && manifestDigest !== ''
-    && (repoDigests[0] === `${repository}@${manifestDigest}` || repoDigests[0] === `${qualify(repository)}@${manifestDigest}`));
-const fail = (reason) => {
-  process.stderr.write(`wallet-sync replay image inspection rejected for ${reference}: ${reason}\n`);
+const failures = [];
+if (process.env.IDENTITY_FAILURE) failures.push(`identity mismatch: ${process.env.IDENTITY_FAILURE}`);
+let records;
+try { records = JSON.parse(process.env.INSPECTION); } catch { records = null; }
+const image = Array.isArray(records) && records.length === 1 ? records[0] : null;
+if (!image) {
+  failures.push(`inspect returned ${Array.isArray(records) ? records.length : 'no'} records, expected exactly 1`);
+} else {
+  const labels = image.Config?.Labels ?? {};
+  const repository = reference.replace(/:[^/:]+$/, '');
+  // The containerd image store reports references fully qualified
+  // (docker.io/library/name:tag); the classic store reports them as given.
+  // Both name the same single image, so accept exactly one of the two forms.
+  const qualify = (name) => {
+    const first = name.split('/')[0];
+    const hasRegistry = name.includes('/') && (first.includes('.') || first.includes(':') || first === 'localhost');
+    if (hasRegistry) return name;
+    return name.includes('/') ? `docker.io/${name}` : `docker.io/library/${name}`;
+  };
+  const repoTags = image.RepoTags ?? [];
+  const repoTagsExact = repoTags.length === 1 && (repoTags[0] === reference || repoTags[0] === qualify(reference));
+  const repoDigests = image.RepoDigests ?? [];
+  const repoDigestsExact = repoDigests.length === 0
+    || (repoDigests.length === 1 && manifestDigest !== ''
+      && (repoDigests[0] === `${repository}@${manifestDigest}` || repoDigests[0] === `${qualify(repository)}@${manifestDigest}`));
+  if (image.Id !== listedId) failures.push(`inspect Id ${image.Id} differs from listed ${listedId}`);
+  if (!repoTagsExact) failures.push(`RepoTags ${JSON.stringify(repoTags)}`);
+  if (!repoDigestsExact) failures.push(`RepoDigests ${JSON.stringify(repoDigests)}`);
+  // Every source tree labels revision and image lock (the build-arg contract).
+  // The source, version, and build-id labels arrived with producer stamping;
+  // the pinned historical rc10 tree predates them, so require them exactly
+  // when present and tolerate their absence.
+  if (labels['org.opencontainers.image.revision'] !== revision) failures.push('revision label');
+  if (labels['dev.sanctuary.image-lock-sha256'] !== imageLock) failures.push('image-lock label');
+  if ('org.opencontainers.image.source' in labels
+    && labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary') failures.push('source label');
+  if ('org.opencontainers.image.version' in labels
+    && !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'])) failures.push('version label');
+  if ('io.sanctuary.build-id' in labels
+    && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'])) failures.push('build-id label');
+}
+if (failures.length > 0) {
+  process.stderr.write(`wallet-sync replay image inspection rejected for ${reference} (${failures.length} failing check${failures.length === 1 ? '' : 's'}):\n`);
+  for (const failure of failures) process.stderr.write(`  - ${failure}\n`);
   process.exit(1);
-};
-if (image.Id !== listedId) fail(`inspect Id ${image.Id} differs from listed ${listedId}`);
-if (!repoTagsExact) fail(`RepoTags ${JSON.stringify(repoTags)}`);
-if (!repoDigestsExact) fail(`RepoDigests ${JSON.stringify(repoDigests)}`);
-// Every source tree labels revision and image lock (the build-arg contract).
-// The source, version, and build-id labels arrived with producer stamping;
-// the pinned historical rc10 tree predates them, so require them exactly
-// when present and tolerate their absence.
-if (labels['org.opencontainers.image.revision'] !== revision) fail('revision label');
-if (labels['dev.sanctuary.image-lock-sha256'] !== imageLock) fail('image-lock label');
-if ('org.opencontainers.image.source' in labels
-  && labels['org.opencontainers.image.source'] !== 'https://github.com/nekoguntai-castle/sanctuary') fail('source label');
-if ('org.opencontainers.image.version' in labels
-  && !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(labels['org.opencontainers.image.version'])) fail('version label');
-if ('io.sanctuary.build-id' in labels
-  && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(labels['io.sanctuary.build-id'])) fail('build-id label');
+}
 NODE
   printf '%s' "$listed"
 }

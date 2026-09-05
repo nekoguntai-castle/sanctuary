@@ -7,7 +7,9 @@ import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { runSupervisedCleanupCommand } from '../../scripts/ownership/cleanup-supervisor.mjs';
+import {
+  cleanupProcessGroupHasRunnableMember, runSupervisedCleanupCommand,
+} from '../../scripts/ownership/cleanup-supervisor.mjs';
 
 const node = process.execPath;
 
@@ -233,4 +235,34 @@ test('launcher refuses a stale expected controller before spawning the mutation 
   const [code] = await once(child, 'exit');
   assert.equal(code, 125);
   assert.equal(existsSync(marker), false);
+});
+
+// Issue #1013: on a loaded runner an unrelated process can exit between the
+// /proc directory listing and the read of its stat file. Linux then reports
+// ESRCH (not ENOENT) for the vanished task, which the scan used to rethrow,
+// turning an exited /bin/true into `quiescence_failed`.
+test('process group scan skips tasks that vanish mid-read with ESRCH', {
+  skip: process.platform !== 'linux',
+}, () => {
+  const child = spawn(node, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+  try {
+    const vanishing = new Set([String(process.pid)]);
+    const readStat = (pid) => {
+      if (vanishing.has(pid)) {
+        throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+      }
+      return readFileSync(`/proc/${pid}/stat`);
+    };
+    assert.equal(cleanupProcessGroupHasRunnableMember(child.pid, { readStat }), true);
+    for (const entry of ['EACCES', 'EIO']) {
+      assert.throws(
+        () => cleanupProcessGroupHasRunnableMember(child.pid, {
+          readStat: () => { throw Object.assign(new Error(entry), { code: entry }); },
+        }),
+        (error) => error.code === entry,
+      );
+    }
+  } finally {
+    process.kill(-child.pid, 'SIGKILL');
+  }
 });

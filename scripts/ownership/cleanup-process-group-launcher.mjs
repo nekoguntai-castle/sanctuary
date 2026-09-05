@@ -47,7 +47,10 @@ function groupHasRunnableMember(groupId) {
     try {
       if (processGroupState(readFileSync(`/proc/${entry}/stat`), groupId) === 'runnable') return true;
     } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      // A task that exits mid-scan reports ENOENT or ESRCH; both mean it is
+      // gone (issue #1013). Mirrors cleanupProcessGroupHasRunnableMember in
+      // cleanup-supervisor.mjs; this launcher stays import-free on purpose.
+      if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
     }
   }
   return false;

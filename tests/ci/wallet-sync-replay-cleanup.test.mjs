@@ -736,3 +736,34 @@ test('replay cleanup treats Docker 29 containerd-store absence wording as absent
     assert.equal(evidence.state, 'cleaned', wording);
   }
 });
+
+test('loaded image verification reports every failing check in one run', () => {
+  // v0.8.70-rc2 through rc5 each surfaced exactly one of identity, tags,
+  // digests, and labels per release cycle because the gate returned at its
+  // first mismatch (issue #1020). One run must name all of them.
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d\n' 9; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s\n' '[{"Id":"sha256:${'8'.repeat(64)}","RepoTags":["replay:test","shared:test"],"RepoDigests":["replay@sha256:${'7'.repeat(64)}"],"Config":{"Labels":{"org.opencontainers.image.source":"https://example.invalid/other","org.opencontainers.image.revision":"${'5'.repeat(40)}","dev.sanctuary.image-lock-sha256":"${'6'.repeat(64)}"}}}]'; return; fi
+      return 99
+    }
+    register_owned_resource() { printf 'unexpected-registration\n'; }
+    set +e
+    load_and_register_image /tmp/archive replay:test "sha256:${'0'.repeat(64)}" \
+      "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp "sha256:${'3'.repeat(64)}" 2>&1
+    printf 'status=%s\n' "$?"
+  `, '_', helper], { encoding: 'utf8' });
+  assert.doesNotMatch(output, /unexpected-registration/);
+  assert.match(output, /7 failing checks/);
+  for (const failure of [
+    /identity mismatch: daemon lists 'sha256:0{63}9'/, /inspect Id sha256:8{64} differs from listed sha256:0{63}9/,
+    /RepoTags \["replay:test","shared:test"\]/, /RepoDigests \["replay@sha256:7{64}"\]/,
+    /revision label/, /image-lock label/, /source label/,
+  ]) assert.match(output, failure);
+  assert.match(output, /status=1/);
+});

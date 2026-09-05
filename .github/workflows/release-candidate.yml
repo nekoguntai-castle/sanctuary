@@ -26,6 +26,25 @@ on:
       - 'v*-alpha*'
       - 'v*-beta*'
       - 'v*-dev*'
+  # Release-lane smoke on pull requests that touch the release surface. The
+  # ownership rework before v0.8.70 (~15 PRs) landed without these lanes
+  # executing once, and seven latent regressions then surfaced one per RC
+  # because each lane stops at its first failure (issue #1020). A PR run
+  # validates the PR head commit; approval still requires the tag-push run.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/ci/**'
+      - 'scripts/ownership/**'
+      - 'tests/install/**'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '**/Dockerfile'
+      - 'docker-compose*.yml'
+      - 'docker/compose/**'
+      - 'start.sh'
+      - 'install.sh'
+      - 'scripts/setup.sh'
   workflow_call:
     inputs:
       ref:
@@ -82,10 +101,20 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
           INPUT_REF: ${{ github.event.inputs.ref }}
           CALL_REF: ${{ inputs.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           case "$EVENT_NAME" in
             push)
               candidate_ref="${GITHUB_REF:?}"
+              ;;
+            pull_request)
+              # The exact PR head, not the synthetic merge ref: the smoke run
+              # must validate the commit the author can reproduce locally.
+              if [[ ! "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error::Pull request head is not a full SHA: $PR_HEAD_SHA"
+                exit 1
+              fi
+              candidate_ref="$PR_HEAD_SHA"
               ;;
             workflow_dispatch|workflow_call)
               raw_ref="${INPUT_REF:-${CALL_REF:-main}}"
@@ -223,6 +252,10 @@ jobs:
     needs: validation-info
     timeout-minutes: 90
     env:
+      # Two of v0.8.70's five release candidates were lost to e2e lock
+      # starvation: the default wait exceeded the job budget, so the job was
+      # killed before the diagnostics upload could name the lock (#1020).
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '2400'
       RC10_REVISION: 5c1d1909f177b7bbd7c8f470da375b2de6bd0de3
       RC10_IMAGE: sanctuary-wallet-sync-replay:rc10-5c1d1909f177
       RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
@@ -328,6 +361,9 @@ jobs:
     needs: [validation-info, wallet-sync-replay-images]
     timeout-minutes: 120
     env:
+      # See wallet-sync-replay-images: bound the e2e lock wait below the job
+      # budget so starvation is named, not killed (#1020).
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '3000'
       RC10_REVISION: 5c1d1909f177b7bbd7c8f470da375b2de6bd0de3
       RC10_IMAGE: sanctuary-wallet-sync-replay:rc10-5c1d1909f177
       RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
@@ -423,6 +459,9 @@ jobs:
     needs: [validation-info, wallet-sync-replay-images, wallet-sync-live-shape]
     timeout-minutes: 100
     env:
+      # See wallet-sync-replay-images: bound the e2e lock wait below the job
+      # budget so starvation is named, not killed (#1020).
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '2400'
       RC11_IMAGE: sanctuary-wallet-sync-replay:rc11-${{ needs.validation-info.outputs.candidate_sha }}
       IMAGE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/images
       EVIDENCE_DIR: ${{ github.workspace }}/.tmp/wallet-sync-replay/evidence-max

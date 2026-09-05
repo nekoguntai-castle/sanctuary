@@ -225,7 +225,13 @@ jobs:
   dependency-audit:
     name: Dependency audit (npm)
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    # The audit gate retries the aggregate three times and each attempt bounds
+    # every lockfile target at six 60-second fetches run concurrently, so a
+    # stalled advisory endpoint costs up to ~19 minutes before the gate gives
+    # up. The former 20-minute budget killed the job mid-attempt with no gate
+    # output (issue #1012, runs 14593/14615/14620); leave room for the clean
+    # install step and the diagnostics upload after the gate's own verdict.
+    timeout-minutes: 35
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_dependency_audit == 'true'
     env:

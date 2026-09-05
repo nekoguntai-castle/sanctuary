@@ -121,16 +121,21 @@ function processGroupState(statBytes, groupId) {
   return ['Z', 'X'].includes(fields[0]) ? 'non_runnable' : 'runnable';
 }
 
-export function cleanupProcessGroupHasRunnableMember(groupId) {
+// A task can exit between the /proc listing and the read of its stat file.
+// Linux reports that as ENOENT or, for a task mid-exit, ESRCH; both mean the
+// task is gone, never that the scan is unreliable (issue #1013).
+const VANISHED_TASK_CODES = new Set(['ENOENT', 'ESRCH']);
+const readProcStat = (pid) => readFileSync(`/proc/${pid}/stat`);
+
+export function cleanupProcessGroupHasRunnableMember(groupId, options = {}) {
   if (!groupExists(groupId)) return false;
+  const readStat = options.readStat ?? readProcStat;
   for (const entry of readdirSync('/proc')) {
     if (!/^\d+$/.test(entry)) continue;
     try {
-      if (processGroupState(readFileSync(`/proc/${entry}/stat`), groupId) === 'runnable') {
-        return true;
-      }
+      if (processGroupState(readStat(entry), groupId) === 'runnable') return true;
     } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      if (!VANISHED_TASK_CODES.has(error.code)) throw error;
     }
   }
   return false;

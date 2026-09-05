@@ -977,12 +977,25 @@ install_owner_only_directory() {
     fi
 }
 
+# Every refusal below names the path and the expectation on stderr: a silent
+# `return 1` cost v0.8.70-rc1 its fresh-install lane and left an empty log
+# (issue #1020 item 6). stderr because prepare_install_test_root discards the
+# stdout of its helpers.
 install_create_exact_private_child() {
     local parent="$1" child="$2"
     install_owner_only_directory "$parent" || return 1
-    [ "$(dirname -- "$child")" = "$parent" ] && [ ! -e "$child" ] && [ ! -L "$child" ] \
-        || return 1
-    (umask 077; mkdir -- "$child") || return 1
+    if [ "$(dirname -- "$child")" != "$parent" ]; then
+        log_error "Install test root refused: $child must be a direct child of $parent" >&2
+        return 1
+    fi
+    if [ -e "$child" ] || [ -L "$child" ]; then
+        log_error "Install test root refused: $child already exists and cannot be created as a fresh private directory" >&2
+        return 1
+    fi
+    (umask 077; mkdir -- "$child") || {
+        log_error "Install test root refused: could not create private directory $child" >&2
+        return 1
+    }
     install_owner_only_directory "$child"
 }
 
@@ -990,7 +1003,10 @@ install_test_root_parent() {
     local root="$1" parent grandparent
     parent="$(dirname -- "$root")"
     if [ ! -e "$parent" ]; then
-        [ "$(basename -- "$parent")" = ".tmp" ] || return 1
+        if [ "$(basename -- "$parent")" != ".tmp" ]; then
+            log_error "Install test root refused: missing parent $parent may only be created when it is named .tmp" >&2
+            return 1
+        fi
         grandparent="$(dirname -- "$parent")"
         install_create_exact_private_child "$grandparent" "$parent" || return 1
     fi
@@ -1005,6 +1021,10 @@ prepare_install_test_root() {
     # runs already have an owner-only runtime; use it as the controlled parent.
     if [ "$root" = "/tmp" ]; then
         local runtime="${SANCTUARY_RUNTIME_DIR:-}" staging_parent
+        if [ -z "$runtime" ]; then
+            log_error "Install test root refused: /tmp requires SANCTUARY_RUNTIME_DIR to name an owner-only coordinated runtime" >&2
+            return 1
+        fi
         install_owner_only_directory "$runtime" || return 1
         staging_parent="$runtime/install-test-roots"
         if [ ! -e "$staging_parent" ]; then
@@ -1014,10 +1034,19 @@ prepare_install_test_root() {
         root="$staging_parent/$(install_test_root_name)"
     fi
 
-    [ -n "$root" ] && [ "$root" != "/" ] && [ "$root" = "${root%/}" ] \
-        && [ "$root" = "$(dirname -- "$root")/$(basename -- "$root")" ] || return 1
-    [ -z "${HOME:-}" ] || [ "$root" != "$HOME" ] || return 1
-    [ -z "${PROJECT_ROOT:-}" ] || [ "$root" != "$PROJECT_ROOT" ] || return 1
+    if [ -z "$root" ] || [ "$root" = "/" ] || [ "$root" != "${root%/}" ] \
+        || [ "$root" != "$(dirname -- "$root")/$(basename -- "$root")" ]; then
+        log_error "Install test root refused: '$root' must be a normalized absolute path below / without a trailing slash" >&2
+        return 1
+    fi
+    if [ -n "${HOME:-}" ] && [ "$root" = "$HOME" ]; then
+        log_error "Install test root refused: $root is the home directory" >&2
+        return 1
+    fi
+    if [ -n "${PROJECT_ROOT:-}" ] && [ "$root" = "$PROJECT_ROOT" ]; then
+        log_error "Install test root refused: $root is the project root" >&2
+        return 1
+    fi
     install_test_root_parent "$root" >/dev/null || return 1
     if [ -e "$root" ] || [ -L "$root" ]; then
         install_owner_only_directory "$root" || return 1

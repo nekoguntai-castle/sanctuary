@@ -262,7 +262,7 @@ install evidence, and never publishes from CI:
   `scripts/ci/classify-docker-build-images.sh`. Frontend-only inputs build only
   the frontend image, backend-only inputs build only the backend image, and
   shared image inputs build both. Every build uses `push: false`.
-- `Release Candidate Validation` resolves one immutable candidate SHA and runs unit, hardware-compatibility, and fresh-install preflight checks. Its stable `Validation Summary` explicitly leaves release approval pending.
+- `Release Candidate Validation` resolves one immutable candidate SHA and runs unit, hardware-compatibility, and fresh-install preflight checks. Its stable `Validation Summary` explicitly leaves release approval pending. It also runs as smoke on pull requests that touch the release surface (`scripts/ci/**`, `scripts/ownership/**`, `tests/install/**`, workflows, Dockerfiles, compose files, `start.sh`, `install.sh`, `scripts/setup.sh`), validating the exact PR head commit so release-lane regressions surface before merge instead of one per RC (issue #1020).
 - The RC fresh-install lane also observes high/critical CVEs in exactly the four
   candidate-built application images. It verifies candidate and image-lock OCI
   labels, discovers and verifies the daemon-host socket bind source on

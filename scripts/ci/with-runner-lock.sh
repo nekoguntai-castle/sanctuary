@@ -28,6 +28,14 @@ fail() {
 # .github/workflows/verify-vectors.yml does. tests/ci/with-runner-lock.test.sh
 # enforces that relationship wherever a workflow declares one. Bringing the
 # remaining jobs under it needs measured hold times and is follow-up work.
+#
+# Cancelling a running lock holder can strand the lock. The flock lives on fd 9
+# of this script's process; the kernel releases it when that process dies, but
+# a cancelled Forgejo job can leave its job container (and this process) alive
+# while the runner moves on. Every later taker then waits the full timeout and
+# reports "timed out ... waiting for runner lock" although no lane is doing
+# work. Check `runner-lock: acquired` lines on the host for a holder whose job
+# is gone before assuming a lane is genuinely busy (v0.8.70-rc3/rc4, #1020).
 DEFAULT_LOCK_TIMEOUT_SECONDS=3600
 
 # Returned only when the lock itself was never acquired. Taking the lock on a

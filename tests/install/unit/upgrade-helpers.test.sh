@@ -1642,6 +1642,39 @@ test_prepare_install_root_names_the_broad_parent_it_refuses() {
     "refusal must state the required owner-only mode"
 }
 
+test_prepare_install_root_names_every_refused_shape() {
+  # Issue #1020 item 6: every refusal in the install-root helpers must say
+  # which path failed and what was expected, not just `return 1`.
+  local workspace="$TEST_TMP_DIR/refusal-shapes" output
+  mkdir -m 700 "$workspace"
+  # run_refusal VAR=VALUE ROOT: runs prepare_install_test_root ROOT with VAR
+  # set, expects a refusal, and leaves the combined output in $output.
+  run_refusal() {
+    if output="$(env "$1" bash -c 'source "$1"; prepare_install_test_root "$2"' _ \
+        "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$2" 2>&1)"; then
+      echo -e "${RED}ASSERTION FAILED:${NC} $2 should be refused"
+      return 1
+    fi
+  }
+  run_refusal HOME="$workspace" "$workspace" || return 1
+  assert_contains "$output" "$workspace is the home directory" "home refusal names the path"
+  run_refusal PROJECT_ROOT="$workspace" "$workspace" || return 1
+  assert_contains "$output" "$workspace is the project root" "project-root refusal names the path"
+  run_refusal HOME="$TEST_TMP_DIR/elsewhere" "$workspace/" || return 1
+  assert_contains "$output" "trailing slash" "trailing-slash refusal states the expectation"
+  run_refusal HOME="$TEST_TMP_DIR/elsewhere" "$workspace/missing-parent/root" || return 1
+  assert_contains "$output" "$workspace/missing-parent may only be created when it is named .tmp" \
+    "missing-parent refusal names the parent and the .tmp rule"
+  run_refusal SANCTUARY_RUNTIME_DIR= /tmp || return 1
+  assert_contains "$output" "SANCTUARY_RUNTIME_DIR" "shared /tmp refusal names the missing runtime"
+  local occupied="$workspace/.tmp"
+  mkdir -m 700 "$occupied"
+  : > "$occupied/install-tests-1-2"
+  run_refusal HOME="$TEST_TMP_DIR/elsewhere" "$occupied/install-tests-1-2" || return 1
+  assert_contains "$output" "$occupied/install-tests-1-2 is not a real directory" \
+    "occupied-root refusal names the path"
+}
+
 test_prepare_install_root_uses_coordinated_private_runtime_for_tmp() {
   local runtime="$TEST_TMP_DIR/runtime-authority" root
   mkdir -m 700 "$runtime"
@@ -2520,6 +2553,7 @@ main() {
   run_test "prepare install root refuses broad existing root" test_prepare_install_root_refuses_broad_existing_root
   run_test "prepare install root uses coordinated private runtime for tmp" test_prepare_install_root_uses_coordinated_private_runtime_for_tmp
   run_test "prepare install root names the broad parent it refuses" test_prepare_install_root_names_the_broad_parent_it_refuses
+  run_test "prepare install root names every refused shape" test_prepare_install_root_names_every_refused_shape
   run_test "compose subject binds project root before ownership init" test_compose_subject_binds_project_root_before_ownership_init
   run_test "container health discovers the compose project" test_container_health_discovers_the_compose_project_not_the_literal_name
   run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume
