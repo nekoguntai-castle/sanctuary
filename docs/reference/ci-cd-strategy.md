@@ -474,6 +474,44 @@ Two engine differences these lanes depend on, both handled in-tree:
 - a healthcheck embedding shell syntax must use `CMD-SHELL`; the
   `["CMD","sh","-c",<script>]` form arrives truncated and never runs
 
+### Runner fleet and build paths
+
+The two `docker-socket` hosts, `x300` and `kumo`, are provisioned from the same
+runner-infra bootstrap: rootless Podman 5.4 behind the compat socket, capacity
+2, and a buildx docker-container builder on each. Neither runs Docker Engine.
+The one build-relevant difference is that kumo's profile exports
+`DOCKER_BUILDKIT=0` for another repository's workflows, so on kumo
+`docker compose build` goes through Podman's native (Buildah) builder while on
+x300 it goes through BuildKit. The preflight diagnostic's `docker info`
+"Name:" line and `docker buildx ls` say which host and builder a job used.
+
+The native builder behaves differently in ways only image-inspecting lanes
+notice (verified against Podman 5.4.2; runner-infra documents the same list
+under its `DOCKER_BUILDKIT` guidance):
+
+- A fully cached rebuild still commits a **new image ID**, because build labels
+  are applied at commit; BuildKit returns the cached ID. Every service declares
+  `pull_policy: build`, so a compose `up` without `--no-build` rebuilds. The
+  upgrade lane registers its images for receipt-bound cleanup, and one
+  post-registration `up` without `--no-build` left the registered backend image
+  dangling on kumo for weeks while x300 stayed green (#1032, fixed in #1033;
+  `tests/install/unit/upgrade-helpers.test.sh` now pins `--no-build` on every
+  lane compose `up`, and teardown re-checks registered image identities).
+- `docker container ls --filter ancestor=sha256:<id>` matches nothing; the bare
+  ID or a name does.
+- Plain `docker image ls` hides every dangling image; `--all` shows them plus
+  every labelled intermediate layer image the native builder keeps.
+- Compat builds store the name as `docker.io/library/<name>`, native builds as
+  `localhost/<name>`, and inspect reports `RepoDigests` for local builds.
+
+A lane that fails on one host only is a builder divergence, not flake: read
+the host name before retriggering. The cleanup coordinator's job-log summary
+carries `refusedResources` (class, identity, locator, classifications,
+references) whenever cleanup refuses, so a refusal on a host without shell
+access is diagnosable from the run alone. To force a run onto a particular
+host, dispatch `install-test.yml` (`test_suite=upgrade`,
+`upgrade_fixture=baseline`) and repeat; the scheduler picks either host.
+
 The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
 run through a diagnostic logging harness so failures that happen *before* a
 test body executes (Docker readiness, isolated workspace setup, port
