@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -26,6 +28,15 @@ import {
 } from '../../scripts/ownership/project-lock.mjs';
 
 const CHECKOUT = path.resolve('.');
+
+// A subject-managed lane's installer writes the runtime env; the coordinator
+// only creates the directory. Model the installer's write where a test needs
+// the definition the subject would bind.
+function subjectRuntimeEnv(runtimeDirectory) {
+  const envFile = path.join(runtimeDirectory, 'sanctuary.env');
+  if (!existsSync(envFile)) writeFileSync(envFile, 'JWT_SECRET=private\n', { mode: 0o600 });
+  return envFile;
+}
 
 function withCiEnvironment(callback) {
   const keys = [
@@ -69,7 +80,7 @@ function prepareBoundSubject(runnerTemp, lane) {
   try {
     const bundle = resolveDeploymentDefinition({
       projectDirectory: CHECKOUT, runtimeDirectory,
-      envFile: path.join(runtimeDirectory, 'sanctuary.env'),
+      envFile: subjectRuntimeEnv(runtimeDirectory),
       composeProjectName: authority.composeProjectName,
       ownerId: authority.ownerId, release: 'subject-release',
       commit: authority.checkoutCommit, policyDigest: authority.policyDigest,
@@ -175,6 +186,32 @@ test('CI cleanup lifecycle durably preserves process-quiescence suppression', ()
   });
 });
 
+test('subject-managed prepare leaves runtime env creation to the subject installer', () => {
+  withCiEnvironment((runnerTemp) => {
+    const runtimeDirectory = path.join(runnerTemp, 'sanctuary-cleanup', 'fresh-env');
+    const prepared = prepareCiCleanupLifecycle({
+      checkoutRoot: CHECKOUT, runtimeDirectory, lane: 'fresh-env',
+      authorityMode: 'deployment_managed_by_subject',
+    });
+    const envFile = path.join(runtimeDirectory, 'sanctuary.env');
+    assert.equal(prepared.environment.SANCTUARY_ENV_FILE, envFile);
+    assert.equal(existsSync(envFile), false);
+    const resumed = resumeCiCleanupLifecycle({
+      statePath: coordinatorStatePath(runtimeDirectory), checkoutRoot: CHECKOUT,
+    });
+    assert.equal(resumed.environment.SANCTUARY_ENV_FILE, envFile);
+    assert.equal(existsSync(envFile), false);
+  });
+  withCiEnvironment((runnerTemp) => {
+    const runtimeDirectory = path.join(runnerTemp, 'sanctuary-cleanup', 'managed-env');
+    prepareCiCleanupLifecycle({ checkoutRoot: CHECKOUT, runtimeDirectory, lane: 'managed-env' });
+    assert.equal(
+      readFileSync(path.join(runtimeDirectory, 'sanctuary.env'), 'utf8'),
+      'SANCTUARY_OWNERSHIP_ONLY=1\n',
+    );
+  });
+});
+
 test('deployment-managed subject binds its exact pending definition before mutation', () => {
   withCiEnvironment((runnerTemp) => {
     const runtimeDirectory = path.join(runnerTemp, 'sanctuary-cleanup', 'subject-managed');
@@ -205,7 +242,7 @@ test('deployment-managed subject binds its exact pending definition before mutat
     try {
       const bundle = resolveDeploymentDefinition({
         projectDirectory: CHECKOUT, runtimeDirectory,
-        envFile: path.join(runtimeDirectory, 'sanctuary.env'),
+        envFile: subjectRuntimeEnv(runtimeDirectory),
         composeProjectName: authority.composeProjectName,
         ownerId: authority.ownerId, release: 'subject-release',
         commit: authority.checkoutCommit, policyDigest: authority.policyDigest,
@@ -304,7 +341,7 @@ test('deployment-managed binding resumes after its durable bound-state crash win
     try {
       const bundle = resolveDeploymentDefinition({
         projectDirectory: CHECKOUT, runtimeDirectory,
-        envFile: path.join(runtimeDirectory, 'sanctuary.env'),
+        envFile: subjectRuntimeEnv(runtimeDirectory),
         composeProjectName: authority.composeProjectName,
         ownerId: authority.ownerId, release: 'subject-release',
         commit: authority.checkoutCommit, policyDigest: authority.policyDigest,
@@ -508,7 +545,7 @@ function withLocks(store, runtimeDirectory, authority, callback) {
 function definitionFor(checkout, runtimeDirectory, authority, commit, release) {
   return resolveDeploymentDefinition({
     projectDirectory: checkout, runtimeDirectory,
-    envFile: path.join(runtimeDirectory, 'sanctuary.env'),
+    envFile: subjectRuntimeEnv(runtimeDirectory),
     composeProjectName: authority.composeProjectName,
     ownerId: authority.ownerId, release, commit,
     policyDigest: sha256(readFileSync(path.join(checkout, 'config/resource-ownership-contract.json'))),

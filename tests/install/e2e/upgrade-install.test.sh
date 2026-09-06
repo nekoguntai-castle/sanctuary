@@ -269,6 +269,24 @@ redact_text() {
     printf '%s\n' "$1" | redact_stream
 }
 
+install_log_path() {
+    echo "$TEST_RUNTIME_DIR/install-$(basename "$1").log"
+}
+
+# A production operator's first install of the source release builds with the
+# Docker layer cache; only a later upgrade rebuilds with --no-cache. An
+# ownership-aware source must not find a pre-existing runtime env and classify
+# its own fresh install as an upgrade. Legacy sources keep their repo-root
+# .env flow.
+assert_source_install_was_fresh() {
+    local install_log="$1"
+
+    [ "$UPGRADE_SOURCE_OWNED" = "true" ] || return 0
+    assert_install_output_was_fresh < "$install_log" && return 0
+    log_error "Source install log: $install_log"
+    return 1
+}
+
 install_log_has_buildkit_cache_corruption() {
     local install_log="$1"
 
@@ -781,9 +799,8 @@ retry_install_script_after_cache_recovery() {
 
 run_install_script() {
     local project_dir="$1"
-    local checkout_name
-    checkout_name="$(basename "$project_dir")"
-    local install_log="$TEST_RUNTIME_DIR/install-${checkout_name}.log"
+    local install_log
+    install_log="$(install_log_path "$project_dir")"
     local exit_code
 
     mkdir -p "$TEST_RUNTIME_DIR"
@@ -1085,6 +1102,7 @@ test_ensure_existing_installation() {
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
+    assert_source_install_was_fresh "$(install_log_path "$PROJECT_ROOT")" || return 1
 
     persist_source_mcp_preference || return 1
 

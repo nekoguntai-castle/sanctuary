@@ -63,6 +63,13 @@ function releaseLifecycleLocks(store, authority, held) {
   if (errors.length > 1) throw new AggregateError(errors, 'failed to release CI lifecycle locks');
 }
 
+// Never call this before a subject-managed lane's subject has run. Only a
+// coordinator-managed definition needs the runtime env file to exist up front
+// (it binds the file's identity and Compose gets --env-file); the subject's
+// installer creates the file itself, and pre-creating even an ownership marker
+// makes an installer that only checks for the file's existence (install.sh)
+// classify a fresh install as an upgrade and rebuild every image with
+// --no-cache. The legacy witness fallback calls this after the subject exited.
 function ensureRuntimeInputs(authority) {
   mkdirSync(authority.runtimeDirectory, { recursive: true, mode: 0o700 });
   const envPath = path.join(authority.runtimeDirectory, 'sanctuary.env');
@@ -153,7 +160,6 @@ export function prepareCiCleanupLifecycle({
       authorityCoreDigest: state.state.authorityCoreDigest, target: upgradeTarget,
     });
   }
-  const envFile = ensureRuntimeInputs(authority);
   const store = new DeploymentStore({
     runtimeDirectory: authority.runtimeDirectory, deploymentId: authority.deploymentId,
   });
@@ -175,6 +181,7 @@ export function prepareCiCleanupLifecycle({
       signers: prepared.signers,
     });
   }
+  const envFile = ensureRuntimeInputs(authority);
   const held = acquireLifecycleLocks(store, authority);
   let deployment;
   let run;

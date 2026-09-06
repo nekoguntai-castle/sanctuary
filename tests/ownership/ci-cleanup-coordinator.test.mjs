@@ -217,6 +217,8 @@ test('subject-managed failure before bind emits a signed zero-authority refusal'
   assert.equal(result.status, 17, result.stderr);
   const outcome = JSON.parse(result.stdout);
   assert.equal(outcome.cleanupState, 'refused');
+  // A zero-authority refusal names no resource: the summary key is omitted.
+  assert.equal(Object.hasOwn(outcome, 'refusedResources'), false);
   const state = JSON.parse(readFileSync(
     path.join(runtimeDirectory, 'coordinator-state.json'), 'utf8',
   ));

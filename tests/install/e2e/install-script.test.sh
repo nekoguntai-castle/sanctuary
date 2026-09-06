@@ -264,6 +264,8 @@ test_install_script_creates_env() {
         printf '%s\n' "$install_output" | redact_stream
     fi
 
+    printf '%s\n' "$install_output" | assert_install_output_was_fresh || return 1
+
     # Verify runtime env file was created outside the repo
     if [ ! -f "$TEST_ENV_FILE" ]; then
         log_error "Runtime env file was not created by install.sh"

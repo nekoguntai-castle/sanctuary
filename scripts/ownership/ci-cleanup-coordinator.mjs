@@ -111,6 +111,7 @@ function finishPrepared(prepared, request, subjectExitStatus, cleanupSuppression
       cleanupState: completed.privateReceipt.state,
       cleanupExitStatus: cleanupStatus(completed.privateReceipt),
       artifactDirectory: request.artifactDirectory,
+      ...refusedResourceField(completed),
     };
   }
   if (['initialized', 'revision_prepared', 'deployment_active', 'deployment_bound', 'run_active']
@@ -134,7 +135,50 @@ function finishPrepared(prepared, request, subjectExitStatus, cleanupSuppression
     cleanupState: completed.privateReceipt.state,
     cleanupExitStatus: cleanupStatus(completed.privateReceipt),
     artifactDirectory: request.artifactDirectory,
+    ...refusedResourceField(completed),
   };
+}
+
+// A refused cleanup uploads only counts and failure classes; the private
+// receipt and inventory that name the resource stay on the runner. Name the
+// refused resources in the job-log summary so a refusal on a host the operator
+// cannot reach is diagnosable from the run alone (#1032). Locators here are CI
+// resource names and engine identities, not secrets.
+const REFUSED_RESOURCE_SUMMARY_LIMIT = 20;
+
+export function refusedResourceField(completed) {
+  const refusals = completed.privateReceipt?.refusals ?? [];
+  if (refusals.length === 0) return {};
+  return {
+    refusedResources: refusedResourceSummary(refusals, completed.state.planningReceiptPath),
+  };
+}
+
+export function refusedResourceSummary(refusals, planningReceiptPath) {
+  let resources = [];
+  try {
+    const inventory = parseStrictJson(readFileSync(
+      path.join(path.dirname(planningReceiptPath), 'inventory.json'),
+    ));
+    if (Array.isArray(inventory?.resources)) resources = inventory.resources;
+  } catch {
+    resources = [];
+  }
+  return refusals.slice(0, REFUSED_RESOURCE_SUMMARY_LIMIT).map((refusal) => {
+    const resource = resources.find((entry) => (
+      entry.resourceClass === refusal.resourceClass
+      && entry.immutableIdentity === refusal.immutableIdentity
+    ));
+    return {
+      resourceClass: refusal.resourceClass,
+      immutableIdentity: refusal.immutableIdentity,
+      failureClass: refusal.failureClass,
+      locator: resource?.locator ?? null,
+      ownershipState: resource?.ownershipState ?? null,
+      classifications: resource?.classifications ?? [],
+      references: (resource?.references ?? resource?.runtime?.references ?? []).slice(0, 8),
+    };
+  });
 }
 
 function signalExitStatus(signal) {

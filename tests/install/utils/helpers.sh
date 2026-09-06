@@ -38,6 +38,18 @@ log_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
+# A fresh install must be classified as one. The cleanup coordinator leaves the
+# runtime env for install.sh to create; a pre-existing file turns the install
+# into an upgrade, which rebuilds every image with --no-cache. Pass the
+# installer's output on stdin.
+assert_install_output_was_fresh() {
+    if grep -q "Existing runtime env detected"; then
+        log_error "install.sh classified a fresh install as an upgrade: a runtime env existed before it ran"
+        return 1
+    fi
+    return 0
+}
+
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
