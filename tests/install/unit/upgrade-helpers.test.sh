@@ -894,6 +894,27 @@ test_upgrade_teardown_captures_diagnostics_before_cleanup() {
   return 0
 }
 
+test_upgrade_lane_compose_up_never_rebuilds_images() {
+  # Every service declares pull_policy: build, so a compose `up` without
+  # --no-build rebuilds images. BuildKit returns the registered image from
+  # cache; Podman commits a new image ID, the registered one goes dangling and
+  # receipt-bound cleanup refuses the lane (#1032). start.sh always passes
+  # --no-build; the lane must too.
+  local file offending
+  for file in "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh" \
+      "$PROJECT_ROOT/tests/install/utils/upgrade-assertions.sh" \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh"; do
+    offending="$(grep -nE '(run_project_compose|docker compose)[^#]* up( |$)' "$file" \
+      | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v -- '--no-build' || true)"
+    if [ -n "$offending" ]; then
+      echo -e "${RED}ASSERTION FAILED:${NC} compose up without --no-build rebuilds lane images: $file"
+      echo "$offending"
+      return 1
+    fi
+  done
+  return 0
+}
+
 test_upgrade_coordinated_mode_defers_legacy_cleanup() {
   local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
   local contents
@@ -2406,7 +2427,7 @@ test_backend_replacement_failure_restores_backend() {
 
   assert_equals "7" "$exit_code" \
     "backend cleanup should preserve the original replacement failure" || return 1
-  assert_contains "$(cat "$call_log")" "compose:$PROJECT_ROOT up -d --no-deps backend" \
+  assert_contains "$(cat "$call_log")" "compose:$PROJECT_ROOT up -d --no-build --no-deps backend" \
     "backend cleanup should always recreate the compose backend" || return 1
   assert_contains "$(cat "$call_log")" "healthy:upgrade-cleanup-test-backend-1 5" \
     "backend cleanup should wait for restored health"
@@ -2623,6 +2644,7 @@ main() {
   run_test "installed image from another ref fails" test_assert_installed_image_matches_checkout_rejects_mismatch
   run_test "unreadable image version is not a failure" test_assert_installed_image_matches_checkout_skips_when_unreadable
   run_test "cleanup restore preserves executable mode" test_cleanup_restore_preserves_tracked_executable_mode
+  run_test "upgrade lane compose up never rebuilds images" test_upgrade_lane_compose_up_never_rebuilds_images
 
   echo ""
   echo "Total:  $TESTS_RUN"

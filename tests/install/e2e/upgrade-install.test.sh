@@ -1066,10 +1066,37 @@ teardown() {
     if [ "$UPGRADE_SOURCE_INSTALL_ATTEMPTED" = "true" ]; then
         register_owned_lane_images \
             || log_warning "Lane image registration did not complete; receipt-bound cleanup will report them"
+        assert_registered_lane_images_unchanged \
+            || log_error "A lane phase rebuilt a registered image; receipt-bound cleanup will refuse it (#1032)"
     fi
 
     cleanup_upgrade_source_checkout
     clear_cleanup_trap
+}
+
+# The images the lane registered must still be the images its tags name when
+# the coordinator inspects them. A compose `up` without --no-build after
+# registration rebuilds a service image: BuildKit hands the registered image
+# back from cache, Podman commits a new ID, and the registered image goes
+# dangling while the tagged one is unregistered (#1032, run 14925). Name the
+# drift here so the receipt is not the first place it shows up.
+assert_registered_lane_images_unchanged() {
+    [ "$UPGRADE_LANE_IMAGES_REGISTERED" = "true" ] || return 0
+    local index image_ref image_id deadline identity_status status=0
+    deadline="$(ownership_new_image_deadline)"
+    for index in "${!REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}"; do
+        image_ref="${REGISTERED_CI_COMPOSE_IMAGE_REFS[$index]}"
+        image_id="${REGISTERED_CI_COMPOSE_IMAGE_IDS[$index]}"
+        identity_status=0
+        ownership_verify_registered_image_identity \
+            "$image_ref" "$image_id" "$SANCTUARY_BUILD_ID" "$deadline" 2>/dev/null || identity_status=$?
+        case "$identity_status" in
+            0) ;;
+            2) log_error "Registered lane image could not be observed: $image_ref registered=$image_id"; status=1 ;;
+            *) log_error "Registered lane image changed after registration: $image_ref registered=$image_id"; status=1 ;;
+        esac
+    done
+    return "$status"
 }
 
 # ============================================

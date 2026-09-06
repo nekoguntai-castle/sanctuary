@@ -172,16 +172,27 @@ register_exact_built_image_id() {
     "$image_id" "$image_id" "$SANCTUARY_OPERATION_RUN_ID"
 }
 
+# Prove that a registered reference still names the registered image with the
+# expected build provenance. Returns 2 when the image cannot be observed and 1
+# when the reference now names another image, so callers can tell an
+# unavailable engine from a rebuilt image (#1032).
+ownership_verify_registered_image_identity() {
+  local image_ref="$1" image_id="$2" build_id="$3" deadline="$4" observed
+  observed="$(ownership_bounded_image_inspect "$image_ref" "$deadline" \
+    | ownership_image_id_from_inspect "$image_ref" "$build_id")" || return 2
+  [ "$observed" = "$image_id" ] || return 1
+}
+
 retire_exact_built_image() {
   local image_ref="$1" image_id="$2" build_id="$3" deadline="${4:-}"
-  local observed listed remove_status=0
+  local listed remove_status=0 identity_status=0
   [ -n "$deadline" ] || deadline="$(ownership_new_image_deadline)"
-  observed="$(ownership_bounded_image_inspect "$image_ref" "$deadline" \
-    | ownership_image_id_from_inspect "$image_ref" "$build_id")" || {
+  ownership_verify_registered_image_identity "$image_ref" "$image_id" "$build_id" "$deadline" \
+    || identity_status=$?
+  if [ "$identity_status" -eq 2 ]; then
     echo "Exact image retirement precondition is unavailable: $image_ref" >&2
     return 1
-  }
-  if [ "$observed" != "$image_id" ]; then
+  elif [ "$identity_status" -ne 0 ]; then
     echo "Exact image retirement identity changed: $image_ref" >&2
     return 1
   fi

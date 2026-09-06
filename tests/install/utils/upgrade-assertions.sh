@@ -198,7 +198,12 @@ assert_frontend_proxy_recovers_after_backend_recreate_inner() {
     fi
     start_registered_install_container "$FRONTEND_PROXY_HOLDER_ID" || holder_start_status=$?
     [ "$holder_start_status" -eq 0 ] || return "$holder_start_status"
-    run_project_compose "$PROJECT_ROOT" up -d --no-deps backend >/dev/null || return 1
+    # Recreate the container only. The service declares pull_policy: build, so
+    # a bare `up` rebuilds the image; BuildKit hands back the registered image
+    # from cache, but Podman commits a new image ID on every build and the
+    # lane's registered image goes dangling (#1032). start.sh always passes
+    # --no-build for the same reason.
+    run_project_compose "$PROJECT_ROOT" up -d --no-build --no-deps backend >/dev/null || return 1
 
     new_backend_container="$(get_container_name backend)"
     wait_for_container_healthy "$new_backend_container" "$HEALTH_CHECK_TIMEOUT" || return 1
@@ -253,7 +258,7 @@ assert_frontend_proxy_recovers_after_backend_recreate() {
     if [ -n "$FRONTEND_PROXY_HOLDER_ID" ]; then
         remove_coordinated_container "$FRONTEND_PROXY_HOLDER_ID" >/dev/null 2>&1 || true
     fi
-    if ! run_project_compose "$PROJECT_ROOT" up -d --no-deps backend >/dev/null; then
+    if ! run_project_compose "$PROJECT_ROOT" up -d --no-build --no-deps backend >/dev/null; then
         log_error "Could not restore the backend after the replacement regression"
         [ "$status" -ne 0 ] && return "$status"
         return 1
