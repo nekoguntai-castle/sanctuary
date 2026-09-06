@@ -1675,6 +1675,32 @@ test_prepare_install_root_names_every_refused_shape() {
     "occupied-root refusal names the path"
 }
 
+test_upgrade_source_is_owned_detects_the_deployment_session() {
+  # Issue #1028: an ownership-aware source release must be upgraded in place.
+  local repo="$TEST_TMP_DIR/owned-source-repo" legacy owned
+  mkdir -m 700 "$repo"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email ci@example.invalid
+  git -C "$repo" config user.name ci
+  : > "$repo/README.md"
+  git -C "$repo" add README.md
+  git -C "$repo" commit -q -m legacy
+  legacy="$(git -C "$repo" rev-parse HEAD)"
+  mkdir -p "$repo/scripts/ownership"
+  : > "$repo/scripts/ownership/deployment-session.mjs"
+  git -C "$repo" add scripts
+  git -C "$repo" commit -q -m owned
+  owned="$(git -C "$repo" rev-parse HEAD)"
+  if upgrade_source_is_owned "$repo" "$legacy"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} a source without deployment-session.mjs is legacy"
+    return 1
+  fi
+  upgrade_source_is_owned "$repo" "$owned" || {
+    echo -e "${RED}ASSERTION FAILED:${NC} a source with deployment-session.mjs is owned"
+    return 1
+  }
+}
+
 test_prepare_install_root_uses_coordinated_private_runtime_for_tmp() {
   local runtime="$TEST_TMP_DIR/runtime-authority" root
   mkdir -m 700 "$runtime"
@@ -2554,6 +2580,7 @@ main() {
   run_test "prepare install root uses coordinated private runtime for tmp" test_prepare_install_root_uses_coordinated_private_runtime_for_tmp
   run_test "prepare install root names the broad parent it refuses" test_prepare_install_root_names_the_broad_parent_it_refuses
   run_test "prepare install root names every refused shape" test_prepare_install_root_names_every_refused_shape
+  run_test "upgrade source is owned detects the deployment session" test_upgrade_source_is_owned_detects_the_deployment_session
   run_test "compose subject binds project root before ownership init" test_compose_subject_binds_project_root_before_ownership_init
   run_test "container health discovers the compose project" test_container_health_discovers_the_compose_project_not_the_literal_name
   run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume

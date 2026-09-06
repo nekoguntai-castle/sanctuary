@@ -49,7 +49,7 @@ function cleanupStatus(receipt) {
 function prepare(request) {
   exactWithOptional(request, ['checkoutRoot', 'runtimeDirectory', 'lane', 'artifactDirectory'], [
     'engine', 'subjectGraceMs', 'subjectKillWaitMs', 'authorityMode',
-    'legacyFixtureCreationWitness',
+    'legacyFixtureCreationWitness', 'upgradeTargetCommit',
   ]);
   return prepareCiCleanupLifecycle(request);
 }

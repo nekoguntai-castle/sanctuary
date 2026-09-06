@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -11,6 +12,8 @@ import {
   coordinatorStatePath, readCoordinatorState, transitionCoordinatorState,
 } from '../../scripts/ownership/ci-cleanup-state.mjs';
 import { DeploymentStore } from '../../scripts/ownership/deployment-store.mjs';
+import { readUpgradeTarget } from '../../scripts/ownership/ci-cleanup-upgrade-target.mjs';
+import { sha256 } from '../../scripts/ownership/crypto.mjs';
 import {
   assertBoundCoordinatedRevision, deploymentIdentityOptions,
 } from '../../scripts/ownership/deployment-coordinated-authority.mjs';
@@ -449,5 +452,257 @@ test('CI cleanup lifecycle adopts an exact prepared pointer after finalization r
     assert.equal(resumed.state.phase, 'trust_installed');
     assert.equal(resumed.state.deploymentPointerDigest, finalized.preparedDigest);
     assert.equal(store.readActive().value.manifestDigest, resumed.state.deploymentManifestDigest);
+  });
+});
+
+// Issue #1028: once the latest stable release is itself ownership-aware, the
+// upgrade lane installs an owned source deployment (revision 1) and upgrades it
+// in place to the candidate (revision 2) from the same checkout root. The
+// coordinator is prepared with the checkout at the source commit, so its
+// authority binds that commit, and the lane declares the candidate; it must
+// then accept exactly one successor whose prior active digest is the bound
+// source manifest, and retire a successor that never activates.
+function git(cwd, ...args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+}
+
+function ownedUpgradeCheckout(root) {
+  const checkout = path.join(root, 'checkout');
+  mkdirSync(checkout, { mode: 0o700 });
+  for (const entry of [
+    'docker-compose.yml', 'docker/compose', 'config/resource-ownership-contract.json',
+    'config/container-image-lock.json', 'package.json',
+  ]) cpSync(path.join(CHECKOUT, entry), path.join(checkout, entry), { recursive: true });
+  git(checkout, 'init', '-q', '-b', 'main');
+  git(checkout, 'config', 'user.email', 'ci@example.invalid');
+  git(checkout, 'config', 'user.name', 'ci');
+  git(checkout, 'add', '-A');
+  git(checkout, 'commit', '-q', '-m', 'source release');
+  const source = git(checkout, 'rev-parse', 'HEAD');
+  const manifest = JSON.parse(readFileSync(path.join(checkout, 'package.json'), 'utf8'));
+  writeFileSync(path.join(checkout, 'package.json'), `${JSON.stringify({ ...manifest, version: '99.0.0' }, null, 2)}\n`);
+  git(checkout, 'commit', '-q', '-am', 'candidate');
+  const target = git(checkout, 'rev-parse', 'HEAD');
+  writeFileSync(path.join(checkout, 'package.json'), `${JSON.stringify({ ...manifest, version: '99.0.1' }, null, 2)}\n`);
+  git(checkout, 'commit', '-q', '-am', 'undeclared');
+  const undeclared = git(checkout, 'rev-parse', 'HEAD');
+  git(checkout, 'checkout', '-q', '--detach', source);
+  return { checkout, source, target, undeclared };
+}
+
+function withLocks(store, runtimeDirectory, authority, callback) {
+  const projectLock = acquireProjectMutationLock(
+    runtimeDirectory, authority.composeProjectName, { operationRunId: authority.operationRunId },
+  );
+  const deploymentLock = acquireDeploymentLock(store.lockPath, {
+    operationRunId: authority.operationRunId, token: projectLock.token,
+  });
+  try { return callback(deploymentLock.token); } finally {
+    releaseDeploymentLock(store.lockPath, deploymentLock.token, authority.operationRunId);
+    releaseProjectMutationLock(
+      runtimeDirectory, authority.composeProjectName, projectLock.token, authority.operationRunId,
+    );
+  }
+}
+
+function definitionFor(checkout, runtimeDirectory, authority, commit, release) {
+  return resolveDeploymentDefinition({
+    projectDirectory: checkout, runtimeDirectory,
+    envFile: path.join(runtimeDirectory, 'sanctuary.env'),
+    composeProjectName: authority.composeProjectName,
+    ownerId: authority.ownerId, release, commit,
+    policyDigest: sha256(readFileSync(path.join(checkout, 'config/resource-ownership-contract.json'))),
+    contextFingerprint: 'd'.repeat(64),
+  });
+}
+
+function activateHealthy(store, authority, lockToken, pending) {
+  let current = pending;
+  for (const stage of ['build_started', 'build_completed', 'postgres_started', 'password_reconciled', 'stack_started', 'health_verified']) {
+    current = store.transitionPending({
+      operationRunId: authority.operationRunId, lockToken,
+      expectedPendingDigest: current.pendingDigest, nextStage: stage,
+    });
+  }
+  return store.activateRevision({
+    operationRunId: authority.operationRunId, lockToken, expectedPendingDigest: current.pendingDigest,
+  });
+}
+
+function withSubjectEnvironment(environment, callback) {
+  const keys = Object.keys(environment);
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  Object.assign(process.env, environment);
+  try { return callback(); } finally {
+    for (const key of keys) {
+      if (before[key] === undefined) delete process.env[key];
+      else process.env[key] = before[key];
+    }
+  }
+}
+
+// Prepare the lane, install and activate the source revision, move the checkout
+// to the candidate, and prepare the candidate's successor revision.
+function prepareOwnedUpgrade(runnerTemp, lane) {
+  const { checkout, source, target, undeclared } = ownedUpgradeCheckout(runnerTemp);
+  const runtimeDirectory = path.join(runnerTemp, 'sanctuary-cleanup', lane);
+  const prepared = prepareCiCleanupLifecycle({
+    checkoutRoot: checkout, runtimeDirectory, lane,
+    authorityMode: 'deployment_managed_by_subject', upgradeTargetCommit: target,
+    now: new Date('2026-09-05T00:00:00.000Z'),
+  });
+  const authority = prepared.state.authority;
+  assert.equal(authority.checkoutCommit, source);
+  assert.equal(readUpgradeTarget(prepared.state, checkout).commit, target);
+  const store = new DeploymentStore({ runtimeDirectory, deploymentId: authority.deploymentId });
+  const sourceActive = withLocks(store, runtimeDirectory, authority, (lockToken) => {
+    const pending = store.prepareRevision({
+      bundle: definitionFor(checkout, runtimeDirectory, authority, source, 'source-release'),
+      expectedActiveDigest: null, operationRunId: authority.operationRunId, lockToken,
+      now: () => new Date(prepared.state.resourceCreatedAt),
+    });
+    const bound = bindSubjectManagedCiCleanupLifecycle({
+      statePath: prepared.path, checkoutRoot: checkout, lockToken,
+      now: new Date('2026-09-05T00:00:01.000Z'),
+    });
+    assert.equal(bound.state.phase, 'trust_installed');
+    assert.equal(bound.state.generation, 1);
+    withSubjectEnvironment({ ...bound.environment, SANCTUARY_COMMIT: source }, () => {
+      const identity = () => deploymentIdentityOptions(runtimeDirectory, authority.deploymentId, store);
+      assert.equal(identity().state.generation, 1);
+      // A persisted runtime env may still name the source while the checkout
+      // has moved to the candidate, or name the candidate before setup.sh
+      // refreshes it; both declared commits are accepted for the claim.
+      process.env.SANCTUARY_COMMIT = target;
+      assert.equal(identity().state.generation, 1);
+      // Anything outside the two declared commits is refused, whether it is
+      // the subject's claim or where the checkout actually is.
+      process.env.SANCTUARY_COMMIT = undeclared;
+      assert.throws(identity, /provider state \(revisionBinding\)/);
+      process.env.SANCTUARY_COMMIT = source;
+      git(checkout, 'checkout', '-q', '--detach', undeclared);
+      assert.throws(identity, /provider state \(revisionBinding\)/);
+      git(checkout, 'checkout', '-q', '--detach', source);
+    });
+    return activateHealthy(store, authority, lockToken, pending);
+  });
+  git(checkout, 'checkout', '-q', '--detach', target);
+  const coordinatedView = () => ({
+    state: readCoordinatorState(prepared.path, { checkoutRoot: checkout }).state,
+    createdAt: prepared.state.resourceCreatedAt,
+  });
+  const successor = withLocks(store, runtimeDirectory, authority, (lockToken) => {
+    assert.equal(resumeCiCleanupLifecycle({ statePath: prepared.path, checkoutRoot: checkout }).state.generation, 1);
+    const bundle = definitionFor(checkout, runtimeDirectory, authority, target, 'candidate');
+    assertBoundCoordinatedRevision(coordinatedView(), store.inspect(), bundle, store);
+    const pending = store.prepareRevision({
+      bundle, expectedActiveDigest: sourceActive.active.manifestDigest,
+      operationRunId: authority.operationRunId, lockToken,
+      now: () => new Date(prepared.state.resourceCreatedAt),
+    });
+    assert.equal(pending.manifest.priorActiveDigest, sourceActive.active.manifestDigest);
+    assertBoundCoordinatedRevision(coordinatedView(), store.inspect(), bundle, store);
+    const rebound = bindSubjectManagedCiCleanupLifecycle({
+      statePath: prepared.path, checkoutRoot: checkout, lockToken,
+      now: new Date('2026-09-05T00:00:02.000Z'),
+    });
+    assert.equal(rebound.state.phase, 'trust_installed');
+    assert.equal(rebound.state.generation, 2);
+    assert.equal(rebound.state.deploymentManifestDigest, pending.manifestDigest);
+    assertBoundCoordinatedRevision(coordinatedView(), store.inspect(), bundle, store);
+    // Re-entering bind in the successor window is idempotent.
+    const again = bindSubjectManagedCiCleanupLifecycle({
+      statePath: prepared.path, checkoutRoot: checkout, lockToken,
+      now: new Date('2026-09-05T00:00:02.500Z'),
+    });
+    assert.equal(again.state.generation, 2);
+    assert.equal(again.state.runManifestDigest, rebound.state.runManifestDigest);
+    return pending;
+  });
+  return { checkout, source, target, prepared, authority, store, runtimeDirectory, successor };
+}
+
+test('owned-source upgrade binds the source revision then one declared successor', () => {
+  withCiEnvironment((runnerTemp) => {
+    const { checkout, source, target } = ownedUpgradeCheckout(runnerTemp);
+    const runtimeDirectory = path.join(runnerTemp, 'sanctuary-cleanup', 'owned-upgrade-refusals');
+    assert.throws(() => prepareCiCleanupLifecycle({
+      checkoutRoot: checkout, runtimeDirectory, lane: 'owned-upgrade-refusals',
+      authorityMode: 'coordinator_managed', upgradeTargetCommit: target,
+    }), /upgrade target requires subject-managed/);
+    assert.throws(() => prepareCiCleanupLifecycle({
+      checkoutRoot: checkout, runtimeDirectory, lane: 'owned-upgrade-refusals',
+      authorityMode: 'deployment_managed_by_subject', upgradeTargetCommit: source,
+    }), /upgrade target commit must differ from the checkout commit/);
+    assert.throws(() => prepareCiCleanupLifecycle({
+      checkoutRoot: checkout, runtimeDirectory, lane: 'owned-upgrade-refusals',
+      authorityMode: 'deployment_managed_by_subject', upgradeTargetCommit: 'f'.repeat(40),
+    }), /upgrade target commit is not present in the checkout/);
+  });
+  withCiEnvironment((runnerTemp) => {
+    const upgrade = prepareOwnedUpgrade(runnerTemp, 'owned-upgrade');
+    withLocks(upgrade.store, upgrade.runtimeDirectory, upgrade.authority, (lockToken) => {
+      activateHealthy(upgrade.store, upgrade.authority, lockToken, upgrade.successor);
+    });
+    const finished = finishCiCleanupLifecycle({
+      statePath: upgrade.prepared.path, checkoutRoot: upgrade.checkout, subjectExitStatus: 0,
+      now: new Date('2026-09-05T00:00:03.000Z'),
+    });
+    assert.equal(finished.state.phase, 'deployment_retired');
+    assert.equal(finished.runManifest.manifest.generation, 2);
+    assert.equal(upgrade.store.readActive(), null);
+    assert.deepEqual(upgrade.store.readRetired().map(({ value }) => value.generation), [2]);
+  });
+});
+
+test('a declared successor that never activates is retired together with its source', () => {
+  withCiEnvironment((runnerTemp) => {
+    const upgrade = prepareOwnedUpgrade(runnerTemp, 'owned-upgrade-failed');
+    const finished = finishCiCleanupLifecycle({
+      statePath: upgrade.prepared.path, checkoutRoot: upgrade.checkout, subjectExitStatus: 17,
+      now: new Date('2026-09-05T00:00:03.000Z'),
+    });
+    assert.equal(finished.state.phase, 'deployment_retired');
+    assert.equal(finished.state.subjectExitStatus, 17);
+    const inspection = upgrade.store.inspect();
+    assert.equal(inspection.active, null);
+    assert.equal(inspection.pending, null);
+    assert.deepEqual(
+      inspection.retired.map(({ value }) => [value.generation, value.retirementVersion, value.disposition ?? 'active']).sort(),
+      [[1, 1, 'active'], [2, 2, 'cleanup_required']],
+    );
+  });
+});
+
+test('an undeclared lane still refuses a checkout that moved to another commit', () => {
+  withCiEnvironment((runnerTemp) => {
+    const { checkout, source, target } = ownedUpgradeCheckout(runnerTemp);
+    const runtimeDirectory = path.join(runnerTemp, 'sanctuary-cleanup', 'strict-upgrade');
+    const prepared = prepareCiCleanupLifecycle({
+      checkoutRoot: checkout, runtimeDirectory, lane: 'strict-upgrade',
+      authorityMode: 'deployment_managed_by_subject',
+    });
+    assert.equal(readUpgradeTarget(prepared.state, checkout), null);
+    const authority = prepared.state.authority;
+    const store = new DeploymentStore({ runtimeDirectory, deploymentId: authority.deploymentId });
+    withLocks(store, runtimeDirectory, authority, (lockToken) => {
+      const pending = store.prepareRevision({
+        bundle: definitionFor(checkout, runtimeDirectory, authority, source, 'source-release'),
+        expectedActiveDigest: null, operationRunId: authority.operationRunId, lockToken,
+        now: () => new Date(prepared.state.resourceCreatedAt),
+      });
+      bindSubjectManagedCiCleanupLifecycle({ statePath: prepared.path, checkoutRoot: checkout, lockToken });
+      activateHealthy(store, authority, lockToken, pending);
+      git(checkout, 'checkout', '-q', '--detach', target);
+      assert.throws(() => bindSubjectManagedCiCleanupLifecycle({
+        statePath: prepared.path, checkoutRoot: checkout, lockToken,
+      }), /authority changed before resume/);
+      withSubjectEnvironment({ SANCTUARY_COMMIT: target }, () => {
+        assert.throws(() => prepareCiCleanupLifecycle({
+          checkoutRoot: checkout, runtimeDirectory, lane: 'strict-upgrade',
+          authorityMode: 'deployment_managed_by_subject',
+        }), /authority changed before resume/);
+      });
+    });
   });
 });

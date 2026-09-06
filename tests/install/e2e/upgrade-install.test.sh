@@ -172,7 +172,34 @@ TEST_HTTP_HOST=$(default_install_test_host)
 API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 BROWSER_BASE_URL="https://${UPGRADE_BROWSER_HOST}:${HTTPS_PORT}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
-UPGRADE_SOURCE_CHECKOUT="${SANCTUARY_UPGRADE_SOURCE_CHECKOUT:-$TEST_ROOT/sanctuary-upgrade-source-${TEST_ID}/sanctuary}"
+# Issue #1028: an ownership-aware source release installs a deployment store
+# bound to its directory, so the upgrade must happen in that same directory the
+# way `git pull && ./install.sh` does in production. A coordinated lane passes
+# the coordinator's checkout root here, already checked out at the source
+# release because the coordinator bound its authority to that commit (see
+# run-upgrade-baseline-isolated-subject.sh); a local run creates its usual
+# source worktree and updates that worktree in place.
+UPGRADE_DEPLOYMENT_ROOT="${SANCTUARY_UPGRADE_DEPLOYMENT_ROOT:-}"
+UPGRADE_DEPLOYMENT_ROOT_FLIPPED=false
+UPGRADE_SOURCE_OWNED=false
+UPGRADE_SOURCE_OID=""
+UPGRADE_SOURCE_INSTALL_ATTEMPTED=false
+UPGRADE_LANE_IMAGES_REGISTERED=false
+# An owned source labels its images and volumes exactly like a fresh install
+# does, so the lane registers them the same way the fresh-install harness
+# does: from the post-install runtime env, so the registration tuple is the
+# one the installer stamped on the resources (release, commit, created-at).
+readonly -a COMPOSE_REGISTRATION_ARGS=(
+    --expected-image sanctuary-backend
+    --expected-image sanctuary-frontend
+    --expected-image sanctuary-gateway
+    --expected-image sanctuary-llm-egress-proxy
+    --expected-volume backup_data
+    --expected-volume postgres_data
+    --expected-volume redis_data
+    --expected-volume support_capture_runtime
+)
+UPGRADE_SOURCE_CHECKOUT="${SANCTUARY_UPGRADE_SOURCE_CHECKOUT:-${UPGRADE_DEPLOYMENT_ROOT:-$TEST_ROOT/sanctuary-upgrade-source-${TEST_ID}/sanctuary}}"
 LEGACY_TARGET_ENV_FILE="$TARGET_PROJECT_ROOT/.env"
 if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ] && [ -z "${SANCTUARY_ENV_FILE:-}" ]; then
     TEST_ENV_FILE="$UPGRADE_SOURCE_CHECKOUT/.env"
@@ -272,6 +299,24 @@ load_runtime_env() {
     export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
 }
 
+# A legacy (pre-ownership) source must expose unlabeled resources; an owned
+# source must label every one of them. Either way the identities are snapshot
+# so the upgrade can prove it preserved them.
+assert_source_resource_label_shape() {
+    local kind="$1" name="$2" label_count="$3"
+    if [ "$UPGRADE_SOURCE_OWNED" = "true" ]; then
+        [ "$label_count" -gt 0 ] || {
+            log_error "Owned source $kind is missing Sanctuary ownership labels: $name"
+            return 1
+        }
+        return 0
+    fi
+    [ "$label_count" -eq 0 ] || {
+        log_error "Legacy $kind unexpectedly has Sanctuary ownership labels: $name"
+        return 1
+    }
+}
+
 snapshot_legacy_docker_resources() {
     local output_file="$1"
     local names_file="$TEST_RUNTIME_DIR/legacy-docker-resource-names.txt"
@@ -284,10 +329,7 @@ snapshot_legacy_docker_resources() {
         [ -n "$name" ] || continue
         inspected="$(docker volume inspect "$name")" || return 1
         sanctuary_labels="$(printf '%s' "$inspected" | jq '[.[0].Labels // {} | keys[] | select(startswith("io.sanctuary."))] | length')" || return 1
-        [ "$sanctuary_labels" -eq 0 ] || {
-            log_error "Legacy volume unexpectedly has Sanctuary ownership labels: $name"
-            return 1
-        }
+        assert_source_resource_label_shape volume "$name" "$sanctuary_labels" || return 1
         identity="$(printf '%s' "$inspected" | jq -cS '.[0] | {Name,Driver,Scope,Mountpoint,CreatedAt,Options}' | sha256sum | awk '{print $1}')" || return 1
         printf 'compose_volume\t%s\t%s\n' "$name" "$identity" >> "$output_file"
         resource_count=$((resource_count + 1))
@@ -299,10 +341,7 @@ snapshot_legacy_docker_resources() {
         [ -n "$name" ] || continue
         inspected="$(docker network inspect "$name")" || return 1
         sanctuary_labels="$(printf '%s' "$inspected" | jq '[.[0].Labels // {} | keys[] | select(startswith("io.sanctuary."))] | length')" || return 1
-        [ "$sanctuary_labels" -eq 0 ] || {
-            log_error "Legacy network unexpectedly has Sanctuary ownership labels: $name"
-            return 1
-        }
+        assert_source_resource_label_shape network "$name" "$sanctuary_labels" || return 1
         identity="$(printf '%s' "$inspected" | jq -er '.[0].Id | select(type == "string" and length > 0)')" || return 1
         printf 'compose_network\t%s\t%s\n' "$name" "$identity" >> "$output_file"
         resource_count=$((resource_count + 1))
@@ -319,7 +358,17 @@ verify_legacy_docker_resources_preserved() {
     local active_pointer manifest generation
 
     snapshot_legacy_docker_resources "$current_snapshot" || return 1
-    if ! cmp -s "$LEGACY_DOCKER_SNAPSHOT" "$current_snapshot"; then
+    if [ "$UPGRADE_SOURCE_OWNED" = "true" ]; then
+        # An owned upgrade recreates its networks (their per-release ownership
+        # labels change), so only the data volumes must keep their identity.
+        if ! cmp -s <(grep '^compose_volume' "$LEGACY_DOCKER_SNAPSHOT") \
+                <(grep '^compose_volume' "$current_snapshot"); then
+            log_error "Owned source volume identity changed during upgrade"
+            diff -u <(grep '^compose_volume' "$LEGACY_DOCKER_SNAPSHOT") \
+                <(grep '^compose_volume' "$current_snapshot") || true
+            return 1
+        fi
+    elif ! cmp -s "$LEGACY_DOCKER_SNAPSHOT" "$current_snapshot"; then
         log_error "Legacy volume or network identity changed during upgrade"
         diff -u "$LEGACY_DOCKER_SNAPSHOT" "$current_snapshot" || true
         return 1
@@ -332,6 +381,17 @@ verify_legacy_docker_resources_preserved() {
     }
     generation="$(jq -r '.generation' "$active_pointer")"
     manifest="$TEST_RUNTIME_DIR/ownership/deployments/$SANCTUARY_DEPLOYMENT_ID/revisions/$generation/deployment-manifest.json"
+    if [ "$UPGRADE_SOURCE_OWNED" = "true" ]; then
+        # The owned source was revision 1 of this same deployment; the upgrade
+        # must have activated a successor over it, never a fresh first revision.
+        jq -e --arg generation "$generation" '
+            (.generation | tostring) == $generation and .priorActiveDigest != null
+        ' "$manifest" >/dev/null || {
+            log_error "Target upgrade did not activate a successor of the owned source revision (generation $generation)"
+            return 1
+        }
+        return 0
+    fi
     while IFS=$'\t' read -r resource_class locator _identity; do
         jq -e --arg class "$resource_class" --arg locator "$locator" '
             .legacyResources[] | select(
@@ -394,6 +454,19 @@ prepare_upgrade_source_checkout() {
         return 1
     fi
 
+    UPGRADE_SOURCE_OID="$(git -C "$TARGET_PROJECT_ROOT" rev-parse "${source_ref}^{commit}")" || return 1
+    if upgrade_source_is_owned "$TARGET_PROJECT_ROOT" "$UPGRADE_SOURCE_OID"; then
+        UPGRADE_SOURCE_OWNED=true
+    fi
+    if [ -n "$UPGRADE_DEPLOYMENT_ROOT" ]; then
+        prepare_owned_upgrade_deployment_root "$source_ref" || return 1
+        return 0
+    fi
+    if [ "$UPGRADE_SOURCE_OWNED" = "true" ] && [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        log_error "Coordinated upgrade from owned source $source_ref requires SANCTUARY_UPGRADE_DEPLOYMENT_ROOT to name the coordinator checkout root (issue #1028)"
+        return 1
+    fi
+
     worktree_parent="$(dirname "$UPGRADE_SOURCE_CHECKOUT")"
     mkdir -p "$worktree_parent"
     chmod 700 "$worktree_parent"
@@ -421,6 +494,131 @@ prepare_upgrade_source_checkout() {
     return 0
 }
 
+# Use the deployment root a lane provided for an owned source. Under
+# coordination the root must be the coordinator's checkout root and must
+# already be at the source release, because the coordinator bound its authority
+# to that commit and declared the candidate as the one commit the checkout may
+# move to. A local run may hand over a root at the candidate commit; it is
+# checked out to the source release here.
+prepare_owned_upgrade_deployment_root() {
+    local source_ref="$1" head root target_commit
+    if [ "$UPGRADE_SOURCE_OWNED" != "true" ]; then
+        log_error "SANCTUARY_UPGRADE_DEPLOYMENT_ROOT is only valid for an ownership-aware source; $source_ref predates ownership"
+        return 1
+    fi
+    root="$(cd "$UPGRADE_DEPLOYMENT_ROOT" 2>/dev/null && pwd -P)" || {
+        log_error "Upgrade deployment root is not a directory: $UPGRADE_DEPLOYMENT_ROOT"
+        return 1
+    }
+    head="$(git -C "$root" rev-parse HEAD 2>/dev/null)" || {
+        log_error "Upgrade deployment root is not a git checkout: $root"
+        return 1
+    }
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ]; then
+        if [ "$root" != "$(cd "${SANCTUARY_PROJECT_DIR:-/nonexistent}" 2>/dev/null && pwd -P)" ]; then
+            log_error "Upgrade deployment root $root must be the coordinator checkout root ${SANCTUARY_PROJECT_DIR:-<unset>}"
+            return 1
+        fi
+        if [ "$head" != "$UPGRADE_SOURCE_OID" ]; then
+            log_error "Coordinated upgrade deployment root $root is at $head, expected the declared source $source_ref ($UPGRADE_SOURCE_OID)"
+            return 1
+        fi
+    elif [ "$head" != "$UPGRADE_SOURCE_OID" ]; then
+        target_commit="$(git -C "$TARGET_PROJECT_ROOT" rev-parse HEAD)"
+        if [ "$head" != "$target_commit" ]; then
+            log_error "Upgrade deployment root $root is at $head, expected $source_ref ($UPGRADE_SOURCE_OID) or the candidate $target_commit"
+            return 1
+        fi
+        if [ -n "$(git -C "$root" status --porcelain=v2 --untracked-files=no)" ]; then
+            log_error "Upgrade deployment root $root has tracked changes; refusing to check out $source_ref over them"
+            return 1
+        fi
+        git -C "$root" checkout -q --detach "$UPGRADE_SOURCE_OID" || {
+            log_error "Could not check out $source_ref ($UPGRADE_SOURCE_OID) in $root"
+            return 1
+        }
+    fi
+    UPGRADE_DEPLOYMENT_ROOT="$root"
+    UPGRADE_SOURCE_CHECKOUT="$root"
+    UPGRADE_DEPLOYMENT_ROOT_FLIPPED=true
+    PROJECT_ROOT="$root"
+    UPGRADE_SOURCE_LABEL="$source_ref"
+    log_info "Owned source $source_ref is checked out in place at $root"
+}
+
+# Register the owned source's exact volumes for receipt-bound cleanup, from the
+# runtime env the source installer persisted so the registration tuple is the
+# one it stamped on the volumes. Volumes are registered exactly once per lane:
+# the candidate's upgrade reuses them, and a second registration with the
+# candidate's tuple would make the volume's removal proof ambiguous (#1028).
+# Images are deliberately not registered here: see register_owned_lane_images.
+register_owned_source_resources() {
+    [ "$UPGRADE_SOURCE_OWNED" = "true" ] && [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ] || return 0
+    local -a expected_volumes=()
+    local index
+    log_info "Registering exact owned-source volumes for receipt-bound cleanup..."
+    load_runtime_env || return 1
+    ownership_initialize_build_identity || return 1
+    for index in "${!COMPOSE_REGISTRATION_ARGS[@]}"; do
+        [ "${COMPOSE_REGISTRATION_ARGS[$index]}" = "--expected-volume" ] || continue
+        expected_volumes+=("${COMPOSE_PROJECT_NAME}_${COMPOSE_REGISTRATION_ARGS[$((index + 1))]}")
+    done
+    register_ci_compose_volumes "$(ownership_new_image_deadline)" per-resource "${expected_volumes[@]}"
+}
+
+# Register the lane's images exactly once, at the end. An image is cleanable
+# only through one exclusive registration; registering the source's tag
+# references and then the candidate's rebuilt references again left the one
+# image whose bytes changed with two registrations and its predecessor
+# dangling (PR #1030, run 14886). Registered here, the current tags resolve to
+# the candidate's images and the source's superseded images are registered
+# by their exact IDs as dangling lane images.
+register_owned_lane_images() {
+    [ "$UPGRADE_SOURCE_OWNED" = "true" ] && [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = "1" ] || return 0
+    [ "$UPGRADE_LANE_IMAGES_REGISTERED" != "true" ] || return 0
+    local -a expected_refs=()
+    local index
+    log_info "Registering exact lane images for receipt-bound cleanup..."
+    load_runtime_env || return 1
+    ownership_initialize_build_identity || return 1
+    export_lane_image_tag || return 1
+    for index in "${!COMPOSE_REGISTRATION_ARGS[@]}"; do
+        [ "${COMPOSE_REGISTRATION_ARGS[$index]}" = "--expected-image" ] || continue
+        expected_refs+=("${COMPOSE_REGISTRATION_ARGS[$((index + 1))]}:$SANCTUARY_IMAGE_TAG")
+    done
+    register_ci_compose_images 0 "$(ownership_new_image_deadline)" "${expected_refs[@]}" || return 1
+    retire_shared_ci_compose_image_references "$(ownership_new_image_deadline)" || return 1
+    UPGRADE_LANE_IMAGES_REGISTERED=true
+}
+
+# Docker releases a stopped container's network endpoint; rootless Podman keeps
+# it. The candidate's Compose recreates a network whose per-release ownership
+# labels changed, which Podman then refuses ("has associated containers") while
+# the owned source's stopped containers remain attached (PR #1030, run 14858).
+# Removing those stopped containers lets the candidate recreate its networks on
+# either engine; the upgrade evidence lives in the volumes and runtime env.
+remove_stopped_owned_source_containers() {
+    [ "$UPGRADE_SOURCE_OWNED" = "true" ] || return 0
+    local ids
+    ids="$(docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" \
+        --filter status=exited --filter status=created)" || return 1
+    [ -n "$ids" ] || return 0
+    # shellcheck disable=SC2086 -- container IDs are whitespace-separated
+    docker rm $ids >/dev/null || return 1
+    log_info "Removed the stopped owned-source containers so the candidate can recreate its networks"
+}
+
+# Bring an owned source checkout to the candidate commit in place, the way a
+# production `git pull` does, after undoing the harness's tracked edits.
+update_owned_upgrade_checkout_in_place() {
+    local checkout="$1" target_commit="$2"
+    restore_upgrade_checkout_tracked_files "$checkout" || return 1
+    git -C "$checkout" checkout -q --detach "$target_commit" || {
+        log_error "Could not update $checkout in place to $target_commit"
+        return 1
+    }
+}
+
 cleanup_upgrade_source_checkout() {
     if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
         normalize_upgrade_source_checkout_for_cleanup || return 1
@@ -428,8 +626,11 @@ cleanup_upgrade_source_checkout() {
     fi
 }
 
-normalize_upgrade_source_checkout_for_cleanup() {
-    local relative_path
+# Undo the harness's edits to tracked compose files in a checkout it installed
+# from. The runtime env is untracked and stays where it is: for an owned source
+# it is the deployment's env for the rest of the run.
+restore_upgrade_checkout_tracked_files() {
+    local checkout="$1" relative_path
     local compose_paths=(
         docker-compose.yml
         docker-compose.ghcr.yml
@@ -440,10 +641,13 @@ normalize_upgrade_source_checkout_for_cleanup() {
     )
 
     for relative_path in "${compose_paths[@]}"; do
-        git -C "$UPGRADE_SOURCE_CHECKOUT" cat-file -e "HEAD:$relative_path" 2>/dev/null || continue
-        restore_tracked_worktree_file_for_cleanup \
-            "$UPGRADE_SOURCE_CHECKOUT" "$relative_path" || return 1
+        git -C "$checkout" cat-file -e "HEAD:$relative_path" 2>/dev/null || continue
+        restore_tracked_worktree_file_for_cleanup "$checkout" "$relative_path" || return 1
     done
+}
+
+normalize_upgrade_source_checkout_for_cleanup() {
+    restore_upgrade_checkout_tracked_files "$UPGRADE_SOURCE_CHECKOUT" || return 1
     rm -f "$UPGRADE_SOURCE_CHECKOUT/.env"
     if [ -n "$(git -C "$UPGRADE_SOURCE_CHECKOUT" status --porcelain=v2 --untracked-files=all)" ]; then
         log_error "Registered upgrade worktree contains unexpected changes; canonical cleanup will refuse it"
@@ -840,6 +1044,13 @@ teardown() {
         log_warning "Preserving the uncoordinated runtime because no signed host cleanup authority exists"
     fi
 
+    # A lane that failed after building leaves images the coordinator would
+    # otherwise refuse as unregistered (PR #1030, run 14858).
+    if [ "$UPGRADE_SOURCE_INSTALL_ATTEMPTED" = "true" ]; then
+        register_owned_lane_images \
+            || log_warning "Lane image registration did not complete; receipt-bound cleanup will report them"
+    fi
+
     cleanup_upgrade_source_checkout
     clear_cleanup_trap
 }
@@ -853,7 +1064,7 @@ test_ensure_existing_installation() {
 
     cd "$PROJECT_ROOT"
 
-    if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
+    if [ "$UPGRADE_SOURCE_CREATED" = "true" ] || [ "$UPGRADE_DEPLOYMENT_ROOT_FLIPPED" = "true" ]; then
         force_test_compose_restart_policy_no "$PROJECT_ROOT"
     fi
 
@@ -870,6 +1081,7 @@ test_ensure_existing_installation() {
         sync_monitoring_configs_to_daemon "$PROJECT_ROOT"
     fi
 
+    UPGRADE_SOURCE_INSTALL_ATTEMPTED=true
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
@@ -920,6 +1132,8 @@ test_ensure_existing_installation() {
         ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
         log_info "Loaded initial secrets from $(resolve_env_file)"
     fi
+
+    register_owned_source_resources || return 1
 
     log_success "Initial installation created from $UPGRADE_SOURCE_LABEL"
     return 0
@@ -1450,6 +1664,7 @@ test_stop_containers_for_upgrade() {
         log_error "Some containers still running after stop"
         return 1
     fi
+    remove_stopped_owned_source_containers || return 1
 
     log_success "Containers stopped"
     return 0
@@ -1475,6 +1690,16 @@ test_simulate_git_update() {
     local target_commit=$(git -C "$TARGET_PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")
     log_info "Source commit: $current_commit"
     log_info "Target commit: $target_commit"
+
+    if [ "$UPGRADE_SOURCE_OWNED" = "true" ] && [ "$current_commit" != "$target_commit" ]; then
+        # Product model for an owned deployment: the same directory moves to the
+        # candidate commit and the candidate installer upgrades revision 1 in
+        # place (issue #1028). PROJECT_ROOT stays the deployment root.
+        update_owned_upgrade_checkout_in_place "$PROJECT_ROOT" "$target_commit" || return 1
+        log_info "Updated owned deployment checkout in place: $PROJECT_ROOT"
+        log_success "Upgrade target prepared"
+        return 0
+    fi
 
     PROJECT_ROOT="$TARGET_PROJECT_ROOT"
 
@@ -1545,6 +1770,8 @@ test_restart_containers_after_upgrade() {
 
     # Extra wait for backend to fully initialize after migration
     sleep 5
+
+    register_owned_lane_images || return 1
 
     log_success "Upgrade completed successfully"
     return 0
@@ -1819,11 +2046,14 @@ test_verify_two_factor_rejects_drifted_material() {
 test_reset_two_factor_and_reenroll() {
     log_info "Testing 2FA reset recovery and re-enrollment after upgrade..."
 
+    # The recovery script resolves its deployment from its own checkout, so it
+    # must run from the deployment root: for an owned source that is the
+    # in-place checkout, not the harness checkout (PR #1030, run 14879).
     local recovery_dir reset_output
     recovery_dir="$TEST_RUNTIME_DIR/recovery"
     reset_output=$(
         export SANCTUARY_2FA_RESET_BACKUP_DIR="$recovery_dir"
-        "$TARGET_PROJECT_ROOT/scripts/reset-user-2fa.sh" --username admin --yes 2>&1
+        "$PROJECT_ROOT/scripts/reset-user-2fa.sh" --username admin --yes 2>&1
     ) || {
         log_error "2FA reset recovery script failed"
         log_error "Output: $reset_output"

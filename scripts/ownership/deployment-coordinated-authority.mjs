@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { gitHead } from './ci-cleanup-authority.mjs';
 import { coordinatorStatePath, readCoordinatorState } from './ci-cleanup-state.mjs';
+import { authorityBinding, boundTo, readUpgradeTarget } from './ci-cleanup-upgrade-target.mjs';
 import { ciCleanupProviderContext } from './ci-cleanup-trust.mjs';
 import { sha256 } from './crypto.mjs';
 import { resolveProjectIdentity } from './project-identity.mjs';
@@ -15,21 +17,42 @@ function flag(name) {
   return ['1', 'true', 'yes'].includes((process.env[name] ?? '').toLowerCase());
 }
 
-function coordinatedAuthorityMatches(authority, expected) {
-  return [
-    authority.authorityMode === 'deployment_managed_by_subject',
-    ['subject_ready', 'deployment_bound', 'run_active', 'trust_installed'].includes(expected.phase),
-    authority.runtimeDirectory === expected.runtimeDirectory,
-    authority.checkoutRoot === expected.checkoutRoot,
-    authority.deploymentId === expected.deploymentId,
-    authority.composeProjectName === expected.composeProjectName,
-    authority.ownerId === expected.ownerId,
-    authority.operationRunId === expected.operationRunId,
-    authority.checkoutCommit === expected.commit,
-    authority.policyDigest === expected.policyDigest,
-    authority.identityDigest === expected.identityDigest,
-    expected.liveIdentityDigest === expected.identityDigest,
-  ].every(Boolean);
+// The revision being prepared is bound either to the source commit the
+// authority was prepared from or, for a declared upgrade lane (#1028), to the
+// candidate the lane declared. In an upgrade lane the checkout's live HEAD must
+// be one of those two commits and the subject's claim must name one of them.
+// The claim and HEAD may legitimately differ here: a persisted runtime env
+// still carries the source commit until setup.sh refreshes it from HEAD after
+// taking the deployment lock. Which commit a bound manifest carries is settled
+// at bind against live HEAD, never by this claim alone.
+function revisionBindingMatches(authority, expected, state) {
+  const revision = { commit: expected.commit, policyDigest: expected.policyDigest };
+  const bindings = [authorityBinding(authority)];
+  const target = readUpgradeTarget(state, expected.checkoutRoot);
+  if (target === null) return boundTo(bindings[0], revision);
+  bindings.push(target);
+  const head = gitHead(expected.checkoutRoot);
+  return bindings.some((binding) => boundTo(binding, revision))
+    && bindings.some((binding) => binding.commit === head);
+}
+
+// Names the predicates that fail so a refusal is diagnosable from the lane
+// log without exposing any value: the subject only learns which comparison
+// disagreed, never what the coordinator expected.
+function coordinatedAuthorityMismatches(authority, expected, state) {
+  return Object.entries({
+    authorityMode: authority.authorityMode === 'deployment_managed_by_subject',
+    phase: ['subject_ready', 'deployment_bound', 'run_active', 'trust_installed'].includes(expected.phase),
+    runtimeDirectory: authority.runtimeDirectory === expected.runtimeDirectory,
+    checkoutRoot: authority.checkoutRoot === expected.checkoutRoot,
+    deploymentId: authority.deploymentId === expected.deploymentId,
+    composeProjectName: authority.composeProjectName === expected.composeProjectName,
+    ownerId: authority.ownerId === expected.ownerId,
+    operationRunId: authority.operationRunId === expected.operationRunId,
+    revisionBinding: revisionBindingMatches(authority, expected, state),
+    identityDigest: authority.identityDigest === expected.identityDigest,
+    liveIdentity: expected.liveIdentityDigest === expected.identityDigest,
+  }).filter(([, matches]) => !matches).map(([name]) => name);
 }
 
 function assertStoreIdentity(identity, expected) {
@@ -87,8 +110,9 @@ export function deploymentIdentityOptions(runtimeDirectory, deploymentId, store)
   }
   const state = readCoordinatorState(statePath, { checkoutRoot }).state;
   const expected = coordinatedExpected(runtimeDirectory, deploymentId, checkoutRoot, state);
-  if (!coordinatedAuthorityMatches(state.authority, expected)) {
-    throw new Error('coordinated deployment authority does not match provider state');
+  const mismatches = coordinatedAuthorityMismatches(state.authority, expected, state);
+  if (mismatches.length > 0) {
+    throw new Error(`coordinated deployment authority does not match provider state (${mismatches.join(', ')})`);
   }
   assertStoreIdentity(store.readIdentity(), expected);
   const createdAt = assertCreationTimestamp(state);
@@ -98,21 +122,66 @@ export function deploymentIdentityOptions(runtimeDirectory, deploymentId, store)
   };
 }
 
+// The pointer shapes a coordinated deployment may be in. Only a declared
+// upgrade may hold two pointers: the source revision and the candidate's
+// successor, which coexist until the successor activates (#1028).
+function boundPointerShape(state, inspection, target) {
+  const isBound = (pointer) => pointer.value.generation === state.generation
+    && pointer.value.manifestDigest === state.deploymentManifestDigest;
+  const pointers = [inspection.pending, inspection.prepared, inspection.active].filter(Boolean);
+  const others = pointers.filter((pointer) => !isBound(pointer));
+  if (pointers.length - others.length !== 1 || others.length > (target === null ? 0 : 1)) {
+    throw new Error(pointers.length === 1 ? 'coordinated deployment bound revision changed'
+      : 'coordinated deployment bound revision state is ambiguous');
+  }
+  return { other: others[0] ?? null, activeIsBound: Boolean(inspection.active) && isBound(inspection.active) };
+}
+
+// After the rebind: the bound successor is pending and the source it
+// supersedes is still active.
+function supersededSourceIsActive(revision, inspection, other, bundle) {
+  return other === inspection.active
+    && revision.manifest.priorActiveDigest === other.value.manifestDigest
+    && revision.manifest.definitionDigest === bundle.definition.definitionDigest;
+}
+
+// Before the rebind: the bound source is active and the candidate's successor
+// has been prepared but not yet bound.
+function preparedSuccessorMatches(state, revision, inspection, shape, bundle, store, target) {
+  if (shape.other !== inspection.pending || !shape.activeIsBound
+      || !boundTo(authorityBinding(state.authority), revision.manifest)) return false;
+  const successor = store.readManifest(shape.other.value.generation, { verifySnapshots: true });
+  return successor.manifestDigest === shape.other.value.manifestDigest
+    && successor.manifest.generation === state.generation + 1
+    && successor.manifest.priorActiveDigest === state.deploymentManifestDigest
+    && boundTo(target, successor.manifest)
+    && successor.manifest.definitionDigest === bundle.definition.definitionDigest;
+}
+
+// The bound source revision is active and the candidate is about to prepare
+// the one successor the lane declared.
+function successorAboutToPrepare(state, revision, shape, bundle, target) {
+  return target !== null && shape.activeIsBound
+    && boundTo(authorityBinding(state.authority), revision.manifest)
+    && bundle.definition.commit === target.commit;
+}
+
 export function assertBoundCoordinatedRevision(coordinated, inspection, bundle, store) {
   if (!coordinated.state || coordinated.state.phase === 'subject_ready') return;
-  const pointers = [inspection.pending, inspection.prepared, inspection.active].filter(Boolean);
-  if (pointers.length !== 1) {
-    throw new Error('coordinated deployment bound revision state is ambiguous');
-  }
-  const pointer = pointers[0];
-  if (pointer.value.generation !== coordinated.state.generation
-      || pointer.value.manifestDigest !== coordinated.state.deploymentManifestDigest) {
-    throw new Error('coordinated deployment bound revision changed');
-  }
-  const revision = store.readManifest(pointer.value.generation, { verifySnapshots: true });
-  if (revision.manifestDigest !== coordinated.state.deploymentManifestDigest
-      || revision.manifest.definitionDigest !== bundle.definition.definitionDigest
+  const state = coordinated.state;
+  const target = readUpgradeTarget(state, state.authority.checkoutRoot);
+  const shape = boundPointerShape(state, inspection, target);
+  const revision = store.readManifest(state.generation, { verifySnapshots: true });
+  if (revision.manifestDigest !== state.deploymentManifestDigest
       || revision.manifest.createdAt !== coordinated.createdAt) {
     throw new Error('coordinated deployment bound definition changed');
   }
+  if (shape.other !== null) {
+    if (supersededSourceIsActive(revision, inspection, shape.other, bundle)
+        || preparedSuccessorMatches(state, revision, inspection, shape, bundle, store, target)) return;
+    throw new Error('coordinated deployment bound revision state is ambiguous');
+  }
+  if (revision.manifest.definitionDigest === bundle.definition.definitionDigest
+      || successorAboutToPrepare(state, revision, shape, bundle, target)) return;
+  throw new Error('coordinated deployment bound definition changed');
 }

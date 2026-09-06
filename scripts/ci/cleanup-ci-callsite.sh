@@ -13,6 +13,7 @@ shift
 lane= runtime= artifact_dir= state= status= engine=docker checkout_root="$PROJECT_ROOT"
 authority_mode=coordinator_managed
 legacy_fixture_creation_witness=false
+upgrade_target_commit=
 while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
   case "$1" in
     --lane) lane="${2:-}"; shift 2 ;;
@@ -24,6 +25,7 @@ while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
     --checkout-root) checkout_root="${2:-}"; shift 2 ;;
     --authority-mode) authority_mode="${2:-}"; shift 2 ;;
     --legacy-fixture-creation-witness) legacy_fixture_creation_witness=true; shift ;;
+    --upgrade-target-commit) upgrade_target_commit="${2:-}"; shift 2 ;;
     *) echo "unknown cleanup callsite option: $1" >&2; exit 2 ;;
   esac
 done
@@ -79,6 +81,10 @@ request_args=(
 )
 if [ "$legacy_fixture_creation_witness" = true ]; then
   request_args+=(--legacy-fixture-creation-witness true)
+fi
+if [ -n "$upgrade_target_commit" ]; then
+  [ "$MODE" = run ] || { echo '--upgrade-target-commit is only valid for run mode' >&2; exit 2; }
+  request_args+=(--upgrade-target-commit "$upgrade_target_commit")
 fi
 if [ "$MODE" = finish ] || [ "$MODE" = recover ]; then
   request_args+=(--state "$state" --status "$status")

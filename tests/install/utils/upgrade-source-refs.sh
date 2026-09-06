@@ -6,6 +6,15 @@ is_stable_release_tag() {
     [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
+# An ownership-aware source release carries its own deployment session and
+# therefore records a deployment store when installed. Upgrading from it must
+# follow the product model (same directory, revision 2 over revision 1) rather
+# than the two-directory legacy-source emulation (issue #1028).
+upgrade_source_is_owned() {
+    local repo_root="$1" commit="$2"
+    git -C "$repo_root" cat-file -e "${commit}:scripts/ownership/deployment-session.mjs" 2>/dev/null
+}
+
 list_upgrade_source_tags() {
     local repo_root="$1"
     local target_commit="${2:-}"

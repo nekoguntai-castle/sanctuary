@@ -161,7 +161,8 @@ export function installEphemeralCiCleanupTrust(options) {
     throw new Error('CI cleanup trust validity must be from one minute through 24 hours');
   }
   const filePath = cleanupTrustPath(runtime, options.deploymentManifest.deploymentId);
-  if (existsSync(filePath)) {
+  const existing = existsSync(filePath);
+  if (existing) {
     const bytes = readExternalFile(filePath, { checkoutRoot: options.checkoutRoot, maxBytes: 16 * 1024 });
     const trust = parseStrictJson(bytes);
     if (!canonicalJson(trust).equals(bytes)) throw new Error('existing CI cleanup trust is not canonical');
@@ -177,12 +178,19 @@ export function installEphemeralCiCleanupTrust(options) {
         composeProjectName: options.deploymentManifest.composeProjectName,
       },
     };
-    for (const [key, value] of Object.entries(expected)) {
-      if (!canonicalJson(trust[key]).equals(canonicalJson(value))) {
-        throw new Error('existing CI cleanup trust does not match coordinator authority');
-      }
+    const matches = (candidate) => Object.entries(candidate).every(([key, value]) => (
+      canonicalJson(trust[key]).equals(canonicalJson(value))
+    ));
+    if (matches(expected)) return Object.freeze({ filePath, trust });
+    // A declared upgrade lane reissues trust for the successor revision it just
+    // bound (#1028); the existing trust must be exactly the superseded binding.
+    const superseded = options.supersededManifestDigest ? {
+      ...expected,
+      authority: { ...expected.authority, deploymentManifestDigest: options.supersededManifestDigest },
+    } : null;
+    if (superseded === null || !matches(superseded)) {
+      throw new Error('existing CI cleanup trust does not match coordinator authority');
     }
-    return Object.freeze({ filePath, trust });
   }
   const validFrom = options.now ?? new Date();
   const trust = {
@@ -200,6 +208,8 @@ export function installEphemeralCiCleanupTrust(options) {
     },
   };
   validateCleanupTrust(trust, { deploymentId: trust.deploymentId, now: validFrom });
-  writeExternalFileAtomic(filePath, canonicalJson(trust), { checkoutRoot: options.checkoutRoot });
+  writeExternalFileAtomic(filePath, canonicalJson(trust), {
+    checkoutRoot: options.checkoutRoot, replace: existing,
+  });
   return Object.freeze({ filePath, trust });
 }

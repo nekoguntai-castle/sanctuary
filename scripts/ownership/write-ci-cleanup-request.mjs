@@ -25,32 +25,50 @@ function legacyFixtureRequested(values, authorityMode) {
   return true;
 }
 
+function upgradeTargetRequested(values, authorityMode) {
+  const commit = values['upgrade-target-commit'];
+  if (commit === undefined) return null;
+  if (values.mode !== 'run' || authorityMode !== 'deployment_managed_by_subject'
+      || !/^[a-f0-9]{40}$/.test(commit)) {
+    throw new Error('--upgrade-target-commit requires subject-managed run mode and a full commit');
+  }
+  return commit;
+}
+
+function finishFields(values) {
+  if (!['finish', 'recover'].includes(values.mode)) return {};
+  if (!values.state || !/^(?:0|[1-9][0-9]{0,2})$/.test(values.status ?? '')) {
+    throw new Error('finish requires --state and an integer --status');
+  }
+  return { statePath: path.resolve(values.state), subjectExitStatus: Number(values.status) };
+}
+
+function engineField(values) {
+  if (!values.engine) return {};
+  if (!['docker', 'podman', 'host'].includes(values.engine)) throw new Error('--engine is invalid');
+  return { engine: values.engine };
+}
+
 export function writeCiCleanupRequest(values) {
   const required = ['mode', 'output', 'checkout-root', 'runtime', 'lane', 'artifact-dir'];
   for (const key of required) if (!values[key]) throw new Error(`--${key} is required`);
   if (!['prepare', 'finish', 'recover', 'run'].includes(values.mode)) throw new Error('--mode is invalid');
+  const authorityMode = values['authority-mode'] ?? 'coordinator_managed';
+  if (!['coordinator_managed', 'deployment_managed_by_subject'].includes(authorityMode)) {
+    throw new Error('--authority-mode is invalid');
+  }
   const request = {
     checkoutRoot: path.resolve(values['checkout-root']),
     runtimeDirectory: path.resolve(values.runtime),
     lane: values.lane,
     artifactDirectory: path.resolve(values['artifact-dir']),
-    authorityMode: values['authority-mode'] ?? 'coordinator_managed',
+    authorityMode,
+    ...engineField(values),
   };
-  if (!['coordinator_managed', 'deployment_managed_by_subject'].includes(request.authorityMode)) {
-    throw new Error('--authority-mode is invalid');
-  }
-  if (values.engine) {
-    if (!['docker', 'podman', 'host'].includes(values.engine)) throw new Error('--engine is invalid');
-    request.engine = values.engine;
-  }
-  if (legacyFixtureRequested(values, request.authorityMode)) request.legacyFixtureCreationWitness = true;
-  if (['finish', 'recover'].includes(values.mode)) {
-    if (!values.state || !/^(?:0|[1-9][0-9]{0,2})$/.test(values.status ?? '')) {
-      throw new Error('finish requires --state and an integer --status');
-    }
-    request.statePath = path.resolve(values.state);
-    request.subjectExitStatus = Number(values.status);
-  }
+  if (legacyFixtureRequested(values, authorityMode)) request.legacyFixtureCreationWitness = true;
+  const upgradeTargetCommit = upgradeTargetRequested(values, authorityMode);
+  if (upgradeTargetCommit !== null) request.upgradeTargetCommit = upgradeTargetCommit;
+  Object.assign(request, finishFields(values));
   const output = path.resolve(values.output);
   mkdirSync(path.dirname(output), { recursive: true, mode: 0o700 });
   writeExternalFileAtomic(output, canonicalJson(request), {

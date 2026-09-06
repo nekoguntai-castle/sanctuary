@@ -16,6 +16,33 @@ TEMP_ROOT="$(ci_authority_temp_dir)"
 
 # shellcheck source=tests/install/utils/upgrade-selection.sh
 source "$WORKSPACE/tests/install/utils/upgrade-selection.sh"
+# shellcheck source=tests/install/utils/upgrade-source-refs.sh
+source "$WORKSPACE/tests/install/utils/upgrade-source-refs.sh"
+TARGET_COMMIT="$(git -C "$WORKSPACE" rev-parse HEAD 2>/dev/null || echo "")"
+
+# Issue #1028: an ownership-aware source release (v0.8.70 and later) records a
+# deployment store bound to the directory it is installed in, so the upgrade
+# must run in that same directory like a production `git pull`. For such a
+# source this disposable isolated workspace is the deployment root: it is
+# checked out at the source release before the coordinator starts, so the
+# coordinator binds its authority to that commit, and the lane declares the
+# candidate as the one commit the checkout may move to. The coordinator, the
+# CI helpers, and the harness all run from the original checkout so the source
+# checkout never rewrites scripts that are executing.
+upgrade_lane_source_commit() {
+  local source_ref=$1 resolved
+  resolved="$(resolve_upgrade_source_ref "$WORKSPACE" "$source_ref" "$TARGET_COMMIT" 2>/dev/null)" || return 0
+  git -C "$WORKSPACE" rev-parse "${resolved}^{commit}" 2>/dev/null || true
+}
+
+# The isolated workspace is disposable: tracked edits the harness made to the
+# previous lane's source checkout are discarded before moving HEAD.
+checkout_workspace_commit() {
+  local commit=$1
+  [[ "$(git -C "$WORKSPACE" rev-parse HEAD 2>/dev/null)" == "$commit" ]] && return 0
+  git -C "$WORKSPACE" checkout -q -- . 2>/dev/null || true
+  git -C "$WORKSPACE" checkout -q --detach "$commit"
+}
 assign_ports() {
   local offset=$1 port_root port_env status=0
   port_root=$("$SCRIPT_DIR/create-registered-staging.sh" upgrade-port-env)
@@ -49,16 +76,36 @@ run_upgrade() {
   cleanup_lane="upgrade-${port_offset}"
   cleanup_runtime="$TEMP_ROOT/sanctuary-cleanup/${RUN_ID}-${RUN_ATTEMPT}/${cleanup_lane}"
   cleanup_artifacts="$TEMP_ROOT/sanctuary-cleanup-artifacts/upgrade-baseline/${cleanup_lane}"
+  local -a callsite_args=(
+    --authority-mode deployment_managed_by_subject
+    --lane "$cleanup_lane" --checkout-root "$WORKSPACE"
+    --runtime "$cleanup_runtime" --artifact-dir "$cleanup_artifacts"
+  )
+  local tools_root="$WORKSPACE" source_commit
+  source_commit="$(upgrade_lane_source_commit "$source_ref")"
+  unset SANCTUARY_UPGRADE_DEPLOYMENT_ROOT
+  checkout_workspace_commit "$TARGET_COMMIT" || return 1
+  if [[ -n $source_commit ]] && upgrade_source_is_owned "$WORKSPACE" "$source_commit"; then
+    # An owned source labels and registers everything it creates; there are no
+    # legacy fixtures to witness, and a witness registration would carry the
+    # coordinator's tuple instead of the installer's and make every volume's
+    # removal proof ambiguous.
+    echo "upgrade baseline ${source_ref}: owned source ${source_commit}; upgrading in place in $WORKSPACE"
+    callsite_args+=(--upgrade-target-commit "$TARGET_COMMIT")
+    export SANCTUARY_UPGRADE_DEPLOYMENT_ROOT="$WORKSPACE"
+    tools_root="$ORIGINAL_WORKSPACE"
+    checkout_workspace_commit "$source_commit" || return 1
+  else
+    callsite_args+=(--legacy-fixture-creation-witness)
+  fi
+  local CI_TOOLS="$tools_root/scripts/ci"
   status=0
-  "$SCRIPT_DIR/cleanup-ci-callsite.sh" run \
-      --authority-mode deployment_managed_by_subject \
-      --legacy-fixture-creation-witness \
-      --lane "$cleanup_lane" --checkout-root "$WORKSPACE" \
-      --runtime "$cleanup_runtime" --artifact-dir "$cleanup_artifacts" -- \
-      "$SCRIPT_DIR/run-with-log.sh" "$log_path" \
-      "$SCRIPT_DIR/with-runner-lock.sh" e2e \
-      "$SCRIPT_DIR/time-command.sh" "upgrade baseline ${source_ref} baseline" \
-      "$WORKSPACE/tests/install/e2e/upgrade-install.test.sh" "${upgrade_args[@]}" || status=$?
+  "$CI_TOOLS/cleanup-ci-callsite.sh" run "${callsite_args[@]}" -- \
+      "$CI_TOOLS/run-with-log.sh" "$log_path" \
+      "$CI_TOOLS/with-runner-lock.sh" e2e \
+      "$CI_TOOLS/time-command.sh" "upgrade baseline ${source_ref} baseline" \
+      "$tools_root/tests/install/e2e/upgrade-install.test.sh" "${upgrade_args[@]}" || status=$?
+  checkout_workspace_commit "$TARGET_COMMIT" || status=$(( status == 0 ? 1 : status ))
   if (( status != 0 )); then
     docker compose ps || true
     docker compose logs --tail 50 postgres 2>&1 || true

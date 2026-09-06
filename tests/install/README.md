@@ -160,7 +160,7 @@ Tests upgrading an existing installation:
 2. Creates an initial installation from that source checkout
 3. Creates test data (changes password, enables encrypted admin 2FA, seeds an encrypted secondary 2FA user, and preserves a legacy plaintext 2FA user)
 4. Captures pre-upgrade state
-5. Stops the source containers and switches to the current checkout
+5. Stops the source containers and switches to the current checkout. A source that predates ownership (v0.8.69 and earlier) is installed in its own worktree and the current checkout takes over. An ownership-aware source (v0.8.70 and later) records a deployment store bound to its directory, so it is checked out and upgraded in place in one deployment root, exactly like `git pull && ./install.sh`; in CI that root is the coordinator's isolated workspace and the lane declares the source commit to the coordinator (issue #1028)
 6. Runs the current checkout's installer in upgrade mode against the shared runtime env
 7. Verifies secrets preserved, including both `ENCRYPTION_KEY` and `ENCRYPTION_SALT`
 8. Verifies data preserved

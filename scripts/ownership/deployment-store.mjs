@@ -4,7 +4,7 @@ import { canonicalJson, canonicalSha256 } from './canonical-json.mjs';
 import { sha256 } from './crypto.mjs';
 import { assertDeploymentLock } from './deployment-lock.mjs';
 import {
-  retireActiveEphemeralRevision, retireFailedEphemeralRevision,
+  retireActiveEphemeralRevision, retireFailedEphemeralRevision, retireFailedSuccessorRevision,
 } from './deployment-ephemeral-retirement.mjs';
 import {
   ensureOwnerDirectory, fsyncDirectory, readCanonical, readOptional, readStableBytes,
@@ -400,6 +400,10 @@ export class DeploymentStore {
 
   retireFailedEphemeralRevision(options) {
     return retireFailedEphemeralRevision(this, options);
+  }
+
+  retireFailedSuccessorRevision(options) {
+    return retireFailedSuccessorRevision(this, options);
   }
 
   readManifest(generation, { verifySnapshots = false } = {}) {

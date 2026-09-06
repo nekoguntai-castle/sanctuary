@@ -757,7 +757,13 @@ initialize_install_test_ownership() {
         SANCTUARY_PROJECT="${COMPOSE_PROJECT_NAME:-sanctuary-install-test}"
         SANCTUARY_DEPLOYMENT_ID="deploy-$SANCTUARY_PROJECT"
     fi
-    SANCTUARY_PROJECT_DIR="$identity_root"
+    # A coordinated lane's project directory is the coordinator's checkout
+    # root, which the harness may run outside of (an owned-source upgrade runs
+    # the harness from the original checkout and deploys in the isolated
+    # workspace, issue #1028). Never replace it with the harness's own root.
+    if [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" != "1" ] || [ -z "${SANCTUARY_PROJECT_DIR:-}" ]; then
+        SANCTUARY_PROJECT_DIR="$identity_root"
+    fi
     export SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_PROJECT_DIR
     ownership_initialize_build_identity
 }

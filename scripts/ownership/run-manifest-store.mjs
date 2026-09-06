@@ -82,6 +82,46 @@ export function createRunManifest({
   return Object.freeze({ manifest, digest: canonicalSha256(manifest), path: filePath });
 }
 
+/**
+ * Move a live run manifest onto the successor revision a declared upgrade lane
+ * bound (#1028). `successor` is the caller's snapshot-verified store read of
+ * the next generation, which must name the currently bound manifest as its
+ * prior active digest.
+ */
+export function rebindRunManifest({
+  store, checkoutRoot, operationRunId, lockToken, expectedDigest, successor, now = new Date(),
+}) {
+  if (!store || typeof store.assertLocked !== 'function') throw new Error('deployment store is required');
+  store.assertLocked(lockToken, operationRunId);
+  const filePath = runManifestPath(store.runtimeDirectory, store.deploymentId, operationRunId);
+  const current = readRunManifest(filePath, { checkoutRoot });
+  if (current.manifest.terminalAt !== null) throw new Error('terminal run manifest cannot be rebound');
+  const { manifest: successorManifest, manifestDigest: successorDigest } = successor;
+  if (current.manifest.generation === successorManifest.generation
+      && current.manifest.deploymentDigest === successorDigest) {
+    return current;
+  }
+  if (current.digest !== expectedDigest) throw new Error('run manifest compare-and-swap failed');
+  if (canonicalSha256(successorManifest) !== successorDigest
+      || successorManifest.generation !== current.manifest.generation + 1
+      || successorManifest.priorActiveDigest !== current.manifest.deploymentDigest
+      || successorManifest.deploymentId !== current.manifest.deploymentId
+      || successorManifest.ownerId !== current.manifest.ownerId) {
+    throw new Error('run manifest successor must supersede its bound deployment revision');
+  }
+  const instant = canonicalTimestamp(now, 'now');
+  if (new Date(instant) < new Date(current.manifest.heartbeatAt)) {
+    throw new Error('run manifest transition must not move backward in time');
+  }
+  const manifest = {
+    ...current.manifest, heartbeatAt: instant,
+    generation: successorManifest.generation, deploymentDigest: successorDigest,
+  };
+  validateArtifact(manifest);
+  writeExternalFileAtomic(path.resolve(filePath), canonicalJson(manifest), { checkoutRoot, replace: true });
+  return Object.freeze({ manifest, digest: canonicalSha256(manifest), path: path.resolve(filePath) });
+}
+
 function transitionRunManifest({
   store, checkoutRoot, operationRunId, lockToken, expectedDigest, now, terminal,
 }) {

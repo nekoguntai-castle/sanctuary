@@ -67,7 +67,10 @@ concurrency:
   # Docker-backed jobs use run-scoped projects/ports on the DIND runner so the
   # workflows can coexist without coupling their pending slots.
   group: sanctuary-release-candidate-${{ github.ref }}
-  cancel-in-progress: false
+  # An immutable tag validation run must never be cancelled. A pull-request
+  # smoke run (#1020) is superseded by every push to its branch: keeping the
+  # stale run alive queued three release lanes per push on PR #1030.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '24.19.0'

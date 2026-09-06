@@ -53,6 +53,21 @@ carry no `io.sanctuary` label; one that carries any such label stays a refusal.
 Stop and backup use the retained snapshots rather than reconstructing overlays
 from live container names. Persistent data volumes remain preserve-only.
 
+A CI lane that upgrades from an ownership-aware source release prepares its
+cleanup coordinator with the checkout at the source commit, so the authority
+binds that commit and the source release's own deployment session sees exactly
+the authority it expects, and declares the candidate commit
+(`--upgrade-target-commit`). The declaration is recorded beside the coordinator
+state (`coordinator-upgrade-target.json`, bound to the authority digest) rather
+than inside it, because the source release validates the state file against its
+own field list. The coordinator binds the source as revision 1, accepts the
+checkout moving to exactly the declared candidate, and then accepts one
+successor: the candidate's revision whose prior active digest is the bound
+source manifest. Cleanup trust and the run manifest move to the successor; a
+successor that never activates is retired together with its source so cleanup
+still reconciles everything; any other second pointer, commit, or policy digest
+remains a refusal (issue #1028).
+
 External registrations are signed and owner-only. Path registrations bind the
 observed device/inode identity, key roots refuse symlinks, and a second image
 consumer produces a shared/retain registration so deleting one consumer record

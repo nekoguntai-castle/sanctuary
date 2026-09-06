@@ -9,7 +9,8 @@ import { assertDeploymentLock } from './deployment-lock.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
 import { assertProjectMutationLock } from './project-lock.mjs';
 import { ensureRegistrationKeys } from './registration.mjs';
-import { createRunManifest, readRunManifest } from './run-manifest-store.mjs';
+import { authorityBinding, boundTo, readUpgradeTarget } from './ci-cleanup-upgrade-target.mjs';
+import { createRunManifest, readRunManifest, rebindRunManifest } from './run-manifest-store.mjs';
 
 export function subjectEnvironment(state, statePath) {
   const authority = state.authority;
@@ -67,11 +68,12 @@ export function ensureLifecycleSigners({ state, statePath, checkoutRoot }) {
   return { state: current, signers, keyRoot };
 }
 
-function assertBoundPointer(state, store, inspection) {
+function assertBoundPointer(state, checkoutRoot, store, inspection) {
+  const isBound = (pointer) => pointer.value.generation === state.generation
+    && pointer.value.manifestDigest === state.deploymentManifestDigest;
   const pointers = [inspection.pending, inspection.prepared, inspection.active].filter(Boolean);
-  if (pointers.length !== 1
-      || pointers[0].value.generation !== state.generation
-      || pointers[0].value.manifestDigest !== state.deploymentManifestDigest) {
+  const others = pointers.filter((pointer) => !isBound(pointer));
+  if (pointers.length - others.length !== 1 || others.length > 1) {
     throw new Error('subject-managed cleanup bound revision changed before resume');
   }
   const exact = store.readManifest(state.generation, { verifySnapshots: true });
@@ -79,20 +81,89 @@ function assertBoundPointer(state, store, inspection) {
       || exact.manifest.createdAt !== state.resourceCreatedAt) {
     throw new Error('subject-managed cleanup bound manifest changed before resume');
   }
+  // A declared upgrade's bound successor coexists with the source revision it
+  // supersedes until it activates (#1028).
+  if (others.length === 1 && (others[0] !== inspection.active
+      || readUpgradeTarget(state, checkoutRoot) === null
+      || exact.manifest.priorActiveDigest !== inspection.active.value.manifestDigest)) {
+    throw new Error('subject-managed cleanup bound revision changed before resume');
+  }
 }
 
-function assertPendingManifest(state, authority, deployment, pending) {
-  const matches = [
+function manifestIdentityMatches(state, authority, deployment, pending) {
+  return [
     deployment.manifestDigest === pending.value.manifestDigest,
     deployment.manifest.deploymentId === authority.deploymentId,
     deployment.manifest.ownerId === authority.ownerId,
     deployment.manifest.composeProjectName === authority.composeProjectName,
-    deployment.manifest.commit === authority.checkoutCommit,
-    deployment.manifest.policyDigest === authority.policyDigest,
     deployment.manifest.createdAt === state.resourceCreatedAt,
-    deployment.manifest.priorActiveDigest === null,
   ].every(Boolean);
+}
+
+function assertPendingManifest(state, authority, deployment, pending) {
+  const matches = manifestIdentityMatches(state, authority, deployment, pending)
+    && boundTo(authorityBinding(authority), deployment.manifest)
+    && deployment.manifest.priorActiveDigest === null;
   if (!matches) throw new Error('subject-managed cleanup manifest does not match coordinator authority');
+}
+
+// The one successor a declared upgrade lane may bind: the candidate's revision
+// prepared over the active source revision this coordinator bound (#1028).
+function assertSuccessorManifest(state, authority, deployment, pending, target) {
+  const matches = manifestIdentityMatches(state, authority, deployment, pending)
+    && boundTo(target, deployment.manifest)
+    && deployment.manifest.generation === state.generation + 1
+    && deployment.manifest.priorActiveDigest === state.deploymentManifestDigest;
+  if (!matches) throw new Error('subject-managed cleanup successor manifest does not supersede the bound source revision');
+}
+
+function upgradeSuccessor(state, checkoutRoot, store, inspection) {
+  const target = readUpgradeTarget(state, checkoutRoot);
+  if (target === null || !inspection.active || !inspection.pending || inspection.prepared
+      || inspection.active.value.generation !== state.generation
+      || inspection.active.value.manifestDigest !== state.deploymentManifestDigest) {
+    return null;
+  }
+  const bound = store.readManifest(state.generation, { verifySnapshots: true });
+  if (!boundTo(authorityBinding(state.authority), bound.manifest)) return null;
+  return { pointer: inspection.pending, target };
+}
+
+function rebindSuccessor({
+  state, statePath, checkoutRoot, authority, store, lockToken, now, successor,
+}) {
+  const deployment = store.readManifest(successor.pointer.value.generation, { verifySnapshots: true });
+  assertSuccessorManifest(state.state, authority, deployment, successor.pointer, successor.target);
+  const supersededManifestDigest = state.state.deploymentManifestDigest;
+  // The run manifest moves first and idempotently; the coordinator state then
+  // flips in one compare-and-swap, so a crash between the two re-enters here
+  // with the state still bound to the source and repeats safely.
+  const run = rebindRunManifest({
+    store, checkoutRoot, operationRunId: authority.operationRunId, lockToken,
+    expectedDigest: state.state.runManifestDigest, successor: deployment, now,
+  });
+  let next = transitionCoordinatorState({
+    statePath, checkoutRoot, expectedDigest: state.digest, nextPhase: state.state.phase,
+    updates: {
+      deploymentManifestPath: path.join(deployment.revisionRoot, 'deployment-manifest.json'),
+      deploymentManifestDigest: deployment.manifestDigest,
+      generation: deployment.manifest.generation,
+      deploymentPointerDigest: successor.pointer.digest,
+      runManifestDigest: run.digest,
+    },
+  });
+  const prepared = ensureLifecycleSigners({ state: next, statePath, checkoutRoot });
+  next = prepared.state;
+  installEphemeralCiCleanupTrust({
+    runtimeDirectory: authority.runtimeDirectory, checkoutRoot, keyRoot: prepared.keyRoot,
+    deploymentManifest: deployment.manifest, operationRunId: authority.operationRunId,
+    authorizationFingerprint: prepared.signers.authorization.fingerprint,
+    evidenceFingerprint: prepared.signers.evidence.fingerprint,
+    coordinatorStateDigest: next.state.authorityCoreDigest, supersededManifestDigest, now,
+  });
+  return Object.freeze({
+    ...next, environment: subjectEnvironment(next.state, next.path), signers: prepared.signers,
+  });
 }
 
 function bindDeploymentState(state, options, deployment, pending) {
@@ -140,7 +211,13 @@ export function bindSubjectManagedCiCleanupLifecycle({
   );
   const inspection = store.inspect();
   if (state.state.phase === 'trust_installed') {
-    assertBoundPointer(state.state, store, inspection);
+    const successor = upgradeSuccessor(state.state, checkoutRoot, store, inspection);
+    if (successor !== null) {
+      return rebindSuccessor({
+        state, statePath, checkoutRoot, authority, store, lockToken, now, successor,
+      });
+    }
+    assertBoundPointer(state.state, checkoutRoot, store, inspection);
     const prepared = ensureLifecycleSigners({ state, statePath, checkoutRoot });
     return Object.freeze({
       ...prepared.state,

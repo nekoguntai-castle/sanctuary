@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { canonicalSha256 } from './canonical-json.mjs';
-import { assertCiCleanupAuthority, ciCleanupAuthority } from './ci-cleanup-authority.mjs';
+import {
+  assertCiCleanupAuthority, ciCleanupAuthority, resolveUpgradeTarget,
+} from './ci-cleanup-authority.mjs';
+import { readUpgradeTarget, writeUpgradeTarget } from './ci-cleanup-upgrade-target.mjs';
 import {
   coordinatorStatePath, createCoordinatorState, readCoordinatorState,
   transitionCoordinatorState,
@@ -116,12 +119,17 @@ export function completeLegacyFixtureWitness(state, statePath, checkoutRoot) {
 
 export function prepareCiCleanupLifecycle({
   checkoutRoot, runtimeDirectory, lane, authorityMode = 'coordinator_managed',
-  legacyFixtureCreationWitness = false, now = new Date(),
+  legacyFixtureCreationWitness = false, upgradeTargetCommit = null, now = new Date(),
 }) {
   if (legacyFixtureCreationWitness && authorityMode !== 'deployment_managed_by_subject') {
     throw new Error('legacy fixture witness requires subject-managed deployment authority');
   }
+  if (upgradeTargetCommit !== null && authorityMode !== 'deployment_managed_by_subject') {
+    throw new Error('upgrade target requires subject-managed deployment authority');
+  }
   const authority = ciCleanupAuthority({ checkoutRoot, runtimeDirectory, lane, authorityMode });
+  const upgradeTarget = upgradeTargetCommit === null
+    ? null : resolveUpgradeTarget(checkoutRoot, authority.checkoutCommit, upgradeTargetCommit);
   const statePath = coordinatorStatePath(authority.runtimeDirectory);
   if (existsSync(statePath)) {
     let existing = readCoordinatorState(statePath, { checkoutRoot });
@@ -130,12 +138,21 @@ export function prepareCiCleanupLifecycle({
     if (durableWitnessRequested !== legacyFixtureCreationWitness) {
       throw new Error('legacy fixture witness request conflicts with durable coordinator state');
     }
+    if ((readUpgradeTarget(existing.state, checkoutRoot)?.commit ?? null) !== (upgradeTarget?.commit ?? null)) {
+      throw new Error('upgrade target request conflicts with durable coordinator state');
+    }
     existing = completeLegacyFixtureWitness(existing, statePath, checkoutRoot);
     return resumeCiCleanupLifecycle({ statePath, checkoutRoot, now });
   }
   let state = createCoordinatorState({
     statePath, checkoutRoot, authority, legacyFixtureCreationWitness,
   });
+  if (upgradeTarget !== null) {
+    writeUpgradeTarget({
+      runtimeDirectory: authority.runtimeDirectory, checkoutRoot,
+      authorityCoreDigest: state.state.authorityCoreDigest, target: upgradeTarget,
+    });
+  }
   const envFile = ensureRuntimeInputs(authority);
   const store = new DeploymentStore({
     runtimeDirectory: authority.runtimeDirectory, deploymentId: authority.deploymentId,
@@ -525,12 +542,28 @@ export function finishCiCleanupLifecycle({
   const held = acquireLifecycleLocks(store, authority);
   try {
     let failedSource = null;
+    let failedSuccessor = null;
     if (authority.authorityMode === 'deployment_managed_by_subject'
         && state.state.activePointerDigest === null) {
       const inspection = store.inspect();
       const exactPointer = (pointer) => pointer
         && pointer.value.generation === state.state.generation
         && pointer.value.manifestDigest === state.state.deploymentManifestDigest;
+      const successorWindow = () => {
+        // A declared upgrade whose candidate successor never activated: the
+        // bound successor is still pending or prepared over the active source.
+        const source = inspection.pending ?? inspection.prepared;
+        if (!inspection.active || !source || (inspection.pending && inspection.prepared)
+            || !exactPointer(source) || readUpgradeTarget(state.state, checkoutRoot) === null
+            || source.value.priorActiveDigest !== inspection.active.value.manifestDigest) {
+          return null;
+        }
+        return {
+          kind: inspection.pending ? 'pending' : 'prepared', digest: source.digest,
+          activeDigest: inspection.active.digest,
+          priorManifestDigest: inspection.active.value.manifestDigest,
+        };
+      };
       const retired = inspection.retired.find(({ value }) => (
         value.retirementVersion === 2
         && value.disposition === 'cleanup_required'
@@ -554,7 +587,7 @@ export function finishCiCleanupLifecycle({
         failedSource = {
           kind: retired.value.sourcePointerKind, digest: retired.value.sourcePointerDigest,
         };
-      } else {
+      } else if ((failedSuccessor = successorWindow()) === null) {
         throw new Error('deployment-managed cleanup subject did not activate its bound revision');
       }
     }
@@ -580,7 +613,18 @@ export function finishCiCleanupLifecycle({
         updates: { runManifestDigest: run.digest },
       });
     }
-    if (failedSource) {
+    if (failedSuccessor) {
+      store.retireFailedSuccessorRevision({
+        operationRunId: authority.operationRunId, lockToken: held.token,
+        projectLockToken: held.token, expectedGeneration: state.state.generation,
+        expectedManifestDigest: state.state.deploymentManifestDigest,
+        expectedSourcePointerKind: failedSuccessor.kind,
+        expectedSourcePointerDigest: failedSuccessor.digest,
+        expectedActivePointerDigest: failedSuccessor.activeDigest,
+        expectedPriorManifestDigest: failedSuccessor.priorManifestDigest,
+        expectedRunManifestDigest: run.digest, runManifest: run.manifest, now: () => now,
+      });
+    } else if (failedSource) {
       store.retireFailedEphemeralRevision({
         operationRunId: authority.operationRunId, lockToken: held.token,
         projectLockToken: held.token, expectedGeneration: state.state.generation,

@@ -146,6 +146,76 @@ function failedSourceMatches(source, other, options) {
   ].every(Boolean);
 }
 
+function failedSuccessorMatches(active, source, other, options) {
+  return [
+    Boolean(active), Boolean(source), !other,
+    source?.digest === options.expectedSourcePointerDigest,
+    source?.value.generation === options.expectedGeneration,
+    source?.value.manifestDigest === options.expectedManifestDigest,
+    source?.value.priorActiveDigest === active?.value.manifestDigest,
+    active?.digest === options.expectedActivePointerDigest,
+    active?.value.generation === options.expectedGeneration - 1,
+    options.expectedSourcePointerKind !== 'pending'
+      || source?.value.operationRunId === options.operationRunId,
+  ].every(Boolean);
+}
+
+/**
+ * Retire a declared upgrade lane whose candidate successor was prepared over
+ * the active source revision but never activated (#1028). Both revisions
+ * belong to the same CI-ephemeral deployment: the successor is recorded as
+ * cleanup-required exactly like a failed first revision, the source is
+ * recorded as a retired active revision, and both pointers are removed so the
+ * receipt-bound cleanup can reconcile everything the run created.
+ */
+export function retireFailedSuccessorRevision(store, options) {
+  const identity = assertRetirementAuthority(
+    store, options, 'failed successor retirement is restricted to unprotected CI-ephemeral deployments',
+  );
+  assertDigest(options.expectedSourcePointerDigest, 'retired source pointer digest');
+  assertDigest(options.expectedActivePointerDigest, 'retired active pointer digest');
+  assertRetirementInputs(
+    store, options, 'terminal run manifest does not authorize failed successor retirement',
+  );
+  if (!['pending', 'prepared'].includes(options.expectedSourcePointerKind)) {
+    throw new Error('failed retirement source pointer kind is invalid');
+  }
+  const active = store.readActive();
+  const pending = store.readPending();
+  const prepared = readOptional(store.preparedPath);
+  const source = options.expectedSourcePointerKind === 'pending' ? pending : prepared;
+  const other = options.expectedSourcePointerKind === 'pending' ? prepared : pending;
+  const now = options.now ?? (() => new Date());
+  const successor = storeRetirementRecord(store, failedRetirementRecord(store, options, identity), now);
+  const priorRecord = storeRetirementRecord(store, {
+    retirementVersion: 1, deploymentId: store.deploymentId,
+    generation: options.expectedGeneration - 1,
+    manifestDigest: options.expectedPriorManifestDigest,
+    activePointerDigest: options.expectedActivePointerDigest,
+    runManifestDigest: options.expectedRunManifestDigest,
+    ciRunIdentityDigest: identity.ciRunIdentityDigest,
+    operationRunId: options.operationRunId,
+  }, now);
+  if (successor.existing && priorRecord.existing && !active && !source && !other) {
+    return {
+      retired: successor.existing.value, retiredDigest: successor.existing.digest,
+      retiredPath: successor.retiredPath,
+    };
+  }
+  if (!failedSuccessorMatches(active, source, other, options)
+      || active.value.manifestDigest !== options.expectedPriorManifestDigest) {
+    throw new Error('failed successor pointer compare-and-swap failed during retirement');
+  }
+  verifyRetiredManifest(store, options);
+  commitRetirementRecord(successor);
+  commitRetirementRecord(priorRecord);
+  unlinkSync(source.value.mode === undefined ? store.preparedPath : store.pendingPath);
+  unlinkSync(store.activePath);
+  fsyncDirectory(store.root);
+  const stored = readCanonical(successor.retiredPath);
+  return { retired: stored.value, retiredDigest: stored.digest, retiredPath: successor.retiredPath };
+}
+
 export function retireFailedEphemeralRevision(store, options) {
   const identity = assertRetirementAuthority(
     store, options, 'failed retirement is restricted to unprotected CI-ephemeral deployments',

@@ -793,7 +793,7 @@ assert_contains_in_order "$RC" \
   "release-candidate tag-scoped workflow concurrency" \
   "concurrency:" \
   'group: sanctuary-release-candidate-${{ github.ref }}' \
-  "cancel-in-progress: false"
+  'cancel-in-progress: ${{ github.event_name == '\''pull_request'\'' }}'
 
 assert_contains_in_order "$RC" \
   "release-candidate fresh install requires the docker-socket capability label" \
@@ -1232,9 +1232,19 @@ assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test upgrade-baseline composition" \
   'upgrade_args=(--mode core --fixture baseline --verbose)' \
   "run-with-log.sh" \
-  '"$SCRIPT_DIR/with-runner-lock.sh" e2e' \
-  '"$SCRIPT_DIR/time-command.sh"' \
+  '"$CI_TOOLS/with-runner-lock.sh" e2e' \
+  '"$CI_TOOLS/time-command.sh"' \
   'upgrade-install.test.sh" "${upgrade_args[@]}"'
+# Issue #1028: an ownership-aware source is upgraded in place, so the lane
+# checks the source out before the coordinator binds, declares the candidate,
+# and runs the coordinator and harness from the original checkout.
+assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
+  "install-test baseline upgrade declares the candidate for owned sources" \
+  'upgrade_source_is_owned "$WORKSPACE" "$source_commit"' \
+  '--upgrade-target-commit "$TARGET_COMMIT"' \
+  'SANCTUARY_UPGRADE_DEPLOYMENT_ROOT="$WORKSPACE"' \
+  'tools_root="$ORIGINAL_WORKSPACE"' \
+  'checkout_workspace_commit "$source_commit"'
 assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline upgrade selects subject-managed deployment authority" \
   '--authority-mode deployment_managed_by_subject'
@@ -1367,7 +1377,7 @@ done
 
 assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline wrapper uses receipt-bound cleanup" \
-  '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run'
+  '"$CI_TOOLS/cleanup-ci-callsite.sh" run'
 assert_contains_in_order "$UPGRADE_BASELINE_SUBJECT" \
   "install-test baseline wrapper preserves fixture status through cleanup" \
   'return "$status"'
