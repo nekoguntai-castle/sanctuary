@@ -148,11 +148,16 @@ on:
           - wallet-sync-retirement
 
 concurrency:
-  # PRs keep the branch-scoped cancel behavior because Docker-backed jobs
-  # do not run there. Release tags get their own pending slot so an unrelated
-  # main, schedule, or release-candidate run cannot replace a required tag gate.
-  # Other non-PR runs retain the global group. Release jobs use run-scoped
-  # projects/ports on the DIND runner so the distinct groups can coexist.
+  # PRs keep the branch-scoped cancel behavior: a superseding push cancels its
+  # now-stale run, including install-stack-smoke and upgrade-baseline docker
+  # jobs that now run on release-surface PRs (#1020 item 1). The shared e2e
+  # runner lock (scripts/ci/with-runner-lock.sh) still serializes actual
+  # Docker work across concurrent PR/push/tag runs; this group only controls
+  # GH-level queueing and cancellation. Release tags get their own pending
+  # slot so an unrelated main, schedule, or release-candidate run cannot
+  # replace a required tag gate. Other non-PR runs retain the global group.
+  # Release jobs use run-scoped projects/ports on the DIND runner so the
+  # distinct groups can coexist.
   group: >-
     ${{ github.event_name == 'pull_request' &&
         format('{0}-{1}-{2}', github.workflow, github.event_name, github.event.pull_request.head.ref || github.ref_name || github.ref) ||
@@ -498,9 +503,13 @@ jobs:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test]
+    # Issue #1020 item 1: a release-surface PR enables run_reuse_stack +
+    # run_container_health (tests/install/utils/classify-install-scope.sh,
+    # enable_pr_release_surface_smoke) without run_fresh_install, so this lane
+    # now runs its own real Compose stack on those PRs instead of being
+    # hard-blocked by github.event_name. Coverage is purely classifier-driven.
     if: |
       always() &&
-      github.event_name != 'pull_request' &&
       needs.determine-scope.outputs.should_run == 'true' &&
       (needs.fresh-install-test.result == 'success' ||
        (needs.fresh-install-test.result == 'skipped' &&
@@ -511,15 +520,37 @@ jobs:
       needs.determine-scope.outputs.run_reuse_stack == 'true' &&
       (needs.determine-scope.outputs.run_container_health == 'true' ||
        needs.determine-scope.outputs.run_auth_flow == 'true')
-    timeout-minutes: 30
+    # On a release-surface PR (#1020 item 1) this lane builds and starts the
+    # whole Compose stack itself instead of skipping behind fresh-install
+    # coverage, so it needs the same budget as fresh-install-test, which
+    # builds the same stack. Both PR attempts on #1035 (runs 14954/14963,
+    # jobs 188423/188495) landed on kumo (runner 1e36ce6b), whose
+    # DOCKER_BUILDKIT=0 profile falls back to Podman's native builder, ran
+    # silently past checkout with no Docker-wait error or lock-contention
+    # notice, and were killed at the old 30-minute budget -- sized for the
+    # skip path this lane took before #1020 item 1. The same stack build in
+    # fresh-install-test on kumo took 51m20s in run 14900 (job 187819).
+    timeout-minutes: 90
     env:
       COMPOSE_PROJECT_NAME: sanctuary-ci-stack-${{ github.run_id }}
       HTTPS_PORT: '15445'
       HTTP_PORT: '15082'
       GATEWAY_PORT: '15002'
       PORT_OFFSET: '6'
-      USE_FRESH_INSTALL_STACK_COVERAGE: ${{ needs.determine-scope.outputs.test_suite == 'all' || contains(needs.determine-scope.outputs.scope, 'workflow') }}
+      # test_suite stays 'all' for every push/PR file-diff classification, so on
+      # its own this only meant "not a narrow workflow_dispatch suite" -- it does
+      # not mean fresh install actually ran in *this* workflow run. A
+      # release-surface PR (#1020 item 1) enables run_reuse_stack without
+      # run_fresh_install, so without the added clause this lane would skip its
+      # own Compose run and report a false green with no stack ever started.
+      USE_FRESH_INSTALL_STACK_COVERAGE: ${{ (needs.determine-scope.outputs.test_suite == 'all' || contains(needs.determine-scope.outputs.scope, 'workflow')) && needs.determine-scope.outputs.run_fresh_install == 'true' }}
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-stack-smoke
+      # PRs newly reach this lock user via the release-surface smoke path
+      # above; 1200s stays well below the now-90-minute job budget (raised
+      # to match fresh-install-test's 1500s lock budget below its own
+      # 90-minute job budget) so a starved lock fails fast with a named
+      # diagnostic instead of being killed silently (#1020 items 1 and 5).
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'
 
     steps:
       - name: Use fresh install stack coverage
@@ -765,6 +796,13 @@ jobs:
     env:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-baseline
       SANCTUARY_CI_DEBUG_TRACE: '1'
+      # PRs newly reach this lock user via the release-surface smoke path
+      # (tests/install/utils/classify-install-scope.sh,
+      # enable_pr_release_surface_smoke, #1020 items 1 and 5): bound the wait
+      # below the 100-minute "Run baseline upgrades" step budget so a starved
+      # lock fails fast with a named diagnostic instead of being killed
+      # silently.
+      SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '3000'
 
     steps:
       - name: Checkout repository

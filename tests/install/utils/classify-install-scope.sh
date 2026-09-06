@@ -35,6 +35,7 @@ upgrade_extended_fixtures=''
 upgrade_baseline_refs_set=false
 upgrade_extended_fixtures_set=false
 upgrade_harness_touched=false
+release_surface_touched=false
 scope=none
 reason='No install-relevant files changed'
 
@@ -371,6 +372,17 @@ defer_automatic_upgrade_e2e() {
 # exercises the same code path for roughly half the wall-clock.
 PR_UPGRADE_BASELINE_REFS='latest-stable'
 
+# Shared tail for every PR carve-out that re-enables the upgrade baseline: one
+# bounded source ref, extended fixtures still off. Both carve-outs below call
+# this instead of repeating enable_upgrade_baseline + set_upgrade_baseline_refs
+# + the extended-fixture reset.
+enable_pr_bounded_upgrade_baseline() {
+  enable_upgrade_baseline
+  set_upgrade_baseline_refs "$PR_UPGRADE_BASELINE_REFS"
+  run_upgrade_extended=false
+  upgrade_extended_fixtures=''
+}
+
 # Re-enable a bounded upgrade baseline for pull requests that change the upgrade
 # harness. Runs *after* defer_automatic_upgrade_e2e rather than special-casing
 # it, so the deferral stays one rule ("not automatic") and this stays another
@@ -386,12 +398,42 @@ enable_pr_upgrade_baseline_for_harness_changes() {
   [ "$event_name" = "pull_request" ] || return 0
   [ "$upgrade_harness_touched" = "true" ] || return 0
 
-  enable_upgrade_baseline
-  set_upgrade_baseline_refs "$PR_UPGRADE_BASELINE_REFS"
-  run_upgrade_extended=false
-  upgrade_extended_fixtures=''
+  enable_pr_bounded_upgrade_baseline
   add_scope upgrade-baseline-pr
   reason="${reason}; upgrade baseline runs on this PR because it changes the upgrade harness"
+}
+
+# Issue #1020 item 1: install-stack-smoke and the upgrade baseline lane get PR
+# coverage for changes to the release surface (the same path set already
+# gating release-candidate.yml's pull_request trigger: scripts/ci/**,
+# scripts/ownership/**, tests/install/**, .github/workflows/**,
+# .github/actions/**, any Dockerfile, docker-compose*.yml, docker/compose/**,
+# start.sh, install.sh, scripts/setup.sh). Runs *after*
+# defer_pull_request_docker_e2e so the deferral stays "not automatic" and this
+# stays "except for PRs that touch the release surface" -- the same shape as
+# enable_pr_upgrade_baseline_for_harness_changes, which this supersedes for
+# every path it covers (every upgrade-harness path is also a release-surface
+# path).
+#
+# Deliberately narrower than the full standard stack: fresh install and
+# install script E2E are already covered same-commit by release-candidate.yml's
+# pull_request run, so re-running them here would duplicate ~25 minutes of
+# docker-socket runner time without adding coverage (rc2's Install Stack Smoke
+# regression -- a missing PROJECT_ROOT -- would not have needed a second fresh
+# install to catch). Only install-stack-smoke (via run_reuse_stack +
+# run_container_health) and the upgrade baseline core lane (one source ref)
+# run.
+enable_pr_release_surface_smoke() {
+  [ "$event_name" = "pull_request" ] || return 0
+  [ "$release_surface_touched" = "true" ] || return 0
+
+  should_run=true
+  run_reuse_stack=true
+  run_container_health=true
+  add_scope release-surface-pr-smoke
+  reason="${reason}; install stack smoke and upgrade baseline run on this PR because it touches the release surface (#1020)"
+
+  enable_pr_bounded_upgrade_baseline
 }
 
 defer_pull_request_docker_e2e() {
@@ -428,6 +470,18 @@ while IFS= read -r file; do
       ;;
     tests/install/utils/*|tests/install/e2e/upgrade-*.test.sh|tests/install/fixtures/upgrade/*)
       upgrade_harness_touched=true
+      ;;
+  esac
+
+  # The release surface enumerated in issue #1020 item 1: the same path set
+  # already gating release-candidate.yml's pull_request trigger. Tracked
+  # separately from the enable/scope switch below because it drives PR-only
+  # smoke coverage (enable_pr_release_surface_smoke), not the push/tag scope.
+  case "$file" in
+    *.md|*.mdx)
+      ;;
+    scripts/ci/*|scripts/ownership/*|tests/install/*|.github/workflows/*|.github/actions/*|*/Dockerfile|Dockerfile|docker-compose*.yml|docker/compose/*|start.sh|install.sh|scripts/setup.sh)
+      release_surface_touched=true
       ;;
   esac
 
@@ -537,4 +591,5 @@ done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 defer_automatic_upgrade_e2e
 enable_pr_upgrade_baseline_for_harness_changes
 defer_pull_request_docker_e2e
+enable_pr_release_surface_smoke
 emit_outputs

@@ -308,9 +308,14 @@ main() {
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
+  # install.sh is also the release surface from issue #1020 item 1: on a PR
+  # it now additionally enables install-stack-smoke (run_reuse_stack +
+  # run_container_health) and the upgrade baseline core lane (one source
+  # ref), on top of staying deferred for fresh install/install script E2E.
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
-  assert_exact_output "$output_file" "scope" "installer,upgrade-deferred,docker-e2e-deferred"
+  assert_scope "$output_file" "true" "true" "false" "false" "true" "false" "true" "true" "false" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "scope" "installer,upgrade-deferred,docker-e2e-deferred,release-surface-pr-smoke"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/offline/apply-bundle.sh" "#!/usr/bin/env bash" "offline bundle"
@@ -343,9 +348,13 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "true" "false" "true" "false" "false" "false" "false" "true"
+  # docker-compose.yml is also the release surface from issue #1020 item 1: on
+  # a PR it additionally enables install-stack-smoke and the upgrade baseline
+  # core lane, same as install.sh above.
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
-  assert_exact_output "$output_file" "scope" "compose-docker,docker-e2e-deferred"
+  assert_scope "$output_file" "true" "true" "false" "false" "true" "false" "true" "true" "false" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "scope" "compose-docker,docker-e2e-deferred,release-surface-pr-smoke"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/compose/monitoring.yml" "services: {}" "compose overlay"
@@ -364,19 +373,47 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "true" "false" "false" "true" "false" "false" "false" "true"
+  # tests/install/e2e/auth-flow.test.sh is not an upgrade-harness path (the
+  # narrower enable_pr_upgrade_baseline_for_harness_changes rule does not fire
+  # for it), but it IS under tests/install/** -- the release surface from
+  # issue #1020 item 1 -- so the broader enable_pr_release_surface_smoke rule
+  # runs the baseline upgrade lane and install-stack-smoke on this PR anyway.
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
-  assert_upgrade_selection "$output_file" "" ""
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "run_container_health" "true"
+  assert_exact_output "$output_file" "run_reuse_stack" "true"
+  assert_exact_output "$output_file" "run_auth_flow" "false"
 
-  # install-script.test.sh exercises only the installer lane. A pull request
-  # that changes it must not consume the upgrade-baseline runner as a side
-  # effect of living beside the upgrade specs.
+  # install-script.test.sh exercises only the installer lane and is not an
+  # upgrade-harness path either, but the same release-surface rule applies:
+  # it is under tests/install/**, so a PR touching it also runs the baseline
+  # upgrade lane and install-stack-smoke (#1020 item 1). This no longer
+  # demonstrates isolation from the upgrade runner -- it demonstrates that the
+  # release-surface carve-out, not file adjacency to the upgrade harness, is
+  # what enables it.
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/e2e/install-script.test.sh" "echo install script" "install script test"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "run_container_health" "true"
+  assert_exact_output "$output_file" "run_reuse_stack" "true"
+  assert_exact_output "$output_file" "run_install_script" "false"
+
+  # A change that enables the upgrade scope without touching the upgrade
+  # harness or the release surface must keep deferring on a PR -- the harness
+  # carve-out is for PRs that change the thing under test, not every PR that
+  # happens to enable upgrade, and server/prisma/* is neither an
+  # upgrade-harness path nor a release-surface path (#1020 item 1).
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "server/prisma/20260601000000_example/migration.sql" "select 1;" "another migration"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
   assert_exact_output "$output_file" "run_upgrade_baseline" "false"
   assert_upgrade_selection "$output_file" "" ""
+  assert_exact_output "$output_file" "run_reuse_stack" "false"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "server/prisma/schema.prisma" "datasource db {}" "migration"
@@ -428,8 +465,12 @@ main() {
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/utils/upgrade-staleness.sh" "echo staleness" "upgrade harness helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  # It is also under tests/install/** -- the release surface from issue #1020
+  # item 1 -- so run_container_health and run_reuse_stack come from
+  # enable_pr_release_surface_smoke, on top of the harness carve-out enabling
+  # the upgrade baseline lane.
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "false" "false"
+  assert_scope "$output_file" "true" "true" "false" "false" "true" "false" "true" "true" "false" "true"
   assert_upgrade_selection "$output_file" "latest-stable" ""
 
   # The same change on a push still defers: the carve-out is pull-request only.
@@ -437,15 +478,17 @@ main() {
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
 
-  # An installer change enables the upgrade scope but does not touch the harness,
-  # so it must keep deferring -- the carve-out is for PRs that change the thing
-  # being tested, not every PR that happens to enable upgrade.
+  # install.sh is release surface (#1020 item 1), so a second, independent PR
+  # touching it again enables the upgrade baseline lane through that carve-out
+  # -- confirming the earlier install.sh assertion (line ~311 above) is not an
+  # artifact of this particular diff.
   base_sha="$head_sha"
   commit_file "$repo_dir" "install.sh" "#!/usr/bin/env bash\n# installer revisited" "installer touched again"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_upgrade_selection "$output_file" "" ""
-  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_exact_output "$output_file" "run_reuse_stack" "true"
 
   # A PR that changes the classifier itself qualifies. This one caught a real
   # gap: the first cut keyed only on tests/install/utils/upgrade-*, so #737 --
@@ -455,24 +498,39 @@ main() {
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/utils/classify-install-scope.sh" "echo classifier" "classifier change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  # It is also under tests/install/** (release surface, #1020 item 1).
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
   assert_exact_output "$output_file" "run_upgrade_baseline" "true"
   assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "run_reuse_stack" "true"
+  assert_exact_output "$output_file" "run_container_health" "true"
 
-  # tests/install/unit/* stays excluded: self-contained, cannot alter the lane.
+  # tests/install/unit/* stays excluded from the narrower upgrade-harness
+  # carve-out (self-contained, cannot alter the upgrade lane's behavior), but
+  # it IS inside tests/install/** -- the coarser release-surface carve-out
+  # from issue #1020 item 1, matching release-candidate.yml's pull_request
+  # path filter, which does not sub-scope by file within that tree either. A
+  # PR touching a unit test file now also runs install-stack-smoke and the
+  # upgrade baseline lane.
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/unit/upgrade-staleness.test.sh" "echo unit" "unit-only change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "run_reuse_stack" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ownership/cleanup-fixture.mjs" "export {};" "ownership cleanup change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" \
-    "false" "false" "false" "false" "true"
-  assert_exact_output "$output_file" "scope" "ownership-cleanup"
+  # scripts/ownership/* is also release surface (#1020 item 1): on top of
+  # run_ownership_cleanup, this PR now also gets install-stack-smoke and the
+  # upgrade baseline core lane.
+  assert_scope "$output_file" "true" "true" "false" "false" "true" "false" \
+    "true" "true" "false" "true" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "scope" "ownership-cleanup,release-surface-pr-smoke"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow base" base
@@ -484,8 +542,14 @@ main() {
   assert_static_workflow_scope "$output_file"
   assert_exact_output "$output_file" "reason" "Install workflow static-only change"
 
+  # .github/workflows/install-test.yml is also release surface (#1020 item
+  # 1): even a static (comment-only) change to the workflow file now also
+  # enables install-stack-smoke and the upgrade baseline lane on a PR, on top
+  # of the workflow-diff classifier's own static-only unit scope.
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  assert_static_workflow_scope "$output_file"
+  assert_scope "$output_file" "true" "true" "false" "false" "true" "false" "true" "true" "false" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+  assert_exact_output "$output_file" "scope" "workflow-static,release-surface-pr-smoke"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow blank line" blank
@@ -626,6 +690,44 @@ main() {
   )
   assert_exact_output "$output_file" "test_suite" "unit"
   assert_unit_only_scope "$output_file"
+
+  # --- #1020 item 1: release-surface PR smoke coverage, remaining paths -----
+  # Representative members of the release surface not already exercised above
+  # (scripts/ci/* generically, .github/actions/*, scripts/setup.sh, a nested
+  # Dockerfile, docker/compose/* on a PR), plus a negative control confirming
+  # an unrelated PR file does not pick up the carve-out.
+  for release_surface_path in \
+    "scripts/ci/observe-runtime-image-cves.sh" \
+    ".github/actions/upload-artifact/action.yml" \
+    "scripts/setup.sh" \
+    "docker/frontend/Dockerfile" \
+    "docker/compose/tor.yml"; do
+    base_sha="$head_sha"
+    commit_file "$repo_dir" "$release_surface_path" "# release surface fixture" "release surface: $release_surface_path"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+    assert_exact_output "$output_file" "run_reuse_stack" "true"
+    assert_exact_output "$output_file" "run_container_health" "true"
+    assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+    assert_upgrade_selection "$output_file" "latest-stable" ""
+    case ",$(sed -n 's/^scope=//p' "$output_file")," in
+      *,release-surface-pr-smoke,*) ;;
+      *) fail "expected release-surface-pr-smoke in scope for $release_surface_path" ;;
+    esac
+  done
+
+  # A PR touching a file outside the release surface must not pick up the
+  # carve-out, even though it is otherwise unit/docs-relevant.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/perf/unrelated-benchmark.mjs" "export {};" "unrelated perf script"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_reuse_stack" "false"
+  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+  case ",$(sed -n 's/^scope=//p' "$output_file")," in
+    *,release-surface-pr-smoke,*) fail "unexpected release-surface-pr-smoke in scope for a non-release-surface PR" ;;
+    *) ;;
+  esac
 
   echo "install scope classifier regression checks passed"
 }

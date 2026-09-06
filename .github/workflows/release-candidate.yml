@@ -45,6 +45,24 @@ on:
       - 'start.sh'
       - 'install.sh'
       - 'scripts/setup.sh'
+  # Issue #1020 item 4: a nightly run of the release lanes on main's head SHA,
+  # so drift is found within a day instead of at release time. 03:07 UTC sits
+  # in a quiet window clear of this fleet's other schedules: test.yml's Full
+  # Test Summary fires at 07:00 UTC and install-test.yml's unit-only heartbeat
+  # at 10:17 UTC (both this file), quality.yml's Monday semgrep at 08:00 UTC,
+  # and verify-vectors.yml's Sunday run at 00:00 UTC.
+  #
+  # The idle-fleet gate the issue asks for is the existing one: every
+  # docker-socket job here already acquires the shared `e2e` runner lock
+  # (scripts/ci/with-runner-lock.sh) with a bounded wait
+  # (SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS below each job's timeout-minutes,
+  # #1020 item 5) before doing any Docker work, on every trigger. A scheduled
+  # run that lands on a busy fleet waits its bounded turn behind whatever PR,
+  # push, or tag run holds the lock and fails fast with a named diagnostic
+  # (`runner-lock: timeout e2e`) instead of hanging; it does not need a
+  # separate label or dedicated capacity check to behave itself.
+  schedule:
+    - cron: '7 3 * * *'
   workflow_call:
     inputs:
       ref:
@@ -66,10 +84,20 @@ concurrency:
   # triggered by the same RC tag otherwise cancel one another before jobs start.
   # Docker-backed jobs use run-scoped projects/ports on the DIND runner so the
   # workflows can coexist without coupling their pending slots.
+  #
+  # github.ref for a schedule run is refs/heads/main, giving nightly runs their
+  # own group (sanctuary-release-candidate-refs/heads/main) distinct from every
+  # tag group (sanctuary-release-candidate-refs/tags/v...) and every PR group
+  # -- a scheduled run can never cancel or be cancelled by a tag validation.
+  # workflow_dispatch on main shares that same group, so a manual preflight
+  # started while the nightly run is in progress queues behind it rather than
+  # racing it; that is expected serialization, not a bug.
   group: sanctuary-release-candidate-${{ github.ref }}
   # An immutable tag validation run must never be cancelled. A pull-request
   # smoke run (#1020) is superseded by every push to its branch: keeping the
-  # stale run alive queued three release lanes per push on PR #1030.
+  # stale run alive queued three release lanes per push on PR #1030. A
+  # scheduled run is left to run to completion like a tag run -- there is at
+  # most one per day, so there is nothing to supersede.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -118,6 +146,13 @@ jobs:
                 exit 1
               fi
               candidate_ref="$PR_HEAD_SHA"
+              ;;
+            schedule)
+              # Issue #1020 item 4: the nightly heartbeat validates main's
+              # current head, not the ref the schedule fired on (schedule
+              # runs always use the default branch, but resolving it by name
+              # keeps this case readable next to workflow_dispatch's).
+              candidate_ref="main"
               ;;
             workflow_dispatch|workflow_call)
               raw_ref="${INPUT_REF:-${CALL_REF:-main}}"

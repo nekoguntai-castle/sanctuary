@@ -795,6 +795,34 @@ assert_contains_in_order "$RC" \
   'group: sanctuary-release-candidate-${{ github.ref }}' \
   'cancel-in-progress: ${{ github.event_name == '\''pull_request'\'' }}'
 
+# Issue #1020 item 4: a nightly run of the release lanes on main's head SHA,
+# so drift is found within a day instead of at release time, in a cron window
+# clear of install-test.yml's and test.yml's schedules.
+assert_contains_in_order "$RC" \
+  "release-candidate runs a nightly heartbeat on main" \
+  "pull_request:" \
+  "schedule:" \
+  "cron: '7 3 * * *'" \
+  "workflow_call:"
+
+assert_contains_in_order "$RC" \
+  "release-candidate nightly heartbeat validates main's head commit" \
+  "pull_request)" \
+  "schedule)" \
+  'candidate_ref="main"' \
+  "workflow_dispatch|workflow_call)"
+
+for other_schedule_cron in "17 10 \* \* \*" "0 7 \* \* \*"; do
+  if grep -qE "cron: '${other_schedule_cron}'" "$RC"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("release-candidate nightly cron must not collide with install-test.yml/test.yml: $other_schedule_cron")
+    echo "FAIL: release-candidate nightly cron collides with an existing schedule" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: release-candidate nightly cron does not collide with install-test.yml/test.yml"
+  fi
+done
+
 assert_contains_in_order "$RC" \
   "release-candidate fresh install requires the docker-socket capability label" \
   "fresh-install-test:" \
@@ -1325,6 +1353,66 @@ assert_named_job_contains "$IT" "fresh-install-test" \
 assert_named_job_contains "$RC" "fresh-install-test" \
   "release-candidate fresh install bounds its e2e lock wait below the job budget" \
   "SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1800'"
+
+# PR #1035 (runs 14954/14963, jobs 188423/188495): on a release-surface PR
+# this lane builds and starts the whole Compose stack itself instead of
+# skipping behind fresh-install coverage, so its old 30-minute budget -- sized
+# for the skip path -- was killed on kumo, whose native builder needed up to
+# ~50 min for the same build (fresh-install-test on kumo: 51m20s, run 14900,
+# job 187819). Match fresh-install-test's 90-minute budget.
+assert_named_job_contains "$IT" "install-stack-smoke" \
+  "install-test stack smoke budgets the release-surface PR stack build for kumo's native builder" \
+  'timeout-minutes: 90'
+# Issue #1020 item 1: install-stack-smoke and the upgrade baseline lane are
+# newly reachable from pull requests via
+# tests/install/utils/classify-install-scope.sh's enable_pr_release_surface_smoke,
+# so both newly-PR-reachable e2e lock users must bound their wait below their
+# job budget (item 5), same as fresh-install-test above.
+assert_named_job_contains "$IT" "install-stack-smoke" \
+  "install-test stack smoke bounds its newly-PR-reachable e2e lock wait below the job budget" \
+  "SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'"
+assert_named_job_contains "$IT" "upgrade-baseline-test" \
+  "install-test upgrade baseline bounds its newly-PR-reachable e2e lock wait below the job budget" \
+  "SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '3000'"
+
+# install-stack-smoke no longer hard-blocks pull requests: coverage is purely
+# classifier-driven (needs.determine-scope.outputs.run_reuse_stack), so a
+# release-surface PR now runs its own real Compose stack.
+assert_named_job_not_contains "$IT" "install-stack-smoke" \
+  "install-test stack smoke no longer hard-blocks pull requests" \
+  "github.event_name != 'pull_request'"
+assert_named_job_contains "$IT" "install-stack-smoke" \
+  "install-test stack smoke gates on the release-surface-aware reuse-stack output" \
+  "needs.determine-scope.outputs.run_reuse_stack == 'true'"
+
+# test_suite stays 'all' for every push/PR file-diff classification, so on its
+# own it only meant "not a narrow workflow_dispatch suite" -- not that fresh
+# install actually ran in *this* workflow run. A release-surface PR enables
+# run_reuse_stack without run_fresh_install, so the skip condition must also
+# require run_fresh_install, or this lane would report a false green without
+# ever starting a Compose stack.
+assert_named_job_contains "$IT" "install-stack-smoke" \
+  "install-test stack smoke coverage skip requires fresh install to have actually run" \
+  "USE_FRESH_INSTALL_STACK_COVERAGE: \${{ (needs.determine-scope.outputs.test_suite == 'all' || contains(needs.determine-scope.outputs.scope, 'workflow')) && needs.determine-scope.outputs.run_fresh_install == 'true' }}"
+
+assert_contains_in_order "$REPO_ROOT/tests/install/utils/classify-install-scope.sh" \
+  "install scope classifier gives release-surface PRs install-stack-smoke and upgrade-baseline coverage" \
+  "release_surface_touched=false" \
+  "enable_pr_bounded_upgrade_baseline() {" \
+  "enable_upgrade_baseline" \
+  'set_upgrade_baseline_refs "$PR_UPGRADE_BASELINE_REFS"' \
+  "enable_pr_release_surface_smoke() {" \
+  "run_reuse_stack=true" \
+  "run_container_health=true" \
+  "enable_pr_bounded_upgrade_baseline"
+assert_contains_in_order "$REPO_ROOT/tests/install/utils/classify-install-scope.sh" \
+  "install scope classifier calls the release-surface PR smoke carve-out after the docker-e2e deferral" \
+  "defer_automatic_upgrade_e2e" \
+  "enable_pr_upgrade_baseline_for_harness_changes" \
+  "defer_pull_request_docker_e2e" \
+  "enable_pr_release_surface_smoke" \
+  "emit_outputs"
+
 assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
   "install E2E driver retains supervised receipt-bound Docker cleanup" \
   '"$SCRIPT_DIR/cleanup-ci-callsite.sh" run' \

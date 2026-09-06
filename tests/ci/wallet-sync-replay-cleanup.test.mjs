@@ -767,3 +767,41 @@ test('loaded image verification reports every failing check in one run', () => {
   ]) assert.match(output, failure);
   assert.match(output, /status=1/);
 });
+
+test('loaded image verification reports every failing check in one run on the containerd image store', () => {
+  // Issue #1020 item 3: the classic-store version of this test above proves
+  // every check fails independently and is reported together, but every
+  // fixture in it is unqualified (bare "replay:test", bare "replay@sha256:…").
+  // The containerd store (v0.8.70-rc2/rc3) qualifies RepoTags and RepoDigests
+  // as docker.io/library/… and reports the manifest digest as the image ID --
+  // the exact shape the qualify()-aware RepoTags/RepoDigests comparison exists
+  // for. Repeat the all-seven-checks-fail proof under that shape so a
+  // regression in the qualified comparison cannot hide behind
+  // classic-only-store coverage.
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const output = execFileSync('bash', ['-c', String.raw`
+    set -euo pipefail
+    source "$1"
+    ownership_initialize() { :; }
+    docker() {
+      if [ "$1 $2" = 'load --input' ]; then return; fi
+      if [ "$1 $2" = 'image ls' ]; then printf 'sha256:%064d\n' 9; return; fi
+      if [ "$1 $2" = 'image inspect' ]; then printf '%s\n' '[{"Id":"sha256:${'8'.repeat(64)}","RepoTags":["docker.io/library/replay:test","docker.io/library/shared:test"],"RepoDigests":["docker.io/library/replay@sha256:${'7'.repeat(64)}"],"Config":{"Labels":{"org.opencontainers.image.source":"https://example.invalid/other","org.opencontainers.image.revision":"${'5'.repeat(40)}","dev.sanctuary.image-lock-sha256":"${'6'.repeat(64)}"}}}]'; return; fi
+      return 99
+    }
+    register_owned_resource() { printf 'unexpected-registration\n'; }
+    set +e
+    load_and_register_image /tmp/archive replay:test "sha256:${'0'.repeat(64)}" \
+      "${'1'.repeat(40)}" "${'2'.repeat(64)}" /tmp "sha256:${'3'.repeat(64)}" 2>&1
+    printf 'status=%s\n' "$?"
+  `, '_', helper], { encoding: 'utf8' });
+  assert.doesNotMatch(output, /unexpected-registration/);
+  assert.match(output, /7 failing checks/);
+  for (const failure of [
+    /identity mismatch: daemon lists 'sha256:0{63}9'/, /inspect Id sha256:8{64} differs from listed sha256:0{63}9/,
+    /RepoTags \["docker\.io\/library\/replay:test","docker\.io\/library\/shared:test"\]/,
+    /RepoDigests \["docker\.io\/library\/replay@sha256:7{64}"\]/,
+    /revision label/, /image-lock label/, /source label/,
+  ]) assert.match(output, failure);
+  assert.match(output, /status=1/);
+});

@@ -283,7 +283,7 @@ This workflow runs automatically on:
 | Nightly schedule | Unit/static install checks | None | No |
 | Manual dispatch | Configurable | Configurable | No |
 
-PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Unit/docs-only changes run unit checks, installer changes run installer checks, compose/docker changes run a reusable stack plus container health, auth-flow changes run a reusable stack plus auth flow, and Prisma/migration-only changes run the baseline upgrade matrix. Upgrade harness, fixture, workflow, release-tag, and manual `all`/`upgrade`/`release-critical` changes run both baseline and extended upgrade lanes. Scheduled drift runs are unit-only. Container-health and auth-flow share one stack when both are relevant.
+PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Docker-backed install E2E (fresh install, install script, container health, auth flow) is otherwise deferred on pull requests regardless of which install path changed, since it duplicates the same-commit evidence `Release Candidate Validation` already gathers for release-surface PRs. Two carve-outs re-enable a bounded PR run: a PR that changes the upgrade harness/fixtures runs the baseline upgrade lane (one source ref); a PR that touches the release surface (`scripts/ci/**`, `scripts/ownership/**`, `tests/install/**`, workflows, Dockerfiles, compose files, `start.sh`, `install.sh`, `scripts/setup.sh` — issue 1020 item 1) runs `install-stack-smoke` (a reusable stack plus container health) and the baseline upgrade lane, without duplicating fresh install or install-script E2E. Prisma/migration-only pushes to `main` run the baseline upgrade matrix. Upgrade harness, fixture, workflow, release-tag, and manual `all`/`upgrade`/`release-critical` changes run both baseline and extended upgrade lanes; extended fixtures never run on a PR. Scheduled drift runs are unit-only. Container-health and auth-flow share one stack when both are relevant.
 
 **Release-critical tests** include:
 - Unit tests, including install-script, 2FA reset-script, and upgrade-helper safety checks (~5 seconds)
@@ -309,6 +309,10 @@ manual dispatch cannot retain their containers after the run.
 #### 2. Release Candidate Validation (`.github/workflows/release-candidate.yml`)
 
 Use this workflow **before cutting a release** for a SHA-bound unit, hardware-evidence, and fresh-install preflight. It is not release approval; the release tag's Install Tests workflow owns the blocking health, auth, and historical upgrade evidence.
+
+It also runs automatically, without a manual trigger, in two other cases (issue #1020):
+- **Pull requests that touch the release surface** (`scripts/ci/**`, `scripts/ownership/**`, `tests/install/**`, `.github/workflows/**`, `.github/actions/**`, any `Dockerfile`, `docker-compose*.yml`, `docker/compose/**`, `start.sh`, `install.sh`, `scripts/setup.sh`) — validating the exact PR head commit, so a regression in these lanes surfaces before merge instead of one per release candidate. The same path set widens `install-test.yml`'s `install-stack-smoke` and baseline-upgrade lanes on the same PR (single `latest-stable` source ref; extended upgrade fixtures stay release/manual-only).
+- **Nightly, on `main`'s current head** (03:07 UTC) — so ownership/release-lane drift on `main` surfaces within a day instead of at release time. This is separate from Install Tests' own nightly schedule below, which stays unit-only.
 
 **Recommended release process:**
 1. Run the Release Candidate workflow on the commit you plan to release
