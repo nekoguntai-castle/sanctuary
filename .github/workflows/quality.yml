@@ -678,6 +678,7 @@ jobs:
           bash -n scripts/ci/ensure-node.sh
           bash -n scripts/ci/check-trezor-transport-provenance.sh
           bash -n scripts/ci/resolve-trezor-publish-binding.sh
+          bash -n scripts/ci/resolve-trezor-forwarder-endpoints.sh
           bash -n scripts/ci/run-trezor-emulator-proof.sh
           bash -n scripts/ci/run-ledger-emulator-proof.sh
           bash -n scripts/ci/run-jade-protocol-harness.sh
@@ -742,6 +743,7 @@ jobs:
           bash -n tests/ci/provider-context.test.sh
           bash -n tests/ci/registered-staging.test.sh
           bash -n tests/ci/registered-collector-process.test.sh
+          bash -n tests/ci/resolve-trezor-forwarder-endpoints.test.sh
           bash -n tests/ci/upload-artifact-from-subject.test.sh
           bash -n tests/ci/isolated-subject-drivers.test.sh
           bash -n tests/ci/actionlint-shellcheck.test.sh
@@ -838,6 +840,7 @@ jobs:
           bash tests/ci/provider-context.test.sh
           bash tests/ci/registered-staging.test.sh
           bash tests/ci/registered-collector-process.test.sh
+          bash tests/ci/resolve-trezor-forwarder-endpoints.test.sh
           bash tests/ci/upload-artifact-from-subject.test.sh
           bash tests/ci/isolated-subject-drivers.test.sh
           bash tests/ci/actionlint-shellcheck.test.sh

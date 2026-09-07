@@ -125,8 +125,12 @@ cleanup() {
     forwarder_pid=0
   fi
   if [ "$forwarder_pid" -ne 0 ]; then
-    "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
-      || cleanup_status=$?
+    # finish_forwarder marks the collector terminal itself on success; on
+    # failure still record the terminal marker so the coordinator can act.
+    if ! finish_forwarder; then
+      "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
+        || cleanup_status=$?
+    fi
   fi
   if [ "$container_started" -eq 1 ]; then
     timeout --foreground --kill-after=10s 30s docker inspect "$container_id" \
@@ -622,25 +626,28 @@ if [ "$docker_is_podman" = 'true' ]; then
   printf 'registered %s\n' "$forwarder_start_token" >&"$forwarder_gate_fd"
   exec {forwarder_gate_fd}>&-
   forwarder_gate_fd=''
+  # Readiness and extraction are one validated read of the forwarder document.
+  # The CI image ships jq 1.6, where `jq -e` exits 0 on an empty file, so the
+  # previous readiness probe passed on the just-created empty redirect target
+  # and the per-field re-reads then raced the forwarder's write; run 14994
+  # exported an empty host that way (issue #1038). The resolver requires a
+  # non-empty document with a loopback host and three plausible ports.
+  forwarder_resolved=''
   for attempt in $(seq 1 30); do
-    if jq -e '
-      .host == "127.0.0.1"
-      and (.controllerPort | type == "number" and . > 0 and . <= 65535)
-      and (.bridgePort | type == "number" and . > 0 and . <= 65535)
-      and (.controlPort | type == "number" and . > 0 and . <= 65535)
-    ' "$forwarder_endpoints" >/dev/null 2>&1; then
+    if forwarder_resolved="$(
+      "$SCRIPT_DIR/resolve-trezor-forwarder-endpoints.sh" "$forwarder_endpoints" 2>/dev/null
+    )"; then
       break
     fi
     if [ "$attempt" -eq 30 ]; then
       echo 'Trezor Docker-exec loopback forwarder did not become ready' >&2
+      "$SCRIPT_DIR/resolve-trezor-forwarder-endpoints.sh" "$forwarder_endpoints" || true
       exit 1
     fi
     sleep 1
   done
-  published_host="$(jq -r '.host' "$forwarder_endpoints")"
-  controller_port="$(jq -r '.controllerPort' "$forwarder_endpoints")"
-  bridge_port="$(jq -r '.bridgePort' "$forwarder_endpoints")"
-  forwarder_control_port="$(jq -r '.controlPort' "$forwarder_endpoints")"
+  IFS=$'\t' read -r published_host controller_port bridge_port forwarder_control_port \
+    <<< "$forwarder_resolved"
 else
   readonly published_ports="$(
     run_bounded_docker "resolve Trezor published ports" \
@@ -648,6 +655,10 @@ else
   )"
   controller_port="$(grep '^9001/tcp' <<< "$published_ports" | head -1 | sed 's/.*://')"
   bridge_port="$(grep '^21326/tcp' <<< "$published_ports" | head -1 | sed 's/.*://')"
+fi
+if ! [[ "$published_host" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+  echo "Unable to resolve Trezor proof host: resolved '${published_host}'" >&2
+  exit 1
 fi
 if ! [[ "$controller_port" =~ ^[0-9]+$ && "$bridge_port" =~ ^[0-9]+$ ]]; then
   echo 'Unable to resolve Trezor proof ports' >&2
@@ -776,10 +787,15 @@ export TREZOR_EMULATOR_CONNECT_VERSION="$TREZOR_CONNECT"
 export TREZOR_EMULATOR_EVIDENCE_DIR="$proof_dir"
 export TREZOR_EMULATOR_JUNIT_PATH="$diagnostics_dir/junit-trezor-emulator.xml"
 
+# Guarded so a failing suite still reaches forwarder teardown instead of
+# aborting under set -e and leaving the registered collector process orphaned
+# for the cleanup coordinator to refuse (issue #1038, run 14994).
+vitest_status=0
 npx vitest run --config config/tooling/vitest.trezor-emulator.config.ts \
   tests/integration/trezorEmulator.integration.test.ts \
-  --pool threads --maxWorkers=1 --no-file-parallelism
+  --pool threads --maxWorkers=1 --no-file-parallelism || vitest_status=$?
 
 if [ "$forwarder_pid" -ne 0 ]; then
   finish_forwarder
 fi
+exit "$vitest_status"

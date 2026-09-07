@@ -1990,6 +1990,20 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/resolve-trezor-forwarder-endpoints.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/resolve-trezor-forwarder-endpoints.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/ci/registered-staging.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
