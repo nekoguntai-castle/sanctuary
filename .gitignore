@@ -85,3 +85,8 @@ tasks/lessons.md
 
 # Prismatic-thread local capture config (per-machine tooling, not source)
 .prismatic-thread.yaml
+
+# Claude Code hooks (per-machine agent tooling, not source). They guard the
+# assistant's own tool calls and are wired from the untracked .claude/settings.json,
+# so they never affect a build, a test, or a shipped artifact.
+scripts/claude-hooks/
