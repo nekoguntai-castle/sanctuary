@@ -3,7 +3,7 @@
 **Status:** plan, not implemented. Awaiting operator decisions (see final section).
 **Date:** 2026-08-18
 **Base:** `main` @ `d8a6cc0758` (immediately after PR #829 restored legacy wallet sync)
-**Related:** incident report `reports/incident-wallet-sync-v0.8.63-2026-08-18.md`, PR #829, issue #830
+**Related:** incident report `reports/incident-wallet-sync-v0.8.63-2026-08-18.md`, PR #829 (`d8a6cc0758`, restored sync), PR #831 (`ce47097f78`, implemented this plan)
 
 ## The defect
 

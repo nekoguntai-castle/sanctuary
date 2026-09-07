@@ -1,7 +1,13 @@
 #!/bin/bash
 # PreToolUse hook: refuse edits to files that should not be hand-modified by Claude.
-# - Lock files: silently undoes the protobufjs / hono / uuid version overrides in
-#   package.json / server/package.json and the build will drift.
+# - Lock files: npm records no "overrides" key in package-lock.json, so a hand-edit
+#   can silently drift a resolved version away from the pin that package.json
+#   declares. The effective pins live in package.json (protobufjs, hono, ...) and
+#   docs/site/package.json (uuid, ...) -- never in a workspace member, whose
+#   "overrides" npm ignores. Change deps via the package manager.
+#   Known limit: the matcher in .claude/settings.json is Edit|Write|NotebookEdit,
+#   so this hook does not see a lock file rewritten from Bash (jq/sed/mv).
+#   tests/ci/npmOverridesApplied.test.ts is what actually catches the drift.
 # - .env / .env.* : secrets surface; user-managed.
 # - Applied Prisma migration SQL: migrations are immutable once created. Edit the
 #   schema and generate a new migration via the /migration skill instead.

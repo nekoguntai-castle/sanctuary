@@ -6,10 +6,6 @@
   "engines": {
     "node": ">=24 <25"
   },
-  "overrides": {
-    "@tootallnate/once": "3.0.1",
-    "protobufjs": "7.6.5"
-  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
