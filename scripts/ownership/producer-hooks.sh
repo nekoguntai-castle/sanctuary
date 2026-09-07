@@ -36,6 +36,10 @@ ownership_initialize() {
   SANCTUARY_COMMIT="${SANCTUARY_COMMIT:-$(git -C "$checkout_root" rev-parse HEAD 2>/dev/null || printf '0000000000000000000000000000000000000000')}"
   SANCTUARY_CLEANUP_CREATED_AT="${SANCTUARY_CLEANUP_CREATED_AT:-$(TZ=UTC printf '%(%Y-%m-%dT%H:%M:%S.000Z)T' -1)}"
   SANCTUARY_RESOURCE_LIFECYCLE="${SANCTUARY_RESOURCE_LIFECYCLE:-active}"
+  # sanctuary#1036 / runner-infra#37: empty outside CI or without a
+  # container-shaped $HOSTNAME, so this never labels an operator's real
+  # install. See ci_owner_container() in provider-context.sh for the contract.
+  SANCTUARY_CI_OWNER_CONTAINER="$(ci_owner_container)"
   if [ -z "${SANCTUARY_OWNERSHIP_ROOT:-}" ]; then
     if ci_temp_is_ephemeral; then
       SANCTUARY_OWNERSHIP_ROOT="$temp_root/sanctuary-ownership/$SANCTUARY_OPERATION_RUN_ID"
@@ -46,6 +50,7 @@ ownership_initialize() {
   export SANCTUARY_PROJECT SANCTUARY_DEPLOYMENT_ID SANCTUARY_OWNER_ID
   export SANCTUARY_OPERATION_RUN_ID SANCTUARY_RELEASE SANCTUARY_COMMIT
   export SANCTUARY_CLEANUP_CREATED_AT SANCTUARY_RESOURCE_LIFECYCLE SANCTUARY_OWNERSHIP_ROOT
+  export SANCTUARY_CI_OWNER_CONTAINER
 }
 
 ownership_require_identity() {

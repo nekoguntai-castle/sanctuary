@@ -19,6 +19,19 @@ export function ciProvider(environment = env) {
   return 'local';
 }
 
+// Resolve the runner-infra owner-container label value for a Docker resource
+// group this job creates on a docker-socket runner (sanctuary#1036,
+// runner-infra#37). Mirrors ci_owner_container() in provider-context.sh:
+// empty outside CI or without a container-id-shaped $HOSTNAME, so this never
+// fires on an operator's real install. A caller may pin the value directly
+// via SANCTUARY_CI_OWNER_CONTAINER (normally set from its own $HOSTNAME).
+export function ciOwnerContainer(environment = env) {
+  if (environment.SANCTUARY_CI_OWNER_CONTAINER) return environment.SANCTUARY_CI_OWNER_CONTAINER;
+  if (ciProvider(environment) === 'local') return '';
+  const hostname = environment.HOSTNAME ?? '';
+  return /^[0-9a-f]{12,64}$/.test(hostname) ? hostname : '';
+}
+
 export function ciAuthorityProvider(environment = env) {
   if (environment.FORGEJO_ACTIONS === 'true' || environment.FORGEJO_SERVER_URL) return 'forgejo';
   if (environment.GITHUB_ACTIONS === 'true') return 'github';

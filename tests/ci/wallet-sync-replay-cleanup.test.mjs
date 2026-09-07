@@ -343,6 +343,47 @@ test('create recovery fails closed when the ownership query is unavailable', () 
   ), /recovery query failed/);
 });
 
+// sanctuary#1036 / runner-infra#37: standalone RC replay containers/networks
+// get no compose grouping, so the reaper reads the owner-container label off
+// each resource directly. It must appear only under CI with a
+// container-shaped $HOSTNAME (or an explicit override) -- never on a plain
+// local invocation of the replay controller.
+test('replay resources carry the runner-infra owner-container label only under CI', () => {
+  const OWNER_CONTAINER_ENV_KEYS = [
+    'SANCTUARY_CI_OWNER_CONTAINER', 'CI', 'GITHUB_ACTIONS', 'FORGEJO_ACTIONS',
+    'FORGEJO_SERVER_URL', 'HOSTNAME',
+  ];
+  const saved = Object.fromEntries(OWNER_CONTAINER_ENV_KEYS.map((key) => [key, process.env[key]]));
+  const restore = () => {
+    for (const key of OWNER_CONTAINER_ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  };
+  const ownerContainerLabel = (labels) => labels.find((value) => value.startsWith('io.runner-infra.owner-container='));
+  try {
+    for (const key of OWNER_CONTAINER_ENV_KEYS) delete process.env[key];
+    assert.equal(ownerContainerLabel(replayOwnershipLabels('compose_container')), undefined);
+
+    process.env.GITHUB_ACTIONS = 'true';
+    process.env.HOSTNAME = 'kumo';
+    assert.equal(ownerContainerLabel(replayOwnershipLabels('compose_container')), undefined,
+      'a human-named runner host is not a container id');
+
+    process.env.HOSTNAME = 'deadbeefcafe';
+    assert.equal(ownerContainerLabel(replayOwnershipLabels('compose_container')),
+      'io.runner-infra.owner-container=deadbeefcafe');
+
+    delete process.env.GITHUB_ACTIONS;
+    delete process.env.HOSTNAME;
+    process.env.SANCTUARY_CI_OWNER_CONTAINER = 'explicit-override';
+    assert.equal(ownerContainerLabel(replayOwnershipLabels('compose_network')),
+      'io.runner-infra.owner-container=explicit-override');
+  } finally {
+    restore();
+  }
+});
+
 test('replay resources are obsolete and image cleanup policy is not overridden by the controller', () => {
   const labels = replayOwnershipLabels('compose_container');
   assert.ok(labels.includes('io.sanctuary.lifecycle=obsolete'));

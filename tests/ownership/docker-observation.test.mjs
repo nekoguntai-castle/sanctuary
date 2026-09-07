@@ -30,7 +30,7 @@ const tuple = (resourceClass, extra = {}) => ({
 function fixtureRun({
   drift = false, malformed = false, volumeIdentityDrift = false,
   safetyDrift = null, lifecycle = 'active', imageTags, imageDigests,
-  imageLabels, imageContainerReferences, imageListTags,
+  imageLabels, imageContainerReferences, imageListTags, extraLabels,
 } = {}) {
   const calls = [];
   let containerLists = 0;
@@ -87,6 +87,7 @@ function fixtureRun({
         'io.sanctuary.lifecycle': lifecycle,
         ...(safetyDrift === 'ownership_label' && containerInspections > 1
           ? { 'io.sanctuary.cleanup-policy': 'retain' } : {}),
+        ...(extraLabels ?? {}),
       });
       return malformed ? '{' : JSON.stringify([{ Id: A, State: { Running: true }, Config: { Labels: labels } }]);
     }
@@ -167,6 +168,29 @@ test('exact selectors are unioned, inspections retain immutable IDs, and safety 
   assert.deepEqual(firstList.args.slice(0, 2), ['--host', 'unix:///run/docker-fixture.sock']);
   assert.ok(firstList.effectiveArgs.includes('label=io.sanctuary.project=sanctuary'));
   assert.ok(firstList.effectiveArgs.includes('label=io.sanctuary.resource-class=compose_container'));
+});
+
+// sanctuary#1036 / runner-infra#37: the runner-infra host reaper's
+// owner-container label lives in a foreign `io.runner-infra.` namespace.
+// Adding it must not change how any resource is classified -- the ownership
+// contract's `unregisteredPolicy`/`cleanupPolicies` decisions in
+// config/resource-ownership-contract.json all key off the `io.sanctuary.*`
+// tuple this classifier reads via REQUIRED_OWNERSHIP_LABELS, which does a
+// subset ("every required key present") check, not an exact-match one.
+test('an extra io.runner-infra.owner-container label does not change classification', () => {
+  const fixture = fixtureRun({ extraLabels: { 'io.runner-infra.owner-container': 'deadbeefcafe' } });
+  const result = observeDockerResources({
+    selectors, runCommand: fixture.run, currentDeploymentId: 'deploy-current',
+    dataVolumeNames: ['sanctuary_postgres_data'], registrations: [
+      { resourceClass: 'compose_volume', immutableIdentity: dockerImmutableIdentity('compose_volume', {
+        Name: 'sanctuary_postgres_data', Driver: 'local', Scope: 'local',
+        Mountpoint: '/var/lib/docker/volumes/data/_data', CreatedAt: '2026-08-31T00:00:00Z', Options: {},
+      }), locator: 'sanctuary_postgres_data', operationRunId: 'create-volume' },
+    ],
+  });
+  assert.equal(result.complete, true);
+  const owned = result.resources.find((row) => row.immutableIdentity === A);
+  assert.deepEqual(owned.classifications, ['current', 'owned', 'protected', 'running']);
 });
 
 test('one exclusive witness registration converts only its exact legacy container to cleanup authority', () => {

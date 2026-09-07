@@ -39,6 +39,31 @@ main() {
   assert_eq "explicit override wins" "custom-ci" \
     "$(fresh_eval 'export GITHUB_ACTIONS=true; export SANCTUARY_CI_PROVIDER_OVERRIDE=custom-ci; ci_provider')"
 
+  # ---- ci_owner_container (sanctuary#1036 / runner-infra#37) ---------------
+  # No value on a plain local shell, even with a hex-shaped $HOSTNAME: the
+  # reaper contract only applies once CI is genuinely detected.
+  assert_eq "local provider never labels, even with a hex HOSTNAME" "" \
+    "$(fresh_eval 'export HOSTNAME=0123456789ab; ci_owner_container')"
+  # CI detected but $HOSTNAME is not container-id-shaped (a human-named
+  # runner host, or no HOSTNAME at all): still no value.
+  assert_eq "CI without a container-shaped HOSTNAME stays empty" "" \
+    "$(fresh_eval 'export GITHUB_ACTIONS=true; export HOSTNAME=kumo; ci_owner_container')"
+  # bash repopulates $HOSTNAME from gethostname() even under env -i, so this
+  # must clear it explicitly rather than merely not export a value, or the
+  # assertion would depend on the real host's hostname shape.
+  assert_eq "CI with no HOSTNAME at all stays empty" "" \
+    "$(fresh_eval 'export CI=true; export HOSTNAME=; ci_owner_container')"
+  # Genuine CI job container: $HOSTNAME is the container's own short id.
+  assert_eq "forgejo CI with a 12-hex HOSTNAME resolves it" "0123456789ab" \
+    "$(fresh_eval 'export FORGEJO_ACTIONS=true; export HOSTNAME=0123456789ab; ci_owner_container')"
+  assert_eq "github CI with a 64-hex HOSTNAME resolves it" "$(printf 'a%.0s' {1..64})" \
+    "$(fresh_eval "export GITHUB_ACTIONS=true; export HOSTNAME=\$(printf 'a%.0s' {1..64}); ci_owner_container")"
+  # An explicit workflow-provided override always wins, even locally.
+  assert_eq "explicit override wins over local" "override-container" \
+    "$(fresh_eval 'export SANCTUARY_CI_OWNER_CONTAINER=override-container; ci_owner_container')"
+  assert_eq "explicit override wins over a non-container HOSTNAME in CI" "override-container" \
+    "$(fresh_eval 'export GITHUB_ACTIONS=true; export HOSTNAME=kumo; export SANCTUARY_CI_OWNER_CONTAINER=override-container; ci_owner_container')"
+
   # ---- ci_event_name --------------------------------------------------------
   assert_eq "no event" "" "$(fresh_eval 'ci_event_name')"
   assert_eq "EVENT_NAME wins" "push" "$(fresh_eval 'export EVENT_NAME=push; ci_event_name')"

@@ -35,6 +35,8 @@ x-sanctuary-container-ownership: &sanctuary-container-ownership
   io.sanctuary.created-by-release: ${SANCTUARY_RELEASE:?SANCTUARY_RELEASE is required}
   io.sanctuary.created-by-commit: ${SANCTUARY_COMMIT:?SANCTUARY_COMMIT is required}
   io.sanctuary.creation-run-id: ${SANCTUARY_OPERATION_RUN_ID:?SANCTUARY_OPERATION_RUN_ID is required}
+  # sanctuary#1036 / runner-infra#37: see docker-compose.yml for the contract.
+  io.runner-infra.owner-container: ${SANCTUARY_CI_OWNER_CONTAINER:-}
 
 x-sanctuary-network-ownership: &sanctuary-network-ownership
   <<: *sanctuary-container-ownership

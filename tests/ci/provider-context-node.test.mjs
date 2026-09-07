@@ -65,6 +65,27 @@ async function main() {
     (await freshEval('return adapter.ciProvider();',
       { GITHUB_ACTIONS: 'true', SANCTUARY_CI_PROVIDER_OVERRIDE: 'custom' })).stdout);
 
+  // ---- ciOwnerContainer (sanctuary#1036 / runner-infra#37) ----------------
+  assertEq('local provider never labels, even with a hex HOSTNAME', '',
+    (await freshEval('return adapter.ciOwnerContainer();', { HOSTNAME: '0123456789ab' })).stdout);
+  assertEq('CI without a container-shaped HOSTNAME stays empty', '',
+    (await freshEval('return adapter.ciOwnerContainer();', { GITHUB_ACTIONS: 'true', HOSTNAME: 'kumo' })).stdout);
+  assertEq('CI with no HOSTNAME at all stays empty', '',
+    (await freshEval('return adapter.ciOwnerContainer();', { CI: 'true' })).stdout);
+  assertEq('forgejo CI with a 12-hex HOSTNAME resolves it', '0123456789ab',
+    (await freshEval('return adapter.ciOwnerContainer();',
+      { FORGEJO_ACTIONS: 'true', HOSTNAME: '0123456789ab' })).stdout);
+  assertEq('github CI with a 64-hex HOSTNAME resolves it', 'a'.repeat(64),
+    (await freshEval('return adapter.ciOwnerContainer();',
+      { GITHUB_ACTIONS: 'true', HOSTNAME: 'a'.repeat(64) })).stdout);
+  assertEq('explicit override wins over local', 'override-container',
+    (await freshEval('return adapter.ciOwnerContainer();',
+      { SANCTUARY_CI_OWNER_CONTAINER: 'override-container' })).stdout);
+  assertEq('explicit override wins over a non-container HOSTNAME in CI', 'override-container',
+    (await freshEval('return adapter.ciOwnerContainer();', {
+      GITHUB_ACTIONS: 'true', HOSTNAME: 'kumo', SANCTUARY_CI_OWNER_CONTAINER: 'override-container',
+    })).stdout);
+
   // ---- event envelope -----------------------------------------------------
   assertEq('event name', 'push',
     (await freshEval('return adapter.ciEventName();', { EVENT_NAME: 'push' })).stdout);

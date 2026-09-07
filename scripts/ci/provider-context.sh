@@ -44,6 +44,29 @@ ci_provider() {
   printf '%s' "local"
 }
 
+# Resolve the runner-infra owner-container label value for a Docker resource
+# group this job creates on a docker-socket runner (sanctuary#1036,
+# runner-infra#37). act_runner defaults a job's own task container's hostname
+# to that container's own short id, so a resource group labelled with that id
+# lets the host reaper reclaim the whole group within minutes of the job
+# container disappearing, instead of waiting out the multi-hour age floor.
+#
+# Empty output means: do not apply the label. That is the case outside CI
+# (ci_provider = local) and whenever $HOSTNAME is not container-id-shaped, so
+# this never fires on an operator's real install. A workflow may also pin the
+# value directly via SANCTUARY_CI_OWNER_CONTAINER (normally set from its own
+# $HOSTNAME) to cover a caller where $HOSTNAME is not the right container.
+ci_owner_container() {
+  if [ -n "${SANCTUARY_CI_OWNER_CONTAINER:-}" ]; then
+    printf '%s' "$SANCTUARY_CI_OWNER_CONTAINER"
+    return 0
+  fi
+  [ "$(ci_provider)" != local ] || return 0
+  if [[ "${HOSTNAME:-}" =~ ^[0-9a-f]{12,64}$ ]]; then
+    printf '%s' "$HOSTNAME"
+  fi
+}
+
 # Destructive authority must never consume the test/display overrides above.
 # These helpers expose only provider-owned runtime identity, keeping raw
 # provider variables confined to this adapter without permitting downgrade.

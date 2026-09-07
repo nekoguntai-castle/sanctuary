@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerResource } from '../ownership/registration.mjs';
+import { ciOwnerContainer } from '../ci/provider-context.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CREATED_AT = new Date().toISOString();
@@ -35,7 +36,10 @@ export function replayOwnershipLabels(resourceClass, cleanupPolicy = 'exact_dele
     'io.sanctuary.created-by-commit': owner.commit,
     'io.sanctuary.creation-run-id': owner.run,
   };
-  return Object.entries(labels).flatMap(([key, value]) => ['--label', `${key}=${value}`]);
+  const args = Object.entries(labels).flatMap(([key, value]) => ['--label', `${key}=${value}`]);
+  const ownerContainer = ciOwnerContainer();
+  if (ownerContainer) args.push('--label', `io.runner-infra.owner-container=${ownerContainer}`);
+  return args;
 }
 
 export function registerReplayResource(resourceClass, name, immutableIdentity, cleanupPolicy = 'exact_delete') {

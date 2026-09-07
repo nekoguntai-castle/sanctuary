@@ -44,6 +44,11 @@ x-sanctuary-container-ownership: &sanctuary-container-ownership
   io.sanctuary.created-by-release: ${SANCTUARY_RELEASE:?SANCTUARY_RELEASE is required}
   io.sanctuary.created-by-commit: ${SANCTUARY_COMMIT:?SANCTUARY_COMMIT is required}
   io.sanctuary.creation-run-id: ${SANCTUARY_OPERATION_RUN_ID:?SANCTUARY_OPERATION_RUN_ID is required}
+  # sanctuary#1036 / runner-infra#37: the runner-infra host reaper's opt-in
+  # owner-container contract. Empty outside CI (see ci_owner_container() in
+  # scripts/ci/provider-context.sh), so an operator's real install carries
+  # this label with no value -- the reaper only ever runs on CI runner hosts.
+  io.runner-infra.owner-container: ${SANCTUARY_CI_OWNER_CONTAINER:-}
 
 x-sanctuary-network-ownership: &sanctuary-network-ownership
   <<: *sanctuary-container-ownership
