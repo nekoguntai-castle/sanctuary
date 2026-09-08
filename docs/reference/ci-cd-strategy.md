@@ -145,6 +145,52 @@ Push once per batch after the relevant local gate is green, then let the Forgejo
 PR checks run once. If CI finds a reproducible local gap, add that command to
 this Tier 0 checklist before retrying.
 
+### Expensive failure and rerun control
+
+An expensive failure starts a stop-and-discriminate boundary. Before another
+attempt, record the exact 40-character commit SHA, workflow run and job IDs, a
+short redacted failure signature, a concrete new hypothesis, and the result of a
+bounded cheap discriminator. A differently worded retrigger without new evidence
+does not satisfy this rule. Confirm any resource-owning predecessor and its signed
+cleanup receipt are terminal before pushing or rerunning work on the same host.
+
+Repository-owned retry wrappers are mechanically tested: test execution may only
+retry after its dedicated classifier identifies a documented infrastructure
+signature, while generic retries remain for idempotent setup/build boundaries.
+This cannot enforce operator actions in Forgejo; UI/API reruns remain procedural
+and must carry the same evidence.
+
+The authenticated Forgejo 16.0.3 schema was rechecked on 2026-09-08. Under
+`/api/v1/repos/{owner}/{repo}/actions`, it exposes run listing/detail, artifacts,
+jobs, logs, and run cancellation, but no retry or rerun route. The instance UI
+control observed during incident recovery reruns all jobs for a workflow, not one
+failed job. When that whole-workflow retry is justified, first verify the same
+immutable SHA and inputs, wait for the superseded run's resource-owning jobs and
+cleanup receipts to become terminal, and require the new aggregate job as well as
+the formerly failed child. `verify-vectors.yml` exposes no single-emulator
+workflow-dispatch input, so dispatch is not a targeted emulator retry. Do not use
+an undocumented endpoint, broad dispatch, or required-check bypass as a
+substitute.
+
+`scripts/ci/report-commit-workflows.sh` provides a read-only, fail-closed status
+snapshot for one exact 40-character SHA. The caller supplies an event-specific
+manifest of `workflow_id` values and required aggregate job names; path-triggered
+events must not share an assumed universal manifest. The reporter validates two
+identical, bounded, fully paginated run snapshots, exact run details, and two
+identical latest-attempt job snapshots. The newest run ID for a duplicated
+workflow dominates older runs, while Forgejo's job `attempt` identifies a UI
+rerun within the same run. Every returned row must match the requested
+`commit_sha` and event. Required aggregates must be terminal `success`; absent,
+skipped, failed, unstable, oversized, or unavailable evidence returns nonzero.
+`progress: not_measured` means exactly that and never upgrades a running or
+unknown state.
+
+The reporter must run inside the cleanup coordinator because its bounded API
+responses use registered owner-only staging. The coordinator retires that
+staging and emits its own signed receipt. Reporter output is operational
+observation, not permission to merge or rerun; protected aggregate checks remain
+authoritative.
+
 ### Tier 1 - PR Feedback And Full Gate
 
 The PR quick lane and path-aware full lane start concurrently after changed-file
@@ -534,6 +580,23 @@ scripts/ci/run-with-log.sh \
 must wrap the lock to capture that wait line in the diagnostic artifact.
 `tests/ci/check-workflow-composition.test.sh` enforces this order across
 both workflows.
+
+The cleanup coordinator writes bounded, fixed-schema
+`SANCTUARY_CI_LIFECYCLE_V1` markers for `cleanup_prepared`, `subject_started`,
+`subject_terminal`, `cleanup_started`, and `cleanup_terminal`. Only
+`run-with-log.sh` may promote them to live `CI lifecycle` notices, and only after
+redaction plus strict parsing of the exact schema, enum combinations, and bounded
+exit status. Unknown fields, controls, encoded workflow-command characters,
+redaction placeholders, resource locators, and arbitrary high-entropy values are
+not forwarded. The original redacted line still belongs to the diagnostic log.
+
+This is best-effort observability, not transactional durability. Child/container
+loss after an event is ingested leaves the accepted diagnostic marker and may
+leave its canonical live notice. An outer-process hard kill before ingestion can
+leave neither; a kill after ingestion can preserve observed progress but cannot
+create a terminal success sidecar. Provider ingestion itself is not proven by a
+local file. Signed cleanup receipts remain cleanup authority, and required
+aggregate jobs remain merge authority.
 
 **`docker/setup-buildx-action` is omitted** from the retained
 release-candidate `fresh-install-test`. Compose Bake is disabled in install E2E

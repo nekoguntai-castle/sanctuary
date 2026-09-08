@@ -128,16 +128,61 @@ Long-running steps wrap their command with `scripts/ci/run-with-log.sh` and foll
 
 When adding a new long-running CI step, follow the same pattern: wrap with `run-with-log.sh "$DIAGNOSTIC_DIR/<step>.log"` for capture, call `write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "<Lane Name>"` in an `if: always()` step, and upload `$DIAGNOSTIC_DIR` as `ci-diagnostics-<lane>` on failure with `if-no-files-found: ignore`. Keep compact reports that are required evidence separate from verbose troubleshooting artifacts so successful runs retain the former without paying to publish the latter.
 
+The cleanup coordinator also emits fixed-schema `SANCTUARY_CI_LIFECYCLE_V1`
+source markers for cleanup preparation, subject start/terminal, and cleanup
+start/terminal. `run-with-log.sh` redacts first, validates the exact v1 fields and
+event/state combinations, then canonically emits a `CI lifecycle` notice. These
+notices are best-effort progress only; signed cleanup receipts and required-check
+aggregates remain authoritative. If a child/container dies after ingestion, the
+accepted marker remains in the diagnostic log and the live notice may already be
+visible. If the outer wrapper is killed before ingestion, neither is guaranteed;
+after ingestion, progress can survive but no success sidecar may be inferred.
+
 ### Retrigger discipline
 
-CI flake on this repo is dominated by host-side runner / DIND issues, not test bugs (audit 2026-05-10: 9/9 recent retriggers were runner/substrate, 0 were vitest). Bare retriggers absorb engineering oxygen and risk masking real regressions.
+CI flake on this repo is dominated by host-side runner / DIND issues, not test
+bugs (audit 2026-05-10: 9/9 recent retriggers were runner/substrate, 0 were
+vitest). Bare retriggers absorb engineering oxygen and risk masking real
+regressions.
 
-Before pushing a `chore: retrigger CI` commit, the commit MUST do at least one of:
+After an expensive job fails, stop before another attempt. Record all four items
+in the tracking issue, PR comment, or retrigger commit body:
 
-1. **Include a stability fix in the same commit** — a workflow tweak, a runner-config nudge, a `continue-on-error` matrix change, or a `test.retry()` for a genuinely flaky vitest case.
-2. **Reference a tracking issue in the commit body** — name the failing job, paste a short error fragment, link the issue.
+- **Immutable identity:** the exact 40-character commit SHA plus workflow run and
+  job IDs.
+- **Failure signature:** the failing job and a short redacted error fragment.
+- **New hypothesis:** a concrete explanation that differs from the hypothesis
+  tested by the failed attempt.
+- **Cheap discriminator:** the bounded read-only or local test used to distinguish
+  that hypothesis, and its result.
 
-Bare `chore: retrigger CI` with no body is no longer acceptable. Diagnostic artifacts from `scripts/ci/write-diagnostic-summary.sh` are uploaded on every failed lane — consult them before assuming flake.
+A second expensive attempt without a new hypothesis and cheap discriminator is
+not permitted. A `chore: retrigger CI` commit must either include the stability
+fix itself or reference the structured evidence above; cosmetic or empty
+retrigger commits are forbidden. Consult the diagnostic summary and cleanup
+receipt first. Never push while an obsolete revision still owns runner resources.
+
+Repository tests mechanically constrain repository-owned retry wrappers to their
+documented signature classifiers. They cannot prevent a Forgejo operator from
+pressing a UI rerun control, so UI/API reruns remain a procedural control subject
+to the same evidence rule.
+
+Forgejo 16.0.3 does not expose a failed-job retry/rerun API. Its authenticated
+Swagger lists run inspection, logs, artifacts, and cancellation only. The UI
+control observed on this instance reruns all jobs in the workflow; it is not a
+targeted emulator retry. Before using it, verify the old resource-owning jobs and
+cleanup receipts are terminal, preserve the same immutable SHA and inputs, and
+accept the aggregate required check as part of the rerun. Do not substitute a
+workflow dispatch: `verify-vectors.yml` has no single-emulator dispatch input.
+
+For a bounded exact-commit view, run `scripts/ci/report-commit-workflows.sh`
+inside `cleanup-ci-callsite.sh run` with a 40-character SHA and an explicit
+event-specific JSON manifest of workflow IDs plus required aggregate job names.
+The reporter returns nonzero for unknown, running, or failed state. It checks two
+complete paginated run snapshots and two exact run/job snapshots; a missing
+aggregate, unstable page, mismatched SHA/event, or unavailable response cannot
+be reported as green. Never reuse a universal manifest across path-triggered
+events—expected workflows are caller-owned input.
 
 ### Version management
 

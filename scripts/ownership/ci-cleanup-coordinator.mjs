@@ -21,10 +21,30 @@ import { ciCleanupProviderContext } from './ci-cleanup-trust.mjs';
 import { captureSubjectDeadline } from './ci-subject-deadline.mjs';
 import { runSubject } from './ci-subject-supervisor.mjs';
 import { registerLegacyFixtureResources } from './ci-legacy-fixture-witness.mjs';
+import {
+  cleanupLifecycleStatus, lifecycleCandidate,
+} from '../ci/forward-live-annotations.mjs';
 
 const DEFAULT_SUBJECT_GRACE_MS = 5_000;
 const DEFAULT_SUBJECT_KILL_WAIT_MS = 5_000;
 const MAX_SUBJECT_WAIT_MS = 60_000;
+
+function emitLifecycle(event, status, subjectExit = null, cleanupState = null) {
+  try {
+    process.stderr.write(`${lifecycleCandidate({
+      schema_version: 1, event, status,
+      subject_exit: subjectExit, cleanup_state: cleanupState,
+    })}\n`, () => {});
+  } catch {
+    // Progress is deliberately best-effort; signed cleanup evidence is authoritative.
+  }
+}
+
+export function subjectTerminalStatus(exitStatus) {
+  if (exitStatus === 124) return 'timed_out';
+  if (exitStatus >= 129 && exitStatus <= 192) return 'interrupted';
+  return exitStatus === 0 ? 'succeeded' : 'failed';
+}
 
 function exactWithOptional(value, required, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('request must be an object');
@@ -290,6 +310,7 @@ async function runCommand(request, command) {
   const lifecycleSignals = captureLifecycleSignals(cancellationPath);
   try {
     const prepared = prepare(request);
+    emitLifecycle('cleanup_prepared', 'succeeded');
     let subjectExitStatus;
     let cleanupSuppression = null;
     await yieldForPendingSignals();
@@ -302,6 +323,7 @@ async function runCommand(request, command) {
       subjectExitStatus = 124;
     } else {
       try {
+        emitLifecycle('subject_started', 'running');
         subjectExitStatus = await runSubject(
           command[0], command.slice(1), prepared.environment,
           { ...supervision, remainingMs: remaining() },
@@ -312,8 +334,16 @@ async function runCommand(request, command) {
         process.stderr.write(`ci-cleanup-coordinator: subject launch/supervision failed: ${error.message}\n`);
       }
     }
+    emitLifecycle(
+      'subject_terminal', subjectTerminalStatus(subjectExitStatus), subjectExitStatus,
+    );
+    emitLifecycle('cleanup_started', 'running', subjectExitStatus);
     const result = await finishOutcomeAsync(
       prepared, { ...request, cancellationPath }, subjectExitStatus, cleanupSuppression,
+    );
+    emitLifecycle(
+      'cleanup_terminal', cleanupLifecycleStatus(result.cleanupState),
+      subjectExitStatus, result.cleanupState,
     );
     await yieldForPendingSignals();
     const finalSignal = lifecycleSignals.requested();

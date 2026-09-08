@@ -688,6 +688,8 @@ jobs:
           bash -n scripts/ci/install-semgrep.sh
           bash -n scripts/ci/time-command.sh
           node --check scripts/ci/record-command-timing.mjs
+          node --check scripts/ci/forward-live-annotations.mjs
+          node --check scripts/ci/report-commit-workflows.mjs
           bash -n scripts/ci/with-runner-lock.sh
           bash -n scripts/ci/aggregate-runner-locks.sh
           bash -n scripts/ci/run-extended-upgrade-fixtures.sh
@@ -718,6 +720,7 @@ jobs:
           bash -n scripts/ci/collect-playwright-artifacts.sh
           bash -n scripts/ci/check-actions-cache-service.sh
           bash -n scripts/ci/forgejo-report-api.sh
+          bash -n scripts/ci/report-commit-workflows.sh
           bash -n scripts/ci/report-workflow-durations.sh
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
@@ -784,6 +787,7 @@ jobs:
           bash -n tests/ci/relay-job-diagnosability.test.sh
           bash -n tests/ci/retry-playwright-infrastructure-failure.test.sh
           bash -n tests/ci/retry-vitest-infrastructure-failure.test.sh
+          bash -n tests/ci/retry-discipline.test.sh
           bash -n tests/ci/sanctuary-backup.test.sh
           bash -n tests/ci/verify-repeatable-rpc-wait.test.sh
           bash -n tests/ci/ensure-go.test.sh
@@ -840,6 +844,9 @@ jobs:
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs
           node tests/ci/provider-context-node.test.mjs
+          node tests/ci/forward-live-annotations.test.mjs
+          node --test tests/ci/report-commit-workflows.test.mjs tests/ci/report-commit-workflows.transport.test.mjs
+          node --test tests/ci/cleanup-docker-real-image-age.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
           bash tests/ci/registered-staging.test.sh
@@ -893,6 +900,7 @@ jobs:
           bash tests/ci/install-playwright-chromium.test.sh
           bash tests/ci/quality-audit.test.sh
           bash tests/ci/retry-vitest-infrastructure-failure.test.sh
+          bash tests/ci/retry-discipline.test.sh
           bash tests/ci/sanctuary-backup.test.sh
           bash tests/ci/verify-repeatable-rpc-wait.test.sh
           bash tests/ci/ensure-go.test.sh

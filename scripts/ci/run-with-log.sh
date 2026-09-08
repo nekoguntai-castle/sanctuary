@@ -20,9 +20,13 @@
 #   - The wrapped command's exit status is preserved verbatim; pipeline
 #     plumbing failures are reported through the sidecar `sink_status`
 #     and `redactor_exit`, not by clobbering the wrapped exit.
-#   - After redaction, validated CI timing and performance-budget annotations
-#     are also forwarded to parent stderr so Forgejo's live run logs retain the
-#     measurement signal. All ordinary wrapped output remains log-file-only.
+#   - After redaction, validated timing, performance-budget, and fixed-schema
+#     lifecycle annotations are forwarded to parent stderr so Forgejo's live
+#     run logs retain progress. A lifecycle source event that reached this
+#     stage stays in the diagnostic log; its canonical live copy survives a
+#     later subject/container loss. A hard-killed wrapper cannot write a final
+#     sidecar, so the sidecar remains absent rather than claiming success.
+#     All ordinary wrapped output remains log-file-only.
 #   - A sidecar `<log>.status.json` is written atomically (`*.tmp`+rename)
 #     with schema_version=1. If the wrapper is killed by SIGTERM/SIGINT
 #     before the pipeline completes, a best-effort sidecar with
@@ -193,26 +197,12 @@ cap_filter() {
   '
 }
 
-# Preserve machine-readable timing and performance-budget annotations in the
-# live runner log without exposing the wrapped command's ordinary output. This
-# stage intentionally runs after redact_stream and accepts only the complete
-# annotation grammars emitted by time-command.sh and record-command-timing.mjs.
-# Its stdout remains the complete redacted stream consumed by the cap and
-# diagnostic-log sink; only validated lines are duplicated to wrapper stderr.
-forward_ci_timing_annotations() {
-  local line timing_re warning_budget_re hard_budget_re
-  timing_re='^::(notice|error) title=CI timing::.+ completed in [0-9]+m [0-9]+s \([0-9]+s\)( with exit code [0-9]+)?$'
-  warning_budget_re='^::warning title=CI performance budget::.+ took [0-9]+s; warning budget is [0-9]+s$'
-  hard_budget_re='^::error title=CI performance budget::.+ took [0-9]+s; hard budget is [0-9]+s$'
-
-  while IFS= read -r line || [ -n "$line" ]; do
-    printf '%s\n' "$line"
-    if [[ "$line" =~ $timing_re || "$line" =~ $warning_budget_re || "$line" =~ $hard_budget_re ]]; then
-      # Live-log observability is warning-only. Losing parent stderr must not
-      # fail an otherwise healthy command or its authoritative diagnostic log.
-      printf '%s\n' "$line" >&2 || true
-    fi
-  done
+# Preserve only parsed, allowlisted annotations in the live runner log. The
+# helper receives the stream after redaction, validates lifecycle candidates as
+# strict JSON, and canonically re-emits the fixed v1 schema. Its stdout remains
+# the complete diagnostic stream. Live forwarding is best-effort observability.
+forward_live_annotations() {
+  node "$SCRIPT_DIR/forward-live-annotations.mjs"
 }
 
 # Run the wrapped command. Capture exit status via a side-channel file so
@@ -234,7 +224,7 @@ run_wrapped() {
 # sidecar.
 { run_wrapped "$@"; } 2>&1 \
   | redact_stream \
-  | forward_ci_timing_annotations \
+  | forward_live_annotations \
   | cap_filter "$CAP_BYTES" "$TRUNC_FLAG" \
   | tee "$LOG_PATH" >/dev/null
 PIPELINE_RC=("${PIPESTATUS[@]}")

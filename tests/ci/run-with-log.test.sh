@@ -371,6 +371,53 @@ assert_eq "$(sidecar_field "$log.status.json" sink_status)" "ok" "diagnostic sin
 assert_eq "$(grep -cF '::notice title=CI timing::closed-stderr-timed completed in' "$log")" "1" "timing annotation remains in diagnostic log" || true
 [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 
+# ----- 16. child/container-like loss keeps accepted progress --------------
+prev_fail=$FAIL
+start_test "container-like exit keeps canonical lifecycle progress without false success"
+log="$CURRENT_DIR/container-loss.log"
+live_stderr="$CURRENT_DIR/live.stderr"
+lifecycle='SANCTUARY_CI_LIFECYCLE_V1 {"status":"running","subject_exit":null,"schema_version":1,"event":"subject_started","cleanup_state":null}'
+unsafe_lifecycle='SANCTUARY_CI_LIFECYCLE_V1 {"status":"API_TOKEN=should-be-hidden","subject_exit":null,"schema_version":1,"event":"subject_started","cleanup_state":null}'
+"$WRAPPER" "$log" bash -c 'printf "%s\n%s\n" "$1" "$2"; exit 137' _ \
+  "$lifecycle" "$unsafe_lifecycle" \
+  >/dev/null 2>"$live_stderr"
+status=$?
+assert_eq "$status" "137" "container-like subject status survives" || true
+assert_contains "$log" "$lifecycle" "source lifecycle event survives in diagnostic log" || true
+assert_contains "$log" '"status":"API_TOKEN=<redacted>"' "candidate is redacted before validation" || true
+assert_not_contains "$log" "should-be-hidden" "unsafe candidate secret is absent from diagnostics" || true
+canonical='::notice title=CI lifecycle::{"cleanup_state":null,"event":"subject_started","schema_version":1,"status":"running","subject_exit":null}'
+assert_eq "$(grep -cF "$canonical" "$live_stderr")" "1" "lifecycle event forwarded canonically once" || true
+assert_not_contains "$live_stderr" "<redacted>" "redacted invalid candidate is not forwarded live" || true
+assert_eq "$(sidecar_field "$log.status.json" wrapped_exit)" "137" "sidecar cannot claim subject success" || true
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
+# ----- 17. outer hard-kill preserves ingested progress boundary ------------
+prev_fail=$FAIL
+start_test "outer SIGKILL preserves already-ingested lifecycle progress without success sidecar"
+log="$CURRENT_DIR/outer-kill.log"
+live_stderr="$CURRENT_DIR/live.stderr"
+lifecycle='SANCTUARY_CI_LIFECYCLE_V1 {"schema_version":1,"event":"cleanup_started","status":"running","subject_exit":137,"cleanup_state":null}'
+"$WRAPPER" "$log" bash -c 'printf "%s\n" "$1"; while :; do sleep 1; done' _ "$lifecycle" \
+  >/dev/null 2>"$live_stderr" &
+wpid=$!
+canonical='::notice title=CI lifecycle::{"cleanup_state":null,"event":"cleanup_started","schema_version":1,"status":"running","subject_exit":137}'
+observed=0
+for _ in $(seq 1 100); do
+  if grep -qF "$canonical" "$live_stderr" 2>/dev/null; then observed=1; break; fi
+  sleep 0.02
+done
+pkill -KILL -P "$wpid" 2>/dev/null || true
+kill -KILL "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null
+sleep 0.1
+assert_eq "$observed" "1" "accepted event reached live ingestion before outer loss" || true
+assert_contains "$log" "$lifecycle" "ingested source event reached durable diagnostic log" || true
+if [ -f "$log.status.json" ] && [ "$(sidecar_field "$log.status.json" wrapped_exit)" = "0" ]; then
+  end_test_fail "hard-killed wrapper left a sidecar claiming wrapped success"
+fi
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
 # ----- summary ------------------------------------------------------------
 echo
 echo "===================="

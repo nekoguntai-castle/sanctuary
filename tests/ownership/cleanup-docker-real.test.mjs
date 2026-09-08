@@ -45,6 +45,13 @@ function dockerExists(inContext, noun, identity) {
   return spawnSync('docker', inContext([noun, 'inspect', identity]), { stdio: 'ignore' }).status === 0;
 }
 
+function assertImageCreationEpoch(inContext, identity, expectedEpoch) {
+  const created = docker(inContext(['image', 'inspect', '--format', '{{.Created}}', identity]));
+  const observedEpoch = Math.floor(Date.parse(created) / 1000);
+  assert.equal(Number.isSafeInteger(observedEpoch), true, `invalid image creation time: ${created}`);
+  assert.equal(observedEpoch, expectedEpoch, `unexpected image creation time: ${created}`);
+}
+
 function signer(directory, name = 'receipt') {
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' });
@@ -348,6 +355,7 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
         'dev.sanctuary.image-lock-sha256': 'd'.repeat(64),
       });
       const imageContext = path.join(signingRoot, 'image-context');
+      const fixtureImageCreatedEpoch = Math.floor(Date.now() / 1000);
       mkdirSync(imageContext, { mode: 0o700 });
       writeFileSync(path.join(imageContext, 'Dockerfile'), [
         'FROM alpine:latest',
@@ -358,13 +366,14 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
       ].join('\n'));
       docker(inContext([
         'buildx', 'build', '--quiet', '--load', '--tag', targetImageTag, ...imageLabels, imageContext,
-      ]));
+      ]), { env: { ...process.env, SOURCE_DATE_EPOCH: String(fixtureImageCreatedEpoch) } });
       const observedImageId = docker(inContext([
         'image', 'inspect', '--format', '{{.Id}}', targetImageTag,
       ]));
       const targetImageId = observedImageId.startsWith('sha256:')
         ? observedImageId : `sha256:${observedImageId}`;
       assert.match(targetImageId, /^sha256:[a-f0-9]{64}$/);
+      assertImageCreationEpoch(inContext, targetImageId, fixtureImageCreatedEpoch);
       created.images.push(targetImageId);
       registerImage({
         root: registrationRoot, deploymentId, ownerId,
@@ -382,10 +391,11 @@ test('real Docker coordinator deletes one exact ID, recovers durably, and preser
         'buildx', 'build', '--quiet', '--load', '--tag', targetImageTag,
         '--build-arg', 'SANCTUARY_ACCEPTANCE_REVISION=replacement',
         ...imageLabels, imageContext,
-      ]));
+      ]), { env: { ...process.env, SOURCE_DATE_EPOCH: String(fixtureImageCreatedEpoch) } });
       const replacementImageId = docker(inContext([
         'image', 'inspect', '--format', '{{.Id}}', targetImageTag,
       ]));
+      assertImageCreationEpoch(inContext, replacementImageId, fixtureImageCreatedEpoch);
       assert.notEqual(replacementImageId, targetImageId);
       created.images.push(replacementImageId);
       assert.equal(docker(inContext([

@@ -56,7 +56,7 @@ redaction remain available. Timings are not proof of health or cleanup.
       per-run OCI config with a validated current epoch, preserve immutable IID
       execution and exact registered cleanup, and cover the build contract with
       fake Docker before another vector run.
-- [ ] Deliver and verify.
+- [x] Deliver and verify.
 
 Acceptance: subject timeout returns failure but leaves a bounded finalization
 opportunity. Unquiesced processes never authorize unsafe cleanup. Budget arithmetic
@@ -72,21 +72,29 @@ measurements in Phase 4 must not imply those unobserved costs were measured.
 
 ## Phase 3 — Durable progress, status and retry discipline
 
-- [ ] Extend existing logging with allowlisted redacted lifecycle progress events;
+- [x] Extend existing logging with allowlisted redacted lifecycle progress events;
       test container/outer-process loss and state precisely what survives ingestion.
-- [ ] Add exact-commit multi-workflow status reporting using existing Forgejo API
-      helpers; paginate, reject incomplete responses, distinguish unknown/running
-      from observed progress and terminal success.
-- [ ] Assess provider-supported failed-job retry from authenticated API schema;
+- [x] Add exact-commit multi-workflow status reporting using existing Forgejo API
+      helpers. Accept an explicit event-specific manifest of workflow IDs and
+      required aggregate job names; paginate with snapshot-consistency checks,
+      reject incomplete responses, and distinguish unknown/running from observed
+      progress and terminal success. Enumerate every exact-SHA run. For duplicate
+      or retriggered workflows, the newest attempt dominates older outcomes.
+- [x] Assess provider-supported failed-job retry from authenticated API schema;
       document supported targeted emulator procedure or verified lack of support.
       Preserve immutable input/proof binding and aggregate required checks.
-- [ ] Document repeated-failure stop rule: new hypothesis plus cheap discriminating
-      test before another expensive attempt; integrate owning classifier gates.
+- [x] Document repeated-failure stop rule: new hypothesis plus cheap discriminating
+      test and immutable SHA/run/job signature before another expensive attempt;
+      mechanically gate repository-owned retries and CI classifier coverage.
+      State explicitly that provider UI/API reruns remain procedural controls.
 - [ ] Deliver and verify.
 
-Acceptance: exact immutable SHA and complete paginated workflow enumeration;
-missing expected workflows, malformed responses and unavailable pages produce
-unknown/non-success. Reject malformed/secret-bearing lifecycle annotations.
+Acceptance: exact immutable SHA and snapshot-consistent paginated workflow
+enumeration; required aggregate jobs, not workflow status alone, must be terminal
+success. Missing expected workflows/jobs, malformed responses, page instability
+and unavailable pages produce unknown/non-success. Reject malformed,
+secret-bearing or workflow-command-capable lifecycle annotations and describe
+their delivery as best-effort observability, never cleanup or merge authority.
 Retry assessment does not authorize unrelated whole-workflow reruns or skipping
 aggregate required checks. Stabilize event schema before Phase 4 sampling.
 
@@ -199,6 +207,52 @@ Independent bounded final review found no additional P0–P2 blockers. Final ful
 frontend rerun passed all 8,411 tests in 626 files. Local gates are green;
 protected PR delivery is not yet complete.
 
+Phase 2 delivery completed in PR #1044. Exact reviewed head
+`fc4565332685b13b1108940aef58c96cbf27e64b` passed all seven PR workflows,
+including both required Test Suite aggregates, Install acceptance, Release
+Candidate live/maximum replay with verified cleanup, and the complete vector and
+emulator workflow. Forgejo squash-merged it as
+`591ad7c60c43ec81fbfcc2b7fe0baff53bae6210`; the fetched commit is `origin/main`,
+is an ancestor of it, and has the reviewed head's exact tree. All six workflows
+selected for that exact main-push commit passed, including Fresh Install E2E,
+Install Script E2E, and a second complete vector/emulator run. The verifier
+reaper-window correction was independently reviewed with no P0–P2 blocker; its
+canonical regenerated provenance passed 24 focused tests and both exact-head CI
+runs. Retained delivery branches were not deleted without one-off approval.
+
 Pre-commit review requested an additional unbudgeted nested-isolation compatibility
 case. It now proves the deadline remains absent and ordinary signed workspace
 cleanup succeeds; no production behavior changed for this follow-up.
+
+Phase 3 pre-delivery evidence: lifecycle and exact-commit reporting tests pass
+18/18, the log wrapper passes 18/18, workflow composition passes 716/716, and
+the ownership scanner/contract covers 401 lifecycle identities. Repository retry
+classifier suites, syntax, lint, lizard, and whitespace gates pass. Full frontend
+tests pass 8,411/8,411; backend passes 15,866 with 57 existing gated skips and one
+todo. Frontend app/test/all-project typechecks and backend TypeScript pass. Two
+live read-only reporter checks returned exact success for merged main workflow
+runs 15132–15137 and for Test Suite run 15083 attempt 2. Independent review found
+and the implementation fixed bounded live-sink backpressure; no other P0–P2
+finding remained. The superseded vector failure in run 15123 at SHA `d4b013c...`
+was deterministic stale generated evidence; corrected head run 15130 and merged
+main run 15137 both passed the complete vector/emulator aggregate.
+
+The first Phase 3 exact-head attempt at `956af8a7335c2b55a49be0fafcdbabc27808187d`
+exposed two bounded defects before delivery. Install run 15140 job 190231 lost
+its registered target image after container removal because Buildx had reused an
+old image creation timestamp and the host age reaper selected the newly dangling
+image. The real-Docker fixture now stamps and verifies both run-built images with
+a current `SOURCE_DATE_EPOCH`, backed by a focused source contract. Quality run
+15141 job 190249 also identified `validateManifest` as a tenth lizard warning;
+validation was decomposed without changing its fail-closed contract and the
+nine-warning baseline passes locally. Vectors run 15144 was waiting, not failed,
+when these corrections were prepared. Corrected exact-head CI remains required.
+
+The corrected exact-head attempt confirmed both primary fixes: lizard passed and
+Install run 15147 job 190307 passed the real-Docker ownership acceptance. Quality
+run 15148 job 190324 then exposed a separate deterministic contract error: the
+new retry-discipline test required the intentionally ignored, untracked local
+`CLAUDE.md` symlink. The contract now refuses untracked documentation inputs and
+checks the tracked contributor guide only. The image-age regression is also
+explicitly invoked by the CI-classifier job rather than relying on local-only
+execution. Another exact-head attempt remains required after active jobs settle.

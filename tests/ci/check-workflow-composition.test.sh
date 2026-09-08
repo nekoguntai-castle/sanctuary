@@ -2255,7 +2255,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "quick-frontend-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-command.sh "quick frontend isolated checks"' \
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "quick frontend isolated checks"' \
   "bash scripts/ci/setup-verifier-test-dependencies.sh" \
   "npx vitest related --config config/tooling/vitest.config.ts --run --passWithNoTests" \
   "Write quick frontend diagnostic summary" \
@@ -2287,7 +2287,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "quick backend integration smoke diagnostics" \
   "quick-backend-integration-smoke:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-smoke.log"' \
-  'scripts/ci/retry-command.sh "quick backend integration smoke"' \
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "quick backend integration smoke"' \
   "npm run test:run:ci -- tests/integration/websocket/websocket.integration.test.ts tests/integration/flows/authCsrfRecovery.integration.test.ts tests/integration/flows/auth.integration.test.ts" \
   "Write quick backend integration smoke diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Integration Smoke"' \

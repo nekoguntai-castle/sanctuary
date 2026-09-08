@@ -190,7 +190,7 @@ jobs:
         env:
           FRONTEND_FILES: ${{ needs.detect-changes.outputs.frontend_files }}
         run: |
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log" scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh quick-frontend bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log" scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-vitest-infrastructure-failure.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh quick-frontend bash -c '
             set -euo pipefail
             for attempt in 1 2 3; do
               echo "npm ci (quick frontend), attempt $attempt"
@@ -400,7 +400,7 @@ jobs:
           NODE_ENV: test
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-smoke.log"
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend integration smoke"
+          ${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh "quick backend integration smoke"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend integration smoke"
           npm run test:run:ci --
           tests/integration/websocket/websocket.integration.test.ts
