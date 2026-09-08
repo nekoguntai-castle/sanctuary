@@ -123,25 +123,26 @@ aggregate required checks. Stabilize event schema before Phase 4 sampling.
       contract maximum; make review expiry explicit; never accept expired approval.
 - [x] Add allowlisted ambiguity category/operation diagnostics without raw secrets
       or resource locators; retain existing fail-closed behavior.
-- [ ] Deliver and verify.
+- [x] Deliver and verify.
 
 ## Final acceptance
 
-- [ ] Map all ten backlog candidates and two recovery follow-ups to evidence above.
-- [ ] All phase PRs merged with actual ancestry and exact-commit CI verification.
-- [ ] Sweep only owned branches/worktrees; record any approved-retained leftovers.
-- [ ] Inspect and rebuild only already-running relevant Sanctuary stack using
+- [x] Map all ten backlog candidates and two recovery follow-ups to evidence above.
+- [x] All phase PRs merged with actual ancestry and exact-commit CI verification.
+- [x] Sweep only owned branches/worktrees; record any approved-retained leftovers.
+- [x] Inspect and rebuild only already-running relevant Sanctuary stack using
       `./start.sh --rebuild`; verify documented health. Preserve unrelated workloads.
 
 ## Ownership ledger
 
 | target_branch | task_branch | worktree_path | created_by_loop | converted_to_next_phase | cleanup_status |
 | --- | --- | --- | --- | --- | --- |
-| main | fix/preflight-command-outcomes | /home/nekoguntai/sanctuary | adopted from this session | no | merged/main CI green; retained pending deletion permission and additional replay |
-| main | codex/implement-merge/ci-subject-deadlines | /home/nekoguntai/sanctuary | yes | no | merged in PR #1044; retained pending cleanup sweep |
-| main | codex/implement-merge/durable-progress-status | /home/nekoguntai/sanctuary | yes | no | merged in PR #1045; retained pending cleanup sweep |
-| main | codex/implement-merge/fleet-lifecycle-convergence | /home/nekoguntai/sanctuary | yes | no | merged in PR #1046; retained pending cleanup sweep |
-| main | codex/implement-merge/recovery-observation-diagnostics | /home/nekoguntai/sanctuary | yes | no | implementing locally |
+| main | fix/preflight-command-outcomes | /home/nekoguntai/sanctuary | adopted from this session | no | merged in PR #1043; retained under the one-off destructive-command policy |
+| main | codex/implement-merge/ci-subject-deadlines | /home/nekoguntai/sanctuary | yes | no | merged in PR #1044; retained under the one-off destructive-command policy |
+| main | codex/implement-merge/ci-progress-status | /home/nekoguntai/sanctuary | yes | no | merged in PR #1045; retained under the one-off destructive-command policy |
+| main | codex/implement-merge/fleet-lifecycle-convergence | /home/nekoguntai/sanctuary | yes | no | merged in PR #1046; retained under the one-off destructive-command policy |
+| main | codex/implement-merge/recovery-observation-diagnostics | /home/nekoguntai/sanctuary | yes | no | merged in PR #1047; retained under the one-off destructive-command policy |
+| main | codex/implement-merge/ci-reliability-closeout | /home/nekoguntai/sanctuary | yes | no | final acceptance evidence; retain under the one-off destructive-command policy after delivery |
 
 The detached `/home/nekoguntai/sanctuary-main` worktree is unowned and preserved.
 Live historical CI stacks/builders are not loop-owned and are not cleanup targets.
@@ -159,6 +160,22 @@ restart audit -> 4; per-host timing -> 4; observation failures -> 5;
 repeated-failure discipline -> 3; freshness and refusal diagnostics -> 5.
 Phase 1 is diagnostic-only, not a new admission gate; Phase 4 explicitly assesses
 whether observed failures should prevent expensive subjects from starting.
+
+| Authorized candidate/follow-up | Closing evidence |
+| --- | --- |
+| Observation latency and daemon/host identity | Phase 1 preserves bounded elapsed/status evidence; Phase 4 correlates the available host and lifecycle samples without inventing missing data. |
+| Cross-workflow admission | Phase 4 records that expensive independent workflows may start after a fast failure and retains policy because Forgejo has no safe workflow dependency primitive. |
+| Shared subject/finalization budget | Phase 2 carries a validated deadline across sequential subjects and reserves bounded finalization time. |
+| Durable progress after controller loss | Phase 3 emits allowlisted lifecycle events and states precisely which ingested evidence survives process or container loss. |
+| Emulator retry scope | Phase 3 records the provider-supported limitation and preserves immutable inputs, proofs, and aggregate checks. |
+| Exact-commit status | Phase 3 snapshot-consistently enumerates every expected workflow and required aggregate for an immutable SHA. |
+| Restart/recreate audit | Phase 4 audits build, pull, and identity-changing callsites and extends no-build contracts only where intended. |
+| Per-host timing and capacity | Phase 4 records the bounded seven-day sample, missing queue/build fields, descriptive distributions, and unchanged policy. |
+| Observation/query failures | Phase 5 converts post-mutation query failure to signed non-success evidence, stops later mutation, and proves observational recovery does not replay deletion. |
+| Repeated expensive failure discipline | Phase 3 requires a new hypothesis, cheap discriminator, and immutable SHA/run/job signature before another repository-owned retry. |
+| Correlation freshness follow-up | Phase 5 validates 1,000–300,000 ms before provider callbacks and exposes correlation expiry for review. |
+| Approval/refusal diagnostics follow-up | Phase 5 preserves exact-expiry refusal and emits only bounded allowlisted ambiguity category/operation diagnostics. |
+
 Independent plan review accepted this structure with corrections above separating
 subject failure from legitimate successful cleanup, bounded evidence collection,
 and explicit unknown/non-success status semantics.
@@ -315,3 +332,34 @@ incorrectly overlapped with the frontend suite despite the recorded capacity
 lesson and produced four unrelated timing/backpressure failures. The prescribed
 259-test serial discriminator passed, then the unchanged backend tree passed in
 isolation; no retry claim relies on the overlapped run.
+
+Phase 5 delivery completed in PR #1047. Exact reviewed head
+`6bc5683614ea28127a1ebd12c1e5d098f96033a6` passed all seven PR workflows
+(runs 15180–15186), including the three protected aggregates, Install upgrade
+baseline, Release Candidate live/maximum replay, and all vector emulators.
+Forgejo squash-merged it as
+`15ce9cd9662c06a45430a5072367b7c05d87d536`; the fetched commit is
+`origin/main`, has sole parent
+`2d6b008aa3aaddab2e7bb9418f91e0b187c2a6ec`, and has the reviewed head's exact
+tree. All six exact landed-main workflows (15187–15192) passed.
+
+The final owned-resource sweep found the five merged task branches listed in the
+ledger locally and on `origin`, plus the current closeout branch, all sharing the
+single `/home/nekoguntai/sanctuary` worktree. They are retained because the repo
+requires an exact one-off approval for destructive local or remote branch
+deletion; no broad cleanup authority was inferred. The detached
+`/home/nekoguntai/sanctuary-main` deployment worktree and historical CI/test
+containers are not loop-owned and were preserved.
+
+The active `sanctuary` Compose project was already running from the ownership-
+bound detached deployment worktree. An attempted rebuild from the task worktree
+failed closed before container mutation because its project directory did not
+match the deployment identity. The clean deployment worktree was advanced to
+exact verified main `15ce9cd9662c06a45430a5072367b7c05d87d536`, then
+`./start.sh --rebuild` completed successfully. Deployment generation 6 is active;
+frontend, backend, worker, gateway, and LLM egress proxy all carry that revision;
+all long-running project services are running and every health-checked service is
+healthy, both one-shot migrations exited zero, and
+`https://localhost:8443/api/v1/health` reported healthy database,
+Redis, Electrum, websocket, sync, queue, startup, cache-invalidation, circuit-
+breaker, memory, and disk components. Unrelated workloads were not rebuilt.
