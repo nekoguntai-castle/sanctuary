@@ -16,8 +16,10 @@
 #   - Always exits 0. Diagnostic helpers should never themselves fail
 #     a build by being unable to gather information; the absence of a
 #     section is itself diagnostic.
-#   - Each tool invocation is wrapped in `|| true` so a missing tool
-#     (e.g. docker not installed) does not abort.
+#   - Bounded sections report command status and elapsed whole seconds after
+#     the capped output. Failure does not abort subsequent observations.
+#   - Missing timeout tooling skips commands instead of running unbounded.
+#     A timeout has a further two-second forced-termination grace period.
 #   - Each section is annotated with a clear header.
 
 # Note: do NOT enable `set -e`. Diagnostic gathering must be best-effort.
@@ -36,7 +38,7 @@ esac
 
 COMMAND_TIMEOUT_SECONDS="${SANCTUARY_CI_PREFLIGHT_TIMEOUT_SECONDS:-10}"
 case "$COMMAND_TIMEOUT_SECONDS" in
-  ''|*[!0-9]*)
+  ''|0|0*|*[!0-9]*)
     COMMAND_TIMEOUT_SECONDS=10
     ;;
 esac
@@ -79,16 +81,28 @@ run_bounded() {
   local label="$1"
   shift
   section "$label"
-  ( run_with_timeout "$@" 2>&1 || true ) | { head -n "$SECTION_LIMIT_LINES"; cat >/dev/null; }
+  local started=$SECONDS code outcome
+  run_with_timeout "$@" 2>&1 | { head -n "$SECTION_LIMIT_LINES"; cat >/dev/null; }
+  code=${PIPESTATUS[0]}
+  case "$code" in
+    0) outcome=ok ;;
+    124) outcome=timeout ;;
+    137) outcome=timeout_or_killed ;;
+    125) outcome=unavailable ;;
+    *) outcome=error ;;
+  esac
+  printf 'command_result label=%s status=%s exit_code=%s elapsed_seconds=%s\n' \
+    "$label" "$outcome" "$code" "$((SECONDS - started))"
 }
 
 run_with_timeout() {
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$COMMAND_TIMEOUT_SECONDS" "$@"
+    timeout --kill-after=2 "$COMMAND_TIMEOUT_SECONDS" "$@"
     return "$?"
   fi
 
-  "$@"
+  echo 'timeout tool unavailable; observation skipped' >&2
+  return 125
 }
 
 stat_path() {
@@ -162,41 +176,49 @@ write_runner_lock_diagnostics() {
   stat_path "runner_lock_file" "$lock_file"
 }
 
+run_prefix_inventory() {
+  local kind="$1" prefixes="$2"
+  shift 2
+  # Filter before the output cap, inside the timeout and pipefail boundary.
+  # One scan per resource kind, regardless of the number of configured prefixes.
+  run_bounded "prefix ${kind}s" bash -o pipefail -c '
+    "${@:3}" | awk -F "\t" -v prefixes="$1" -v kind="$2" '\''
+      BEGIN { count = split(prefixes, wanted, /[ ,\t\n]+/) }
+      {
+        project = $1
+        if (kind != "container") {
+          project = ""
+          labels = split($2, parts, ",")
+          for (j = 1; j <= labels; j++)
+            if (index(parts[j], "com.docker.compose.project=") == 1)
+              project = substr(parts[j], length("com.docker.compose.project=") + 1)
+        }
+        for (i = 1; i <= count; i++)
+          if (wanted[i] != "" && index(project, wanted[i]) == 1) {
+            print kind "\t" $0
+            break
+          }
+      }
+    '\''
+  ' _ "$prefixes" "$kind" "$@"
+}
+
 write_compose_prefix_diagnostics() {
-  local prefixes="${SANCTUARY_CI_PROJECT_PREFIXES:-}"
-  local prefix
-
-  if [ -z "$prefixes" ] && [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
-    prefixes="$COMPOSE_PROJECT_NAME"
-  fi
-
+  local prefixes="${SANCTUARY_CI_PROJECT_PREFIXES:-${COMPOSE_PROJECT_NAME:-}}"
   section "docker compose leftovers for configured prefixes"
+  printf 'configured_prefixes=%s\n' "$prefixes"
   if [ -z "$prefixes" ]; then
-    echo "configured_prefixes="
     echo "no configured compose project prefixes"
     return 0
   fi
 
-  echo "configured_prefixes=$prefixes"
-  for prefix in ${prefixes//,/ }; do
-    [ -n "$prefix" ] || continue
-    echo "--- prefix: $prefix"
-    run_with_timeout docker ps -a \
-      --filter label=com.docker.compose.project \
-      --format '{{.Label "com.docker.compose.project"}}	{{.Names}}	{{.Status}}' 2>/dev/null \
-      | awk -v prefix="$prefix" '$1 ~ "^" prefix { print "container\t" $0 }' \
-      | head -n "$SECTION_LIMIT_LINES" || true
-    run_with_timeout docker network ls \
-      --filter label=com.docker.compose.project \
-      --format '{{.Name}}	{{.Labels}}' 2>/dev/null \
-      | awk -F '\t' -v prefix="$prefix" '$2 ~ "com.docker.compose.project=" prefix { print "network\t" $0 }' \
-      | head -n "$SECTION_LIMIT_LINES" || true
-    run_with_timeout docker volume ls \
-      --filter label=com.docker.compose.project \
-      --format '{{.Name}}	{{.Labels}}' 2>/dev/null \
-      | awk -F '\t' -v prefix="$prefix" '$2 ~ "com.docker.compose.project=" prefix { print "volume\t" $0 }' \
-      | head -n "$SECTION_LIMIT_LINES" || true
-  done
+  run_prefix_inventory container "$prefixes" docker ps -a \
+    --filter label=com.docker.compose.project \
+    --format '{{.Label "com.docker.compose.project"}}	{{.Names}}	{{.Status}}'
+  run_prefix_inventory network "$prefixes" docker network ls \
+    --filter label=com.docker.compose.project --format '{{.Name}}	{{.Labels}}'
+  run_prefix_inventory volume "$prefixes" docker volume ls \
+    --filter label=com.docker.compose.project --format '{{.Name}}	{{.Labels}}'
 }
 
 section "preflight-diagnostics"
@@ -217,10 +239,10 @@ run_bounded "docker version" docker version
 run_bounded "docker info" docker info
 run_bounded "docker system df" docker system df
 run_bounded "docker buildx ls" docker buildx ls
-run_bounded "docker buildx state volumes" bash -c 'docker volume ls --format "{{.Name}}	{{.Driver}}" 2>/dev/null | awk '"'"'$1 ~ /^buildx_buildkit_/ { print }'"'"''
-run_bounded "docker compose-labeled containers" bash -c 'docker ps -a --filter label=com.docker.compose.project --format "{{.Label \"com.docker.compose.project\"}}	{{.Names}}	{{.Status}}" 2>/dev/null | sort -u'
-run_bounded "docker compose-labeled networks" bash -c 'docker network ls --filter label=com.docker.compose.project --format "{{.Name}}	{{.Labels}}" 2>/dev/null | sort -u'
-run_bounded "docker compose-labeled volumes" bash -c 'docker volume ls --filter label=com.docker.compose.project --format "{{.Name}}	{{.Labels}}" 2>/dev/null | sort -u'
+run_bounded "docker buildx state volumes" bash -o pipefail -c 'docker volume ls --format "{{.Name}}	{{.Driver}}" | awk '"'"'$1 ~ /^buildx_buildkit_/ { print }'"'"''
+run_bounded "docker compose-labeled containers" bash -o pipefail -c 'docker ps -a --filter label=com.docker.compose.project --format "{{.Label \"com.docker.compose.project\"}}	{{.Names}}	{{.Status}}" | sort -u'
+run_bounded "docker compose-labeled networks" bash -o pipefail -c 'docker network ls --filter label=com.docker.compose.project --format "{{.Name}}	{{.Labels}}" | sort -u'
+run_bounded "docker compose-labeled volumes" bash -o pipefail -c 'docker volume ls --filter label=com.docker.compose.project --format "{{.Name}}	{{.Labels}}" | sort -u'
 write_compose_prefix_diagnostics
 run_bounded "df -h /tmp /var/tmp" df -h /tmp /var/tmp
 run_bounded "mount" mount
