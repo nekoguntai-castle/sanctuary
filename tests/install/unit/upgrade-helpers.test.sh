@@ -894,14 +894,15 @@ test_upgrade_teardown_captures_diagnostics_before_cleanup() {
   return 0
 }
 
-test_upgrade_lane_compose_up_never_rebuilds_images() {
+test_install_lanes_compose_up_never_rebuild_images() {
   # Every service declares pull_policy: build, so a compose `up` without
   # --no-build rebuilds images. BuildKit returns the registered image from
   # cache; Podman commits a new image ID, the registered one goes dangling and
   # receipt-bound cleanup refuses the lane (#1032). start.sh always passes
-  # --no-build; the lane must too.
+  # --no-build; every lane that explicitly builds before starting must too.
   local file offending
-  for file in "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh" \
+  for file in "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh" \
+      "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh" \
       "$PROJECT_ROOT/tests/install/utils/upgrade-assertions.sh" \
       "$PROJECT_ROOT/tests/install/utils/helpers.sh"; do
     offending="$(grep -nE '(run_project_compose|docker compose)[^#]* up( |$)' "$file" \
@@ -2644,7 +2645,7 @@ main() {
   run_test "installed image from another ref fails" test_assert_installed_image_matches_checkout_rejects_mismatch
   run_test "unreadable image version is not a failure" test_assert_installed_image_matches_checkout_skips_when_unreadable
   run_test "cleanup restore preserves executable mode" test_cleanup_restore_preserves_tracked_executable_mode
-  run_test "upgrade lane compose up never rebuilds images" test_upgrade_lane_compose_up_never_rebuilds_images
+  run_test "install lanes compose up never rebuild images" test_install_lanes_compose_up_never_rebuild_images
 
   echo ""
   echo "Total:  $TESTS_RUN"

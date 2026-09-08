@@ -433,7 +433,7 @@ test_docker_compose_up() {
          POSTGRES_PASSWORD="$postgres_password" \
          LLM_EGRESS_PROXY_SECRET="$llm_egress_proxy_secret" REDIS_PASSWORD="$redis_password" \
          HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
-         docker compose up -d 2>&1; then
+         docker compose up -d --no-build 2>&1; then
         log_error "Docker Compose up failed"
         return 1
     fi

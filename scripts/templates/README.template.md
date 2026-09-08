@@ -628,16 +628,16 @@ Sanctuary uses a structured logging system with configurable verbosity levels:
 
 ```bash
 # Verbose debugging (see all WebSocket subscriptions, sync operations, etc.)
-LOG_LEVEL=debug ./scripts/ownership/run-operator-compose.sh up
+LOG_LEVEL=debug ./scripts/ownership/run-operator-compose.sh up --no-build
 
 # Normal operation (default)
-LOG_LEVEL=info ./scripts/ownership/run-operator-compose.sh up
+LOG_LEVEL=info ./scripts/ownership/run-operator-compose.sh up --no-build
 
 # Quiet mode (warnings and errors only)
-LOG_LEVEL=warn ./scripts/ownership/run-operator-compose.sh up
+LOG_LEVEL=warn ./scripts/ownership/run-operator-compose.sh up --no-build
 
 # Minimal output (errors only)
-LOG_LEVEL=error ./scripts/ownership/run-operator-compose.sh up
+LOG_LEVEL=error ./scripts/ownership/run-operator-compose.sh up --no-build
 ```
 
 **Log format:**
@@ -1057,7 +1057,7 @@ git checkout "$LATEST"
 # Rebuild and restart
 ./scripts/ownership/run-operator-compose.sh down
 ./scripts/ownership/run-operator-compose.sh build
-./scripts/ownership/run-operator-compose.sh up -d
+./scripts/ownership/run-operator-compose.sh up -d --no-build
 ```
 
 > **Note:** Both `./install.sh` and the manual upgrade check out a release **tag**, which puts Git in "detached HEAD" state. This is normal — it pins you to a specific release. However, it means `git pull` will not work afterward. Always use `./install.sh` or the manual steps above to upgrade, not `git pull`.
@@ -1082,7 +1082,7 @@ git tag --sort=-v:refname  # List available versions
 git checkout v0.8.7        # Replace with desired version
 ./scripts/ownership/run-operator-compose.sh down
 ./scripts/ownership/run-operator-compose.sh build
-./scripts/ownership/run-operator-compose.sh up -d
+./scripts/ownership/run-operator-compose.sh up -d --no-build
 ```
 
 ## Backup & Restore
@@ -1228,7 +1228,7 @@ This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanct
 # Rebuild application containers while preserving data
 ./scripts/ownership/run-operator-compose.sh down
 ./scripts/ownership/run-operator-compose.sh build --no-cache
-./scripts/ownership/run-operator-compose.sh up -d
+./scripts/ownership/run-operator-compose.sh up -d --no-build
 ```
 
 ### Can't connect to hardware wallet
@@ -1250,7 +1250,7 @@ This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanct
 # Change the port in .env
 HTTPS_PORT=9443
 HTTP_PORT=9080
-./scripts/ownership/run-operator-compose.sh up -d
+./scripts/ownership/run-operator-compose.sh up -d --no-build
 ```
 
 ## Development

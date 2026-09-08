@@ -1598,27 +1598,6 @@
       "safetyContract": "Inventory canonical schedule identity and generation; generic cleanup remains forbidden."
     },
     {
-      "path": "src/components/Monitoring/MonitoringDisabledBanner.tsx",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
-    },
-    {
-      "path": "src/components/Monitoring/MonitoringDisabledBanner.tsx",
-      "resourceClass": "compose_network",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
-    },
-    {
-      "path": "src/components/Monitoring/MonitoringDisabledBanner.tsx",
-      "resourceClass": "compose_volume",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
-    },
-    {
       "path": "start.sh",
       "resourceClass": "buildkit_cache",
       "operation": "create",

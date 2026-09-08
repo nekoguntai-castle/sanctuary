@@ -70,7 +70,7 @@ Normal start:
 Ownership-aware Docker Compose:
 
 ```bash
-SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-$HOME/.config/sanctuary/ssl}" ./scripts/ownership/run-operator-compose.sh up -d
+SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-$HOME/.config/sanctuary/ssl}" ./scripts/ownership/run-operator-compose.sh up -d --no-build
 ```
 
 ## TLS Certificates

@@ -31,6 +31,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 INSTALL_SCRIPT="$PROJECT_ROOT/install.sh"
 SETUP_SCRIPT="$PROJECT_ROOT/scripts/setup.sh"
 NGINX_ENTRYPOINT="$PROJECT_ROOT/docker/nginx/docker-entrypoint.sh"
+MIGRATE_RUNTIME_SECRETS_SCRIPT="$PROJECT_ROOT/scripts/secrets/migrate-runtime-secrets.sh"
+RUNTIME_SECRETS_GUIDE="$PROJECT_ROOT/docs/how-to/runtime-secrets.md"
+POSTGRES_AUTH_DRIFT_GUIDE="$PROJECT_ROOT/docs/reference/upgrade-postgres-auth-drift-findings.md"
 
 # ============================================
 # Test Framework
@@ -2411,6 +2414,28 @@ EOF
     assert_contains "$contents" "SANCTUARY_BUILD_ID=target-upgrade-run" "setup should replace the prior build ID" || return 1
 }
 
+test_runtime_secret_migration_restart_does_not_rebuild_images() {
+    local contents guide
+    contents="$(cat "$MIGRATE_RUNTIME_SECRETS_SCRIPT")"
+    guide="$(cat "$RUNTIME_SECRETS_GUIDE")"
+
+    assert_contains "$contents" \
+        './scripts/ownership/run-operator-compose.sh up -d --no-build' \
+        "runtime-secret migration restart instructions must preserve built image identities" || return 1
+    assert_contains "$guide" \
+        './scripts/ownership/run-operator-compose.sh up -d --no-build' \
+        "runtime-secret migration guide must preserve built image identities"
+}
+
+test_postgres_auth_recovery_restart_does_not_rebuild_images() {
+    local guide
+    guide="$(cat "$POSTGRES_AUTH_DRIFT_GUIDE")"
+
+    assert_contains "$guide" \
+        './scripts/ownership/run-operator-compose.sh up -d --no-build migrate worker backend frontend gateway llm-egress-proxy' \
+        "Postgres auth recovery must restart the repaired deployment without rebuilding it"
+}
+
 # ============================================
 # Unit Tests: .env.example
 # ============================================
@@ -3003,6 +3028,8 @@ main() {
     run_test "setup script persists LLM egress policy env" test_setup_script_persists_llm_egress_policy_env
     run_test "setup refreshes provenance after runtime env load" test_setup_refreshes_provenance_after_runtime_env_load
     run_test "setup replaces stale runtime provenance" test_setup_replaces_stale_runtime_provenance
+    run_test "runtime-secret migration restart does not rebuild images" test_runtime_secret_migration_restart_does_not_rebuild_images
+    run_test "Postgres auth recovery restart does not rebuild images" test_postgres_auth_recovery_restart_does_not_rebuild_images
     run_test "setup script requires routed API readiness" test_setup_script_requires_routed_api_readiness
     run_test "nginx entrypoint selects runtime DNS resolver" test_nginx_entrypoint_selects_runtime_dns_resolver
     echo ""

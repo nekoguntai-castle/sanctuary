@@ -11,10 +11,13 @@ import { join } from 'path';
 
 describe('README.md Links', () => {
   const readmePath = join(__dirname, '../../README.md');
+  const templatePath = join(__dirname, '../../scripts/templates/README.template.md');
   let readmeContent: string;
+  let templateContent: string;
 
   beforeAll(() => {
     readmeContent = readFileSync(readmePath, 'utf-8');
+    templateContent = readFileSync(templatePath, 'utf-8');
   });
 
   /**
@@ -150,5 +153,31 @@ describe('README.md Links', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('GitHub is the only supported public distribution source');
+  });
+
+  it('keeps the generated README synchronized with its template', () => {
+    const renderedTemplate = templateContent
+      .replaceAll('{{CLONE_URL}}', 'https://github.com/nekoguntai-castle/sanctuary.git')
+      .replaceAll('{{RAW_URL}}', 'https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main');
+
+    expect(readmeContent).toBe(renderedTemplate);
+  });
+
+  it('does not rebuild images when starting after an explicit documentation build', () => {
+    const explicitBuildThenUp =
+      /\.\/scripts\/ownership\/run-operator-compose\.sh build(?: --no-cache)?\n\.\/scripts\/ownership\/run-operator-compose\.sh up -d --no-build/g;
+
+    expect(templateContent.match(explicitBuildThenUp)).toHaveLength(3);
+  });
+
+  it('does not rebuild images for log-level or port-only reconfiguration', () => {
+    const operatorCompose = './scripts/ownership/' + 'run-operator-compose.sh';
+    const logLevelRestart =
+      /^LOG_LEVEL=(?:debug|info|warn|error) \.\/scripts\/ownership\/run-operator-compose\.sh up --no-build$/gm;
+
+    expect(templateContent.match(logLevelRestart)).toHaveLength(4);
+    expect(templateContent).toContain(
+      `${operatorCompose} up -d --no-build\n\`\`\`\n\n## Development`
+    );
   });
 });

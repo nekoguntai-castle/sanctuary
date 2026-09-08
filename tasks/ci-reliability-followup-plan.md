@@ -87,7 +87,7 @@ measurements in Phase 4 must not imply those unobserved costs were measured.
       test and immutable SHA/run/job signature before another expensive attempt;
       mechanically gate repository-owned retries and CI classifier coverage.
       State explicitly that provider UI/API reruns remain procedural controls.
-- [ ] Deliver and verify.
+- [x] Deliver and verify.
 
 Acceptance: exact immutable SHA and snapshot-consistent paginated workflow
 enumeration; required aggregate jobs, not workflow status alone, must be terminal
@@ -100,17 +100,17 @@ aggregate required checks. Stabilize event schema before Phase 4 sampling.
 
 ## Phase 4 — Fleet admission, timing and lifecycle convergence
 
-- [ ] Correlate daemon/host identity with queue, lock, build, subject, cleanup and
+- [x] Correlate daemon/host identity with queue, lock, build, subject, cleanup and
       upload timing using existing aggregators; represent missing samples honestly.
-- [ ] Assess shared-daemon capacity across install/upgrade/vectors/emulators using
+- [x] Assess shared-daemon capacity across install/upgrade/vectors/emulators using
       actual fleet evidence; retain policy unless measurements support a change.
       Any required runner-infra deployment remains externally coordinated.
       Assess the latest seven days, at most twenty complete relevant runs per
       host, and document the exact sample inventory and missing access. Insufficient
       samples mean inconclusive/policy unchanged, not empirical validation passed.
-- [ ] Audit restart/recreate callsites for unintended builds/pulls/identity changes;
+- [x] Audit restart/recreate callsites for unintended builds/pulls/identity changes;
       extend no-build contracts only where intended behavior warrants it.
-- [ ] Run lifecycle scanner/contract fixtures before expensive E2E; document measured
+- [x] Run lifecycle scanner/contract fixtures before expensive E2E; document measured
       distributions and thresholds without inventing timing samples.
 - [ ] Deliver and verify.
 
@@ -138,7 +138,9 @@ aggregate required checks. Stabilize event schema before Phase 4 sampling.
 | target_branch | task_branch | worktree_path | created_by_loop | converted_to_next_phase | cleanup_status |
 | --- | --- | --- | --- | --- | --- |
 | main | fix/preflight-command-outcomes | /home/nekoguntai/sanctuary | adopted from this session | no | merged/main CI green; retained pending deletion permission and additional replay |
-| main | codex/implement-merge/ci-subject-deadlines | /home/nekoguntai/sanctuary | yes | no | implementing locally |
+| main | codex/implement-merge/ci-subject-deadlines | /home/nekoguntai/sanctuary | yes | no | merged in PR #1044; retained pending cleanup sweep |
+| main | codex/implement-merge/durable-progress-status | /home/nekoguntai/sanctuary | yes | no | merged in PR #1045; retained pending cleanup sweep |
+| main | codex/implement-merge/fleet-lifecycle-convergence | /home/nekoguntai/sanctuary | yes | no | implementing locally |
 
 The detached `/home/nekoguntai/sanctuary-main` worktree is unowned and preserved.
 Live historical CI stacks/builders are not loop-owned and are not cleanup targets.
@@ -256,3 +258,29 @@ new retry-discipline test required the intentionally ignored, untracked local
 checks the tracked contributor guide only. The image-age regression is also
 explicitly invoked by the CI-classifier job rather than relying on local-only
 execution. Another exact-head attempt remains required after active jobs settle.
+
+Phase 3 delivery completed in PR #1045. Exact reviewed head
+`6ad7f57981bc1e78795f72710904af78a6f66411` passed runs 15152–15158. Forgejo
+squash-merged it as `47dd9baf88b96eaefdb6d380715c3b910608dc3d` with the reviewed head's exact
+tree and parent `591ad7c60c43ec81fbfcc2b7fe0baff53bae6210`. Exact landed-main runs
+15160–15165 all passed.
+
+Phase 4 fleet evidence and lifecycle audit are recorded in
+`docs/reference/ci-fleet-capacity-assessment-2026-09-08.md`. The seven-day
+enumeration covered 1,100 API rows and 361 terminal relevant runs, but the newest
+20 candidates yielded zero complete host-attributed workflows. Five replay-image
+build jobs provided partial daemon/lock/coordinator/cleanup/upload correlation;
+isolated build and subject timing remained unavailable. Capacity and
+admission policy therefore remain unchanged; five warranted no-build/operator
+lifecycle gaps are covered by focused contracts.
+
+Phase 4 final local verification passed on the reviewed tree: resource ownership
+validated 398 lifecycle identities; both lifecycle scanner suites passed 39/39;
+frontend TypeScript passed all three configurations and Vitest passed 8,414 tests
+across 626 files; backend TypeScript and 15,767 unit tests across 684 files passed;
+install contracts passed 134/134 and 95/95; workflow composition passed 716/716;
+and frontend lint, shell syntax, diff checks, and the repository lizard gate
+passed. The first broad frontend attempt used the exhausted default `/tmp` and
+failed to transform 102 files after 7,712 passing tests; the unchanged tree then
+passed completely with the established external `TMPDIR`. Independent lifecycle
+review reported no P0-P2 findings.
