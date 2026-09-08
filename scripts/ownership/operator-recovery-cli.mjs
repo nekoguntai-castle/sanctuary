@@ -11,7 +11,9 @@ import { publicKeyFingerprint } from './crypto.mjs';
 import {
   executePreparedOperatorRecovery, prepareOperatorRecoverySession,
 } from './operator-recovery-coordinator.mjs';
-import { observeForgejoProviderCorrelation } from './operator-recovery-correlation.mjs';
+import {
+  observeForgejoProviderCorrelation, validateProviderCorrelationFreshness,
+} from './operator-recovery-correlation.mjs';
 import { verifyOperatorRecoveryClosed } from './operator-recovery-observer.mjs';
 import { validateOperatorRecoveryContract } from './operator-recovery-contract.mjs';
 import {
@@ -228,12 +230,35 @@ function readTrust(request, checkoutRoot, recover = false) {
   return trust;
 }
 
+export function normalizeOperatorRecoveryProviderRequest(provider) {
+  const fields = ['providerInstance', 'repository', 'queries', 'taskSnapshot'];
+  if (Object.hasOwn(provider ?? {}, 'freshnessMs')) fields.push('freshnessMs');
+  exact(provider, fields, 'provider request');
+  return Object.freeze({
+    ...provider,
+    freshnessMs: validateProviderCorrelationFreshness(provider.freshnessMs),
+  });
+}
+
 function correlationOptions(provider, now) {
-  exact(provider, ['providerInstance', 'repository', 'queries', 'taskSnapshot'], 'provider request');
+  const normalized = normalizeOperatorRecoveryProviderRequest(provider);
   return {
-    providerInstance: provider.providerInstance, repository: provider.repository,
-    queries: provider.queries, taskSnapshot: provider.taskSnapshot,
-    ...providerCallbacks(provider), now,
+    providerInstance: normalized.providerInstance, repository: normalized.repository,
+    queries: normalized.queries, taskSnapshot: normalized.taskSnapshot,
+    freshnessMs: normalized.freshnessMs,
+    ...providerCallbacks(normalized), now,
+  };
+}
+
+export function operatorRecoveryPreparationResult(prepared, evidenceDirectory) {
+  return {
+    state: 'prepared', project: prepared.scopeEnvelope.artifact.project,
+    scopeDigest: prepared.scopeEnvelope.artifactDigest,
+    approvalDigest: prepared.approvalEnvelope.artifactDigest,
+    actionCount: prepared.approvalEnvelope.artifact.actions.length,
+    correlationFreshUntil: prepared.correlationEnvelope.artifact.freshUntil,
+    approvalExpiresAt: prepared.approvalEnvelope.artifact.expiresAt,
+    evidenceDirectory: path.resolve(evidenceDirectory),
   };
 }
 
@@ -331,13 +356,7 @@ async function runRecovery(request, checkoutRoot, command) {
       ttlMs: request.ttlMs,
     });
     persistPreparedOperatorRecovery(request.evidenceDirectory, prepared, checkoutRoot);
-    return {
-      state: 'prepared', project: prepared.scopeEnvelope.artifact.project,
-      scopeDigest: prepared.scopeEnvelope.artifactDigest,
-      approvalDigest: prepared.approvalEnvelope.artifactDigest,
-      actionCount: prepared.approvalEnvelope.artifact.actions.length,
-      evidenceDirectory: path.resolve(request.evidenceDirectory),
-    };
+    return operatorRecoveryPreparationResult(prepared, request.evidenceDirectory);
   }
   const bundlePath = path.join(path.resolve(request.evidenceDirectory), 'execution-bundle.json');
   if (recover && existsSync(bundlePath)) {

@@ -126,7 +126,7 @@ function limits(value = {}) {
   return Object.freeze(result);
 }
 
-function freshness(value = 60_000) {
+export function validateProviderCorrelationFreshness(value = 60_000) {
   if (!Number.isSafeInteger(value) || value < 1_000 || value > MAX_FRESHNESS_MS) {
     throw new Error('provider correlation freshness is invalid');
   }
@@ -459,6 +459,7 @@ export async function observeForgejoProviderCorrelation(options = {}) {
   const authority = providerInstance(options.providerInstance);
   if (!REPOSITORY.test(options.repository ?? '')) throw new Error('repository is invalid');
   const queries = normalizedQueries(options.queries);
+  const freshnessMs = validateProviderCorrelationFreshness(options.freshnessMs);
   const bound = limits(options.limits);
   const budget = newBudget(bound);
   const results = [];
@@ -471,7 +472,7 @@ export async function observeForgejoProviderCorrelation(options = {}) {
     operatorTerminalAuthority: false,
     queryResultCoreDigest: null,
     observedAt: observed.toISOString(),
-    freshUntil: new Date(observed.getTime() + freshness(options.freshnessMs)).toISOString(),
+    freshUntil: new Date(observed.getTime() + freshnessMs).toISOString(),
     queries: results,
     taskSnapshot: normalizeTaskSnapshot(options.taskSnapshot),
   };

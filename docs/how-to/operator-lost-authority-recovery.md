@@ -28,9 +28,15 @@ same merged checkout.
    `incidentContractPath`. This signs the immutable identities and labels of the
    two excluded Compose projects before any mutation.
 3. For one target at a time, run `prepare`. Review its exact project,
-   `scopeDigest`, `approvalDigest`, and `actionCount`. Preparation is read-only,
-   verifies the checked target tuple/counts, performs bounded Forgejo
-   correlation, and persists a single-use signed approval.
+   `scopeDigest`, `approvalDigest`, `actionCount`, `correlationFreshUntil`, and
+   `approvalExpiresAt`. Preparation is read-only, verifies the checked target
+   tuple/counts, performs bounded Forgejo correlation, and persists a single-use
+   signed approval. The provider request may set `freshnessMs` from 1,000 through
+   300,000 milliseconds; it defaults to 60,000. Execute before both displayed
+   expiry times. If either expires, preserve the old evidence directory and run
+   `prepare` with a fresh owner-only `evidenceDirectory`; prepared evidence is
+   create-only and cannot be renewed in place. Never extend or accept expired
+   evidence or an unused approval.
 4. Run `execute` with the unchanged request only after reviewing preparation.
    Do not prepare or execute a later target until this one has a successful
    signed receipt.
@@ -58,6 +64,10 @@ changed exclusion sentinel, expired unused approval, ambiguous action result,
 non-success receipt, or missing signature. Preserve the external evidence and
 journal. Never substitute `docker compose down`, broad prune commands, raw
 engine deletion, another run/task identifier, or a newly manufactured receipt.
+Ambiguous observation refusals expose only fixed observation stages and
+allowlisted category/operation names. They intentionally omit raw error text,
+stderr, and resource locators; use the preserved private evidence for deeper
+diagnosis.
 
 Successful closeout claims only that the 60 enumerated container/network/volume
 targets (15 per stack) reached their exact postconditions and the explicit

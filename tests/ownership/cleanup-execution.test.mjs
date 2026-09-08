@@ -333,6 +333,65 @@ test('recovery reconciles an open intent exactly once and never replays its muta
   assert.equal(recovered.state, 'recovered');
 });
 
+test('post-mutation query failure stops later deletions and signs observational recovery evidence', async () => {
+  const values = fixture('post-mutation-query-failure');
+  const secondId = 'e'.repeat(64);
+  const before = inventory([row(), row(secondId)], '2026-08-30T00:00:00.000Z');
+  const plan = buildCleanupPlan(before, contract, { policyDigest: HASH });
+  const dryRunReceipt = buildPlanningReceipt(before, plan, {
+    signerKeyId: values.signer.signerKeyId,
+    now: () => new Date('2026-08-30T00:00:01.000Z'),
+  });
+  const approval = buildCleanupApproval(plan, dryRunReceipt, {
+    signerKeyId: AUTH_SIGNER, nonce: 'post-mutation-query-failure',
+    expiresAt: '2026-08-30T12:00:00.000Z',
+    now: () => new Date('2026-08-30T00:00:02.000Z'),
+  });
+  const execution = { ...values, inventoryBefore: before, plan, dryRunReceipt, approval };
+  const mutations = [];
+  const result = await applyCleanupExecution({
+    ...execution, ...values.signer, now: () => new Date('2026-08-30T00:01:00.000Z'),
+    reloadAuthority: async ({ action }) => ({
+      state: 'eligible', row: row(action.immutableIdentity), derivedFromResultDigest: null,
+    }),
+    mutate: async ({ action }) => {
+      mutations.push(action.immutableIdentity);
+      return { outcome: 'success' };
+    },
+    reconcile: async () => { throw new Error('postcondition query unavailable'); },
+    buildInventoryAfter: async () => inventory([row(secondId)], '2026-08-30T00:02:00.000Z'),
+  });
+  assert.deepEqual(mutations, [ID]);
+  assert.equal(result.state, 'ambiguous');
+  assert.deepEqual(result.receipt.results.map(({ result: outcome, failureClass }) => ({
+    result: outcome, failureClass,
+  })), [
+    { result: 'ambiguous', failureClass: 'query_failed' },
+    { result: 'refused', failureClass: 'query_failed' },
+  ]);
+  const verified = verifySignedArtifact({
+    inputPath: result.receiptOutputPath,
+    publicKeyPath: values.signer.publicKeyPath,
+    expectedFingerprint: values.signer.signerKeyId,
+    checkoutRoot: values.checkoutRoot,
+    now: new Date('2026-08-30T00:03:00.000Z'),
+  });
+  assert.equal(verified.artifact.state, 'ambiguous');
+
+  let recoveryMutations = 0;
+  const recovered = await recoverCleanupExecution({
+    ...execution, ...values.signer, ...recoveryIdentity(),
+    reloadAuthority: async () => { throw new Error('terminal recovery cannot reload'); },
+    mutate: async () => { recoveryMutations += 1; return { outcome: 'success' }; },
+    reconcile: async () => { throw new Error('terminal recovery cannot reconcile'); },
+    buildInventoryAfter: async () => { throw new Error('terminal recovery uses persisted inventory'); },
+    now: () => new Date('2026-08-30T00:04:00.000Z'),
+  });
+  assert.equal(recoveryMutations, 0);
+  assert.equal(recovered.state, 'ambiguous');
+  assert.deepEqual(recovered.receipt, result.receipt);
+});
+
 test('SIGKILL-before-remove recovery records an exact survivor refusal as ambiguous and halts', async () => {
   const values = fixture('sigkill-before-remove-survivor');
   const secondId = 'e'.repeat(64);

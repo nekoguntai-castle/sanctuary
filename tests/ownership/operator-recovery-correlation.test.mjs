@@ -5,6 +5,7 @@ import {
   observeForgejoProviderCorrelation,
   providerCorrelationCore,
   revalidateForgejoProviderCorrelation,
+  validateProviderCorrelationFreshness,
   validateProviderCorrelationEvidence,
 } from '../../scripts/ownership/operator-recovery-correlation.mjs';
 
@@ -79,6 +80,29 @@ test('stable core excludes the temporal envelope and diagnostic task snapshot', 
   }));
   assert.notEqual(canonicalSha256(first), canonicalSha256(second));
   assert.equal(first.queryResultCoreDigest, second.queryResultCoreDigest);
+});
+
+test('correlation freshness is bounded from one second through five minutes', async () => {
+  assert.equal(validateProviderCorrelationFreshness(), 60_000);
+  for (const freshnessMs of [1_000, 300_000]) {
+    assert.equal(validateProviderCorrelationFreshness(freshnessMs), freshnessMs);
+    const evidence = await observeForgejoProviderCorrelation(input({ freshnessMs }));
+    assert.equal(
+      new Date(evidence.freshUntil).getTime() - new Date(evidence.observedAt).getTime(),
+      freshnessMs,
+    );
+  }
+  for (const freshnessMs of [999, 300_001, 1.5, Number.MAX_SAFE_INTEGER]) {
+    assert.throws(() => validateProviderCorrelationFreshness(freshnessMs), /freshness/);
+  }
+  let providerCalls = 0;
+  await assert.rejects(observeForgejoProviderCorrelation(input({
+    freshnessMs: 300_001,
+    fetchRunsPage: async () => { providerCalls += 1; return page([]); },
+    fetchRunDetail: async () => { providerCalls += 1; },
+    fetchJobsPage: async () => { providerCalls += 1; },
+  })), /freshness/);
+  assert.equal(providerCalls, 0);
 });
 
 test('revalidation accepts fresh timestamps and refuses exact-result drift', async () => {

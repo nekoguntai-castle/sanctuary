@@ -112,16 +112,16 @@ aggregate required checks. Stabilize event schema before Phase 4 sampling.
       extend no-build contracts only where intended behavior warrants it.
 - [x] Run lifecycle scanner/contract fixtures before expensive E2E; document measured
       distributions and thresholds without inventing timing samples.
-- [ ] Deliver and verify.
+- [x] Deliver and verify.
 
 ## Phase 5 — Recovery observation and operator diagnostics
 
-- [ ] Add composed successful-mutation/postcondition-query-failure regression cases:
+- [x] Add composed successful-mutation/postcondition-query-failure regression cases:
       stop later mutations, preserve signed non-success evidence or active journal,
       and recover observationally without repeating deletion.
-- [ ] Expose optional bounded correlation freshness within existing five-minute
+- [x] Expose optional bounded correlation freshness within existing five-minute
       contract maximum; make review expiry explicit; never accept expired approval.
-- [ ] Add allowlisted ambiguity category/operation diagnostics without raw secrets
+- [x] Add allowlisted ambiguity category/operation diagnostics without raw secrets
       or resource locators; retain existing fail-closed behavior.
 - [ ] Deliver and verify.
 
@@ -140,7 +140,8 @@ aggregate required checks. Stabilize event schema before Phase 4 sampling.
 | main | fix/preflight-command-outcomes | /home/nekoguntai/sanctuary | adopted from this session | no | merged/main CI green; retained pending deletion permission and additional replay |
 | main | codex/implement-merge/ci-subject-deadlines | /home/nekoguntai/sanctuary | yes | no | merged in PR #1044; retained pending cleanup sweep |
 | main | codex/implement-merge/durable-progress-status | /home/nekoguntai/sanctuary | yes | no | merged in PR #1045; retained pending cleanup sweep |
-| main | codex/implement-merge/fleet-lifecycle-convergence | /home/nekoguntai/sanctuary | yes | no | implementing locally |
+| main | codex/implement-merge/fleet-lifecycle-convergence | /home/nekoguntai/sanctuary | yes | no | merged in PR #1046; retained pending cleanup sweep |
+| main | codex/implement-merge/recovery-observation-diagnostics | /home/nekoguntai/sanctuary | yes | no | implementing locally |
 
 The detached `/home/nekoguntai/sanctuary-main` worktree is unowned and preserved.
 Live historical CI stacks/builders are not loop-owned and are not cleanup targets.
@@ -284,3 +285,33 @@ passed. The first broad frontend attempt used the exhausted default `/tmp` and
 failed to transform 102 files after 7,712 passing tests; the unchanged tree then
 passed completely with the established external `TMPDIR`. Independent lifecycle
 review reported no P0-P2 findings.
+
+Phase 4 delivery completed in PR #1046. Exact reviewed head
+`74a2ac38127f54c625c9ced46ca3880c3060052d` passed all seven PR workflows,
+including Release Candidate maximum-shape replay and every vector emulator.
+Forgejo squash-merged it as `2d6b008aa3aaddab2e7bb9418f91e0b187c2a6ec`;
+the fetched commit is `origin/main`, has parent
+`47dd9baf88b96eaefdb6d380715c3b910608dc3d`, and has the reviewed head's exact
+tree. Exact landed-main runs 15174–15179 all passed.
+
+Phase 5 local verification: the composed execution regression performs one
+successful mutation, converts the failed postcondition query to signed ambiguous
+evidence, refuses the later action, and proves terminal recovery performs no
+second mutation. Provider freshness accepts only 1,000–300,000 milliseconds,
+defaults to 60,000, rejects invalid input before any provider callback, exposes
+both correlation and approval expiry, and retains exact-expiry approval refusal.
+All four recovery observation stages expose only bounded allowlisted category
+and operation names; tests prove raw locators, stderr, and unrecognized strings
+are omitted. Focused recovery passed 129 tests, the broader ownership suite
+passed 509 tests with three existing gated Docker skips, and the 398-identity
+ownership contract passed. Both independent corrected-diff reviews found no
+P0-P2 issue.
+
+Full local gates passed: frontend TypeScript in all three configurations and
+8,414 tests across 626 files; backend TypeScript and 15,866 tests across 691
+passing files, with 57 existing skipped files and one todo; frontend lint,
+lizard, documentation links, and diff whitespace. An initial backend run was
+incorrectly overlapped with the frontend suite despite the recorded capacity
+lesson and produced four unrelated timing/backpressure failures. The prescribed
+259-test serial discriminator passed, then the unchanged backend tree passed in
+isolation; no retry claim relies on the overlapped run.

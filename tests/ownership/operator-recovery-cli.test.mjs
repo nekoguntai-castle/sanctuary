@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   forgejoJobsResult, forgejoRunsPaginationKey, paginateForgejoResponse,
+  operatorRecoveryPreparationResult, normalizeOperatorRecoveryProviderRequest,
   readOperatorRecoveryRequest,
   runOperatorRecoveryCli, readBoundedForgejoJsonResponse,
   validateOperatorRecoveryRuntimeDirectory,
@@ -35,6 +36,47 @@ test('CLI rejects unknown commands and extra request fields before side effects'
   writeFileSync(requestPath, JSON.stringify({ keyRoot: 'x', extra: true }));
   await assert.rejects(runOperatorRecoveryCli(['unknown', requestPath], process.cwd()), /usage/);
   await assert.rejects(runOperatorRecoveryCli(['provision', requestPath], process.cwd()), /fields are invalid/);
+});
+
+test('provider request accepts only bounded optional correlation freshness', () => {
+  const provider = {
+    providerInstance: 'https://provider.invalid', repository: 'owner/repo',
+    queries: [{ commit: 'a'.repeat(40), workflowId: 'test.yml', jobName: 'Summary' }],
+    taskSnapshot: [],
+  };
+  assert.equal(normalizeOperatorRecoveryProviderRequest(provider).freshnessMs, 60_000);
+  assert.equal(normalizeOperatorRecoveryProviderRequest({
+    ...provider, freshnessMs: 1_000,
+  }).freshnessMs, 1_000);
+  assert.equal(normalizeOperatorRecoveryProviderRequest({
+    ...provider, freshnessMs: 300_000,
+  }).freshnessMs, 300_000);
+  for (const freshnessMs of [999, 300_001, 1.5, Number.MAX_SAFE_INTEGER]) {
+    assert.throws(() => normalizeOperatorRecoveryProviderRequest({
+      ...provider, freshnessMs,
+    }), /freshness/);
+  }
+  assert.throws(() => normalizeOperatorRecoveryProviderRequest({
+    ...provider, freshnessMs: 60_000, extra: true,
+  }), /fields/);
+});
+
+test('prepare result exposes both correlation and approval review expiry', () => {
+  const prepared = {
+    correlationEnvelope: { artifact: { freshUntil: '2026-09-02T10:01:00.000Z' } },
+    scopeEnvelope: { artifact: { project: 'ci-1-fresh-install' }, artifactDigest: 'a'.repeat(64) },
+    approvalEnvelope: {
+      artifact: { expiresAt: '2026-09-02T10:05:00.000Z', actions: [{ sequence: 1 }] },
+      artifactDigest: 'b'.repeat(64),
+    },
+  };
+  assert.deepEqual(operatorRecoveryPreparationResult(prepared, '/evidence'), {
+    state: 'prepared', project: 'ci-1-fresh-install', scopeDigest: 'a'.repeat(64),
+    approvalDigest: 'b'.repeat(64), actionCount: 1,
+    correlationFreshUntil: '2026-09-02T10:01:00.000Z',
+    approvalExpiresAt: '2026-09-02T10:05:00.000Z',
+    evidenceDirectory: path.resolve('/evidence'),
+  });
 });
 
 test('prepare rejects a tampered recovery contract before provider or Docker access', async () => {

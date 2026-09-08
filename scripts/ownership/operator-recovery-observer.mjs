@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { canonicalSha256 } from './canonical-json.mjs';
 import { runCleanupCommand } from './cleanup-command.mjs';
 import { observeDockerResources } from './docker-observation.mjs';
+import { ambiguousObservationError } from './operator-recovery-diagnostics.mjs';
 
 const RECOVERY_CLASSES = Object.freeze([
   'compose_container', 'compose_network', 'compose_volume',
@@ -16,7 +17,6 @@ const UNSAFE = new Set([
   'current', 'shared', 'data', 'malformed', 'unlabeled', 'legacy_unlabeled',
   'production', 'referenced', 'default_builder',
 ]);
-
 function identifier(value, label) {
   if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9._:-]{0,127}$/.test(value)) {
     throw new TypeError(`${label} is invalid`);
@@ -135,7 +135,10 @@ function projectDiscoveryFromCustomObservation(raw, target) {
 function validateDiscoverySeed(seed) {
   if (seed?.complete !== true || !Array.isArray(seed.ambiguities) || seed.ambiguities.length !== 0
       || !DIGEST.test(seed.daemonContextFingerprint ?? '') || !Array.isArray(seed.engineGlobalArgs)) {
-    throw new Error('recovery tuple discovery observation is incomplete or ambiguous');
+    throw ambiguousObservationError(
+      'recovery tuple discovery observation is incomplete or ambiguous',
+      seed?.ambiguities, 'tuple_discovery',
+    );
   }
 }
 
@@ -314,7 +317,9 @@ function assertDependencyClosure(resources) {
 function normalizedObservation(raw, target, expectedCounts, attestationNonce) {
   if (raw?.complete !== true || !Array.isArray(raw.ambiguities) || raw.ambiguities.length !== 0
       || !DIGEST.test(raw.daemonContextFingerprint ?? '')) {
-    throw new Error('recovery observation is incomplete or ambiguous');
+    throw ambiguousObservationError(
+      'recovery observation is incomplete or ambiguous', raw?.ambiguities, 'target_observation',
+    );
   }
   const resources = raw.resources.map((entry) => normalizedResource(entry, target, attestationNonce))
     .sort((left, right) => `${left.resourceClass}:${left.locator}`.localeCompare(`${right.resourceClass}:${right.locator}`));
@@ -441,7 +446,10 @@ export async function observeOperatorRecoveryAction({
   });
   if (raw?.complete !== true || raw.ambiguities?.length !== 0
       || raw.daemonContextFingerprint !== daemonContextFingerprint) {
-    throw new Error('exact recovery action observation is incomplete or changed daemon');
+    throw ambiguousObservationError(
+      'exact recovery action observation is incomplete or changed daemon',
+      raw?.ambiguities, 'action_reinspection',
+    );
   }
   if (raw.resources.length === 0) return null;
   if (raw.resources.length !== 1) throw new Error('exact recovery action selector is ambiguous');
@@ -458,7 +466,10 @@ export async function observeOperatorRecoveryAction({
 function closedObservation(raw, daemonContextFingerprint) {
   if (raw?.complete !== true || raw.ambiguities?.length !== 0
       || raw.daemonContextFingerprint !== daemonContextFingerprint) {
-    throw new Error('operator recovery final observation is incomplete or changed daemon');
+    throw ambiguousObservationError(
+      'operator recovery final observation is incomplete or changed daemon',
+      raw?.ambiguities, 'final_observation',
+    );
   }
   if (raw.resources.length !== 0) throw new Error('operator recovery target residue remains');
   return canonicalSha256({

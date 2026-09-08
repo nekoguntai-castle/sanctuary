@@ -239,6 +239,72 @@ test('refuses ambiguous observation and unstable exact refresh', async () => {
   }), /changed between observations/);
 });
 
+test('ambiguity refusal exposes only allowlisted category and operation diagnostics', async () => {
+  const secretLocator = 'private-resource-locator';
+  const secretOperation = 'query token=private-secret';
+  const ambiguities = [
+    {
+      category: 'timeout', operation: 'compose_network relist',
+      locator: secretLocator, stderr: 'private stderr body',
+    },
+    { category: 'private-category', operation: secretOperation },
+    { category: 'identity_changed', operation: secretOperation },
+    { category: 'private-category', operation: 'compose_volume inspect' },
+  ];
+  let error;
+  try {
+    await buildOperatorRecoveryObservation({
+      target, expectedCounts: { compose_container: 0, compose_network: 0, compose_volume: 0 },
+      observe: async () => ({ ...observation([]), complete: false, ambiguities }),
+      discoverComposeProject: emptyProjectDiscovery,
+      requireIndependentRefresh: false,
+    });
+  } catch (caught) { error = caught; }
+  assert.ok(error instanceof Error);
+  assert.match(error.message, /stage=tuple_discovery/);
+  assert.match(error.message, /categories=identity_changed,timeout,unknown/);
+  assert.match(error.message, /operations=compose_network relist,compose_volume inspect,unknown/);
+  for (const privateValue of [secretLocator, secretOperation, 'private-category', 'private stderr body']) {
+    assert.ok(!error.message.includes(privateValue));
+  }
+});
+
+test('target, action, and final ambiguity stages retain the same redaction contract', async () => {
+  const privateValue = 'private-locator-and-stderr';
+  const ambiguous = {
+    ...observation([]), complete: false,
+    ambiguities: [{
+      category: 'permission_denied', operation: 'compose_container inspect',
+      locator: privateValue, stderr: privateValue,
+    }],
+  };
+  const assertSafeStage = async (stage, callback) => assert.rejects(callback, (error) => {
+    assert.match(error.message, new RegExp(`stage=${stage}`));
+    assert.match(error.message, /categories=permission_denied/);
+    assert.match(error.message, /operations=compose_container inspect/);
+    assert.ok(!error.message.includes(privateValue));
+    return true;
+  });
+  let targetCalls = 0;
+  await assertSafeStage('target_observation', () => buildOperatorRecoveryObservation({
+    target, expectedCounts: { compose_container: 0, compose_network: 0, compose_volume: 0 },
+    observe: async () => { targetCalls += 1; return targetCalls === 1 ? observation([]) : ambiguous; },
+    discoverComposeProject: emptyProjectDiscovery,
+    requireIndependentRefresh: false,
+  }));
+  await assertSafeStage('action_reinspection', () => observeOperatorRecoveryAction({
+    action: { resourceClass: 'compose_container', locator: 'a'.repeat(64) },
+    target, scopeResource: {}, daemonContextFingerprint: 'd'.repeat(64),
+    observe: async () => ambiguous,
+  }));
+  let finalCalls = 0;
+  await assertSafeStage('final_observation', () => verifyOperatorRecoveryClosed({
+    target, daemonContextFingerprint: 'd'.repeat(64),
+    observe: async () => { finalCalls += 1; return finalCalls === 1 ? observation([]) : ambiguous; },
+    discoverComposeProject: emptyProjectDiscovery,
+  }));
+});
+
 test('exact action reinspection returns absence and refuses daemon drift', async () => {
   const action = { resourceClass: 'compose_container', locator: 'a'.repeat(64) };
   const absent = await observeOperatorRecoveryAction({

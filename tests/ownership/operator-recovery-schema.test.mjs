@@ -187,6 +187,9 @@ test('approval exactly binds scope, action set, classes, expiry, and signer role
   const value = approval(recoveryScope);
   const approvalNow = new Date('2026-09-02T10:02:00.000Z');
   assert.equal(validateOperatorRecoveryApproval(value, { scope: recoveryScope, now: approvalNow }), value);
+  assert.throws(() => validateOperatorRecoveryApproval(value, {
+    scope: recoveryScope, now: new Date(value.expiresAt),
+  }), /expired|valid/i);
   assert.throws(() => validateOperatorRecoveryApproval({ ...value, scopeDigest: B }, { scope: recoveryScope, now: approvalNow }), /scopeDigest/);
   assert.throws(() => approval(recoveryScope, { signerKeyId: B }), /authorization signer/);
   assert.throws(() => approval(recoveryScope, { permittedActionCount: 2 }), /permittedActionCount/);
