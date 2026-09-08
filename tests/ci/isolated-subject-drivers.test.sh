@@ -11,14 +11,32 @@ CI=true FORGEJO_ACTIONS=true FORGEJO_SERVER_URL=https://forgejo.invalid \
 GITHUB_ACTIONS=true GITHUB_RUN_ID=outer-run GITHUB_RUN_ATTEMPT=7 \
 RUNNER_TEMP="$TEST_ROOT/outer-provider" SANCTUARY_CI_PROVIDER_CONTEXT_LOADED=1 \
 SANCTUARY_CI_PROVIDER_OVERRIDE=forgejo STANDALONE_SENTINEL=kept \
+SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS=1 SANCTUARY_CI_JOB_STARTED_EPOCH_MS=1 \
   "$REPO_ROOT/scripts/ci/run-standalone-test-command.sh" bash -euo pipefail -c '
     for name in CI FORGEJO_ACTIONS FORGEJO_SERVER_URL GITHUB_ACTIONS \
       GITHUB_RUN_ID GITHUB_RUN_ATTEMPT RUNNER_TEMP \
-      SANCTUARY_CI_PROVIDER_CONTEXT_LOADED SANCTUARY_CI_PROVIDER_OVERRIDE; do
+      SANCTUARY_CI_PROVIDER_CONTEXT_LOADED SANCTUARY_CI_PROVIDER_OVERRIDE \
+      SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS SANCTUARY_CI_JOB_STARTED_EPOCH_MS; do
       [[ ! -v $name ]] || exit 1
     done
     [[ $STANDALONE_SENTINEL == kept ]]
   ' || fail 'standalone test command retained outer provider authority'
+
+SANCTUARY_INSTALL_SUBJECT_MODE=fresh-install PORT_OFFSET=0 JOB_LOG_DIR="$TEST_ROOT" \
+  bash -euo pipefail -c '
+    source "$1/scripts/ci/run-install-e2e-isolated-subject.sh"
+    timeout() {
+      [[ $1 == --signal=TERM && $2 == --kill-after=2s && $3 == 10s && $4 == docker ]] || exit 99
+      echo bounded
+      return 124
+    }
+    docker() { echo unbounded; return 1; }
+    status=0
+    show_logs 23 || status=$?
+    [[ $status == 23 ]]
+    [[ $(grep -c "^bounded$" "$JOB_LOG_DIR/container-logs.log") == 6 ]]
+    ! grep -q unbounded "$JOB_LOG_DIR/container-logs.log"
+  ' _ "$REPO_ROOT" || fail 'post-subject diagnostics must be bounded and preserve failure'
 
 SANCTUARY_CI_ORIGINAL_WORKSPACE="$TEST_ROOT" \
 SANCTUARY_ARCHITECTURE_CORE_SCOPE=false \

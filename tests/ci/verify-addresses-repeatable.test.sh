@@ -67,6 +67,10 @@ if [ "${1:-}" = "-p" ] && [ "${2:-}" = "process.versions.node" ]; then
   exit 0
 fi
 if [ "${1:-}" = "-e" ]; then
+  if [[ "${2:-}" == *'Date.parse(process.argv[1])'* ]]; then
+    printf '%s' "${VERIFY_STUB_IMAGE_CREATED_EPOCH:-1788856051}"
+    exit 0
+  fi
   counter_file="${VERIFY_STUB_RANDOM_COUNTER:?}"
   count="$(cat "$counter_file" 2>/dev/null || echo 0)"
   count=$((count + 1))
@@ -161,7 +165,8 @@ if [ "$1" = "buildx" ] && [ "${2:-}" = "version" ]; then
   exit 0
 fi
 if [ "$1" = "buildx" ] && [ "${2:-}" = "build" ]; then
-  printf '%s\n' "$*" >> "${VERIFY_STUB_DOCKER_BUILD_LOG:?}"
+  printf 'SOURCE_DATE_EPOCH=%s %s\n' "${SOURCE_DATE_EPOCH:-}" "$*" \
+    >> "${VERIFY_STUB_DOCKER_BUILD_LOG:?}"
   build_tag=''
   iid_file=''
   while [ "$#" -gt 0 ]; do
@@ -246,7 +251,13 @@ if [ "$1" = "image" ] && [ "${2:-}" = "inspect" ]; then
     [ -f "$state_file" ] || exit 1
     image_id="$(cat "$state_file")"
   fi
-  if [[ "$*" == *'--format'* ]]; then printf '%s\n' "$image_id"; else printf '{}\n'; fi
+  if [[ "$*" == *'{{.Created}}'* ]]; then
+    printf '%s\n' '2026-09-08T07:47:31Z'
+  elif [[ "$*" == *'--format'* ]]; then
+    printf '%s\n' "$image_id"
+  else
+    printf '{}\n'
+  fi
   exit 0
 fi
 if [ "$1" = "image" ] && [ "${2:-}" = "ls" ]; then
@@ -284,6 +295,17 @@ fi
 exit 2
 EOF
   chmod +x "$bin_dir/docker"
+
+  cat > "$bin_dir/date" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$#" -eq 1 ] && [ "$1" = '+%s' ]; then
+  printf '%s\n' "${VERIFY_STUB_DATE_EPOCH:-1788856051}"
+  exit 0
+fi
+exec /usr/bin/date "$@"
+EOF
+  chmod +x "$bin_dir/date"
 
   cat > "$bin_dir/sleep" <<'EOF'
 #!/usr/bin/env bash
@@ -450,6 +472,9 @@ main() {
     fail 'expected Python verification to be isolated from the host interpreter'
   grep -F -- 'buildx build --pull' "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
     fail 'expected the Python verifier image build to use explicit Buildx and refresh its pinned base'
+  grep -F -- 'SOURCE_DATE_EPOCH=1788856051 buildx build --pull' \
+    "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
+    fail 'expected the per-run verifier image config to carry a current creation epoch'
   [ ! -e "$TEST_TEMP_DIR/legacy-build-used" ] ||
     fail 'expected DOCKER_BUILDKIT=0 to leave the explicit Buildx path unchanged'
   grep -F -- '--load' "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
@@ -467,6 +492,32 @@ main() {
     fail 'expected the immutable Python verifier image to be registered before cleanup'
   grep -F -- '--iidfile' "$TEST_TEMP_DIR/docker-build-log" >/dev/null ||
     fail 'expected the Python verifier build to capture its immutable image ID'
+
+  : > "$TEST_TEMP_DIR/docker-build-log"
+  if failure_output="$(VERIFY_STUB_DATE_EPOCH=invalid \
+    run_with_core_image \
+      'docker.io/bitcoin/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+      "$TEST_TEMP_DIR/invalid-epoch-endpoint-log" 2>&1)"; then
+    fail 'expected an invalid image creation epoch to fail before Buildx'
+  fi
+  grep -F -- 'Python verifier image creation epoch is invalid: invalid' \
+    <<< "$failure_output" >/dev/null ||
+    fail 'expected an actionable invalid image creation epoch diagnostic'
+  [ ! -s "$TEST_TEMP_DIR/docker-build-log" ] ||
+    fail 'expected an invalid image creation epoch to prevent the image build'
+
+  : > "$TEST_TEMP_DIR/docker-build-log"
+  cp "$TEST_TEMP_DIR/docker-cleanup-log" "$TEST_TEMP_DIR/docker-cleanup-log.before-stale"
+  if failure_output="$(VERIFY_STUB_IMAGE_CREATED_EPOCH=1 \
+    run_with_core_image \
+      'docker.io/bitcoin/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+      "$TEST_TEMP_DIR/stale-image-epoch-endpoint-log" 2>&1)"; then
+    fail 'expected a stale loaded image creation epoch to fail before startup'
+  fi
+  grep -F -- 'Python verifier image creation epoch mismatch: expected 1788856051, observed 1' \
+    <<< "$failure_output" >/dev/null ||
+    fail 'expected an actionable stale image creation epoch diagnostic'
+  mv "$TEST_TEMP_DIR/docker-cleanup-log.before-stale" "$TEST_TEMP_DIR/docker-cleanup-log"
 
   [ "$(wc -l < "$TEST_TEMP_DIR/curl-log")" = "10" ] ||
     fail 'expected chain and identity checks for all five Core environments'

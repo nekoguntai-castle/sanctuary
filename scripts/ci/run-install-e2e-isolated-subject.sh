@@ -73,13 +73,18 @@ run_supervised() {
 show_logs() {
   local status=$1
   (( status == 0 )) && return 0
+  if ! command -v timeout >/dev/null 2>&1; then
+    echo 'Container diagnostics unavailable: timeout tooling missing' > "$JOB_LOG_DIR/container-logs.log"
+    return "$status"
+  fi
+  # Finalization reserve must not be consumed by a hung Docker log query.
+  # Six calls take at most 72 seconds, including TERM-resistant kill grace.
   {
-    docker compose ps || true
-    docker compose logs --tail 100 postgres 2>&1 || true
-    docker compose logs --tail 100 backend 2>&1 || true
-    docker compose logs --tail 100 frontend 2>&1 || true
-    docker compose logs --tail 100 gateway 2>&1 || true
-    docker compose logs migrate 2>&1 || true
+    timeout --signal=TERM --kill-after=2s 10s docker compose ps || true
+    local service
+    for service in postgres backend frontend gateway migrate; do
+      timeout --signal=TERM --kill-after=2s 10s docker compose logs --tail 100 "$service" 2>&1 || true
+    done
   } > "$JOB_LOG_DIR/container-logs.log" 2>&1
   return "$status"
 }

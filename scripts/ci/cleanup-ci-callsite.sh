@@ -14,6 +14,8 @@ lane= runtime= artifact_dir= state= status= engine=docker checkout_root="$PROJEC
 authority_mode=coordinator_managed
 legacy_fixture_creation_witness=false
 upgrade_target_commit=
+subject_deadline=
+subject_deadline_set=false
 while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
   case "$1" in
     --lane) lane="${2:-}"; shift 2 ;;
@@ -26,6 +28,7 @@ while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
     --authority-mode) authority_mode="${2:-}"; shift 2 ;;
     --legacy-fixture-creation-witness) legacy_fixture_creation_witness=true; shift ;;
     --upgrade-target-commit) upgrade_target_commit="${2:-}"; shift 2 ;;
+    --subject-deadline-epoch-ms) subject_deadline="${2:-}"; subject_deadline_set=true; shift 2 ;;
     *) echo "unknown cleanup callsite option: $1" >&2; exit 2 ;;
   esac
 done
@@ -85,6 +88,22 @@ fi
 if [ -n "$upgrade_target_commit" ]; then
   [ "$MODE" = run ] || { echo '--upgrade-target-commit is only valid for run mode' >&2; exit 2; }
   request_args+=(--upgrade-target-commit "$upgrade_target_commit")
+fi
+if [ "$MODE" = run ]; then
+  if [[ ${SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS+x} ]]; then
+    if [[ $subject_deadline_set == true && $subject_deadline != "$SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS" ]]; then
+      echo 'explicit subject deadline conflicts with inherited deadline' >&2
+      exit 2
+    fi
+    subject_deadline=$SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+    subject_deadline_set=true
+  fi
+elif [ "$subject_deadline_set" = true ]; then
+  echo '--subject-deadline-epoch-ms is only valid for run mode' >&2
+  exit 2
+fi
+if [ "$subject_deadline_set" = true ]; then
+  request_args+=(--subject-deadline-epoch-ms "$subject_deadline")
 fi
 if [ "$MODE" = finish ] || [ "$MODE" = recover ]; then
   request_args+=(--state "$state" --status "$status")

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson } from './canonical-json.mjs';
 import { writeExternalFileAtomic } from './safe-file.mjs';
+import { validateSubjectDeadlineEpochMs } from './ci-subject-deadline.mjs';
 
 function parse(argv) {
   const values = {};
@@ -49,6 +50,16 @@ function engineField(values) {
   return { engine: values.engine };
 }
 
+function subjectDeadlineField(values) {
+  const value = values['subject-deadline-epoch-ms'];
+  if (value === undefined) return {};
+  if (values.mode !== 'run') throw new Error('--subject-deadline-epoch-ms requires run mode');
+  if (!/^[1-9][0-9]*$/.test(value)) throw new Error('--subject-deadline-epoch-ms must be a canonical positive integer');
+  const deadline = Number(value);
+  validateSubjectDeadlineEpochMs(deadline);
+  return { subjectDeadlineEpochMs: deadline };
+}
+
 export function writeCiCleanupRequest(values) {
   const required = ['mode', 'output', 'checkout-root', 'runtime', 'lane', 'artifact-dir'];
   for (const key of required) if (!values[key]) throw new Error(`--${key} is required`);
@@ -64,6 +75,7 @@ export function writeCiCleanupRequest(values) {
     artifactDirectory: path.resolve(values['artifact-dir']),
     authorityMode,
     ...engineField(values),
+    ...subjectDeadlineField(values),
   };
   if (legacyFixtureRequested(values, authorityMode)) request.legacyFixtureCreationWitness = true;
   const upgradeTargetCommit = upgradeTargetRequested(values, authorityMode);

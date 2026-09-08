@@ -1246,7 +1246,7 @@ assert_contains_in_order "$REPO_ROOT/tests/install/e2e/upgrade-install.test.sh" 
 assert_named_job_step_contains_in_order "$IT" "fresh-install-test" \
   "Run requested install tests in one signed isolated workspace" \
   "install-test fresh-install clone has one signed subject" \
-  'scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install' \
+  'scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup fresh-install' \
   'scripts/ci/run-install-e2e-isolated-subject.sh'
 assert_contains_in_order "$INSTALL_ISOLATED_SUBJECT" \
   "install-test fresh-install uses coordinator authority before direct Compose mutation" \
@@ -1328,7 +1328,7 @@ for isolated_step in \
   IFS='|' read -r install_job step_name label <<< "$isolated_step"
   assert_named_job_step_contains "$IT" "$install_job" "$step_name" \
     "install-test $install_job/$step_name uses one signed isolated subject" \
-    "scripts/ci/run-in-isolated-workspace.sh --docker-visible $label"
+    "scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup $label"
 done
 # v0.8.70-rc6 (run 14732): on a contended docker-socket host the fresh install
 # alone took 28m34s (11m on the other host), so fresh install + install script
@@ -1586,7 +1586,7 @@ assert_contains_in_order "$IT" \
   "install-test fresh install sink summary" \
   "fresh-install-test:" \
   "Run requested install tests in one signed isolated workspace" \
-  "scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup fresh-install" \
   "Write install diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Fresh Install"' \
   "diag-install-fresh-install"
@@ -1596,7 +1596,7 @@ assert_contains_in_order "$IT" \
   "install-stack-smoke:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-stack-smoke' \
   "Run reusable stack in one signed isolated workspace" \
-  "scripts/ci/run-in-isolated-workspace.sh --docker-visible install-stack" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup install-stack" \
   "Write install stack diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Stack Smoke"' \
   "diag-install-stack-smoke"
@@ -1606,7 +1606,7 @@ assert_contains_in_order "$IT" \
   "container-health-test:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health' \
   "Run container health in one signed isolated workspace" \
-  "scripts/ci/run-in-isolated-workspace.sh --docker-visible container-health" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup container-health" \
   "Write container health diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Container Health"' \
   "diag-container-health"
@@ -1616,7 +1616,7 @@ assert_contains_in_order "$IT" \
   "auth-flow-test:" \
   'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow' \
   "Run auth flow in one signed isolated workspace" \
-  "scripts/ci/run-in-isolated-workspace.sh --docker-visible auth-flow" \
+  "scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup auth-flow" \
   "Write auth flow diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Auth Flow"' \
   "diag-auth-flow"
@@ -3390,6 +3390,13 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   'run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log"' \
   "scripts/ci/run-standalone-test-command.sh bash -euo pipefail" \
   "QUALITY_CI_CLASSIFIER_TESTS"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality executes subject-budget arithmetic and workflow boundary regressions" \
+  "node --test tests/ci/subject-budget.test.mjs" \
+  "node --test tests/ci/subject-budget-workflows.test.mjs" \
+  "node --test tests/ci/subject-budget-boundaries.test.mjs" \
+  "node --test tests/ci/nested-subject-deadline.test.mjs"
 
 assert_occurrence_count "$QUALITY_WORKFLOW" \
   "quality retains one classifier isolation boundary plus the syntax sweep" \

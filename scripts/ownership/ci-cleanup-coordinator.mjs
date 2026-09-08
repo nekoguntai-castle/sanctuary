@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { constants as osConstants } from 'node:os';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -19,7 +18,8 @@ import {
 } from './ci-cleanup-lifecycle.mjs';
 import { coordinatorStatePath, readCoordinatorState } from './ci-cleanup-state.mjs';
 import { ciCleanupProviderContext } from './ci-cleanup-trust.mjs';
-import { cleanupProcessGroupHasRunnableMember } from './cleanup-supervisor.mjs';
+import { captureSubjectDeadline } from './ci-subject-deadline.mjs';
+import { runSubject } from './ci-subject-supervisor.mjs';
 import { registerLegacyFixtureResources } from './ci-legacy-fixture-witness.mjs';
 
 const DEFAULT_SUBJECT_GRACE_MS = 5_000;
@@ -49,7 +49,7 @@ function cleanupStatus(receipt) {
 function prepare(request) {
   exactWithOptional(request, ['checkoutRoot', 'runtimeDirectory', 'lane', 'artifactDirectory'], [
     'engine', 'subjectGraceMs', 'subjectKillWaitMs', 'authorityMode',
-    'legacyFixtureCreationWitness', 'upgradeTargetCommit',
+    'legacyFixtureCreationWitness', 'upgradeTargetCommit', 'subjectDeadlineEpochMs',
   ]);
   return prepareCiCleanupLifecycle(request);
 }
@@ -232,125 +232,6 @@ function subjectSupervision(request) {
     ),
   });
 }
-
-function subjectQuiescenceError(exitStatus, message) {
-  return Object.assign(new Error(message), {
-    exitCode: exitStatus === 0 ? 126 : exitStatus,
-    cleanupSuppression: 'subject_quiescence_failed',
-  });
-}
-
-function runSubject(command, args, environment, supervision) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      env: { ...process.env, ...environment }, stdio: 'inherit', detached: process.platform !== 'win32',
-    });
-    let requestedSignal = null;
-    let graceTimer = null;
-    let killWaitTimer = null;
-    let quiescenceTimer = null;
-    let settled = false;
-    const signalChild = (signal) => {
-      try {
-        if (process.platform === 'win32') child.kill(signal);
-        else process.kill(-child.pid, signal);
-      } catch (error) {
-        if (error.code !== 'ESRCH') throw error;
-      }
-    };
-    const clear = () => {
-      if (graceTimer) clearTimeout(graceTimer);
-      if (killWaitTimer) clearTimeout(killWaitTimer);
-      if (quiescenceTimer) clearTimeout(quiescenceTimer);
-      for (const [name, handler] of handlers) process.removeListener(name, handler);
-    };
-    const settle = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clear();
-      callback(value);
-    };
-    const processGroupAlive = () => {
-      if (process.platform === 'win32' || !Number.isInteger(child.pid)) return false;
-      if (process.platform === 'linux') return cleanupProcessGroupHasRunnableMember(child.pid);
-      try {
-        process.kill(-child.pid, 0);
-        return true;
-      } catch (error) {
-        if (error.code === 'ESRCH') return false;
-        if (error.code === 'EPERM') return true;
-        throw error;
-      }
-    };
-    const settleWhenQuiescent = (deadline = null, failure = null) => {
-      if (settled) return;
-      try {
-        if (!processGroupAlive()) {
-          if (failure) settle(reject, failure);
-          else settle(resolve, signalExitStatus(requestedSignal));
-          return;
-        }
-        if (deadline !== null && Date.now() >= deadline) {
-          child.unref();
-          settle(reject, Object.assign(
-            new Error('subject process group did not quiesce after bounded SIGKILL wait'),
-            {
-              exitCode: signalExitStatus(requestedSignal),
-              cleanupSuppression: 'subject_quiescence_failed',
-            },
-          ));
-          return;
-        }
-        quiescenceTimer = setTimeout(() => settleWhenQuiescent(deadline, failure), 10);
-      } catch (error) { settle(reject, error); }
-    };
-    const suppressCleanupAfterOrdinaryExit = (exitStatus) => {
-      const failure = subjectQuiescenceError(
-        exitStatus,
-        'subject leader exited while its process group remained runnable',
-      );
-      try {
-        signalChild('SIGTERM');
-        graceTimer = setTimeout(() => {
-          try {
-            signalChild('SIGKILL');
-            settleWhenQuiescent(Date.now() + supervision.killWaitMs, failure);
-          } catch (error) { settle(reject, error); }
-        }, supervision.graceMs);
-      } catch (error) { settle(reject, error); }
-    };
-    const handlers = new Map(['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => [
-      signal, () => {
-        if (requestedSignal !== null || settled) return;
-        requestedSignal = signal;
-        try {
-          signalChild('SIGTERM');
-          graceTimer = setTimeout(() => {
-            try {
-              signalChild('SIGKILL');
-              const deadline = Date.now() + supervision.killWaitMs;
-              killWaitTimer = setTimeout(() => settleWhenQuiescent(deadline), 0);
-            } catch (error) { settle(reject, error); }
-          }, supervision.graceMs);
-        } catch (error) { settle(reject, error); }
-      },
-    ]));
-    for (const [signal, handler] of handlers) process.on(signal, handler);
-    child.once('error', (error) => settle(reject, error));
-    child.once('exit', (code, signal) => {
-      if (requestedSignal !== null) {
-        settleWhenQuiescent();
-        return;
-      }
-      const exitStatus = code ?? signalExitStatus(signal);
-      try {
-        if (processGroupAlive()) suppressCleanupAfterOrdinaryExit(exitStatus);
-        else settle(resolve, exitStatus);
-      } catch (error) { settle(reject, error); }
-    });
-  });
-}
-
 function subjectFailureStatus(error) {
   if (Number.isInteger(error.exitCode) && error.exitCode > 0 && error.exitCode <= 255) {
     return error.exitCode;
@@ -401,6 +282,8 @@ function finishOutcomeAsync(prepared, request, subjectExitStatus, cleanupSuppres
 }
 
 async function runCommand(request, command) {
+  const supervision = subjectSupervision(request);
+  const remaining = captureSubjectDeadline(request.subjectDeadlineEpochMs);
   const cancellationPath = path.join(
     path.resolve(request.runtimeDirectory), 'coordinator', 'cancellation-signal',
   );
@@ -414,10 +297,14 @@ async function runCommand(request, command) {
     if (prepareSignal !== null) publishCancellation(cancellationPath, prepareSignal);
     if (prepareSignal !== null) {
       subjectExitStatus = signalExitStatus(prepareSignal);
+    } else if (remaining() === 0) {
+      process.stderr.write('ci-cleanup-coordinator: subject deadline exhausted before launch\n');
+      subjectExitStatus = 124;
     } else {
       try {
         subjectExitStatus = await runSubject(
-          command[0], command.slice(1), prepared.environment, subjectSupervision(request),
+          command[0], command.slice(1), prepared.environment,
+          { ...supervision, remainingMs: remaining() },
         );
       } catch (error) {
         subjectExitStatus = subjectFailureStatus(error);

@@ -826,6 +826,10 @@ jobs:
           node --test tests/ci/check-critical-mutation-config.test.mjs
           node --test tests/ci/wallet-sync-database-readiness.test.mjs
           node --test tests/ci/wallet-sync-replay-cleanup.test.mjs
+          node --test tests/ci/subject-budget.test.mjs
+          node --test tests/ci/subject-budget-workflows.test.mjs
+          node --test tests/ci/subject-budget-boundaries.test.mjs
+          node --test tests/ci/nested-subject-deadline.test.mjs
           # Also runs the call-site gate against the real checkout, so an
           # unprotected or unreviewed `npm ci` fails here.
           node tests/ci/check-npm-ci-callsites.test.mjs

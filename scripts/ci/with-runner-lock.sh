@@ -23,11 +23,10 @@ fail() {
 # would convert legitimate waits into hard failures, and nothing classifies a
 # lock conflict as retryable.
 #
-# The fix belongs per workflow, where the hold time is known: set
-# SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS below the enclosing step budget, as
-# .github/workflows/verify-vectors.yml does. tests/ci/with-runner-lock.test.sh
-# enforces that relationship wherever a workflow declares one. Bringing the
-# remaining jobs under it needs measured hold times and is follow-up work.
+# Budgeted workflows cap this configured wait to the remaining shared subject
+# deadline. Shorter subject steps narrow that deadline before acquiring locks;
+# neither a new lock nor a sequential subject replenishes the job budget.
+# Unbudgeted callers retain the configured/default wait for compatibility.
 #
 # Cancelling a running lock holder can strand the lock. The flock lives on fd 9
 # of this script's process; the kernel releases it when that process dies, but
@@ -44,6 +43,17 @@ DEFAULT_LOCK_TIMEOUT_SECONDS=3600
 # not be enough -- it only reserves a number the child is asked not to use, and
 # 75 is EX_TEMPFAIL, which retry tooling does use.)
 LOCK_CONFLICT_EXIT_CODE=75
+
+remaining_lock_timeout() {
+  local configured=$1
+  if [[ ${SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS+x} ]]; then
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    node "$script_dir/subject-budget.mjs" lock-wait "$configured"
+  else
+    printf '%s\n' "$configured"
+  fi
+}
 
 main() {
   # Guarded on argument count: the flag matches the lock-name charset below, so
@@ -70,6 +80,9 @@ main() {
   if [[ ! "$timeout" =~ ^[1-9][0-9]*$ ]]; then
     fail 'SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS must be a positive integer'
   fi
+  # Share a single subject deadline across sequential lanes and lock waits.
+  # The coordinator rechecks the same deadline after acquisition/preparation.
+  timeout="$(remaining_lock_timeout "$timeout")" || return "$?"
 
   local workspace
   workspace="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
@@ -125,7 +138,12 @@ main() {
   fi
 
   local status=0
-  "$@" || status="$?"
+  # Acquisition can consume the last second. Refuse expensive startup even
+  # when this caller's child does not itself launch a coordinator.
+  remaining_lock_timeout "$timeout" >/dev/null || status="$?"
+  if [ "$status" -eq 0 ]; then
+    "$@" || status="$?"
+  fi
 
   echo "runner-lock: released ${lock_name} held $((( $(date +%s%N) - wait_end) / 1000000000))s status=${status}"
   return "$status"

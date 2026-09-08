@@ -364,13 +364,24 @@ jobs:
       PORT_OFFSET: '0'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-fresh-install
       SANCTUARY_CI_DEBUG_TRACE: '1'
-      # A starved e2e lock wait must fail inside the 45-minute job budget so the
+      # A starved e2e lock wait must fail inside the 90-minute job budget so the
       # diagnostics upload runs and the log names the lock (v0.8.70-rc3/rc4).
       # 25 minutes covers the release-candidate fresh install (~12 min) that
-      # shares the lock on a tag push; each acquisition gets its own budget.
+      # shares the lock on a tag push; waits are capped by the shared subject deadline.
       SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1500'
 
     steps:
+      - name: Capture job budget origin
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Note PR install E2E coverage
         if: github.event_name == 'pull_request'
         run: |
@@ -382,6 +393,11 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
+
+      - name: Initialize subject budget
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 5400 600
 
       - name: Pre-flight diagnostics
         if: always() && github.event_name != 'pull_request'
@@ -405,7 +421,7 @@ jobs:
           SANCTUARY_RUN_INSTALL_SCRIPT: ${{ needs.determine-scope.outputs.run_install_script }}
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
-            scripts/ci/run-in-isolated-workspace.sh --docker-visible fresh-install \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup fresh-install \
               scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write install diagnostic summary
@@ -553,6 +569,17 @@ jobs:
       SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'
 
     steps:
+      - name: Capture job budget origin
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Use fresh install stack coverage
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE == 'true'
         run: |
@@ -564,6 +591,11 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
+
+      - name: Initialize subject budget
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 5400 600
 
       - name: Check Docker
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
@@ -577,7 +609,7 @@ jobs:
           RUN_AUTH: ${{ needs.determine-scope.outputs.run_auth_flow }}
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
-            scripts/ci/run-in-isolated-workspace.sh --docker-visible install-stack \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup install-stack \
               scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write install stack diagnostic summary
@@ -642,10 +674,24 @@ jobs:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 900 180
 
       - name: Check Docker
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
@@ -655,7 +701,7 @@ jobs:
           SANCTUARY_INSTALL_SUBJECT_MODE: container-health
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
-            scripts/ci/run-in-isolated-workspace.sh --docker-visible container-health \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup container-health \
               scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write container health diagnostic summary
@@ -722,10 +768,24 @@ jobs:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 1500 180
 
       - name: Check Docker
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
@@ -735,7 +795,7 @@ jobs:
           SANCTUARY_INSTALL_SUBJECT_MODE: auth-flow
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
-            scripts/ci/run-in-isolated-workspace.sh --docker-visible auth-flow \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup auth-flow \
               scripts/ci/run-install-e2e-isolated-subject.sh
 
       - name: Write auth flow diagnostic summary
@@ -805,11 +865,25 @@ jobs:
       SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '3000'
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
           fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 7200 600
 
       - name: Pre-flight diagnostics
         if: always()
@@ -832,8 +906,11 @@ jobs:
           IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}
           RUN_ID: ${{ github.run_id }}
         run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 6000 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" \
-            scripts/ci/run-in-isolated-workspace.sh --docker-visible upgrade-baseline \
+            scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup upgrade-baseline \
               scripts/ci/run-upgrade-baseline-isolated-subject.sh
 
       - name: Post-upgrade DIND diagnostics
@@ -928,11 +1005,25 @@ jobs:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-extended-fixtures
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           clean: false
           fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 10800 600
 
       - name: Pre-flight diagnostics
         if: always()
@@ -951,6 +1042,9 @@ jobs:
           SANCTUARY_UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
           SANCTUARY_UPGRADE_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
         run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 9000 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log" \
             scripts/ci/run-extended-upgrade-fixtures.sh \
               --fixtures "$SANCTUARY_UPGRADE_EXTENDED_FIXTURES" \

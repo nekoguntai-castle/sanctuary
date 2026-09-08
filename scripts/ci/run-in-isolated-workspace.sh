@@ -3,10 +3,12 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: scripts/ci/run-in-isolated-workspace.sh [--docker-visible] LABEL COMMAND [ARG...]
+Usage: scripts/ci/run-in-isolated-workspace.sh [--docker-visible] [--nested-cleanup] LABEL COMMAND [ARG...]
 
 Runs COMMAND from a per-job clone of the current repository. The source
 checkout is treated as immutable input; generated files stay in the clone.
+--nested-cleanup is for tracked drivers whose inner coordinator owns the subject
+deadline; outer workspace retirement waits for their signed cleanup to finish.
 EOF
 }
 
@@ -17,11 +19,16 @@ fail() {
 
 main() {
   local docker_visible=false
+  local nested_cleanup=false
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --docker-visible)
         docker_visible=true
+        shift
+        ;;
+      --nested-cleanup)
+        nested_cleanup=true
         shift
         ;;
       --help|-h)
@@ -68,9 +75,20 @@ main() {
     [ "$docker_visible" = false ] || cleanup_engine=docker
     local -a nested_args=()
     [ "$docker_visible" = false ] || nested_args+=(--docker-visible)
-    SANCTUARY_ISOLATED_CLEANUP_SUBJECT=1 exec "$script_dir/cleanup-ci-callsite.sh" auto-run \
+    [ "$nested_cleanup" = false ] || nested_args+=(--nested-cleanup)
+    local -a lifecycle_env=() workload_env=()
+    if [[ $nested_cleanup == true && ${SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS+x} ]]; then
+      node "$script_dir/subject-budget.mjs" lock-wait 1 >/dev/null
+      # The nested workload coordinator owns this deadline. Killing this outer
+      # lifecycle subject at the same instant could interrupt its signed cleanup.
+      # Preserve the exact deadline for the driver, but do not time its finalizer.
+      # The enclosing CI job/step remains the independent finalization hard cap.
+      lifecycle_env=(env -u SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS)
+      workload_env=(env "SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS=$SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS")
+    fi
+    SANCTUARY_ISOLATED_CLEANUP_SUBJECT=1 exec "${lifecycle_env[@]}" "$script_dir/cleanup-ci-callsite.sh" auto-run \
       --lane "$lane" --engine "$cleanup_engine" --checkout-root "$(cd "$script_dir/../.." && pwd -P)" -- \
-      "$0" "${nested_args[@]}" "$label" "$@"
+      "${workload_env[@]}" "$0" "${nested_args[@]}" "$label" "$@"
   fi
 
   local isolated_workspace

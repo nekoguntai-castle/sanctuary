@@ -989,7 +989,7 @@
       "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
-      "path": "scripts/ownership/ci-cleanup-coordinator.mjs",
+      "path": "scripts/ownership/ci-subject-supervisor.mjs",
       "resourceClass": "collector_process",
       "operation": "cleanup",
       "disposition": "exempt",
@@ -1906,6 +1906,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/nested-subject-deadline.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and signals only the exact subject PID it created for that test invocation."
+    },
+    {
       "path": "tests/ci/observe-runtime-image-cves.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
@@ -2110,6 +2117,13 @@
     },
     {
       "path": "tests/ci/setup-server-dependencies.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/subject-budget-boundaries.test.mjs",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
       "disposition": "exempt",

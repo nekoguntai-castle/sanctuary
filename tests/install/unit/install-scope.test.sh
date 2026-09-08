@@ -337,6 +337,12 @@ main() {
   assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/ci/subject-budget.mjs" "// Shared job deadline" "subject budget helper"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_smoke_scope "$output_file"
+
+  base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ci/run-extended-upgrade-fixtures.sh" "#!/usr/bin/env bash" "upgrade fixture helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"

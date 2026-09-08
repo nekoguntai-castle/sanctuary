@@ -519,7 +519,7 @@ while IFS= read -r file; do
       add_scope installer
       reason="Installer scope changed"
       ;;
-    scripts/ci/create-isolated-workspace.sh|scripts/ci/install-test-ports.sh|scripts/ci/run-in-isolated-workspace.sh|scripts/ci/wait-for-docker.sh|scripts/ci/with-runner-lock.sh)
+    scripts/ci/create-isolated-workspace.sh|scripts/ci/install-test-ports.sh|scripts/ci/run-in-isolated-workspace.sh|scripts/ci/wait-for-docker.sh|scripts/ci/with-runner-lock.sh|scripts/ci/subject-budget.mjs)
       enable_unit
       enable_standard_stack
       enable_install_script

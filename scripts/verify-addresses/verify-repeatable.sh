@@ -38,6 +38,7 @@ python_image_id=''
 python_iid_file=''
 python_image_loaded=0
 python_image_registered=0
+python_image_created_epoch=''
 
 published_host="$(sanctuary_current_docker_published_host)"
 rpc_url_mainnet=''
@@ -132,6 +133,29 @@ register_python_image() {
     register_owned_resource oci_image obsolete exact_delete name \
       "$python_image" "$python_image_id" "$SANCTUARY_OPERATION_RUN_ID"
   )
+}
+
+assert_python_image_creation_epoch() {
+  local actual_created actual_epoch
+  actual_created="$(docker image inspect --format '{{.Created}}' "$python_image_id")" || {
+    printf 'Python verifier image disappeared before creation-time verification: %s\n' \
+      "$python_image_id" >&2
+    return 1
+  }
+  actual_epoch="$("$verifier_node" -e '
+    const parsed = Date.parse(process.argv[1]);
+    if (!Number.isFinite(parsed)) process.exit(1);
+    process.stdout.write(String(Math.floor(parsed / 1000)));
+  ' "$actual_created")" || {
+    printf 'Python verifier image has an invalid creation timestamp: %s\n' \
+      "$actual_created" >&2
+    return 1
+  }
+  if [[ "$actual_epoch" != "$python_image_created_epoch" ]]; then
+    printf 'Python verifier image creation epoch mismatch: expected %s, observed %s\n' \
+      "$python_image_created_epoch" "$actual_epoch" >&2
+    return 1
+  fi
 }
 
 cleanup_python_image() {
@@ -274,11 +298,21 @@ build_python_verifier() {
     exit 1
   fi
   printf 'Using Docker Buildx: %s\n' "$buildx_version"
+  python_image_created_epoch="$(date +%s)"
+  if [[ ! "$python_image_created_epoch" =~ ^[0-9]+$ ]] \
+      || (( python_image_created_epoch < 1 )); then
+    printf 'Python verifier image creation epoch is invalid: %s\n' \
+      "$python_image_created_epoch" >&2
+    exit 1
+  fi
   python_iid_file="$(mktemp)"
   # The tag is unique to this invocation, so cleanup owns it even when Buildx
-  # loads the image but reports a late export/finalization failure.
+  # loads the image but reports a late export/finalization failure. Stamp the
+  # per-run config with the current epoch as well: BuildKit may otherwise reuse
+  # an old/zero config timestamp, allowing an age-based host reaper to select
+  # the image between load and the first container reference.
   python_image_loaded=1
-  docker buildx build --pull \
+  SOURCE_DATE_EPOCH="$python_image_created_epoch" docker buildx build --pull \
     --load \
     --file "$script_dir/python-verifier.Dockerfile" \
     --tag "$python_image" \
@@ -289,6 +323,7 @@ build_python_verifier() {
     printf 'Python verifier build returned invalid image ID: %s\n' "$python_image_id" >&2
     exit 1
   fi
+  assert_python_image_creation_epoch
   register_python_image
   python_image_registered=1
 }

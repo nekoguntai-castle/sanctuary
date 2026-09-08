@@ -18,6 +18,22 @@ function fixture() {
   };
 }
 
+test('cleanup request carries a canonical subject deadline only for run mode', () => {
+  const deadline = Date.now() + 60_000;
+  const request = JSON.parse(readFileSync(writeCiCleanupRequest({
+    ...fixture(), 'subject-deadline-epoch-ms': String(deadline),
+  }), 'utf8'));
+  assert.equal(request.subjectDeadlineEpochMs, deadline);
+  for (const value of ['', '0', '-1', '1.5', '01', 'NaN', '9007199254740992', String(Date.now() + 86_401_000)]) {
+    assert.throws(() => writeCiCleanupRequest({
+      ...fixture(), 'subject-deadline-epoch-ms': value,
+    }), /subject.?deadline/i);
+  }
+  assert.throws(() => writeCiCleanupRequest({
+    ...fixture(), mode: 'prepare', 'subject-deadline-epoch-ms': String(deadline),
+  }), /run mode/);
+});
+
 test('cleanup request carries a declared upgrade target only for subject-managed runs', () => {
   const commit = 'a'.repeat(40);
   const request = JSON.parse(readFileSync(

@@ -130,10 +130,24 @@ jobs:
       SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 3600 300
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -208,9 +222,11 @@ jobs:
 
       - name: Run pinned Jade vendor protocol harness
         timeout-minutes: 5
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-protocol-harness.log"
-          npm run test:jade-protocol-harness
+        run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 300 120)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-protocol-harness.log" npm run test:jade-protocol-harness
 
       - name: Verify Jade protocol cleanup receipt
         id: verify_jade_protocol_cleanup
@@ -298,15 +314,18 @@ jobs:
       - name: Run cross-implementation address verifier
         timeout-minutes: 15
         working-directory: scripts/verify-addresses
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier.log"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          ${{ github.workspace }}/scripts/ci/cleanup-ci-callsite.sh run
-          --lane address-verify
-          --runtime "${RUNNER_TEMP}/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/address-verify"
-          --artifact-dir "${RUNNER_TEMP}/sanctuary-cleanup-artifacts/address-verify"
-          --checkout-root "${GITHUB_WORKSPACE}"
-          --
+        run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 900 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier.log" \
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain \
+          ${{ github.workspace }}/scripts/ci/cleanup-ci-callsite.sh run \
+          --lane address-verify \
+          --runtime "${RUNNER_TEMP}/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/address-verify" \
+          --artifact-dir "${RUNNER_TEMP}/sanctuary-cleanup-artifacts/address-verify" \
+          --checkout-root "${GITHUB_WORKSPACE}" \
+          -- \
           npm run verify:repeatable
 
       - name: Verify address verifier cleanup receipt
@@ -431,6 +450,9 @@ jobs:
       - name: Run receipt-bound live Bitcoin Core PSBT proof
         timeout-minutes: 25
         run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 1500 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
           scripts/ci/cleanup-ci-callsite.sh run --lane verify-psbt-live \
             --checkout-root "$GITHUB_WORKSPACE" \
             --runtime "$RUNNER_TEMP/sanctuary-cleanup/verify-psbt-live-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
@@ -512,8 +534,22 @@ jobs:
       SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 2880 300
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -541,10 +577,13 @@ jobs:
         # taken up to 35 minutes on the rootless runner fleet, so retain enough
         # bounded fallback time for proof execution after a verified cold pull.
         timeout-minutes: 40
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/trezor-emulator-proof.log"
-          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh trezor-emulator
+        run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 2400 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/trezor-emulator-proof.log" \
+          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS" \
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh trezor-emulator \
           npm run test:trezor-emulator-proof
 
       - name: Verify Trezor emulator cleanup receipt
@@ -623,8 +662,22 @@ jobs:
       SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 1200 180
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -649,10 +702,13 @@ jobs:
 
       - name: Run pinned Ledger emulator proof
         timeout-minutes: 10
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ledger-emulator-proof.log"
-          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$LEDGER_EMULATOR_LOCK_TIMEOUT_SECONDS"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh ledger-emulator
+        run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 600 120)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ledger-emulator-proof.log" \
+          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$LEDGER_EMULATOR_LOCK_TIMEOUT_SECONDS" \
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh ledger-emulator \
           npm run test:ledger-emulator-proof
 
       - name: Verify Ledger emulator cleanup receipt
@@ -731,8 +787,22 @@ jobs:
       SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 4200 300
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -757,10 +827,13 @@ jobs:
 
       - name: Run pinned Jade QEMU proof
         timeout-minutes: 55
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-emulator-proof.log"
-          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$JADE_EMULATOR_LOCK_TIMEOUT_SECONDS"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh jade-emulator
+        run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 3300 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-emulator-proof.log" \
+          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$JADE_EMULATOR_LOCK_TIMEOUT_SECONDS" \
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh jade-emulator \
           npm run test:jade-emulator-proof
 
       - name: Verify Jade QEMU cleanup receipt
@@ -926,8 +999,22 @@ jobs:
       VERIFY_PSBT_CORE_PROVENANCE_MODE: pinned-container
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 3600 300
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -958,6 +1045,9 @@ jobs:
       - name: Run receipt-bound regenerated Bitcoin Core PSBT proof
         timeout-minutes: 25
         run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 1500 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
           scripts/ci/cleanup-ci-callsite.sh run --lane regenerate-psbt \
             --checkout-root "$GITHUB_WORKSPACE" \
             --runtime "$RUNNER_TEMP/sanctuary-cleanup/regenerate-psbt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \

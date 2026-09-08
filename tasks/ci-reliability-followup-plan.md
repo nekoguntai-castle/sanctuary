@@ -22,7 +22,7 @@ Do not count unavailable external evidence as a completed acceptance gate.
 - [x] Consolidate prefix scans and match prefixes literally without duplicate rows.
 - [x] Cover failures and absence separately using fake Docker only (13 cases).
 - [x] Verify repository-required local gates.
-- [ ] Deliver the existing branch and verify target-branch CI.
+- [x] Deliver the existing branch and verify target-branch CI.
 
 Acceptance: diagnostics remain best-effort and read-only; bounded command failures
 cannot be presented as successful empty inventories. Existing daemon identity and
@@ -30,24 +30,45 @@ redaction remain available. Timings are not proof of health or cleanup.
 
 ## Phase 2 — Subject deadlines and finalization reserve
 
-- [ ] Add validated coordinator-owned subject deadlines using existing process
+- [x] Add validated coordinator-owned subject deadlines using existing process
       group termination/quiescence machinery, not timeout around the coordinator.
-- [ ] Carry one job deadline across sequential install subjects; bound remaining
+- [x] Carry one job deadline across sequential install subjects; bound remaining
       lock and subject time while reserving cleanup, verification and upload.
-      Initialize at the first checkout-dependent setup step of the combined
-      fresh/install-script job; include subsequent setup and both waits. Record
-      checkout time outside this boundary. Refuse to start an unaffordable subject.
-- [ ] Reject impossible budgets before expensive startup; correct stale comments.
-- [ ] Test stuck subject, deadline exhaustion, descendant non-quiescence, signed
+      Capture the budget origin in the first job step, before checkout; initialize
+      validated deadline accounting after checkout. Runner startup before the
+      first step is outside this boundary. Refuse unaffordable subjects.
+- [x] Apply the common budget to replay live/max and image build, remaining short
+      install lanes, baseline/extended loops, and emulator proof steps. Shorter
+      step limits narrow the inherited deadline and never reset a job budget.
+- [x] Reject impossible budgets before expensive startup; correct stale comments.
+- [x] Test stuck subject, deadline exhaustion, descendant non-quiescence, signed
       cleanup evidence, invalid/overflow budgets and fake-clock exhaustion.
       A timed-out subject may yield a valid cleaned receipt after proven cleanup;
       the subject/job must still fail. Unknown cleanup or unquiesced descendants
       must never produce a cleaned receipt.
+- [x] Prove nested isolation supervision does not terminate the inner cleanup
+      coordinator at the workload deadline. Keep the isolation owner alive for
+      inner signed cleanup and outer workspace retirement, while preserving the
+      existing provider job/step finalization cap. Cover a TERM-resistant inner
+      workload and delayed cleanup before accepting this integration.
+- [x] Keep each run-built verifier image outside the host reaper's age candidate
+      window from Buildx load through its first container reference. Stamp the
+      per-run OCI config with a validated current epoch, preserve immutable IID
+      execution and exact registered cleanup, and cover the build contract with
+      fake Docker before another vector run.
 - [ ] Deliver and verify.
 
 Acceptance: subject timeout returns failure but leaves a bounded finalization
 opportunity. Unquiesced processes never authorize unsafe cleanup. Budget arithmetic
 accounts for both install subjects and lock waits, not each in isolation.
+
+Initial reserve policy (existing outer timeouts unchanged): jobs at least 90
+minutes reserve 10 minutes; jobs up to 25 minutes reserve 3 minutes; other jobs
+reserve 5 minutes. Short subject steps reserve 5 minutes, or 2 minutes for steps
+up to 10 minutes. These are finalization opportunities, not measured guarantees
+that every cleanup/upload fits. The earliest inherited deadline always wins.
+Runner startup before the first executable step is not included. Follow-up fleet
+measurements in Phase 4 must not imply those unobserved costs were measured.
 
 ## Phase 3 — Durable progress, status and retry discipline
 
@@ -108,7 +129,8 @@ aggregate required checks. Stabilize event schema before Phase 4 sampling.
 
 | target_branch | task_branch | worktree_path | created_by_loop | converted_to_next_phase | cleanup_status |
 | --- | --- | --- | --- | --- | --- |
-| main | fix/preflight-command-outcomes | /home/nekoguntai/sanctuary | adopted from this session | no | pending merge/CI |
+| main | fix/preflight-command-outcomes | /home/nekoguntai/sanctuary | adopted from this session | no | merged/main CI green; retained pending deletion permission and additional replay |
+| main | codex/implement-merge/ci-subject-deadlines | /home/nekoguntai/sanctuary | yes | no | implementing locally |
 
 The detached `/home/nekoguntai/sanctuary-main` worktree is unowned and preserved.
 Live historical CI stacks/builders are not loop-owned and are not cleanup targets.
@@ -145,3 +167,38 @@ Integration coordinator reported subject/cleanup status 0 and cleaned receipt at
 TypeScript checks passed. Preflight 13/13, log wrapper 16/16, classifier, syntax
 and staged diff whitespace checks passed. Skipped integration cases remain
 skipped by their existing gates, not claimed as executed proof.
+
+Phase 2 integration review found a P1 nested-supervisor ordering gap before PR:
+sharing the workload deadline with the outer isolation coordinator can terminate
+the inner cleanup owner during finalization. Delivery remains gated on a nested
+regression and corrected lifecycle-only outer supervision. Single-coordinator
+19-test suite and 17 arithmetic/supervisor/writer tests pass; these do not prove
+nested cleanup ordering. Full frontend gate is running; no Phase 2 PR is open.
+
+Subsequent local gates: frontend 8,410/8,411 passed, with the sole failure being
+the expected source-bound address receipt drift after workflow edits. Canonical
+`generate:repeatable` regenerated both identical address fixture files through the
+pinned four-implementation verifier; coordinator subject/cleanup statuses were 0,
+state cleaned, evidence at
+`/var/tmp/sanctuary-phase2.QGmAKW/sanctuary-cleanup-local.JNfLKV/artifacts`.
+The full 12-case provenance file then passed. Backend unit 15,767/15,767,
+frontend/backend TypeScript, server lint, 33 arithmetic/workflow tests and 18
+lock/facade boundary tests passed. These results precede the final nested and
+unknown-supervision safety fixes; owning suites must be rerun after integration.
+
+Final Phase 2 ownership gate: 504 passed, three existing gated skips, both shell
+ownership bridges passed. Updated the lifecycle inventory for the extracted
+canonical supervisor and the exact test-owned cleanup fixtures; the scanner and
+contract gate pass (400 lifecycle identities). Nested regression passes all five
+cases, including ordinary isolation retaining its deadline and explicit nested
+drivers preserving inner signed cleanup before outer retirement. Guarded
+integration again passed 759 tests (28 existing skips/one todo), subject/cleanup
+status 0 and cleaned receipt at
+`/var/tmp/sanctuary-phase2.QGmAKW/sanctuary-cleanup-local.E1v4nG/artifacts`.
+Independent bounded final review found no additional P0–P2 blockers. Final full
+frontend rerun passed all 8,411 tests in 626 files. Local gates are green;
+protected PR delivery is not yet complete.
+
+Pre-commit review requested an additional unbudgeted nested-isolation compatibility
+case. It now proves the deadline remains absent and ordinary signed workspace
+cleanup succeeds; no production behavior changed for this follow-up.

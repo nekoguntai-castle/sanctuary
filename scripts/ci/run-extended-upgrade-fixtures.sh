@@ -70,7 +70,7 @@ run_fixture() {
       SANCTUARY_CI_EXTENDED_UPGRADE_RUN_ID="$run_id" \
       SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF="${SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF:?}" \
       SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL="${SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL:?}" \
-      scripts/ci/run-in-isolated-workspace.sh --docker-visible "upgrade-extended-${fixture}" bash -c '
+      scripts/ci/run-in-isolated-workspace.sh --docker-visible --nested-cleanup "upgrade-extended-${fixture}" bash -c '
       set -euo pipefail
 
       source_ref="$SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF"

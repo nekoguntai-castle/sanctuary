@@ -17,6 +17,59 @@ const REAL_GIT = spawnSync(
   'sh', ['-c', 'command -v git'], { encoding: 'utf8' },
 ).stdout.trim();
 
+for (const expired of [true, false]) {
+  test(`subject deadline ${expired ? 'already expired' : 'expires while running'} emits signed cleanup evidence`, () => {
+    const runnerTemp = mkdtempSync(path.join(os.tmpdir(), 'ci-cleanup-deadline-'));
+    chmodSync(runnerTemp, 0o700);
+    const runtimeDirectory = path.join(runnerTemp, 'runtime');
+    const artifactDirectory = path.join(runnerTemp, 'artifacts');
+    const bin = path.join(runnerTemp, 'bin');
+    mkdirSync(artifactDirectory, { mode: 0o700 });
+    mkdirSync(bin, { mode: 0o700 });
+    fakeDocker(bin);
+    const requestPath = path.join(runnerTemp, 'request.json');
+    const marker = path.join(runnerTemp, 'launched');
+    writeFileSync(requestPath, canonicalJson({
+      checkoutRoot: CHECKOUT, runtimeDirectory, artifactDirectory, lane: 'deadline',
+      subjectDeadlineEpochMs: expired ? 1 : Date.now() + 10_000,
+    }), { mode: 0o600 });
+    const result = spawnSync(process.execPath, [CLI, 'run', requestPath, '--',
+      process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'yes'); process.on('SIGTERM', () => process.exit(0)); setTimeout(() => process.exit(99), 20000); setInterval(() => {}, 1000)`], {
+      cwd: CHECKOUT, encoding: 'utf8', env: ciEnvironment(runnerTemp, bin, '95021'), timeout: 30_000,
+    });
+    assert.equal(result.status, 124, result.stderr);
+    assert.equal(existsSync(marker), !expired);
+    assert.equal(existsSync(path.join(runtimeDirectory, 'coordinator', 'cancellation-signal')), false);
+    assert.equal(existsSync(path.join(artifactDirectory, 'final-upload.json')), true);
+    assert.equal(existsSync(path.join(artifactDirectory, 'final-upload.json.sig')), true);
+    const outcome = JSON.parse(result.stdout);
+    assert.equal(outcome.subjectExitStatus, 124);
+    assert.equal(outcome.cleanupExitStatus, 0);
+    const verified = spawnSync(process.execPath, [
+      VERIFY_UPLOAD, '--artifact-root', artifactDirectory,
+      '--runtime-root', runtimeDirectory, '--checkout-root', CHECKOUT,
+    ], { cwd: CHECKOUT, encoding: 'utf8', env: ciEnvironment(runnerTemp, bin, '95021') });
+    assert.equal(verified.status, 0, verified.stderr);
+  });
+}
+
+test('invalid supervision is rejected before lifecycle preparation', () => {
+  for (const fields of [{ subjectDeadlineEpochMs: null }, { subjectGraceMs: 0 }]) {
+    const runnerTemp = mkdtempSync(path.join(os.tmpdir(), 'ci-cleanup-invalid-deadline-'));
+    const runtimeDirectory = path.join(runnerTemp, 'runtime');
+    const requestPath = path.join(runnerTemp, 'request.json');
+    writeFileSync(requestPath, canonicalJson({
+      checkoutRoot: CHECKOUT, runtimeDirectory,
+      artifactDirectory: path.join(runnerTemp, 'artifacts'), lane: 'invalid-deadline', ...fields,
+    }));
+    const result = spawnSync(process.execPath, [CLI, 'run', requestPath, '--', 'true'], {
+      cwd: CHECKOUT, encoding: 'utf8',
+    });
+    assert.equal(result.status, 2);
+    assert.equal(existsSync(runtimeDirectory), false);
+  }
+});
+
 function fakeDocker(directory) {
   const engine = path.join(directory, 'docker');
 writeFileSync(engine, `#!/usr/bin/env bash

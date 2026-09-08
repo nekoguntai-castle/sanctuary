@@ -308,11 +308,25 @@ jobs:
       SANCTUARY_OWNERSHIP_ROOT: ${{ github.workspace }}/../sanctuary-ownership/${{ github.run_id }}-${{ github.run_attempt }}-images
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout exact candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ needs.validation-info.outputs.candidate_sha }}
           fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 5400 600
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -417,11 +431,25 @@ jobs:
       SANCTUARY_OWNERSHIP_ROOT: ${{ github.workspace }}/../sanctuary-ownership/${{ github.run_id }}-${{ github.run_attempt }}-live
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout exact candidate controller
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ needs.validation-info.outputs.candidate_sha }}
           fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 7200 600
 
       - name: Check replay host capacity
         run: |
@@ -513,11 +541,25 @@ jobs:
       SANCTUARY_OWNERSHIP_ROOT: ${{ github.workspace }}/../sanctuary-ownership/${{ github.run_id }}-${{ github.run_attempt }}-max
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout exact candidate controller
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ needs.validation-info.outputs.candidate_sha }}
           fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 6000 600
 
       - name: Check replay host capacity
         run: |
@@ -611,6 +653,16 @@ jobs:
       SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count checkout/setup time; reserve cleanup, receipt verification and upload.
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -621,6 +673,10 @@ jobs:
       # Compose Bake and the dedicated Docker Build workflow owns Buildx
       # coverage. Removing the action shrinks the action-internal blind
       # spot that diagnostic artifacts cannot reach.
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 3600 300
 
       - name: Pre-flight diagnostics
         if: always()

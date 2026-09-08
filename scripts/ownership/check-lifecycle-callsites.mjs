@@ -24,7 +24,7 @@ const EXCLUDED_HOST_PATHS = new Set([
 ]);
 const HOST_SOURCE_PREFIXES = ['.github/', 'scripts/', 'tests/'];
 const CANONICAL_HOST_INTERNAL_PATHS = new Set([
-  'scripts/ownership/ci-cleanup-coordinator.mjs',
+  'scripts/ownership/ci-subject-supervisor.mjs',
   'scripts/ownership/cleanup-process-group-launcher.mjs',
   'scripts/ownership/cleanup-supervisor.mjs',
   'scripts/ownership/registration.mjs',
