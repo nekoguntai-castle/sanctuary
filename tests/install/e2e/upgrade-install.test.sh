@@ -609,6 +609,25 @@ register_owned_lane_images() {
     UPGRADE_LANE_IMAGES_REGISTERED=true
 }
 
+# The Release-Critical Force Rebuild Gate is the one lane phase that rebuilds
+# on purpose, so it cannot take #1033's `--no-build` fix. On a native Buildah
+# builder (kumo exports DOCKER_BUILDKIT=0) even a fully cached rebuild commits
+# a new image ID, where BuildKit returns the registered one. The registration
+# then names images that no longer exist: receipt-bound cleanup refuses the
+# tags as unregistered, the superseded IDs dangle, and the job fails exit 5
+# after the subject itself passed (#1032, run 15213 on v0.8.71-rc1).
+#
+# assert_registered_lane_images_unchanged already detects that drift, but only
+# reports it. Re-register so the coordinator's records name the images that
+# actually exist now; register_ci_compose_images also adopts the superseded IDs
+# it finds dangling, so nothing is left unowned.
+refresh_registered_lane_images() {
+    [ "$UPGRADE_LANE_IMAGES_REGISTERED" = "true" ] || return 0
+    # register_owned_lane_images is one-shot; clear the guard so it re-runs.
+    UPGRADE_LANE_IMAGES_REGISTERED=false
+    register_owned_lane_images
+}
+
 # Docker releases a stopped container's network endpoint; rootless Podman keeps
 # it. The candidate's Compose recreates a network whose per-release ownership
 # labels changed, which Podman then refuses ("has associated containers") while
@@ -2419,6 +2438,11 @@ test_force_rebuild_upgrade() {
         log_error "Login failed after force rebuild"
         return 1
     fi
+
+    # The rebuild above minted fresh image IDs on a native builder; re-register
+    # before teardown so receipt-bound cleanup does not refuse them (#1032).
+    refresh_registered_lane_images \
+        || log_warning "Re-registration after the force rebuild did not complete; cleanup will report the drift"
 
     log_success "Force rebuild upgrade successful"
     return 0

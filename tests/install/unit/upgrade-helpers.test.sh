@@ -916,6 +916,60 @@ test_install_lanes_compose_up_never_rebuild_images() {
   return 0
 }
 
+test_force_rebuild_gate_reregisters_lane_images() {
+  # test_install_lanes_compose_up_never_rebuild_images pins --no-build on every
+  # compose `up`, which is why ordinary lanes no longer strand images (#1033).
+  # The Release-Critical Force Rebuild Gate is the one phase that cannot take
+  # that fix: forcing a rebuild via `start.sh --rebuild` is its entire purpose.
+  # On a native Buildah builder (kumo exports DOCKER_BUILDKIT=0) that rebuild
+  # commits a NEW image ID even from cache, where BuildKit hands back the
+  # registered one. The lane's registration then names images that no longer
+  # exist, so receipt-bound cleanup refuses the tags as unregistered while the
+  # superseded IDs dangle, and the job fails with exit 5 after the subject
+  # itself passed (#1032, run 15213 on v0.8.71-rc1).
+  #
+  # Detecting the drift is not enough -- assert_registered_lane_images_unchanged
+  # already did that and only logged it. The rebuild must re-register.
+  local lane contents rebuild_body
+  lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+  contents="$(cat "$lane")"
+
+  assert_contains "$contents" 'refresh_registered_lane_images()' \
+    "the lane must define a re-registration helper for deliberate rebuilds" || return 1
+
+  # The helper is only meaningful if the force-rebuild phase actually calls it.
+  rebuild_body="$(awk '/^test_force_rebuild_upgrade\(\) \{/,/^\}/' "$lane")"
+  if [ -z "$rebuild_body" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} could not locate test_force_rebuild_upgrade"
+    return 1
+  fi
+  assert_contains "$rebuild_body" 'refresh_registered_lane_images' \
+    "the force rebuild phase must re-register the images it rebuilt" || return 1
+
+  # Re-registration has to happen after the rebuild, not before it.
+  local rebuild_line refresh_line
+  rebuild_line="$(printf '%s\n' "$rebuild_body" | grep -n 'start.sh" --rebuild' | head -1 | cut -d: -f1)"
+  refresh_line="$(printf '%s\n' "$rebuild_body" | grep -n 'refresh_registered_lane_images' | head -1 | cut -d: -f1)"
+  if [ -z "$rebuild_line" ] || [ -z "$refresh_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} could not locate the rebuild and re-registration calls"
+    return 1
+  fi
+  if [ "$refresh_line" -le "$rebuild_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} re-registration (line $refresh_line) must follow the rebuild (line $rebuild_line)"
+    return 1
+  fi
+
+  # The helper must clear the one-shot guard, or register_owned_lane_images
+  # returns early and the stale IDs survive.
+  local helper_body
+  helper_body="$(awk '/^refresh_registered_lane_images\(\) \{/,/^\}/' "$lane")"
+  assert_contains "$helper_body" 'UPGRADE_LANE_IMAGES_REGISTERED=false' \
+    "re-registration must clear the one-shot registration guard" || return 1
+  assert_contains "$helper_body" 'register_owned_lane_images' \
+    "re-registration must re-run lane image registration" || return 1
+  return 0
+}
+
 test_upgrade_coordinated_mode_defers_legacy_cleanup() {
   local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
   local contents
@@ -2646,6 +2700,7 @@ main() {
   run_test "unreadable image version is not a failure" test_assert_installed_image_matches_checkout_skips_when_unreadable
   run_test "cleanup restore preserves executable mode" test_cleanup_restore_preserves_tracked_executable_mode
   run_test "install lanes compose up never rebuild images" test_install_lanes_compose_up_never_rebuild_images
+  run_test "force rebuild gate re-registers lane images" test_force_rebuild_gate_reregisters_lane_images
 
   echo ""
   echo "Total:  $TESTS_RUN"
