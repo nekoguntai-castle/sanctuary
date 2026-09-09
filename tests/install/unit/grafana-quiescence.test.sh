@@ -856,6 +856,22 @@ test_foreign_malformed_and_unstable_volumes_fail_closed() {
             return 1
         }
         grep -Fq 'volume identity is unavailable, unexpected, or unstable' <<< "$output"
+        # The bare refusal is not diagnosable after the fact: the volume is
+        # removed with the lane, so CI artifacts never show why the identity was
+        # rejected. v0.8.71-rc3 lost the optional-profiles fixture to exactly
+        # this. Require the labels and the legacy verdict alongside the refusal.
+        grep -Fq 'exists with an identity the ownership schema rejects' <<< "$output" || {
+            echo "$mode refused without reporting the rejected identity" >&2
+            return 1
+        }
+        grep -Fq 'legacy verdict:' <<< "$output" || {
+            echo "$mode refused without reporting the legacy verdict" >&2
+            return 1
+        }
+        grep -Eq 'volume labels:|exposed no readable labels' <<< "$output" || {
+            echo "$mode refused without reporting the volume labels" >&2
+            return 1
+        }
         ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
         ! grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"
     done

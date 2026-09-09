@@ -155,6 +155,32 @@ register_compose_volume() {
         || fail "Grafana volume registration failed."
 }
 
+# The refusal below reports only that the identity was rejected, which cannot
+# distinguish a mislabelled volume from a missing label set or an unstable
+# inspect -- and the volume is gone by the time CI artifacts are read. Print the
+# labels and the legacy verdict so the next occurrence is diagnosable from the
+# job log alone. Every step is guarded: this runs under set -e immediately
+# before fail(), so it must never itself decide the exit status.
+report_unexpected_volume_identity() {
+    local volume="$1" logical_name="$2" raw="" labels="" legacy=""
+    raw="$(docker volume inspect "$volume" 2>/dev/null || true)"
+    labels="$(printf '%s' "$raw" \
+        | jq -r 'try (.[0].Labels // {}) | to_entries[]? | "\(.key)=\(.value)"' 2>/dev/null \
+        | LC_ALL=C sort | head -c 2048 || true)"
+    legacy="$(deployment_verify_legacy_compose_volume "$logical_name" "$volume" 2>/dev/null || true)"
+    {
+        echo "Grafana $logical_name volume $volume exists with an identity the ownership schema rejects."
+        echo "Grafana $logical_name legacy verdict: ${legacy:-<unavailable>}"
+        if [ -n "$labels" ]; then
+            echo "Grafana $logical_name volume labels:"
+            printf '%s\n' "$labels"
+        else
+            echo "Grafana $logical_name volume exposed no readable labels."
+        fi
+    } >&2
+    return 0
+}
+
 ensure_compose_volume() {
     local volume="$1" logical_name="$2" identity legacy_state create_status=0
     ownership_initialize
@@ -179,6 +205,7 @@ ensure_compose_volume() {
     esac
 
     if docker volume inspect "$volume" >/dev/null 2>&1; then
+        report_unexpected_volume_identity "$volume" "$logical_name"
         fail "Grafana $logical_name volume identity is unavailable, unexpected, or unstable."
     fi
 
@@ -190,8 +217,10 @@ ensure_compose_volume() {
         --label "com.docker.compose.volume=$logical_name" \
         "$volume" >/dev/null || create_status=$?
 
-    identity="$(stable_compose_volume_identity "$volume" "$logical_name" 2>/dev/null)" \
-        || fail "Grafana $logical_name volume identity is unavailable, unexpected, or unstable."
+    identity="$(stable_compose_volume_identity "$volume" "$logical_name" 2>/dev/null)" || {
+        report_unexpected_volume_identity "$volume" "$logical_name"
+        fail "Grafana $logical_name volume identity is unavailable, unexpected, or unstable."
+    }
     register_compose_volume "$volume" "$identity"
     if [ "$create_status" -ne 0 ]; then
         echo "Recovered Grafana $logical_name volume after a lost create response." >&2
