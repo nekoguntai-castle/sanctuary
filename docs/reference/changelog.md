@@ -13,6 +13,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.8.71] - 2026-09-08
+
+### Added
+
+- Added an opt-in `io.runner-infra.owner-container` label to every Compose
+  resource group so the runner-infra host reaper can reclaim a CI stack within
+  minutes of its job container disappearing. The value is empty outside CI, so
+  operator installs are never labelled and need no new environment variable.
+- Added durable CI progress reporting and exact-commit status emission, shared
+  subject deadlines that reserve finalization time, and a nightly (03:07 UTC)
+  release-candidate validation of `main`'s head.
+- Added `tests/ci/npmOverridesApplied.test.ts`, which reads resolved versions
+  from every lockfile rather than the manifests, so a dead or drifting npm
+  override pin fails closed instead of silently enforcing nothing.
+- Documented the runner fleet and its per-host builder divergence in
+  `docs/reference/ci-cd-strategy.md`.
+
+### Changed
+
+- The monitoring-disabled banner now points operators at `./start.sh
+  --with-monitoring` instead of a raw multi-file Compose invocation.
+- Release-surface pull requests now run the install stack smoke and upgrade
+  baseline core lanes, and `USE_FRESH_INSTALL_STACK_COVERAGE` requires fresh
+  install to have actually run so the smoke lane cannot report a false green.
+- Subject-managed cleanup lanes install fresh so they build against the layer
+  cache, and an ownership-aware source release now upgrades in place under
+  coordinated cleanup.
+- The Claude Code hook scripts are untracked as per-machine tooling; they were
+  wired only from an already-ignored settings file and ship in no artifact.
+
+### Security
+
+- Fixed a remote denial of service in Nodemailer's `addressparser`, where a
+  crafted address list triggers quadratic (O(n^2)) parsing
+  (GHSA-2x7j-588g-ccc2, high). The server dependency moves to 9.1.1.
+- Pinned the docs site's `js-yaml` to 3.15.2, where `maxTotalMergeKeys` failed
+  to bound CPU use for empty merge sources (GHSA-2883-xcg3-v3hh, high), and
+  added an exact `svgo` 3.3.5 pin for a `removeScripts` bypass that let
+  executable links through via namespace and control-character tricks
+  (GHSA-w27v-7q3p-w38r, high). Both are build-time-only documentation
+  dependencies, and both were fixed rather than waived.
+
+### Fixed
+
+- Fixed `deepmerge-ts` stack exhaustion (GHSA-ggr8-5vv4-36mx, CWE-674) by
+  pinning 8.0.2 through root overrides and dropping the upstream-blocked
+  waiver, and forced `toml@4.2.0` the same way, retiring both of its waivers.
+  Inert `overrides` blocks in the `server/` and `gateway/` manifests, which
+  npm never honoured, are removed.
+- Fixed the Trezor emulator proof exporting an empty bridge host: the CI image
+  ships jq 1.6, where `jq -e` exits 0 on an empty file, so the readiness probe
+  passed against an unwritten document. The resolver now fails closed on a
+  missing or implausible host or port, and the forwarder is always torn down,
+  including from the `EXIT` trap.
+- Fixed the install-test lane rebuilding the backend image when it only needed
+  to recreate the container, and preserved bounded preflight observation
+  outcomes rather than discarding them.
+- Fixed release promotion rejecting lightweight RC tags, and dated the v0.8.70
+  changelog entry from its tag.
+
 ## [0.8.70] - 2026-09-05
 
 ### Added
@@ -590,7 +650,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.70...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...HEAD
+[0.8.71]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.70...v0.8.71
 [0.8.70]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.69...v0.8.70
 [0.8.69]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.68...v0.8.69
 [0.8.68]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.67...v0.8.68
