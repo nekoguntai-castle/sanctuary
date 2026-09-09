@@ -609,6 +609,40 @@ register_owned_lane_images() {
     UPGRADE_LANE_IMAGES_REGISTERED=true
 }
 
+# A source install runs the SOURCE release's own scripts, so instrumentation
+# added to the candidate's scripts/ops never executes for it -- v0.8.71-rc4
+# proved that when #1052's Grafana reporter stayed silent through the exact
+# refusal it was written for. The harness always runs from the candidate tree,
+# so this is the one place that can observe a failed source install.
+#
+# Guarded throughout and always returns 0: it runs on an error path whose exit
+# status belongs to the install, not to the reporting.
+report_project_volume_identities() {
+    local project="${COMPOSE_PROJECT_NAME:-}" names="" name=""
+    [ -n "$project" ] || return 0
+    names="$(docker volume ls --quiet \
+        --filter "label=com.docker.compose.project=$project" 2>/dev/null || true)"
+    if [ -z "$names" ]; then
+        # A volume with no usable labels is exactly the shape that refuses, and
+        # it cannot be found by label. Fall back to the name prefix rather than
+        # concluding the project has no volumes.
+        names="$(docker volume ls --quiet 2>/dev/null | grep -F "$project" || true)"
+    fi
+    if [ -z "$names" ]; then
+        log_info "No Compose volumes are present for project $project"
+        return 0
+    fi
+    log_info "Compose volume identities for project $project:"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        printf '  volume %s\n' "$name" >&2
+        docker volume inspect "$name" 2>/dev/null \
+            | jq -r 'try (.[0].Labels // {}) | to_entries[]? | "    \(.key)=\(.value)"' 2>/dev/null \
+            | LC_ALL=C sort | head -c 2048 >&2 || true
+    done <<< "$names"
+    return 0
+}
+
 # The Release-Critical Force Rebuild Gate is the one lane phase that rebuilds
 # on purpose, so it cannot take #1033's `--no-build` fix. On a native Buildah
 # builder (kumo exports DOCKER_BUILDKIT=0) even a fully cached rebuild commits
@@ -1146,6 +1180,9 @@ test_ensure_existing_installation() {
 
     UPGRADE_SOURCE_INSTALL_ATTEMPTED=true
     if ! run_install_script "$PROJECT_ROOT"; then
+        # The source release's own scripts have already failed and cannot report
+        # what they saw; capture the Docker-side state before teardown removes it.
+        report_project_volume_identities
         return 1
     fi
     assert_source_install_was_fresh "$(install_log_path "$PROJECT_ROOT")" || return 1

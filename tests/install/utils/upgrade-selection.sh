@@ -63,11 +63,39 @@ upgrade_extended_fixture_source_ref() {
     local requested="$1"
     local default_ref="$2"
 
-    if [ "$requested" = "wallet-sync-retirement" ]; then
-        printf '%s\n' 'v0.8.66'
-    else
-        printf '%s\n' "$default_ref"
-    fi
+    case "$requested" in
+        wallet-sync-retirement)
+            printf '%s\n' 'v0.8.66'
+            ;;
+        optional-profiles)
+            # Pinned pre-ownership, deliberately. Ownership shipped IN v0.8.70,
+            # so once v0.8.70 became latest-stable this fixture began installing
+            # its source from an ownership-aware tree, and every run died in
+            # ~80s inside the source install:
+            #
+            #   Grafana credential migration refused: Grafana grafana_data
+            #   volume identity is unavailable, unexpected, or unstable.
+            #
+            # (v0.8.71-rc3 run 15245, rc4 run 15289 -- the only extended fixture
+            # failing in either.) The refusal needs the volume to exist while
+            # carrying no schema-valid ownership identity and no manifest legacy
+            # record; what creates it in that state is not yet established, and
+            # instrumentation added to the candidate's scripts/ops cannot see it
+            # because the source install runs the source release's own copy.
+            #
+            # v0.8.69 is the last pre-ownership stable, so this restores the
+            # coverage the fixture actually exists for -- Tor, monitoring and MCP
+            # surviving an upgrade -- on the witnessed legacy path that works,
+            # instead of the zero coverage a hard failure gives. Monitoring over
+            # an ownership-aware source stays uncovered; upgrade-install.test.sh
+            # now dumps the project volume identities when a source install
+            # fails, so the next attempt at it starts with evidence.
+            printf '%s\n' 'v0.8.69'
+            ;;
+        *)
+            printf '%s\n' "$default_ref"
+            ;;
+    esac
 }
 
 upgrade_validate_source_selector() {

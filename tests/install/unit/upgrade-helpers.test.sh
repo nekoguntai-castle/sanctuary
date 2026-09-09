@@ -542,8 +542,19 @@ test_active_extended_fixture_selection_contract() {
     "retirement fixture should retain its dedicated port offset" || failures=1
   assert_equals "v0.8.66" "$(upgrade_extended_fixture_source_ref wallet-sync-retirement latest-stable)" \
     "retirement fixture should remain pinned to the exact legacy source" || failures=1
-  assert_equals "release/v0.8.39" "$(upgrade_extended_fixture_source_ref optional-profiles release/v0.8.39)" \
+  assert_equals "release/v0.8.39" "$(upgrade_extended_fixture_source_ref browser-origin-ip release/v0.8.39)" \
     "other fixtures should retain the selected shared source" || failures=1
+  # optional-profiles is pinned pre-ownership on purpose. Ownership shipped IN
+  # v0.8.70, so tracking latest-stable pointed its source install at an
+  # ownership-aware tree and the Grafana volume-identity refusal killed it in
+  # ~80s on every RC (v0.8.71-rc3 run 15245, rc4 run 15289). v0.8.69 is the last
+  # pre-ownership stable, so the fixture keeps exercising Tor/monitoring/MCP
+  # upgrade on the witnessed legacy path instead of failing outright. It must
+  # not silently drift back onto the shared selector.
+  assert_equals "v0.8.69" "$(upgrade_extended_fixture_source_ref optional-profiles latest-stable)" \
+    "optional-profiles should stay pinned to the last pre-ownership stable" || failures=1
+  assert_equals "v0.8.69" "$(upgrade_extended_fixture_source_ref optional-profiles release/v0.8.39)" \
+    "optional-profiles pin should override an explicitly selected source" || failures=1
 
   return "$failures"
 }
@@ -664,7 +675,7 @@ test_upgrade_selection_manifest_records_resolved_refs() {
     "$repo" \
     "$artifact_dir" \
     "latest-stable,n-2" \
-    "optional-profiles" \
+    "browser-origin-ip,optional-profiles" \
     "v0.8.39" \
     "12345"
 
@@ -678,7 +689,12 @@ test_upgrade_selection_manifest_records_resolved_refs() {
     "manifest should resolve n-2" || failures=1
   assert_contains "$contents" 'selector: `v0.8.39`; label: `v0-8-39-' \
     "manifest should record the selected extended source ref label" || failures=1
-  assert_contains "$contents" "- optional-profiles: port offset 30; source ref v0.8.39" \
+  # optional-profiles is pinned pre-ownership, so the manifest must record the
+  # pin rather than the selected shared source -- otherwise the manifest would
+  # claim coverage the lane does not run.
+  assert_contains "$contents" "- optional-profiles: port offset 30; source ref v0.8.69" \
+    "manifest should record the pinned optional-profiles source" || failures=1
+  assert_contains "$contents" "- browser-origin-ip: port offset 21; source ref v0.8.39" \
     "manifest should include active fixture registry metadata" || failures=1
   assert_contains "$contents" "- wallet-sync-retirement: port offset 33; source ref v0.8.66" \
     "manifest should record the pinned retirement source" || failures=1
@@ -967,6 +983,40 @@ test_force_rebuild_gate_reregisters_lane_images() {
     "re-registration must clear the one-shot registration guard" || return 1
   assert_contains "$helper_body" 'register_owned_lane_images' \
     "re-registration must re-run lane image registration" || return 1
+  return 0
+}
+
+test_source_install_failure_reports_project_volume_identities() {
+  # A source install runs the SOURCE release's scripts, so a reporter added to
+  # the candidate's scripts/ops never runs for it -- v0.8.71-rc4 proved that
+  # when #1052's Grafana reporter stayed silent through the exact refusal it
+  # was written for. The harness is the only side guaranteed to be the
+  # candidate tree, so the volume dump has to live here and has to be wired to
+  # the source-install failure path.
+  local lane contents body
+  lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+  contents="$(cat "$lane")"
+
+  assert_contains "$contents" 'report_project_volume_identities()' \
+    "the lane must define a project volume identity reporter" || return 1
+
+  body="$(awk '/^    UPGRADE_SOURCE_INSTALL_ATTEMPTED=true/,/^    fi/' "$lane")"
+  if [ -z "$body" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} could not locate the source install invocation"
+    return 1
+  fi
+  assert_contains "$body" 'report_project_volume_identities' \
+    "a failed source install must dump the project volume identities" || return 1
+
+  # It runs on an error path, so it must never change the exit status.
+  local helper
+  helper="$(awk '/^report_project_volume_identities\(\) \{/,/^\}/' "$lane")"
+  assert_contains "$helper" 'return 0' \
+    "the reporter must not decide the exit status of a failed install" || return 1
+  # A volume with no usable labels cannot be found by label, and that is exactly
+  # the shape that refuses, so a label-only lookup would report nothing.
+  assert_contains "$helper" 'grep -F "$project"' \
+    "the reporter must fall back to a name match for unlabelled volumes" || return 1
   return 0
 }
 
@@ -2701,6 +2751,7 @@ main() {
   run_test "cleanup restore preserves executable mode" test_cleanup_restore_preserves_tracked_executable_mode
   run_test "install lanes compose up never rebuild images" test_install_lanes_compose_up_never_rebuild_images
   run_test "force rebuild gate re-registers lane images" test_force_rebuild_gate_reregisters_lane_images
+  run_test "failed source install reports project volume identities" test_source_install_failure_reports_project_volume_identities
 
   echo ""
   echo "Total:  $TESTS_RUN"
