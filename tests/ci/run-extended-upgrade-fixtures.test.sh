@@ -57,6 +57,29 @@ main() {
     fail 'extended upgrade wrapper must leave graceful Compose teardown to the test'
   fi
 
+  # The wrapper used to hardcode --legacy-fixture-creation-witness on the
+  # assumption that every extended fixture installs from a pre-ownership source
+  # tree. That was true only while latest-stable predated ownership. Ownership
+  # shipped IN v0.8.70, so the moment v0.8.70 became latest-stable the
+  # assumption inverted and upgrade-install.test.sh began refusing every fixture
+  # with "Coordinated upgrade from owned source ... requires
+  # SANCTUARY_UPGRADE_DEPLOYMENT_ROOT" (issue #1028), failing in ~1s. It is a
+  # time bomb rather than a normal regression: v0.8.70 shipped green and every
+  # RC after it failed, without the wrapper changing.
+  #
+  # The baseline wrapper already branches on upgrade_source_is_owned; this one
+  # must too, exactly so the next ownership-aware stable release does not
+  # re-arm the same bomb.
+  grep -Fq 'upgrade_source_is_owned' "$SCRIPT" ||
+    fail 'extended wrapper must detect an ownership-aware source instead of assuming legacy'
+  grep -Fq 'SANCTUARY_UPGRADE_DEPLOYMENT_ROOT' "$SCRIPT" ||
+    fail 'extended wrapper must name the coordinator checkout root for an owned source (#1028)'
+  grep -Fq -- '--upgrade-target-commit' "$SCRIPT" ||
+    fail 'extended wrapper must declare the candidate commit for an owned source'
+  if grep -Eq '^\s*--legacy-fixture-creation-witness \\$' "$SCRIPT"; then
+    fail 'legacy witness must be conditional on the source being pre-ownership, not hardcoded'
+  fi
+
   echo "extended upgrade fixture helper checks passed"
 }
 

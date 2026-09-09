@@ -102,6 +102,36 @@ run_fixture() {
       set +a
       rm -f "$port_env"
 
+      # Whether the source release for this fixture predates ownership decides both
+      # the coordinator authority and where the tools run from. The baseline
+      # wrapper has always branched here; this one used to assume legacy, which
+      # broke every fixture once latest-stable became ownership-aware (#1028).
+      target_commit="$(git rev-parse HEAD)"
+      resolved_source="$(resolve_upgrade_source_ref "$PWD" "$source_ref" "$target_commit" 2>/dev/null || true)"
+      source_commit=""
+      if [ -n "$resolved_source" ]; then
+        source_commit="$(git rev-parse "${resolved_source}^{commit}" 2>/dev/null || true)"
+      fi
+
+      # A legacy source labels nothing, so the coordinator needs the witness to
+      # retire its resources exactly (v0.8.70-rc7, run 14745).
+      source_authority_args=(--legacy-fixture-creation-witness)
+      tools_root="$PWD"
+      if [ -n "$source_commit" ] && upgrade_source_is_owned "$PWD" "$source_commit"; then
+        # An owned source registers what it creates, so it is upgraded in place
+        # in the checkout root owned by the coordinator rather than a witnessed
+        # worktree. The root must already sit at the source release, and the
+        # tools must come from the candidate tree because the checkout below
+        # moves this workspace back to the older release.
+        source_authority_args=(--upgrade-target-commit "$target_commit")
+        export SANCTUARY_UPGRADE_DEPLOYMENT_ROOT="$PWD"
+        tools_root="$original_workspace"
+        echo "upgrade extended ${fixture}: owned source ${source_commit}; upgrading in place in $PWD"
+        git checkout -q -- . 2>/dev/null || true
+        git checkout -q --detach "$source_commit"
+      fi
+      ci_tools="$tools_root/scripts/ci"
+
       status=0
       cleanup_lane="extended-${fixture}"
       cleanup_temp="$(ci_temp_dir)"
@@ -113,17 +143,24 @@ run_fixture() {
       # them exactly, as the baseline wrapper does (v0.8.70-rc7, run 14745).
       if "$original_workspace/scripts/ci/cleanup-ci-callsite.sh" run \
           --authority-mode deployment_managed_by_subject \
-          --legacy-fixture-creation-witness \
+          "${source_authority_args[@]}" \
           --lane "$cleanup_lane" \
           --checkout-root "$PWD" \
           --runtime "$cleanup_runtime" \
           --artifact-dir "$cleanup_artifacts" \
-          -- scripts/ci/with-runner-lock.sh e2e \
-             scripts/ci/time-command.sh "upgrade extended ${source_ref} ${fixture}" \
-             ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "$fixture" --verbose; then
+          -- "$ci_tools/with-runner-lock.sh" e2e \
+             "$ci_tools/time-command.sh" "upgrade extended ${source_ref} ${fixture}" \
+             "$tools_root/tests/install/e2e/upgrade-install.test.sh" --mode core --fixture "$fixture" --verbose; then
         status=0
       else
         status="$?"
+      fi
+
+      # Leave the workspace on the candidate commit however the fixture ended,
+      # so a later fixture in this same job does not inherit the older tree.
+      if [ "$(git rev-parse HEAD)" != "$target_commit" ]; then
+        git checkout -q -- . 2>/dev/null || true
+        git checkout -q --detach "$target_commit" || status=$(( status == 0 ? 1 : status ))
       fi
 
       exit "$status"

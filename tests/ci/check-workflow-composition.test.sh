@@ -1285,15 +1285,29 @@ assert_occurrence_count "$UPGRADE_BASELINE_SUBJECT" \
 # v0.8.70-rc7 (run 14745): every extended fixture passed its 23 phases and every
 # receipt-bound cleanup was refused (protected/unlabeled/unregistered) because
 # the extended runner never handed the coordinator the legacy fixture witness;
-# the baseline lane, which does, cleaned 17/17. Each extended fixture installs
-# from a historical source tree, so it creates the same unlabeled resources.
+# the baseline lane, which does, cleaned 17/17.
+#
+# That witness is still required, but only for a source release that predates
+# ownership. This assertion used to demand it unconditionally, on the premise
+# that "each extended fixture installs from a historical source tree". Ownership
+# shipped IN v0.8.70, so once v0.8.70 became latest-stable the premise inverted:
+# upgrade-install.test.sh refused every fixture in ~1s with "Coordinated upgrade
+# from owned source ... requires SANCTUARY_UPGRADE_DEPLOYMENT_ROOT" (#1028), on
+# v0.8.71-rc1 and rc2 alike. The runner must branch the way the baseline wrapper
+# always has, so pin the branch rather than either fixed authority.
 UPGRADE_EXTENDED_RUNNER="$REPO_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh"
 assert_contains_in_order "$UPGRADE_EXTENDED_RUNNER" \
-  "install-test extended fixtures witness legacy fixture creation for receipt-bound cleanup" \
+  "install-test extended fixtures select fixture creation authority by source ownership" \
   'cleanup-ci-callsite.sh" run' \
   '--authority-mode deployment_managed_by_subject' \
-  '--legacy-fixture-creation-witness' \
+  '"${source_authority_args[@]}"' \
   '--lane "$cleanup_lane"'
+assert_contains_in_order "$UPGRADE_EXTENDED_RUNNER" \
+  "install-test extended runner witnesses a pre-ownership source and upgrades an owned one in place" \
+  'source_authority_args=(--legacy-fixture-creation-witness)' \
+  'upgrade_source_is_owned' \
+  'source_authority_args=(--upgrade-target-commit "$target_commit")' \
+  'export SANCTUARY_UPGRADE_DEPLOYMENT_ROOT="$PWD"'
 assert_occurrence_count "$UPGRADE_EXTENDED_RUNNER" \
   "install-test extended runner witnesses legacy fixture creation exactly once" \
   '--legacy-fixture-creation-witness' 1
