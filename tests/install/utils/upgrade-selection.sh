@@ -67,6 +67,28 @@ upgrade_extended_fixture_source_ref() {
         wallet-sync-retirement)
             printf '%s\n' 'v0.8.66'
             ;;
+        legacy-runtime-env)
+            # A legacy runtime env predates ownership by definition: it is the
+            # shape an install had before the runtime env migration, and an
+            # ownership-aware release never produces one. Tracking latest-stable
+            # therefore aimed this fixture at a source that cannot carry the very
+            # thing it exists to test, and that inverted the moment v0.8.70
+            # became latest-stable.
+            #
+            # It then failed outright rather than silently: test_simulate_git_update
+            # returns early for an owned source (the deployment root is upgraded
+            # in place, issue #1028) and so never reaches the block that moves the
+            # runtime env into the target checkout. Verify Fixture Runtime Shape
+            # then saw the coordinator runtime env under
+            # /tmp/sanctuary-cleanup/<run>/extended-legacy-runtime-env/ instead of
+            # the target one.
+            #
+            # Observed on v0.8.71-rc3, rc4 and rc6; masked until rc6 because
+            # optional-profiles failed alongside it. v0.8.69 is the last
+            # pre-ownership stable, so the fixture again upgrades from an install
+            # that genuinely carries the legacy shape.
+            printf '%s\n' 'v0.8.69'
+            ;;
         optional-profiles)
             # Pinned pre-ownership, deliberately. Ownership shipped IN v0.8.70,
             # so once v0.8.70 became latest-stable this fixture began installing

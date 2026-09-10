@@ -555,6 +555,16 @@ test_active_extended_fixture_selection_contract() {
     "optional-profiles should stay pinned to the last pre-ownership stable" || failures=1
   assert_equals "v0.8.69" "$(upgrade_extended_fixture_source_ref optional-profiles release/v0.8.39)" \
     "optional-profiles pin should override an explicitly selected source" || failures=1
+  # legacy-runtime-env is pinned for a stronger reason than convenience: the
+  # legacy runtime env shape only exists on a pre-ownership install, so an
+  # ownership-aware source cannot carry what the fixture asserts. On
+  # latest-stable it failed in Verify Fixture Runtime Shape, because
+  # test_simulate_git_update returns early for an owned source and never moves
+  # the runtime env into the target checkout (v0.8.71-rc3, rc4, rc6).
+  assert_equals "v0.8.69" "$(upgrade_extended_fixture_source_ref legacy-runtime-env latest-stable)" \
+    "legacy-runtime-env should stay pinned to the last pre-ownership stable" || failures=1
+  assert_equals "v0.8.69" "$(upgrade_extended_fixture_source_ref legacy-runtime-env release/v0.8.39)" \
+    "legacy-runtime-env pin should override an explicitly selected source" || failures=1
 
   return "$failures"
 }
