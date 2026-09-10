@@ -198,6 +198,20 @@ initialize_backup_ownership() {
   SANCTUARY_PROJECT="${SANCTUARY_PROJECT:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
   export SANCTUARY_PROJECT_DIR SANCTUARY_RUNTIME_DIR SANCTUARY_ENV_FILE SANCTUARY_PROJECT
   load_runtime_env "$SANCTUARY_ENV_FILE"
+  # The runtime env is the authority on the operator project, and it is sourced
+  # under `set -a`, so it re-exports SANCTUARY_PROJECT over whatever this process
+  # started with. Under the cleanup coordinator the subject inherits
+  # COMPOSE_PROJECT_NAME=<ci lane> (ci-cleanup-subject-lifecycle.mjs), so the two
+  # then disagree and resolveProjectIdentity refuses the backup before it does
+  # any work (#1055).
+  #
+  # The operator project is the correct identity for both: this backup takes the
+  # operator deployment lock, resolves its active revision, and reaches the
+  # running postgres with `-p "$SANCTUARY_PROJECT"`. A synthesized lane project
+  # names no deployment that exists. Receipt-bound cleanup acts only on exactly
+  # registered resources, so aligning this does not widen what it may retire.
+  COMPOSE_PROJECT_NAME="$SANCTUARY_PROJECT"
+  export COMPOSE_PROJECT_NAME
   if grep -q 'SANCTUARY_SOURCE_COMMIT' "$INSTALL_DIR/docker-compose.yml"; then
     ownership_initialize_build_identity
   else

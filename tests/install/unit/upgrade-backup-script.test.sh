@@ -331,6 +331,66 @@ test_coordinator_preserves_production_runtime() {
   return "$result"
 }
 
+# The coordinator injects its lane identity into the subject
+# (ci-cleanup-subject-lifecycle.mjs exports COMPOSE_PROJECT_NAME=<lane>), and
+# load_runtime_env then re-exports SANCTUARY_PROJECT from the operator runtime
+# env under `set -a`. Before the fix the two disagreed and every operator backup
+# died in resolveProjectIdentity before doing any work (#1055):
+#
+#   deployment-session: SANCTUARY_PROJECT and COMPOSE_PROJECT_NAME must match
+#
+# The operator project is the correct identity for both: the backup takes the
+# operator deployment lock, resolves its active revision, and reaches the
+# running postgres with `-p "$SANCTUARY_PROJECT"`. So the script must realign
+# COMPOSE_PROJECT_NAME after loading the runtime env.
+#
+# The stubbed deployment-lifecycle.sh in this harness bypasses
+# deployment-session.mjs, so this cannot be caught by running the script here.
+# Assert the invariant against the real resolver, and pin the alignment in the
+# script so it cannot be dropped.
+test_operator_project_identity_survives_coordinator_lane() {
+  local resolver="$PROJECT_ROOT/scripts/ownership/project-identity.mjs"
+  local contents failures=0
+
+  assert_file_exists "$resolver" "project identity resolver should exist" || return 1
+
+  # 1. The invariant is real: a lane/operator pair is refused, an aligned pair is not.
+  local mismatch aligned
+  mismatch="$(node --input-type=module -e "
+    const m = await import('file://$resolver');
+    try { m.resolveProjectIdentity({ COMPOSE_PROJECT_NAME: 'ci-99-1-upgrade-backup', SANCTUARY_PROJECT: 'sanctuary' }); print('resolved'); }
+    catch (error) { console.log('refused'); }
+  " 2>/dev/null)"
+  assert_contains "$mismatch" "refused" \
+    "a coordinator lane project must be refused alongside the operator project" || failures=1
+
+  aligned="$(node --input-type=module -e "
+    const m = await import('file://$resolver');
+    console.log(m.resolveProjectIdentity({ COMPOSE_PROJECT_NAME: 'sanctuary', SANCTUARY_PROJECT: 'sanctuary' }));
+  " 2>/dev/null)"
+  assert_contains "$aligned" "sanctuary" \
+    "an aligned pair must resolve to the operator project" || failures=1
+
+  # 2. The script must realign, and must do it after the runtime env is loaded --
+  #    doing it before would be undone by `set -a` re-exporting SANCTUARY_PROJECT.
+  contents="$(cat "$BACKUP_SCRIPT")"
+  assert_contains "$contents" 'COMPOSE_PROJECT_NAME="$SANCTUARY_PROJECT"' \
+    "backup must align COMPOSE_PROJECT_NAME with the operator project" || failures=1
+
+  local load_line align_line
+  load_line="$(grep -n 'load_runtime_env "$SANCTUARY_ENV_FILE"' "$BACKUP_SCRIPT" | head -1 | cut -d: -f1)"
+  align_line="$(grep -n 'COMPOSE_PROJECT_NAME="\$SANCTUARY_PROJECT"' "$BACKUP_SCRIPT" | head -1 | cut -d: -f1)"
+  if [ -z "$load_line" ] || [ -z "$align_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} could not locate the runtime env load and the alignment"
+    failures=1
+  elif [ "$align_line" -le "$load_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} alignment (line $align_line) must follow load_runtime_env (line $load_line)"
+    failures=1
+  fi
+
+  return "$failures"
+}
+
 main() {
   echo "Upgrade Backup Script Unit Tests"
   echo "================================"
@@ -341,6 +401,7 @@ main() {
   run_test "sidecar checksum is explicit" test_sidecar_checksum_is_explicit
   run_test "strict Compose receives persisted identity" test_strict_compose_receives_persisted_identity
   run_test "coordinator preserves production runtime" test_coordinator_preserves_production_runtime
+  run_test "operator project identity survives the coordinator lane" test_operator_project_identity_survives_coordinator_lane
 
   echo ""
   echo "Tests run:    $TESTS_RUN"
