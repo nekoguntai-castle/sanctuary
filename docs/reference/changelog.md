@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Track the release-candidate canary drivers in `scripts/release/canary/`. They
+  previously existed only on the deployment host, so the probe's activation
+  timeout could not be reviewed, tested or diffed.
+
 ### Changed
 
 ### Fixed
 
-## [0.8.71] - 2026-09-08
+- Correct the v0.8.71 changelog heading date to the date its tag was created.
+
+## [0.8.71] - 2026-09-09
 
 ### Added
 

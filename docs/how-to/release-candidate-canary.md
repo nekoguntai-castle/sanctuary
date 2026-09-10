@@ -20,6 +20,44 @@ the repository. Use a short pseudonymous role identifier such as
 `release-operator-01` for signoff. The validator rejects unknown fields and
 symlinked, relative, oversized, or in-checkout receipt paths.
 
+## Tooling
+
+The drivers live in `scripts/release/canary/` and run on the deployment host,
+not in CI:
+
+| Tool | Mutates? | Use |
+| --- | --- | --- |
+| `canary-selftest.mjs` | no | Pre-flight. Prints one JSON object covering container discovery, admin token minting, worker diagnostics, the metrics scrape, fleet truth, the UI and cgroup readability. Run it before opening a canary window. |
+| `canary-probe.mjs` | yes | The canary itself. Drives the exercise below and writes `evidence.jsonl` plus the receipt into `CANARY_OUT_DIR`. |
+| `canary-debug.mjs` | yes | Diagnosis only. POSTs a real sync for the least-recently-synced mainnet wallet and prints the raw responses. Never run it inside a canary window. |
+
+All three read `JWT_SECRET` and `WORKER_DIAGNOSTICS_SECRET` from the runtime env
+file at run time and never persist them. They share `lib/canary-runtime.mjs`;
+`npm run lint:release-canary` covers them, and
+`tests/release/canary-probe-tooling.test.mjs` pins their invariants.
+
+```bash
+CANARY_TAG=v0.8.71-rc7 \
+CANARY_COMMIT=<40-hex> \
+CANARY_OUT_DIR="$HOME/release-receipts/v0.8.71-rc7" \
+  node scripts/release/canary/canary-probe.mjs
+```
+
+### Wait out the activation gate before starting
+
+A deploy restarts the worker, and the wallet-sync activation gate then blocks
+admissions for **two sequential phases** -- the `restart_observed` marker's TTL,
+and then the drain horizon that a fresh healthy observation starts over. With
+`WALLET_SYNC_MAX_EXECUTION_MS` at 30 minutes that is roughly 62 minutes in
+total, during which `POST /sync/network/mainnet` answers `200 success:true` with
+`requested:0 merged:0 rejected:<fleet>`. That reads like a hung fleet; it is the
+gate failing closed.
+
+`CANARY_ACTIVATION_TIMEOUT_MS` defaults to 90 minutes so a probe started right
+after a deploy survives the wait rather than aborting with `fleet admission
+never accepted (activation gate)`. Starting the probe about an hour after the
+deploy still costs less wall-clock than letting it idle through the gate.
+
 ## Exercise the exact candidate
 
 1. Confirm the deployed tag and full commit SHA match the accepted RC.

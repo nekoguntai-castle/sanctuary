@@ -152,4 +152,34 @@ export default [
       }],
     },
   },
+  {
+    // The release-candidate canary tools are plain Node ESM run by an operator
+    // on the deployment host, not TypeScript and not bundled -- so nothing else
+    // in this repo type-checks them. They are also release-gating: a stable tag
+    // needs a canary receipt, and the probe is what produces one.
+    //
+    // `no-undef` is the point of this block. The three tools shared one copied
+    // helper block until it was extracted into lib/canary-runtime.mjs, and the
+    // only way a mechanical extraction like that fails is a reference left
+    // behind with nothing to bind it. There is no live stack in CI to catch
+    // that at run time, so catch it here instead.
+    files: ['scripts/release/canary/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        AbortController: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
+        clearTimeout: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+      'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
+    },
+  },
 ];
