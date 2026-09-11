@@ -523,13 +523,13 @@ Two engine differences these lanes depend on, both handled in-tree:
 
 ### Runner fleet and build paths
 
-The two `docker-socket` hosts, `x300` and `kumo`, are provisioned from the same
-runner-infra bootstrap: rootless Podman 5.4 behind the compat socket, capacity
-2, and a buildx docker-container builder on each. Neither runs Docker Engine.
-The one build-relevant difference is that kumo's profile exports
-`DOCKER_BUILDKIT=0` for another repository's workflows, so on kumo
+The three `docker-socket` hosts, `x300`, `kumo` (capacity 2 each) and `sora`
+(capacity 1), are provisioned from the same runner-infra bootstrap: rootless
+Podman 5.4 behind the compat socket, the crun OCI runtime, and buildx. None
+runs Docker Engine. The one build-relevant difference is that kumo's profile
+exports `DOCKER_BUILDKIT=0` for another repository's workflows, so on kumo
 `docker compose build` goes through Podman's native (Buildah) builder while on
-x300 it goes through BuildKit. The preflight diagnostic's `docker info`
+x300 and sora it goes through BuildKit. The preflight diagnostic's `docker info`
 "Name:" line and `docker buildx ls` say which host and builder a job used.
 
 The native builder behaves differently in ways only image-inspecting lanes
@@ -557,7 +557,32 @@ carries `refusedResources` (class, identity, locator, classifications,
 references) whenever cleanup refuses, so a refusal on a host without shell
 access is diagnosable from the run alone. To force a run onto a particular
 host, dispatch `install-test.yml` (`test_suite=upgrade`,
-`upgrade_fixture=baseline`) and repeat; the scheduler picks either host.
+`upgrade_fixture=baseline`) and repeat; the scheduler picks any host.
+
+#### Host-side evidence
+
+A job cannot see its own runner host, and the job log shows only the symptom of
+a host-level failure. Examples are an exit 137 from an OOM kill, a test timeout
+under CPU or memory contention, and a step that stops making progress and ends
+in `context deadline exceeded`. Each host keeps the evidence, read-only for
+anyone with shell access to it:
+
+- **Snapshots:** `/var/lib/forgejo-runner-health/snapshots/<epoch>.txt`, one
+  every two minutes, kept for a week. Each one holds container and exec state,
+  the process tree of every running step, host load, memory and pressure (PSI),
+  and one line per container. A container line covers service containers such
+  as a job's Postgres too, and records memory and peak, `oom_kill`, CPU
+  throttling and pids.
+- **Stuck-step alarms:** `journalctl -t forgejo-runner-long-exec`, with kernel
+  stacks under `/var/lib/forgejo-runner-health/long-exec/`.
+- **Journal:** persistent, capped at 16G (about two weeks). It carries the
+  runner, the Podman API access log (every step's exec start and exit), kernel
+  OOM lines and the reaper.
+
+Take the host and the start and end times from the job log, list that window's
+snapshots with `find . -newermt '<start>' ! -newermt '<end>'`, and read the
+journal with `journalctl --since/--until`. runner-infra's
+`docs/how-to/runner-sustainability.md` is the full reference.
 
 The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
 run through a diagnostic logging harness so failures that happen *before* a
