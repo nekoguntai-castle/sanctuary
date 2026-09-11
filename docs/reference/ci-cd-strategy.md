@@ -220,7 +220,7 @@ Summary` fails, and allows skipped path-conditional children.
 
 `Code Quality` runs lint, gitleaks, lizard, and jscpd on every PR. `Code Quality Required Checks` fails if any of those children fail.
 
-The CI lizard job currently gates a measured CI-scope baseline of 9 warnings. That prevents new complexity regressions while the broader remediation loop continues ratcheting down the full lizard backlog. Lower `LIZARD_WARNING_BASELINE` whenever the CI-scope warning count is reduced.
+The CI lizard job scans `.js`, `.ts` and `.tsx` (lizard's `typescript` language does not include `.tsx`, so `-l tsx` is passed explicitly) and gates a measured CI-scope baseline of 86 warnings. That prevents new complexity regressions while the broader remediation loop continues ratcheting down the full lizard backlog. Lower `LIZARD_WARNING_BASELINE` whenever the CI-scope warning count is reduced; `tests/ci/quality-lizard-bootstrap.test.sh` keeps the workflow value and the `scripts/quality.sh` default identical.
 
 The `Architecture` workflow classifies its changed paths into independent core
 architecture and Docusaurus validation groups. Source, architecture-script,

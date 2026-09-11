@@ -8,7 +8,7 @@ Status: Complete
 **Grade**: B
 **Confidence**: High
 **Mode**: full
-**Commit**: `fcc7f70e`
+**Commit**: `8b89b70b` (post-closeout check after #1059; initial grade was `fcc7f70e`)
 
 ---
 
@@ -17,13 +17,19 @@ Status: Complete
 None. `tests=pass` (clean reruns), `typecheck=pass` (six repo-native commands),
 `lint=pass`, `security_high=0`, `secrets=0` (repo-config tracked-tree gitleaks).
 
-Near-blocker: `npm run coverage` exits 1 reproducibly (2/2 local runs). One
-server test,
-`server/tests/unit/services/bitcoin/sync/receiveEvidenceAuthentication.test.ts:304`
-("rejects the impossible combined count shape before projecting any evidence"),
-overruns its 20 s budget under coverage instrumentation. It passes the plain
-suite, but only barely: 9.8 s isolated, 14.9 s in the full parallel run. The
-root cause is the performance defect in Top Risk 1, not a test bug.
+Post-closeout (`8b89b70b`): the former near-blocker is **resolved** by #1059.
+`receiveEvidenceAuthentication.test.ts` "impossible combined count shape" ran
+10–15 s against a raised 20 s budget; it now runs in 9 ms at the default 10 s
+timeout. The server unit coverage leg is green (100% ×4), and the PR's CI shards
+passed.
+
+One *different* timing race appeared once under full-suite load, right after a
+local stack rebuild:
+`tests/unit/api/transactions-http-routes.test.ts` "honors production
+request-timeout cancellation while response backpressure is pending" (the
+response completed before the timeout cancelled it). It passed 8/8 in isolation
+(3 of them with coverage) and on the next full coverage run. Scored under 6.4,
+not as a gate.
 
 ---
 
@@ -35,8 +41,8 @@ root cause is the performance defect in Top Risk 1, not a test bug.
 | Reliability | 15/15 | Typed fail-closed evidence errors, stage budgets/deadlines, `AbortSignal.timeout` on external I/O; no crash-prone production patterns. |
 | Maintainability | 8/15 | 3.1 = 0 (lizard 32 warnings project-wide, 14 production); duplication 1.31%; largest production file 993; 3.4 drops to Medium on a drifted hex/bytes parse pair and a lizard gate blind to `.tsx`. |
 | Security | 15/15 | 0 high/critical advisories (23 moderate, 10 low); tracked-tree gitleaks 0; Zod validation at boundaries; no dangerous sinks. |
-| Performance | 7/10 | 5.1 Medium: raw-transaction parsing is quadratic in size on Node (20k-input tx = 11 s), and the hex evidence path reaches it before its weight gate. |
-| Test Quality | 13/15 | Coverage 100% (frontend/server/gateway); 6.4 Medium: `npm run coverage` fails on a CPU-bound test, plus dynamic-import-in-test and sleep patterns. |
+| Performance | 7/10 | 5.1 Medium: raw-transaction parsing is quadratic in size on Node (20k-input tx = 11 s). #1059 put the hex path behind the canonical preflight, but non-canonical over-weight framing on the production bytes path still reaches the parser (D6; root fix D1 deferred for soak). |
+| Test Quality | 13/15 | Coverage 100% (frontend/server/gateway). 6.4 Medium: the CPU-bound red test is fixed (#1059), but one timing race (`transactions-http-routes` backpressure) flaked once under load, and the dynamic-import-in-test and sleep patterns remain. |
 | Operational Readiness | 10/10 | Compose + seven Dockerfiles + CI; health endpoints; observability; structured logging. |
 | **TOTAL** | **88/100** | |
 
@@ -44,6 +50,12 @@ root cause is the performance defect in Top Risk 1, not a test bug.
 
 ## Trend
 
+- **Post-closeout vs initial 2026-09-10 grade (`fcc7f70e`): overall 88 → 88 (±0), grade B → B, confidence High → High.** Movement after #1059 is within bucket:
+  - `npm run coverage`'s server leg: deterministic red (2/2) → green;
+  - `receive-evidence` mutation score: 93.77 → 93.79;
+  - the hex/bytes divergence is converged.
+
+  5.1 and 6.4 stay Medium because of D6 and the backpressure timing race.
 - vs 2026-06-25 report (`7ae26a00`, not in machine history): overall **93 → 88 (-5)**, grade **A → B**, confidence High → High.
   Maintainability 9 → 8, Performance 10 → 7, Test Quality 15 → 13, Correctness/Reliability/Security/Operational unchanged.
 - vs last machine-history entry 2026-06-04 (`5a74710b+grade-loop-working-tree`): overall 97 → 88 (-9), grade A → B.
@@ -193,15 +205,15 @@ Reachability was corrected during the remediation's adversarial review.
 
 | Candidate | Evidence | Disposition | Risk / Next Step |
 | --- | --- | --- | --- |
-| Raw transaction evidence parse (hex vs bytes) | `rawTransactionEvidence.ts` `parseAuthenticatedRawTransaction` vs `parseAuthenticatedRawTransactionBytes` | rationalize | The bytes path gained the O(n) weight preflight in #966/#968; the hex path did not. Converge the preflight (small, contained fix). |
+| Raw transaction evidence parse (hex vs bytes) | `rawTransactionEvidence.ts` `parseAuthenticatedRawTransaction` vs `parseAuthenticatedRawTransactionBytes` | justified (converged in #1059) | Both paths share `rejectOverweightCanonicalFraming` and the validated hex→bytes converter. Both still delegate unmeasurable framing to bitcoinjs (D6). |
 | Complexity measurement (repo lizard gate vs rubric) | `scripts/quality.sh` `-l javascript -l typescript` vs `lizard .` | rationalize | The gate silently excludes `.tsx`; add `-l tsx` and rebaseline, or adopt an ESLint complexity ratchet. |
 | Worker diagnostics protocol v2 / v1 / bare | `services/workerDiagnosticsClient.ts`, `internal/workerDiagnostics/protocol.ts` | justified / watch | Mixed-version rolling compatibility; add a retirement note when v1 workers are unsupported. |
 | Hardware-wallet adapters | `src/services/hardwareWallet/adapters/*` | justified | Per-device protocol boundary. |
 
 ## Fastest Improvements
 
-1. **Converge the hex evidence path onto the O(n) weight preflight** and prove it with a deterministic test that bitcoinjs is never invoked for over-weight evidence. This fixes the red `npm run coverage` (6.4 → High, +2) and closes the canonical gap on the exported hex API. The production non-canonical bypass remains until item 3 or a lower-bound preflight. Effort: ~2 h.
-2. **Add `-l tsx` to the repo lizard gate and rebaseline** so `.tsx` complexity is gated at all. Guardrail; points unchanged until the count drops. Effort: ~1 h.
+1. ~~**Converge the hex evidence path onto the O(n) weight preflight**~~. **Done in #1059** (`8b89b70b`). It fixed the deterministic red `npm run coverage`. The production non-canonical bypass remains (D6) until item 3 or a lower-bound preflight.
+2. **Add `-l tsx` to the repo lizard gate and rebaseline** so `.tsx` complexity is gated at all. Measured post-closeout with the gate's own thresholds (`-C 15 -T nloc=200`): **9 → 86 warnings** (15 `src/`, 64 `tests/`, 6 `server/`, 1 `scripts/`). Guardrail only; points are unchanged until the count drops. Effort: ~1 h. **Selected for grade-loop pass 2.**
 3. **Adopt `uint8array-tools` 0.0.10 via npm `overrides`** once it has soaked, to fix the quadratic at its root for every Node parse site. Needs a supply-chain decision plus lockfile and hardware-compat-report regeneration. Effort: ~2 h.
 
 ## Roadmap To A Grade
@@ -244,3 +256,28 @@ Reachability was corrected during the remediation's adversarial review.
 - `jscpd --config config/tooling/jscpd.json --gitignore`: 1.31%.
 - `eslint --rule '{"complexity":["error",15]}'` over production globs: 62; historical CCNs via `git show 7ae26a00:<file> | eslint --stdin`.
 - Parse benchmarks: bitcoinjs-lib 7.0.1 on Node 24.14.1 (table above); upstream inspected via `npm pack uint8array-tools@0.0.10 bitcoinjs-lib@7.0.2 varuint-bitcoin@2.0.1`.
+
+### Post-closeout check (grade-loop pass 1 → 2)
+
+- Branch `codex/grade-loop-check/post-hex-evidence` from `origin/main`
+  `8b89b70b`, worktree `/home/nekoguntai/sanctuary`. It converts into the pass-2
+  task branch. Files changed: this report and `docs/plans/grade-history/sanctuary_.jsonl`.
+- `CI=true GRADE_TIMEOUT=1200 bash grade.sh`:
+  - pass: tests (frontend 8416/8416) and lint;
+  - server leg of the coverage chain: 1 flaky timing test (see Hard-Fail
+    Blockers); the rerun `server: vitest run --coverage tests/unit` gave
+    15771/15771 at 100% ×4;
+  - same caveats as the initial run: `typecheck=missing` (no root tsconfig),
+    `secrets=119` raw, `jscpd .` unknown.
+- Typechecks, lint, and the full server suite were green on the byte-identical
+  tree before merge. The squash-merge tree equals the verified branch tree.
+- jscpd with the repo config: 1.31% (5561/423927, 304 clones). The lizard
+  project count is unchanged at 32. With `-l tsx`, the lizard gate scope goes
+  from 9 to 86.
+- `main` post-merge CI for `8b89b70b`: all five push workflows succeeded (26
+  success / 30 skipped / 0 failed). A separate scheduled `test.yml` run (15431)
+  is outside the gate.
+- The local stack was rebuilt from `/home/nekoguntai/sanctuary-main` at
+  `8b89b70b` with `./start.sh --rebuild`. Deployment generation 8 is active and
+  all 14 containers are healthy. `/api/v1/health` returns 200, with every check
+  healthy except `disk: degraded` (host at 81%, warning at 80%, pre-existing).

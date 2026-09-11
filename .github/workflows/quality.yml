@@ -13,7 +13,8 @@ name: Code Quality
 # - large files: file-size guardrail for production source and tests
 #
 # These jobs are blocking. gitleaks gates new commit ranges plus the tracked
-# tree, while lizard enforces a zero-warning baseline. Scheduled
+# tree, while lizard enforces a measured, non-increasing warning-count baseline
+# over .js, .ts and .tsx. Scheduled
 # weekly so baseline drift is visible even on quiet weeks; runs on every PR
 # for per-change feedback.
 
@@ -48,7 +49,7 @@ env:
   SEMGREP_VERSION: '1.161.0'
   ACTIONLINT_VERSION: '1.7.12'
   ACTIONLINT_LINUX_AMD64_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
-  LIZARD_WARNING_BASELINE: '9'
+  LIZARD_WARNING_BASELINE: '86'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
@@ -975,8 +976,9 @@ jobs:
         uses: ./.github/actions/setup-python-toolchain
 
       - name: Run lizard
-        # McCabe / NIST / SonarQube: warn on CCN > 15. The current measured
-        # CI-scope baseline is 9 warnings; fail the job if that count grows.
+        # McCabe / NIST / SonarQube: warn on CCN > 15 (and NLOC > 200) across
+        # .js/.ts/.tsx; fail the job if the warning count exceeds the
+        # workflow-level LIZARD_WARNING_BASELINE.
         env:
           QUALITY_BOOTSTRAP_TOOLS: '1'
         run: >

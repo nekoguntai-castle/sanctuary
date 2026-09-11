@@ -15,6 +15,11 @@ cleanup() {
   fi
 }
 
+# Print every argument that follows $1 in a captured one-arg-per-line argv log.
+lizard_arg_after() {
+  awk -v flag="$1" 'prev == flag { print } { prev = $0 }' "$2"
+}
+
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
@@ -89,7 +94,9 @@ PYEOF
   local output="$TEST_TEMP_DIR/output.log"
   if ! (
     cd "$ROOT_DIR"
-    PATH="$fake_bin:$PATH" \
+    # Unset the workflow-level value so the script's own default is exercised.
+    env -u LIZARD_WARNING_BASELINE \
+      PATH="$fake_bin:$PATH" \
       LIZARD_VENV_COUNTER="$counter" \
       LIZARD_PIP_COUNTER="$pip_counter" \
       LIZARD_ARGS_LOG="$args_log" \
@@ -113,6 +120,24 @@ PYEOF
     fail 'expected lizard to exclude generated docs-site output'
   grep -Fxq './docs/site/.docusaurus/*' "$args_log" ||
     fail 'expected lizard to exclude Docusaurus intermediate output'
+
+  # lizard's `typescript` language excludes .tsx, so a directory scan without
+  # `-l tsx` silently skips every React component.
+  local languages
+  languages="$(lizard_arg_after -l "$args_log" | sort | tr '\n' ' ')"
+  [ "$languages" = 'javascript tsx typescript ' ] ||
+    fail "expected lizard to scan exactly javascript, typescript and tsx; got: $languages"
+
+  local workflow_baseline
+  workflow_baseline="$(sed -nE "s/^  LIZARD_WARNING_BASELINE: '([0-9]+)'$/\1/p" \
+    "$ROOT_DIR/.github/workflows/quality.yml")"
+  [ -n "$workflow_baseline" ] ||
+    fail 'expected quality.yml to pin a numeric LIZARD_WARNING_BASELINE'
+  [ "$(lizard_arg_after -i "$args_log")" = "$workflow_baseline" ] ||
+    fail "expected lizard -i to use the quality.yml baseline ($workflow_baseline)"
+  grep -Fxq "LIZARD_WARNING_BASELINE=\"\${LIZARD_WARNING_BASELINE:-$workflow_baseline}\"" \
+    "$ROOT_DIR/scripts/quality.sh" ||
+    fail "expected scripts/quality.sh to default to the quality.yml baseline ($workflow_baseline)"
 
   echo 'quality lizard bootstrap regression checks passed'
 }
