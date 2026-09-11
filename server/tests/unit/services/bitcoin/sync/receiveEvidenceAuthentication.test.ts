@@ -309,15 +309,22 @@ describe('full-wallet receive evidence authentication', () => {
       get maxOutputs() { return projectionLimitRead(); },
       get maxScriptHexChars() { return projectionLimitRead(); },
     };
+    // bitcoinjs parses this shape quadratically; the framing preflight must reject it first.
+    const parser = vi.spyOn(bitcoin.Transaction, 'fromBuffer');
 
-    expect(() => projectAuthenticatedTransaction({
-      expectedTxid: transaction.txid,
-      details: { txid: transaction.txid, hex: transaction.rawHex, vin: [], vout: [] },
-      network: 'mainnet',
-      limits,
-    })).toThrow(expect.objectContaining({ reason: 'transaction_complexity_exceeded' }));
-    expect(projectionLimitRead).not.toHaveBeenCalled();
-  }, 20_000);
+    try {
+      expect(() => projectAuthenticatedTransaction({
+        expectedTxid: transaction.txid,
+        details: { txid: transaction.txid, hex: transaction.rawHex, vin: [], vout: [] },
+        network: 'mainnet',
+        limits,
+      })).toThrow(expect.objectContaining({ reason: 'transaction_complexity_exceeded' }));
+      expect(projectionLimitRead).not.toHaveBeenCalled();
+      expect(parser.mock.calls.length).toBe(0);
+    } finally {
+      parser.mockRestore();
+    }
+  });
 
   it('yields the event loop while projecting a high-fanout authenticated transaction', async () => {
     const transaction = new bitcoin.Transaction();

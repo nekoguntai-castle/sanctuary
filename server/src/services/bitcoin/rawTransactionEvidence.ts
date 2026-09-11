@@ -191,6 +191,19 @@ export function measureCanonicalRawTransactionWeight(rawBytes: Uint8Array): numb
   return strippedBytes * 3 + cursor.length;
 }
 
+/**
+ * Rejects canonical framing above the block-weight ceiling before bitcoinjs
+ * allocates it, since bitcoinjs's parse cost on Node is quadratic in size.
+ * Unmeasurable framing stays with the parser and its post-parse weight check.
+ */
+const rejectOverweightCanonicalFraming = (rawBytes: Uint8Array): void => {
+  const preflightWeight = measureCanonicalRawTransactionWeight(rawBytes);
+  if (preflightWeight !== undefined
+    && preflightWeight > MAX_AUTHENTICATED_TRANSACTION_WEIGHT) {
+    throw evidenceError('transaction_complexity_exceeded');
+  }
+};
+
 const authenticateParsedTransaction = (
   expectedTxid: string,
   transaction: bitcoin.Transaction,
@@ -213,11 +226,7 @@ export function parseAuthenticatedRawTransactionBytes(input: {
   expectedTxid: string;
   rawBytes: Uint8Array;
 }): AuthenticatedRawTransactionBytes {
-  const preflightWeight = measureCanonicalRawTransactionWeight(input.rawBytes);
-  if (preflightWeight !== undefined
-    && preflightWeight > MAX_AUTHENTICATED_TRANSACTION_WEIGHT) {
-    throw evidenceError('transaction_complexity_exceeded');
-  }
+  rejectOverweightCanonicalFraming(input.rawBytes);
   let transaction: bitcoin.Transaction;
   try {
     transaction = bitcoin.Transaction.fromBuffer(Buffer.from(
@@ -246,10 +255,12 @@ export function parseAuthenticatedRawTransaction(input: {
   rawHex: string;
 }): AuthenticatedRawTransaction {
   if (!TXID_PATTERN.test(input.expectedTxid)) throw evidenceError('invalid_expected_txid');
+  const rawBytes = rawTransactionBytesFromHex(input.rawHex);
+  rejectOverweightCanonicalFraming(rawBytes);
   let transaction: bitcoin.Transaction;
   let transactionWeight: number;
   try {
-    transaction = bitcoin.Transaction.fromHex(input.rawHex);
+    transaction = bitcoin.Transaction.fromBuffer(rawBytes);
     transactionWeight = transaction.weight();
   } catch {
     throw evidenceError('malformed_raw_transaction');

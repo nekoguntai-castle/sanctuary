@@ -63,6 +63,14 @@ const MINIMAL_OUTPUT = Buffer.concat([
   Buffer.from([0x01]), Buffer.alloc(8), Buffer.from([0x00]),
 ]);
 
+// Parser spies assert call counts rather than `not.toHaveBeenCalled()`: that
+// matcher's failure message pretty-prints the multi-megabyte buffer argument,
+// costing seconds per preflight-disabling mutant in the Stryker profile.
+const OVER_LIMIT_CANONICAL_FRAMINGS = [
+  ['legacy', makeLargeLegacyTransaction(999_937)],
+  ['witness', makeLargeWitnessTransaction(3_999_753)],
+] as const;
+
 const expectReason = (
   operation: () => unknown,
   reason: RawTransactionEvidenceReason,
@@ -198,10 +206,7 @@ describe('raw transaction evidence', () => {
     })).toMatchObject({ txid: transaction.getId() });
   });
 
-  it.each([
-    ['legacy', makeLargeLegacyTransaction(999_937)],
-    ['witness', makeLargeWitnessTransaction(3_999_753)],
-  ] as const)('rejects over-limit canonical %s framing before bitcoinjs allocation', (_encoding, transaction) => {
+  it.each(OVER_LIMIT_CANONICAL_FRAMINGS)('rejects over-limit canonical %s framing before bitcoinjs allocation', (_encoding, transaction) => {
     const rawBytes = Uint8Array.from(transaction.toBuffer());
     const parser = vi.spyOn(bitcoin.Transaction, 'fromBuffer');
 
@@ -212,7 +217,24 @@ describe('raw transaction evidence', () => {
         expectedTxid: transaction.getId(),
         rawBytes,
       }), 'transaction_complexity_exceeded');
-      expect(parser).not.toHaveBeenCalled();
+      expect(parser.mock.calls.length).toBe(0);
+    } finally {
+      parser.mockRestore();
+    }
+  });
+
+  // The 25,000x25,000 hex shape is covered by the sync projection test.
+  it.each(OVER_LIMIT_CANONICAL_FRAMINGS)('rejects over-limit canonical %s hex before bitcoinjs parsing', (_encoding, transaction) => {
+    const rawHex = transaction.toHex();
+    const parser = vi.spyOn(bitcoin.Transaction, 'fromBuffer');
+
+    try {
+      expect(transaction.weight()).toBeGreaterThan(MAX_AUTHENTICATED_TRANSACTION_WEIGHT);
+      expectReason(() => parseAuthenticatedRawTransaction({
+        expectedTxid: transaction.getId(),
+        rawHex,
+      }), 'transaction_complexity_exceeded');
+      expect(parser.mock.calls.length).toBe(0);
     } finally {
       parser.mockRestore();
     }
@@ -235,7 +257,7 @@ describe('raw transaction evidence', () => {
         expectedTxid: '00'.repeat(32),
         rawBytes,
       }), 'transaction_complexity_exceeded');
-      expect(parser).not.toHaveBeenCalled();
+      expect(parser.mock.calls.length).toBe(0);
     } finally {
       parser.mockRestore();
     }
@@ -379,6 +401,8 @@ describe('raw transaction evidence', () => {
     ['0', 'malformed_raw_transaction'],
     ['zz', 'malformed_raw_transaction'],
     [`${makeTransaction().toHex()}00`, 'malformed_raw_transaction'],
+    [`${makeTransaction().toHex()}0`, 'malformed_raw_transaction'],
+    [`${makeTransaction().toHex()} `, 'malformed_raw_transaction'],
   ] as const)('rejects malformed raw hex %#', (rawHex, reason) => {
     expectReason(() => parseAuthenticatedRawTransaction({
       expectedTxid: makeTransaction().getId(),
