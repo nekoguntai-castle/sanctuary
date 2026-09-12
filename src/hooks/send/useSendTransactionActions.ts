@@ -227,6 +227,7 @@ export function useSendTransactionActions({
   state,
   initialPsbt,
   initialTxData,
+  setDraftId,
 }: UseSendTransactionActionsProps): UseSendTransactionActionsResult {
   // Core state
   const [isCreating, setIsCreating] = useState(false);
@@ -328,6 +329,7 @@ export function useSendTransactionActions({
     beginDraftSave: owner.beginDraftSave,
     setIsSavingDraft,
     setError,
+    setDraftId,
   });
 
   // Broadcasting (broadcastTransaction)

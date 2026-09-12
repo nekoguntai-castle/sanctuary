@@ -190,9 +190,14 @@ const createNewDraft = async (
   currentTxData: TransactionData,
   signedDevices: Set<string>,
   lease: SendOperationLease,
+  setDraftId: (id: string | null) => void,
 ): Promise<string | null> => {
   const result = await draftsApi.createDraft(walletId, draftRequest, lease.signal);
   if (!lease.isCurrent()) return null;
+
+  // Adopt the new id immediately so a later save updates rather than
+  // re-creates, even if the signed-state follow-up write below fails.
+  setDraftId(result.id);
 
   if (shouldSaveSignedStateForNewDraft(unsignedPsbt, currentTxData, signedDevices)) {
     await saveSignedStateForNewDraft(
@@ -233,6 +238,7 @@ export interface UseDraftManagementDeps {
   beginDraftSave: () => SendOperationLease | null;
   setIsSavingDraft: (v: boolean) => void;
   setError: (v: string | null) => void;
+  setDraftId: (id: string | null) => void;
 }
 
 export interface UseDraftManagementResult {
@@ -249,6 +255,7 @@ export function useDraftManagement({
   beginDraftSave,
   setIsSavingDraft,
   setError,
+  setDraftId,
 }: UseDraftManagementDeps): UseDraftManagementResult {
   const navigate = useNavigate();
   const { showSuccess } = useErrorHandler();
@@ -293,6 +300,7 @@ export function useDraftManagement({
           currentTxData,
           signedDevicesSnapshot,
           lease,
+          setDraftId,
         );
         if (!createdDraftId) return null;
         draftId = createdDraftId;
@@ -310,7 +318,7 @@ export function useDraftManagement({
     } finally {
       if (lease.isCurrent()) setIsSavingDraft(false);
     }
-  }, [walletId, txData, unsignedPsbt, signedDevices, state, createTransaction, beginDraftSave, showSuccess, navigate, setIsSavingDraft, setError]);
+  }, [walletId, txData, unsignedPsbt, signedDevices, state, createTransaction, beginDraftSave, showSuccess, navigate, setIsSavingDraft, setError, setDraftId]);
 
   return { saveDraft };
 }

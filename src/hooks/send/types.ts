@@ -43,6 +43,10 @@ export interface UseSendTransactionActionsProps {
   // Initial values for draft mode
   initialPsbt?: string | null;
   initialTxData?: TransactionData | null;
+  // Adopts a newly created draft's id into the caller's persisted state
+  // (e.g. dispatch({ type: 'SET_DRAFT_ID', id })) so a later save updates
+  // that draft instead of creating a duplicate.
+  setDraftId: (id: string | null) => void;
 }
 
 export interface UseSendTransactionActionsResult {

@@ -29,6 +29,7 @@ const sendTransactionActionMocks = vi.hoisted(() => ({
   updateDraft: vi.fn(),
   deleteDraft: vi.fn(),
   attemptPayjoin: vi.fn(),
+  setDraftId: vi.fn(),
 }));
 
 export const mocks = sendTransactionActionMocks;
@@ -168,6 +169,7 @@ export const renderSendTransactionActions = (override: Partial<SendTransactionAc
       walletId: 'wallet-1',
       wallet: baseWallet,
       state: createState(),
+      setDraftId: sendTransactionActionMocks.setDraftId,
       ...override,
     })
   );
@@ -178,6 +180,7 @@ export const renderRerenderableSendTransactionActions = (initialState: Transacti
       walletId: 'wallet-1',
       wallet: baseWallet,
       state,
+      setDraftId: sendTransactionActionMocks.setDraftId,
     }),
     { initialProps: { state: initialState } },
   );

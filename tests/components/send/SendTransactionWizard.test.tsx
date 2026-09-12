@@ -99,6 +99,7 @@ describe('SendTransactionWizard', () => {
     utxos: mockUtxos,
     devices: mockDevices,
     isReadyToSign: false,
+    dispatch: vi.fn(),
   };
 
   const defaultActionsValue = {

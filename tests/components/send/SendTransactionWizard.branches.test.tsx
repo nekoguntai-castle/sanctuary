@@ -82,6 +82,7 @@ describe('SendTransactionWizard branch coverage', () => {
     devices: [],
     utxos: [baseUtxo],
     isReadyToSign: false,
+    dispatch: vi.fn(),
     ...overrides,
   });
 
@@ -220,6 +221,18 @@ describe('SendTransactionWizard branch coverage', () => {
 
     const hookArgs = useSendTransactionActionsMock.mock.calls[0][0];
     expect(hookArgs.initialTxData).toBeUndefined();
+  });
+
+  it('adopts a newly created draft id by dispatching SET_DRAFT_ID', () => {
+    const dispatch = vi.fn();
+    useSendTransactionMock.mockReturnValue(makeContext({ dispatch }));
+
+    renderWizard();
+
+    const hookArgs = useSendTransactionActionsMock.mock.calls[0][0];
+    hookArgs.setDraftId('draft-adopted');
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_DRAFT_ID', id: 'draft-adopted' });
   });
 
   it('returns early from single-sig broadcast when createTransaction resolves null', async () => {

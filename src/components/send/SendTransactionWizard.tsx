@@ -5,7 +5,7 @@
  * Wraps everything in the SendTransactionProvider and renders the current step.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { SendTransactionProvider, useSendTransaction } from '../../contexts/send';
 import { useSendTransactionActions } from '../../hooks/send/useSendTransactionActions';
 import { useHardwareWallet } from '../../hooks/useHardwareWallet';
@@ -36,7 +36,7 @@ function WizardContent({
   draftTxData,
   onCancel,
 }: WizardContentProps) {
-  const { currentStep, wallet, state, isReadyToSign, utxos } = useSendTransaction();
+  const { currentStep, wallet, state, isReadyToSign, utxos, dispatch } = useSendTransaction();
   const hardwareWallet = useHardwareWallet();
 
   log.debug('WizardContent state', {
@@ -51,12 +51,17 @@ function WizardContent({
     return createDraftInitialTxData({ draftTxData, state, utxos });
   }, [draftTxData, state, utxos]);
 
+  const setDraftId = useCallback((id: string | null) => {
+    dispatch({ type: 'SET_DRAFT_ID', id });
+  }, [dispatch]);
+
   const actions = useSendTransactionActions({
     walletId,
     wallet,
     state,
     initialPsbt: state.isDraftMode ? state.unsignedPsbt : undefined,
     initialTxData: draftInitialTxData || undefined,
+    setDraftId,
   });
 
   useReviewStepTransactionLifecycle({

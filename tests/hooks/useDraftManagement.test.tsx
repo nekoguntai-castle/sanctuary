@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
@@ -76,8 +77,34 @@ function createDeps(overrides: Partial<Parameters<typeof useDraftManagement>[0]>
     beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => true }),
     setIsSavingDraft: vi.fn(),
     setError: vi.fn(),
+    setDraftId: vi.fn(),
     ...overrides,
   };
+}
+
+/**
+ * Renders `useDraftManagement` behind a small stateful wrapper so the id an
+ * earlier `saveDraft()` call adopts via `setDraftId` is fed back into the
+ * `state.draftId` the *next* `saveDraft()` call reads — mirroring how the
+ * reducer-backed `state` prop behaves in the real wizard.
+ */
+function renderStatefulDraftManagement(overrides: Record<string, unknown> = {}) {
+  const setDraftIdSpy = vi.fn();
+
+  const { result } = renderHook(() => {
+    const [draftId, setDraftId] = useState<string | null>(null);
+    const deps = createDeps({
+      ...overrides,
+      state: createState({ ...(overrides.state as object | undefined), draftId }),
+      setDraftId: (id: string | null) => {
+        setDraftIdSpy(id);
+        setDraftId(id);
+      },
+    });
+    return useDraftManagement(deps);
+  });
+
+  return { result, setDraftIdSpy };
 }
 
 describe('useDraftManagement', () => {
@@ -493,5 +520,79 @@ describe('useDraftManagement', () => {
       expect(mocks.createDraft).not.toHaveBeenCalled();
       unmount();
     }
+  });
+
+  describe('draft id adoption after create', () => {
+    it('adopts the newly created draft id so a second save updates instead of creating again', async () => {
+      const { result, setDraftIdSpy } = renderStatefulDraftManagement();
+
+      await act(async () => {
+        expect(await result.current.saveDraft()).toBe('draft-1');
+      });
+      expect(mocks.createDraft).toHaveBeenCalledTimes(1);
+      expect(setDraftIdSpy).toHaveBeenCalledWith('draft-1');
+
+      await act(async () => {
+        expect(await result.current.saveDraft()).toBe('draft-1');
+      });
+
+      expect(mocks.createDraft).toHaveBeenCalledTimes(1);
+      expect(mocks.updateDraft).toHaveBeenCalledWith(
+        'wallet-1',
+        'draft-1',
+        expect.any(Object),
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('adopts the created draft id before a failing signed-state follow-up, so a retry updates', async () => {
+      mocks.updateDraft.mockRejectedValueOnce(new Error('signed state write failed'));
+      const { result, setDraftIdSpy } = renderStatefulDraftManagement({
+        unsignedPsbt: 'signed-psbt',
+        signedDevices: new Set(['dev-1']),
+      });
+
+      await act(async () => {
+        expect(await result.current.saveDraft()).toBeNull();
+      });
+      expect(mocks.createDraft).toHaveBeenCalledTimes(1);
+      expect(mocks.updateDraft).toHaveBeenCalledTimes(1);
+      // The id must have been adopted BEFORE the follow-up write threw.
+      expect(setDraftIdSpy).toHaveBeenCalledWith('draft-1');
+
+      mocks.updateDraft.mockResolvedValueOnce(undefined);
+      await act(async () => {
+        expect(await result.current.saveDraft()).toBe('draft-1');
+      });
+
+      // The retry must update the adopted draft, not create a duplicate.
+      expect(mocks.createDraft).toHaveBeenCalledTimes(1);
+      expect(mocks.updateDraft).toHaveBeenCalledTimes(2);
+      expect(mocks.updateDraft).toHaveBeenLastCalledWith(
+        'wallet-1',
+        'draft-1',
+        expect.any(Object),
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('does not adopt a draft id when the lease is lost right after creation resolves', async () => {
+      let current = true;
+      mocks.createDraft.mockImplementationOnce(async () => {
+        current = false;
+        return { id: 'stale-draft' };
+      });
+      const controller = new AbortController();
+      const setDraftIdSpy = vi.fn();
+      const deps = createDeps({
+        beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+        setDraftId: setDraftIdSpy,
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await expect(result.current.saveDraft()).resolves.toBeNull();
+
+      expect(setDraftIdSpy).not.toHaveBeenCalled();
+    });
   });
 });

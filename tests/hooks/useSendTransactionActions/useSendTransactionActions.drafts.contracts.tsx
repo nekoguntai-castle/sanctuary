@@ -30,6 +30,20 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
       expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
     });
 
+    it('threads the provided setDraftId through to adopt a newly created draft id', async () => {
+      const state = createState({
+        outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+      });
+
+      const { result } = renderSendTransactionActions({ state });
+
+      await act(async () => {
+        await result.current.saveDraft();
+      });
+
+      expect(mocks.setDraftId).toHaveBeenCalledWith('draft-1');
+    });
+
     it('updates existing draft with signature metadata', async () => {
       const state = createState({
         outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
