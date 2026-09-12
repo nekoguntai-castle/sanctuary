@@ -289,7 +289,13 @@ export async function ownerOverride(
     throw new ConflictError('No pending approval requests to override');
   }
 
-  await updateDraftApprovalStatus(draftId, 'approved');
+  // Derive the draft status from all requests rather than force-writing
+  // 'approved': a request another resolver settled (rejected/vetoed) in the
+  // meantime must still veto the draft even though this override succeeded
+  // for the requests it won. The override's own 'overridden' notification
+  // below is the single notification for this path, so suppress the derive
+  // step's own notification to avoid double-notifying.
+  await updateDraftApprovalFromRequests(draftId, { notify: false });
 
   // Log override event for each policy
   for (const request of overridden) {
@@ -421,8 +427,17 @@ async function resolveRequest(
 
 /**
  * Update draft approval status based on all its approval requests.
+ *
+ * `notify` defaults to true for the normal per-vote resolution path. Callers
+ * that send their own resolution notification (e.g. owner override, which
+ * sends a single 'overridden' notification) pass `{ notify: false }` to avoid
+ * a double notification on the all-approved branch.
  */
-async function updateDraftApprovalFromRequests(draftId: string): Promise<void> {
+async function updateDraftApprovalFromRequests(
+  draftId: string,
+  options: { notify?: boolean } = {}
+): Promise<void> {
+  const { notify = true } = options;
   const requests = await policyRepository.findApprovalRequestsByDraftId(draftId);
 
   if (requests.length === 0) {
@@ -444,12 +459,14 @@ async function updateDraftApprovalFromRequests(draftId: string): Promise<void> {
   if (requests.every(r => r.status === 'approved')) {
     await updateDraftApprovalStatus(draftId, 'approved');
 
-    // Notify about resolution (async)
-    const draft = await draftRepository.findById(draftId);
-    if (draft) {
-      notifyApprovalResolved(draft.walletId, draftId, 'approved', null).catch(err => {
-        log.warn('Failed to send resolution notification', { error: getErrorMessage(err) });
-      });
+    if (notify) {
+      // Notify about resolution (async)
+      const draft = await draftRepository.findById(draftId);
+      if (draft) {
+        notifyApprovalResolved(draft.walletId, draftId, 'approved', null).catch(err => {
+          log.warn('Failed to send resolution notification', { error: getErrorMessage(err) });
+        });
+      }
     }
     return;
   }

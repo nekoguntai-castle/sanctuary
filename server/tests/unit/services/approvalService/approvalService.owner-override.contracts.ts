@@ -5,11 +5,20 @@ import { approvalService } from '../../../../src/services/vaultPolicy/approvalSe
 
 export function registerOwnerOverrideContracts() {
   it('force-approves all pending requests and logs events', async () => {
-    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
-      { id: 'r1', status: 'pending', policyId },
-      { id: 'r2', status: 'pending', policyId },
-      { id: 'r3', status: 'approved', policyId }, // already approved, not overridden
-    ]);
+    mockPolicyRepo.findApprovalRequestsByDraftId
+      // First read: which requests are pending, before overriding.
+      .mockResolvedValueOnce([
+        { id: 'r1', status: 'pending', policyId },
+        { id: 'r2', status: 'pending', policyId },
+        { id: 'r3', status: 'approved', policyId }, // already approved, not overridden
+      ])
+      // Second read: the derive step inside updateDraftApprovalFromRequests,
+      // after r1/r2 were resolved to 'approved'.
+      .mockResolvedValueOnce([
+        { id: 'r1', status: 'approved', policyId },
+        { id: 'r2', status: 'approved', policyId },
+        { id: 'r3', status: 'approved', policyId },
+      ]);
 
     await approvalService.ownerOverride(draftId, walletId, userId, 'Emergency');
 
@@ -67,6 +76,43 @@ export function registerOwnerOverrideContracts() {
     await expect(
       approvalService.ownerOverride(draftId, walletId, userId, 'reason')
     ).rejects.toThrow('No pending approval requests to override');
+  });
+
+  it('derives the draft status as approved when every request was still pending', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId
+      .mockResolvedValueOnce([
+        { id: 'r1', status: 'pending', policyId },
+        { id: 'r2', status: 'pending', policyId },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'r1', status: 'approved', policyId },
+        { id: 'r2', status: 'approved', policyId },
+      ]);
+
+    await approvalService.ownerOverride(draftId, walletId, userId, 'Emergency');
+
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+  });
+
+  it('sends exactly one notification (overridden, never approved) on the all-approved override path', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId
+      .mockResolvedValueOnce([
+        { id: 'r1', status: 'pending', policyId },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'r1', status: 'approved', policyId },
+      ]);
+
+    await approvalService.ownerOverride(draftId, walletId, userId, 'Emergency');
+
+    expect(mockNotify.notifyApprovalResolved).toHaveBeenCalledTimes(1);
+    expect(mockNotify.notifyApprovalResolved).toHaveBeenCalledWith(walletId, draftId, 'overridden', userId);
+    expect(mockNotify.notifyApprovalResolved).not.toHaveBeenCalledWith(
+      walletId,
+      draftId,
+      'approved',
+      expect.anything()
+    );
   });
 
   it('logs warning when override notification fails', async () => {
