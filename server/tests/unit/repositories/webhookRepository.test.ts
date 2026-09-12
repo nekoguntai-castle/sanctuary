@@ -517,6 +517,73 @@ describe('webhookRepository', () => {
     expect(mockTx.webhookDelivery.findUniqueOrThrow).not.toHaveBeenCalled();
     expect(mockTx.webhookEndpoint.update).not.toHaveBeenCalled();
   });
+  describe('retiring outstanding deliveries on endpoint change', () => {
+    /**
+     * The retirement has to land in the same transaction as the endpoint
+     * update. If it did not, there would be a window where the new destination
+     * is committed and the old deliveries are still claimable — which is the
+     * exact bug, just narrowed to a race.
+     */
+    it('retires pending and failed deliveries when the predicate says so', async () => {
+      mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+      mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(makeEndpoint());
+      mockTx.webhookEndpoint.update.mockResolvedValueOnce(makeEndpoint());
+
+      await webhookRepository.updateEndpoint(
+        'wallet-1',
+        'endpoint-1',
+        () => ({ url: 'https://new.example/hook' }),
+        () => true,
+      );
+
+      expect(mockTx.webhookDelivery.updateMany).toHaveBeenCalledWith({
+        where: { endpointId: 'endpoint-1', status: { in: ['pending', 'failed'] } },
+        data: {
+          status: 'dead',
+          nextAttemptAt: null,
+          attemptLeaseToken: null,
+          attemptLeaseExpiresAt: null,
+          lastError: webhookRepository.DELIVERY_ENDPOINT_CHANGED_REASON,
+        },
+      });
+    });
+
+    it('leaves deliveries alone when the predicate declines', async () => {
+      mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+      mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(makeEndpoint());
+      mockTx.webhookEndpoint.update.mockResolvedValueOnce(makeEndpoint());
+
+      await webhookRepository.updateEndpoint(
+        'wallet-1',
+        'endpoint-1',
+        () => ({ name: 'Renamed' }),
+        () => false,
+      );
+
+      expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('leaves deliveries alone when no predicate is supplied', async () => {
+      mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+      mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(makeEndpoint());
+      mockTx.webhookEndpoint.update.mockResolvedValueOnce(makeEndpoint());
+
+      await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', () => ({ name: 'Renamed' }));
+
+      expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('does not retire anything when the endpoint row is not found', async () => {
+      mockTx.$queryRaw.mockResolvedValueOnce([]);
+
+      await expect(
+        webhookRepository.updateEndpoint('wallet-1', 'missing', () => ({}), () => true),
+      ).resolves.toBeNull();
+
+      expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
 });
 
 function makeEndpoint(overrides: Record<string, unknown> = {}) {

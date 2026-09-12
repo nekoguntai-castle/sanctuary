@@ -166,13 +166,39 @@ export async function updateWalletWebhook(
       ? { failureNotificationEnabled: input.failureNotificationEnabled }
       : {}),
   };
-  const endpoint = await webhookRepository.updateEndpoint(walletId, endpointId, existing => ({
-    ...update,
-    ...(input.headerConfig === undefined
-      ? {}
-      : { headerConfig: mergeHeaderConfig(existing.headerConfig, input.headerConfig) as never }),
-  }));
+  const endpoint = await webhookRepository.updateEndpoint(
+    walletId,
+    endpointId,
+    existing => ({
+      ...update,
+      ...(input.headerConfig === undefined
+        ? {}
+        : { headerConfig: mergeHeaderConfig(existing.headerConfig, input.headerConfig) as never }),
+    }),
+    existing => changesDeliveryDestinationOrSigning(existing, input),
+  );
   return endpoint ? toWebhookEndpointResponse(endpoint, walletRole) : null;
+}
+
+/**
+ * Whether this update repoints where a delivery would go, or changes what would
+ * sign it. Either makes an outstanding delivery unsafe to retry: it would carry
+ * an already-recorded event to a destination, or under a signature, that it was
+ * never enqueued for.
+ *
+ * A rename, an enable/disable, or a filter change is not such a case — ordinary
+ * edits must keep retrying normally.
+ */
+function changesDeliveryDestinationOrSigning(
+  existing: { url: string; secretEncrypted: string | null },
+  input: UpdateWebhookEndpointInput,
+): boolean {
+  if (input.url !== undefined && input.url !== existing.url) return true;
+  // Ciphertext is not comparable — encrypt() is non-deterministic — so a
+  // supplied secret counts as a rotation.
+  if (input.secret !== undefined) return true;
+  if (input.authType === 'none' && existing.secretEncrypted !== null) return true;
+  return false;
 }
 
 function getSecretUpdate(input: UpdateWebhookEndpointInput): { secretEncrypted?: string | null } {

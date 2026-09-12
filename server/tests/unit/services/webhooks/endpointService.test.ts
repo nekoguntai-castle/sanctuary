@@ -66,6 +66,7 @@ import {
 
 let repositoryUpdateResult: WebhookEndpoint | null;
 let persistedUpdateInputs: Array<Record<string, unknown>>;
+let retirePendingDecisions: boolean[];
 
 describe('webhook endpoint service', () => {
   beforeEach(() => {
@@ -73,14 +74,17 @@ describe('webhook endpoint service', () => {
     mockFindEndpointForWallet.mockResolvedValue(makeEndpoint());
     repositoryUpdateResult = makeEndpoint();
     persistedUpdateInputs = [];
+    retirePendingDecisions = [];
     mockUpdateEndpoint.mockImplementation(async (
       _walletId: string,
       _endpointId: string,
       buildUpdate: (endpoint: WebhookEndpoint) => Record<string, unknown>,
+      shouldRetirePendingDeliveries?: (endpoint: WebhookEndpoint) => boolean,
     ) => {
       const existing = await mockFindEndpointForWallet();
       if (!existing) return null;
       persistedUpdateInputs.push(buildUpdate(existing));
+      retirePendingDecisions.push(shouldRetirePendingDeliveries?.(existing) ?? false);
       return repositoryUpdateResult;
     });
   });
@@ -462,6 +466,68 @@ describe('webhook endpoint service', () => {
     }, 'owner')).rejects.toMatchObject({ statusCode: 400 });
     expect(mockUpdateEndpoint).not.toHaveBeenCalled();
   });
+  describe('retiring outstanding deliveries when an endpoint is repointed', () => {
+    /**
+     * A delivery records an event that already happened. Retrying it against a
+     * destination the operator has since changed — or signing it with a secret
+     * they have since rotated — sends that event somewhere it was never
+     * enqueued for. These contracts pin which edits retire outstanding
+     * deliveries and, just as importantly, which do not.
+     */
+    it('retires deliveries when the destination URL actually changes', async () => {
+      mockFindEndpointForWallet.mockResolvedValue(makeEndpoint({ url: 'https://old.example/hook' }));
+
+      await updateWalletWebhook('wallet-1', 'endpoint-1', { url: 'https://new.example/hook' }, 'owner');
+
+      expect(retirePendingDecisions).toEqual([true]);
+    });
+
+    it('retires deliveries when the signing secret is rotated', async () => {
+      mockFindEndpointForWallet.mockResolvedValue(makeEndpoint({ secretEncrypted: 'encrypted:old' }));
+
+      await updateWalletWebhook('wallet-1', 'endpoint-1', { secret: 'brand-new-secret' }, 'owner');
+
+      expect(retirePendingDecisions).toEqual([true]);
+    });
+
+    it('retires deliveries when auth is dropped from an endpoint that had a secret', async () => {
+      mockFindEndpointForWallet.mockResolvedValue(makeEndpoint({ secretEncrypted: 'encrypted:old' }));
+
+      await updateWalletWebhook('wallet-1', 'endpoint-1', { authType: 'none' }, 'owner');
+
+      expect(retirePendingDecisions).toEqual([true]);
+    });
+
+    it('does not retire deliveries when the URL is resubmitted unchanged', async () => {
+      mockFindEndpointForWallet.mockResolvedValue(makeEndpoint({ url: 'https://same.example/hook' }));
+
+      await updateWalletWebhook('wallet-1', 'endpoint-1', { url: 'https://same.example/hook' }, 'owner');
+
+      expect(retirePendingDecisions).toEqual([false]);
+    });
+
+    it('does not retire deliveries for ordinary edits', async () => {
+      mockFindEndpointForWallet.mockResolvedValue(makeEndpoint({ url: 'https://same.example/hook' }));
+
+      await updateWalletWebhook(
+        'wallet-1',
+        'endpoint-1',
+        { name: 'Renamed', enabled: false, eventTypes: ['transaction.confirmed'] },
+        'owner',
+      );
+
+      expect(retirePendingDecisions).toEqual([false]);
+    });
+
+    it('does not retire deliveries when auth is dropped from an endpoint that had no secret', async () => {
+      mockFindEndpointForWallet.mockResolvedValue(makeEndpoint({ secretEncrypted: null }));
+
+      await updateWalletWebhook('wallet-1', 'endpoint-1', { authType: 'none' }, 'owner');
+
+      expect(retirePendingDecisions).toEqual([false]);
+    });
+  });
+
 });
 
 function makeEndpoint(overrides: Partial<WebhookEndpoint> = {}): WebhookEndpoint {

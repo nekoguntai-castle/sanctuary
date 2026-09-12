@@ -122,7 +122,18 @@ Revert the phase PR. No schema or data migration.
 
 ---
 
-## Phase 3 — F8: webhook deliveries cannot be redirected by an endpoint edit
+## Phase 3 — F8: webhook deliveries cannot be redirected by an endpoint edit — IMPLEMENTED
+
+Status: implemented on `codex/bug-scrub-loop/i13-phase3-webhook-deadletter` using
+Option B. `updateEndpoint` gained an optional predicate; when it reports that the
+destination URL or signing secret actually changed, outstanding pending/failed
+deliveries for that endpoint are marked `dead` **inside the same locked
+transaction** as the endpoint update — so no window exists where the new
+destination is committed and old deliveries are still claimable.
+`claimDeliveryAttempt` already filters to pending/failed, so the send path needed
+no change. Ordinary edits (rename, enable/disable, filters, an unchanged URL
+resubmitted, dropping auth from an endpoint that had no secret) do not retire
+anything. Verified: 15,791 backend unit tests at 100% coverage.
 
 - Owner paths (Option B): `server/src/services/webhooks/endpointService.ts`, `server/src/repositories/webhookRepository.ts`, and `server/src/services/webhooks/deliveryService.ts` only where the terminal status is honored.
 - Additional owner paths if Option A is chosen: `server/src/services/webhooks/signers.ts`, `server/src/services/webhooks/payloadProfiles/index.ts`, `server/prisma/schema.prisma`.

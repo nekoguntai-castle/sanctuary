@@ -140,10 +140,17 @@ export async function createEndpoint(
   });
 }
 
+/**
+ * Reason recorded on deliveries retired because their endpoint was repointed.
+ */
+export const DELIVERY_ENDPOINT_CHANGED_REASON =
+  'Endpoint destination or signing secret changed before this delivery completed';
+
 export async function updateEndpoint(
   walletId: string,
   endpointId: string,
   buildUpdate: BuildWebhookEndpointUpdate,
+  shouldRetirePendingDeliveries?: (existing: WebhookEndpoint) => boolean,
 ): Promise<WebhookEndpoint | null> {
   // Lock before reading so concurrent hidden-header deltas merge from the latest
   // committed config instead of losing rotations or reviving deleted credentials.
@@ -157,7 +164,31 @@ export async function updateEndpoint(
     if (lockedRows.length === 0) return null;
 
     const existing = await tx.webhookEndpoint.findUniqueOrThrow({ where: { id: endpointId } });
-    return updateEndpointRow(tx, endpointId, buildUpdate(existing));
+    const retirePending = shouldRetirePendingDeliveries?.(existing) ?? false;
+    const updated = await updateEndpointRow(tx, endpointId, buildUpdate(existing));
+
+    if (retirePending) {
+      // A delivery records an event that already happened. Sending it to a
+      // destination the operator has since repointed — or signing it with a
+      // secret they have since rotated — delivers that event somewhere it was
+      // never enqueued for. Retire the outstanding ones in the same
+      // transaction as the change, so no window exists where the new
+      // destination is live and old deliveries are still claimable.
+      // `claimDeliveryAttempt` only claims pending/failed rows, so `dead` is
+      // sufficient to take them out of circulation.
+      await tx.webhookDelivery.updateMany({
+        where: { endpointId, status: { in: ['pending', 'failed'] } },
+        data: {
+          status: 'dead',
+          nextAttemptAt: null,
+          attemptLeaseToken: null,
+          attemptLeaseExpiresAt: null,
+          lastError: DELIVERY_ENDPOINT_CHANGED_REASON,
+        },
+      });
+    }
+
+    return updated;
   });
 }
 
@@ -489,6 +520,7 @@ function jsonValueOrNull(value: Prisma.InputJsonValue | null | undefined) {
 }
 
 export const webhookRepository = {
+  DELIVERY_ENDPOINT_CHANGED_REASON,
   listEndpoints,
   findEndpointForWallet,
   findEndpointById,
