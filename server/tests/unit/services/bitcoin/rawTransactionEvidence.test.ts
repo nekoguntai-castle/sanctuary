@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import * as bitcoin from 'bitcoinjs-lib';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -558,5 +559,133 @@ describe('raw transaction evidence', () => {
       expectedScriptPubKeyHex: '0014ab',
       ...overrides,
     }), reason);
+  });
+});
+
+/**
+ * `uint8array-tools` is pinned to 0.0.10 by the root `package.json` overrides.
+ * 0.0.8/0.0.9 ran `Buffer.from(buffer)` on every `readUInt32`/`readInt64`,
+ * copying the whole transaction per read, which made every Node parse O(n²) in
+ * transaction size. 0.0.10 replaced those copies with bounds-checked index
+ * arithmetic.
+ *
+ * That swap moves integer decoding from Node's `Buffer` to hand-rolled
+ * arithmetic, so these tests pin the boundaries where the two can diverge:
+ * unsigned 32-bit values above 2^31, and signed 64-bit sign composition.
+ * Expected values are read with Node's own `Buffer` accessors, so the
+ * assertions describe required semantics rather than whichever implementation
+ * happens to be installed.
+ */
+describe('pinned uint8array-tools build reads transaction fields byte-exactly', () => {
+  const LOCKTIME = Buffer.alloc(4);
+  const OUTPUT_SCRIPT = Buffer.from([0x01, 0x51]);
+  const VALUE_OFFSET = 4 + 1 + 32 + 4 + 1 + 4 + 1;
+  const SEQUENCE_OFFSET = 4 + 1 + 32 + 4 + 1;
+
+  /** One legacy input and one output, with every integer field caller-supplied. */
+  const buildRawTransaction = (
+    versionBytes: Buffer,
+    valueBytes: Buffer,
+    sequenceBytes: Buffer,
+  ): Buffer => Buffer.concat([
+    versionBytes,
+    Buffer.from([0x01]), Buffer.alloc(32), Buffer.alloc(4), Buffer.from([0x00]), sequenceBytes,
+    Buffer.from([0x01]), valueBytes, OUTPUT_SCRIPT,
+    LOCKTIME,
+  ]);
+
+  const littleEndian64 = (value: bigint): Buffer => {
+    const bytes = Buffer.alloc(8);
+    bytes.writeBigUInt64LE(value);
+    return bytes;
+  };
+
+  /**
+   * Independent txid oracle: for a transaction with no witness data the txid is
+   * the reversed double SHA-256 of the whole serialization. Deriving it here
+   * rather than from `Transaction.getId()` keeps the assertion from restating
+   * the library under test.
+   */
+  const expectedTxidOf = (rawBytes: Buffer): string => Buffer.from(
+    createHash('sha256').update(createHash('sha256').update(rawBytes).digest()).digest(),
+  ).reverse().toString('hex');
+
+  it.each([
+    ['a version above 2^31', Buffer.from([0xff, 0xff, 0xff, 0xff]), Buffer.alloc(8), Buffer.alloc(4)],
+    ['the signed-32-bit boundary version', Buffer.from([0x00, 0x00, 0x00, 0x80]), Buffer.alloc(8), Buffer.alloc(4)],
+    ['an all-ones output value', Buffer.alloc(4), Buffer.alloc(8, 0xff), Buffer.alloc(4)],
+    ['the maximum positive output value', Buffer.alloc(4), littleEndian64(2n ** 63n - 1n), Buffer.alloc(4)],
+    ['a maximum sequence', Buffer.alloc(4), Buffer.alloc(8), Buffer.from([0xff, 0xff, 0xff, 0xff])],
+    ['a zero sequence and value', Buffer.alloc(4), Buffer.alloc(8), Buffer.alloc(4)],
+  ])('reads %s exactly as Node Buffer does', (_label, versionBytes, valueBytes, sequenceBytes) => {
+    const rawBytes = buildRawTransaction(versionBytes, valueBytes, sequenceBytes);
+    const expectedTxid = expectedTxidOf(rawBytes);
+
+    const authenticated = parseAuthenticatedRawTransactionBytes({
+      expectedTxid,
+      rawBytes: Uint8Array.from(rawBytes),
+    });
+
+    expect(authenticated.transaction.version).toBe(rawBytes.readUInt32LE(0));
+    expect(authenticated.transaction.ins[0]!.sequence).toBe(rawBytes.readUInt32LE(SEQUENCE_OFFSET));
+    expect(authenticated.transaction.outs[0]!.value).toBe(rawBytes.readBigInt64LE(VALUE_OFFSET));
+    expect(authenticated.txid).toBe(expectedTxid);
+  });
+
+  it('reads witness framing byte-exactly', () => {
+    const transaction = new bitcoin.Transaction();
+    transaction.version = 2;
+    transaction.addInput(new Uint8Array(32), 0, 0xfffffffd);
+    transaction.addOutput(SCRIPT, 2n ** 62n);
+    transaction.setWitness(0, [Uint8Array.from([0xab, 0xcd]), new Uint8Array(0)]);
+    const rawBytes = transaction.toBuffer();
+
+    const authenticated = parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId(),
+      rawBytes: Uint8Array.from(rawBytes),
+    });
+
+    expect(authenticated.transaction.ins[0]!.sequence).toBe(0xfffffffd);
+    expect(authenticated.transaction.outs[0]!.value).toBe(2n ** 62n);
+    expect(authenticated.transaction.ins[0]!.witness.map(item => Buffer.from(item).toString('hex')))
+      .toEqual(['abcd', '']);
+  });
+
+  /**
+   * The quadratic cost mattered most for evidence that is *accepted*: a valid
+   * transaction just under MAX_AUTHENTICATED_TRANSACTION_WEIGHT passes the
+   * preflight and is parsed in full. 13,000 inputs and outputs is 3,744,056
+   * weight units, just inside the ceiling.
+   *
+   * Coarse regression guard, not a benchmark. Measured on this host
+   * (Node 24.14.1) for the bitcoinjs parse alone: 7,499 ms on 0.0.9 against
+   * 10 ms on 0.0.10. The assertion covers the whole authenticated call —
+   * framing preflight, parse, canonical re-encode and txid hash — which adds
+   * roughly 110 ms of linear work, for 122 ms end to end here.
+   *
+   * The 2 s budget therefore sits ~16× above the linear cost and ~4× below the
+   * copying build's parse step alone, so it separates the two implementations
+   * with room for a slow CI host.
+   */
+  it('authenticates a near-ceiling transaction without quadratic parse cost', () => {
+    const transaction = new bitcoin.Transaction();
+    transaction.version = 2;
+    for (let index = 0; index < 13_000; index += 1) {
+      transaction.addInput(new Uint8Array(32), index);
+      transaction.addOutput(SCRIPT, 1n);
+    }
+    const rawBytes = Uint8Array.from(transaction.toBuffer());
+    expect(measureCanonicalRawTransactionWeight(rawBytes))
+      .toBeLessThanOrEqual(MAX_AUTHENTICATED_TRANSACTION_WEIGHT);
+
+    const startedAt = performance.now();
+    const authenticated = parseAuthenticatedRawTransactionBytes({
+      expectedTxid: transaction.getId(),
+      rawBytes,
+    });
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(authenticated.transaction.ins).toHaveLength(13_000);
+    expect(elapsedMs).toBeLessThan(2_000);
   });
 });

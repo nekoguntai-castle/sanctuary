@@ -201,6 +201,52 @@ describe("workspace members declare no overrides npm would ignore", () => {
   });
 });
 
+/**
+ * uint8array-tools 0.0.8/0.0.9 run `Buffer.from(buffer)` inside every
+ * `readUInt32`/`readInt64`, copying the whole buffer per read. That makes
+ * `bitcoin.Transaction.fromBuffer` O(n²) in transaction size on Node: a
+ * 20,000-input transaction took 11,298 ms here, against 22 ms on 0.0.10, which
+ * reads through bounds-checked index arithmetic instead. bitcoinjs-lib 7.0.2
+ * still declares `^0.0.9`, so only this override keeps the linear build.
+ *
+ * Scoped to the root lockfile deliberately, unlike the deepmerge-ts block
+ * below. scripts/verify-addresses and scripts/verify-psbt are separate install
+ * roots that still resolve 0.0.7-0.0.9, and
+ * scripts/verify-addresses/package-lock.json is provenance-hashed through
+ * VERIFIER_SOURCE_FILES, so re-resolving it would invalidate generated vectors.
+ */
+describe("uint8array-tools stays on the linear-read build (grade-loop 2026-09-11)", () => {
+  const FIRST_LINEAR_READ_VERSION = [0, 0, 10];
+
+  const atOrAbove = (version: string, minimum: number[]) => {
+    const parts = version.split(".").map((part) => Number.parseInt(part, 10));
+    for (const [index, floor] of minimum.entries()) {
+      const part = parts[index] ?? 0;
+      if (part !== floor) return part > floor;
+    }
+    return true;
+  };
+
+  it("is overridden to a release at or above 0.0.10", () => {
+    const { overrides } = readJson<{ overrides: Record<string, string> }>(
+      "package.json",
+    );
+    expect(atOrAbove(overrides["uint8array-tools"] ?? "0.0.0", FIRST_LINEAR_READ_VERSION)).toBe(true);
+  });
+
+  it("ships no copy below 0.0.10 in the root lockfile", () => {
+    const copies = Object.entries(
+      resolvedCopies(readJson<Lockfile>("package-lock.json"), "uint8array-tools"),
+    );
+    expect(copies.length).toBeGreaterThan(0);
+    for (const [location, version] of copies) {
+      expect(`${location} -> ${atOrAbove(version, FIRST_LINEAR_READ_VERSION)}`).toBe(
+        `${location} -> true`,
+      );
+    }
+  });
+});
+
 describe("deepmerge-ts stays on the patched major (GHSA-ggr8-5vv4-36mx, #830)", () => {
   const majorOf = (version: string) => Number.parseInt(version, 10);
 
