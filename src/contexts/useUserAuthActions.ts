@@ -5,6 +5,7 @@ import * as authApi from '../api/auth';
 import * as twoFactorApi from '../api/twoFactor';
 import { ApiError } from '../api/client';
 import { triggerLogout } from '../api/refresh';
+import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
 import type {
   LoginResult,
   RegistrationResult,
@@ -163,6 +164,9 @@ export function useUserAuthActions({
     setTwoFactorPending(null);
     setError(null);
     setNotice(null);
+    // Runs after the user state is cleared above, so no authenticated query
+    // can remount against the React Query cache before it is wiped.
+    await clearQueryCacheForLogout();
   }, [flushPreferenceWrites, resetPreferenceTracking, setError, setNotice, setTwoFactorPending, setUser]);
 
   return {

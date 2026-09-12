@@ -359,6 +359,7 @@ n_src_main_tsx["main.tsx"]
 subgraph n_src_providers["providers"]
 n_src_providers_AppProviders_tsx["AppProviders.tsx"]
 n_src_providers_QueryProvider_tsx["QueryProvider.tsx"]
+n_src_providers_queryCacheReset_ts["queryCacheReset.ts"]
 end
 subgraph n_src_services["services"]
 n_src_services_bbqr_ts["bbqr.ts"]
@@ -1044,6 +1045,7 @@ n_src_contexts_UserContext_tsx-->n_src_contexts_useUserAuthLifecycle_ts
 n_src_contexts_UserContext_tsx-->n_src_contexts_useUserPreferenceMutation_ts
 n_src_contexts_UserContext_tsx-->n_src_contexts_useUserTheme_ts
 n_src_contexts_UserContext_tsx-->n_src_contexts_userModel_ts
+n_src_contexts_UserContext_tsx-->n_src_providers_queryCacheReset_ts
 n_src_contexts_send__collapsed-->n_shared_schemas_mobileApiRequests_ts
 n_src_contexts_send__collapsed-->n_src_utils_feeRate_ts
 n_src_contexts_send__collapsed-->n_src_utils_sendAmount_ts
@@ -1052,6 +1054,7 @@ n_src_contexts_useUserAuthActions_ts-->n_src_api_client_ts
 n_src_contexts_useUserAuthActions_ts-->n_src_api_refresh_ts
 n_src_contexts_useUserAuthActions_ts-->n_src_api_twoFactor_ts
 n_src_contexts_useUserAuthActions_ts-->n_src_contexts_userModel_ts
+n_src_contexts_useUserAuthActions_ts-->n_src_providers_queryCacheReset_ts
 n_src_contexts_useUserAuthLifecycle_ts-->n_src_api_auth_ts
 n_src_contexts_useUserAuthLifecycle_ts-->n_src_api_client_ts
 n_src_contexts_useUserAuthLifecycle_ts-->n_src_api_refresh_ts
@@ -1143,6 +1146,8 @@ n_src_providers_AppProviders_tsx-->n_src_contexts_NotificationContext_tsx
 n_src_providers_AppProviders_tsx-->n_src_contexts_SidebarContext_tsx
 n_src_providers_AppProviders_tsx-->n_src_contexts_UserContext_tsx
 n_src_providers_AppProviders_tsx-->n_src_providers_QueryProvider_tsx
+n_src_providers_queryCacheReset_ts-->n_src_providers_QueryProvider_tsx
+n_src_providers_queryCacheReset_ts-->n_src_utils_logger_ts
 n_src_services_bbqr_ts-->n_src_utils_logger_ts
 n_src_services_deviceParsers__collapsed-->n_shared_constants_walletIdentity_ts
 n_src_services_deviceParsers__collapsed-->n_shared_utils_bitcoin_ts

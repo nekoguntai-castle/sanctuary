@@ -20,6 +20,8 @@ import {
   mockUser,
   TestConsumer,
 } from './UserContext.test.fixtures';
+import { queryClient } from '../../src/providers/QueryProvider';
+import { walletKeys } from '../../src/hooks/queries/useWallets';
 
 vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -116,6 +118,10 @@ describe('UserContext', () => {
     vi.clearAllMocks();
     // Reset document classes
     document.documentElement.classList.remove('dark');
+    // Reset the shared React Query cache singleton so leftover data from one
+    // test (or another test file importing the same module) can't leak into
+    // the query-cache-reset assertions below.
+    queryClient.clear();
   });
 
   function registerProviderInitializationTests(): void {
@@ -600,6 +606,72 @@ describe('UserContext', () => {
     });
   }
 
+  function registerQueryCacheResetTests(): void {
+    describe('Query cache reset on logout', () => {
+    // P1 remediation: the React Query cache carries no user identity in its
+    // keys, so it must not survive logout — otherwise a second user logging
+    // in within staleTime/gcTime in the same tab sees the first user's
+    // cached wallet data. These tests exercise the real
+    // clearQueryCacheForLogout helper against the real queryClient
+    // singleton (not mocked) so they prove actual cache state, not just
+    // that a mock was invoked.
+    it('empties the query cache on explicit logout', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
+      vi.mocked(authApi.requires2FA).mockReturnValue(false);
+      queryClient.setQueryData(walletKeys.lists(), [{ id: 'wallet-a', name: "A's wallet" }]);
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+      await waitFor(() => {
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+      });
+
+      expect(queryClient.getQueryCache().getAll().length).toBeGreaterThan(0);
+
+      await user.click(screen.getByTestId('logout'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
+      });
+      expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    });
+
+    it('empties the query cache when a terminal logout broadcast fires', async () => {
+      vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
+      let capturedListener: (() => void) | null = null;
+      mockOnTerminalLogout.mockImplementation((cb: () => void) => {
+        capturedListener = cb;
+        return () => {};
+      });
+      queryClient.setQueryData(walletKeys.lists(), [{ id: 'wallet-b', name: "B's wallet" }]);
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('testuser');
+      });
+
+      expect(queryClient.getQueryCache().getAll().length).toBeGreaterThan(0);
+
+      if (!capturedListener) throw new Error('terminal logout listener not captured');
+      act(() => {
+        (capturedListener as () => void)();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('null');
+      });
+      expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    });
+    });
+  }
+
   function registerErrorHandlingTests(): void {
     describe('Error handling', () => {
     it('clears error', async () => {
@@ -803,4 +875,9 @@ describe('UserContext', () => {
   registerUseUserHookTests();
   registerSpecializedHookTests();
   registerThemeApplicationTests();
+  // Registered last: its final test leaves authApi.getCurrentUser mocked to
+  // resolve, and vi.clearAllMocks() (used throughout this suite) does not
+  // reset mock implementations — only earlier tests rely on the leaked
+  // rejection from "Provider initialization", so keep this block after them.
+  registerQueryCacheResetTests();
 });
