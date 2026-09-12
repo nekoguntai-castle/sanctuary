@@ -342,6 +342,11 @@ filter compares the signed value, silently dropping every sync-discovered outgoi
 `amountSats: "-5000000"` against `minAmountSats: "100000"` passes (currently dropped).
 Verification: server gates. Rollback: revert.
 
+**Status: done.** `matchesEndpointFilters` now compares `|amountSats|` against `minAmountSats`
+(bigint magnitude, existing inclusive boundary preserved). New tests in
+`server/tests/unit/services/webhooks/webhookCore.test.ts` cover the negative-magnitude pass,
+still-below-minimum drop, the `-100000` boundary, and unchanged positive-amount behavior.
+
 ## Phase 9 — P2: decoy change split never emits sub-dust outputs
 
 Owner: `server/src/services/bitcoin/psbtBuilder/decoyAmounts.ts`.

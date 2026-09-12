@@ -375,6 +375,44 @@ describe('webhook core', () => {
     expect(mockFindEnabledEndpointsForEvent).toHaveBeenCalledWith('wallet-1', 'wallet.transaction.received');
   });
 
+  it('compares minAmountSats against the transaction magnitude, not the signed value', async () => {
+    const sentEvent: WalletWebhookEvent = {
+      ...makeEvent(),
+      transaction: { ...makeEvent().transaction!, type: 'sent', amountSats: '-5000000' },
+    };
+
+    // Sync-discovered sent transactions carry a negative amountSats. A minimum filter must
+    // still match on magnitude, or every sync-discovered outgoing payment is silently dropped.
+    expect(matchesEndpointFilters(
+      makeEndpoint({ filters: { minAmountSats: '100000' } }),
+      sentEvent,
+    )).toBe(true);
+
+    // A sent amount whose magnitude is still below the minimum stays filtered out.
+    expect(matchesEndpointFilters(
+      makeEndpoint({ filters: { minAmountSats: '100000' } }),
+      { ...sentEvent, transaction: { ...sentEvent.transaction!, amountSats: '-50000' } },
+    )).toBe(false);
+
+    // Boundary: magnitude equal to the minimum is inclusive, matching the existing rule for
+    // positive amounts (see the '1' vs '123456' case above).
+    expect(matchesEndpointFilters(
+      makeEndpoint({ filters: { minAmountSats: '100000' } }),
+      { ...sentEvent, transaction: { ...sentEvent.transaction!, amountSats: '-100000' } },
+    )).toBe(true);
+
+    // Positive-amount behavior is unchanged.
+    const positiveEvent = makeEvent();
+    expect(matchesEndpointFilters(
+      makeEndpoint({ filters: { minAmountSats: '100000' } }),
+      { ...positiveEvent, transaction: { ...positiveEvent.transaction!, amountSats: '100000' } },
+    )).toBe(true);
+    expect(matchesEndpointFilters(
+      makeEndpoint({ filters: { minAmountSats: '100000' } }),
+      { ...positiveEvent, transaction: { ...positiveEvent.transaction!, amountSats: '99999' } },
+    )).toBe(false);
+  });
+
   it('signs configured HMACs using endpoint-defined headers and canonical fields', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-22T10:00:00Z'));

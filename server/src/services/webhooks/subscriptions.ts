@@ -36,7 +36,9 @@ export function matchesEndpointFilters(
   }
 
   if (filters.minAmountSats && transaction) {
-    if (BigInt(transaction.amountSats) < BigInt(filters.minAmountSats)) return false;
+    const amount = BigInt(transaction.amountSats);
+    const magnitude = amount < 0n ? -amount : amount;
+    if (magnitude < BigInt(filters.minAmountSats)) return false;
   }
 
   if (filters.confirmationThreshold !== undefined && transaction) {
