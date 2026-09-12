@@ -4,6 +4,7 @@ import { webhookRepository } from '../../repositories';
 import type { Prisma, WebhookEndpoint } from '../../generated/prisma/client';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { isEncryptionKeyNotInitializedError } from '../../utils/encryption';
 import { walletLog } from '../../websocket/notifications';
 import { getRetryConfig } from './config';
 import { requestPinnedAddress } from '../outboundNetwork/nativeRequest';
@@ -214,6 +215,18 @@ async function handleWebhookDeliveryFailure(
 ): Promise<WebhookSendResult> {
   const errorMessage = getErrorMessage(error);
   const retryable = isRetryableWebhookError(error);
+  if (isEncryptionKeyNotInitializedError(error)) {
+    // Retrying cannot help - the process signing this delivery never ran
+    // validateEncryptionKey() at startup. Log loudly so a future regression
+    // (e.g. a new process that signs webhooks without initializing the key)
+    // is observable instead of silently dead-lettering every delivery.
+    log.error('Webhook signing failed: encryption key not initialized at startup', {
+      walletId: delivery.walletId,
+      endpointId: delivery.endpointId,
+      deliveryId: delivery.id,
+      hint: 'validateEncryptionKey() must be awaited during process startup before signing webhooks.',
+    });
+  }
   const maxAttempts = Math.max(1, delivery.endpoint.maxAttempts);
   const requestDiagnostics = preparedRequest
     ? {

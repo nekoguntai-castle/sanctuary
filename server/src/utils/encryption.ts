@@ -35,15 +35,33 @@ let encryptionKeyCache: Buffer | null = null;
 let encryptionSaltCache: string | null = null;
 
 /**
+ * Thrown by `getEncryptionKey()` when `validateEncryptionKey()` has not run.
+ * Exported so callers that need to distinguish this specific startup-ordering
+ * failure (e.g. to log it distinctly rather than duplicate the string) can do
+ * so with `isEncryptionKeyNotInitializedError()` instead of string-matching.
+ */
+export const ENCRYPTION_KEY_NOT_INITIALIZED_MESSAGE =
+  'Encryption key not initialized. Call validateEncryptionKey() at startup before using encrypt/decrypt.';
+
+/**
+ * True when `error` is the "encryption key not initialized" failure thrown by
+ * `getEncryptionKey()`. Every process that encrypts/decrypts (directly or via
+ * a dependent module such as webhook signing) must call
+ * `validateEncryptionKey()` during startup; this guard lets a caller detect
+ * the specific case where that startup step was skipped.
+ */
+export function isEncryptionKeyNotInitializedError(error: unknown): boolean {
+  return error instanceof Error && error.message === ENCRYPTION_KEY_NOT_INITIALIZED_MESSAGE;
+}
+
+/**
  * Get the cached encryption key. Throws if not initialized via validateEncryptionKey().
  * The key is derived once at startup using async scrypt to avoid blocking the event loop,
  * then cached for all subsequent synchronous encrypt/decrypt operations.
  */
 function getEncryptionKey(): Buffer {
   if (!encryptionKeyCache) {
-    throw new Error(
-      'Encryption key not initialized. Call validateEncryptionKey() at startup before using encrypt/decrypt.'
-    );
+    throw new Error(ENCRYPTION_KEY_NOT_INITIALIZED_MESSAGE);
   }
   return encryptionKeyCache;
 }

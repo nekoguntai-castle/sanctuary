@@ -176,6 +176,7 @@ const mocks = vi.hoisted(() => {
       },
     ) => void>(),
     initializeOpenTelemetry: vi.fn(),
+    validateEncryptionKey: vi.fn(),
     connectWithRetry: vi.fn(),
     disconnect: vi.fn(),
     startDatabaseHealthCheck: vi.fn(),
@@ -221,6 +222,10 @@ vi.mock('../../../src/utils/tracing/otel', () => ({
 
 vi.mock('../../../src/config', () => ({
   getConfig: mocks.getConfig,
+}));
+
+vi.mock('../../../src/utils/encryption', () => ({
+  validateEncryptionKey: mocks.validateEncryptionKey,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -368,6 +373,7 @@ describe('worker entrypoint', () => {
     vi.clearAllMocks();
 
     mocks.initializeOpenTelemetry.mockResolvedValue(undefined);
+    mocks.validateEncryptionKey.mockResolvedValue(undefined);
     mocks.connectWithRetry.mockResolvedValue(undefined);
     mocks.syncIntentRequest.mockResolvedValue({
       status: 'requested',
@@ -546,6 +552,53 @@ describe('worker entrypoint', () => {
     expect(mocks.electrumInstance.stop).not.toHaveBeenCalled();
     expect(mocks.queueInstance.shutdown).not.toHaveBeenCalled();
     expect(processExitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('awaits encryption key validation before connecting to the database and registering job handlers', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((
+      _event: string,
+      _handler: (...args: any[]) => any,
+    ) => process) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.validateEncryptionKey).toHaveBeenCalledOnce();
+    expect(mocks.validateEncryptionKey.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.connectWithRetry.mock.invocationCallOrder[0],
+    );
+    expect(mocks.validateEncryptionKey.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.registerWorkerJobs.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('fails startup and never registers job handlers when the encryption key cannot be validated', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((
+      _event: string,
+      _handler: (...args: any[]) => any,
+    ) => process) as any);
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as any);
+    mocks.validateEncryptionKey.mockRejectedValueOnce(
+      new Error('Encryption key not initialized. Call validateEncryptionKey() at startup before using encrypt/decrypt.'),
+    );
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'FATAL: Missing required environment variable',
+      expect.objectContaining({
+        error: expect.stringContaining('Encryption key not initialized'),
+        hint: expect.stringContaining('ENCRYPTION_KEY'),
+      }),
+    );
+    expect(mocks.connectWithRetry).not.toHaveBeenCalled();
+    expect(mocks.registerWorkerJobs).not.toHaveBeenCalled();
+    expect(mocks.queueInstance.initialize).not.toHaveBeenCalled();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
   it('publishes the initial heartbeat before starting wallet-sync recovery', async () => {

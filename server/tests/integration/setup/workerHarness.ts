@@ -169,6 +169,12 @@ export const createWorkerTestHarness = async (
     stopDatabaseHealthCheck: vi.fn(),
   }));
 
+  // The real module derives the key with async scrypt, which is real CPU work
+  // this harness's fixed-iteration waitForInit() below is not budgeted for.
+  vi.doMock('../../../src/utils/encryption', () => ({
+    validateEncryptionKey: vi.fn(async () => undefined),
+  }));
+
   vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
     readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
     readStaleWalletSchedulePolicyWithClient: vi.fn(async () => ({ mode: 'legacy_enabled' })),

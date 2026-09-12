@@ -27,6 +27,7 @@ import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
 import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
 import { exitNow } from './utils/processExit';
+import { validateEncryptionKey } from './utils/encryption';
 // Initialize Prometheus metrics collection for the worker process
 import { metricsService } from './observability/metrics/registry';
 import { updateJobQueueMetrics } from './observability/metrics/helpers';
@@ -352,6 +353,21 @@ async function recordSubscriptionStatusPages(
 async function startWorker(): Promise<void> {
   log.info('Starting Sanctuary Background Worker...');
   const config = getConfig();
+
+  // Derive encryption key using async scrypt (avoids blocking event loop).
+  // The worker signs authenticated webhook deliveries (see webhooks/signers.ts),
+  // so it must have a validated key before it registers any job handlers -
+  // mirrors the same startup step in index.ts.
+  try {
+    await validateEncryptionKey();
+  } catch (error) {
+    log.error('FATAL: Missing required environment variable', {
+      error: getErrorMessage(error),
+      hint: 'Please set ENCRYPTION_KEY in your .env file (at least 32 characters)',
+    });
+    exitNow(1);
+    return;
+  }
 
   // Wait for OTEL initialization
   await otelPromise;
