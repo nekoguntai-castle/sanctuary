@@ -68,6 +68,7 @@ export function useWalletData({
   const [utxoSummary, setUtxoSummary] = useState<{ count: number; totalBalance: number } | null>(null);
   const [utxoStats, setUtxoStats] = useState<UTXO[]>([]);
   const [loadingUtxoStats, setLoadingUtxoStats] = useState(false);
+  const [utxoStatsLoadedFor, setUtxoStatsLoadedFor] = useState<string | null>(null);
 
   const [privacyData, setPrivacyData] = useState<transactionsApi.UtxoPrivacyInfo[]>([]);
   const [privacySummary, setPrivacySummary] = useState<transactionsApi.WalletPrivacySummary | null>(null);
@@ -100,6 +101,7 @@ export function useWalletData({
     setUtxoSummary(null);
     setUtxoStats([]);
     setLoadingUtxoStats(false);
+    setUtxoStatsLoadedFor(null);
     setPrivacyData([]);
     setPrivacySummary(null);
     addrList.reset();
@@ -208,7 +210,10 @@ export function useWalletData({
     } catch (err) {
       logError(log, err, 'Failed to load UTXOs for stats');
     } finally {
-      if (ownsRoute(routeToken, walletId)) setLoadingUtxoStats(false);
+      if (ownsRoute(routeToken, walletId)) {
+        setLoadingUtxoStats(false);
+        setUtxoStatsLoadedFor(walletId);
+      }
     }
   };
 
@@ -426,6 +431,7 @@ export function useWalletData({
     utxoStats,
     setUtxoStats,
     loadingUtxoStats,
+    utxoStatsLoadedFor,
     loadUtxosForStats: loadUtxosForStatsFn,
 
     // Privacy

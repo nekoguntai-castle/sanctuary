@@ -372,6 +372,7 @@ export function createWalletData(overrides: Partial<any> = {}) {
     utxoStats: [],
     setUtxoStats: mocks.setUtxoStats,
     loadingUtxoStats: false,
+    utxoStatsLoadedFor: null,
     loadUtxosForStats: mocks.loadUtxosForStats,
     privacyData: [],
     privacySummary: null,

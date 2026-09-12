@@ -79,7 +79,7 @@ export const useWalletDetailController = () => {
     utxos, setUTXOs,
     utxoSummary,
     hasMoreUtxos, loadingMoreUtxos, loadMoreUtxos,
-    utxoStats, setUtxoStats, loadingUtxoStats, loadUtxosForStats,
+    utxoStats, setUtxoStats, loadingUtxoStats, utxoStatsLoadedFor, loadUtxosForStats,
     privacyData, privacySummary, showPrivacy,
     addresses, setAddresses, walletAddressStrings,
     addressSummary, hasMoreAddresses, loadingAddresses,
@@ -282,9 +282,9 @@ export const useWalletDetailController = () => {
 
   useEffect(() => {
     if (!id || visibleActiveTab !== 'stats') return;
-    if (utxoStats.length > 0 || loadingUtxoStats) return;
+    if (utxoStatsLoadedFor === id || loadingUtxoStats) return;
     loadUtxosForStats(id);
-  }, [visibleActiveTab, id, utxoStats.length, loadingUtxoStats]);
+  }, [visibleActiveTab, id, utxoStatsLoadedFor, loadingUtxoStats]);
 
   const {
     handleLoadMoreAddressPage,

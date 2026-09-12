@@ -62,6 +62,8 @@ export interface UseWalletDataReturn {
   utxoStats: UTXO[];
   setUtxoStats: Dispatch<SetStateAction<UTXO[]>>;
   loadingUtxoStats: boolean;
+  /** Wallet id the stats UTXO set was last attempted (success or failure) for, or null if never attempted for the current route. */
+  utxoStatsLoadedFor: string | null;
   loadUtxosForStats: (walletId: string) => Promise<void>;
 
   // Privacy
