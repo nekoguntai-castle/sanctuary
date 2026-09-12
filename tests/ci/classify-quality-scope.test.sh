@@ -177,6 +177,11 @@ main() {
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    server/tests/integration/repositories/maintenanceStatementTimeout.test.ts 'export {};' \
+    'server integration spec change' true true false false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
     scripts/ownership/schemas.mjs 'export {};' \
     'ownership protocol change' true true false false true)"
 

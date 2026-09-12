@@ -6,7 +6,9 @@ const {
   mockExpireOldTransfers,
   mockExecFileAsync,
   mockLog,
+  mockClientQuery,
 } = vi.hoisted(() => ({
+  mockClientQuery: vi.fn(),
   mockDb: {
     priceData: {
       deleteMany: vi.fn(),
@@ -68,6 +70,30 @@ vi.mock("../../../src/config", () => ({
 vi.mock("../../../src/models/prisma", () => ({
   __esModule: true,
   default: mockDb,
+}));
+
+// vacuumAnalyze/reindexHeavyTables (called by runWeeklyMaintenance) delegate
+// to the shared dedicated-connection helper rather than touching Prisma; see
+// maintenanceConnection.ts. Mirror its set_config -> fn -> restore contract
+// on a fake `pg` client so `mockClientQuery` observes the same statement
+// sequence the old direct-Prisma mock used to.
+vi.mock("../../../src/models/maintenanceConnection", () => ({
+  runDedicatedMaintenance: vi.fn(
+    async (
+      timeoutMs: number,
+      fn: (client: { query: typeof mockClientQuery }) => Promise<unknown>,
+    ) => {
+      const client = { query: mockClientQuery };
+      await mockClientQuery("SELECT set_config('statement_timeout', $1, false)", [
+        String(timeoutMs),
+      ]);
+      try {
+        return await fn(client);
+      } finally {
+        await mockClientQuery("SELECT set_config('statement_timeout', $1, false)", ["0"]);
+      }
+    },
+  ),
 }));
 
 vi.mock("../../../src/services/auditService", () => ({
@@ -150,6 +176,7 @@ describe("maintenanceService", () => {
     mockDb.feeEstimate.count.mockResolvedValue(0);
     mockDb.draftTransaction.count.mockResolvedValue(0);
     mockDb.$executeRaw.mockResolvedValue(0);
+    mockClientQuery.mockReset().mockResolvedValue({ rows: [] });
     mockExecFileAsync.mockResolvedValue({ stdout: "", stderr: "" });
   });
 
@@ -544,39 +571,46 @@ describe("maintenanceService", () => {
 
   it("weekly maintenance check runs only when interval elapsed", async () => {
     await maintenanceService.checkAndRunWeeklyMaintenance();
-    expect(mockDb.$executeRaw).toHaveBeenCalled();
+    expect(mockClientQuery).toHaveBeenCalled();
 
     vi.clearAllMocks();
-    mockDb.$executeRaw.mockResolvedValue(0);
+    mockClientQuery.mockResolvedValue({ rows: [] });
     mockAuditService.log.mockResolvedValue(undefined);
 
     (maintenanceService as any).lastWeeklyRun = new Date();
     await maintenanceService.checkAndRunWeeklyMaintenance();
-    // Should not have called $executeRaw again since interval hasn't elapsed
-    expect(mockDb.$executeRaw).not.toHaveBeenCalled();
+    // Should not have run any maintenance statement again since the interval hasn't elapsed
+    expect(mockClientQuery).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
-    mockDb.$executeRaw.mockResolvedValue(0);
+    mockClientQuery.mockResolvedValue({ rows: [] });
     mockAuditService.log.mockResolvedValue(undefined);
 
     (maintenanceService as any).lastWeeklyRun = new Date(
       Date.now() - 8 * 24 * 60 * 60 * 1000,
     );
     await maintenanceService.checkAndRunWeeklyMaintenance();
-    expect(mockDb.$executeRaw).toHaveBeenCalled();
+    expect(mockClientQuery).toHaveBeenCalled();
   });
 
   it("runWeeklyMaintenance executes SQL sequence and records success", async () => {
-    mockDb.$executeRaw
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0);
+    // vacuumAnalyze and reindexHeavyTables each acquire their own dedicated
+    // connection via the shared runDedicatedMaintenance helper (see
+    // maintenanceConnection.ts), so this is two set_config/restore pairs
+    // rather than one shared session.
+    const RESTORE = "SELECT set_config('statement_timeout', $1, false)";
 
     await expect(runWeeklyMaintenance()).resolves.toBeUndefined();
-    expect(mockDb.$executeRaw).toHaveBeenCalledTimes(6);
+    expect(mockClientQuery.mock.calls.map(([sql]) => String(sql))).toEqual([
+      RESTORE,
+      'VACUUM ANALYZE',
+      RESTORE,
+      RESTORE,
+      'REINDEX TABLE audit_logs',
+      'REINDEX TABLE transactions',
+      'REINDEX TABLE utxos',
+      RESTORE,
+    ]);
     expect(mockAuditService.log).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "maintenance.weekly_db_maintenance",
@@ -586,10 +620,12 @@ describe("maintenanceService", () => {
   });
 
   it("runWeeklyMaintenance logs failure and rethrows", async () => {
-    mockDb.$executeRaw
-      .mockResolvedValueOnce(0) // set statement timeout
-      .mockRejectedValueOnce(new Error("vacuum failed")) // vacuum analyze
-      .mockResolvedValueOnce(0); // reset timeout in finally
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql === 'VACUUM ANALYZE') {
+        throw new Error("vacuum failed");
+      }
+      return { rows: [] };
+    });
 
     await expect(runWeeklyMaintenance()).rejects.toThrow("vacuum failed");
     expect(mockAuditService.log).toHaveBeenCalledWith(
@@ -692,14 +728,9 @@ describe("maintenanceService", () => {
     mockDb.feeEstimate.deleteMany.mockResolvedValueOnce({ count: 3 }); // fees
     mockDb.draftTransaction.deleteMany.mockResolvedValueOnce({ count: 4 }); // drafts
     mockExpireOldTransfers.mockResolvedValueOnce(5); // transfers
-    // weekly: 6 $executeRaw calls
-    mockDb.$executeRaw
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0);
+    // weekly: vacuumAnalyze + reindexHeavyTables each run on their own
+    // dedicated connection via mockClientQuery (see maintenanceConnection.ts
+    // mock above); the default resolved value from beforeEach covers them.
     // monthly: pushDevice.deleteMany + $executeRaw for orphaned drafts
     mockDb.pushDevice.deleteMany.mockResolvedValueOnce({ count: 0 });
     mockDb.$executeRaw.mockResolvedValueOnce(0); // cleanupOrphanedDrafts inside runMonthlyMaintenance

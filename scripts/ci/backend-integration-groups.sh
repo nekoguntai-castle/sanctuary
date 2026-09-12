@@ -53,6 +53,7 @@ list_group_specs() {
         tests/integration/repositories/auditLogRepository.test.ts \
         tests/integration/repositories/draftRepository.test.ts \
         tests/integration/repositories/labelRepository.test.ts \
+        tests/integration/repositories/maintenanceStatementTimeout.test.ts \
         tests/integration/repositories/networkHeaderReconciliationLifecycle.test.ts \
         tests/integration/repositories/policyRepository.audit.test.ts \
         tests/integration/repositories/schedulerRetirementCutover.test.ts \

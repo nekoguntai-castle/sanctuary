@@ -33,6 +33,23 @@ vi.mock('../../../src/models/prisma', () => ({
   },
 }));
 
+// vacuumAnalyze/reindexHeavyTables delegate to the shared dedicated-connection
+// helper rather than touching Prisma; see maintenanceConnection.ts.
+const mockClientQuery = vi.fn();
+vi.mock('../../../src/models/maintenanceConnection', () => ({
+  runDedicatedMaintenance: vi.fn(
+    async (timeoutMs: number, fn: (client: { query: typeof mockClientQuery }) => Promise<unknown>) => {
+      const client = { query: mockClientQuery };
+      await mockClientQuery("SELECT set_config('statement_timeout', $1, false)", [String(timeoutMs)]);
+      try {
+        return await fn(client);
+      } finally {
+        await mockClientQuery("SELECT set_config('statement_timeout', $1, false)", ['0']);
+      }
+    },
+  ),
+}));
+
 import prisma from '../../../src/models/prisma';
 import { maintenanceRepository } from '../../../src/repositories/maintenanceRepository';
 
@@ -345,11 +362,12 @@ describe('Maintenance Repository', () => {
 
   describe('vacuumAnalyze', () => {
     /**
-     * `SET` is a utility command and takes no bind parameter, but $executeRaw's
-     * tagged template produces exactly that — so `SET statement_timeout = ${x}`
-     * raised `syntax error at or near "$1"` and the vacuum never ran. Because
-     * prisma is mocked here, these assertions can only police the statement
-     * shape; the behavioural proof lives in
+     * `vacuumAnalyze` runs through the shared `runDedicatedMaintenance`
+     * dedicated-connection helper (`maintenanceConnection.ts`), not Prisma —
+     * the same helper `weeklyVacuumJob` uses. Because that helper is mocked
+     * here, these assertions can only police the statement shape and the
+     * restore-on-failure contract; the behavioural proof against a real
+     * PostgreSQL server lives in
      * tests/integration/repositories/maintenanceStatementTimeout.test.ts.
      */
     const sqlOf = (call: unknown[]): string => {
@@ -357,31 +375,39 @@ describe('Maintenance Repository', () => {
       return Array.isArray(template) ? template.join('?') : String(template);
     };
 
-    it('applies the timeout through set_config, never a parameterised SET', async () => {
-      (prisma.$executeRaw as Mock).mockResolvedValue(0);
+    beforeEach(() => {
+      mockClientQuery.mockReset().mockResolvedValue({ rows: [] });
+    });
 
+    it('applies the timeout through set_config, never a parameterised SET', async () => {
       await maintenanceRepository.vacuumAnalyze(12345);
 
-      const statements = (prisma.$executeRaw as Mock).mock.calls.map(sqlOf);
+      const statements = mockClientQuery.mock.calls.map(sqlOf);
       expect(statements).toEqual([
-        "SELECT set_config('statement_timeout', ?, false)",
+        "SELECT set_config('statement_timeout', $1, false)",
         'VACUUM ANALYZE',
-        "SET statement_timeout = '0'",
+        "SELECT set_config('statement_timeout', $1, false)",
       ]);
-      expect(statements.some(s => /SET\s+statement_timeout\s*=\s*\?/.test(s))).toBe(false);
-      expect((prisma.$executeRaw as Mock).mock.calls[0]?.[1]).toBe('12345');
+      expect(statements.some(s => /^SET\s+statement_timeout\s*=/.test(s))).toBe(false);
+      expect(mockClientQuery.mock.calls[0]?.[1]).toEqual(['12345']);
+      expect(mockClientQuery.mock.calls.at(-1)?.[1]).toEqual(['0']);
     });
 
     it('restores the session default even when the vacuum fails', async () => {
-      (prisma.$executeRaw as Mock)
-        .mockResolvedValueOnce(0)
-        .mockRejectedValueOnce(new Error('vacuum failed'))
-        .mockResolvedValueOnce(0);
+      mockClientQuery.mockImplementation(async (sql: string) => {
+        if (sql === 'VACUUM ANALYZE') {
+          throw new Error('vacuum failed');
+        }
+        return { rows: [] };
+      });
 
       await expect(maintenanceRepository.vacuumAnalyze()).rejects.toThrow('vacuum failed');
 
-      const statements = (prisma.$executeRaw as Mock).mock.calls.map(sqlOf);
-      expect(statements[statements.length - 1]).toBe("SET statement_timeout = '0'");
+      const calls = mockClientQuery.mock.calls;
+      expect(sqlOf(calls[calls.length - 1])).toBe(
+        "SELECT set_config('statement_timeout', $1, false)",
+      );
+      expect(calls[calls.length - 1]?.[1]).toEqual(['0']);
     });
   });
 });

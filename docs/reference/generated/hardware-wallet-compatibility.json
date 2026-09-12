@@ -5,7 +5,7 @@
   "revision": null,
   "source": {
     "applicationVersion": "0.8.71",
-    "packageLockSha256": "b0c04c9bd1556462e49c5d116d0148868b4f1bd02b49123d76c8b612a64c3c91",
+    "packageLockSha256": "16847a61cd6bb31fe315bd89110acaa260871fced303f92c5bb56ee2749cd561",
     "capabilityManifestId": "wallet-safety-v3-2026-08-12"
   },
   "capabilityRows": [

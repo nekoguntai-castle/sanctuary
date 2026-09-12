@@ -13,6 +13,8 @@ const {
   mockGetPriceService,
   mockGetCurrentFeeEstimates,
   mockExecuteRaw,
+  mockRunDedicatedMaintenance,
+  mockClientQuery,
   mockAuditCleanup,
   mockAuditLog,
   mockExpireOldTransfers,
@@ -31,6 +33,8 @@ const {
   mockGetPriceService: vi.fn(),
   mockGetCurrentFeeEstimates: vi.fn(),
   mockExecuteRaw: vi.fn(),
+  mockRunDedicatedMaintenance: vi.fn(),
+  mockClientQuery: vi.fn(),
   mockAuditCleanup: vi.fn(),
   mockAuditLog: vi.fn(),
   mockExpireOldTransfers: vi.fn(),
@@ -44,6 +48,14 @@ vi.mock('../../../src/models/prisma', () => ({
   default: {
     $executeRaw: mockExecuteRaw,
   },
+}));
+
+// weeklyVacuumJob no longer touches Prisma directly (see maintenanceConnection.ts):
+// it delegates set_config -> work -> restore to the shared `runDedicatedMaintenance`
+// helper on a dedicated `pg` client. Mimic its try/finally contract here so the
+// abort/cancellation/failure-path tests below still exercise real restore behavior.
+vi.mock('../../../src/models/maintenanceConnection', () => ({
+  runDedicatedMaintenance: mockRunDedicatedMaintenance,
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -122,6 +134,34 @@ function sqlFromCall(call: any[]): string {
   return String(template);
 }
 
+const RESTORE_STATEMENT = "SELECT set_config('statement_timeout', $1, false)";
+
+/**
+ * Default `runDedicatedMaintenance` mock: mirrors the real helper's
+ * set_config -> fn(client) -> restore-in-finally contract on a fake `pg`
+ * client backed by `mockClientQuery`, so tests that exercise abort/failure
+ * paths still see a real restore-on-error.
+ */
+function installDefaultRunDedicatedMaintenanceMock(): void {
+  mockRunDedicatedMaintenance.mockImplementation(
+    async (timeoutMs: number, fn: (client: { query: typeof mockClientQuery }) => Promise<unknown>) => {
+      const client = { query: mockClientQuery };
+      await mockClientQuery(RESTORE_STATEMENT, [String(timeoutMs)]);
+      try {
+        return await fn(client);
+      } finally {
+        // The real helper contains a restore failure (logs it, closes the
+        // connection) rather than letting it mask the maintenance result.
+        try {
+          await mockClientQuery(RESTORE_STATEMENT, ['0']);
+        } catch {
+          // mirrored: swallowed by runDedicatedMaintenance
+        }
+      }
+    },
+  );
+}
+
 describe('Maintenance job definitions behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -148,6 +188,9 @@ describe('Maintenance job definitions behavior', () => {
       source: 'mempool',
     });
     mockExecuteRaw.mockResolvedValue(0);
+    mockClientQuery.mockReset().mockResolvedValue({ rows: [] });
+    mockRunDedicatedMaintenance.mockReset();
+    installDefaultRunDedicatedMaintenanceMock();
     mockAuditCleanup.mockResolvedValue(0);
     mockAuditLog.mockResolvedValue(undefined);
     mockExpireOldTransfers.mockResolvedValue(0);
@@ -272,6 +315,22 @@ describe('Maintenance job definitions behavior', () => {
     );
   });
 
+  it('delegates VACUUM/REINDEX to the shared runDedicatedMaintenance connection helper', async () => {
+    // Unit contract: weeklyVacuumJob must not hand-roll its own set_config/restore
+    // logic (that duplication is what let the timeout-restore bug and the
+    // repository/job divergence ship). It has to go through the one shared
+    // implementation also used by maintenanceRepository.vacuumAnalyze.
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+
+    await weeklyVacuumJob.handler({
+      data: { timeout: 12345, tables: [] },
+      updateProgress,
+    } as any);
+
+    expect(mockRunDedicatedMaintenance).toHaveBeenCalledTimes(1);
+    expect(mockRunDedicatedMaintenance).toHaveBeenCalledWith(12345, expect.any(Function));
+  });
+
   it('uses only physical table names for the default weekly reindex job', async () => {
     const updateProgress = vi.fn().mockResolvedValue(undefined);
 
@@ -280,17 +339,18 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any);
 
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
+    const sqlCalls = mockClientQuery.mock.calls.map(sqlFromCall);
     expect(sqlCalls).toEqual([
-      "SELECT set_config('statement_timeout', ?, false)",
+      RESTORE_STATEMENT,
       'VACUUM ANALYZE',
       'REINDEX TABLE "audit_logs"',
       'REINDEX TABLE "transactions"',
       'REINDEX TABLE "utxos"',
-      "SET statement_timeout = '0'",
+      RESTORE_STATEMENT,
     ]);
     expect(sqlCalls.join('\n')).not.toMatch(/"(?:Transaction|UTXO)"/);
-    expect(mockExecuteRaw.mock.calls[0]?.[1]).toBe('12345');
+    expect(mockClientQuery.mock.calls[0]?.[1]).toEqual(['12345']);
+    expect(mockClientQuery.mock.calls.at(-1)?.[1]).toEqual(['0']);
     expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
       10, 50, 63, 76, 90, 100,
     ]);
@@ -314,7 +374,7 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any);
 
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
+    const sqlCalls = mockClientQuery.mock.calls.map(sqlFromCall);
     expect(sqlCalls.filter(sql => sql.includes('REINDEX TABLE'))).toEqual([
       'REINDEX TABLE "utxos"',
     ]);
@@ -334,10 +394,10 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any);
 
-    expect(mockExecuteRaw.mock.calls.map(sqlFromCall)).toEqual([
-      "SELECT set_config('statement_timeout', ?, false)",
+    expect(mockClientQuery.mock.calls.map(sqlFromCall)).toEqual([
+      RESTORE_STATEMENT,
       'VACUUM ANALYZE',
-      "SET statement_timeout = '0'",
+      RESTORE_STATEMENT,
     ]);
     expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
       10, 50, 100,
@@ -355,7 +415,7 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any)).rejects.toThrow('Unsupported weekly maintenance table: UnknownTable');
 
-    expect(mockExecuteRaw).not.toHaveBeenCalled();
+    expect(mockRunDedicatedMaintenance).not.toHaveBeenCalled();
     expect(updateProgress).not.toHaveBeenCalled();
     expect(mockAuditLog).not.toHaveBeenCalled();
     expect(mockLogInfo).not.toHaveBeenCalled();
@@ -380,7 +440,7 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any)).rejects.toThrow(message);
 
-    expect(mockExecuteRaw).not.toHaveBeenCalled();
+    expect(mockRunDedicatedMaintenance).not.toHaveBeenCalled();
     expect(updateProgress).not.toHaveBeenCalled();
     expect(mockAuditLog).not.toHaveBeenCalled();
     expect(mockLogInfo).not.toHaveBeenCalled();
@@ -389,9 +449,9 @@ describe('Maintenance job definitions behavior', () => {
   it('resets the timeout and stops before the next table when cancelled', async () => {
     const updateProgress = vi.fn().mockResolvedValue(undefined);
     let completedReindexes = 0;
-    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
-      if (template.join('?').includes('REINDEX TABLE')) completedReindexes += 1;
-      return 0;
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('REINDEX TABLE')) completedReindexes += 1;
+      return { rows: [] };
     });
     const execution: JobExecutionContext = {
       signal: new AbortController().signal,
@@ -405,11 +465,11 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any, execution)).rejects.toThrow('cancelled');
 
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
+    const sqlCalls = mockClientQuery.mock.calls.map(sqlFromCall);
     expect(sqlCalls.filter(sql => sql.includes('REINDEX TABLE'))).toEqual([
       'REINDEX TABLE "audit_logs"',
     ]);
-    expect(sqlCalls.at(-1)).toBe("SET statement_timeout = '0'");
+    expect(mockClientQuery.mock.calls.at(-1)?.[1]).toEqual(['0']);
     // The job records non-completion durably now: with attempts: 1 and a
     // success-only audit, cancellation previously left no trace at all
     // outside a failed BullMQ job.
@@ -441,10 +501,11 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any, execution)).rejects.toThrow('cancelled');
 
-    expect(mockExecuteRaw.mock.calls.map(sqlFromCall)).toEqual([
-      "SELECT set_config('statement_timeout', ?, false)",
-      "SET statement_timeout = '0'",
+    expect(mockClientQuery.mock.calls.map(sqlFromCall)).toEqual([
+      RESTORE_STATEMENT,
+      RESTORE_STATEMENT,
     ]);
+    expect(mockClientQuery.mock.calls.at(-1)?.[1]).toEqual(['0']);
     // The job records non-completion durably now: with attempts: 1 and a
     // success-only audit, cancellation previously left no trace at all
     // outside a failed BullMQ job.
@@ -462,11 +523,11 @@ describe('Maintenance job definitions behavior', () => {
 
   it('propagates a REINDEX failure and restores the timeout in finally', async () => {
     const updateProgress = vi.fn().mockResolvedValue(undefined);
-    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
-      if (template.join('?').includes('REINDEX TABLE "transactions"')) {
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('REINDEX TABLE "transactions"')) {
         throw new Error('reindex failed');
       }
-      return 0;
+      return { rows: [] };
     });
 
     await expect(weeklyVacuumJob.handler({
@@ -474,8 +535,9 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any)).rejects.toThrow('reindex failed');
 
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
-    expect(sqlCalls.at(-1)).toBe("SET statement_timeout = '0'");
+    const sqlCalls = mockClientQuery.mock.calls.map(sqlFromCall);
+    expect(sqlCalls.at(-1)).toBe(RESTORE_STATEMENT);
+    expect(mockClientQuery.mock.calls.at(-1)?.[1]).toEqual(['0']);
     expect(sqlCalls).not.toContain('REINDEX TABLE "utxos"');
     expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
       10, 50, 63,
@@ -497,11 +559,11 @@ describe('Maintenance job definitions behavior', () => {
 
   it('always resets statement timeout when weekly vacuum fails', async () => {
     const updateProgress = vi.fn().mockResolvedValue(undefined);
-    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
-      if (template.join('?').includes('VACUUM ANALYZE')) {
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('VACUUM ANALYZE')) {
         throw new Error('vacuum failed');
       }
-      return 0;
+      return { rows: [] };
     });
 
     await expect(weeklyVacuumJob.handler({
@@ -509,27 +571,39 @@ describe('Maintenance job definitions behavior', () => {
       updateProgress,
     } as any)).rejects.toThrow('vacuum failed');
 
-    expect(mockExecuteRaw.mock.calls.map(sqlFromCall).at(-1))
-      .toBe("SET statement_timeout = '0'");
+    expect(mockClientQuery.mock.calls.map(sqlFromCall).at(-1)).toBe(RESTORE_STATEMENT);
+    expect(mockClientQuery.mock.calls.at(-1)?.[1]).toEqual(['0']);
   });
 
-  it('does not commit success when statement timeout restoration fails', async () => {
+  it('still completes and audits success when the statement timeout restore fails', async () => {
+    // The old inline implementation restored the timeout in the job's own
+    // top-level `finally`, so a restore failure escaped the `catch` and
+    // failed the job unaudited after the VACUUM had already succeeded. The
+    // restore now lives inside `runDedicatedMaintenance`, which contains a
+    // restore failure (logs it, closes the dedicated connection): the
+    // maintenance work that actually ran is what the job reports on.
     const updateProgress = vi.fn().mockResolvedValue(undefined);
-    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
-      if (template.join('?') === "SET statement_timeout = '0'") {
+    mockClientQuery.mockImplementation(async (sql: string, args?: unknown[]) => {
+      if (sql === RESTORE_STATEMENT && Array.isArray(args) && args[0] === '0') {
         throw new Error('timeout reset failed');
       }
-      return 0;
+      return { rows: [] };
     });
 
     await expect(weeklyVacuumJob.handler({
       data: { tables: [] },
       updateProgress,
-    } as any)).rejects.toThrow('timeout reset failed');
+    } as any)).resolves.toBeUndefined();
 
-    expect(updateProgress).not.toHaveBeenCalledWith(100);
-    expect(mockAuditLog).not.toHaveBeenCalled();
-    expect(mockLogInfo).not.toHaveBeenCalledWith(
+    expect(updateProgress).toHaveBeenCalledWith(100);
+    expect(mockAuditLog).toHaveBeenCalledTimes(1);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'maintenance.weekly_db_maintenance',
+        success: true,
+      })
+    );
+    expect(mockLogInfo).toHaveBeenCalledWith(
       'Weekly database maintenance completed',
       expect.anything(),
     );

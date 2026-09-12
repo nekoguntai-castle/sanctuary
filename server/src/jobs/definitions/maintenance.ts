@@ -8,7 +8,7 @@
 import type { Job } from 'bullmq';
 import type { JobDefinition } from '../types';
 import { maintenanceRepository, priceDataRepository, pushDeviceRepository } from '../../repositories';
-import prisma from '../../models/prisma';
+import { runDedicatedMaintenance } from '../../models/maintenanceConnection';
 import { auditService, AuditCategory } from '../../services/auditService';
 import { getCurrentFeeEstimates } from '../../services/bitcoin/feeService';
 import { getPriceService } from '../../services/price';
@@ -50,9 +50,9 @@ interface DatabaseMaintenanceData {
 }
 
 const weeklyReindexStatements = {
-  audit_logs: () => prisma.$executeRaw`REINDEX TABLE "audit_logs"`,
-  transactions: () => prisma.$executeRaw`REINDEX TABLE "transactions"`,
-  utxos: () => prisma.$executeRaw`REINDEX TABLE "utxos"`,
+  audit_logs: 'REINDEX TABLE "audit_logs"',
+  transactions: 'REINDEX TABLE "transactions"',
+  utxos: 'REINDEX TABLE "utxos"',
 } as const;
 
 type WeeklyMaintenanceTable = keyof typeof weeklyReindexStatements;
@@ -356,30 +356,32 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
     await job.updateProgress(10);
 
     try {
-      // Bound each statement. This must use set_config rather than
-      // `SET statement_timeout = ${timeout}`: SET is a utility command that
-      // takes no bind parameter, which is exactly what $executeRaw's tagged
-      // template produces, so the old form failed with a syntax error before
-      // any vacuum work began. It also lives inside the try so the finally
-      // below always restores the session default.
-      await prisma.$executeRaw`SELECT set_config('statement_timeout', ${String(timeout)}, false)`;
-
-      execution?.throwIfAborted();
-      await prisma.$executeRaw`VACUUM ANALYZE`;
-      execution?.throwIfAborted();
-      await job.updateProgress(50);
-
-      for (let i = 0; i < tables.length; i++) {
+      // Runs VACUUM ANALYZE and the REINDEX loop on one dedicated `pg`
+      // client via `runDedicatedMaintenance` (shared with
+      // `maintenanceRepository.vacuumAnalyze`), not the Prisma pool: PrismaPg
+      // can hand a different pooled connection to each `$executeRaw` call,
+      // so a session-scoped `set_config('statement_timeout', ...)` issued
+      // through Prisma was not guaranteed to land on the same backend that
+      // ran the VACUUM/REINDEX. The restore (in `runDedicatedMaintenance`'s
+      // `finally`) sets the timeout back to the *configured* default read
+      // from `DATABASE_URL`, not an unconditional `'0'`.
+      await runDedicatedMaintenance(timeout, async (client) => {
         execution?.throwIfAborted();
-        const table = tables[i];
-        log.info('Running REINDEX on table', { table });
-
-        await weeklyReindexStatements[table]();
-
-        await job.updateProgress(50 + Math.floor((i + 1) / tables.length * 40));
+        await client.query('VACUUM ANALYZE');
         execution?.throwIfAborted();
-      }
+        await job.updateProgress(50);
 
+        for (let i = 0; i < tables.length; i++) {
+          execution?.throwIfAborted();
+          const table = tables[i];
+          log.info('Running REINDEX on table', { table });
+
+          await client.query(weeklyReindexStatements[table]);
+
+          await job.updateProgress(50 + Math.floor((i + 1) / tables.length * 40));
+          execution?.throwIfAborted();
+        }
+      });
     } catch (error) {
       // This job has attempts: 1 and previously wrote an audit record only on
       // success, so a failure before any work began left no durable trace — it
@@ -393,8 +395,6 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
         success: false,
       });
       throw error;
-    } finally {
-      await prisma.$executeRaw`SET statement_timeout = '0'`;
     }
 
     execution?.throwIfAborted();

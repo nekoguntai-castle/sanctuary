@@ -271,6 +271,44 @@ exist / the reset is `'0'`); a unit contract that `weeklyVacuumJob` delegates to
 Verification: `npm run test:integration tests/integration/repositories/maintenanceStatementTimeout.test.ts` from the root, `bash scripts/ci/backend-integration-groups.sh --check` exits 0, server gates.
 Rollback: revert; no schema change.
 
+**Status: done.** Landed as a single shared `runDedicatedMaintenance` helper in
+`server/src/models/maintenanceConnection.ts` (a dedicated `pg` client for
+`set_config → work → restore`, restoring the `statement_timeout` query param
+of `DATABASE_URL` — `'0'` only when unset/unparsable), used by both
+`maintenanceRepository.vacuumAnalyze`/`reindexHeavyTables` and
+`weeklyVacuumJob`. `pg`/`@types/pg` were added explicitly to
+`server/package.json` pinned to the versions already resolved as transitives
+(`pg@8.22.0`, `@types/pg@8.15.6`), so the `package-lock.json` diff is 2 lines.
+`docs/reference/generated/hardware-wallet-compatibility.{json,md}` were
+regenerated in the same commit (only `packageLockSha256` changed).
+`server/tests/integration/repositories/maintenanceStatementTimeout.test.ts`
+was rewritten to call the shared function against real PostgreSQL and assert
+same-backend-pid binding and configured-default restoration (including on
+both a maintenance-work failure and a restore failure); a new unit suite
+(`server/tests/unit/models/maintenanceConnection.test.ts`) covers
+`resolveDefaultStatementTimeout` and `runDedicatedMaintenance`'s control flow
+directly for coverage. A unit contract in
+`server/tests/unit/jobs/maintenanceDefinitions.behavior.test.ts` asserts
+`weeklyVacuumJob` delegates to `runDedicatedMaintenance`. The spec was added
+to the `repositories-core` group in `backend-integration-groups.sh`,
+confirmed red first (`Missing backend integration group assignments`) then
+green. `is_ci_classifier_file()` in `classify-quality-scope.sh` gained one
+additive `server/tests/integration/*` pattern, confirmed red first
+(`expected run_ci_classifier_tests=true, got run_ci_classifier_tests=false`)
+then green, with a new case in `classify-quality-scope.test.sh`.
+Divergence from the plan: `vacuumAnalyze` and `reindexHeavyTables` each open
+their own dedicated connection (the plan's "set_config → VACUUM/REINDEX →
+restore" contract is per-repository-call), while `weeklyVacuumJob` wraps
+VACUUM ANALYZE and its REINDEX loop in one shared connection/timeout window
+— matching its pre-existing single-session behavior. One intentional
+behavior change: a `statement_timeout` restore failure is contained by
+`runDedicatedMaintenance` (logged at warn, the dedicated connection is
+closed regardless) and no longer fails the job after the VACUUM/REINDEX
+already succeeded; previously the restore lived in the job's outer
+`finally`, so its failure escaped the job's `catch` unaudited. The unit
+test's helper mock mirrors that containment so it cannot assert a contract
+the helper does not have.
+
 ## Phase 7 — P2: route-specific body parsers match with a trailing slash
 
 Owner: `server/src/middleware/bodyParsing.ts`.

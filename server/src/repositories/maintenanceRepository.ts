@@ -8,6 +8,7 @@
  */
 
 import prisma from '../models/prisma';
+import { runDedicatedMaintenance } from '../models/maintenanceConnection';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 
 // Transaction client type extracted from Prisma's $transaction callback signature
@@ -80,28 +81,32 @@ export async function deleteExpiredRefreshTokens(): Promise<number> {
  * the vacuum never ran. `set_config` takes the value as a real parameter, which
  * keeps the injection safety `$executeRaw` is chosen for.
  *
- * `is_local` is false because VACUUM cannot run inside a transaction block, so
- * there is no transaction for a local setting to scope to; the `finally` below
- * is what bounds the session-level change.
+ * This runs on a dedicated `pg` client via `runDedicatedMaintenance`, not the
+ * Prisma pool: PrismaPg can hand out a different pooled connection per
+ * `$executeRaw` call, so a session-scoped `set_config` issued through Prisma
+ * is not guaranteed to land on the same backend that runs the VACUUM. The
+ * restore (in `runDedicatedMaintenance`'s `finally`) sets the timeout back to
+ * the *configured* default read from `DATABASE_URL`, not an unconditional
+ * `'0'`.
  */
 export async function vacuumAnalyze(timeoutMs = 300000): Promise<void> {
-  await prisma.$executeRaw`SELECT set_config('statement_timeout', ${String(timeoutMs)}, false)`;
-  try {
-    await prisma.$executeRaw`VACUUM ANALYZE`;
-  } finally {
-    await prisma.$executeRaw`SET statement_timeout = '0'`;
-  }
+  await runDedicatedMaintenance(timeoutMs, async (client) => {
+    await client.query('VACUUM ANALYZE');
+  });
 }
 
 /**
- * REINDEX heavily-updated tables.
+ * REINDEX heavily-updated tables on a dedicated connection, with a bounded
+ * statement timeout restored to the configured default afterward.
  * Each table is a separate static query for injection safety.
  */
-export async function reindexHeavyTables(): Promise<string[]> {
+export async function reindexHeavyTables(timeoutMs = 300000): Promise<string[]> {
   const tables = ['audit_logs', 'transactions', 'utxos'];
-  await prisma.$executeRaw`REINDEX TABLE audit_logs`;
-  await prisma.$executeRaw`REINDEX TABLE transactions`;
-  await prisma.$executeRaw`REINDEX TABLE utxos`;
+  await runDedicatedMaintenance(timeoutMs, async (client) => {
+    await client.query('REINDEX TABLE audit_logs');
+    await client.query('REINDEX TABLE transactions');
+    await client.query('REINDEX TABLE utxos');
+  });
   return tables;
 }
 
