@@ -73,6 +73,8 @@ const INITIAL_STATE = {
   currencyState: undefined,
   userState: undefined,
   activeNetworkState: 'mainnet',
+  feesArePlaceholderData: false,
+  mempoolIsPlaceholderData: false,
 };
 
 export const state: Record<keyof typeof INITIAL_STATE, any> = { ...INITIAL_STATE };
@@ -157,7 +159,12 @@ vi.mock('../../../src/hooks/queries/useWallets', () => ({
 }));
 
 vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
-  useFeeEstimates: () => ({ data: state.feeEstimatesData, isLoading: state.feesLoading, isError: state.feesIsError }),
+  useFeeEstimates: () => ({
+    data: state.feeEstimatesData,
+    isLoading: state.feesLoading,
+    isError: state.feesIsError,
+    isPlaceholderData: state.feesArePlaceholderData,
+  }),
   useBitcoinStatus: (network: string) => {
     state.bitcoinStatusNetworks.push(network);
     return {
@@ -176,6 +183,7 @@ vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
       refetch: mockRefetchMempool,
       isFetching: state.mempoolRefreshing,
       isError: state.mempoolIsError,
+      isPlaceholderData: state.mempoolIsPlaceholderData,
     };
   },
 }));
@@ -318,8 +326,10 @@ export const resetState = () => {
     { name: 'Now', value: 8000 },
   ];
 
-  state.feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4 };
+  state.feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4, network: 'mainnet' };
   state.feesLoading = false;
+  state.feesArePlaceholderData = false;
+  state.mempoolIsPlaceholderData = false;
   state.bitcoinStatusData = { connected: true, explorerUrl: 'https://mempool.space', network: 'mainnet' };
   state.statusLoading = false;
   state.statusIsPlaceholderData = false;
@@ -331,6 +341,7 @@ export const resetState = () => {
     mempool: [{ id: 'mp1' }],
     blocks: [{ id: 'b1' }, { id: 'b2' }],
     queuedBlocksSummary: { highPriority: 1, mediumPriority: 2, lowPriority: 3 },
+    network: 'mainnet',
   };
   state.mempoolLoading = false;
   state.mempoolRefreshing = false;

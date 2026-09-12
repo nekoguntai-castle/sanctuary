@@ -244,6 +244,8 @@ export interface FeeEstimates {
   hour: number;
   economy: number;
   minimum?: number;
+  /** Network these rates belong to, so consumers can reject cross-network data. */
+  network?: string;
 }
 
 // =============================================================================

@@ -64,4 +64,50 @@ describe("Bitcoin API", () => {
       });
     });
   });
+  describe("network identity stamping", () => {
+    /**
+     * `placeholderData: keepPreviousData` hands a consumer the previous
+     * network's payload while the new query is in flight. Neither FeeEstimates
+     * nor MempoolData carried any identity, so that leak was undetectable.
+     * These stamp the requested network exactly as getStatus already does.
+     */
+    it("stamps the requested network onto fee estimates", async () => {
+      mockGet.mockResolvedValue({ fastest: 5, halfHour: 4, hour: 3, economy: 1 });
+
+      await expect(bitcoinApi.getFeeEstimates("testnet4")).resolves.toMatchObject({
+        network: "testnet4",
+      });
+    });
+
+    it("defaults the fee stamp to mainnet when no network was requested", async () => {
+      mockGet.mockResolvedValue({ fastest: 5, halfHour: 4, hour: 3, economy: 1 });
+
+      await expect(bitcoinApi.getFeeEstimates()).resolves.toMatchObject({ network: "mainnet" });
+    });
+
+    it("preserves a server-declared fee network instead of overwriting it", async () => {
+      mockGet.mockResolvedValue({ fastest: 5, halfHour: 4, hour: 3, economy: 1, network: "signet" });
+
+      await expect(bitcoinApi.getFeeEstimates("testnet4")).resolves.toMatchObject({
+        network: "signet",
+      });
+    });
+
+    it("stamps the requested network onto mempool data", async () => {
+      mockGet.mockResolvedValue({ mempool: [], blocks: [], mempoolInfo: null });
+
+      await expect(bitcoinApi.getMempoolData("testnet4")).resolves.toMatchObject({
+        network: "testnet4",
+      });
+    });
+
+    it("preserves a server-declared mempool network instead of overwriting it", async () => {
+      mockGet.mockResolvedValue({ mempool: [], blocks: [], mempoolInfo: null, network: "signet" });
+
+      await expect(bitcoinApi.getMempoolData("testnet4")).resolves.toMatchObject({
+        network: "signet",
+      });
+    });
+  });
+
 });

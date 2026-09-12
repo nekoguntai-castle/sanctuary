@@ -220,12 +220,19 @@ export async function getStatus(network: BitcoinStatusNetwork = 'mainnet'): Prom
  * schema nothing checked that.
  */
 export async function getFeeEstimates(network?: BitcoinFeeNetwork): Promise<FeeEstimates> {
-  return apiClient.get<FeeEstimates>(
+  const fees = await apiClient.get<FeeEstimates>(
     '/bitcoin/fees',
     network ? { network } : undefined,
     undefined,
     { schema: FeeEstimatesSchema },
   );
+  // Stamp the identity the same way getStatus does. Without it a consumer
+  // holding keepPreviousData cannot tell that the rates in hand belong to the
+  // network it just switched away from.
+  if (fees.network !== undefined) {
+    return fees;
+  }
+  return { ...fees, network: network ?? 'mainnet' };
 }
 
 /**
@@ -500,13 +507,19 @@ export interface MempoolData {
   blocks: BlockData[];
   mempoolInfo: MempoolInfo;
   queuedBlocksSummary?: QueuedBlocksSummary | null;
+  /** Network this snapshot belongs to, so consumers can reject cross-network data. */
+  network?: string;
 }
 
 /**
  * Get mempool and recent blocks for visualization
  */
 export async function getMempoolData(network: BitcoinDashboardNetwork = 'mainnet'): Promise<MempoolData> {
-  return apiClient.get<MempoolData>('/bitcoin/mempool', { network });
+  const mempool = await apiClient.get<MempoolData>('/bitcoin/mempool', { network });
+  if (mempool.network !== undefined) {
+    return mempool;
+  }
+  return { ...mempool, network };
 }
 
 /**

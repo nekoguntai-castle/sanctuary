@@ -33,6 +33,13 @@ export const FeeEstimatesSchema = z.object({
   hour: feeRate,
   economy: feeRate,
   minimum: feeRate.optional(),
+  /**
+   * Which network these rates describe. Declared here because this is a
+   * stripping `z.object`: an undeclared key is silently dropped, so a
+   * server-sent identity would never reach a consumer. `getFeeEstimates`
+   * stamps the requested network when the server omits it.
+   */
+  network: z.string().optional(),
 });
 
 export type FeeEstimatesResponse = z.infer<typeof FeeEstimatesSchema>;

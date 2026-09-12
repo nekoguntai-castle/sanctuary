@@ -7,6 +7,11 @@ const controllerState = vi.hoisted(() => ({
   walletNetwork: 'signet' as string | undefined,
   setSelectedNetwork: vi.fn(),
   bitcoinStatusNetworks: [] as Array<string | undefined>,
+  lastFilterThresholds: {} as { confirmationThreshold?: number; deepConfirmationThreshold?: number },
+  bitcoinStatusData: { confirmationThreshold: 1, deepConfirmationThreshold: 6, network: 'mainnet' } as
+    | { confirmationThreshold: number; deepConfirmationThreshold: number; network?: string }
+    | undefined,
+  statusIsPlaceholderData: false,
   aiOwnershipKeys: [] as string[],
   routeId: 'wallet-1' as string | undefined,
   user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
@@ -46,7 +51,10 @@ vi.mock('../../../src/contexts/UserContext', () => ({
 vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
   useBitcoinStatus: (network?: string) => {
     controllerState.bitcoinStatusNetworks.push(network);
-    return { data: { confirmationThreshold: 1, deepConfirmationThreshold: 6 } };
+    return {
+      data: controllerState.bitcoinStatusData,
+      isPlaceholderData: controllerState.statusIsPlaceholderData,
+    };
   },
 }));
 
@@ -137,7 +145,12 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletSync', () => ({
 }));
 
 vi.mock('../../../src/components/WalletDetail/hooks/useTransactionFilters', () => ({
-  useTransactionFilters: () => ({
+  useTransactionFilters: (args: { confirmationThreshold?: number; deepConfirmationThreshold?: number }) => {
+    controllerState.lastFilterThresholds = {
+      confirmationThreshold: args?.confirmationThreshold,
+      deepConfirmationThreshold: args?.deepConfirmationThreshold,
+    };
+    return ({
     filters: {},
     setTypeFilter: vi.fn(),
     setConfirmationFilter: vi.fn(),
@@ -147,7 +160,8 @@ vi.mock('../../../src/components/WalletDetail/hooks/useTransactionFilters', () =
     clearAllFilters: vi.fn(),
     hasActiveFilters: false,
     filteredTransactions: [],
-  }),
+    });
+  },
 }));
 
 vi.mock('../../../src/components/WalletDetail/hooks/useAITransactionFilter', () => ({
@@ -325,4 +339,66 @@ describe('useWalletDetailController network preference alignment', () => {
     current.result.current.handleLabelsChange();
     expect(controllerState.fetchData).toHaveBeenCalledWith(true);
   });
+  describe('cross-network status gating', () => {
+    /**
+     * keepPreviousData can return the previous network's status while the new
+     * one loads. Confirmation thresholds differ per network, so using them
+     * would judge transactions confirmed against another chain's rules.
+     */
+    beforeEach(() => {
+      controllerState.bitcoinStatusData = {
+        confirmationThreshold: 1,
+        deepConfirmationThreshold: 6,
+        network: 'mainnet',
+      };
+      controllerState.statusIsPlaceholderData = false;
+    });
+
+    it('does not adopt confirmation thresholds from another network', () => {
+      controllerState.bitcoinStatusData = {
+        confirmationThreshold: 99,
+        deepConfirmationThreshold: 99,
+        network: 'testnet4',
+      };
+
+      renderHook(() => useWalletDetailController());
+
+      expect(controllerState.lastFilterThresholds).toEqual({
+        confirmationThreshold: undefined,
+        deepConfirmationThreshold: undefined,
+      });
+    });
+
+    it('does not adopt thresholds still flagged as placeholder data', () => {
+      controllerState.statusIsPlaceholderData = true;
+
+      renderHook(() => useWalletDetailController());
+
+      expect(controllerState.lastFilterThresholds).toEqual({
+        confirmationThreshold: undefined,
+        deepConfirmationThreshold: undefined,
+      });
+    });
+
+    it('uses the thresholds once the status identity matches', () => {
+      renderHook(() => useWalletDetailController());
+
+      expect(controllerState.lastFilterThresholds).toEqual({
+        confirmationThreshold: 1,
+        deepConfirmationThreshold: 6,
+      });
+    });
+
+    it('tolerates an absent status payload', () => {
+      controllerState.bitcoinStatusData = undefined;
+
+      renderHook(() => useWalletDetailController());
+
+      expect(controllerState.lastFilterThresholds).toEqual({
+        confirmationThreshold: undefined,
+        deepConfirmationThreshold: undefined,
+      });
+    });
+  });
+
 });

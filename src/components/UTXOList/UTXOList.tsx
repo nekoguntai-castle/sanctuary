@@ -39,6 +39,24 @@ interface UTXOListProps {
   network?: string;
 }
 
+
+/**
+ * Fee rates only if they belong to the active network.
+ *
+ * `placeholderData: keepPreviousData` serves the previous network's rates while
+ * the new query is in flight, and dust economics are a function of the fee
+ * rate — so stale rates silently misclassify UTXOs as dust, or fail to.
+ */
+function feesForNetwork<T extends { network?: string }>(
+  fees: T | undefined,
+  network: string,
+  isPlaceholder: boolean,
+): T | undefined {
+  if (isPlaceholder) return undefined;
+  if (fees && fees.network !== network) return undefined;
+  return fees;
+}
+
 export const UTXOList: React.FC<UTXOListProps> = ({
   utxos,
   totalCount,
@@ -56,7 +74,9 @@ export const UTXOList: React.FC<UTXOListProps> = ({
   const { format } = usePriceFreeFormatter();
   const explorerUrl = useExplorerUrl(network);
   const feeNetwork = toFeeNetwork(network);
-  const { data: feeEstimates } = useFeeEstimates(feeNetwork);
+  const { data: feeEstimatesRaw, isPlaceholderData: feesArePlaceholder } =
+    useFeeEstimates(feeNetwork);
+  const feeEstimates = feesForNetwork(feeEstimatesRaw, feeNetwork, feesArePlaceholder);
 
   const [selectedUtxoForPrivacy, setSelectedUtxoForPrivacy] = useState<string | null>(null);
 

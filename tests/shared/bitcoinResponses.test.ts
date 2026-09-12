@@ -18,6 +18,23 @@ describe('FeeEstimatesSchema', () => {
     expect(FeeEstimatesSchema.parse({ ...valid, minimum: 1 })).toEqual({ ...valid, minimum: 1 });
   });
 
+
+  it('preserves a server-sent network identity instead of stripping it', () => {
+    // This is a stripping z.object by design (responses strip unknown keys so a
+    // lagging client does not break). That means an identity field the schema
+    // does not declare is silently dropped before any consumer sees it — the
+    // cross-network gating would then always compare against undefined and
+    // quietly fail open. Declaring it is what makes the gate real.
+    expect(FeeEstimatesSchema.parse({ ...valid, network: 'testnet4' })).toEqual({
+      ...valid,
+      network: 'testnet4',
+    });
+  });
+
+  it('still accepts an estimate with no network, for a server that omits it', () => {
+    expect(FeeEstimatesSchema.parse(valid)).toEqual(valid);
+  });
+
   it('accepts fractional and zero rates', () => {
     // Sub-1 sat/vB is ordinary on a quiet mempool, and 0 is odd but readable —
     // whether a rate is *usable* is `usableFeeRate`'s call, not this schema's.

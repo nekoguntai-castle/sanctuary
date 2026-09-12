@@ -230,7 +230,16 @@ Revert the phase PR. Frontend-only; no schema, no shared-workspace change.
 
 ---
 
-## Phase 5 — F4: network identity on Bitcoin telemetry payloads
+## Phase 5 — F4: network identity on Bitcoin telemetry payloads — IMPLEMENTED
+
+Status: implemented on `codex/bug-scrub-loop/i13-phase5-network-identity`.
+`getFeeEstimates` and `getMempoolData` now stamp the requested network onto
+their payloads exactly as `getStatus` does, so no server change was needed, and
+`network` is declared on `FeeEstimatesSchema` so a server-sent identity is not
+stripped. All four remaining leak sites gate on identity plus `isPlaceholderData`:
+dashboard fees, dashboard mempool, wallet-detail confirmation thresholds, and
+the UTXOList dust-stat fee rate. Verified: 100% frontend coverage, lizard/arch/
+typecheck gates green, and 44/44 render-regression tests with baselines unchanged.
 
 - Owner paths: `src/hooks/queries/useBitcoin.ts`, `src/components/Dashboard/hooks/useDashboardData.ts`, `src/components/WalletDetail/useWalletDetailController.ts`, `src/components/UTXOList/UTXOList.tsx`, `src/api/bitcoin.ts`, `shared/types/api.ts`, **`shared/schemas/bitcoinResponses.ts`**.
 - Tests: `tests/hooks/queries/useBitcoin.test.ts`, `tests/components/Dashboard/useDashboardData.test.tsx`, `tests/components/UTXOList.branches.test.tsx`, plus wallet-detail controller coverage.

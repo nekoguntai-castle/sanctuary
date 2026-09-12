@@ -71,7 +71,7 @@ describe('UTXOList branch coverage', () => {
       format: (sats: number) => `${sats} sats`,
       unit: 'sats',
     } as any);
-    vi.mocked(bitcoinHooks.useFeeEstimates).mockReturnValue({ data: { hour: 10 } } as any);
+    vi.mocked(bitcoinHooks.useFeeEstimates).mockReturnValue({ data: { hour: 10, network: 'mainnet' }, isPlaceholderData: false } as any);
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({ explorerUrl: 'https://mempool.space' } as any);
   });
 
@@ -406,4 +406,34 @@ describe('UTXOList branch coverage', () => {
       expect(bitcoinApi.getStatus).toHaveBeenCalled();
     });
   });
+  it.each([
+    ['flagged as placeholder data', { data: { hour: 99, network: 'mainnet' }, isPlaceholderData: true }],
+    ['stamped with another network', { data: { hour: 99, network: 'testnet4' }, isPlaceholderData: false }],
+  ])('falls back to the 1 sat/vB default when the fee rate is %s', (_case, feeQuery) => {
+    // keepPreviousData serves the previous network's rates while the new query
+    // is in flight; dust economics are a function of the fee rate, so stale
+    // rates would misclassify UTXOs as dust or fail to.
+    vi.mocked(bitcoinHooks.useFeeEstimates).mockReturnValue(feeQuery as any);
+
+    render(
+      <UTXOList
+        utxos={[
+          {
+            txid: 'dust-gate',
+            vout: 0,
+            address: 'bc1qdustgate',
+            amount: 10,
+            confirmations: 6,
+            frozen: false,
+            spent: false,
+            date: new Date().toISOString(),
+          },
+        ]}
+        onToggleFreeze={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/1\.0 sat\/vB/)).toBeInTheDocument();
+  });
+
 });

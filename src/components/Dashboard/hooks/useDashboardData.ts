@@ -80,10 +80,24 @@ export function useDashboardData() {
 
   // React Query hooks for data fetching
   const { data: apiWallets, isLoading: walletsLoading, isError: walletsFetchFailed } = useWallets();
-  const { data: feeEstimates, isError: feesError } = useFeeEstimates(selectedNetwork);
+  const { data: feeEstimatesRaw, isError: feesError, isPlaceholderData: feesArePlaceholder } =
+    useFeeEstimates(selectedNetwork);
   const bitcoinStatusQuery = useBitcoinStatus(selectedNetwork);
   const { data: bitcoinStatus, isLoading: statusLoading } = bitcoinStatusQuery;
-  const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing, isError: mempoolFetchFailed } = useMempoolData(selectedNetwork);
+  const { data: mempoolDataRaw, refetch: refetchMempool, isFetching: mempoolRefreshing, isError: mempoolFetchFailed, isPlaceholderData: mempoolIsPlaceholder } = useMempoolData(selectedNetwork);
+
+  // `placeholderData: keepPreviousData` serves the *previous* network's payload
+  // while the new query is in flight. Rendering it would show another chain's
+  // fee rates and mempool under the active network's badge, so treat a
+  // mismatched or placeholder payload as "not loaded yet" rather than as data.
+  const feeEstimates =
+    feesArePlaceholder || (feeEstimatesRaw && feeEstimatesRaw.network !== selectedNetwork)
+      ? undefined
+      : feeEstimatesRaw;
+  const mempoolData =
+    mempoolIsPlaceholder || (mempoolDataRaw && mempoolDataRaw.network !== selectedNetwork)
+      ? undefined
+      : mempoolDataRaw;
 
   // Use stable empty arrays when data is undefined to prevent re-renders
   const safeApiWallets = apiWallets ?? EMPTY_WALLETS;

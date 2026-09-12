@@ -58,7 +58,15 @@ export const useWalletDetailController = () => {
       ),
     [locationState?.consoleTransactionFilter]
   );
-  const { data: bitcoinStatus } = useBitcoinStatus(selectedNetwork);
+  const { data: bitcoinStatusRaw, isPlaceholderData: statusIsPlaceholder } =
+    useBitcoinStatus(selectedNetwork);
+  // keepPreviousData can hand back the previous network's status while the new
+  // one loads. Confirmation thresholds differ per network, so using them would
+  // mark transactions confirmed against another chain's rules.
+  const bitcoinStatus =
+    statusIsPlaceholder || (bitcoinStatusRaw && bitcoinStatusRaw.network !== selectedNetwork)
+      ? undefined
+      : bitcoinStatusRaw;
   const { enabled: aiEnabled } = useAIStatus();
 
   const {

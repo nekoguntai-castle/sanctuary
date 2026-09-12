@@ -548,6 +548,7 @@ describe('useDashboardData', () => {
       mempool: [],
       blocks: [],
       mempoolInfo: { count: 0, size: 0, totalFees: 0 },
+      network: 'mainnet',
     };
     state.recentTxData = [
       {
@@ -768,7 +769,7 @@ describe('useDashboardData', () => {
       state.mempoolDataData = undefined;
       expect(renderHook(() => useDashboardData()).result.current.mempoolUnavailable).toBe(true);
 
-      state.mempoolDataData = { mempool: [], blocks: [], mempoolInfo: null, queuedBlocksSummary: null };
+      state.mempoolDataData = { mempool: [], blocks: [], mempoolInfo: null, queuedBlocksSummary: null, network: 'mainnet' };
       expect(renderHook(() => useDashboardData()).result.current.mempoolUnavailable).toBe(false);
     });
 
@@ -796,4 +797,5 @@ describe('useDashboardData', () => {
       expect(activitySummaryCalls.at(-1)).toEqual({ timeframe: '1Y' });
     });
   });
+
 });
