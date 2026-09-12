@@ -40,7 +40,7 @@ export function registerCastVoteGuardContracts() {
     ).rejects.toThrow('expired');
 
     // Should have resolved request as expired
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'expired');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired');
     expect(mockLog.info).toHaveBeenCalledWith('Approval request resolved', { requestId, status: 'expired' });
   });
 
@@ -127,7 +127,7 @@ export function registerCastVoteGuardContracts() {
       decision: 'approve',
     }));
     // Quorum is 2, only 1 vote -> no resolution
-    expect(mockPolicyRepo.updateApprovalRequestStatus).not.toHaveBeenCalled();
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundError when re-fetch returns null after vote', async () => {

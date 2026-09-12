@@ -23,6 +23,6 @@ export function registerCheckAndResolveRequestContracts() {
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
     // No resolution should happen
-    expect(mockPolicyRepo.updateApprovalRequestStatus).not.toHaveBeenCalled();
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).not.toHaveBeenCalled();
   });
 }

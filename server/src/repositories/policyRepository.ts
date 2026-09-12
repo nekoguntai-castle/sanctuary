@@ -228,18 +228,38 @@ export async function createApprovalRequest(data: {
   });
 }
 
-export async function updateApprovalRequestStatus(
+/**
+ * Resolve an approval request, but only while it is still pending.
+ *
+ * Two voters can reach resolution concurrently from disjoint vote snapshots —
+ * each re-reads the request after its own vote commits, and neither is
+ * guaranteed to see the other. An unconditional `update()` by id let whichever
+ * transaction committed last win, so an approval could overwrite a recorded
+ * rejection and leave the draft approved for broadcast.
+ *
+ * The `status: 'pending'` predicate makes the write the serialization point:
+ * exactly one resolver observes a non-zero count. Callers must treat a `null`
+ * return as "another resolver settled this" and must not derive draft state
+ * from a resolution they did not perform.
+ */
+export async function resolveApprovalRequestIfPending(
   requestId: string,
-  status: ApprovalRequestStatus,
+  status: Exclude<ApprovalRequestStatus, 'pending'>,
   resolvedAt?: Date
-): Promise<ApprovalRequest> {
-  return prisma.approvalRequest.update({
-    where: { id: requestId },
+): Promise<ApprovalRequest | null> {
+  const { count } = await prisma.approvalRequest.updateMany({
+    where: { id: requestId, status: 'pending' },
     data: {
       status,
-      resolvedAt: resolvedAt ?? (status !== 'pending' ? new Date() : null),
+      resolvedAt: resolvedAt ?? new Date(),
     },
   });
+
+  if (count === 0) {
+    return null;
+  }
+
+  return prisma.approvalRequest.findUnique({ where: { id: requestId } });
 }
 
 // ========================================
@@ -571,7 +591,7 @@ export const policyRepository = {
   findApprovalRequestById,
   findPendingApprovalsForUser,
   createApprovalRequest,
-  updateApprovalRequestStatus,
+  resolveApprovalRequestIfPending,
   countPendingApprovalsByDraftId,
   // Votes
   createVote,

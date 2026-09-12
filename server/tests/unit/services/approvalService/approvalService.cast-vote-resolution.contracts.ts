@@ -25,7 +25,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'reject', 'Too risky');
 
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'rejected');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected');
   });
 
   it('records veto vote and triggers veto resolution', async () => {
@@ -46,7 +46,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'veto', 'Absolutely not');
 
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'vetoed');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'vetoed');
   });
 
   it('resolves request when any_n quorum is met', async () => {
@@ -69,7 +69,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
   });
 
   it('resolves request when all quorum is met', async () => {
@@ -95,7 +95,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
   });
 
   it('resolves request when specific quorum is met', async () => {
@@ -118,6 +118,6 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
   });
 }

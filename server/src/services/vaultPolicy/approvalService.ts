@@ -274,14 +274,25 @@ export async function ownerOverride(
     throw new ConflictError('No pending approval requests to override');
   }
 
+  // Only requests still pending at write time are overridden. A request another
+  // resolver rejected or vetoed in the meantime is already settled, and an
+  // override must not silently reverse that decision.
+  const overridden: typeof pending = [];
   for (const request of pending) {
-    await policyRepository.updateApprovalRequestStatus(request.id, 'approved');
+    const resolved = await policyRepository.resolveApprovalRequestIfPending(request.id, 'approved');
+    if (resolved) {
+      overridden.push(request);
+    }
+  }
+
+  if (overridden.length === 0) {
+    throw new ConflictError('No pending approval requests to override');
   }
 
   await updateDraftApprovalStatus(draftId, 'approved');
 
   // Log override event for each policy
-  for (const request of pending) {
+  for (const request of overridden) {
     await policyRepository.createPolicyEvent({
       policyId: request.policyId,
       walletId,
@@ -300,7 +311,8 @@ export async function ownerOverride(
     draftId,
     walletId,
     ownerId,
-    overriddenCount: pending.length,
+    overriddenCount: overridden.length,
+    alreadySettledCount: pending.length - overridden.length,
     reason,
   });
 
@@ -345,15 +357,17 @@ async function checkAndResolveRequest(
 
   // Any rejection → reject the request
   if (rejectVotes.length > 0) {
-    await resolveRequest(request.id, 'rejected');
-    await updateDraftApprovalFromRequests(request.draftTransactionId);
+    if (await resolveRequest(request.id, 'rejected')) {
+      await updateDraftApprovalFromRequests(request.draftTransactionId);
+    }
     return;
   }
 
   // Any veto → veto the request
   if (vetoVotes.length > 0) {
-    await resolveRequest(request.id, 'vetoed');
-    await updateDraftApprovalFromRequests(request.draftTransactionId);
+    if (await resolveRequest(request.id, 'vetoed')) {
+      await updateDraftApprovalFromRequests(request.draftTransactionId);
+    }
     return;
   }
 
@@ -376,17 +390,33 @@ async function checkAndResolveRequest(
   }
 
   if (quorumMet) {
-    await resolveRequest(request.id, 'approved');
-    await updateDraftApprovalFromRequests(request.draftTransactionId);
+    if (await resolveRequest(request.id, 'approved')) {
+      await updateDraftApprovalFromRequests(request.draftTransactionId);
+    }
   }
 }
 
+/**
+ * Attempt to resolve a request. Returns false when another resolver settled it
+ * first — the caller must then leave the derived draft status alone, since the
+ * winner's decision is the one that counts.
+ */
 async function resolveRequest(
   requestId: string,
-  status: ApprovalRequestStatus
-): Promise<void> {
-  await policyRepository.updateApprovalRequestStatus(requestId, status);
-  log.info('Approval request resolved', { requestId, status });
+  status: Exclude<ApprovalRequestStatus, 'pending'>
+): Promise<boolean> {
+  const resolved = await policyRepository.resolveApprovalRequestIfPending(requestId, status);
+
+  if (!resolved) {
+    log.info('Approval request already resolved by a concurrent resolver', {
+      requestId,
+      attemptedStatus: status,
+    });
+    return false;
+  }
+
+  log.info('Approval request resolved', { requestId, status: resolved.status });
+  return true;
 }
 
 /**

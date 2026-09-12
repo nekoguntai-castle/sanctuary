@@ -14,7 +14,7 @@ const approvalMocks = vi.hoisted(() => ({
     findApprovalRequestsByDraftId: vi.fn(),
     findPendingApprovalsForUser: vi.fn(),
     createApprovalRequest: vi.fn(),
-    updateApprovalRequestStatus: vi.fn(),
+    resolveApprovalRequestIfPending: vi.fn(),
     createVote: vi.fn(),
     findVoteByUserAndRequest: vi.fn(),
     createPolicyEvent: vi.fn().mockResolvedValue({}),
@@ -83,6 +83,12 @@ export function makePendingRequest(overrides: Record<string, unknown> = {}) {
 export function registerApprovalServiceTestHarness() {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default to winning the conditional resolution. Tests that exercise the
+    // lost-race path override this with `null`, which is what the repository
+    // returns when the request was no longer pending at write time.
+    mockPolicyRepo.resolveApprovalRequestIfPending.mockImplementation(
+      async (id: string, status: string) => ({ id, status })
+    );
     mockPolicyRepo.createPolicyEvent.mockResolvedValue({});
     mockDraftRepo.updateApprovalStatus.mockResolvedValue(undefined);
     mockNotify.notifyApprovalRequested.mockResolvedValue(undefined);

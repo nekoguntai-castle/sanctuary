@@ -16,7 +16,7 @@ import {
   findApprovalRequestById,
   findPendingApprovalsForUser,
   createApprovalRequest,
-  updateApprovalRequestStatus,
+  resolveApprovalRequestIfPending,
   countPendingApprovalsByDraftId,
   createVote,
   findVoteByUserAndRequest,
@@ -248,7 +248,7 @@ export const registerPolicyRepositoryUsageExportContracts = () => {
       expect(policyRepository.findApprovalRequestById).toBe(findApprovalRequestById);
       expect(policyRepository.findPendingApprovalsForUser).toBe(findPendingApprovalsForUser);
       expect(policyRepository.createApprovalRequest).toBe(createApprovalRequest);
-      expect(policyRepository.updateApprovalRequestStatus).toBe(updateApprovalRequestStatus);
+      expect(policyRepository.resolveApprovalRequestIfPending).toBe(resolveApprovalRequestIfPending);
       expect(policyRepository.countPendingApprovalsByDraftId).toBe(countPendingApprovalsByDraftId);
     });
 

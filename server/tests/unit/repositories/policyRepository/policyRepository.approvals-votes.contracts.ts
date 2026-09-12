@@ -5,7 +5,7 @@ import {
   findApprovalRequestById,
   findPendingApprovalsForUser,
   createApprovalRequest,
-  updateApprovalRequestStatus,
+  resolveApprovalRequestIfPending,
   countPendingApprovalsByDraftId,
   createVote,
   findVoteByUserAndRequest,
@@ -146,17 +146,24 @@ export const registerPolicyRepositoryApprovalVoteContracts = () => {
     });
   });
 
-  describe('updateApprovalRequestStatus', () => {
-    it('updates status to approved with explicit resolvedAt', async () => {
+  describe('resolveApprovalRequestIfPending', () => {
+    /**
+     * The `status: 'pending'` predicate is the whole point: it makes the write
+     * the serialization point between two concurrent resolvers. These contracts
+     * previously asserted an unconditional `update({ where: { id } })`, which
+     * pinned the defect in place.
+     */
+    it('resolves to approved with explicit resolvedAt, conditional on still being pending', async () => {
       const resolvedAt = new Date('2026-03-15T12:00:00Z');
       const updated = { id: 'ar1', status: 'approved', resolvedAt };
-      (prisma.approvalRequest.update as Mock).mockResolvedValue(updated);
+      (prisma.approvalRequest.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.approvalRequest.findUnique as Mock).mockResolvedValue(updated);
 
-      const result = await updateApprovalRequestStatus('ar1', 'approved', resolvedAt);
+      const result = await resolveApprovalRequestIfPending('ar1', 'approved', resolvedAt);
 
       expect(result).toEqual(updated);
-      expect(prisma.approvalRequest.update).toHaveBeenCalledWith({
-        where: { id: 'ar1' },
+      expect(prisma.approvalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'ar1', status: 'pending' },
         data: {
           status: 'approved',
           resolvedAt,
@@ -164,15 +171,16 @@ export const registerPolicyRepositoryApprovalVoteContracts = () => {
       });
     });
 
-    it('auto-generates resolvedAt for non-pending status without explicit date', async () => {
+    it('auto-generates resolvedAt when no explicit date is given', async () => {
       const updated = { id: 'ar1', status: 'rejected' };
-      (prisma.approvalRequest.update as Mock).mockResolvedValue(updated);
+      (prisma.approvalRequest.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.approvalRequest.findUnique as Mock).mockResolvedValue(updated);
 
-      const result = await updateApprovalRequestStatus('ar1', 'rejected');
+      const result = await resolveApprovalRequestIfPending('ar1', 'rejected');
 
       expect(result).toEqual(updated);
-      expect(prisma.approvalRequest.update).toHaveBeenCalledWith({
-        where: { id: 'ar1' },
+      expect(prisma.approvalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'ar1', status: 'pending' },
         data: {
           status: 'rejected',
           resolvedAt: expect.any(Date),
@@ -180,20 +188,22 @@ export const registerPolicyRepositoryApprovalVoteContracts = () => {
       });
     });
 
-    it('sets resolvedAt to null when status is pending without explicit date', async () => {
-      const updated = { id: 'ar1', status: 'pending' };
-      (prisma.approvalRequest.update as Mock).mockResolvedValue(updated);
+    it('returns null without re-reading when the request was no longer pending', async () => {
+      (prisma.approvalRequest.updateMany as Mock).mockResolvedValue({ count: 0 });
 
-      const result = await updateApprovalRequestStatus('ar1', 'pending');
+      const result = await resolveApprovalRequestIfPending('ar1', 'approved');
 
-      expect(result).toEqual(updated);
-      expect(prisma.approvalRequest.update).toHaveBeenCalledWith({
-        where: { id: 'ar1' },
-        data: {
-          status: 'pending',
-          resolvedAt: null,
-        },
-      });
+      expect(result).toBeNull();
+      expect(prisma.approvalRequest.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('never issues an unconditional update by id', async () => {
+      (prisma.approvalRequest.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.approvalRequest.findUnique as Mock).mockResolvedValue({ id: 'ar1', status: 'vetoed' });
+
+      await resolveApprovalRequestIfPending('ar1', 'vetoed');
+
+      expect(prisma.approvalRequest.update).not.toHaveBeenCalled();
     });
   });
 

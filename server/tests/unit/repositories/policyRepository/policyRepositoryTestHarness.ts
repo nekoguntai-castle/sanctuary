@@ -15,6 +15,7 @@ const policyRepositoryPrismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     count: vi.fn(),
   },
   approvalVote: {

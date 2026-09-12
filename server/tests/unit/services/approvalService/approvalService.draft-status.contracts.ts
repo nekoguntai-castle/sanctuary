@@ -113,10 +113,10 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'reject');
 
-    // updateApprovalRequestStatus called for the resolve, but not for draft status
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'rejected');
+    // resolveApprovalRequestIfPending called for the resolve, but not for draft status
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected');
     // updateApprovalStatus should NOT be called because requests.length === 0
-    // Only the resolveRequest call triggers updateApprovalRequestStatus
+    // Only the resolveRequest call triggers resolveApprovalRequestIfPending
     // The draft updateApprovalStatus should not be called in updateDraftApprovalFromRequests
     // because requests is empty
   });
@@ -141,7 +141,7 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
     // updateApprovalStatus should NOT be called for the draft because not all are approved
     // Count calls: first from resolveRequest inner updateDraftApprovalFromRequests
     // Since we have approved + pending, none of the branches (rejected/vetoed/all approved) match

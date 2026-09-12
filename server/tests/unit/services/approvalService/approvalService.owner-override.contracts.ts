@@ -14,9 +14,9 @@ export function registerOwnerOverrideContracts() {
     await approvalService.ownerOverride(draftId, walletId, userId, 'Emergency');
 
     // Only pending requests get overridden
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledTimes(2);
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith('r1', 'approved');
-    expect(mockPolicyRepo.updateApprovalRequestStatus).toHaveBeenCalledWith('r2', 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledTimes(2);
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r1', 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r2', 'approved');
 
     // Draft status updated to approved
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
