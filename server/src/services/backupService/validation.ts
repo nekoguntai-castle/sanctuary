@@ -244,11 +244,19 @@ export async function validateBackupForRestore(backup: unknown): Promise<Validat
     );
   }
 
-  validateRestoreCompleteness(
-    data,
-    getRequiredRestoreTables(meta),
-    issues
-  );
+  const requiredTables = getRequiredRestoreTables(meta);
+  if (requiredTables.length === 0) {
+    // Defense in depth: whatever combination of meta produced an empty required
+    // set, a destructive restore that would delete every table and restore
+    // nothing is never valid. getRequiredRestoreTables should never return an
+    // empty array today, but this guard does not trust that invariant blindly.
+    issues.push(
+      'Backup requires no tables for a destructive restore; refusing to delete existing data and restore nothing'
+    );
+  } else {
+    validateRestoreCompleteness(data, requiredTables, issues);
+  }
+  validateUsersForRestore(data, issues);
   const descriptorPolicies = validateDescriptorPoliciesForRestore(data);
   issues.push(...descriptorPolicies.issues);
   warnings.push(...descriptorPolicies.warnings);
@@ -431,6 +439,21 @@ const validateUsers = (data: Record<string, BackupRecord[]>, issues: string[]): 
         issues.push('Backup must contain at least one admin user');
       }
     }
+  }
+};
+
+/**
+ * A destructive restore must never proceed without at least one user: restoring
+ * an instance to zero users locks it out permanently. `validateUsers` (preview
+ * validation) only warns/rejects when `data.user` is present, so a legacy backup
+ * that omits the key entirely would otherwise sail through undetected here.
+ */
+const validateUsersForRestore = (
+  data: Record<string, BackupRecord[]>,
+  issues: string[]
+): void => {
+  if (!Array.isArray(data.user) || data.user.length === 0) {
+    issues.push('Backup must contain at least one user for a destructive restore');
   }
 };
 

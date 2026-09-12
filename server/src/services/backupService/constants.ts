@@ -322,8 +322,16 @@ export function getRequiredRestoreTables(
 ): string[] {
   let requiredTables: readonly string[] = TABLE_ORDER;
   if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
+    // A legacy backup's own schemaVersion can predate BASELINE_RESTORE_SCHEMA_VERSION
+    // (historically 0). Filtering the legacy min-version table directly against that
+    // raw value makes every baseline-minimum table (min === 1) read as "not yet
+    // required," so a genuinely destructive restore would demand nothing at all.
+    // Clamping the filter's effective version to at least the baseline guarantees
+    // every table whose minimum is the baseline is required for any legacy backup;
+    // tables with a higher minimum (e.g. mcpApiKey at 47) stay optional below it.
+    const effectiveSchemaVersion = Math.max(meta.schemaVersion, BASELINE_RESTORE_SCHEMA_VERSION);
     requiredTables = LEGACY_TABLE_ORDER.filter(
-      (table) => meta.schemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
+      (table) => effectiveSchemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
     );
   } else {
     requiredTables = historicalCompleteTableOrder(meta) ?? TABLE_ORDER;
