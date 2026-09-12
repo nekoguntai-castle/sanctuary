@@ -77,6 +77,27 @@ export function registerAdminRoutesDeleteContracts(): void {
       expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
       expect(mockAuditService.logFromRequest).not.toHaveBeenCalled();
     });
+
+    it('rejects deleting the sole member of a non-group wallet without side effects', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-to-delete',
+        username: 'deleteuser',
+        isAdmin: false,
+      });
+      mockPrisma.user.count.mockResolvedValue(1);
+      mockPrisma.walletUser.findMany.mockResolvedValue([
+        { walletId: 'wallet-1', wallet: { groupId: null, _count: { users: 1 } } },
+      ]);
+
+      const response = await adminRoutesRequest().delete('/api/v1/admin/users/user-to-delete');
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('wallet-1');
+      expect(mockPrisma.user.delete).not.toHaveBeenCalled();
+      expect(mockDisconnectWebSocketUser).not.toHaveBeenCalled();
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
+      expect(mockAuditService.logFromRequest).not.toHaveBeenCalled();
+    });
   });
 
   describe('DELETE /api/v1/admin/groups/:id', () => {

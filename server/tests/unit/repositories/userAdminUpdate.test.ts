@@ -80,6 +80,9 @@ function installAdminSetBarrier() {
           return { id: where.id };
         }),
       },
+      walletUser: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     };
 
     const result = await callback(tx);
@@ -220,21 +223,83 @@ describe('Admin user repository updates', () => {
     expectOneAdminFloorWinner(results, adminIds);
   });
 
-  it('deletes a non-admin through the serializable floor protocol', async () => {
+  function installAdminDeleteTransaction(options: {
+    targetIsAdmin?: boolean;
+    adminCount?: number;
+    walletMemberships?: Array<{ walletId: string; wallet: { groupId: string | null; _count: { users: number } } }>;
+  } = {}) {
     const tx = {
       user: {
         findUnique: vi.fn().mockResolvedValue({
           id: 'regular-user',
           username: 'regular-user',
-          isAdmin: false,
+          isAdmin: options.targetIsAdmin ?? false,
         }),
-        count: vi.fn().mockResolvedValue(1),
+        count: vi.fn().mockResolvedValue(options.adminCount ?? 1),
         delete: vi.fn().mockResolvedValue({ id: 'regular-user' }),
+      },
+      walletUser: {
+        findMany: vi.fn().mockResolvedValue(options.walletMemberships ?? []),
       },
     };
     mockPrisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    return tx;
+  }
+
+  it('deletes a non-admin through the serializable floor protocol', async () => {
+    const tx = installAdminDeleteTransaction();
+
+    await expect(userRepository.deleteFromAdmin('regular-user')).resolves.toEqual({
+      id: 'regular-user',
+      username: 'regular-user',
+      isAdmin: false,
+    });
+    expect(tx.walletUser.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'regular-user', wallet: { groupId: null } },
+    }));
+    expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'regular-user' } });
+    expect(mockPrisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: 'Serializable' },
+    );
+  });
+
+  it('refuses to delete a user who is the sole member of a non-group wallet', async () => {
+    const tx = installAdminDeleteTransaction({
+      walletMemberships: [
+        { walletId: 'wallet-1', wallet: { groupId: null, _count: { users: 1 } } },
+      ],
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toThrow(/wallet-1/);
+    expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it('names every stranded wallet id when the user solely owns more than one', async () => {
+    const tx = installAdminDeleteTransaction({
+      walletMemberships: [
+        { walletId: 'wallet-1', wallet: { groupId: null, _count: { users: 1 } } },
+        { walletId: 'wallet-2', wallet: { groupId: null, _count: { users: 1 } } },
+      ],
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toThrow(/wallet-1.*wallet-2/s);
+    expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it('allows deleting a user who shares a wallet with another member', async () => {
+    const tx = installAdminDeleteTransaction({
+      walletMemberships: [
+        { walletId: 'wallet-1', wallet: { groupId: null, _count: { users: 2 } } },
+      ],
+    });
 
     await expect(userRepository.deleteFromAdmin('regular-user')).resolves.toEqual({
       id: 'regular-user',
@@ -242,10 +307,32 @@ describe('Admin user repository updates', () => {
       isAdmin: false,
     });
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'regular-user' } });
-    expect(mockPrisma.$transaction).toHaveBeenCalledWith(
-      expect.any(Function),
-      { isolationLevel: 'Serializable' },
-    );
+  });
+
+  it('allows deleting the sole member of a group-owned wallet', async () => {
+    const tx = installAdminDeleteTransaction({
+      walletMemberships: [
+        { walletId: 'wallet-1', wallet: { groupId: 'group-1', _count: { users: 1 } } },
+      ],
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user')).resolves.toEqual({
+      id: 'regular-user',
+      username: 'regular-user',
+      isAdmin: false,
+    });
+    expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'regular-user' } });
+  });
+
+  it('allows deleting a user with no wallet memberships', async () => {
+    const tx = installAdminDeleteTransaction({ walletMemberships: [] });
+
+    await expect(userRepository.deleteFromAdmin('regular-user')).resolves.toEqual({
+      id: 'regular-user',
+      username: 'regular-user',
+      isAdmin: false,
+    });
+    expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'regular-user' } });
   });
 
   it('bounds repeated serialization conflicts', async () => {

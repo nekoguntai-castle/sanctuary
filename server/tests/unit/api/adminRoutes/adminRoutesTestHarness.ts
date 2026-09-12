@@ -77,6 +77,9 @@ const mockPrisma = {
     findFirst: vi.fn(),
     count: vi.fn(),
   },
+  walletUser: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
   device: {
     count: vi.fn(),
   },
@@ -215,6 +218,7 @@ export function setupAdminRoutesTestHooks(): void {
       (fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma),
     );
     mockPrisma.user.findMany.mockResolvedValue([]);
+    mockPrisma.walletUser.findMany.mockResolvedValue([]);
     mockAuditService.log.mockResolvedValue(undefined);
     mockAuditService.logFromRequest.mockResolvedValue(undefined);
     mockAuditService.query.mockResolvedValue({ logs: [], total: 0 });

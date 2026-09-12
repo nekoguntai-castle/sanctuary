@@ -341,11 +341,11 @@ export function registerAdminUserManagementContracts(): void {
           .expect(401);
       });
 
-      it('should cascade delete wallet user associations', async () => {
+      it('refuses to delete a user who is the sole member of a non-group wallet', async () => {
         const { token } = await createAdminAndLogin();
         const { userId } = await createUserAndLogin();
 
-        // Create wallet for user
+        // Create wallet for user; this user is its only member
         const wallet = await prisma.wallet.create({
           data: {
             name: 'Test Wallet',
@@ -353,6 +353,41 @@ export function registerAdminUserManagementContracts(): void {
             scriptType: 'native_segwit',
             users: {
               create: { userId, role: 'owner' },
+            },
+          },
+        });
+
+        const response = await request(app)
+          .delete(`/api/v1/admin/users/${userId}`)
+          .set(authHeader(token))
+          .expect(409);
+        expect(response.body.message).toContain(wallet.id);
+
+        // Verify the user and the wallet association both survive
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        expect(user).not.toBeNull();
+        const association = await prisma.walletUser.findUnique({
+          where: { walletId_userId: { userId, walletId: wallet.id } },
+        });
+        expect(association).not.toBeNull();
+      });
+
+      it('cascades wallet user associations when another member remains', async () => {
+        const { token } = await createAdminAndLogin();
+        const { userId } = await createUserAndLogin();
+        const { userId: otherUserId } = await createUserAndLogin();
+
+        // Create wallet shared by two users
+        const wallet = await prisma.wallet.create({
+          data: {
+            name: 'Shared Wallet',
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            users: {
+              create: [
+                { userId, role: 'owner' },
+                { userId: otherUserId, role: 'viewer' },
+              ],
             },
           },
         });
@@ -368,11 +403,13 @@ export function registerAdminUserManagementContracts(): void {
           .set(authHeader(token))
           .expect(200);
 
-        // Verify user-wallet association is deleted (cascade)
+        // Verify user-wallet association is deleted (cascade), wallet survives
         const associationAfter = await prisma.walletUser.findUnique({
           where: { walletId_userId: { userId, walletId: wallet.id } },
         });
         expect(associationAfter).toBeNull();
+        const walletAfter = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+        expect(walletAfter).not.toBeNull();
       });
 
       it('should prevent self-deletion', async () => {
