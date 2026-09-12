@@ -4,6 +4,20 @@ import { Volume2 } from 'lucide-react';
 import { Toggle } from '../../ui/Toggle';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
 import type { NotificationSounds, SoundType } from '../../../types';
+import type { PreferenceSaveResult } from '../../../contexts/useUserPreferenceMutation';
+import { createLogger } from '../../../utils/logger';
+
+const log = createLogger('SoundSection');
+
+// This section has no per-form error affordance (unlike TelegramSection), so
+// a failed save is surfaced by logging only — the optimistic UI still shows
+// the locally-applied value, matching prior behavior for a save that never
+// rejected in practice, while at least making the failure observable.
+function warnOnFailedPreferenceSave(result: PreferenceSaveResult, context: string): void {
+  if (!result.ok) {
+    log.warn(`Failed to save ${context}`, { error: result.error });
+  }
+}
 
 type SoundEventId = 'confirmation' | 'receive' | 'send';
 
@@ -257,18 +271,19 @@ const NotificationSoundSettings: React.FC = () => {
 
   const handleToggleSounds = async () => {
     const newEnabled = !soundPrefs.enabled;
-    await updatePreferences({
+    const result = await updatePreferences({
       notificationSounds: {
         ...soundPrefs,
         volume,
         enabled: newEnabled,
       },
     });
+    warnOnFailedPreferenceSave(result, 'sound master toggle');
   };
 
   const handleEventToggle = async (eventId: SoundEventId) => {
     const currentConfig = getEventConfig(eventId);
-    await updatePreferences({
+    const result = await updatePreferences({
       notificationSounds: {
         ...soundPrefs,
         volume,
@@ -278,11 +293,12 @@ const NotificationSoundSettings: React.FC = () => {
         },
       },
     });
+    warnOnFailedPreferenceSave(result, `${eventId} sound toggle`);
   };
 
   const handleEventSoundChange = async (eventId: SoundEventId, sound: string) => {
     const currentConfig = getEventConfig(eventId);
-    await updatePreferences({
+    const result = await updatePreferences({
       notificationSounds: {
         ...soundPrefs,
         volume,
@@ -292,6 +308,7 @@ const NotificationSoundSettings: React.FC = () => {
         },
       },
     });
+    warnOnFailedPreferenceSave(result, `${eventId} sound selection`);
     // Play preview of selected sound
     if (sound !== 'none') {
       playSound(sound as SoundType, volume);
@@ -300,12 +317,13 @@ const NotificationSoundSettings: React.FC = () => {
 
   const handleVolumeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const nextVolume = parseInt(e.target.value, 10);
-    await updatePreferences({
+    const result = await updatePreferences({
       notificationSounds: {
         ...soundPrefs,
         volume: nextVolume,
       },
     });
+    warnOnFailedPreferenceSave(result, 'volume');
   };
 
   const handleTestSound = (sound: string) => {

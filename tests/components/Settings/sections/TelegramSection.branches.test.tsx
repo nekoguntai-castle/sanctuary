@@ -73,7 +73,7 @@ describe('TelegramSettings branch coverage', () => {
       },
     };
 
-    mockState.updatePreferences.mockResolvedValue({});
+    mockState.updatePreferences.mockResolvedValue({ ok: true });
     mockState.logError.mockReturnValue('Handled error');
     vi.mocked(authApi.testTelegramConfig).mockResolvedValue({ success: true } as any);
     vi.mocked(authApi.fetchTelegramChatId).mockResolvedValue({ success: true, chatId: '123' } as any);
@@ -187,19 +187,32 @@ describe('TelegramSettings branch coverage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(clearTimeoutSpy).toHaveBeenCalled();
 
-    mockState.logError.mockReturnValueOnce('Failed to save settings');
-    mockState.updatePreferences.mockRejectedValueOnce(new Error('save failed'));
+    // production `updatePreferences` never rejects — a failed PATCH resolves
+    // to `{ ok: false, error }` (see useUserPreferenceMutation.ts). The save
+    // path must report that failure instead of showing success.
+    mockState.updatePreferences.mockResolvedValueOnce({ ok: false, error: 'Failed to save settings' });
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Failed to save settings')).toBeInTheDocument();
+    expect(screen.queryByText('Settings saved successfully')).not.toBeInTheDocument();
+    // Form re-synced from (unchanged) user.preferences after the failed save.
+    expect(tokenInput).toHaveValue('');
+    expect(chatInput).toHaveValue('');
 
-    mockState.logError.mockReturnValueOnce('Failed to update settings');
-    mockState.updatePreferences.mockRejectedValueOnce(new Error('toggle failed'));
+    // Re-type so the toggle path also has values to roll back / re-sync from.
+    await user.type(tokenInput, 'bot-token');
+    await user.type(chatInput, 'chat-id');
+
+    mockState.updatePreferences.mockResolvedValueOnce({ ok: false, error: 'Failed to update settings' });
     const disabledLabel = screen.getByText('Disabled');
     const toggleButton = disabledLabel.parentElement?.querySelector('button');
     expect(toggleButton).not.toBeNull();
     await user.click(toggleButton as HTMLButtonElement);
     expect(await screen.findByText('Failed to update settings')).toBeInTheDocument();
+    // Optimistic `enabled` rolled back to its prior value (still disabled).
     expect(screen.getByText('Disabled')).toBeInTheDocument();
+    // Form re-synced from (unchanged) user.preferences after the failed toggle.
+    expect(tokenInput).toHaveValue('');
+    expect(chatInput).toHaveValue('');
 
     unmount();
     expect(clearTimeoutSpy).toHaveBeenCalled();

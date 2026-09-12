@@ -217,7 +217,7 @@ const resetSettingsMocks = (): void => {
     },
   };
 
-  mockState.updatePreferences.mockResolvedValue({});
+  mockState.updatePreferences.mockResolvedValue({ ok: true });
   mockState.logError.mockReturnValue("Handled error");
 
   mockState.getEventConfig.mockImplementation(
@@ -395,7 +395,12 @@ const registerTelegramErrorTest = (): void => {
     vi.mocked(authApi.testTelegramConfig).mockRejectedValue(
       new Error("test failed"),
     );
-    mockState.updatePreferences.mockRejectedValue(new Error("save failed"));
+    // production `updatePreferences` never rejects — a failed PATCH resolves
+    // to `{ ok: false, error }` (see useUserPreferenceMutation.ts).
+    mockState.updatePreferences.mockResolvedValue({
+      ok: false,
+      error: "save failed",
+    });
     mockState.logError.mockReturnValue("Failed to test connection");
 
     render(<Settings />);
@@ -408,21 +413,20 @@ const registerTelegramErrorTest = (): void => {
       await screen.findByText("Failed to test connection"),
     ).toBeInTheDocument();
 
-    mockState.logError.mockReturnValue("Failed to save settings");
     await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("save failed")).toBeInTheDocument();
     expect(
-      await screen.findByText("Failed to save settings"),
-    ).toBeInTheDocument();
+      screen.queryByText("Settings saved successfully"),
+    ).not.toBeInTheDocument();
 
-    mockState.logError.mockReturnValue("Failed to update settings");
     const enabledLabel = screen.getByText("Enabled");
     const toggleButton = enabledLabel.parentElement?.querySelector("button");
     expect(toggleButton).not.toBeNull();
     await user.click(toggleButton as HTMLButtonElement);
 
-    expect(
-      await screen.findByText("Failed to update settings"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("save failed")).toBeInTheDocument();
+    // Optimistic toggle rolled back: still shows "Enabled" (the original state).
+    expect(screen.getByText("Enabled")).toBeInTheDocument();
   });
 };
 

@@ -34,6 +34,14 @@ type PendingPreferenceRequests = Record<number, string[]>;
 export const PREFERENCE_WRITE_DEBOUNCE_MS = 300;
 export const PREFERENCE_WRITE_MAX_WAIT_MS = 2000;
 
+/**
+ * `updatePreferences` NEVER rejects — eight call sites across the app fire it
+ * without await/catch (sliders, toggles, background writes), and a rejecting
+ * promise would turn every one of those into an unhandled rejection. Callers
+ * that DO await instead branch on `.ok`.
+ */
+export type PreferenceSaveResult = { ok: true } | { ok: false; error: string };
+
 interface PreferenceBatch {
   /** Shallow merge of every patch coalesced into this batch. */
   patch: PreferenceRecord;
@@ -51,8 +59,8 @@ interface PreferenceBatch {
   sessionId: number;
   userId: string;
   /** Settles when the flush completes, so callers that await still work. */
-  settled: Promise<void>;
-  resolve: () => void;
+  settled: Promise<PreferenceSaveResult>;
+  resolve: (result: PreferenceSaveResult) => void;
 }
 
 interface PreferenceMutationArgs {
@@ -63,9 +71,9 @@ interface PreferenceMutationArgs {
 
 interface PreferenceMutationController {
   resetPreferenceTracking: () => void;
-  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
+  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<PreferenceSaveResult>;
   /** Sends any buffered write immediately. Used before logout tears the session down. */
-  flushPreferenceWrites: () => Promise<void>;
+  flushPreferenceWrites: () => Promise<PreferenceSaveResult>;
 }
 
 function hasNewerPreferenceWrite(generations: PreferenceGenerations, requestId: number): boolean {
@@ -155,7 +163,7 @@ export function useUserPreferenceMutation({
     // buffer under a new session, or block logout on a request that may never
     // resolve. The optimistic value is discarded with the session regardless.
     clearBatchTimers();
-    batchRef.current?.resolve();
+    batchRef.current?.resolve({ ok: true });
     batchRef.current = null;
 
     preferenceSessionIdRef.current += 1;
@@ -163,14 +171,14 @@ export function useUserPreferenceMutation({
     pendingPreferenceRequestsRef.current = {};
   }, [clearBatchTimers]);
 
-  const flushPreferenceBatch = useCallback(async () => {
+  const flushPreferenceBatch = useCallback(async (): Promise<PreferenceSaveResult> => {
     clearBatchTimers();
 
     const batch = batchRef.current;
     /* v8 ignore next -- defensive: flush clears its own timers, so a second
        invocation with nothing buffered is not reachable through the timer or
        unmount paths. */
-    if (!batch) return;
+    if (!batch) return { ok: true };
     batchRef.current = null;
 
     const {
@@ -182,10 +190,11 @@ export function useUserPreferenceMutation({
       resolve,
     } = batch;
     const patchKeys = getPreferencePatchKeys(preferencePatch);
+    let result: PreferenceSaveResult = { ok: true };
 
     try {
       const apiUser = await authApi.updatePreferences(preferencePatch);
-      if (preferenceSessionIdRef.current !== preferenceSessionId) return;
+      if (preferenceSessionIdRef.current !== preferenceSessionId) return result;
 
       const hasOtherPendingWrite = hasOtherPendingPreferenceWrite(
         pendingPreferenceRequestsRef.current,
@@ -211,10 +220,12 @@ export function useUserPreferenceMutation({
         return nextUser;
       });
     } catch (err) {
-      if (preferenceSessionIdRef.current !== preferenceSessionId) return;
+      const message = err instanceof ApiError ? err.message : 'Failed to update preferences';
+      result = { ok: false, error: message };
+
+      if (preferenceSessionIdRef.current !== preferenceSessionId) return result;
 
       delete pendingPreferenceRequestsRef.current[requestId];
-      const message = err instanceof ApiError ? err.message : 'Failed to update preferences';
       setError(message);
 
       setUser(latestUser => {
@@ -236,8 +247,9 @@ export function useUserPreferenceMutation({
         return nextUser;
       });
     } finally {
-      resolve();
+      resolve(result);
     }
+    return result;
   }, [clearBatchTimers, setError, setUser]);
 
   // Persist whatever is still buffered when the provider unmounts, but send the
@@ -251,7 +263,7 @@ export function useUserPreferenceMutation({
       const batch = batchRef.current;
       batchRef.current = null;
       if (!batch) return;
-      batch.resolve();
+      batch.resolve({ ok: true });
       void authApi.updatePreferences(batch.patch).catch(() => {
         // Nothing left to surface the failure to.
       });
@@ -259,13 +271,13 @@ export function useUserPreferenceMutation({
   }, [clearBatchTimers]);
 
   const updatePreferences = useCallback(
-    (newPrefs: Partial<UserPreferences>): Promise<void> => {
+    (newPrefs: Partial<UserPreferences>): Promise<PreferenceSaveResult> => {
       const currentUser = userRef.current;
-      if (!currentUser) return Promise.resolve();
+      if (!currentUser) return Promise.resolve({ ok: true });
 
       const preferencePatch = asPreferenceRecord(newPrefs);
       const patchKeys = getPreferencePatchKeys(preferencePatch);
-      if (patchKeys.length === 0) return Promise.resolve();
+      if (patchKeys.length === 0) return Promise.resolve({ ok: true });
 
       const preferenceSessionId = preferenceSessionIdRef.current;
       let batch = batchRef.current;
@@ -286,14 +298,14 @@ export function useUserPreferenceMutation({
            previously missing and would hang an awaiting caller if it ever is. */
         if (batch) {
           clearBatchTimers();
-          batch.resolve();
+          batch.resolve({ ok: true });
         }
 
         const requestId = preferenceRequestIdRef.current + 1;
         preferenceRequestIdRef.current = requestId;
 
-        let resolve!: () => void;
-        const settled = new Promise<void>(res => {
+        let resolve!: (result: PreferenceSaveResult) => void;
+        const settled = new Promise<PreferenceSaveResult>(res => {
           resolve = res;
         });
 

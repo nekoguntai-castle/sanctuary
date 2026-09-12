@@ -1,4 +1,5 @@
 import type { User, UserPreferences } from '../types';
+import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
 export interface TwoFactorPending {
   tempToken: string;
@@ -32,7 +33,7 @@ export interface UserContextType {
   cancel2FA: () => void;
   register: (username: string, password: string, email: string) => Promise<RegistrationResult>;
   logout: () => void;
-  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
+  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<PreferenceSaveResult>;
   clearError: () => void;
   clearNotice: () => void;
 }

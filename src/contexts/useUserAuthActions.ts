@@ -12,10 +12,11 @@ import type {
   TwoFactorPending,
 } from './userContextTypes';
 import { toContextUser } from './userModel';
+import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
 interface UserAuthActionsArgs {
   resetPreferenceTracking: () => void;
-  flushPreferenceWrites: () => Promise<void>;
+  flushPreferenceWrites: () => Promise<PreferenceSaveResult>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setNotice: React.Dispatch<React.SetStateAction<string | null>>;

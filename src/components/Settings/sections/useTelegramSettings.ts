@@ -82,19 +82,27 @@ export function useTelegramSettings() {
     }
   };
 
+  // Re-syncs the local form fields from whatever the server (or the mutation
+  // hook's own rollback) actually has, so a rejected save never leaves the
+  // form showing values that were never persisted.
+  const resyncFromUser = () => {
+    setBotToken(user?.preferences?.telegram?.botToken || '');
+    setChatId(user?.preferences?.telegram?.chatId || '');
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setError(null);
     setSaveSuccess(false);
 
     try {
-      await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled, user }));
-      showSaveSuccess(setSaveSuccess, successTimeoutRef);
-    } catch (err) {
-      const message = logError(log, err, 'Failed to save Telegram settings', {
-        fallbackMessage: 'Failed to save settings',
-      });
-      setError(message);
+      const result = await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled, user }));
+      if (result.ok) {
+        showSaveSuccess(setSaveSuccess, successTimeoutRef);
+      } else {
+        setError(result.error);
+        resyncFromUser();
+      }
     } finally {
       setIsSaving(false);
     }
@@ -104,14 +112,12 @@ export function useTelegramSettings() {
     const newEnabled = !enabled;
     setEnabled(newEnabled);
 
-    try {
-      await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled: newEnabled, user }));
-    } catch (err) {
+    const result = await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled: newEnabled, user }));
+    if (!result.ok) {
       setEnabled(!newEnabled);
-      const message = logError(log, err, 'Failed to toggle Telegram notifications', {
-        fallbackMessage: 'Failed to update settings',
-      });
-      setError(message);
+      log.warn('Failed to toggle Telegram notifications', { error: result.error });
+      setError(result.error);
+      resyncFromUser();
     }
   };
 

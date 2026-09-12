@@ -54,7 +54,7 @@ vi.mock('../../../../src/hooks/useNotificationSound', () => ({
 describe('NotificationSoundSettings branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockState.updatePreferences.mockResolvedValue({});
+    mockState.updatePreferences.mockResolvedValue({ ok: true });
     mockState.user = {
       id: 'user-1',
       preferences: {
