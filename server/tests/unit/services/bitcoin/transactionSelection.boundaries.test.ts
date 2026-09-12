@@ -69,6 +69,25 @@ function mockAvailable(utxos: UtxoFixture[]): void {
   mockPrismaClient.uTXO.findMany.mockResolvedValueOnce(utxos);
 }
 
+/**
+ * Mocks findMany with a Prisma-`where`-aware filter, so tests can prove a
+ * caller actually requested confirmation/draft-lock filtering rather than
+ * merely observing whatever fixed list a prior mock happened to return.
+ */
+function mockAvailableFiltered(utxos: UtxoFixture[]): void {
+  mockPrismaClient.uTXO.findMany.mockImplementationOnce(async (args: unknown) => {
+    const where = (args as { where?: Record<string, unknown> })?.where ?? {};
+    return utxos.filter(u => {
+      if (where.spent !== undefined && u.spent !== where.spent) return false;
+      if (where.frozen !== undefined && u.frozen !== where.frozen) return false;
+      const confirmations = where.confirmations as { gte?: number } | undefined;
+      if (confirmations?.gte !== undefined && u.confirmations < confirmations.gte) return false;
+      if (where.draftLock === null && u.draftLock !== null) return false;
+      return true;
+    });
+  });
+}
+
 function coreVectorInput(
   vector: (typeof GENERATED_SIGNED_PSBT_VECTORS)[number],
   psbt: bitcoin.Psbt,
@@ -317,6 +336,109 @@ describe('exact transaction selection boundaries', () => {
       effectiveAmount: 9_756,
       selection: { estimatedFee: 244, changeAmount: 0 },
     });
+  });
+
+  it('excludes an unconfirmed UTXO from send-max, like normal selection does', async () => {
+    const spendable = utxo('a', 10_000, P2WPKH);
+    const unconfirmed = { ...utxo('b', 5_000, P2WPKH), confirmations: 0 };
+    mockAvailableFiltered([spendable, unconfirmed]);
+
+    const result = await selectUtxosForMode(
+      'wallet-1', 0, 2, 546, true, false, p2wpkhContext(P2WPKH),
+    );
+
+    expect(result.selection.utxos.map(u => u.address)).toEqual(['address-a']);
+    expect(result.selection.totalAmount).toBe(10_000);
+  });
+
+  it('excludes a draft-locked UTXO from send-max, like normal selection does', async () => {
+    const spendable = utxo('a', 10_000, P2WPKH);
+    const draftLocked = { ...utxo('c', 5_000, P2WPKH), draftLock: { id: 'lock-1' } as unknown as null };
+    mockAvailableFiltered([spendable, draftLocked]);
+
+    const result = await selectUtxosForMode(
+      'wallet-1', 0, 2, 546, true, false, p2wpkhContext(P2WPKH),
+    );
+
+    expect(result.selection.utxos.map(u => u.address)).toEqual(['address-a']);
+    expect(result.selection.totalAmount).toBe(10_000);
+  });
+
+  it('excludes an unconfirmed UTXO from subtract-fees, like normal selection does', async () => {
+    // Spendable alone cannot cover the amount; only pulling in the unconfirmed
+    // UTXO would let this succeed, so a correct exclusion must fail closed
+    // instead of silently spending it.
+    const spendable = utxo('a', 3_000, P2WPKH);
+    const unconfirmed = { ...utxo('b', 5_000, P2WPKH), confirmations: 0 };
+    mockAvailableFiltered([spendable, unconfirmed]);
+
+    await expect(selectUtxosForMode(
+      'wallet-1', 5_000, 2, 546, false, true, p2wpkhContext(P2WPKH),
+    )).rejects.toThrow('Insufficient funds');
+  });
+
+  it('excludes a draft-locked UTXO from subtract-fees, like normal selection does', async () => {
+    // Spendable alone cannot cover the amount; only pulling in the
+    // draft-locked UTXO would let this succeed, so a correct exclusion must
+    // fail closed instead of silently spending it.
+    const spendable = utxo('a', 3_000, P2WPKH);
+    const draftLocked = { ...utxo('c', 5_000, P2WPKH), draftLock: { id: 'lock-1' } as unknown as null };
+    mockAvailableFiltered([spendable, draftLocked]);
+
+    await expect(selectUtxosForMode(
+      'wallet-1', 5_000, 2, 546, false, true, p2wpkhContext(P2WPKH),
+    )).rejects.toThrow('Insufficient funds');
+  });
+
+  it('lets explicit send-max coin control spend a draft-locked UTXO the user picked', async () => {
+    const draftLocked = { ...utxo('c', 5_000, P2WPKH), draftLock: { id: 'lock-1' } as unknown as null };
+    mockAvailableFiltered([draftLocked]);
+
+    const result = await selectUtxosForMode(
+      'wallet-1', 0, 2, 546, true, false, p2wpkhContext(P2WPKH),
+      [`${draftLocked.txid}:${draftLocked.vout}`],
+    );
+
+    expect(result.selection.utxos.map(u => u.address)).toEqual(['address-c']);
+  });
+
+  it('lets explicit subtract-fee coin control spend a draft-locked UTXO the user picked', async () => {
+    const draftLocked = { ...utxo('c', 5_000, P2WPKH), draftLock: { id: 'lock-1' } as unknown as null };
+    mockAvailableFiltered([draftLocked]);
+
+    const result = await selectUtxosForMode(
+      'wallet-1', 3_000, 2, 546, false, true, p2wpkhContext(P2WPKH),
+      [`${draftLocked.txid}:${draftLocked.vout}`],
+    );
+
+    expect(result.selection.utxos.map(u => u.address)).toEqual(['address-c']);
+  });
+
+  it('reads the operator confirmation threshold for send-max and subtract-fees', async () => {
+    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
+      key: 'confirmationThreshold',
+      value: '3',
+    });
+
+    mockAvailable([utxo('a', 10_000, P2WPKH)]);
+    await selectUtxosForMode('wallet-1', 0, 2, 546, true, false, p2wpkhContext(P2WPKH));
+    expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ confirmations: expect.objectContaining({ gte: 3 }) }),
+      }),
+    );
+
+    mockAvailable([utxo('b', 10_000, P2WPKH)]);
+    await selectUtxosForMode('wallet-1', 5_000, 2, 546, false, true, p2wpkhContext(P2WPKH));
+    // toHaveBeenLastCalledWith, not toHaveBeenCalledWith: findMany is not
+    // reset between the send-max and subtract-fees calls above, so a plain
+    // "was called with" check could pass on the earlier send-max call and
+    // never prove subtract-fees reads the threshold itself.
+    expect(mockPrismaClient.uTXO.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ confirmations: expect.objectContaining({ gte: 3 }) }),
+      }),
+    );
   });
 
   it('fails closed when explicit coin control contains an unavailable or duplicate outpoint', async () => {

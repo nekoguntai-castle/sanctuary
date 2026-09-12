@@ -1009,8 +1009,8 @@
         {
           "id": "no-change-selection-cannot-create-an-unauthorized-change-branch",
           "productionFile": "src/services/bitcoin/utxoSelection.ts",
-          "lineStart": 160,
-          "lineEnd": 161,
+          "lineStart": 174,
+          "lineEnd": 175,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/transactionSelection.boundaries.test.ts",
             "name": "exact transaction selection boundaries absorbs surplus into the fee when no change script is authorized"
@@ -1018,8 +1018,8 @@
           "canaries": [{
             "id": "change-output-requires-an-authorized-change-script",
             "location": {
-              "start": { "line": 160, "column": 9 },
-              "end": { "line": 160, "column": 41 }
+              "start": { "line": 174, "column": 9 },
+              "end": { "line": 174, "column": 41 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -1032,8 +1032,8 @@
         {
           "id": "decoy-fallback-count-is-preserved",
           "productionFile": "src/services/bitcoin/utxoSelection.ts",
-          "lineStart": 171,
-          "lineEnd": 190,
+          "lineStart": 185,
+          "lineEnd": 204,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/transactionSelection.boundaries.test.ts",
             "name": "exact transaction selection boundaries records a single-output decoy fallback so construction cannot re-enable extra outputs"
@@ -1041,8 +1041,8 @@
           "canaries": [{
             "id": "single-output-fallback-cannot-be-skipped",
             "location": {
-              "start": { "line": 171, "column": 43 },
-              "end": { "line": 190, "column": 6 }
+              "start": { "line": 185, "column": 43 },
+              "end": { "line": 204, "column": 6 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",

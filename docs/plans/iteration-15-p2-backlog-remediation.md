@@ -211,6 +211,17 @@ semantics in this phase.
 and `SubtractFees` exclude both (currently include both).
 Verification: server gates + coverage. Rollback: revert.
 
+**Status: done.** Extracted `resolveSpendableUtxos` into `utxoSelection.ts` (reads
+`confirmationThreshold` via `systemSettingRepository.getParsed`, calls
+`findAvailableForSpending(..., { minConfirmations, excludeDraftLocked: !hasCoinControl })`) and
+reused it from `selectUTXOsExact`, `selectUTXOs`, and both send-max/subtract-fees in `utxoModes.ts`
+— a fourth inline copy was how these modes drifted from normal mode in the first place, so this is
+now the single source. `findUnspent` is still used elsewhere (`autopilot/utxoHealth.ts`,
+`advancedTx/batch.ts`), so it was kept. Six non-regression tests added to
+`transactionSelection.boundaries.test.ts` covering unconfirmed exclusion, draft-lock exclusion,
+explicit coin-control override, and the operator confirmation threshold being read, for both
+modes; all failed pre-fix and pass post-fix.
+
 ## Phase 6 — P2: the VACUUM timeout actually binds, restores the real default, and is tested in CI
 
 Owner: `server/src/repositories/maintenanceRepository.ts`, `server/src/jobs/definitions/maintenance.ts`, `server/src/models/prisma.ts` (a pinned-client helper), `server/tests/integration/repositories/maintenanceStatementTimeout.test.ts`, `scripts/ci/backend-integration-groups.sh`, `.github/workflows/test.yml`.

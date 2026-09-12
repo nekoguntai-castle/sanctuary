@@ -114,6 +114,28 @@ const mapSelectedUtxos = <T extends {
   address: utxo.address,
 }));
 
+/**
+ * Resolve the wallet's currently spendable UTXOs: the operator's
+ * `confirmationThreshold` system setting, with draft-locked UTXOs excluded
+ * unless the caller pinned an explicit coin-control set. This is the single
+ * source of truth every selection mode (normal, send-max, subtract-fees)
+ * must use, so they cannot drift out of sync on spendability filtering.
+ */
+export async function resolveSpendableUtxos(
+  walletId: string,
+  selectedUtxoIds?: string[],
+): Promise<Awaited<ReturnType<typeof utxoRepository.findAvailableForSpending>>> {
+  const confirmationThreshold = await systemSettingRepository.getParsed(
+    'confirmationThreshold',
+    SystemSettingSchemas.number,
+    DEFAULT_CONFIRMATION_THRESHOLD,
+  );
+  return utxoRepository.findAvailableForSpending(walletId, {
+    minConfirmations: confirmationThreshold,
+    excludeDraftLocked: !(selectedUtxoIds && selectedUtxoIds.length > 0),
+  });
+}
+
 /** Select UTXOs using authenticated input policy and exact output scripts. */
 export async function selectUTXOsExact(
   walletId: string,
@@ -122,15 +144,7 @@ export async function selectUTXOsExact(
   context: ExactSelectionFeeContext,
   selectedUtxoIds?: string[],
 ): Promise<UTXOSelectionResult> {
-  const confirmationThreshold = await systemSettingRepository.getParsed(
-    'confirmationThreshold',
-    SystemSettingSchemas.number,
-    DEFAULT_CONFIRMATION_THRESHOLD,
-  );
-  let available = await utxoRepository.findAvailableForSpending(walletId, {
-    minConfirmations: confirmationThreshold,
-    excludeDraftLocked: !(selectedUtxoIds && selectedUtxoIds.length > 0),
-  });
+  let available = await resolveSpendableUtxos(walletId, selectedUtxoIds);
   if (selectedUtxoIds?.length) {
     assertExactUtxoSelection(available, selectedUtxoIds);
     available = available.filter(utxo => selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`));
@@ -221,15 +235,8 @@ export async function selectUTXOs(
   strategy: UTXOSelectionStrategy = UTXOSelectionStrategy.LARGEST_FIRST,
   selectedUtxoIds?: string[]
 ): Promise<UTXOSelectionResult> {
-  // Get confirmation threshold setting
-  const confirmationThreshold = await systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, DEFAULT_CONFIRMATION_THRESHOLD);
-
   // Get available UTXOs (exclude frozen, unconfirmed, and locked-by-draft UTXOs)
-  let utxos = await utxoRepository.findAvailableForSpending(walletId, {
-    minConfirmations: confirmationThreshold,
-    // Exclude UTXOs locked by other drafts (unless user explicitly selected them)
-    excludeDraftLocked: !(selectedUtxoIds && selectedUtxoIds.length > 0),
-  });
+  let utxos = await resolveSpendableUtxos(walletId, selectedUtxoIds);
 
   // Sort by strategy (findAvailableForSpending returns desc by default)
   if (strategy === UTXOSelectionStrategy.SMALLEST_FIRST) {

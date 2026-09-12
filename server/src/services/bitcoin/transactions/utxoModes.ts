@@ -7,10 +7,10 @@
  * - Subtract-fees: fee deducted from amount
  */
 
-import { utxoRepository } from '../../../repositories';
 import {
   selectUTXOsExact,
   assertExactUtxoSelection,
+  resolveSpendableUtxos,
   type ExactSelectionFeeContext,
 } from '../utxoSelection';
 import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
@@ -75,7 +75,7 @@ async function selectUtxosForSendMax(
   feeContext: ExactSelectionFeeContext,
   selectedUtxoIds?: string[]
 ): Promise<{ effectiveAmount: number; selection: UtxoSelection }> {
-  let utxos = await utxoRepository.findUnspent(walletId, { excludeFrozen: true });
+  let utxos = await resolveSpendableUtxos(walletId, selectedUtxoIds);
 
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
     assertExactUtxoSelection(utxos, selectedUtxoIds);
@@ -137,7 +137,7 @@ async function selectUtxosForSubtractFees(
   feeContext: ExactSelectionFeeContext,
   selectedUtxoIds?: string[]
 ): Promise<{ effectiveAmount: number; selection: UtxoSelection }> {
-  let utxos = await utxoRepository.findUnspent(walletId, { excludeFrozen: true });
+  let utxos = await resolveSpendableUtxos(walletId, selectedUtxoIds);
 
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
     assertExactUtxoSelection(utxos, selectedUtxoIds);
