@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mockPrismaClient } from '../../../mocks/prisma';
-import { deviceId, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, mockInvalidateWebSocketWalletAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
+import { deviceId, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, mockInvalidateWalletAccessCache, mockInvalidateWebSocketWalletAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
 import {
   initiateTransfer,
   acceptTransfer,
@@ -70,7 +70,14 @@ export const registerTransferConfirmContracts = () => {
       const result = await confirmTransfer(ownerId, transferId);
 
       expect(result.status).toBe('confirmed');
+      expect(mockInvalidateWalletAccessCache).toHaveBeenCalledWith(walletId);
       expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith(walletId);
+      // The access cache must be invalidated before the WebSocket authorization
+      // is invalidated, so the former owner can never observe a window where
+      // the socket is refreshed but getUserWalletRole still resolves 'owner'.
+      expect(mockInvalidateWalletAccessCache.mock.invocationCallOrder[0]).toBeLessThan(
+        mockInvalidateWebSocketWalletAccess.mock.invocationCallOrder[0]
+      );
     });
 
     it('should reject confirm of non-accepted transfer', async () => {
@@ -86,6 +93,7 @@ export const registerTransferConfirmContracts = () => {
       await expect(
         confirmTransfer(ownerId, transferId)
       ).rejects.toThrow(/cannot be confirmed/i);
+      expect(mockInvalidateWalletAccessCache).not.toHaveBeenCalled();
     });
 
     it('should reject confirm from non-owner', async () => {
@@ -187,6 +195,9 @@ export const registerTransferConfirmContracts = () => {
         data: { status: 'expired' },
       });
       expect(transactionCommitted).toBe(true);
+      // Even though the expiry transition commits, an expired transfer never
+      // transferred ownership, so the access cache must stay untouched.
+      expect(mockInvalidateWalletAccessCache).not.toHaveBeenCalled();
     });
 
     it('should reject wallet confirm when current owner record is missing in transaction', async () => {
@@ -284,6 +295,7 @@ export const registerTransferConfirmContracts = () => {
       expect(walletDeleteSpy).toHaveBeenCalledWith({
         where: { id: 'wu-owner' },
       });
+      expect(mockInvalidateWalletAccessCache).toHaveBeenCalledWith(walletId);
       expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith(walletId);
     });
 

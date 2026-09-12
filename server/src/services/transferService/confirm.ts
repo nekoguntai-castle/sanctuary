@@ -14,6 +14,7 @@ import { isExpired, formatTransfer } from './helpers';
 import { withSerializableRetry } from './serializableRetry';
 import type { PrismaTx, Transfer } from './types';
 import { invalidateWebSocketWalletAccess } from '../websocketAuthorizationInvalidation';
+import { invalidateWalletAccessCache } from '../../infrastructure/accessCache';
 
 const log = createLogger('TRANSFER:SVC');
 
@@ -88,6 +89,15 @@ export async function confirmTransfer(
   }
 
   if (result.walletId) {
+    // Ownership transfer mutates walletUser directly on the transaction
+    // client (bypassing walletSharingRepository), so this is the only place
+    // that invalidates the cached access decision. Invalidate the access
+    // cache before the WebSocket authorization refresh so the former owner
+    // can never observe a window where the socket is refreshed but
+    // getUserWalletRole still resolves the stale 'owner' role. One call
+    // covers both the previous and new owner since the cache key pattern is
+    // `*:${walletId}`.
+    await invalidateWalletAccessCache(result.walletId);
     await invalidateWebSocketWalletAccess(result.walletId);
   }
 
