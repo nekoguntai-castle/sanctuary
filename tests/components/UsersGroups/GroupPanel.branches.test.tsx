@@ -37,7 +37,7 @@ const renderPanel = (overrides: Partial<React.ComponentProps<typeof GroupPanel>>
 };
 
 describe('GroupPanel branch coverage', () => {
-  it('covers create-button disabled states, change handling, and enter-submit path', () => {
+  it('covers create-button disabled states, change handling, and enter-submit path', async () => {
     const { onCreateGroup, onNewGroupChange, rerender } = renderPanel({ newGroup: '' });
 
     const input = screen.getByPlaceholderText('New group name');
@@ -48,8 +48,26 @@ describe('GroupPanel branch coverage', () => {
     fireEvent.change(input, { target: { value: 'Ops' } });
     expect(onNewGroupChange).toHaveBeenCalledWith('Ops');
 
-    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    // Reflect the controlled value change before pressing Enter, matching the
+    // guard's `newGroup && !isCreatingGroup` condition (same as the button).
+    rerender(
+      <GroupPanel
+        groups={[]}
+        newGroup="Ops"
+        isCreatingGroup={false}
+        onNewGroupChange={onNewGroupChange}
+        onCreateGroup={onCreateGroup}
+        onEditGroup={vi.fn()}
+        onDeleteGroup={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByPlaceholderText('New group name'), { key: 'Enter', code: 'Enter' });
     expect(onCreateGroup).toHaveBeenCalledTimes(1);
+
+    // Let the submit lock's self-clearing microtask run before simulating
+    // the (real, separate) next submission.
+    await Promise.resolve();
 
     rerender(
       <GroupPanel
@@ -80,6 +98,37 @@ describe('GroupPanel branch coverage', () => {
     expect(enabledCreateButton).not.toBeDisabled();
 
     fireEvent.click(enabledCreateButton);
+    expect(onCreateGroup).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not double-invoke onCreateGroup when Enter fires twice in immediate succession', () => {
+    const { onCreateGroup } = renderPanel({ newGroup: 'Ops' });
+
+    const input = screen.getByPlaceholderText('New group name');
+
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+
+    expect(onCreateGroup).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the submit lock even when isCreatingGroup never renders true (fast/instant create)', async () => {
+    // Regresses a design where the lock only cleared on an isCreatingGroup
+    // false->true->false transition: a create that resolves before React
+    // ever renders an intermediate isCreatingGroup=true would never observe
+    // that transition, permanently disabling further group creation.
+    const { onCreateGroup } = renderPanel({ newGroup: 'Ops', isCreatingGroup: false });
+
+    const input = screen.getByPlaceholderText('New group name');
+
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    expect(onCreateGroup).toHaveBeenCalledTimes(1);
+
+    // isCreatingGroup prop is never toggled to true at all - it stays false
+    // throughout, as it would for a create that settles instantly.
+    await Promise.resolve();
+
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
     expect(onCreateGroup).toHaveBeenCalledTimes(2);
   });
 

@@ -41,6 +41,7 @@ export const UsersGroupsLoadedView: React.FC<UsersGroupsLoadedViewProps> = ({
     </div>
 
     <CreateUserModal
+      key={controller.createUserInstanceKey}
       isOpen={controller.showCreateUser}
       isCreating={controller.isCreatingUser}
       error={controller.createUserError}

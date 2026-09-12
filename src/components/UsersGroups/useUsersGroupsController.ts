@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as adminApi from '../../api/admin';
 import type { AdminGroup, AdminUser } from '../../api/admin';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
@@ -24,9 +24,11 @@ export const useUsersGroupsController = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [groups, setGroups] = useState<AdminGroup[]>([]);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [createUserInstanceKey, setCreateUserInstanceKey] = useState(0);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [editingGroup, setEditingGroup] = useState<AdminGroup | null>(null);
   const [newGroup, setNewGroup] = useState('');
+  const isCreatingGroupRef = useRef(false);
 
   const { loading, execute: runLoad } = useLoadingState({ initialLoading: true });
   const {
@@ -67,6 +69,7 @@ export const useUsersGroupsController = () => {
   }, [loadData]);
 
   const openCreateUser = useCallback(() => {
+    setCreateUserInstanceKey((key) => key + 1);
     setShowCreateUser(true);
     clearCreateUserError();
   }, [clearCreateUserError]);
@@ -157,15 +160,20 @@ export const useUsersGroupsController = () => {
   );
 
   const handleCreateGroup = useCallback(async () => {
-    if (!newGroup.trim()) return;
+    if (!newGroup.trim() || isCreatingGroupRef.current) return;
 
-    const result = await runCreateGroup(async () => {
-      await adminApi.createGroup({ name: newGroup.trim() });
-    });
+    isCreatingGroupRef.current = true;
+    try {
+      const result = await runCreateGroup(async () => {
+        await adminApi.createGroup({ name: newGroup.trim() });
+      });
 
-    if (result !== null) {
-      setNewGroup('');
-      loadData();
+      if (result !== null) {
+        setNewGroup('');
+        loadData();
+      }
+    } finally {
+      isCreatingGroupRef.current = false;
     }
   }, [loadData, newGroup, runCreateGroup]);
 
@@ -222,6 +230,7 @@ export const useUsersGroupsController = () => {
     groups,
     loading,
     showCreateUser,
+    createUserInstanceKey,
     editingUser,
     editingGroup,
     newGroup,

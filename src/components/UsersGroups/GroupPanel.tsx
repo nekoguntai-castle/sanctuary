@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Button } from '../ui/Button';
 import { Users, Plus, Trash2, Edit2, Info } from 'lucide-react';
 import { AdminGroup } from '../../api/admin';
@@ -13,6 +13,53 @@ interface GroupPanelProps {
   onDeleteGroup: (group: AdminGroup) => void;
 }
 
+interface GroupListItemProps {
+  group: AdminGroup;
+  onEditGroup: (group: AdminGroup) => void;
+  onDeleteGroup: (group: AdminGroup) => void;
+}
+
+/**
+ * Renders a single group row: name, member count, edit/delete actions,
+ * and the member badge list. Split out of GroupPanel to keep that
+ * component's cyclomatic complexity down.
+ */
+const GroupListItem: React.FC<GroupListItemProps> = ({ group, onEditGroup, onDeleteGroup }) => (
+  <li className="p-4 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 transition-colors">
+    <div className="flex items-center justify-between mb-2">
+      <h4 className="font-medium text-sm">{group.name}</h4>
+      <div className="flex items-center space-x-2">
+        <span className="text-xs surface-secondary px-2 py-0.5 rounded text-sanctuary-600 dark:text-sanctuary-400">
+          {group.members.length} Members
+        </span>
+        <button
+          onClick={() => onEditGroup(group)}
+          className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300 transition-colors"
+          title="Edit group"
+        >
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => onDeleteGroup(group)}
+          className="p-1 text-sanctuary-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          title="Delete group"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+    <div className="flex flex-wrap gap-1">
+      {group.members.length === 0 ? (
+        <span className="text-[10px] text-sanctuary-400">No members</span>
+      ) : group.members.map(member => (
+        <span key={member.userId} className="text-[10px] px-1.5 py-0.5 border border-sanctuary-200 dark:border-sanctuary-700 rounded text-sanctuary-500">
+          {member.username} {member.role === 'admin' && '(admin)'}
+        </span>
+      ))}
+    </div>
+  </li>
+);
+
 /**
  * Displays the group list panel with inline create form and actions
  * for editing and deleting groups.
@@ -26,6 +73,26 @@ export const GroupPanel: React.FC<GroupPanelProps> = ({
   onEditGroup,
   onDeleteGroup,
 }) => {
+  // Guards against two synchronous Enter keydowns invoking onCreateGroup
+  // before the isCreatingGroup prop has a chance to flip and disable the
+  // button. The reentrancy guard in useUsersGroupsController.handleCreateGroup
+  // is the authoritative defense against a double submit; this local latch
+  // only needs to survive the same synchronous burst of events, so it
+  // self-clears on the next microtask rather than waiting to observe
+  // isCreatingGroup flip — a fast or synchronously-rejected create could
+  // otherwise never render an intermediate isCreatingGroup=true and leave
+  // the latch permanently stuck.
+  const submitLockRef = useRef(false);
+
+  const submitGroup = useCallback(() => {
+    if (!newGroup || isCreatingGroup || submitLockRef.current) return;
+    submitLockRef.current = true;
+    void Promise.resolve().then(() => {
+      submitLockRef.current = false;
+    });
+    onCreateGroup();
+  }, [newGroup, isCreatingGroup, onCreateGroup]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-2 text-sanctuary-900 dark:text-sanctuary-100">
@@ -42,9 +109,9 @@ export const GroupPanel: React.FC<GroupPanelProps> = ({
               onChange={(e) => onNewGroupChange(e.target.value)}
               placeholder="New group name"
               className="flex-1 px-3 py-2 text-sm rounded-md border border-sanctuary-300 dark:border-sanctuary-700 surface-elevated focus:outline-none focus:ring-2 focus:ring-sanctuary-500"
-              onKeyDown={(e) => e.key === 'Enter' && onCreateGroup()}
+              onKeyDown={(e) => e.key === 'Enter' && submitGroup()}
             />
-            <Button size="sm" onClick={onCreateGroup} disabled={!newGroup || isCreatingGroup} isLoading={isCreatingGroup}>
+            <Button size="sm" onClick={submitGroup} disabled={!newGroup || isCreatingGroup} isLoading={isCreatingGroup}>
               <Plus className="w-4 h-4 mr-2" /> Create
             </Button>
           </div>
@@ -57,39 +124,7 @@ export const GroupPanel: React.FC<GroupPanelProps> = ({
           {groups.length === 0 ? (
             <li className="p-8 text-center text-sanctuary-400">No groups found</li>
           ) : groups.map(g => (
-            <li key={g.id} className="p-4 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 transition-colors">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-sm">{g.name}</h4>
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs surface-secondary px-2 py-0.5 rounded text-sanctuary-600 dark:text-sanctuary-400">
-                    {g.members.length} Members
-                  </span>
-                  <button
-                    onClick={() => onEditGroup(g)}
-                    className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300 transition-colors"
-                    title="Edit group"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onDeleteGroup(g)}
-                    className="p-1 text-sanctuary-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                    title="Delete group"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {g.members.length === 0 ? (
-                  <span className="text-[10px] text-sanctuary-400">No members</span>
-                ) : g.members.map(member => (
-                  <span key={member.userId} className="text-[10px] px-1.5 py-0.5 border border-sanctuary-200 dark:border-sanctuary-700 rounded text-sanctuary-500">
-                    {member.username} {member.role === 'admin' && '(admin)'}
-                  </span>
-                ))}
-              </div>
-            </li>
+            <GroupListItem key={g.id} group={g} onEditGroup={onEditGroup} onDeleteGroup={onDeleteGroup} />
           ))}
         </ul>
       </div>

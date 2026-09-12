@@ -263,6 +263,39 @@ describe('UsersGroups', () => {
         expect(passwordInput).toHaveAttribute('type', 'text');
       }
     });
+
+    it('clears username, email and password after a successful create when reopened', async () => {
+      const user = userEvent.setup();
+      render(<UsersGroups />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Add User')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Add User'));
+
+      await user.type(screen.getByPlaceholderText(/username/i), 'stale-user');
+      await user.type(screen.getByPlaceholderText(/password/i), 'StalePass123!');
+      await user.type(screen.getByPlaceholderText(/user@example.com/i), 'stale@example.com');
+
+      await user.click(screen.getByText('Create User'));
+
+      // Modal closes on success
+      await waitFor(() => {
+        expect(screen.queryByPlaceholderText(/username/i)).not.toBeInTheDocument();
+      });
+
+      // Reopen the modal
+      await user.click(screen.getByText('Add User'));
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/username/i)).toBeInTheDocument();
+      });
+
+      expect(screen.getByPlaceholderText(/username/i)).toHaveValue('');
+      expect(screen.getByPlaceholderText(/password/i)).toHaveValue('');
+      expect(screen.getByPlaceholderText(/user@example.com/i)).toHaveValue('');
+    });
   });
 
   describe('edit user', () => {
