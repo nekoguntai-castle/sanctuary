@@ -4,11 +4,11 @@ Date: 2026-09-11
 Owner: Claude
 Status: Complete
 
-**Overall Score**: 89/100
-**Grade**: B
+**Overall Score**: 92/100
+**Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: `c42035b7` (initial grade for grade-loop run 2026-09-11)
+**Commit**: `ccc6be8d` (post-closeout check after #1062; initial grade was `c42035b7`)
 
 ---
 
@@ -36,10 +36,10 @@ not as gates.
 | Reliability | 15/15 | Typed fail-closed evidence errors, stage budgets/deadlines, `AbortSignal.timeout` on external I/O; no crash-prone production patterns. |
 | Maintainability | 9/15 | 3.1 = 0 (lizard 32 warnings project-wide, 14 production); duplication 1.31%; largest production file 993. 3.4 returns to High: #1059 converged the hex/bytes parse pair and #1060 made the lizard gate scan `.tsx`. |
 | Security | 15/15 | 0 high/critical advisories; tracked-tree gitleaks 0; Zod validation at boundaries; no dangerous sinks. |
-| Performance | 7/10 | 5.1 Medium: raw-transaction parsing is still quadratic in size on Node (20k-input tx = 11 s). Non-canonical over-weight framing on the production bytes path still reaches the parser (D6); the root fix is D1. |
+| Performance | 10/10 | 5.1 High after #1062: `uint8array-tools` 0.0.10 is pinned, so Node transaction parsing is linear. The 20k-input shape went 11,298 ms → 22 ms; a near-ceiling 13k in/out authenticated parse is 122 ms. D6 framing still delegates to bitcoinjs, but the parse it reaches is no longer quadratic. |
 | Test Quality | 13/15 | Coverage 100% (frontend/server/gateway). 6.4 Medium: two load-sensitive timing patterns remain (the export backpressure race on a 75 ms wall-clock timeout, and first-test dynamic imports), plus 54 sleep/timer patterns. |
 | Operational Readiness | 10/10 | Compose + Dockerfiles + CI; health endpoints; observability; structured logging. |
-| **TOTAL** | **89/100** | |
+| **TOTAL** | **92/100** | |
 
 ---
 
@@ -270,3 +270,29 @@ docs), except where noted.
 - `lizard -w -C 15 .` classified by path: 14 production / 11 test / 5 SQL / 2 script.
 - `npm pack uint8array-tools@0.0.9 uint8array-tools@0.0.10` diffed; `npm ls uint8array-tools --all` for consumer paths.
 - `main` CI for `c42035b7`: all three push runs succeeded (15484–15486).
+
+### Post-closeout check (grade-loop 2026-09-11, after #1062)
+
+- Branch `codex/grade-loop-check/uint8array-linear-parse` from `origin/main`
+  `ccc6be8d`, worktree `/home/nekoguntai/sanctuary`. Files changed by this
+  pass: this report and `docs/plans/grade-history/sanctuary_.jsonl`.
+- **89 → 92, grade B → A.** The only domain that moved is Performance
+  (7 → 10): 5.1 Hot-path efficiency goes Medium → High because the quadratic
+  Node parse is fixed at its root. Every mechanical signal is unchanged.
+- `CI=true GRADE_TIMEOUT=2400 bash grade.sh` exit 0: tests pass (frontend 8420,
+  server 15878, gateway 565, llm-egress-proxy 176), lint pass, coverage
+  100% ×4, `security_high=0`, lizard 32 / 1.5 / 85, `test_file_count` 1931.
+  Same caveats as the initial run: `typecheck=missing` (no root tsconfig),
+  `secrets=119` raw, duplication `unknown`, largest 30918 (generated fixture).
+- `main` post-merge CI for `ccc6be8d`: all five push runs succeeded; combined
+  commit status `success` (29 success / 1 skipped / 0 failed).
+- The local stack was rebuilt from `/home/nekoguntai/sanctuary-main` at
+  `ccc6be8d` with `./start.sh --rebuild`. All 14 containers are healthy and
+  `/api/v1/health` returns 200. The only degraded component is `disk` (host at
+  81%, warning at 80%) — pre-existing and unrelated.
+
+**No major actionable issue remains.** There are no hard-fail blockers, and the
+top remaining items are the ones this report already tracks as deferred: the
+production complexity hotspots held by the #1060 lizard baseline, and the
+load-sensitive timing tests. Both are guardrail/maintenance work rather than
+demonstrated defects, so the loop stops here rather than forcing another PR.
