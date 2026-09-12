@@ -183,6 +183,17 @@ unconditional reset; the slot split is preferred if it stays small.
 Verification: frontend gates; render-regression unaffected (disabled state only on the in-flight path).
 Rollback: revert.
 
+**Status: done.** Implemented both layers as specified: `useSendOperationOwner.ts` gained a
+`beginBroadcast` slot separate from `signing` (aborted independently, still cleared by
+`invalidate()`); `useBroadcast.ts` takes `beginBroadcast` instead of `beginSigning` and its
+`finally` now calls `setIsBroadcasting(false)` unconditionally (success/navigation stay gated on
+`lease.isCurrent()`). `ReviewStep.tsx` now passes `signing || broadcasting` into `SigningFlow`'s
+and `UsbSigning`'s existing `signing` prop (already a pure disable flag with no other display
+effect), rather than threading a new prop through — the smallest change consistent with existing
+props. No divergence: `npm run arch:check` passes on the rebased commit in the primary checkout
+(an `arch:check` failure seen in the implementation worktree was that worktree's symlinked
+`node_modules` resolving `shared/*` outside the checkout, not generator drift).
+
 ## Phase 5 — P2: send-max / subtract-fees honor the spendability filters
 
 Owner: `server/src/repositories/utxoRepository.ts`, `server/src/services/bitcoin/transactions/utxoModes.ts`.

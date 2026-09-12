@@ -1,7 +1,20 @@
 import { StrictMode, type ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { useSendOperationOwner } from '../../src/hooks/send/useSendOperationOwner';
+import { useSendOperationOwner, type SendOperationLease, type SendOperationOwner } from '../../src/hooks/send/useSendOperationOwner';
+
+// A lease `begin*` call returns null only when there is no current transaction to own;
+// every test below begins one first, so a null result here is a genuine test failure.
+function requireLease(lease: SendOperationLease | null): SendOperationLease {
+  expect(lease).not.toBeNull();
+  if (!lease) throw new Error('expected a lease');
+  return lease;
+}
+
+function beginAcceptedTransaction(owner: SendOperationOwner): void {
+  const creation = owner.beginCreation();
+  expect(owner.acceptTransaction(creation)).toBe(true);
+}
 
 describe('useSendOperationOwner', () => {
   it('requires an accepted current creation before signing', () => {
@@ -45,5 +58,63 @@ describe('useSendOperationOwner', () => {
     const creation = view.result.current.beginCreation();
     view.unmount();
     expect(creation.signal.aborted).toBe(true);
+  });
+
+  it('does not let a signing begin abort an in-flight broadcast lease', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    const broadcast = requireLease(result.current.beginBroadcast());
+
+    // A signing click arriving while the broadcast is in flight (e.g. a stray
+    // click on the now-enabled sign button) must not tear down the broadcast's
+    // lease — broadcast and signing now own separate slots.
+    requireLease(result.current.beginSigning());
+
+    expect(broadcast.isCurrent()).toBe(true);
+    expect(broadcast.signal.aborted).toBe(false);
+  });
+
+  it('rejects a new broadcast begin once ownership has been invalidated', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    result.current.invalidate();
+
+    expect(result.current.beginBroadcast()).toBeNull();
+  });
+
+  it('aborts an in-flight broadcast lease on invalidate', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    const broadcast = requireLease(result.current.beginBroadcast());
+    result.current.invalidate();
+
+    expect(broadcast.signal.aborted).toBe(true);
+    expect(broadcast.isCurrent()).toBe(false);
+  });
+
+  it('does not let a broadcast begin abort an in-flight signing lease', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    const signing = requireLease(result.current.beginSigning());
+    requireLease(result.current.beginBroadcast());
+
+    expect(signing.isCurrent()).toBe(true);
+    expect(signing.signal.aborted).toBe(false);
+  });
+
+  it('supersedes an earlier broadcast lease with a later one', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    const firstBroadcast = requireLease(result.current.beginBroadcast());
+    const secondBroadcast = requireLease(result.current.beginBroadcast());
+
+    expect(firstBroadcast.signal.aborted).toBe(true);
+    expect(firstBroadcast.isCurrent()).toBe(false);
+    expect(secondBroadcast.isCurrent()).toBe(true);
   });
 });

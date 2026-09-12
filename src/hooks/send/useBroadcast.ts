@@ -63,7 +63,7 @@ export interface UseBroadcastDeps {
   signedRawTx: string | null;
   setIsBroadcasting: (v: boolean) => void;
   setError: (v: string | null) => void;
-  beginSigning: () => SendOperationLease | null;
+  beginBroadcast: () => SendOperationLease | null;
 }
 
 export interface UseBroadcastResult {
@@ -247,7 +247,7 @@ export function useBroadcast({
   signedRawTx,
   setIsBroadcasting,
   setError,
-  beginSigning,
+  beginBroadcast,
 }: UseBroadcastDeps): UseBroadcastResult {
   const navigate = useNavigate();
   const { format } = usePriceFreeFormatter();
@@ -271,7 +271,7 @@ export function useBroadcast({
       return false;
     }
 
-    const lease = beginSigning();
+    const lease = beginBroadcast();
     if (!lease) {
       setError('Transaction changed; review it again before broadcasting');
       return false;
@@ -314,9 +314,13 @@ export function useBroadcast({
       setError(getBroadcastErrorMessage(err));
       return false;
     } finally {
-      if (lease.isCurrent()) setIsBroadcasting(false);
+      // Unlike the success/navigation branches above, this reset must run even when the
+      // lease has been superseded: `isBroadcasting` drives the wizard's spinner and the
+      // Cancel/Back lock (navigationLocked in SendTransactionWizard.tsx), so a lost lease
+      // must still clear it or the wizard wedges with a permanent spinner.
+      setIsBroadcasting(false);
     }
-  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError, beginSigning]);
+  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError, beginBroadcast]);
 
   return { broadcastTransaction };
 }

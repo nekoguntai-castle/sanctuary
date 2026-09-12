@@ -100,7 +100,7 @@ function createDeps(overrides: Partial<Parameters<typeof useBroadcast>[0]> = {})
     signedRawTx: null,
     setIsBroadcasting: vi.fn(),
     setError: vi.fn(),
-    beginSigning: () => ({ signal: controller.signal, isCurrent: () => true }),
+    beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => true }),
     ...overrides,
   };
 }
@@ -132,13 +132,19 @@ describe('useBroadcast', () => {
     expect(deps.setIsBroadcasting).not.toHaveBeenCalled();
   });
 
-  it('does not navigate or publish stale UI after broadcast ownership is lost', async () => {
+  it('does not navigate or publish stale UI after broadcast ownership is lost, but still clears isBroadcasting', async () => {
+    // Non-regression for the stuck-spinner bug: a signing click mid-broadcast (simulated
+    // here by flipping `isCurrent` to false and aborting the signal, as a real
+    // `beginSigning()` call against a shared slot used to do) must not leave
+    // `isBroadcasting` stuck `true` forever. The success toast/navigation stay gated on
+    // `lease.isCurrent()`, but the `finally` reset must run unconditionally, or
+    // `navigationLocked` in SendTransactionWizard.tsx never clears.
     let resolveBroadcast!: (value: { txid: string; broadcasted: boolean; persistenceStatus: string }) => void;
     mocks.broadcastTransaction.mockReturnValueOnce(new Promise(resolve => { resolveBroadcast = resolve; }));
     let current = true;
     const controller = new AbortController();
     const deps = createDeps({
-      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+      beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => current }),
     });
     const { result } = renderHook(() => useBroadcast(deps));
     let request!: Promise<boolean>;
@@ -153,8 +159,9 @@ describe('useBroadcast', () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.showSuccess).not.toHaveBeenCalled();
     expect(mocks.refetchQueries).not.toHaveBeenCalled();
-    expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(1);
-    expect(deps.setIsBroadcasting).toHaveBeenCalledWith(true);
+    expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(2);
+    expect(deps.setIsBroadcasting).toHaveBeenNthCalledWith(1, true);
+    expect(deps.setIsBroadcasting).toHaveBeenLastCalledWith(false);
   });
 
   it('returns false when neither PSBT nor raw tx is available', async () => {
@@ -175,7 +182,7 @@ describe('useBroadcast', () => {
   });
 
   it('refuses broadcast when the reviewed transaction is no longer owned', async () => {
-    const deps = createDeps({ beginSigning: () => null });
+    const deps = createDeps({ beginBroadcast: () => null });
     const { result } = renderHook(() => useBroadcast(deps));
 
     await expect(result.current.broadcastTransaction()).resolves.toBe(false);
@@ -191,7 +198,7 @@ describe('useBroadcast', () => {
     mocks.refetchQueries.mockImplementation(async () => { current = false; });
     const controller = new AbortController();
     const deps = createDeps({
-      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+      beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => current }),
     });
     const { result } = renderHook(() => useBroadcast(deps));
 
@@ -199,7 +206,8 @@ describe('useBroadcast', () => {
 
     expect(mocks.showSuccess).toHaveBeenCalledOnce();
     expect(mocks.navigate).not.toHaveBeenCalled();
-    expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(1);
+    expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(2);
+    expect(deps.setIsBroadcasting).toHaveBeenLastCalledWith(false);
   });
 
   it('ignores a broadcast rejection after ownership is lost', async () => {
@@ -210,7 +218,7 @@ describe('useBroadcast', () => {
     });
     const controller = new AbortController();
     const deps = createDeps({
-      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+      beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => current }),
     });
     const { result } = renderHook(() => useBroadcast(deps));
 
@@ -219,7 +227,8 @@ describe('useBroadcast', () => {
     expect(deps.setError).toHaveBeenCalledOnce();
     expect(deps.setError).toHaveBeenCalledWith(null);
     expect(mocks.logger.error).not.toHaveBeenCalled();
-    expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(1);
+    expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(2);
+    expect(deps.setIsBroadcasting).toHaveBeenLastCalledWith(false);
   });
 
   it('uses stored raw tx for single-sig and computes amount from outputs fallback', async () => {

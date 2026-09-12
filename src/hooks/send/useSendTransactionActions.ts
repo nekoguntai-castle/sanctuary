@@ -342,7 +342,7 @@ export function useSendTransactionActions({
     signedRawTx,
     setIsBroadcasting,
     setError,
-    beginSigning: owner.beginSigning,
+    beginBroadcast: owner.beginBroadcast,
   });
 
   // Mark device as signed

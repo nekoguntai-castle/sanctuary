@@ -394,6 +394,15 @@ describe('ReviewStep', () => {
 
       expect(screen.getByText('Signed PSBT uploaded')).toBeInTheDocument();
     });
+
+    it('disables the USB sign control while a broadcast is in flight', () => {
+      // Non-regression: a broadcast in flight must lock out the signing controls too,
+      // otherwise a stray click on "USB" mid-broadcast can abort the broadcast's lease
+      // after the server call already completed (see useBroadcast.ts / useSendOperationOwner.ts).
+      render(<ReviewStep broadcasting={true} txData={{} as any} unsignedPsbt="base64psbt" />);
+
+      expect(screen.getByText(/USB \(My Ledger\)/).closest('button')).toBeDisabled();
+    });
   });
 
   describe('Multi-sig signing', () => {
@@ -497,6 +506,14 @@ describe('ReviewStep', () => {
       await user.click(screen.getByText('Broadcast Transaction'));
 
       expect(onBroadcastSigned).toHaveBeenCalled();
+    });
+
+    it('disables multi-sig USB sign controls while a broadcast is in flight', () => {
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue(multisigContext as any);
+
+      render(<ReviewStep broadcasting={true} txData={{} as any} unsignedPsbt="base64psbt" />);
+
+      expect(screen.getAllByRole('button', { name: 'USB' })[0]).toBeDisabled();
     });
   });
 

@@ -171,6 +171,13 @@ export function ReviewStep({
   // Can broadcast?
   const canBroadcast = canBroadcastReviewTransaction(txData, hasEnoughSignatures, signedDevices);
 
+  // A broadcast already in flight must lock the signing controls too. Broadcast and
+  // signing now own separate ownership slots (useSendOperationOwner), so a stray click
+  // can no longer tear down the broadcast's lease directly — but the controls still need
+  // to stay disabled: re-signing a transaction that is already being broadcast is not a
+  // valid user action while the server call is outstanding.
+  const signingControlsBusy = signing || broadcasting;
+
   return (
     <div className="space-y-6">
       <TransactionSummary
@@ -198,7 +205,7 @@ export function ReviewStep({
           unsignedPsbt={unsignedPsbt}
           signingDeviceId={signingDeviceId}
           uploadingDeviceId={uploadingDeviceId}
-          signing={signing}
+          signing={signingControlsBusy}
           onSignWithDevice={onSignWithDevice}
           onMarkDeviceSigned={onMarkDeviceSigned}
           onDownloadPsbt={onDownloadPsbt}
@@ -216,7 +223,7 @@ export function ReviewStep({
           signedDevices={signedDevices}
           unsignedPsbt={unsignedPsbt}
           signingDeviceId={signingDeviceId}
-          signing={signing}
+          signing={signingControlsBusy}
           onSignWithDevice={onSignWithDevice}
           onDownloadPsbt={onDownloadPsbt}
           onFileUpload={handleFileUpload}

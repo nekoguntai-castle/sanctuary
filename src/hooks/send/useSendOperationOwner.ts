@@ -12,6 +12,7 @@ interface OperationSlot {
 
 export interface SendOperationOwner {
   acceptTransaction: (lease: SendOperationLease) => boolean;
+  beginBroadcast: () => SendOperationLease | null;
   beginCreation: () => SendOperationLease;
   beginDraftSave: () => SendOperationLease | null;
   beginSigning: () => SendOperationLease | null;
@@ -30,12 +31,17 @@ export function useSendOperationOwner(hasInitialTransaction: boolean): SendOpera
   const transactionGeneration = useRef<number | null>(hasInitialTransaction ? 0 : null);
   const creation = useRef<OperationSlot | null>(null);
   const signing = useRef<OperationSlot | null>(null);
+  // Broadcast owns a slot separate from `signing`: a signing click that arrives while a
+  // broadcast is in flight must not abort the broadcast's lease after the server call has
+  // already gone out (see useBroadcast.ts).
+  const broadcasting = useRef<OperationSlot | null>(null);
 
   const invalidate = useCallback(() => {
     formGeneration.current += 1;
     transactionGeneration.current = null;
     abortSlot(creation);
     abortSlot(signing);
+    abortSlot(broadcasting);
   }, []);
 
   const begin = useCallback((slot: React.RefObject<OperationSlot | null>): SendOperationLease => {
@@ -67,6 +73,11 @@ export function useSendOperationOwner(hasInitialTransaction: boolean): SendOpera
 
   const beginDraftSave = beginSigning;
 
+  const beginBroadcast = useCallback(() => {
+    if (transactionGeneration.current !== formGeneration.current) return null;
+    return begin(broadcasting);
+  }, [begin]);
+
   const acceptTransaction = useCallback((lease: SendOperationLease) => {
     if (!lease.isCurrent()) return false;
     transactionGeneration.current = formGeneration.current;
@@ -86,7 +97,15 @@ export function useSendOperationOwner(hasInitialTransaction: boolean): SendOpera
   }, [hasInitialTransaction, invalidate]);
 
   return useMemo(
-    () => ({ acceptTransaction, beginCreation, beginDraftSave, beginSigning, hasCurrentTransaction, invalidate }),
-    [acceptTransaction, beginCreation, beginDraftSave, beginSigning, hasCurrentTransaction, invalidate],
+    () => ({
+      acceptTransaction,
+      beginBroadcast,
+      beginCreation,
+      beginDraftSave,
+      beginSigning,
+      hasCurrentTransaction,
+      invalidate,
+    }),
+    [acceptTransaction, beginBroadcast, beginCreation, beginDraftSave, beginSigning, hasCurrentTransaction, invalidate],
   );
 }
