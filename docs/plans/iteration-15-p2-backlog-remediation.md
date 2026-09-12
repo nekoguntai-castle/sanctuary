@@ -321,6 +321,17 @@ strict routing globally. **Failing-first tests:** the four table routes with a t
 return `true` (currently `false`); a supertest that `/admin/restore/` accepts an 11 MB body.
 Verification: server gates. Rollback: revert.
 
+**Status: done.** Added `normalizeRoutePath`/`toRouteKey` helpers in `bodyParsing.ts` and used
+them in both `usesRouteSpecificLargeJsonParser` and `usesRouteSpecificJsonParser` (the only two
+`req.path`-keyed lookups in the file). Non-regression tests confirmed failing pre-fix, then
+passing; server gates (tsc, typecheck:tests, 100% unit coverage) and root gates (lint,
+architecture boundaries, large-files, lizard at 86 warnings, `git diff --check`) all pass. During
+implementation a second instance of the same defect class was found: Express also routes
+case-insensitively (nothing in `server/src` sets `case sensitive routing`), so `POST
+/API/V1/hardware/jade/pin` missed the lookup the same way a trailing slash did. Fixed in the same
+phase by lower-casing the path inside `normalizeRoutePath` alongside the trailing-slash strip; no
+other divergence from the plan.
+
 ## Phase 8 — P2: `minAmountSats` compares magnitude
 
 Owner: `server/src/services/webhooks/subscriptions.ts`.

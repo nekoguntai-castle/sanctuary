@@ -36,6 +36,10 @@ function createTestApp() {
     (req, res) => res.json({ size: req.body.data.length }),
   );
 
+  app.post('/api/v1/admin/restore', express.json({ limit: '200mb' }), (req, res) => {
+    res.json({ size: req.body.backup.length });
+  });
+
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     res.status(err.status || 500).json({ message: err.message });
   };
@@ -117,5 +121,98 @@ describe('body parsing middleware', () => {
       .post('/api/v1/ordinary')
       .send({ payload })
       .expect(413);
+  });
+
+  it('matches route-specific parsers when the request path has a trailing slash', () => {
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/backup/validate/',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/restore/',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/support-package/incident/',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/hardware/jade/pin/',
+    })).toBe(true);
+    expect(usesRouteSpecificLargeJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/restore/',
+    })).toBe(true);
+  });
+
+  it('leaves the bare root path and unrelated paths unaffected by trailing-slash normalization', () => {
+    expect(usesRouteSpecificJsonParser({ method: 'GET', path: '/' })).toBe(false);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/restore//',
+    })).toBe(false);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/ordinary/',
+    })).toBe(false);
+  });
+
+  it('lets restore payloads above the default 10MB limit reach the route parser when the path has a trailing slash', async () => {
+    const app = createTestApp();
+    const backup = 'x'.repeat(10 * 1024 * 1024 + 1);
+
+    const response = await request(app)
+      .post('/api/v1/admin/restore/')
+      .send({ backup })
+      .expect(200);
+
+    expect(response.body.size).toBe(backup.length);
+  });
+
+  it('rejects selector-bearing diagnostics above the 4KB route limit when the path has a trailing slash', async () => {
+    await request(createTestApp())
+      .post('/api/v1/admin/support-package/incident/')
+      .send({ txid: 'x'.repeat(5 * 1024) })
+      .expect(413);
+  });
+
+  it('matches route-specific parsers case-insensitively, like Express routes them', () => {
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/API/V1/hardware/jade/pin',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/Api/v1/admin/restore/',
+    })).toBe(true);
+    expect(usesRouteSpecificLargeJsonParser({
+      method: 'POST',
+      path: '/Api/v1/admin/restore/',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({ method: 'GET', path: '/' })).toBe(false);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/API/V1/ordinary',
+    })).toBe(false);
+  });
+
+  it('bypasses the 10MB parser and rejects oversized Jade relay envelopes at 20KB with a case-variant path', async () => {
+    await request(createTestApp())
+      .post('/API/V1/hardware/jade/pin')
+      .send({ operation: 'get_pin', data: 'x'.repeat(25 * 1024) })
+      .expect(413);
+  });
+
+  it('lets restore payloads above the default 10MB limit reach the route parser with a case-variant path', async () => {
+    const app = createTestApp();
+    const backup = 'x'.repeat(10 * 1024 * 1024 + 1);
+
+    const response = await request(app)
+      .post('/Api/v1/admin/restore')
+      .send({ backup })
+      .expect(200);
+
+    expect(response.body.size).toBe(backup.length);
   });
 });
