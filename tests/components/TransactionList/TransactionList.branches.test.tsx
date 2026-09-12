@@ -407,4 +407,61 @@ describe('TransactionList branch coverage', () => {
     expect(closeTab).toHaveBeenCalledWith('txid-1');
     expect(handleCancelEdit).toHaveBeenCalledTimes(1);
   });
+  describe('explorer network derivation', () => {
+    /**
+     * Which network's explorer applies to this list. Getting this wrong is how
+     * testnet transactions ended up linked to a mainnet explorer: the status
+     * call was made with no network at all, which silently meant mainnet.
+     */
+    const walletOn = (id: string, network: string) => ({ id, network }) as never;
+
+    it('uses the scoped wallet network when walletId is given', () => {
+      render(
+        <TransactionList
+          transactions={[baseTx]}
+          walletId="w-tn4"
+          wallets={[walletOn('w-main', 'mainnet'), walletOn('w-tn4', 'testnet4')]}
+        />,
+      );
+
+      expect(useTransactionListMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ network: 'testnet4' }),
+      );
+    });
+
+    it('uses the common network when an unscoped list agrees', () => {
+      render(
+        <TransactionList
+          transactions={[baseTx]}
+          wallets={[walletOn('w-a', 'signet'), walletOn('w-b', 'signet')]}
+        />,
+      );
+
+      expect(useTransactionListMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ network: 'signet' }),
+      );
+    });
+
+    it('declines to guess when an unscoped list spans networks', () => {
+      render(
+        <TransactionList
+          transactions={[baseTx]}
+          wallets={[walletOn('w-a', 'mainnet'), walletOn('w-b', 'testnet4')]}
+        />,
+      );
+
+      expect(useTransactionListMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ network: undefined }),
+      );
+    });
+
+    it('declines to guess when there are no wallets at all', () => {
+      render(<TransactionList transactions={[baseTx]} />);
+
+      expect(useTransactionListMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ network: undefined }),
+      );
+    });
+  });
+
 });

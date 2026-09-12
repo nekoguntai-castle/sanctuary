@@ -92,13 +92,24 @@ describe('useTransactionList branches', () => {
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue(makeTx());
   });
 
-  it('keeps default explorer URL when API response omits explorerUrl', async () => {
+  it('reports no explorer when the API response omits explorerUrl', async () => {
     vi.mocked(bitcoinApi.getStatus).mockResolvedValueOnce({} as Awaited<ReturnType<typeof bitcoinApi.getStatus>>);
 
+    const { result } = renderTxHook(() =>
+      useTransactionList({ transactions: [], network: 'testnet4' })
+    );
+
+    await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalledWith('testnet4'));
+    // Previously this fell back to a hardcoded mainnet base, which is how a
+    // testnet list ended up linking to a mainnet explorer.
+    expect(result.current.explorerUrl).toBeNull();
+  });
+
+  it('does not request an explorer at all when the list spans no single network', async () => {
     const { result } = renderTxHook(() => useTransactionList({ transactions: [] }));
 
-    await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
-    expect(result.current.explorerUrl).toBe('https://mempool.space');
+    expect(result.current.explorerUrl).toBeNull();
+    expect(bitcoinApi.getStatus).not.toHaveBeenCalled();
   });
 
   it('handles highlighted scroll branch for missing and found transaction indexes', () => {
@@ -164,9 +175,11 @@ describe('useTransactionList branches', () => {
     });
 
     const tx = makeTx({ id: 'tx-fail', txid: 'txid-fail' });
-    const { result } = renderTxHook(() => useTransactionList({ transactions: [tx] }));
+    const { result } = renderTxHook(() =>
+      useTransactionList({ transactions: [tx], network: 'mainnet' })
+    );
 
-    await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
+    await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalledWith('mainnet'));
 
     await act(async () => {
       await result.current.copyToClipboard('txid-fail');
@@ -316,4 +329,41 @@ describe('useTransactionList branches', () => {
     expect(result.current.findTransaction(VALID_TXID.toUpperCase())).toBe(tx);
     expect(result.current.findTransaction('b'.repeat(64))).toBeNull();
   });
+  it('ignores a late explorer success after unmount', async () => {
+    type StatusResult = Awaited<ReturnType<typeof bitcoinApi.getStatus>>;
+    let resolveStatus: (value: StatusResult) => void = () => {};
+    vi.mocked(bitcoinApi.getStatus).mockReturnValue(
+      new Promise<StatusResult>(resolve => {
+        resolveStatus = resolve;
+      })
+    );
+
+    const { result, unmount } = renderTxHook(() =>
+      useTransactionList({ transactions: [], network: 'testnet4' })
+    );
+    unmount();
+    resolveStatus({ explorerUrl: 'https://late.example' } as StatusResult);
+
+    await Promise.resolve();
+    expect(result.current.explorerUrl).toBeNull();
+  });
+
+  it('ignores a late explorer failure after unmount', async () => {
+    let rejectStatus: (reason: unknown) => void = () => {};
+    vi.mocked(bitcoinApi.getStatus).mockReturnValue(
+      new Promise<Awaited<ReturnType<typeof bitcoinApi.getStatus>>>((_resolve, reject) => {
+        rejectStatus = reject;
+      })
+    );
+
+    const { result, unmount } = renderTxHook(() =>
+      useTransactionList({ transactions: [], network: 'signet' })
+    );
+    unmount();
+    rejectStatus(new Error('offline'));
+
+    await Promise.resolve();
+    expect(result.current.explorerUrl).toBeNull();
+  });
+
 });

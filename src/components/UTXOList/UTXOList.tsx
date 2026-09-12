@@ -54,7 +54,7 @@ export const UTXOList: React.FC<UTXOListProps> = ({
   network = 'mainnet',
 }) => {
   const { format } = usePriceFreeFormatter();
-  const explorerUrl = useExplorerUrl();
+  const explorerUrl = useExplorerUrl(network);
   const feeNetwork = toFeeNetwork(network);
   const { data: feeEstimates } = useFeeEstimates(feeNetwork);
 

@@ -180,7 +180,17 @@ Option B changes behavior only — revert the phase PR. Note that deliveries dea
 
 ---
 
-## Phase 4 — F5: network-aware explorer URLs
+## Phase 4 — F5: network-aware explorer URLs — IMPLEMENTED
+
+Status: implemented on `codex/bug-scrub-loop/i13-phase4-explorer-network`. All
+three `getStatus()` call sites now pass the active network; `useExplorerUrl`
+takes it as a required argument and returns `null` when unknown, and every
+consumer renders a non-link placeholder rather than a wrong-network URL. The
+double-prefix hazard is fixed by making `getExplorerUrl` idempotent via URL
+parsing instead of string replacement, so an already-prefixed per-network base
+is left alone. `TransactionList` derives the network from its scoped wallet, or
+from the common network of an unscoped list, and declines to guess when the list
+spans networks. Verified: 8,449 frontend tests at 100% coverage.
 
 Split from F4 during plan review. The two were originally grouped as "network identity in the frontend", but they have different root causes and different blast radii: F5 is pure frontend, while F4 must change a shared Zod response schema and the `shared` workspace build. Splitting keeps each diff attributable in the render-regression lane, which is where both 2026-08 dashboard CI failures landed. They remain independently mergeable in either order; `UTXOList.tsx` is touched by both but on different lines (`:57` here, `:59,67` in Phase 5), so the second to land takes a trivial rebase.
 

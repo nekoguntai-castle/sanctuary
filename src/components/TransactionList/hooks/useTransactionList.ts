@@ -3,7 +3,6 @@ import { Transaction, Wallet } from '../../../types';
 import * as bitcoinApi from '../../../api/bitcoin';
 import { createLogger } from '../../../utils/logger';
 import { isConsolidation } from '../../../utils/transaction';
-import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 import type { TransactionStats } from '../../../api/transactions';
 import { useTransactionTabs } from './useTransactionTabs';
 import { normalizeTxid } from './selectionResolution';
@@ -22,6 +21,8 @@ interface UseTransactionListParams {
   onTransactionClick?: (transaction: Transaction) => void;
   highlightedTxId?: string;
   transactionStats?: TransactionStats;
+  /** Active network. Omitted for mixed-wallet lists, which then render no explorer links. */
+  network?: string;
 }
 
 export function useTransactionList({
@@ -32,12 +33,13 @@ export function useTransactionList({
   onTransactionClick,
   highlightedTxId,
   transactionStats,
+  network,
 }: UseTransactionListParams) {
   // This list owns selection (opens detail tabs and the ?tx URL param) only when
   // the caller doesn't take selection over via onTransactionClick — e.g. the
   // Dashboard recent-tx list and Console results delegate instead.
   const ownsSelection = !onTransactionClick;
-  const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
+  const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -48,16 +50,28 @@ export function useTransactionList({
 
   // Load explorer URL from server config
   useEffect(() => {
+    if (!network) {
+      setExplorerUrl(null);
+      return;
+    }
+    let isMounted = true;
     const fetchExplorerUrl = async () => {
       try {
-        const status = await bitcoinApi.getStatus();
-        if (status.explorerUrl) setExplorerUrl(status.explorerUrl);
+        // getStatus() defaults to mainnet, so omitting the network discarded
+        // whatever explorer was configured for the active one.
+        const status = await bitcoinApi.getStatus(network as Parameters<typeof bitcoinApi.getStatus>[0]);
+        if (isMounted) setExplorerUrl(status.explorerUrl ?? null);
       } catch (err) {
         log.error('Failed to fetch explorer URL', { error: err });
+        if (isMounted) setExplorerUrl(null);
       }
     };
     fetchExplorerUrl();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [network]);
 
   // Filter out replaced transactions (rbfStatus === 'replaced')
   const filteredTransactions = useMemo(() => {

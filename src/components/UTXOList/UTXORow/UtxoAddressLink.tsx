@@ -4,10 +4,24 @@ import { getAddressExplorerUrl } from '../../../utils/explorer';
 interface UtxoAddressLinkProps {
   address: string;
   network: string;
-  explorerUrl: string;
+  explorerUrl: string | null;
 }
 
 export function UtxoAddressLink({ address, network, explorerUrl }: UtxoAddressLinkProps) {
+  // No explorer is configured for the active network, or it has not resolved
+  // yet. Render the address as plain text rather than linking it — a link built
+  // from a default-network base sends a testnet address to a mainnet explorer.
+  if (!explorerUrl) {
+    return (
+      <span
+        className="text-xs text-sanctuary-500 font-mono break-all max-w-md inline-flex items-center"
+        title={`No block explorer configured for ${network}`}
+      >
+        {address}
+      </span>
+    );
+  }
+
   return (
     <a
       href={getAddressExplorerUrl(address, network, explorerUrl)}

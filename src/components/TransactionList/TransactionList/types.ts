@@ -12,7 +12,7 @@ export interface TransactionDetailsContentProps {
   selectedTx: Transaction;
   wallets: Wallet[];
   walletAddresses: string[];
-  explorerUrl: string;
+  explorerUrl: string | null;
   copied: boolean;
   fullTxDetails: Transaction | null;
   loadingDetails: boolean;

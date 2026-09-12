@@ -9,12 +9,42 @@ interface ActionMenuProps {
   selectedTx: Transaction;
   wallets: Wallet[];
   walletAddresses: string[];
-  explorerUrl: string;
+  explorerUrl: string | null;
   copied: boolean;
   onCopyToClipboard: (text: string) => void;
   onClose: () => void;
   onLabelsChange?: () => void;
 }
+
+
+/**
+ * Explorer link for the selected transaction.
+ *
+ * Extracted from ActionMenu so the "no explorer configured for this network"
+ * branch lives in its own small component: the link is hidden rather than
+ * pointed at a default-network URL, which would be the wrong chain.
+ */
+const ExplorerLink: React.FC<{
+  selectedTx: Transaction;
+  wallets: Wallet[];
+  explorerUrl: string | null;
+}> = ({ selectedTx, wallets, explorerUrl }) => {
+  if (!explorerUrl) return null;
+
+  const network = wallets.find(w => w.id === selectedTx.walletId)?.network || 'mainnet';
+
+  return (
+    <a
+      href={getTxExplorerUrl(selectedTx.txid, network, explorerUrl)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-center w-full py-3 bg-sanctuary-800 dark:bg-sanctuary-700 text-sanctuary-50 dark:text-sanctuary-100 rounded-lg hover:bg-sanctuary-700 dark:hover:bg-sanctuary-600 transition-colors font-medium"
+    >
+      <ExternalLink className="w-4 h-4 mr-2" />
+      View on Block Explorer
+    </a>
+  );
+};
 
 export const ActionMenu: React.FC<ActionMenuProps> = ({
   selectedTx,
@@ -45,16 +75,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
         </div>
       </div>
 
-      {/* Explorer Link */}
-      <a
-        href={getTxExplorerUrl(selectedTx.txid, wallets.find(w => w.id === selectedTx.walletId)?.network || 'mainnet', explorerUrl)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center justify-center w-full py-3 bg-sanctuary-800 dark:bg-sanctuary-700 text-sanctuary-50 dark:text-sanctuary-100 rounded-lg hover:bg-sanctuary-700 dark:hover:bg-sanctuary-600 transition-colors font-medium"
-      >
-        <ExternalLink className="w-4 h-4 mr-2" />
-        View on Block Explorer
-      </a>
+      <ExplorerLink selectedTx={selectedTx} wallets={wallets} explorerUrl={explorerUrl} />
 
       {/* Transaction Actions (RBF/CPFP) for pending transactions */}
       {selectedTx.confirmations === 0 && (() => {

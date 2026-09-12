@@ -106,8 +106,11 @@ describe('UTXOList branch coverage', () => {
     expect(screen.getByText(/1 dust UTXO/)).toBeInTheDocument();
     expect(screen.getByText(/1\.0 sat\/vB/)).toBeInTheDocument();
 
-    const addressLink = screen.getByRole('link', { name: /bc1qdust/i });
-    expect(addressLink.getAttribute('href')).toContain('https://mempool.space/address/');
+    // getStatus resolves without an explorerUrl, so no explorer is configured
+    // for this network. The address renders as plain text rather than as a link
+    // built from a default-network base.
+    expect(screen.queryByRole('link', { name: /bc1qdust/i })).toBeNull();
+    expect(screen.getByText('bc1qdust')).toBeInTheDocument();
 
     const clickableDot = document.querySelector('div[title*="No Label"]');
     expect(clickableDot).not.toBeNull();
@@ -119,7 +122,7 @@ describe('UTXOList branch coverage', () => {
     });
   });
 
-  it('invokes address and tx explorer link click handlers without toggling selection', () => {
+  it('invokes address and tx explorer link click handlers without toggling selection', async () => {
     const onToggleSelect = vi.fn();
 
     render(
@@ -143,7 +146,10 @@ describe('UTXOList branch coverage', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('link', { name: /bc1qlink/i }));
+    // The explorer base resolves asynchronously now, so the links only exist
+    // once it has: before that the address is deliberately not a link.
+    const addressLink = await screen.findByRole('link', { name: /bc1qlink/i });
+    fireEvent.click(addressLink);
     fireEvent.click(screen.getByRole('link', { name: /txid:tx-link/i }));
     expect(onToggleSelect).not.toHaveBeenCalled();
   });

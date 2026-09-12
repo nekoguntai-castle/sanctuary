@@ -10,41 +10,63 @@
  * @param network - The Bitcoin network (mainnet, testnet3, testnet4, signet, regtest)
  * @returns Network-aware explorer URL
  */
+/** Path segment each network uses on the public explorers. */
+const NETWORK_PATH_SEGMENT: Record<string, string> = {
+  testnet: 'testnet',
+  testnet3: 'testnet',
+  testnet4: 'testnet4',
+  signet: 'signet',
+};
+
+/**
+ * Which networks each known explorer host actually serves under a path prefix.
+ * Anything else — a self-hosted or otherwise custom explorer — is returned
+ * untouched, because we cannot know its URL scheme.
+ */
+const HOST_SUPPORTED_SEGMENTS: Record<string, readonly string[]> = {
+  'mempool.space': ['testnet', 'testnet4', 'signet'],
+  'blockstream.info': ['testnet'],
+};
+
 export function getExplorerUrl(baseUrl: string, network: string): string {
   // Mainnet doesn't need modification
   if (!network || network === 'mainnet') {
     return baseUrl;
   }
 
-  // For non-mainnet public networks, insert the network prefix into the URL
-  // mempool.space -> mempool.space/testnet or mempool.space/testnet4
-  // blockstream.info -> blockstream.info/testnet
-  if (network === 'testnet' || network === 'testnet3') {
-    return baseUrl
-      .replace('mempool.space/', 'mempool.space/testnet/')
-      .replace('mempool.space/tx/', 'mempool.space/testnet/tx/')
-      .replace('mempool.space/address/', 'mempool.space/testnet/address/')
-      .replace('blockstream.info/', 'blockstream.info/testnet/')
-      .replace('blockstream.info/tx/', 'blockstream.info/testnet/tx/')
-      .replace('blockstream.info/address/', 'blockstream.info/testnet/address/');
+  // regtest and unknown networks have no public explorer path
+  const segment = NETWORK_PATH_SEGMENT[network];
+  if (!segment) {
+    return baseUrl;
   }
 
-  if (network === 'testnet4') {
-    return baseUrl
-      .replace('mempool.space/', 'mempool.space/testnet4/')
-      .replace('mempool.space/tx/', 'mempool.space/testnet4/tx/')
-      .replace('mempool.space/address/', 'mempool.space/testnet4/address/');
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return baseUrl;
   }
 
-  if (network === 'signet') {
-    return baseUrl
-      .replace('mempool.space/', 'mempool.space/signet/')
-      .replace('mempool.space/tx/', 'mempool.space/signet/tx/')
-      .replace('mempool.space/address/', 'mempool.space/signet/address/');
+  const host = url.hostname.replace(/^www\./, '');
+  if (!HOST_SUPPORTED_SEGMENTS[host]?.includes(segment)) {
+    return baseUrl;
   }
 
-  // For regtest or unknown networks, return base URL as-is
-  return baseUrl;
+  const segments = url.pathname.split('/').filter(Boolean);
+
+  // Idempotent: the server's per-network explorer settings are *already*
+  // prefixed (e.g. https://mempool.space/testnet4), so prefixing again
+  // produced /testnet4/testnet4/. Adding the segment only when it is absent
+  // lets callers pass either a bare host or a configured per-network base.
+  if (segments[0] === segment) {
+    return baseUrl;
+  }
+
+  // Preserve a trailing slash: callers pass both bare bases ("https://host/")
+  // and full resource paths, and the slash is part of the caller's string.
+  const trailingSlash = url.pathname.endsWith('/') ? '/' : '';
+  url.pathname = `/${[segment, ...segments].join('/')}${trailingSlash}`;
+  return url.toString();
 }
 
 /**

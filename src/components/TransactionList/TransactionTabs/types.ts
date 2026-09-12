@@ -14,7 +14,7 @@ export interface TransactionPanelSharedProps {
   walletLabels: Label[];
   selectionTransactions: Transaction[];
   walletId?: string;
-  explorerUrl: string;
+  explorerUrl: string | null;
   copied: boolean;
   canEdit: boolean;
   aiEnabled: boolean;

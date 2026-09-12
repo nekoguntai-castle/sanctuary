@@ -13,7 +13,7 @@ export interface UTXORowProps {
   showPrivacy: boolean;
   currentFeeRate: number;
   network: string;
-  explorerUrl: string;
+  explorerUrl: string | null;
   format: (sats: number) => string;
 }
 

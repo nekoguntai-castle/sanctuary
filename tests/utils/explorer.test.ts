@@ -215,4 +215,42 @@ describe('getBlockExplorerUrl', () => {
     const expected = 'https://mempool.space/block/00000000000000000001';
     expect(getBlockExplorerUrl(blockHash)).toBe(expected);
   });
+  describe('already-prefixed bases (no double prefix)', () => {
+    /**
+     * The server's per-network explorer settings are already path-prefixed
+     * (nodeConfig defaults are https://mempool.space/testnet4 etc.), and this
+     * util prefixed again — yielding /testnet4/testnet4/. Passing the network
+     * through to getStatus without fixing this would have produced broken
+     * links rather than wrong-network ones.
+     */
+    it.each([
+      ['https://mempool.space/testnet4', 'testnet4'],
+      ['https://mempool.space/testnet', 'testnet3'],
+      ['https://mempool.space/signet', 'signet'],
+      ['https://blockstream.info/testnet', 'testnet'],
+    ])('leaves %s unchanged for %s', (base, network) => {
+      expect(getExplorerUrl(base, network)).toBe(base);
+    });
+
+    it('does not double-prefix a full address path', () => {
+      const url = getExplorerUrl('https://mempool.space/testnet4/address/tb1qexample', 'testnet4');
+      expect(url).toBe('https://mempool.space/testnet4/address/tb1qexample');
+      expect(url).not.toContain('testnet4/testnet4');
+    });
+
+    it('still prefixes an unprefixed base for the same network', () => {
+      expect(getExplorerUrl('https://mempool.space/address/tb1qexample', 'testnet4'))
+        .toBe('https://mempool.space/testnet4/address/tb1qexample');
+    });
+
+
+    it('returns a non-URL base unchanged instead of throwing', () => {
+      expect(getExplorerUrl('not a url', 'testnet4')).toBe('not a url');
+    });
+    it('leaves a custom explorer host untouched rather than guessing its scheme', () => {
+      expect(getExplorerUrl('https://my-explorer.example/address/tb1qexample', 'testnet4'))
+        .toBe('https://my-explorer.example/address/tb1qexample');
+    });
+  });
+
 });

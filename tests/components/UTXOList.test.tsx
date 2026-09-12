@@ -426,20 +426,24 @@ describe('UTXOList', () => {
   });
 
   describe('explorer links', () => {
-    it('renders address links', () => {
-      render(<UTXOList utxos={mockUtxos} onToggleFreeze={mockToggleFreeze} />);
-
-      const links = screen.getAllByRole('link');
-      expect(links.length).toBeGreaterThan(0);
-    });
-
-    it('loads explorer URL on mount', async () => {
-      render(<UTXOList utxos={mockUtxos} onToggleFreeze={mockToggleFreeze} />);
+    it('renders address links once the explorer resolves', async () => {
+      render(<UTXOList utxos={mockUtxos} onToggleFreeze={mockToggleFreeze} network="mainnet" />);
 
       await waitFor(() => {
-        expect(bitcoinApi.getStatus).toHaveBeenCalled();
+        expect(screen.getAllByRole('link').length).toBeGreaterThan(0);
       });
     });
+
+    it('requests the explorer for the ACTIVE network, not the mainnet default', async () => {
+      render(<UTXOList utxos={mockUtxos} onToggleFreeze={mockToggleFreeze} network="testnet4" />);
+
+      // The defect: getStatus() was called with no argument, and its signature
+      // defaults to mainnet — so a configured testnet4 explorer was discarded.
+      await waitFor(() => {
+        expect(bitcoinApi.getStatus).toHaveBeenCalledWith('testnet4');
+      });
+    });
+
   });
 
   describe('empty state', () => {

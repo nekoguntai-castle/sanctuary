@@ -79,6 +79,18 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const { format } = usePriceFreeFormatter();
   const { enabled: aiEnabled } = useAIStatus();
 
+  // Which network's block explorer applies to this list. A wallet-scoped list
+  // takes that wallet's network; an unscoped list only has an answer when every
+  // wallet it shows agrees. Otherwise this stays undefined and no explorer links
+  // are rendered — previously the explorer was fetched with no network at all,
+  // which silently meant mainnet and linked testnet transactions to a mainnet
+  // explorer.
+  const listNetwork = useMemo(() => {
+    if (walletId) return wallets.find(w => w.id === walletId)?.network;
+    const networks = new Set(wallets.map(w => w.network).filter(Boolean));
+    return networks.size === 1 ? [...networks][0] : undefined;
+  }, [wallets, walletId]);
+
   const {
     ownsSelection,
     explorerUrl,
@@ -109,6 +121,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     onTransactionClick,
     highlightedTxId,
     transactionStats,
+    network: listNetwork,
   });
   // Two transaction lists can share a page (the dashboard preview and a wallet
   // route are different mounts, but a future page could hold both), so tab and
