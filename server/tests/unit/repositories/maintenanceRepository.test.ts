@@ -342,4 +342,46 @@ describe('Maintenance Repository', () => {
       expect(result).toEqual({ activeUserCount: 0, activeWalletCount: 0 });
     });
   });
+
+  describe('vacuumAnalyze', () => {
+    /**
+     * `SET` is a utility command and takes no bind parameter, but $executeRaw's
+     * tagged template produces exactly that — so `SET statement_timeout = ${x}`
+     * raised `syntax error at or near "$1"` and the vacuum never ran. Because
+     * prisma is mocked here, these assertions can only police the statement
+     * shape; the behavioural proof lives in
+     * tests/integration/repositories/maintenanceStatementTimeout.test.ts.
+     */
+    const sqlOf = (call: unknown[]): string => {
+      const [template] = call;
+      return Array.isArray(template) ? template.join('?') : String(template);
+    };
+
+    it('applies the timeout through set_config, never a parameterised SET', async () => {
+      (prisma.$executeRaw as Mock).mockResolvedValue(0);
+
+      await maintenanceRepository.vacuumAnalyze(12345);
+
+      const statements = (prisma.$executeRaw as Mock).mock.calls.map(sqlOf);
+      expect(statements).toEqual([
+        "SELECT set_config('statement_timeout', ?, false)",
+        'VACUUM ANALYZE',
+        "SET statement_timeout = '0'",
+      ]);
+      expect(statements.some(s => /SET\s+statement_timeout\s*=\s*\?/.test(s))).toBe(false);
+      expect((prisma.$executeRaw as Mock).mock.calls[0]?.[1]).toBe('12345');
+    });
+
+    it('restores the session default even when the vacuum fails', async () => {
+      (prisma.$executeRaw as Mock)
+        .mockResolvedValueOnce(0)
+        .mockRejectedValueOnce(new Error('vacuum failed'))
+        .mockResolvedValueOnce(0);
+
+      await expect(maintenanceRepository.vacuumAnalyze()).rejects.toThrow('vacuum failed');
+
+      const statements = (prisma.$executeRaw as Mock).mock.calls.map(sqlOf);
+      expect(statements[statements.length - 1]).toBe("SET statement_timeout = '0'");
+    });
+  });
 });

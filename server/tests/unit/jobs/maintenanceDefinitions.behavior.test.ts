@@ -282,7 +282,7 @@ describe('Maintenance job definitions behavior', () => {
 
     const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
     expect(sqlCalls).toEqual([
-      'SET statement_timeout = ?',
+      "SELECT set_config('statement_timeout', ?, false)",
       'VACUUM ANALYZE',
       'REINDEX TABLE "audit_logs"',
       'REINDEX TABLE "transactions"',
@@ -290,7 +290,7 @@ describe('Maintenance job definitions behavior', () => {
       "SET statement_timeout = '0'",
     ]);
     expect(sqlCalls.join('\n')).not.toMatch(/"(?:Transaction|UTXO)"/);
-    expect(mockExecuteRaw.mock.calls[0]?.[1]).toBe(12345);
+    expect(mockExecuteRaw.mock.calls[0]?.[1]).toBe('12345');
     expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
       10, 50, 63, 76, 90, 100,
     ]);
@@ -335,7 +335,7 @@ describe('Maintenance job definitions behavior', () => {
     } as any);
 
     expect(mockExecuteRaw.mock.calls.map(sqlFromCall)).toEqual([
-      'SET statement_timeout = ?',
+      "SELECT set_config('statement_timeout', ?, false)",
       'VACUUM ANALYZE',
       "SET statement_timeout = '0'",
     ]);
@@ -410,7 +410,19 @@ describe('Maintenance job definitions behavior', () => {
       'REINDEX TABLE "audit_logs"',
     ]);
     expect(sqlCalls.at(-1)).toBe("SET statement_timeout = '0'");
-    expect(mockAuditLog).not.toHaveBeenCalled();
+    // The job records non-completion durably now: with attempts: 1 and a
+    // success-only audit, cancellation previously left no trace at all
+    // outside a failed BullMQ job.
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'maintenance.weekly_db_maintenance',
+        success: false,
+        details: expect.objectContaining({ error: expect.stringContaining('cancelled') }),
+      })
+    );
+    expect(mockAuditLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ success: true })
+    );
   });
 
   it('resets the timeout when cancelled immediately after enabling it', async () => {
@@ -430,10 +442,22 @@ describe('Maintenance job definitions behavior', () => {
     } as any, execution)).rejects.toThrow('cancelled');
 
     expect(mockExecuteRaw.mock.calls.map(sqlFromCall)).toEqual([
-      'SET statement_timeout = ?',
+      "SELECT set_config('statement_timeout', ?, false)",
       "SET statement_timeout = '0'",
     ]);
-    expect(mockAuditLog).not.toHaveBeenCalled();
+    // The job records non-completion durably now: with attempts: 1 and a
+    // success-only audit, cancellation previously left no trace at all
+    // outside a failed BullMQ job.
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'maintenance.weekly_db_maintenance',
+        success: false,
+        details: expect.objectContaining({ error: expect.stringContaining('cancelled') }),
+      })
+    );
+    expect(mockAuditLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ success: true })
+    );
   });
 
   it('propagates a REINDEX failure and restores the timeout in finally', async () => {
@@ -456,7 +480,19 @@ describe('Maintenance job definitions behavior', () => {
     expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
       10, 50, 63,
     ]);
-    expect(mockAuditLog).not.toHaveBeenCalled();
+    // The job records non-completion durably now: with attempts: 1 and a
+    // success-only audit, the REINDEX failure previously left no trace at all
+    // outside a failed BullMQ job.
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'maintenance.weekly_db_maintenance',
+        success: false,
+        details: expect.objectContaining({ error: expect.stringContaining('reindex failed') }),
+      })
+    );
+    expect(mockAuditLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ success: true })
+    );
   });
 
   it('always resets statement timeout when weekly vacuum fails', async () => {

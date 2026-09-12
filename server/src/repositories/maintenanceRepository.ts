@@ -71,10 +71,21 @@ export async function deleteExpiredRefreshTokens(): Promise<number> {
 // ============================================================================
 
 /**
- * Run VACUUM ANALYZE with a statement timeout (milliseconds)
+ * Run VACUUM ANALYZE with a statement timeout (milliseconds).
+ *
+ * The timeout goes through `set_config`, not `SET statement_timeout = ${...}`.
+ * `SET` is a utility command and PostgreSQL does not accept a bind parameter
+ * there, but `$executeRaw`'s tagged-template contract is precisely to bind
+ * interpolations — so the old form raised `syntax error at or near "$1"` and
+ * the vacuum never ran. `set_config` takes the value as a real parameter, which
+ * keeps the injection safety `$executeRaw` is chosen for.
+ *
+ * `is_local` is false because VACUUM cannot run inside a transaction block, so
+ * there is no transaction for a local setting to scope to; the `finally` below
+ * is what bounds the session-level change.
  */
 export async function vacuumAnalyze(timeoutMs = 300000): Promise<void> {
-  await prisma.$executeRaw`SET statement_timeout = ${String(timeoutMs)}`;
+  await prisma.$executeRaw`SELECT set_config('statement_timeout', ${String(timeoutMs)}, false)`;
   try {
     await prisma.$executeRaw`VACUUM ANALYZE`;
   } finally {

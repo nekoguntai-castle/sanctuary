@@ -73,7 +73,18 @@ Revert the phase PR. No schema or data migration is introduced.
 
 ---
 
-## Phase 2 — F7: PostgreSQL-valid bounded statement timeout
+## Phase 2 — F7: PostgreSQL-valid bounded statement timeout — IMPLEMENTED
+
+Status: implemented on `codex/bug-scrub-loop/i13-phase2-vacuum-timeout`. Both
+production paths now use `SELECT set_config('statement_timeout', $1, false)`
+(`is_local` false because VACUUM cannot run inside a transaction block). The
+timeout application moved inside the `try` in `maintenance.ts` so the `finally`
+reset always runs, and the job now writes a failure audit — with `attempts: 1`
+and a success-only audit, this breakage had no durable trace at all.
+Verified: 15,787 backend unit tests at 100% coverage, plus three new
+real-PostgreSQL integration tests, one of which asserts the old parameterised
+`SET` form still raises `syntax error` — the proof the mocked unit layer could
+never provide.
 
 - Owner paths: `server/src/jobs/definitions/maintenance.ts`, `server/src/repositories/maintenanceRepository.ts`.
 - Tests: `server/tests/unit/jobs/maintenanceDefinitions.behavior.test.ts`, `server/tests/unit/repositories/maintenanceRepository.test.ts`.

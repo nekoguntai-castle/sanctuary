@@ -355,10 +355,15 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
 
     await job.updateProgress(10);
 
-    // Set statement timeout
-    await prisma.$executeRaw`SET statement_timeout = ${timeout}`;
-
     try {
+      // Bound each statement. This must use set_config rather than
+      // `SET statement_timeout = ${timeout}`: SET is a utility command that
+      // takes no bind parameter, which is exactly what $executeRaw's tagged
+      // template produces, so the old form failed with a syntax error before
+      // any vacuum work began. It also lives inside the try so the finally
+      // below always restores the session default.
+      await prisma.$executeRaw`SELECT set_config('statement_timeout', ${String(timeout)}, false)`;
+
       execution?.throwIfAborted();
       await prisma.$executeRaw`VACUUM ANALYZE`;
       execution?.throwIfAborted();
@@ -375,6 +380,19 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
         execution?.throwIfAborted();
       }
 
+    } catch (error) {
+      // This job has attempts: 1 and previously wrote an audit record only on
+      // success, so a failure before any work began left no durable trace — it
+      // was visible solely as a failed BullMQ job. That is how a broken
+      // statement-timeout call went unnoticed; record failures too.
+      await auditService.log({
+        username: 'system',
+        action: 'maintenance.weekly_db_maintenance',
+        category: AuditCategory.SYSTEM,
+        details: { durationMs: Date.now() - startTime, error: getErrorMessage(error) },
+        success: false,
+      });
+      throw error;
     } finally {
       await prisma.$executeRaw`SET statement_timeout = '0'`;
     }
