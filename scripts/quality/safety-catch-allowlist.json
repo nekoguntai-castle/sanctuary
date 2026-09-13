@@ -623,6 +623,15 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
+      "file": "src/hooks/send/useUsbSigning.ts",
+      "functionName": "useUsbSigning",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "signWithDevice's finally block releases a USB transport it opened regardless of lease state; a disconnect() failure is logged at debug and must not throw out of finally or mask the original signing outcome.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-transport-teardown-boundary"
+    },
+    {
       "file": "scripts/release/verify-release-artifacts.mjs",
       "functionName": "<module>",
       "issue": "non-terminal-catch",

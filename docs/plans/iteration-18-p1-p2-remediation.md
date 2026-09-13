@@ -76,6 +76,8 @@ Failing tests first: `tests/hooks/useUsbSigning.test.tsx` — start signing, sup
 
 Verification: typecheck app/tests/all, lint, frontend coverage 100%, lizard 86, large-files, `arch:check` (primary checkout), `git diff --check`.
 
+Status: done
+
 ## Phase 5 — RBF replacement linkage is structural, not a memo prefix (server + shared + frontend)
 
 Finding: `rbf-memo-prefix-spoofs-transaction-replacement`.

@@ -714,7 +714,8 @@ describe('useUsbSigning', () => {
 
     await expect(signing).resolves.toBe(false);
     expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
-    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+    // The transport connected before ownership was lost, so it must still be released.
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalledOnce();
   });
 
   it('signWithDevice ignores a missing result after ownership is lost', async () => {
@@ -738,7 +739,7 @@ describe('useUsbSigning', () => {
 
     expect(deps.setError).toHaveBeenCalledOnce();
     expect(deps.setError).toHaveBeenCalledWith(null);
-    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalledOnce();
   });
 
   it('does not apply a valid signature after transaction ownership is lost', async () => {
@@ -764,7 +765,7 @@ describe('useUsbSigning', () => {
     expect(deps.setSignedRawTx).not.toHaveBeenCalled();
     expect(deps.setSignedDevices).not.toHaveBeenCalled();
     expect(mocks.updateDraft).not.toHaveBeenCalled();
-    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalledOnce();
   });
 
   it('signWithDevice surfaces Error message when signing throws Error', async () => {
@@ -816,6 +817,89 @@ describe('useUsbSigning', () => {
 
     expect(deps.setError).toHaveBeenCalledOnce();
     expect(deps.setError).toHaveBeenCalledWith(null);
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('releases the transport for a superseded lease without touching stale signing state', async () => {
+    let current = true;
+    let resolveSignPsbt!: (value: { psbt: string }) => void;
+    mocks.hardwareWallet.signPSBT.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSignPsbt = resolve;
+        })
+    );
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({
+        signal: controller.signal,
+        isCurrent: () => current,
+      }),
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    const signing = result.current.signWithDevice(trezorDevice('dev-superseded'));
+
+    // Let connect() resolve and signPSBT() be invoked before superseding the lease.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Supersede the lease (e.g. a second attempt begins) before signPSBT resolves.
+    current = false;
+    resolveSignPsbt({ psbt: 'signed-after-supersede' });
+
+    await expect(signing).resolves.toBe(false);
+
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalledOnce();
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    // setIsSigning(true) is called once when the attempt begins; the stale
+    // completion must not call setIsSigning(false) on top of it.
+    expect(deps.setIsSigning).toHaveBeenCalledOnce();
+    expect(deps.setIsSigning).toHaveBeenCalledWith(true);
+  });
+
+  it('logs at debug and preserves the signing result when releasing the transport fails', async () => {
+    mocks.hardwareWallet.disconnect.mockImplementationOnce(() => {
+      throw new Error('disconnect failed');
+    });
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.signWithDevice(trezorDevice('dev-disconnect-fails'));
+    });
+
+    // The signing attempt succeeded; a failed transport release must not
+    // change its outcome or throw out of the finally block.
+    expect(ok).toBe(true);
+    expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('signed-psbt');
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalledOnce();
+    expect(mocks.logger.debug).toHaveBeenCalledWith(
+      'Failed to release USB transport after signing attempt',
+      expect.objectContaining({
+        deviceId: 'dev-disconnect-fails',
+        error: expect.any(Error),
+      })
+    );
+  });
+
+  it('does not attempt to disconnect when connect() rejects before the transport opens', async () => {
+    mocks.hardwareWallet.connect.mockRejectedValueOnce(new Error('connect failed'));
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.signWithDevice(trezorDevice('dev-connect-fails'));
+    });
+
+    expect(ok).toBe(false);
+    expect(deps.setError).toHaveBeenCalledWith('connect failed');
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
+    // The transport was never opened, so there is nothing to release.
     expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
   });
 });

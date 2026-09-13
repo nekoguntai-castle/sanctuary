@@ -59,6 +59,7 @@ interface DeviceSigningParams {
   txData: TransactionData | null;
   wallet: Wallet;
   lease: SendOperationLease;
+  onConnected: () => void;
 }
 
 interface ApplyDeviceSignResultParams {
@@ -226,6 +227,7 @@ async function signPsbtWithDevice({
   txData,
   wallet,
   lease,
+  onConnected,
 }: DeviceSigningParams): Promise<UsbSignResult | null> {
   log.info('Connecting to device for signing', {
     deviceId: device.id,
@@ -233,6 +235,9 @@ async function signPsbtWithDevice({
     hwType,
   });
   await hardwareWallet.connect(hwType, signingConnectionOptions(hwType, device, wallet));
+  // The transport is open regardless of lease state; the caller's finally
+  // block must release it even if this attempt has since been superseded.
+  onConnected();
   if (!lease.isCurrent()) return null;
 
   const multisigXpubs = getMultisigXpubs(wallet);
@@ -393,6 +398,7 @@ export function useUsbSigning({
     setIsSigning(true);
     setError(null);
 
+    let connectedTransport = false;
     try {
       const signResult = await signPsbtWithDevice({
         device,
@@ -402,6 +408,9 @@ export function useUsbSigning({
         txData,
         wallet,
         lease,
+        onConnected: () => {
+          connectedTransport = true;
+        },
       });
 
       if (!signResult) return false;
@@ -432,9 +441,16 @@ export function useUsbSigning({
       setError(err instanceof Error ? err.message : 'Failed to sign with device');
       return false;
     } finally {
-      if (lease.isCurrent()) {
-        setIsSigning(false);
-        hardwareWallet.disconnect();
+      if (lease.isCurrent()) setIsSigning(false);
+      if (connectedTransport) {
+        try {
+          hardwareWallet.disconnect();
+        } catch (disconnectErr) {
+          log.debug('Failed to release USB transport after signing attempt', {
+            deviceId: device.id,
+            error: disconnectErr,
+          });
+        }
       }
     }
     },
