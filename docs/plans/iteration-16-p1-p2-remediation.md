@@ -47,6 +47,8 @@ Contract: in the update path, when `proxyPassword` is the mask sentinel or `unde
 Failing-first tests: PUT with a real password, then PUT with `'********'` plus an unrelated change → stored password unchanged (today: becomes the mask); PUT omitting `proxyPassword` → unchanged; PUT with a new string → replaced. Route-level supertest through `nodeConfig.ts`.
 Verification: server gates. Rollback: revert (no schema change).
 
+**Status: done.** `node-config-masked-proxy-password-overwrites-on-save` fixed: the PUT handler now fetches the existing config before building update data, and `buildProxyData`/`resolveProxyPassword` in `nodeConfigData.ts` keep the stored encrypted password when `proxyPassword` is the `'********'` sentinel (exported as `MASKED_PROXY_PASSWORD`) or `undefined`; only an explicit new string replaces it and an explicit `null` clears it. The web UI has no clear affordance today (`CustomProxyControls.tsx` maps an emptied field to `undefined`, i.e. unchanged) — clearing the proxy password still requires disabling the proxy or re-saving with a new one; no frontend change was made. Three new route-level tests added to `adminNodeConfig.read-update.contracts.ts`, each proven red against pre-fix source.
+
 ## Phase 3 — P1: the gateway permission check must fail closed on a hung backend
 
 Root cause (verified): `mobilePermission.ts:80-91` `fetch()` has no `signal`; `deviceTokens.ts:35,72` use `AbortSignal.timeout(config.backendRequestTimeoutMs)`.

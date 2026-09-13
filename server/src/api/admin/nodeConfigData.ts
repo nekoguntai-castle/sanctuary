@@ -98,6 +98,17 @@ export interface NodeConfigInput {
 
 const VALID_LOAD_BALANCING = [...NODE_POOL_LOAD_BALANCING_VALUES];
 
+/**
+ * Sentinel the API returns in place of the real proxy password (GET) and
+ * that the web UI round-trips back unchanged on save. The update path must
+ * treat this value the same as `undefined`: keep whatever is already
+ * stored. Only an explicit new string replaces it; an explicit `null`
+ * clears it. There is currently no UI affordance to send an explicit
+ * `null` - clearing today means disabling the proxy or re-saving with a
+ * new password.
+ */
+export const MASKED_PROXY_PASSWORD = '********';
+
 interface NetworkDefaults {
   mode: string;
   host: string;
@@ -171,13 +182,34 @@ function optionalExternalServiceUrl(
   return value === undefined ? null : value;
 }
 
-function buildProxyData(input: NodeConfigInput): Record<string, unknown> {
+/**
+ * Resolve the stored (encrypted) proxy password for an update.
+ *
+ * The masked sentinel and `undefined` both mean "unchanged" - keep
+ * whatever encrypted value is already persisted. Any other string is a
+ * genuine new password and gets encrypted; an explicit `null` (or empty
+ * string) clears the stored password.
+ */
+function resolveProxyPassword(
+  input: NullableString | undefined,
+  existingEncryptedPassword: string | null | undefined,
+): string | null {
+  if (input === undefined || input === MASKED_PROXY_PASSWORD) {
+    return existingEncryptedPassword ?? null;
+  }
+  return encryptedOrNull(input);
+}
+
+function buildProxyData(
+  input: NodeConfigInput,
+  existingEncryptedPassword: string | null | undefined,
+): Record<string, unknown> {
   return {
     proxyEnabled: input.proxyEnabled ?? false,
     proxyHost: optionalString(input.proxyHost),
     proxyPort: parseOptionalInteger(input.proxyPort),
     proxyUsername: optionalString(input.proxyUsername),
-    proxyPassword: encryptedOrNull(input.proxyPassword),
+    proxyPassword: resolveProxyPassword(input.proxyPassword, existingEncryptedPassword),
   };
 }
 
@@ -339,6 +371,7 @@ function buildSignetData(input: NodeConfigInput): Record<string, unknown> {
  */
 export function buildNodeConfigData(
   input: NodeConfigInput,
+  existing?: { proxyPassword?: string | null },
 ): Record<string, unknown> {
   const estimator = pickAllowed(
     input.mempoolEstimator,
@@ -372,7 +405,7 @@ export function buildNodeConfigData(
     poolMinConnections: input.poolMinConnections ?? 1,
     poolMaxConnections: input.poolMaxConnections ?? 5,
     poolLoadBalancing: loadBalancing,
-    ...buildProxyData(input),
+    ...buildProxyData(input, existing?.proxyPassword),
     ...buildMainnetData(input),
     ...buildTestnet3Data(input),
     ...buildTestnet4Data(input),

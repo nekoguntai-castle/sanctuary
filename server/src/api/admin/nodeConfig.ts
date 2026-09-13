@@ -22,7 +22,12 @@ import { testNodeConfig, resetNodeClient, NodeConfig } from '../../services/bitc
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
-import { buildNodeConfigData, buildNodeConfigResponse, type NodeConfigInput } from './nodeConfigData';
+import {
+  buildNodeConfigData,
+  buildNodeConfigResponse,
+  MASKED_PROXY_PASSWORD,
+  type NodeConfigInput,
+} from './nodeConfigData';
 import proxyTestRouter from './proxyTest';
 
 const router = Router();
@@ -214,7 +219,7 @@ router.get('/node-config', authenticate, requireAdmin, asyncHandler(async (_req,
     proxyHost: nodeConfig.proxyHost,
     proxyPort: nodeConfig.proxyPort,
     proxyUsername: nodeConfig.proxyUsername,
-    proxyPassword: nodeConfig.proxyPassword ? '********' : undefined, // Mask password
+    proxyPassword: nodeConfig.proxyPassword ? MASKED_PROXY_PASSWORD : undefined, // Mask password
   });
 }));
 
@@ -257,11 +262,13 @@ router.put('/node-config', authenticate, requireAdmin, asyncHandler(async (req, 
     throw new InvalidInputError('Only Electrum connection type is supported');
   }
 
-  // Build the config data from the request body
-  const configData = buildNodeConfigData(nodeConfigBody);
-
   // Check if a default config exists
   const existingConfig = await nodeConfigRepository.findDefault();
+
+  // Build the config data from the request body. The masked proxy password
+  // sentinel (or an omitted proxyPassword) must not overwrite the stored
+  // encrypted value, so the existing record is threaded through.
+  const configData = buildNodeConfigData(nodeConfigBody, existingConfig ?? undefined);
 
   let nodeConfig;
 

@@ -621,6 +621,153 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       );
     });
 
+    it('keeps the stored proxy password when the update sends the masked sentinel', async () => {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+        id: 'default-existing',
+        proxyPassword: 'enc:existing-secret',
+      });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(
+        buildNodeConfig({
+          id: 'default-existing',
+          host: 'masked-update.example.com',
+          proxyEnabled: true,
+          proxyPassword: 'enc:existing-secret',
+        })
+      );
+
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'masked-update.example.com',
+          port: 50002,
+          proxyEnabled: true,
+          proxyHost: '127.0.0.1',
+          proxyPort: 9050,
+          proxyPassword: '********',
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockEncrypt).not.toHaveBeenCalledWith('********');
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proxyPassword: 'enc:existing-secret',
+          }),
+        })
+      );
+    });
+
+    it('keeps the stored proxy password when the update omits proxyPassword', async () => {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+        id: 'default-existing',
+        proxyPassword: 'enc:existing-secret',
+      });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(
+        buildNodeConfig({
+          id: 'default-existing',
+          host: 'omitted-update.example.com',
+          proxyEnabled: true,
+          proxyPassword: 'enc:existing-secret',
+        })
+      );
+
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'omitted-update.example.com',
+          port: 50002,
+          proxyEnabled: true,
+          proxyHost: '127.0.0.1',
+          proxyPort: 9050,
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockEncrypt).not.toHaveBeenCalled();
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proxyPassword: 'enc:existing-secret',
+          }),
+        })
+      );
+    });
+
+    it('clears an existing stored proxy password when the update sends explicit null', async () => {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+        id: 'default-existing',
+        proxyPassword: 'enc:existing-secret',
+      });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(
+        buildNodeConfig({
+          id: 'default-existing',
+          host: 'cleared-update.example.com',
+          proxyEnabled: true,
+          proxyPassword: null,
+        })
+      );
+
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'cleared-update.example.com',
+          port: 50002,
+          proxyEnabled: true,
+          proxyHost: '127.0.0.1',
+          proxyPort: 9050,
+          proxyPassword: null,
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockEncrypt).not.toHaveBeenCalled();
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proxyPassword: null,
+          }),
+        })
+      );
+    });
+
+    it('replaces the stored proxy password when the update sends a new value', async () => {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+        id: 'default-existing',
+        proxyPassword: 'enc:existing-secret',
+      });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(
+        buildNodeConfig({
+          id: 'default-existing',
+          host: 'replaced-update.example.com',
+          proxyEnabled: true,
+          proxyPassword: 'enc:brand-new-secret',
+        })
+      );
+
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'replaced-update.example.com',
+          port: 50002,
+          proxyEnabled: true,
+          proxyHost: '127.0.0.1',
+          proxyPort: 9050,
+          proxyPassword: 'brand-new-secret',
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockEncrypt).toHaveBeenCalledWith('brand-new-secret');
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proxyPassword: 'enc:brand-new-secret',
+          }),
+        })
+      );
+    });
+
     it('returns 500 when updating node config fails', async () => {
       mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
       mockPrismaClient.nodeConfig.update.mockRejectedValue(new Error('write failed'));
