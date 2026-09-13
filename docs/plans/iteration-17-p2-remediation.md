@@ -106,6 +106,8 @@ Failing tests first: `tests/hooks/useBroadcast.test.tsx` (verified path — not 
 
 Verification: typecheck app/tests/all, lint, frontend coverage 100%, lizard 86, large-files, `arch:check`, `git diff --check`.
 
+Status: done
+
 ## Phase 7 — a PSBT combine failure never discards collected signatures (frontend)
 
 Finding: `qr-signing-combine-failure-drops-prior-signatures`.

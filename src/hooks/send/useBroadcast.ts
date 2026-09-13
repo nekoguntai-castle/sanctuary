@@ -296,8 +296,9 @@ export function useBroadcast({
         utxos: txData.utxos,
       }));
 
-      if (!lease.isCurrent()) return false;
-
+      // The broadcast succeeded against the server regardless of whether this lease is still
+      // current, so the toast and cache refresh are app-scoped concerns that must always run.
+      // Only navigate() and other component-local state stay gated on lease.isCurrent().
       if (broadcastResult.persistenceStatus === 'pending_reconciliation') {
         showBroadcastReconciliationWarning(showWarning, broadcastResult.txid);
       } else {

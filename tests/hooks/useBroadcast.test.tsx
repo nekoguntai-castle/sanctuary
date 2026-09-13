@@ -132,13 +132,16 @@ describe('useBroadcast', () => {
     expect(deps.setIsBroadcasting).not.toHaveBeenCalled();
   });
 
-  it('does not navigate or publish stale UI after broadcast ownership is lost, but still clears isBroadcasting', async () => {
-    // Non-regression for the stuck-spinner bug: a signing click mid-broadcast (simulated
-    // here by flipping `isCurrent` to false and aborting the signal, as a real
-    // `beginSigning()` call against a shared slot used to do) must not leave
-    // `isBroadcasting` stuck `true` forever. The success toast/navigation stay gated on
-    // `lease.isCurrent()`, but the `finally` reset must run unconditionally, or
-    // `navigationLocked` in SendTransactionWizard.tsx never clears.
+  it('still reports success and refreshes caches after ownership is lost, but never navigates, and still clears isBroadcasting', async () => {
+    // Non-regression for send-broadcast-lease-drop-silent-success: a signing click mid-broadcast
+    // (simulated here by flipping `isCurrent` to false and aborting the signal, as a real
+    // `beginSigning()` call against a shared slot used to do — or an unmount, via
+    // `useSendOperationOwner.ts`'s abort-on-unmount) must not silently drop a broadcast the
+    // server already accepted. The notification and query-client handles are app-scoped, not
+    // component-scoped, so the toast and `refetchBroadcastCaches()` must still run; only
+    // `navigate()` (and component-local state) stay gated on `lease.isCurrent()`. The `finally`
+    // reset must also run unconditionally, or `navigationLocked` in SendTransactionWizard.tsx
+    // never clears.
     let resolveBroadcast!: (value: { txid: string; broadcasted: boolean; persistenceStatus: string }) => void;
     mocks.broadcastTransaction.mockReturnValueOnce(new Promise(resolve => { resolveBroadcast = resolve; }));
     let current = true;
@@ -157,10 +160,37 @@ describe('useBroadcast', () => {
     });
 
     expect(mocks.navigate).not.toHaveBeenCalled();
-    expect(mocks.showSuccess).not.toHaveBeenCalled();
-    expect(mocks.refetchQueries).not.toHaveBeenCalled();
+    expect(mocks.showSuccess).toHaveBeenCalledOnce();
+    expect(mocks.refetchQueries).toHaveBeenCalledTimes(2);
     expect(deps.setIsBroadcasting).toHaveBeenCalledTimes(2);
     expect(deps.setIsBroadcasting).toHaveBeenNthCalledWith(1, true);
+    expect(deps.setIsBroadcasting).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports the reconciliation warning and refreshes caches after ownership is lost, without navigating', async () => {
+    // Same contract as above, exercised on the pending_reconciliation branch: the reconciliation
+    // toast is not a "component-local" concern, so a lost lease must not silence it either.
+    let resolveBroadcast!: (value: { txid: string; broadcasted: boolean; persistenceStatus: string }) => void;
+    mocks.broadcastTransaction.mockReturnValueOnce(new Promise(resolve => { resolveBroadcast = resolve; }));
+    let current = true;
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useBroadcast(deps));
+    let request!: Promise<boolean>;
+    act(() => { request = result.current.broadcastTransaction(); });
+    current = false;
+    controller.abort();
+    await act(async () => {
+      resolveBroadcast({ txid: 'f'.repeat(64), broadcasted: true, persistenceStatus: 'pending_reconciliation' });
+      expect(await request).toBe(false);
+    });
+
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.showSuccess).not.toHaveBeenCalled();
+    expect(mocks.showWarning).toHaveBeenCalledOnce();
+    expect(mocks.refetchQueries).toHaveBeenCalledTimes(2);
     expect(deps.setIsBroadcasting).toHaveBeenLastCalledWith(false);
   });
 
