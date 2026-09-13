@@ -20,13 +20,25 @@ function createMockEventBus() {
   };
 }
 
+// Wall-clock bounded: the previous version yielded 100 setImmediate ticks,
+// which is not a time budget at all — under an instrumented Stryker dry run
+// or a loaded host the worker's startup work spans far more than 100 macrotask
+// turns, and the test timed out while everything was still healthy (CI runs
+// 15839 job 200033 and 15873 job 200450, 2026-09-13).
+// Well under the per-test ceiling below, so a genuine stall reports this
+// helper's message rather than a bare vitest timeout.
+const WAIT_FOR_BUDGET_MS = 5_000;
+const TEST_TIMEOUT_MS = 30_000;
+const WAIT_FOR_POLL_MS = 10;
+
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let i = 0; i < 100; i += 1) {
+  const deadline = Date.now() + WAIT_FOR_BUDGET_MS;
+  while (Date.now() < deadline) {
     if (predicate()) return;
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, WAIT_FOR_POLL_MS));
   }
 
-  throw new Error('Timed out waiting for expected condition');
+  throw new Error(`Timed out after ${WAIT_FOR_BUDGET_MS}ms waiting for expected condition`);
 }
 
 describe('feature flag admin + worker integration', () => {
@@ -437,5 +449,5 @@ describe('feature flag admin + worker integration', () => {
       processOnSpy.mockRestore();
       processExitSpy.mockRestore();
     }
-  });
+  }, TEST_TIMEOUT_MS);
 });
