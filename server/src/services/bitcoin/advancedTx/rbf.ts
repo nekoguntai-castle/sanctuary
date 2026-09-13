@@ -350,7 +350,9 @@ function adjustChangeOutputForFeeDelta(
   dustThreshold: number
 ): void {
   if (feeDelta <= 0) {
-    return;
+    throw new Error(
+      `New fee must exceed the original fee by at least 1 sat (BIP-125 rule 3); calculated fee delta was ${feeDelta} sat(s).`
+    );
   }
 
   if (changeOutputIndex < 0) {

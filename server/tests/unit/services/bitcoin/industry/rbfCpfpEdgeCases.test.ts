@@ -19,10 +19,22 @@ vi.mock('../../../../../src/utils/logger', () => ({
   }),
 }));
 
+import * as bitcoin from 'bitcoinjs-lib';
+import {
+  advancedSignableWallet,
+  registerAdvancedTxTestSetup,
+} from '../advancedTx/advancedTxTestHarness';
 import { calculateCPFPFee } from '../../../../../src/services/bitcoin/advancedTx/cpfp';
 import { RBF_SEQUENCE, MIN_RBF_FEE_BUMP } from '../../../../../src/services/bitcoin/advancedTx/shared';
+import { createRBFTransaction } from '../../../../../src/services/bitcoin/advancedTx';
+import * as transactionWeight from '../../../../../src/services/bitcoin/transactionWeight';
+import { mockPrismaClient } from '../../../../mocks/prisma';
+import { mockElectrumClient } from '../../../../mocks/electrum';
+import { testnetAddresses } from '../../../../fixtures/bitcoin';
 
 describe('RBF & CPFP Industry Edge Cases', () => {
+  registerAdvancedTxTestSetup();
+
   // ==========================================================================
   // BIP125 REPLACEMENT FEE RULES
   // ==========================================================================
@@ -55,6 +67,69 @@ describe('RBF & CPFP Industry Edge Cases', () => {
       expect(replacementRate).toBeGreaterThan(originalRate);
       expect(replacementFee).toBeLessThan(originalFee);
       // BIP125 would REJECT this, but current code would ACCEPT it
+    });
+
+    it('enforces BIP125 Rule 3 in createRBFTransaction: refuses a replacement whose fee falls 50 sats short of the original fee', async () => {
+      // Non-regression for rbf-negative-fee-delta-desyncs-returned-fee-from-outputs:
+      // createRBFTransaction must not silently accept a re-estimated fee that
+      // fails to exceed the original fee, even when the requested feeRate
+      // clears the "must be higher than current rate" gate.
+      const walletId = 'rbf-rule3-wallet';
+      const originalTxid = 'f'.repeat(64);
+      const spendAddress = testnetAddresses.nativeSegwit[0];
+      const changeAddress = testnetAddresses.nativeSegwit[1];
+      const spendScriptHex = Buffer.from(
+        bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet),
+      ).toString('hex');
+      const inputHash = Buffer.from('28'.repeat(32), 'hex');
+      const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      tx.addInput(inputHash, 0, RBF_SEQUENCE);
+      tx.addOutput(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet), BigInt(40_000));
+      // totalInput (100_000) - 40_000 - 54_950 = oldFee 5_050
+      tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), BigInt(54_950));
+      const txHex = tx.toHex();
+
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(advancedSignableWallet(walletId));
+      mockPrismaClient.address.findMany
+        .mockResolvedValueOnce([
+          { address: spendAddress, derivationPath: "m/84'/1'/0'/0/0" },
+          { address: changeAddress, derivationPath: "m/84'/1'/0'/1/0" },
+        ])
+        .mockResolvedValueOnce([{ address: changeAddress, branch: 1 }]);
+
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+        if (txid === originalTxid) {
+          return { txid: originalTxid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
+        }
+        if (txid === inputTxid) {
+          return {
+            txid: inputTxid,
+            confirmations: 1,
+            hex: txHex,
+            vin: [],
+            vout: [{
+              value: 100_000 / 100_000_000,
+              n: 0,
+              scriptPubKey: { hex: spendScriptHex, address: spendAddress },
+            }],
+          } as any;
+        }
+        return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
+      });
+
+      // Pin the realistically re-estimated fee to 5_000 sats: exactly 50 sats
+      // below oldFee (5_050), so feeDelta is exactly -50, deterministically.
+      const feeForRateSpy = vi.spyOn(transactionWeight, 'feeForRate').mockReturnValue(5_000);
+      try {
+        await expect(
+          createRBFTransaction(originalTxid, 55, walletId, 'testnet3'),
+        ).rejects.toThrow('New fee must exceed the original fee by at least');
+      } finally {
+        feeForRateSpy.mockRestore();
+      }
     });
 
     it('should document BIP125 Rule 4: replacement must pay for relay bandwidth', () => {

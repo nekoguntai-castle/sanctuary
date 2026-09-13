@@ -17,6 +17,7 @@ import {
   RBF_SEQUENCE,
 } from '../../../../../src/services/bitcoin/advancedTx';
 import * as psbtConstruction from '../../../../../src/services/bitcoin/transactions/psbtConstruction';
+import * as transactionWeight from '../../../../../src/services/bitcoin/transactionWeight';
 
 export function registerRbfTransactionCreationContracts() {
   describe('RBF Transaction Creation', () => {
@@ -668,7 +669,14 @@ export function registerRbfTransactionCreationContracts() {
       ).rejects.toThrow('Address derivation path does not match the signer account origin');
     });
 
-    it('does not deduct change when calculated fee delta is not positive', async () => {
+    it('refuses a replacement whose realistically-estimated fee falls far below the original fee', async () => {
+      // Regression for rbf-negative-fee-delta-desyncs-returned-fee-from-outputs:
+      // the original tx's witnesses are padded to inflate its vsize (and thus its
+      // apparent fee rate), so the *realistic* re-estimated replacement fee comes
+      // out well below the original fee even though newFeeRate clears the
+      // "must be higher" gate. Today this silently returns a fee/outputs mismatch
+      // (via the downstream PSBT-fee-consistency check); after the fix it must
+      // throw the BIP-125 rule-3 error itself, before that mismatch can occur.
       const spendAddress = testnetAddresses.nativeSegwit[0];
       const changeAddress = testnetAddresses.nativeSegwit[1];
       const spendScriptHex = Buffer.from(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet)).toString('hex');
@@ -705,7 +713,7 @@ export function registerRbfTransactionCreationContracts() {
       tx.outs[1].value = BigInt(originalChangeValue);
       const txHex = tx.toHex();
 
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(signableWallet('RBF Zero Delta Wallet'));
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(signableWallet('RBF Negative Delta Wallet'));
       mockPrismaClient.address.findMany
         .mockResolvedValueOnce([
           { address: spendAddress, derivationPath: "m/84'/1'/0'/0/0" },
@@ -723,7 +731,100 @@ export function registerRbfTransactionCreationContracts() {
 
       await expect(
         createRBFTransaction(originalTxid, 10.001, walletId, 'testnet3'),
-      ).rejects.toThrow('Constructed transaction fee does not match its PSBT');
+      ).rejects.toThrow('New fee must exceed the original fee by at least');
+    });
+
+    it('refuses a replacement whose estimated fee is exactly 50 sats below the original fee (BIP-125 rule 3)', async () => {
+      const spendAddress = testnetAddresses.nativeSegwit[0];
+      const changeAddress = testnetAddresses.nativeSegwit[1];
+      const externalAddress = spendAddress;
+      const spendScriptHex = Buffer.from(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet)).toString('hex');
+      const inputHash = Buffer.from('26'.repeat(32), 'hex');
+      const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      tx.addInput(inputHash, 0, RBF_SEQUENCE);
+      tx.addOutput(bitcoin.address.toOutputScript(externalAddress, bitcoin.networks.testnet), BigInt(40_000));
+      // totalInput (100_000) - 40_000 - 54_950 = oldFee 5_050
+      tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), BigInt(54_950));
+      const txHex = tx.toHex();
+
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(signableWallet('RBF -50 Delta Wallet'));
+      mockPrismaClient.address.findMany
+        .mockResolvedValueOnce([
+          { address: spendAddress, derivationPath: "m/84'/1'/0'/0/0" },
+          { address: changeAddress, derivationPath: "m/84'/1'/0'/1/0" },
+        ])
+        .mockResolvedValueOnce([{ address: changeAddress, branch: 1 }]);
+
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+        if (txid === originalTxid) {
+          return { txid: originalTxid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
+        }
+        if (txid === inputTxid) {
+          return prevoutResponse(inputTxid, spendScriptHex, spendAddress) as any;
+        }
+        return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
+      });
+
+      // newFeeRate (55) clears the "must be higher than current rate" gate for
+      // this fixture (see the sibling "creates an RBF replacement PSBT" test),
+      // but the realistically re-estimated fee is pinned to 5_000 sats here so
+      // the resulting feeDelta is exactly -50, deterministically.
+      const feeForRateSpy = vi.spyOn(transactionWeight, 'feeForRate').mockReturnValue(5_000);
+      try {
+        await expect(
+          createRBFTransaction(originalTxid, 55, walletId, 'testnet3'),
+        ).rejects.toThrow('New fee must exceed the original fee by at least');
+      } finally {
+        feeForRateSpy.mockRestore();
+      }
+    });
+
+    it('refuses a replacement whose estimated fee exactly matches the original fee (feeDelta = 0)', async () => {
+      const spendAddress = testnetAddresses.nativeSegwit[0];
+      const changeAddress = testnetAddresses.nativeSegwit[1];
+      const externalAddress = spendAddress;
+      const spendScriptHex = Buffer.from(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet)).toString('hex');
+      const inputHash = Buffer.from('27'.repeat(32), 'hex');
+      const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      tx.addInput(inputHash, 0, RBF_SEQUENCE);
+      tx.addOutput(bitcoin.address.toOutputScript(externalAddress, bitcoin.networks.testnet), BigInt(40_000));
+      // totalInput (100_000) - 40_000 - 55_000 = oldFee 5_000
+      tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), BigInt(55_000));
+      const txHex = tx.toHex();
+
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(signableWallet('RBF Zero Delta Wallet'));
+      mockPrismaClient.address.findMany
+        .mockResolvedValueOnce([
+          { address: spendAddress, derivationPath: "m/84'/1'/0'/0/0" },
+          { address: changeAddress, derivationPath: "m/84'/1'/0'/1/0" },
+        ])
+        .mockResolvedValueOnce([{ address: changeAddress, branch: 1 }]);
+
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+        if (txid === originalTxid) {
+          return { txid: originalTxid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
+        }
+        if (txid === inputTxid) {
+          return prevoutResponse(inputTxid, spendScriptHex, spendAddress) as any;
+        }
+        return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
+      });
+
+      // Fee is pinned to exactly 5_000 (== oldFee), so feeDelta is exactly 0.
+      const feeForRateSpy = vi.spyOn(transactionWeight, 'feeForRate').mockReturnValue(5_000);
+      try {
+        await expect(
+          createRBFTransaction(originalTxid, 55, walletId, 'testnet3'),
+        ).rejects.toThrow('New fee must exceed the original fee by at least');
+      } finally {
+        feeForRateSpy.mockRestore();
+      }
     });
   });
 }

@@ -101,6 +101,8 @@ Root cause (verified): `rbf.ts:352` early-returns when `feeDelta <= 0`; the call
 Contract: when `feeDelta <= 0`, throw with a BIP-125 rule-3 message (`New fee must exceed the original fee by at least …`); no silent return. Mutation map: `rbf.ts` is in the `serverFeePolicy` profile (per-file floor 75) with one pinned invariant `rbf-input-policy-drives-exact-weight` at lines 208–218; `adjustChangeOutputForFeeDelta` (~:346) is below it, so an in-place change shifts nothing — do not add lines above 218. Prove with `test:mutation:fee-policy` + `check-wallet-safety-mutation-map.mjs` (serverFeePolicy profile) before pushing.
 Failing-first tests: `feeDelta = -50` path throws (today returns inconsistent fee); positive path unchanged. Verification: server gates + fee-policy stryker + map checker. Rollback: revert.
 
+Status: done. `adjustChangeOutputForFeeDelta` now throws the BIP-125 rule-3 error for `feeDelta <= 0` instead of returning silently; fix is entirely below the pinned `rbf-input-policy-drives-exact-weight` invariant (208–218). `rbf.ts` scored 100.00% mutation coverage (9/9 killed, 0 survived) under `test:mutation:fee-policy`; `check-wallet-safety-mutation-map.mjs` (serverFeePolicy profile) passed.
+
 ## Phase 10 — P2: hex PSBT imports validate the PSBT magic
 
 Contract: `hexTextToBytes` rejects odd-length hex; both hex import sites check `hasPsbtMagicBytes` after decoding and raise the same invalid-format error the base64/binary branches raise.
