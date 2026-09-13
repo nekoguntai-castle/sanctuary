@@ -449,5 +449,28 @@ describe('DraftList', () => {
       });
       expect(screen.getByText(/No draft transactions/i)).toBeInTheDocument();
     });
+
+    it('clears a lingering operation error when retrying after a failed delete', async () => {
+      const user = userEvent.setup();
+      vi.mocked(draftsApi.deleteDraft).mockRejectedValueOnce(new Error('Delete failed'));
+      vi.mocked(draftsApi.getDrafts).mockResolvedValue(mockDrafts as any);
+
+      renderDraftList();
+
+      await screen.findByText('Unsigned');
+      await user.click(screen.getAllByTitle('Delete draft')[0]);
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+      const retryButton = await screen.findByRole('button', { name: /try again/i });
+      expect(screen.getByText('Delete failed')).toBeInTheDocument();
+
+      await user.click(retryButton);
+
+      await waitFor(() => {
+        expect(draftsApi.getDrafts).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.queryByText('Delete failed')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+    });
   });
 });

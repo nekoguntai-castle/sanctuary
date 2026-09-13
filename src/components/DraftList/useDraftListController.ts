@@ -50,7 +50,7 @@ export function useDraftListController({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [expandedDraft, setExpandedDraft] = useState<string | null>(null);
   const { loading, error, execute: runLoad } = useLoadingState<DraftTransaction[]>({ initialLoading: true });
-  const { error: operationError, execute: runOperation } = useLoadingState();
+  const { error: operationError, execute: runOperation, clearError: clearOperationError } = useLoadingState();
 
   const knownAddresses = React.useMemo(() => {
     return new Set(walletAddresses.map(wa => wa.address));
@@ -64,13 +64,14 @@ export function useDraftListController({
   const displayError = error || operationError;
 
   const loadDrafts = React.useCallback(() => runLoad(async () => {
+    clearOperationError();
     log.debug('Loading drafts for wallet', { walletId });
     const data = await getDrafts(walletId);
     log.debug('Loaded drafts', { count: data.length });
     setDrafts(data);
     onDraftsChange?.(data.length);
     return data;
-  }), [onDraftsChange, runLoad, walletId]);
+  }), [clearOperationError, onDraftsChange, runLoad, walletId]);
 
   useEffect(() => {
     void loadDrafts();

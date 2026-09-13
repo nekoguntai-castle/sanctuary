@@ -495,6 +495,9 @@ Owner: `src/components/DraftList/useDraftListController.ts`.
 **Contract:** the retry path clears `operationError` too (or the two states collapse into one).
 **Failing-first test:** reject `deleteDraft`, resolve `getDrafts`, click Try again → error cleared.
 
+**Status: done** — `loadDrafts` now clears `operationError` before reloading, so the "Try again"
+retry clears a lingering delete/upload error instead of leaving the banner stuck.
+
 ## Phase 18 — P2: three captured-but-unrendered errors
 
 Owner: `useDeviceListRecords.ts` + `DeviceList.tsx`; `AISettings.tsx` + `StatusTab`; `useLabelSelectorController.ts` + its renderer.
