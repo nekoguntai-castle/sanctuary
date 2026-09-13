@@ -120,6 +120,21 @@ export function registerPushRegisterValidationContracts() {
     expect(res.body.message).toBe('APNs token contains invalid characters');
   });
 
+  it('should return 400 for a deviceName over the shared length limit', async () => {
+    const res = await request(app)
+      .post('/api/v1/push/register')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        token: validAndroidToken,
+        platform: 'android',
+        deviceName: 'a'.repeat(101),
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_INPUT');
+    expect(res.body.message).toBe('Device name too long');
+  });
+
   it('should return 401 without authentication', async () => {
     const res = await request(app).post('/api/v1/push/register').send({
       token: validAndroidToken,

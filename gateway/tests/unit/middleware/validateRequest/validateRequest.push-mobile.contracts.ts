@@ -33,6 +33,40 @@ export function registerPushRegistrationValidationContracts() {
     expect(mockNext).toHaveBeenCalled();
   });
 
+  it('should accept a null deviceName, matching the backend', () => {
+    mockReq.body = {
+      token: 'abc123devicetoken',
+      platform: 'ios',
+      deviceName: null,
+    };
+
+    validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+  });
+
+  it('should reject a deviceName over the shared length limit', () => {
+    mockReq.body = {
+      token: 'abc123devicetoken',
+      platform: 'ios',
+      deviceName: 'a'.repeat(101),
+    };
+
+    validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(statusMock).toHaveBeenCalledWith(400);
+    expect(jsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.arrayContaining([
+          expect.objectContaining({
+            field: 'deviceName',
+            message: 'Device name too long',
+          }),
+        ]),
+      })
+    );
+  });
+
   it('should reject invalid platform', () => {
     mockReq.body = {
       token: 'abc123',

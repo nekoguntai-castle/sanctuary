@@ -67,6 +67,26 @@ export function registerPushRegisterSchemaContracts() {
 
     expect(result.success).toBe(true);
   });
+
+  it('should validate push registration with a null deviceName', () => {
+    const result = pushRegisterSchema.safeParse({
+      token: 'token123',
+      platform: 'android',
+      deviceName: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject a deviceName over the shared length limit', () => {
+    const result = pushRegisterSchema.safeParse({
+      token: 'token123',
+      platform: 'android',
+      deviceName: 'a'.repeat(101),
+    });
+
+    expect(result.success).toBe(false);
+  });
 }
 
 export function registerPushUnregisterSchemaContracts() {

@@ -95,6 +95,8 @@ Status: done. Both PATCH handlers now read the stored settings first and merge t
 
 Contract: `.nullable()` on `deviceName` in `MobilePushRegisterRequestSchema` (matching `server/src/api/push.ts:51`). Failing-first test: schema parse of `{..., deviceName: null}` succeeds (today fails); a contract test that the gateway and backend schemas accept the same shapes. Verification: shared + gateway tests. Rollback: revert.
 
+Status: done. `deviceName` is now `.nullable()` in the shared schema; the backend's `PushRegisterBodySchema` also gained a matching `.max(deviceNameMaxLength)` (it had no length bound despite the OpenAPI doc claiming one), so both schemas now accept/reject the same `deviceName` shapes. Covered by `tests/shared/mobileApiRequests.push.test.ts`, gateway `validateRequest` schema/route tests, and a new backend `push.register-schema-parity.test.ts` contract test.
+
 ## Phase 8 — P2: integration-DB entry points refuse non-test targets
 
 Root cause (verified): `prepare-integration-db.sh`, `check-integration-db.mjs:42`, `server/tests/integration/repositories/setup/database.ts:9,17` resolve `TEST_DATABASE_URL || DATABASE_URL` with no target guard; only the root `scripts/run-integration-tests.sh` provisions its own compose Postgres.

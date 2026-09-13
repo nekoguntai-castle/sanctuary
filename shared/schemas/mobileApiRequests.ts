@@ -202,6 +202,7 @@ export const MobilePushRegisterRequestSchema = z.object({
   deviceName: z
     .string()
     .max(MOBILE_API_REQUEST_LIMITS.deviceNameMaxLength, 'Device name too long')
+    .nullable()
     .optional(),
 });
 

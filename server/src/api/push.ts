@@ -34,6 +34,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { pushDeviceRepository, auditLogRepository } from '../repositories';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { verifyGatewayRequest } from '../middleware/gatewayAuth';
@@ -45,10 +46,15 @@ import { ErrorCodes, InvalidInputError, NotFoundError } from '../errors/ApiError
 const router = Router();
 const log = createLogger('PUSH:ROUTE');
 
-const PushRegisterBodySchema = z.object({
+export const PushRegisterBodySchema = z.object({
   token: z.string().min(1),
   platform: z.enum(['ios', 'android']),
-  deviceName: z.string().nullable().optional().transform((deviceName) => deviceName ?? undefined),
+  deviceName: z
+    .string()
+    .max(MOBILE_API_REQUEST_LIMITS.deviceNameMaxLength, 'Device name too long')
+    .nullable()
+    .optional()
+    .transform((deviceName) => deviceName ?? undefined),
 });
 
 const PushUnregisterBodySchema = z.object({
@@ -66,9 +72,13 @@ const pushRegisterValidationMessage = (issues: Array<{ path: string; message: st
   if (issues.some(issue => issue.path === 'token')) {
     return 'Device token is required';
   }
-  /* v8 ignore next -- route schema tests cover token/platform validation; this is message specificity */
-  if (issues.some(issue => issue.path === 'deviceName')) {
-    return 'deviceName must be a string';
+  const deviceNameIssue = issues.find(issue => issue.path === 'deviceName');
+  if (deviceNameIssue) {
+    // Forward the schema's own message (e.g. "Device name too long" for an
+    // over-long string, or zod's default type-mismatch message for a
+    // non-string, non-null value) instead of collapsing every deviceName
+    // failure into one misleading message.
+    return deviceNameIssue.message;
   }
   return 'Platform must be "ios" or "android"';
 };

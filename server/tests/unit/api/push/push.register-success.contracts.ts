@@ -95,6 +95,37 @@ export function registerPushRegisterSuccessContracts() {
     });
   });
 
+  it('should register a device with a null deviceName', async () => {
+    const now = new Date();
+    mockUpsert.mockResolvedValue({
+      id: 'device-4',
+      token: validAndroidToken,
+      platform: 'android',
+      userId: 'test-user-123',
+      deviceName: undefined,
+      createdAt: now,
+      lastUsedAt: now,
+    });
+
+    const res = await request(app)
+      .post('/api/v1/push/register')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        token: validAndroidToken,
+        platform: 'android',
+        deviceName: null,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockUpsert).toHaveBeenCalledWith({
+      token: validAndroidToken,
+      userId: 'test-user-123',
+      platform: 'android',
+      deviceName: undefined,
+    });
+  });
+
   it('should update an existing device token', async () => {
     const createdAt = new Date('2024-01-01');
     const lastUsedAt = new Date(); // Different from createdAt = existing device
