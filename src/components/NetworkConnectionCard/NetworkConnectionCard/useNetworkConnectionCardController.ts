@@ -54,6 +54,7 @@ export function useNetworkConnectionCardController({
     Record<string, ServerTestStatus>
   >({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [serverActionError, setServerActionError] = useState("");
 
   const updateNetworkConfig = (field: string, value: unknown) => {
     onConfigChange(createNetworkConfigPatch(network, field, value));
@@ -108,6 +109,7 @@ export function useNetworkConnectionCardController({
   const handleAddServer = async () => {
     if (!newServer.label || !newServer.host) return;
     setServerActionLoading("add");
+    setServerActionError("");
     try {
       const server = await adminApi.addElectrumServer({
         ...newServer,
@@ -124,6 +126,7 @@ export function useNetworkConnectionCardController({
       );
     } catch (error) {
       log.error("Failed to add server", { error });
+      setServerActionError(extractErrorMessage(error, "Failed to add server"));
     } finally {
       setServerActionLoading(null);
     }
@@ -132,6 +135,7 @@ export function useNetworkConnectionCardController({
   const handleUpdateServer = async () => {
     if (!editingServerId || !newServer.label || !newServer.host) return;
     setServerActionLoading(editingServerId);
+    setServerActionError("");
     try {
       const updatedServer = await adminApi.updateElectrumServer(
         editingServerId,
@@ -150,6 +154,9 @@ export function useNetworkConnectionCardController({
       );
     } catch (error) {
       log.error("Failed to update server", { error });
+      setServerActionError(
+        extractErrorMessage(error, "Failed to update server"),
+      );
     } finally {
       setServerActionLoading(null);
     }
@@ -168,11 +175,15 @@ export function useNetworkConnectionCardController({
 
   const handleDeleteServer = async (serverId: string) => {
     setServerActionLoading(serverId);
+    setServerActionError("");
     try {
       await adminApi.deleteElectrumServer(serverId);
       onServersChange(servers.filter((server) => server.id !== serverId));
     } catch (error) {
       log.error("Failed to delete server", { error });
+      setServerActionError(
+        extractErrorMessage(error, "Failed to delete server"),
+      );
     } finally {
       setServerActionLoading(null);
     }
@@ -180,6 +191,7 @@ export function useNetworkConnectionCardController({
 
   const handleToggleServer = async (server: ElectrumServer) => {
     setServerActionLoading(server.id);
+    setServerActionError("");
     try {
       await adminApi.updateElectrumServer(server.id, {
         enabled: !server.enabled,
@@ -191,6 +203,9 @@ export function useNetworkConnectionCardController({
       );
     } catch (error) {
       log.error("Failed to toggle server", { error });
+      setServerActionError(
+        extractErrorMessage(error, "Failed to toggle server"),
+      );
     } finally {
       setServerActionLoading(null);
     }
@@ -203,6 +218,7 @@ export function useNetworkConnectionCardController({
     const reordered = getReorderedServers(servers, serverId, direction);
     if (!reordered) return;
 
+    setServerActionError("");
     onServersChange(reordered);
     try {
       await adminApi.reorderElectrumServers(
@@ -210,6 +226,9 @@ export function useNetworkConnectionCardController({
       );
     } catch (error) {
       log.error("Failed to reorder servers", { error });
+      setServerActionError(
+        extractErrorMessage(error, "Failed to reorder servers"),
+      );
     }
   };
 
@@ -251,6 +270,7 @@ export function useNetworkConnectionCardController({
     testMessage,
     serverTestStatus,
     showAdvanced,
+    serverActionError,
     setIsAddingServer,
     setEditingServerId,
     setNewServer,

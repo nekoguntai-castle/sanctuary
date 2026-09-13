@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { ErrorAlert } from '../ui/ErrorAlert';
 import { ElectrumServer } from '../../types';
 import type { NetworkColors, PresetServer, NewServerState } from './types';
 import { ServerRow } from './ServerRow';
@@ -18,6 +19,7 @@ interface PoolConfigProps {
   poolStats?: bitcoinApi.PoolStats | null;
   colors: NetworkColors;
   presets: PresetServer[];
+  serverActionError: string;
   showAdvanced: boolean;
   isAddingServer: boolean;
   editingServerId: string | null;
@@ -49,6 +51,7 @@ export const PoolConfig: React.FC<PoolConfigProps> = ({
   servers,
   colors,
   presets,
+  serverActionError,
   showAdvanced,
   isAddingServer,
   editingServerId,
@@ -85,6 +88,10 @@ export const PoolConfig: React.FC<PoolConfigProps> = ({
       <span>Advanced Settings</span>
       <ChevronRight className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
     </button>
+
+    {serverActionError && (
+      <ErrorAlert message={serverActionError} className="mb-0" />
+    )}
 
     {/* Pool Settings (hidden by default) */}
     {showAdvanced && (

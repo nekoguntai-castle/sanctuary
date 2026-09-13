@@ -433,6 +433,98 @@ describe("NetworkConnectionCard", () => {
     });
   });
 
+  describe("server action errors", () => {
+    it("renders the add-server error message when the API call rejects", async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminApi.addElectrumServer).mockRejectedValueOnce(
+        new Error("add failed"),
+      );
+      render(<NetworkConnectionCard {...defaultProps} />);
+
+      await user.click(screen.getByText("Add Server"));
+      fireEvent.change(screen.getByPlaceholderText("My Server"), {
+        target: { value: "Test Server" },
+      });
+      fireEvent.change(screen.getByPlaceholderText("electrum.example.com"), {
+        target: { value: "test.example.com" },
+      });
+
+      const formTitle = screen.getByText("Add New Server");
+      const formContainer = formTitle.closest("div")?.parentElement;
+      const submitButton = within(formContainer as HTMLElement)
+        .getAllByRole("button")
+        .find((button) => /Add Server|Adding/i.test(button.textContent || ""));
+      await user.click(submitButton as HTMLElement);
+
+      await waitFor(() => {
+        expect(screen.getByText("add failed")).toBeInTheDocument();
+      });
+    });
+
+    it("renders the update-server error message when the API call rejects", async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminApi.updateElectrumServer).mockRejectedValueOnce(
+        new Error("update failed"),
+      );
+      render(<NetworkConnectionCard {...defaultProps} />);
+
+      const editButtons = screen.getAllByTitle("Edit server");
+      await user.click(editButtons[0]);
+
+      const formTitle = await screen.findByText("Edit Server");
+      const formContainer = formTitle.closest("div")?.parentElement;
+      const submitButton = within(formContainer as HTMLElement)
+        .getAllByRole("button")
+        .find((button) => /Update Server|Updating/i.test(button.textContent || ""));
+      await user.click(submitButton as HTMLElement);
+
+      await waitFor(() => {
+        expect(screen.getByText("update failed")).toBeInTheDocument();
+      });
+    });
+
+    it("renders the delete-server error message when the API call rejects", async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminApi.deleteElectrumServer).mockRejectedValueOnce(
+        new Error("delete failed"),
+      );
+      render(<NetworkConnectionCard {...defaultProps} />);
+
+      const deleteButtons = screen.getAllByTitle("Delete server");
+      await user.click(deleteButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText("delete failed")).toBeInTheDocument();
+      });
+    });
+
+    it("clears a previous server action error once a subsequent action succeeds", async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminApi.deleteElectrumServer).mockRejectedValueOnce(
+        new Error("delete failed"),
+      );
+      render(<NetworkConnectionCard {...defaultProps} />);
+
+      const deleteButtons = screen.getAllByTitle("Delete server");
+      await user.click(deleteButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText("delete failed")).toBeInTheDocument();
+      });
+
+      vi.mocked(adminApi.deleteElectrumServer).mockResolvedValueOnce({
+        success: true,
+        message: "Deleted",
+      });
+      const remainingDeleteButtons = screen.getAllByTitle("Delete server");
+      await user.click(remainingDeleteButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByText("delete failed")).not.toBeInTheDocument();
+      });
+    });
+  });
+
   describe("advanced settings", () => {
     it("shows advanced settings toggle", () => {
       render(<NetworkConnectionCard {...defaultProps} />);

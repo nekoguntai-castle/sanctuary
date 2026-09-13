@@ -64,6 +64,7 @@ export const NetworkConnectionCard: React.FC<NetworkConnectionCardProps> = ({
           poolStats={poolStats}
           colors={controller.colors}
           presets={controller.presets}
+          serverActionError={controller.serverActionError}
           showAdvanced={controller.showAdvanced}
           isAddingServer={controller.isAddingServer}
           editingServerId={controller.editingServerId}

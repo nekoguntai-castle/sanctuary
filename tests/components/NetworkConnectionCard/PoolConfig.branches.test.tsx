@@ -14,6 +14,7 @@ const renderPoolConfig = (
       poolStats={null}
       colors={{ primary: 'text-primary-500', bg: 'bg-primary-500' } as any}
       presets={[]}
+      serverActionError=""
       showAdvanced
       isAddingServer={false}
       editingServerId={null}

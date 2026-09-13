@@ -145,6 +145,8 @@ Status: done — `createMutation.reset()` added in `cancelCreate`, the Escape pa
 Contract: a `serverActionError` state set in every catch of `useNetworkConnectionCardController` (add/update/delete/toggle/reorder), cleared at the start of each action, rendered in the card with the existing inline-error idiom; success paths unchanged (render-regression baselines capture non-error states).
 Failing-first tests: reject `adminApi.addElectrumServer` → the error renders (today nothing); same for update/delete. Verification: frontend gates. Rollback: revert.
 
+Status: done. `serverActionError` added to `useNetworkConnectionCardController`, cleared at the start of add/update/delete/toggle/reorder and set from `extractErrorMessage` in each catch; rendered via `ErrorAlert` in `PoolConfig.tsx`. 4 new red-then-green tests in `tests/components/NetworkConnectionCard.test.tsx`; lizard held at exactly 86 warnings.
+
 ## Final verification (after all phases merge)
 
 Backend: `cd server && npx tsc --noEmit && npm run typecheck:tests && npx vitest run --coverage tests/unit`; the integration lane (root `npm run test:integration`) including the new TOTP spec; `bash scripts/ci/backend-integration-groups.sh --check`; fee-policy stryker + mutation-map checker for Phase 9.
