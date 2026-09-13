@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { InvalidInputError } from '../../../../src/errors/ApiError';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import { mockElectrumClient, mockElectrumPool } from '../../../mocks/electrum';
 import {
@@ -276,6 +277,28 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(500);
         expect(response.body.code).toBe('INTERNAL_ERROR');
+      });
+
+      it('should return 400 INVALID_INPUT when the replacement fee is not raised (BIP-125 rule 3)', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.createRBFTransaction.mockRejectedValue(
+          new InvalidInputError(
+            'New fee must exceed the original fee by at least 1 sat (BIP-125 rule 3); calculated fee delta was 0 sat(s).',
+            'newFeeRate'
+          )
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
       });
 
       it('should return 400 when wallet network is unsupported', async () => {

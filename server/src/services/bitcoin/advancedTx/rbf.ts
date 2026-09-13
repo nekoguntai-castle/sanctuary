@@ -13,6 +13,7 @@ import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { walletRepository, addressRepository } from '../../../repositories';
+import { InvalidInputError } from '../../../errors/ApiError';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { getErrorMessage } from '../../../utils/errors';
@@ -350,8 +351,9 @@ function adjustChangeOutputForFeeDelta(
   dustThreshold: number
 ): void {
   if (feeDelta <= 0) {
-    throw new Error(
-      `New fee must exceed the original fee by at least 1 sat (BIP-125 rule 3); calculated fee delta was ${feeDelta} sat(s).`
+    throw new InvalidInputError(
+      `New fee must exceed the original fee by at least 1 sat (BIP-125 rule 3); calculated fee delta was ${feeDelta} sat(s).`,
+      'newFeeRate'
     );
   }
 

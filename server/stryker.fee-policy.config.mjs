@@ -11,7 +11,7 @@ export default {
     'src/services/bitcoin/transactions/createBatchTransaction.ts:297-390',
     'src/services/bitcoin/advancedTx/batch.ts:90-140',
     'src/services/bitcoin/advancedTx/cpfp.ts:35-67',
-    'src/services/bitcoin/advancedTx/rbf.ts:208-218',
+    'src/services/bitcoin/advancedTx/rbf.ts:209-219',
   ],
   testFiles: [
     'tests/unit/services/bitcoin/signingIntent/feePolicy.test.ts',

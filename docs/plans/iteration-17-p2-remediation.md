@@ -46,6 +46,8 @@ Acceptance: both new tests red on main and green on the branch; no other send-pa
 
 ## Phase 2 — RBF fee-not-raised refusal is a 400 (server)
 
+Status: done
+
 Finding: `rbf-fee-delta-refusal-surfaces-as-500-not-400`.
 
 Evidence: `rbf.ts:352-355` throws a plain `Error`; the route (`transactions.ts:169`) is wrapped only by `asyncHandler`; `errorHandler.ts` maps non-`ApiError` to 500; `bitcoin.transaction.contracts.ts:262-277` documents the 500 fallthrough.

@@ -1239,8 +1239,8 @@
         {
           "id": "rbf-input-policy-drives-exact-weight",
           "productionFile": "src/services/bitcoin/advancedTx/rbf.ts",
-          "lineStart": 208,
-          "lineEnd": 218,
+          "lineStart": 209,
+          "lineEnd": 219,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
             "name": "Advanced Transaction Features RBF Transaction Creation should create an RBF replacement PSBT when a wallet change output exists"
@@ -1248,8 +1248,8 @@
           "canaries": [{
             "id": "rbf-weight-request-cannot-be-emptied",
             "location": {
-              "start": { "line": 208, "column": 55 },
-              "end": { "line": 218, "column": 4 }
+              "start": { "line": 209, "column": 55 },
+              "end": { "line": 219, "column": 4 }
             },
             "mutatorName": "ObjectLiteral",
             "replacement": "{}",

@@ -16,6 +16,7 @@ import {
   createRBFTransaction,
   RBF_SEQUENCE,
 } from '../../../../../src/services/bitcoin/advancedTx';
+import { InvalidInputError } from '../../../../../src/errors/ApiError';
 import * as psbtConstruction from '../../../../../src/services/bitcoin/transactions/psbtConstruction';
 import * as transactionWeight from '../../../../../src/services/bitcoin/transactionWeight';
 
@@ -819,9 +820,9 @@ export function registerRbfTransactionCreationContracts() {
       // Fee is pinned to exactly 5_000 (== oldFee), so feeDelta is exactly 0.
       const feeForRateSpy = vi.spyOn(transactionWeight, 'feeForRate').mockReturnValue(5_000);
       try {
-        await expect(
-          createRBFTransaction(originalTxid, 55, walletId, 'testnet3'),
-        ).rejects.toThrow('New fee must exceed the original fee by at least');
+        const result = createRBFTransaction(originalTxid, 55, walletId, 'testnet3');
+        await expect(result).rejects.toThrow('New fee must exceed the original fee by at least');
+        await expect(result).rejects.toBeInstanceOf(InvalidInputError);
       } finally {
         feeForRateSpy.mockRestore();
       }
