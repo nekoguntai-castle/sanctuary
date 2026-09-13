@@ -171,14 +171,23 @@ const shouldCombinePsbts = (unsignedPsbt: string | null, walletType: WalletTypeV
   return Boolean(unsignedPsbt && isMultisigType(walletType));
 };
 
+/**
+ * Discriminated result for PSBT combine attempts. A bare string return type let a
+ * combine failure be silently swapped in as "the" PSBT, discarding every signature
+ * collected so far; callers must now check `ok` before touching signing state.
+ */
+export type CombinePsbtResult =
+  | { ok: true; psbt: string }
+  | { ok: false; reason: string };
+
 const combineUploadedPsbt = (
   unsignedPsbt: string | null,
   walletType: WalletTypeValue,
   base64Psbt: string
-): string => {
+): CombinePsbtResult => {
   if (!shouldCombinePsbts(unsignedPsbt, walletType)) {
     log.debug('Not combining - no existing PSBT or not multisig');
-    return base64Psbt;
+    return { ok: true, psbt: base64Psbt };
   }
 
   log.debug('Will combine PSBTs');
@@ -198,10 +207,11 @@ const combineUploadedPsbt = (
 
     existingPsbtObj.combine(newPsbtObj);
     log.debug('Combined PSBTs', { totalSignatures: countSignatures(existingPsbtObj) });
-    return existingPsbtObj.toBase64();
+    return { ok: true, psbt: existingPsbtObj.toBase64() };
   } catch (combineError) {
+    const reason = extractErrorMessage(combineError, String(combineError));
     log.error('PSBT combine failed', { error: combineError });
-    return base64Psbt;
+    return { ok: false, reason };
   }
 };
 
@@ -209,9 +219,9 @@ const combineQrSignedPsbt = (
   unsignedPsbt: string | null,
   walletType: WalletTypeValue,
   signedPsbt: string
-): string => {
+): CombinePsbtResult => {
   if (!shouldCombinePsbts(unsignedPsbt, walletType)) {
-    return signedPsbt;
+    return { ok: true, psbt: signedPsbt };
   }
 
   try {
@@ -225,12 +235,11 @@ const combineQrSignedPsbt = (
 
     existingPsbtObj.combine(newPsbtObj);
     log.info('Combined PSBT', { totalSignatures: countSignatures(existingPsbtObj) });
-    return existingPsbtObj.toBase64();
+    return { ok: true, psbt: existingPsbtObj.toBase64() };
   } catch (combineError) {
-    log.warn('Failed to combine PSBTs, using new PSBT', {
-      error: extractErrorMessage(combineError, String(combineError)),
-    });
-    return signedPsbt;
+    const reason = extractErrorMessage(combineError, String(combineError));
+    log.warn('PSBT combine failed', { error: reason });
+    return { ok: false, reason };
   }
 };
 
@@ -299,11 +308,16 @@ const processUploadedSignedPsbt = async ({
     throw new Error(validationError);
   }
 
-  const combinedPsbt = combineUploadedPsbt(unsignedPsbt, walletType, base64Psbt);
+  const combineResult = combineUploadedPsbt(unsignedPsbt, walletType, base64Psbt);
   if (!lease.isCurrent()) return;
-  setUnsignedPsbt(combinedPsbt);
+  if (!combineResult.ok) {
+    throw new Error(
+      `Failed to combine the signature from ${effectiveDeviceId}: this PSBT does not match the transaction being signed.`
+    );
+  }
+  setUnsignedPsbt(combineResult.psbt);
   markSignedDevice(setSignedDevices, effectiveDeviceId);
-  await persistUploadedSignatureToDraft(walletId, draftId, combinedPsbt, effectiveDeviceId, lease);
+  await persistUploadedSignatureToDraft(walletId, draftId, combineResult.psbt, effectiveDeviceId, lease);
 };
 
 const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
@@ -406,11 +420,16 @@ export function useQrSigning({
     setIsSigning(true);
     log.info('Processing QR-signed PSBT', { deviceId, psbtLength: signedPsbt.length });
     try {
-      const combinedPsbt = combineQrSignedPsbt(unsignedPsbt, wallet.type, signedPsbt);
+      const combineResult = combineQrSignedPsbt(unsignedPsbt, wallet.type, signedPsbt);
       if (!lease.isCurrent()) return;
-      setUnsignedPsbt(combinedPsbt);
+      if (!combineResult.ok) {
+        throw new Error(
+          `Failed to combine the signature from device ${deviceId}: this PSBT does not match the transaction being signed.`
+        );
+      }
+      setUnsignedPsbt(combineResult.psbt);
       markSignedDevice(setSignedDevices, deviceId);
-      await persistQrSignatureToDraft(walletId, draftId, combinedPsbt, deviceId, lease);
+      await persistQrSignatureToDraft(walletId, draftId, combineResult.psbt, deviceId, lease);
     } catch (error) {
       if (lease.isCurrent()) {
         setError(extractErrorMessage(error, 'Failed to process signed PSBT'));

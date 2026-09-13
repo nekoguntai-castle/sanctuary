@@ -120,6 +120,8 @@ Status: done
 
 ## Phase 7 — a PSBT combine failure never discards collected signatures (frontend)
 
+Status: done
+
 Finding: `qr-signing-combine-failure-drops-prior-signatures`.
 
 Evidence: `useQrSigning.ts:174-206` and `:208-235` return the newest PSBT from the `catch`; callers (:281-307, :403-422) then `setUnsignedPsbt` and `markSignedDevice` unconditionally.

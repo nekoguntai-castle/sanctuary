@@ -255,6 +255,54 @@ describe('useQrSigning', () => {
     expect(deps.setSignedDevices).not.toHaveBeenCalled();
   });
 
+  it('quietly drops a combine failure when the lease goes stale before the result is checked', async () => {
+    mockFileReader({ bytes: new TextEncoder().encode('signed-psbt-for-tx-y') });
+    mocks.fromBase64.mockImplementationOnce(() => {
+      throw new Error('combine failed');
+    });
+    const isCurrent = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const controller = new AbortController();
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
+      unsignedPsbt: 'existing-psbt-for-tx-x',
+      beginSigning: () => ({ signal: controller.signal, isCurrent }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await result.current.uploadSignedPsbt(new File(['x'], 'signed.psbt'));
+
+    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a non-Error combine failure on the uploaded-PSBT path without dropping signatures', async () => {
+    mockFileReader({ bytes: new TextEncoder().encode('signed-psbt-for-tx-y') });
+    mocks.fromBase64.mockImplementationOnce(() => {
+      throw 'non-error upload combine failure';
+    });
+
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
+      unsignedPsbt: 'existing-psbt-for-tx-x',
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await expect(
+      result.current.uploadSignedPsbt(new File(['x'], 'signed.psbt'), 'device-nonerror')
+    ).rejects.toThrow(
+      'Failed to combine the signature from device-nonerror: this PSBT does not match the transaction being signed.'
+    );
+
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'PSBT combine failed',
+      expect.objectContaining({ error: 'non-error upload combine failure' })
+    );
+  });
+
   it('falls back to an empty ArrayBuffer when FileReader delivers a null result', async () => {
     mockFileReader({ nullResult: true });
     const deps = createDeps();
@@ -532,13 +580,20 @@ describe('useQrSigning', () => {
     expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('combined-with-mixed-inputs');
   });
 
-  it('falls back to uploaded base64 when combine fails and tolerates draft persist errors', async () => {
+  it('tolerates a draft persist failure after a successful uploaded-PSBT combine', async () => {
     const textBytes = new TextEncoder().encode('text-psbt  \n');
     mockFileReader({ bytes: textBytes });
-    mocks.fromBase64.mockImplementationOnce(() => {
-      throw new Error('combine failed');
-    });
     mocks.updateDraft.mockRejectedValueOnce(new Error('persist failed'));
+
+    const existingPsbtObj = {
+      data: { inputs: [{ partialSig: [{ pubkey: Buffer.from('61'.repeat(33), 'hex') }] }] },
+      combine: vi.fn(),
+      toBase64: vi.fn(() => 'text-psbt'),
+    };
+    const newPsbtObj = {
+      data: { inputs: [{ partialSig: [{ pubkey: Buffer.from('62'.repeat(33), 'hex') }] }] },
+    };
+    mocks.fromBase64.mockReturnValueOnce(existingPsbtObj).mockReturnValueOnce(newPsbtObj);
 
     const deps = createDeps({
       wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
@@ -550,13 +605,46 @@ describe('useQrSigning', () => {
 
     await expect(result.current.uploadSignedPsbt(file, 'device-3')).resolves.toBeUndefined();
 
+    expect(existingPsbtObj.combine).toHaveBeenCalledWith(newPsbtObj);
     expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('text-psbt');
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'PSBT combine failed',
-      expect.objectContaining({ error: expect.any(Error) })
-    );
+    const updater = vi.mocked(deps.setSignedDevices).mock.calls[0][0];
+    expect(updater(new Set<string>()).has('device-3')).toBe(true);
     expect(mocks.logger.warn).toHaveBeenCalledWith(
       'Failed to persist uploaded PSBT to draft',
+      expect.objectContaining({ error: expect.any(Error) })
+    );
+  });
+
+  it('surfaces a combine failure instead of dropping prior signatures (uploaded PSBT)', async () => {
+    // Stored PSBT is for transaction X (already has one signature). The uploaded
+    // file is a signed PSBT for a different transaction Y, so bitcoin.Psbt.combine()
+    // throws — this must not silently replace X's PSBT with Y's.
+    const textBytes = new TextEncoder().encode('signed-psbt-for-tx-y  \n');
+    mockFileReader({ bytes: textBytes });
+    mocks.fromBase64.mockImplementationOnce(() => {
+      throw new Error('combine failed');
+    });
+
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
+      unsignedPsbt: 'existing-psbt-for-tx-x',
+      draftId: 'draft-2',
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+    const file = new File(['dummy'], 'signed.psbt');
+
+    await expect(result.current.uploadSignedPsbt(file, 'device-3')).rejects.toThrow(
+      'Failed to combine the signature from device-3: this PSBT does not match the transaction being signed.'
+    );
+
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Failed to combine the signature from device-3: this PSBT does not match the transaction being signed.'
+    );
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'PSBT combine failed',
       expect.objectContaining({ error: expect.any(Error) })
     );
   });
@@ -711,35 +799,72 @@ describe('useQrSigning', () => {
     expect(mocks.updateDraft).not.toHaveBeenCalled();
   });
 
-  it('falls back to QR payload when combine fails and ignores draft persist errors', async () => {
-    mocks.fromBase64.mockImplementationOnce(() => {
-      throw new Error('qr combine failed');
-    });
+  it('tolerates a draft persist failure after a successful QR-signed combine', async () => {
     mocks.updateDraft.mockRejectedValueOnce(new Error('draft write failed'));
+
+    const existingPsbtObj = {
+      data: { inputs: [{ partialSig: [{ pubkey: Buffer.from('81'.repeat(33), 'hex') }] }] },
+      combine: vi.fn(),
+      toBase64: vi.fn(() => 'qr-combined-persist-fail'),
+    };
+    const newPsbtObj = {
+      data: { inputs: [{ partialSig: [{ pubkey: Buffer.from('82'.repeat(33), 'hex') }] }] },
+    };
+    mocks.fromBase64.mockReturnValueOnce(existingPsbtObj).mockReturnValueOnce(newPsbtObj);
 
     const deps = createDeps({
       wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
       unsignedPsbt: 'existing-qr-psbt',
-      draftId: 'draft-qr',
+      draftId: 'draft-qr-2',
     });
     const { result } = renderHook(() => useQrSigning(deps));
 
     await act(async () => {
-      await result.current.processQrSignedPsbt('incoming-qr-psbt', 'device-qr');
+      await result.current.processQrSignedPsbt('incoming-qr-psbt', 'device-qr-2');
     });
 
-    expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('incoming-qr-psbt');
-    expect(mocks.logger.warn).toHaveBeenCalledWith(
-      'Failed to combine PSBTs, using new PSBT',
-      expect.objectContaining({ error: 'qr combine failed' })
-    );
+    expect(existingPsbtObj.combine).toHaveBeenCalledWith(newPsbtObj);
+    expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('qr-combined-persist-fail');
     expect(mocks.logger.warn).toHaveBeenCalledWith(
       'Failed to persist QR signature to draft',
       expect.objectContaining({ error: expect.any(Error) })
     );
   });
 
-  it('falls back to QR payload when combine throws a non-Error value', async () => {
+  it('surfaces a combine failure instead of dropping prior signatures (QR scan)', async () => {
+    // Stored PSBT is for transaction X (already has one signature). The scanned QR
+    // payload is a signed PSBT for a different transaction Y, so combine() throws —
+    // the stored PSBT and signedDevices must be left untouched.
+    mocks.fromBase64.mockImplementationOnce(() => {
+      throw new Error('qr combine failed');
+    });
+
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
+      unsignedPsbt: 'existing-psbt-for-tx-x',
+      draftId: 'draft-qr',
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await expect(
+      result.current.processQrSignedPsbt('signed-psbt-for-tx-y', 'device-qr')
+    ).rejects.toThrow(
+      'Failed to combine the signature from device device-qr: this PSBT does not match the transaction being signed.'
+    );
+
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Failed to combine the signature from device device-qr: this PSBT does not match the transaction being signed.'
+    );
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+    expect(mocks.logger.warn).toHaveBeenCalledWith(
+      'PSBT combine failed',
+      expect.objectContaining({ error: 'qr combine failed' })
+    );
+  });
+
+  it('surfaces a combine failure for a non-Error thrown value without dropping signatures', async () => {
     mocks.fromBase64.mockImplementationOnce(() => {
       throw 'non-error combine failure';
     });
@@ -751,13 +876,16 @@ describe('useQrSigning', () => {
     });
     const { result } = renderHook(() => useQrSigning(deps));
 
-    await act(async () => {
-      await result.current.processQrSignedPsbt('incoming-qr-psbt', 'device-qr-nonerror');
-    });
+    await expect(
+      result.current.processQrSignedPsbt('incoming-qr-psbt', 'device-qr-nonerror')
+    ).rejects.toThrow(
+      'Failed to combine the signature from device device-qr-nonerror: this PSBT does not match the transaction being signed.'
+    );
 
-    expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('incoming-qr-psbt');
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
     expect(mocks.logger.warn).toHaveBeenCalledWith(
-      'Failed to combine PSBTs, using new PSBT',
+      'PSBT combine failed',
       expect.objectContaining({ error: 'non-error combine failure' })
     );
   });
