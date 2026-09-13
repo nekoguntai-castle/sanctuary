@@ -9,6 +9,7 @@ import {
   recordTransactionFailure,
 } from '../../../src/services/deadLetterQueue';
 import { MemoryDeadLetterStore } from '../../../src/services/memoryDeadLetterStore';
+import { isSyncWalletEnvelope } from '../../../src/services/deadLetterJobEnvelope';
 
 function exhaustedJob(overrides: Partial<Job> = {}): Job {
   return {
@@ -281,6 +282,79 @@ describe('DeadLetterQueue', () => {
         1,
       ),
     ).rejects.toThrow('maximum serialized size');
+  });
+
+  it('drops the redundant payload.data display copy for a moderately oversized sync entry, keeping job.data intact and retryable', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    // ~200 KiB of padding in the sync wallet job's own reason field. Doubled by
+    // addExhaustedJob's payload.data/job.data embedding this exceeds the 256 KiB
+    // cap, but a single copy comfortably fits once the display copy is dropped.
+    const reason = 'x'.repeat(200 * 1_024);
+    const job = exhaustedJob({
+      id: 'job-oversized-sync',
+      data: { walletId: 'wallet-1', reason },
+    });
+
+    const id = await queue.addExhaustedJob('sync', 'sync', job, 'sync failed');
+    const entry = await queue.get(id);
+
+    expect(entry).not.toBeNull();
+    expect(entry!.payload).not.toHaveProperty('data');
+    expect(entry!.job).toEqual(expect.objectContaining({
+      data: { walletId: 'wallet-1', reason },
+    }));
+    expect(isSyncWalletEnvelope(entry!.job!)).toBe(true);
+  });
+
+  it('replaces payload.data and job.data with a bounded summary when dropping the display copy alone is still oversized', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    // Large enough on its own (> 256 KiB) that dropping the redundant
+    // payload.data copy cannot bring the entry under the cap.
+    const oversizedData = { walletId: 'wallet-1', blob: 'x'.repeat(300 * 1_024) };
+    const job = exhaustedJob({
+      id: 'job-oversized-other',
+      name: 'other-job',
+      data: oversizedData,
+    });
+
+    const id = await queue.addExhaustedJob('other', 'maintenance', job, 'failed');
+    const entry = await queue.get(id);
+
+    expect(entry).not.toBeNull();
+    expect(entry!.payload.data).toEqual(expect.objectContaining({
+      truncated: true,
+      originalBytes: expect.any(Number),
+      preview: expect.any(String),
+    }));
+    expect(entry!.job?.data).toEqual(expect.objectContaining({
+      truncated: true,
+      originalBytes: expect.any(Number),
+      preview: expect.any(String),
+    }));
+    expect(JSON.stringify(entry)).not.toContain(oversizedData.blob);
+    await expect(queue.get(id)).resolves.not.toBeNull();
+  });
+
+  it('keeps the truncated preview within its byte budget on multibyte content', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    const oversizedData = { walletId: 'wallet-1', blob: '\u{1F512}'.repeat(80 * 1_024) };
+    const job = exhaustedJob({ id: 'job-oversized-multibyte', name: 'other-job', data: oversizedData });
+
+    const id = await queue.addExhaustedJob('other', 'maintenance', job, 'failed');
+    const entry = await queue.get(id);
+    const summary = entry!.job?.data as { truncated: true; originalBytes: number; preview: string };
+
+    expect(summary.truncated).toBe(true);
+    expect(summary.originalBytes).toBe(Buffer.byteLength(JSON.stringify(oversizedData)));
+    expect(Buffer.byteLength(summary.preview)).toBeLessThanOrEqual(4 * 1_024);
+    expect(summary.preview).not.toContain('\uFFFD');
+  });
+
+  it('still rejects an entry that stays oversized without any job data to bound', async () => {
+    // No payload.data / job.data to drop or summarise: the size cap is the last resort.
+    await expect(
+      recordSyncFailure('wallet-1', 'x'.repeat(300 * 1_024), 1),
+    ).rejects.toThrow('Dead letter entry exceeds the maximum serialized size');
   });
 
   it('records convenience failure categories without exposing full push tokens', async () => {

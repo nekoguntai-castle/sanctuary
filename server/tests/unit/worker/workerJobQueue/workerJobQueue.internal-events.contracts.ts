@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  capturedLogs,
   createdWorkers,
   mockDlqAdd,
   mockRecordCaptureTerminal,
@@ -460,5 +461,18 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
       await Promise.resolve();
 
       expect(mockDlqAdd).toHaveBeenCalledTimes(1);
+      // A DLQ write failure must be loud (log.error), not swallowed at debug —
+      // a silently dropped exhausted job never re-fires and is lost forever.
+      const dlqFailureLog = capturedLogs.find(
+        entry => entry.message === 'Failed to record exhausted job in DLQ',
+      );
+      expect(dlqFailureLog).toEqual(expect.objectContaining({
+        level: 'error',
+        meta: expect.objectContaining({
+          jobId: 'job-dlq-fail',
+          queue: 'sync',
+          error: expect.stringContaining('dlq write failed'),
+        }),
+      }));
     });
 };

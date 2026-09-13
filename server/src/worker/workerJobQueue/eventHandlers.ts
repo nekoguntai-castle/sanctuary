@@ -130,7 +130,11 @@ export function setupWorkerEventHandlers(
         job,
         failure,
       ).catch(dlqError => {
-        log.debug('Failed to record exhausted job in DLQ', { error: String(dlqError) });
+        log.error('Failed to record exhausted job in DLQ', {
+          jobId: job.id,
+          queue: queueName,
+          error: String(dlqError),
+        });
       });
     }
   });

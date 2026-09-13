@@ -83,6 +83,78 @@ function validateEntrySize(entry: DeadLetterEntry): void {
   }
 }
 
+const TRUNCATED_PREVIEW_BYTES = 4 * 1_024;
+
+interface TruncatedFieldSummary {
+  truncated: true;
+  originalBytes: number;
+  preview: string;
+}
+
+function truncatedSummary(value: unknown): TruncatedFieldSummary {
+  // Only reached for present, oversized job data, so the serialised form is a string.
+  const serialized = Buffer.from(String(JSON.stringify(value)), 'utf8');
+  // Cut on a byte budget and drop any partial multibyte sequence left at the end.
+  const preview = serialized.subarray(0, TRUNCATED_PREVIEW_BYTES).toString('utf8').replace(/\uFFFD+$/u, '');
+  return {
+    truncated: true,
+    originalBytes: serialized.length,
+    preview,
+  };
+}
+
+function entrySizeBytes(entry: DeadLetterEntry): number {
+  return Buffer.byteLength(JSON.stringify(entry));
+}
+
+function omitPayloadData(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const { data: _displayCopy, ...withoutData } = payload;
+  return withoutData;
+}
+
+/**
+ * Keep oversized dead-letter entries within the serialized size cap instead of
+ * rejecting them outright (and thus silently losing them forever, since the
+ * source BullMQ failure never re-fires). `payload.data` is a redundant
+ * display/support-package copy of `job.data` (see
+ * `services/supportPackage/collectors/deadLetterQueue.ts`); dropping it first
+ * is enough for most oversized entries and preserves the functional
+ * `job.data` copy that `retryDeadLetterSyncJob` resubmits verbatim via
+ * `isSyncWalletEnvelope`. Only when the entry is still oversized after that
+ * does `job.data` (and, for symmetry, `payload.data`) get replaced with a
+ * bounded summary — trading retryability for never silently dropping the
+ * entry. `validateEntrySize` remains the last-resort guard.
+ */
+function boundEntrySize(entry: DeadLetterEntry): DeadLetterEntry {
+  if (entrySizeBytes(entry) <= MAX_SERIALIZED_ENTRY_BYTES) return entry;
+
+  const hasPayloadData = 'data' in entry.payload;
+  const dedupedEntry: DeadLetterEntry = hasPayloadData
+    ? { ...entry, payload: omitPayloadData(entry.payload) }
+    : entry;
+  if (entrySizeBytes(dedupedEntry) <= MAX_SERIALIZED_ENTRY_BYTES) return dedupedEntry;
+
+  let boundedEntry = dedupedEntry;
+  if (hasPayloadData) {
+    boundedEntry = {
+      ...boundedEntry,
+      payload: {
+        ...boundedEntry.payload,
+        data: truncatedSummary(entry.payload.data),
+      },
+    };
+  }
+  if (boundedEntry.job) {
+    boundedEntry = {
+      ...boundedEntry,
+      job: { ...boundedEntry.job, data: truncatedSummary(boundedEntry.job.data) },
+    };
+  }
+  return boundedEntry;
+}
+
 function exhaustedJobId(envelope: DeadLetterJobEnvelope): string {
   // Duplicate BullMQ failure events and repair sweeps must converge on one entry.
   const identity = JSON.stringify([
@@ -270,13 +342,14 @@ export class DeadLetterQueue {
   }
 
   private async upsert(entry: DeadLetterEntry): Promise<string> {
-    validateEntrySize(entry);
-    const id = await this.storeProvider().upsert(entry);
+    const bounded = boundEntrySize(entry);
+    validateEntrySize(bounded);
+    const id = await this.storeProvider().upsert(bounded);
     log.warn('Dead letter entry recorded', {
       id,
-      category: entry.category,
-      operation: entry.operation,
-      attempts: entry.attempts,
+      category: bounded.category,
+      operation: bounded.operation,
+      attempts: bounded.attempts,
     });
     return id;
   }
