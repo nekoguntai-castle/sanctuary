@@ -52,6 +52,22 @@ export class ElectrumResponseValidationError extends Error {
   }
 }
 
+/**
+ * Electrum's `blockchain.estimatefee` reported no estimate.
+ *
+ * The protocol returns `-1` (and some servers return `0` or a non-numeric
+ * value) to mean "no estimate available" for the requested confirmation
+ * target. Callers must treat this as a missing estimate rather than a
+ * fee rate, so that fallback fee schedules engage instead of silently
+ * seeing a clamped 1 sat/vB.
+ */
+export class ElectrumNoFeeEstimateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ElectrumNoFeeEstimateError';
+  }
+}
+
 /** Electrum protocol limit for `blockchain.block.headers` responses. */
 export const ELECTRUM_MAX_HEADERS_PER_REQUEST = 2016;
 export const BITCOIN_BLOCK_HEADER_HEX_LENGTH = 160;

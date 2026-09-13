@@ -7,6 +7,7 @@
 
 import { getNodeClient } from '../nodeClient';
 import type { TransactionDetails } from '../electrum';
+import { ElectrumNoFeeEstimateError } from '../electrum/types';
 import { validateAddress } from '../utils';
 import type { BitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
@@ -81,35 +82,71 @@ export async function broadcastAuthenticatedRawTransaction(input: {
   }
 }
 
+/** Per-target fallback used both for a single missing Electrum estimate and,
+ * via `DEFAULT_FEE_ESTIMATES`, for a genuine failure across every target. */
+const FEE_ESTIMATE_TARGETS: ReadonlyArray<{
+  tier: keyof FeeEstimates;
+  blocks: number;
+  fallback: number;
+}> = [
+  { tier: 'fastest', blocks: 1, fallback: 20 },
+  { tier: 'halfHour', blocks: 3, fallback: 15 },
+  { tier: 'hour', blocks: 6, fallback: 10 },
+  { tier: 'economy', blocks: 12, fallback: 5 },
+];
+
+const DEFAULT_FEE_ESTIMATES: FeeEstimates = {
+  fastest: 20,
+  halfHour: 15,
+  hour: 10,
+  economy: 5,
+};
+
 /**
- * Get fee estimates for different confirmation targets
+ * Get fee estimates for different confirmation targets.
+ *
+ * Electrum servers routinely have no estimate for some confirmation targets
+ * (thin mempools, regtest, or a far target like the ~144-block horizon), and
+ * `estimateFee()` signals that with `ElectrumNoFeeEstimateError` rather than
+ * a fee rate. That is expected and routine, not a transport failure: each
+ * target is resolved independently so one missing estimate substitutes only
+ * that tier's documented fallback, instead of discarding every other tier's
+ * live estimate. A genuine failure (a thrown error that is not
+ * `ElectrumNoFeeEstimateError`, e.g. a connection drop) still falls back to
+ * the full default schedule and is logged at error level, exactly as before.
  */
 export async function getFeeEstimates(network: BitcoinNetwork): Promise<FeeEstimates> {
   const client = await getNodeClient(network);
 
   try {
-    const [fastest, halfHour, hour, economy] = await Promise.all([
-      client.estimateFee(1),
-      client.estimateFee(3),
-      client.estimateFee(6),
-      client.estimateFee(12),
-    ]);
+    const settled = await Promise.allSettled(
+      FEE_ESTIMATE_TARGETS.map(target => client.estimateFee(target.blocks)),
+    );
 
-    return {
-      fastest: Math.max(1, fastest),
-      halfHour: Math.max(1, halfHour),
-      hour: Math.max(1, hour),
-      economy: Math.max(1, economy),
-    };
+    const estimates = {} as FeeEstimates;
+    for (let i = 0; i < FEE_ESTIMATE_TARGETS.length; i++) {
+      const { tier, blocks, fallback } = FEE_ESTIMATE_TARGETS[i];
+      const outcome = settled[i];
+      if (outcome.status === 'fulfilled') {
+        estimates[tier] = Math.max(1, outcome.value);
+        continue;
+      }
+      if (outcome.reason instanceof ElectrumNoFeeEstimateError) {
+        log.warn('[BLOCKCHAIN] No Electrum fee estimate for target; using its fallback', {
+          network, blocks, tier, fallback,
+        });
+        estimates[tier] = fallback;
+        continue;
+      }
+      // Genuine transport/other failure: preserve the existing full-fallback
+      // behavior by routing it through the catch block below.
+      throw outcome.reason;
+    }
+    return estimates;
   } catch (error) {
     log.error('[BLOCKCHAIN] Failed to get fee estimates', { error: getErrorMessage(error) });
     // Return sensible defaults if fee estimation fails
-    return {
-      fastest: 20,
-      halfHour: 15,
-      hour: 10,
-      economy: 5,
-    };
+    return { ...DEFAULT_FEE_ESTIMATES };
   }
 }
 

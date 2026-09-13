@@ -26,6 +26,7 @@ import {
   BITCOIN_BLOCK_HEADER_HEX_LENGTH,
   ELECTRUM_MAX_HEADERS_PER_REQUEST,
   ElectrumResponseValidationError,
+  ElectrumNoFeeEstimateError,
   parseElectrumSubscriptionStatus,
   validateResponse,
 } from './types';
@@ -269,8 +270,17 @@ export async function estimateFee(
   blocks: number = 6
 ): Promise<number> {
   const result = await requestFn('blockchain.estimatefee', [blocks]);
+  // Electrum returns -1 (and some servers 0 or a non-numeric value) to mean
+  // "no estimate available" for this confirmation target. That must not be
+  // clamped into a fabricated 1 sat/vB — signal no-estimate so the caller's
+  // fallback fee schedule engages instead.
+  if (typeof result !== 'number' || !Number.isFinite(result) || result <= 0) {
+    throw new ElectrumNoFeeEstimateError(
+      `Electrum reported no fee estimate for ${blocks}-block target (got ${String(result)})`,
+    );
+  }
   // Convert from BTC/kB to sat/vB
-  const satPerKb = (result as number) * 100000000;
+  const satPerKb = result * 100000000;
   return Math.max(1, Math.round(satPerKb / 1000));
 }
 

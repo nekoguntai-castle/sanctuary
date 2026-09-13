@@ -377,6 +377,24 @@ no-estimate (throw / return `null`) so the caller's fallback engages. **Failing-
 `requestFn` returning `-1` → no-estimate signalled, not `1`.
 Verification: server gates. Rollback: revert.
 
+**Status: done.** `estimateFee` now throws `ElectrumNoFeeEstimateError` (new in `types.ts`)
+for any non-positive/non-finite result instead of clamping it to 1, so `getFeeEstimates`'s
+existing catch returns the `{20,15,10,5}` fallback. Non-regression tests added at both the
+Electrum-method level and the `networkOperations.getFeeEstimates` level; server coverage
+gates pass at 100%.
+
+**Follow-on (same phase):** that fix made the no-estimate path routine — thin-mempool and
+regtest servers answer `-1` for far targets often — and both `getFeeEstimates`
+(`networkOperations.ts`) and `getAdvancedFeeEstimates` (`advancedTx/feeEstimation.ts`) resolved
+their per-target `client.estimateFee()` calls with `Promise.all`, so one missing target
+discarded every other target's live estimate for the *entire* fallback schedule. Both now
+resolve targets with `Promise.allSettled` and substitute only the missing tier's documented
+fallback value (logged at `warn`, not `error`); a genuine non-`ElectrumNoFeeEstimateError`
+failure (e.g. a transport error) still falls back to the full default schedule and keeps the
+existing `error`-level log, unchanged. Fallback values were not changed. Non-regression tests
+cover mixed near/far-target scenarios for both functions and assert the log level split;
+server coverage gates pass at 100%.
+
 ## Phase 11 — P2: pending fee rate uses vsize
 
 Owner: `server/src/api/transactions/crossWallet.ts` (primary), `walletTransactions/pending.ts` (fallback only).
