@@ -20,7 +20,7 @@ import type {
   CursorPaginatedResult,
   WalletDescriptorAssignment,
 } from './types';
-import { buildWalletAccessWhere } from './accessControl';
+import { buildWalletAccessWhere, buildWalletEditAccessWhere } from './accessControl';
 import { requestIncrementalSyncWithClient } from './syncIntentRepository';
 
 export type { WalletDescriptorAssignment } from './types';
@@ -396,10 +396,7 @@ export async function findAccessibleWithSelect<T extends Prisma.WalletSelect>(
 /**
  * Find a wallet by ID with sign/edit access check (owner or signer role)
  */
-export async function findByIdWithEditAccess(
-  walletId: string,
-  userId: string
-): Promise<Wallet | null> {
+export async function findByIdWithEditAccess(walletId: string, userId: string): Promise<Wallet | null> {
   return prisma.wallet.findFirst({
     where: {
       id: walletId,
@@ -411,6 +408,14 @@ export async function findByIdWithEditAccess(
       },
     },
   });
+}
+
+/** Wallet IDs on a network with edit-or-above access, to scope a destructive resync away from view-only wallets. */
+export async function findNetworkWalletIdsWithEditAccess(userId: string, network: NetworkType): Promise<string[]> {
+  const wallets = await prisma.wallet.findMany({
+    where: { network, ...buildWalletEditAccessWhere(userId) }, select: { id: true },
+  });
+  return wallets.map(w => w.id);
 }
 
 /**
@@ -967,6 +972,7 @@ export const walletRepository = {
   findByIdWithSelect,
   findAccessibleWithSelect,
   findByIdWithEditAccess,
+  findNetworkWalletIdsWithEditAccess,
   findGroupRoleByMembership,
   findNameById,
   findNetwork,

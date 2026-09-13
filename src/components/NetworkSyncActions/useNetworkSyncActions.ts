@@ -25,6 +25,11 @@ const REJECTION_REASONS: Record<string, string> = {
   queue_error: 'queue error',
 };
 
+const EXCLUSION_REASONS: Record<string, string> = {
+  network_not_syncable: 'not on a syncable network',
+  edit_access_required: 'requires edit access',
+};
+
 const WAKEUP_DESCRIPTIONS: Record<syncApi.WalletSyncWakeupDisposition, string> = {
   deferred_action_required: 'waiting for required action',
   deferred_full_resync: 'waiting for full resync',
@@ -130,9 +135,9 @@ const createResyncResult = (
     // They were never in the batch, so a count that omits them is a lie.
     ...(response.excludedWallets.length > 0
       ? [
-          `${response.excludedWallets.length} not on a syncable network: ${list(
-            response.excludedWallets.map((wallet) => wallet.walletId),
-          )}`,
+          `${response.excludedWallets.length} excluded: ${response.excludedWallets
+            .map((wallet) => `${nameOf(wallet.walletId)} (${EXCLUSION_REASONS[wallet.reason] ?? wallet.reason})`)
+            .join(', ')}`,
         ]
       : []),
   ];

@@ -442,10 +442,85 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(screen.getByText(
-      'Queued 1 wallet for resync; 1 not on a syncable network: Beta.',
+      'Queued 1 wallet for resync; 1 excluded: Beta (not on a syncable network).',
     )).toBeInTheDocument();
     // Not green: the user can see Beta in this tab and it was never queued.
     expect(screen.queryByText(/rejected/)).not.toBeInTheDocument();
+  });
+
+  // sync-routes-view-role-triggers-destructive-resync: a viewer-access wallet
+  // is excluded from a network resync rather than silently resynced.
+  it('names a wallet excluded for lacking edit access', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [{ walletId: 'w2', reason: 'edit_access_required' }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 excluded: Beta (requires edit access).',
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/rejected/)).not.toBeInTheDocument();
+  });
+
+  it('names both wallets when a batch mixes both exclusion reasons', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 0,
+      walletIds: [],
+      acceptedWalletIds: [],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [
+        { walletId: 'w1', reason: 'network_not_syncable' },
+        { walletId: 'w2', reason: 'edit_access_required' },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 0 wallets for resync; 2 excluded: Alpha (not on a syncable network), Beta (requires edit access).',
+    )).toBeInTheDocument();
+  });
+
+  it('prints an unrecognised exclusion reason verbatim rather than blanking it', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [{ walletId: 'w2', reason: 'moon_phase' as never }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 excluded: Beta (moon_phase).',
+    )).toBeInTheDocument();
   });
 
   it('prints an unrecognised rejection reason verbatim rather than blanking it', async () => {

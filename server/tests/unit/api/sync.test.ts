@@ -19,6 +19,7 @@ const {
   mockSyncIntentAdmission,
   mockEnqueueWalletSyncBatch,
   mockEnqueueFullResyncBatch,
+  mockGetUserWalletRole,
 } = vi.hoisted(() => ({
   mockWalletRepository: {
     findByIdWithAccess: vi.fn(),
@@ -26,6 +27,7 @@ const {
     updateSyncState: vi.fn(),
     getIdsByNetwork: vi.fn(),
     findByNetworkWithSyncStatus: vi.fn(),
+    findNetworkWalletIdsWithEditAccess: vi.fn(),
     findAccessibleWithSelect: vi.fn().mockResolvedValue([]),
     resetSyncState: vi.fn(),
   },
@@ -50,12 +52,17 @@ const {
   },
   mockEnqueueWalletSyncBatch: vi.fn(),
   mockEnqueueFullResyncBatch: vi.fn(),
+  mockGetUserWalletRole: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
   walletRepository: mockWalletRepository,
   transactionRepository: mockTransactionRepository,
   addressRepository: mockAddressRepository,
+}));
+
+vi.mock('../../../src/services/wallet', () => ({
+  getUserWalletRole: mockGetUserWalletRole,
 }));
 
 vi.mock('../../../src/services/syncService', () => ({
@@ -150,6 +157,8 @@ describe('Sync API - Network Endpoints', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetUserWalletRole.mockResolvedValue('owner'); // access tests live in sync.editAccess.test.ts
+    mockWalletRepository.findNetworkWalletIdsWithEditAccess.mockResolvedValue(['wallet-1', 'wallet-2', 'wallet-3']);
     mockSyncService.getSyncStatus.mockResolvedValue({ queuePosition: 1, syncInProgress: false });
     mockSyncIntentAdmission.request.mockResolvedValue({
       status: 'requested',

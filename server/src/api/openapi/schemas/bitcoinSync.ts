@@ -327,7 +327,7 @@ export const syncSchemas = {
               type: "object",
               properties: {
                 walletId: { type: "string" },
-                reason: { type: "string", enum: ["network_not_syncable"] },
+                reason: { type: "string", enum: ["network_not_syncable", "edit_access_required"] },
               },
               required: ["walletId", "reason"],
               additionalProperties: false,

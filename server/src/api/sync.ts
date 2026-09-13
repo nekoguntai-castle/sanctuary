@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { rateLimitByUser } from '../middleware/rateLimit';
+import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
 import { getSyncCoordinator } from '../services/sync/syncCoordinator';
 import { asyncHandler } from '../errors/errorHandler';
@@ -33,7 +34,9 @@ router.use(authenticate);
 
 /**
  * POST /api/v1/sync/wallet/:walletId
- * Request an asynchronous durable sync for a wallet
+ * Request an asynchronous durable sync for a wallet.
+ * Non-destructive: this only reads chain state forward, it never clears
+ * anything, so any wallet access level (including view-only) may trigger it.
  */
 router.post('/wallet/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
@@ -44,7 +47,9 @@ router.post('/wallet/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(a
 
 /**
  * POST /api/v1/sync/queue/:walletId
- * Queue a wallet for background sync
+ * Queue a wallet for background sync.
+ * Non-destructive (same reasoning as /wallet/:walletId above): any wallet
+ * access level may trigger it.
  */
 router.post('/queue/:walletId', rateLimitByUser('sync:trigger'), validate(
   { body: SyncPriorityBodySchema }
@@ -95,9 +100,12 @@ router.post('/user', rateLimitByUser('sync:batch'), validate(
 
 /**
  * POST /api/v1/sync/reset/:walletId
- * Reset a stuck sync state
+ * Reset a stuck sync state.
+ * Destructive (it clears in-flight sync lifecycle state): requires edit
+ * access, matching the recalculate route's precedent
+ * (transactions/walletTransactions/recalculate.ts).
  */
-router.post('/reset/:walletId', asyncHandler(async (req, res) => {
+router.post('/reset/:walletId', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
@@ -108,8 +116,12 @@ router.post('/reset/:walletId', asyncHandler(async (req, res) => {
  * POST /api/v1/sync/resync/:walletId
  * Full resync - clears all transactions and re-syncs from blockchain
  * Use this to fix missing transactions (e.g., sent transactions)
+ * Destructive: requires edit access. `syncCoordinator.resyncWallet` also
+ * performs its own role-blind `requireWalletAccess(walletId, userId)` check
+ * (any access, via `findByIdWithAccess`) as defense-in-depth for the 404
+ * case; the edit-level gate here is what stops a viewer from triggering it.
  */
-router.post('/resync/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
+router.post('/resync/:walletId', requireWalletAccess('edit'), rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
@@ -118,7 +130,10 @@ router.post('/resync/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(a
 
 /**
  * POST /api/v1/sync/network/:network
- * Queue all user's wallets for a specific network
+ * Queue all user's wallets for a specific network.
+ * Non-destructive (same reasoning as /wallet/:walletId above): any wallet
+ * access level may trigger it; unlike /network/:network/resync below, this
+ * only queues incremental syncs.
  */
 router.post('/network/:network', rateLimitByUser('sync:batch'), validate(
   { body: SyncPriorityBodySchema }
@@ -134,6 +149,12 @@ router.post('/network/:network', rateLimitByUser('sync:batch'), validate(
  * POST /api/v1/sync/network/:network/resync
  * Full resync for all user's wallets of a specific network
  * Requires X-Confirm-Resync: true header
+ * Destructive, and this route has no single `:walletId` for a
+ * `requireWalletAccess('edit')` middleware check to key on - the batch spans
+ * every accessible wallet on the network. `syncCoordinator.resyncNetwork`
+ * scopes the batch itself, via `walletRepository.findNetworkWalletIdsWithEditAccess`,
+ * to edit-or-above wallets and reports every view-only wallet as excluded
+ * (reason `edit_access_required`) rather than silently dropping or resyncing it.
  */
 router.post('/network/:network/resync', rateLimitByUser('sync:batch'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;

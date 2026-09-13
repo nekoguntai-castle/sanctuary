@@ -113,10 +113,14 @@ export interface NetworkResyncResult {
     walletId: string;
     reason: 'queue_state_unknown';
   }>;
-  /** Wallets the user owns that no network resync can reach (e.g. regtest). */
+  /**
+   * Wallets the user can see but this batch never reached: either the
+   * network is unsyncable (e.g. regtest) or the user lacks edit-or-above
+   * access on that wallet (a destructive resync excludes view-only wallets).
+   */
   excludedWallets: Array<{
     walletId: string;
-    reason: 'network_not_syncable';
+    reason: 'network_not_syncable' | 'edit_access_required';
   }>;
   message?: string;
 }

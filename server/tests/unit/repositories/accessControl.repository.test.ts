@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDeviceAccessWhere,
   buildWalletAccessWhere,
+  buildWalletEditAccessWhere,
 } from '../../../src/repositories/accessControl';
 
 describe('repository accessControl helpers', () => {
@@ -11,6 +12,15 @@ describe('repository accessControl helpers', () => {
       OR: [
         { users: { some: { userId: 'user-1' } } },
         { group: { members: { some: { userId: 'user-1' } } } },
+      ],
+    });
+  });
+
+  it('buildWalletEditAccessWhere restricts direct and group access to edit-or-above roles', () => {
+    expect(buildWalletEditAccessWhere('user-1')).toEqual({
+      OR: [
+        { users: { some: { userId: 'user-1', role: { in: ['owner', 'signer'] } } } },
+        { group: { members: { some: { userId: 'user-1' } } }, groupRole: { in: ['owner', 'signer'] } },
       ],
     });
   });

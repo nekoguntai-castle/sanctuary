@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   findByIdWithAccess: vi.fn(),
   findByNetworkWithSyncStatus: vi.fn(),
+  findNetworkWalletIdsWithEditAccess: vi.fn(),
   findAccessibleWithSelect: vi.fn(),
   enqueueFullResyncBatch: vi.fn(),
   requestFullResync: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
     findByIdWithAccess: mocks.findByIdWithAccess,
     findByNetworkWithSyncStatus: mocks.findByNetworkWithSyncStatus,
+    findNetworkWalletIdsWithEditAccess: mocks.findNetworkWalletIdsWithEditAccess,
     findAccessibleWithSelect: mocks.findAccessibleWithSelect,
   },
 }));
@@ -78,6 +80,7 @@ describe('SyncCoordinator.resyncNetwork', () => {
       { id: 'wallet-1', syncInProgress: false },
       { id: 'wallet-2', syncInProgress: false },
     ]);
+    mocks.findNetworkWalletIdsWithEditAccess.mockResolvedValue(['wallet-1', 'wallet-2']);
     mocks.findAccessibleWithSelect.mockResolvedValue([]);
     mocks.enqueueFullResyncBatch.mockResolvedValue({
       outcomes: [
@@ -171,6 +174,68 @@ describe('SyncCoordinator.resyncNetwork', () => {
         ],
         indeterminateWallets: [],
       });
+  });
+
+  it('excludes a viewer-only wallet from a network resync while admitting an edit-or-above wallet', async () => {
+    mocks.findNetworkWalletIdsWithEditAccess.mockResolvedValue(['wallet-1']);
+    mocks.requestFullResync.mockReset();
+    mocks.requestFullResync.mockResolvedValue({
+      status: 'requested', generation: 1, incrementalGeneration: 1, wakeup: 'enqueued',
+    });
+
+    const result = await getSyncCoordinator().resyncNetwork('user-1', 'mainnet', true);
+
+    expect(result.walletIds).toEqual(['wallet-1']);
+    expect(result.excludedWallets).toEqual([
+      { walletId: 'wallet-2', reason: 'edit_access_required' },
+    ]);
+    expect(result.message).toContain('1 wallet requiring edit access');
+    expect(mocks.requestFullResync).toHaveBeenCalledTimes(1);
+    expect(mocks.requestFullResync).toHaveBeenCalledWith('wallet-1', {
+      reason: 'manual-network-resync:mainnet',
+    });
+  });
+
+  it('combines network-ineligible and edit-ineligible exclusions in one message', async () => {
+    mocks.findAccessibleWithSelect.mockResolvedValue([{ id: 'wallet-regtest' }]);
+    mocks.findNetworkWalletIdsWithEditAccess.mockResolvedValue(['wallet-1']);
+    mocks.requestFullResync.mockReset();
+    mocks.requestFullResync.mockResolvedValue({
+      status: 'requested', generation: 1, incrementalGeneration: 1, wakeup: 'enqueued',
+    });
+
+    const result = await getSyncCoordinator().resyncNetwork('user-1', 'mainnet', true);
+
+    expect(result.excludedWallets).toEqual([
+      { walletId: 'wallet-regtest', reason: 'network_not_syncable' },
+      { walletId: 'wallet-2', reason: 'edit_access_required' },
+    ]);
+    expect(result.message).toContain('1 wallet not on a syncable network');
+    expect(result.message).toContain('1 wallet requiring edit access');
+  });
+
+  it('queues nothing and excludes every wallet when the whole network is view-only', async () => {
+    mocks.findNetworkWalletIdsWithEditAccess.mockResolvedValue([]);
+    mocks.requestFullResync.mockReset();
+
+    const result = await getSyncCoordinator().resyncNetwork('user-1', 'mainnet', true);
+
+    expect(result).toMatchObject({
+      queued: 0,
+      walletIds: [],
+      acceptedWalletIds: [],
+      deduplicatedWalletIds: [],
+      deferredWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [
+        { walletId: 'wallet-1', reason: 'edit_access_required' },
+        { walletId: 'wallet-2', reason: 'edit_access_required' },
+      ],
+    });
+    expect(result.message).toContain('Queued 0 wallets');
+    expect(result.message).toContain('2 wallets requiring edit access');
+    expect(mocks.requestFullResync).not.toHaveBeenCalled();
   });
 
   it('requires the confirmation flag', async () => {

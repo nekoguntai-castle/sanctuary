@@ -183,6 +183,44 @@ export const registerWalletRepositoryAccessContracts = () => {
     });
   });
 
+  describe('findNetworkWalletIdsWithEditAccess', () => {
+    it('should scope to wallets where the user has direct or group edit-or-above access', async () => {
+      (prisma.wallet.findMany as Mock).mockResolvedValue([{ id: 'wallet-1' }, { id: 'wallet-2' }]);
+
+      const result = await walletRepository.findNetworkWalletIdsWithEditAccess(mockUserId, 'mainnet');
+
+      expect(result).toEqual(['wallet-1', 'wallet-2']);
+      expect(prisma.wallet.findMany).toHaveBeenCalledWith({
+        where: {
+          network: 'mainnet',
+          OR: [
+            {
+              users: {
+                some: {
+                  userId: mockUserId,
+                  role: { in: ['owner', 'signer'] },
+                },
+              },
+            },
+            {
+              group: { members: { some: { userId: mockUserId } } },
+              groupRole: { in: ['owner', 'signer'] },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+    });
+
+    it('should return an empty array when no wallets on the network grant edit access', async () => {
+      (prisma.wallet.findMany as Mock).mockResolvedValue([]);
+
+      const result = await walletRepository.findNetworkWalletIdsWithEditAccess(mockUserId, 'testnet3');
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('findGroupRoleByMembership', () => {
     it('should return group role when found', async () => {
       (prisma.wallet.findFirst as Mock).mockResolvedValue({ groupRole: 'viewer' });

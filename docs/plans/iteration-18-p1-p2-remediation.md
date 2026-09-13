@@ -64,6 +64,8 @@ Failing tests first: route contract tests for `sync.ts` (viewer-role user → 40
 
 Verification: as Phase 1.
 
+Status: done. `requireWalletAccess('edit')` added to `POST /sync/reset/:walletId` and `POST /sync/resync/:walletId` in `server/src/api/sync.ts`; route comments added explaining why `/wallet`, `/queue`, and `/network/:network` (non-resync) stay at any-access. `syncCoordinator.resyncNetwork` now scopes its wallet batch to edit-or-above access via new `walletRepository.findNetworkWalletIdsWithEditAccess` (backed by a new `buildWalletEditAccessWhere` helper in `server/src/repositories/accessControl.ts`, parallel to `buildWalletAccessWhere`); view-only wallets are reported in `excludedWallets` with reason `edit_access_required` alongside the existing `network_not_syncable` reason, combined in one message. Failing tests written first and proven red against `origin/main` (`server/tests/unit/api/sync.editAccess.test.ts` — new file, split out of `sync.test.ts` to stay under the large-files line cap; `server/tests/unit/services/sync/syncCoordinator.test.ts`; `server/tests/unit/repositories/walletRepository.test.ts`; `server/tests/unit/repositories/accessControl.repository.test.ts`), then implemented and reproven green. All gates pass: server `tsc --noEmit` and `typecheck:tests`, root `lint`, `check:architecture-boundaries`, `check-large-files.mjs`, `lizard-only.sh` (86 warnings, unchanged), `git diff --check`, and the targeted vitest suites above (159 tests).
+
 ## Phase 3 — advancedTx user-input errors map to 400/404 and pins realign (server)
 
 Findings: `cpfp-batch-user-input-errors-surface-as-500-not-400`; folds in P3 `batch-stryker-fee-policy-mutate-range-stale-after-1121`.

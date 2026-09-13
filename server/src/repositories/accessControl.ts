@@ -6,6 +6,7 @@
  */
 
 import type { Prisma } from '../generated/prisma/client';
+import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 
 /**
  * Build the access control WHERE clause for wallet queries.
@@ -30,6 +31,20 @@ export function buildWalletAccessWhere(userId: string): Prisma.WalletWhereInput 
     OR: [
       { users: { some: { userId } } },
       { group: { members: { some: { userId } } } },
+    ],
+  };
+}
+
+/**
+ * Build the WHERE clause for wallets where the user has edit-or-above
+ * (owner/signer) access, direct or via group. Used to scope destructive
+ * batch operations (e.g. a network resync) away from view-only wallets.
+ */
+export function buildWalletEditAccessWhere(userId: string): Prisma.WalletWhereInput {
+  return {
+    OR: [
+      { users: { some: { userId, role: { in: [...WALLET_EDIT_ROLE_VALUES] } } } },
+      { group: { members: { some: { userId } } }, groupRole: { in: [...WALLET_EDIT_ROLE_VALUES] } },
     ],
   };
 }

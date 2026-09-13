@@ -111,7 +111,7 @@ export interface ResyncNetworkResponse {
 
 export interface ExcludedWallet {
   walletId: string;
-  reason: 'network_not_syncable';
+  reason: 'network_not_syncable' | 'edit_access_required';
 }
 
 export interface NetworkSyncStatusResponse {
@@ -491,11 +491,12 @@ export class SyncCoordinator {
       throw new InvalidInputError('Full resync requires X-Confirm-Resync: true header');
     }
 
-    const [wallets, excludedWallets] = await Promise.all([
+    const [wallets, editAccessWalletIds, excludedWallets] = await Promise.all([
       walletRepository.findByNetworkWithSyncStatus(userId, syncNetwork),
+      walletRepository.findNetworkWalletIdsWithEditAccess(userId, syncNetwork),
       findWalletsExcludedFromSync(userId),
     ]);
-    const exclusionClause = excludedWallets.length > 0
+    const notSyncableClause = excludedWallets.length > 0
       ? `${walletCountLabel(excludedWallets.length)} not on a syncable network`
       : null;
 
@@ -510,14 +511,29 @@ export class SyncCoordinator {
         rejectedWallets: [],
         indeterminateWallets: [],
         excludedWallets,
-        message: exclusionClause
-          ? `No ${syncNetwork} wallets found; ${exclusionClause}.`
+        message: notSyncableClause
+          ? `No ${syncNetwork} wallets found; ${notSyncableClause}.`
           : `No ${syncNetwork} wallets found`,
       };
     }
 
+    // A full resync is destructive (it clears and re-derives wallet data), so
+    // it must be scoped to wallets the user can edit - view-only membership,
+    // direct or via a group, is excluded rather than silently admitted.
+    const editAccessSet = new Set(editAccessWalletIds);
+    const editWallets = wallets.filter(wallet => editAccessSet.has(wallet.id));
+    const viewOnlyExcludedWallets: ExcludedWallet[] = wallets
+      .filter(wallet => !editAccessSet.has(wallet.id))
+      .map(wallet => ({ walletId: wallet.id, reason: 'edit_access_required' as const }));
+    const allExcludedWallets = [...excludedWallets, ...viewOnlyExcludedWallets];
+    const editAccessClause = viewOnlyExcludedWallets.length > 0
+      ? `${walletCountLabel(viewOnlyExcludedWallets.length)} requiring edit access`
+      : null;
+    const exclusionClauses = [notSyncableClause, editAccessClause]
+      .filter((clause): clause is string => clause !== null);
+
     const outcomes = await requestFullResyncBatch(
-      wallets.map(wallet => wallet.id),
+      editWallets.map(wallet => wallet.id),
       `manual-network-resync:${syncNetwork}`,
     );
     const acceptedWalletIds = outcomes
@@ -558,7 +574,7 @@ export class SyncCoordinator {
       deferredWalletIds,
       rejectedWallets,
       indeterminateWallets,
-      excludedWallets,
+      excludedWallets: allExcludedWallets,
       message: [
         `Queued ${walletCountLabel(queuedWalletIds.length)}`,
         `${walletCountLabel(deduplicatedWalletIds.length)} already requested`,
@@ -571,7 +587,7 @@ export class SyncCoordinator {
         ...(indeterminateWallets.length > 0
           ? [`${walletCountLabel(indeterminateWallets.length)} queue state unknown`]
           : []),
-        ...(exclusionClause ? [exclusionClause] : []),
+        ...exclusionClauses,
       ].join('; ') + '.',
     };
   }

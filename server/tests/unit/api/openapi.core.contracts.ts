@@ -719,6 +719,12 @@ export function registerOpenApiCoreTests() {
     expect(
       openApiSpec.components.schemas.NetworkResyncResponse.allOf[1].required,
     ).toContain("deferredWalletIds");
+    // sync-routes-view-role-triggers-destructive-resync: a network resync
+    // excludes view-only wallets alongside not-on-a-syncable-network ones.
+    expect(
+      openApiSpec.components.schemas.NetworkResyncResponse.allOf[1]
+        .properties.excludedWallets.items.properties.reason,
+    ).toEqual({ type: "string", enum: ["network_not_syncable", "edit_access_required"] });
     expect(
       openApiSpec.components.schemas.NetworkSyncStatusResponse.properties
         .network.enum,
