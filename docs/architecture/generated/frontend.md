@@ -492,6 +492,7 @@ n_src_api_ai_ts-->n_src_api_client_ts
 n_src_api_auth_ts-->n_src_api_client_ts
 n_src_api_auth_ts-->n_src_utils_logger_ts
 n_src_api_authPolicy_ts-->n_shared_types_api_ts
+n_src_api_bitcoin_ts-->n_shared_constants_bitcoin_ts
 n_src_api_bitcoin_ts-->n_shared_schemas_bitcoinResponses_ts
 n_src_api_bitcoin_ts-->n_src_api_client_ts
 n_src_api_client_ts-->n_shared_utils_errors_ts

@@ -29,7 +29,7 @@ export function useExplorerUrl(network: string | null | undefined): string | nul
 
     const fetchExplorerUrl = async () => {
       try {
-        const status = await bitcoinApi.getStatus(network as Parameters<typeof bitcoinApi.getStatus>[0]);
+        const status = await bitcoinApi.getStatus(network);
         // isMounted is per-effect-run, so a response for a previous network
         // cannot land after that effect was cleaned up on the switch.
         if (isMounted) setExplorerUrl(status.explorerUrl ?? null);

@@ -186,7 +186,7 @@ export async function fetchAuxiliaryData(
     // 0 - Explorer URL
     // apiWallet.network was in scope and unused here: getStatus() defaults to
     // mainnet, so a testnet wallet silently received the mainnet explorer.
-    bitcoinApi.getStatus(apiWallet.network as Parameters<typeof bitcoinApi.getStatus>[0]).then(status => {
+    bitcoinApi.getStatus(apiWallet.network).then(status => {
       result.explorerUrl = status.explorerUrl ?? null;
     }),
 

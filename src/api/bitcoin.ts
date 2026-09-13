@@ -6,7 +6,8 @@
 
 import apiClient from './client';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
-import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { NetworkType, LegacyNetworkType } from '@sanctuary/shared/constants/bitcoin';
+import { normalizeLegacyNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { FeeEstimates } from '@sanctuary/shared/types/api';
 import type { NodePoolLoadBalancing } from '@sanctuary/shared/constants/nodeConfig';
@@ -202,13 +203,25 @@ export async function getSilentPaymentReadiness(
  * it in from the network this call actually requested rather than trusting
  * anything the response claims — never overwrite a network already present,
  * since that would be the backend's own (truthful) answer.
+ *
+ * The parameter accepts the wide boundary shape (a legacy `'testnet'`
+ * wallet network, an arbitrary string, or `null`/`undefined`) because
+ * callers forward `wallet.network` or a route param straight through here.
+ * `getFeeEstimates` below normalizes the same way; `getStatus` previously
+ * did not, so a legacy `'testnet'` wallet 400'd on `/bitcoin/status` while
+ * `/bitcoin/fees` worked for the same wallet (callers papered over the type
+ * mismatch with `as Parameters<typeof getStatus>[0]` instead of fixing it
+ * here).
  */
-export async function getStatus(network: BitcoinStatusNetwork = 'mainnet'): Promise<BitcoinStatus> {
-  const status = await apiClient.get<BitcoinStatus>('/bitcoin/status', { network });
+export async function getStatus(
+  network: LegacyNetworkType | string | null | undefined = 'mainnet'
+): Promise<BitcoinStatus> {
+  const normalizedNetwork = normalizeLegacyNetworkType(network, 'mainnet');
+  const status = await apiClient.get<BitcoinStatus>('/bitcoin/status', { network: normalizedNetwork });
   if (status.network !== undefined) {
     return status;
   }
-  return { ...status, network };
+  return { ...status, network: normalizedNetwork };
 }
 
 /**

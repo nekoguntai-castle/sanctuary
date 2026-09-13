@@ -63,6 +63,53 @@ describe("Bitcoin API", () => {
         network: "signet",
       });
     });
+
+    // #1067 added `as Parameters<typeof getStatus>[0]` casts at the three call
+    // sites instead of normalizing here, silencing the type error that would
+    // have caught this: a legacy 'testnet' wallet network reaches the backend
+    // unnormalized and /bitcoin/status 400s on it, while /bitcoin/fees (which
+    // does normalize) works fine for the same wallet.
+    it("normalizes a legacy 'testnet' network to testnet3 before issuing the request", async () => {
+      mockGet.mockResolvedValue({ connected: true });
+
+      await bitcoinApi.getStatus("testnet");
+
+      expect(mockGet).toHaveBeenCalledWith("/bitcoin/status", { network: "testnet3" });
+    });
+
+    it("resolves an undefined network to mainnet", async () => {
+      mockGet.mockResolvedValue({ connected: true });
+
+      await bitcoinApi.getStatus(undefined);
+
+      expect(mockGet).toHaveBeenCalledWith("/bitcoin/status", { network: "mainnet" });
+    });
+
+    it("resolves a null network to mainnet", async () => {
+      mockGet.mockResolvedValue({ connected: true });
+
+      await bitcoinApi.getStatus(null);
+
+      expect(mockGet).toHaveBeenCalledWith("/bitcoin/status", { network: "mainnet" });
+    });
+
+    it("resolves an unrecognized network string to mainnet", async () => {
+      mockGet.mockResolvedValue({ connected: true });
+
+      await bitcoinApi.getStatus("not-a-real-network");
+
+      expect(mockGet).toHaveBeenCalledWith("/bitcoin/status", { network: "mainnet" });
+    });
+
+    it("passes testnet4 and signet through unchanged", async () => {
+      mockGet.mockResolvedValue({ connected: true });
+
+      await bitcoinApi.getStatus("testnet4");
+      expect(mockGet).toHaveBeenCalledWith("/bitcoin/status", { network: "testnet4" });
+
+      await bitcoinApi.getStatus("signet");
+      expect(mockGet).toHaveBeenCalledWith("/bitcoin/status", { network: "signet" });
+    });
   });
   describe("network identity stamping", () => {
     /**

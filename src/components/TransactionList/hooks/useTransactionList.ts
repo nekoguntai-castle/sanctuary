@@ -59,7 +59,7 @@ export function useTransactionList({
       try {
         // getStatus() defaults to mainnet, so omitting the network discarded
         // whatever explorer was configured for the active one.
-        const status = await bitcoinApi.getStatus(network as Parameters<typeof bitcoinApi.getStatus>[0]);
+        const status = await bitcoinApi.getStatus(network);
         if (isMounted) setExplorerUrl(status.explorerUrl ?? null);
       } catch (err) {
         log.error('Failed to fetch explorer URL', { error: err });

@@ -67,7 +67,7 @@ describe('useExplorerUrl', () => {
 
   it('re-resolves when the active network changes', async () => {
     vi.mocked(bitcoinApi.getStatus).mockImplementation(
-      async (network?: string) =>
+      async (network?: string | null) =>
         ({ explorerUrl: `https://explorer.example/${network}` }) as Awaited<
           ReturnType<typeof bitcoinApi.getStatus>
         >

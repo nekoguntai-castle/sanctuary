@@ -440,6 +440,10 @@ remove the three `as Parameters<typeof getStatus>[0]` casts.
 other two sites; `getStatus(undefined)` still resolves to mainnet.
 Verification: frontend gates; render-regression unaffected. Rollback: revert.
 
+**Status: done.** `getStatus` now normalizes via `normalizeLegacyNetworkType` and accepts
+`LegacyNetworkType | string | null | undefined`; the three `as Parameters<typeof getStatus>[0]`
+casts are removed. All gates green (100% coverage, lizard at 86, typecheck/lint clean).
+
 ## Phase 14 — P2: reconnect backoff survives accept-then-close
 
 Owner: `src/services/websocket.ts`.
