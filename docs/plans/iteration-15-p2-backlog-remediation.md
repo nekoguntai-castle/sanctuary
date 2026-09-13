@@ -358,6 +358,16 @@ Owner: `server/src/services/bitcoin/psbtBuilder/decoyAmounts.ts`.
 → `min >= 546` (currently fails); plus a property test over a range.
 Verification: server gates. Rollback: revert.
 
+**Status: done.** Replaced the unclamped `floor(remaining/2)` override with a per-step
+reserve clamp (`amount ∈ [minPerOutput, remaining - minPerOutput × outputsAfterThis]`)
+and a pre-loop count-reduction while-loop so a total that can't cover `count × dust`
+shrinks the split instead of emitting sub-dust. Fixed `outputBuilder.ts`'s
+`buildDecoyChangeOutputs` to iterate `amounts.length` instead of assuming
+`length === numChangeOutputs`. New tests in `psbtBuilder.test.ts`: seeded
+regression, a property-style sweep over totals/counts/dust, and a count-reduction
+case. All server gates (typecheck, 100% unit coverage, lint, architecture
+boundaries, lizard at 86 warnings) pass.
+
 ## Phase 10 — P2: Electrum `-1` means "no estimate"
 
 Owner: `server/src/services/bitcoin/electrum/methods.ts`.

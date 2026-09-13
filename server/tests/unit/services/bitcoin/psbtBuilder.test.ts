@@ -733,7 +733,7 @@ describe("PSBT Builder", () => {
       expect(allSame).toBe(false);
     });
 
-    it("should clamp an oversized decoy split to half of remaining amount", () => {
+    it("should clamp an oversized decoy split into the per-step dust reserve", () => {
       const randomFractions = [
         // 3 weight draws
         0.8087661718073307, 0.6637779357253595, 0.028267548351639693,
@@ -748,7 +748,9 @@ describe("PSBT Builder", () => {
 
       const result = generateDecoyAmounts(1639, 3, dustThreshold, randomSource);
 
-      // This clamps a would-be 561 sat output to floor(1093 / 2) = 546.
+      // This clamps a would-be 561 sat output down into
+      // [minPerOutput, remaining - minPerOutput * outputsAfterThis] =
+      // [546, 547].
       expect([...result].sort((a, b) => a - b)).toEqual([546, 546, 547]);
       expect(result.reduce((sum, value) => sum + value, 0)).toBe(1639);
       expect(randomSource.randomFraction).toHaveBeenCalledTimes(5);
@@ -766,6 +768,91 @@ describe("PSBT Builder", () => {
       } finally {
         randomSpy.mockRestore();
       }
+    });
+
+    it("never emits a sub-dust amount from the per-step reserve clamp (regression for decoy-change-split-emits-sub-dust-outputs)", () => {
+      // A deterministic randomSource sweeping the fraction space; regardless
+      // of the draws, every amount must stay clamped into
+      // [minPerOutput, remaining - minPerOutput * outputsAfterThis].
+      for (let seed = 0; seed < 25; seed++) {
+        let call = 0;
+        const randomSource = {
+          randomFraction: () => {
+            call += 1;
+            return ((seed * 7 + call * 13) % 100) / 100;
+          },
+          randomInt: (max: number) => (seed + call) % max,
+        };
+
+        const result = generateDecoyAmounts(1650, 3, dustThreshold, randomSource);
+
+        expect(Math.min(...result)).toBeGreaterThanOrEqual(dustThreshold);
+        expect(result.reduce((sum, value) => sum + value, 0)).toBe(1650);
+      }
+    });
+
+    it("re-clamps every amount to dustThreshold across a swept range of totals/counts/dust (property-style)", () => {
+      const dustValues = [1, 100, 546, 1000];
+      const counts = [2, 3, 4, 5];
+      // Sweep totals around each count*dust boundary (below, at, just above,
+      // and comfortably above) to exercise both the count-reduction path
+      // and the per-step reserve clamp.
+      for (const dust of dustValues) {
+        for (const count of counts) {
+          const boundary = count * dust;
+          const totals = [
+            boundary - dust,
+            boundary - 1,
+            boundary,
+            boundary + 1,
+            boundary + dust,
+            boundary * 3,
+          ].filter((total) => total > 0);
+
+          for (const total of totals) {
+            for (let seed = 0; seed < 5; seed++) {
+              let call = 0;
+              const randomSource = {
+                randomFraction: () => {
+                  call += 1;
+                  return ((seed * 11 + call * 17 + total) % 97) / 97;
+                },
+                randomInt: (max: number) => (seed + call + total) % max,
+              };
+
+              const result = generateDecoyAmounts(total, count, dust, randomSource);
+
+              expect(result.length).toBeLessThanOrEqual(count);
+              if (total >= count * dust) {
+                expect(result.length).toBe(count);
+              }
+              for (const amount of result) {
+                expect(amount).toBeGreaterThanOrEqual(dust);
+              }
+              expect(result.reduce((sum, value) => sum + value, 0)).toBe(total);
+            }
+          }
+        }
+      }
+    });
+
+    it("reduces the output count instead of emitting sub-dust amounts when the total cannot satisfy count * dust", () => {
+      // count=3, dust=546 => 1638 required; 1650 is only 12 over the full
+      // boundary, which is exactly the case that used to produce sub-dust
+      // outputs via the unclamped halving override.
+      const result = generateDecoyAmounts(1650, 3, 546);
+
+      expect(Math.min(...result)).toBeGreaterThanOrEqual(546);
+      expect(result.reduce((sum, value) => sum + value, 0)).toBe(1650);
+
+      // A total that genuinely cannot fit 3 dust-sized outputs must shrink
+      // the count rather than emit anything below dust.
+      const reduced = generateDecoyAmounts(1000, 3, 546);
+      expect(reduced.length).toBeLessThan(3);
+      for (const amount of reduced) {
+        expect(amount).toBeGreaterThanOrEqual(546);
+      }
+      expect(reduced.reduce((sum, value) => sum + value, 0)).toBe(1000);
     });
   });
 

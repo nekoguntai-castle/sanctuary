@@ -196,7 +196,10 @@ async function buildDecoyChangeOutputs(
   let changeAddress: string | undefined;
   const decoyOutputsResult: Array<{ address: string; amount: number }> = [];
 
-  for (let i = 0; i < numChangeOutputs; i++) {
+  // generateDecoyAmounts may return fewer than numChangeOutputs amounts
+  // (it shrinks the split rather than emit a sub-dust output), so iterate
+  // over what it actually produced.
+  for (let i = 0; i < amounts.length; i++) {
     const addr = shuffledAddresses[i].address;
     const amt = amounts[i];
 
@@ -213,7 +216,7 @@ async function buildDecoyChangeOutputs(
     }
   }
 
-  log.info(`Created ${numChangeOutputs} decoy change outputs for wallet`);
+  log.info(`Created ${amounts.length} decoy change outputs for wallet`);
 
   return {
     changeAddress,

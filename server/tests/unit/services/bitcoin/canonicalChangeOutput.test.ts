@@ -100,6 +100,40 @@ describe('canonical change output selection', () => {
     });
   });
 
+  it('builds only as many decoy/change outputs as generateDecoyAmounts actually returns', async () => {
+    // generateDecoyAmounts shrinks the split (rather than emit a sub-dust
+    // amount) when the change total can't cover the requested count at
+    // dustThreshold; the caller must follow the shorter array, not the
+    // originally-requested count.
+    const second = { ...change, id: 'change-1', index: 1, address: 'bc1qchange1' };
+    mocks.findUnusedChangeAddresses.mockResolvedValueOnce([change, second]);
+    mocks.generateDecoyAmounts.mockReturnValueOnce([12_000]);
+    const psbt = { addOutput: vi.fn() };
+    const preparedChangeOutputs = await prepareChangeOutputs(walletId, 2);
+
+    const result = await buildAndAddOutputs(
+      psbt as never,
+      walletId,
+      'bc1qrecipient',
+      10_000,
+      {
+        utxos: [], totalAmount: 22_100, estimatedFee: 100, changeAmount: 12_000,
+        changeOutputCount: 2,
+      },
+      546,
+      false,
+      preparedChangeOutputs,
+      recipientScript,
+      { enabled: true, count: 2 },
+    );
+
+    // Only 1 change output (not the requested 2) plus the recipient output.
+    expect(psbt.addOutput).toHaveBeenCalledTimes(2);
+    expect(result.decoyOutputsResult).toHaveLength(1);
+    expect(result.decoyOutputsResult?.[0].amount).toBe(12_000);
+    expect(result.changeAddress).toBeDefined();
+  });
+
   it('does not construct decoys below the two-output boundary even if selection metadata is inconsistent', async () => {
     mocks.generateDecoyAmounts.mockReturnValueOnce([6_000, 6_000]);
     const second = { ...change, id: 'change-1', index: 1, address: 'bc1qchange1' };
