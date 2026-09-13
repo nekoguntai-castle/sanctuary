@@ -405,6 +405,15 @@ helper. **Failing-first test:** a 1-in/2-out P2WPKH raw tx at 1410 sat fee → `
 not `6.35`.
 Verification: server gates. Rollback: revert.
 
+**Status: done.** Added `server/src/services/bitcoin/transactionVsize.ts`
+(`computeVirtualSizeFromRawTx`), a shared helper that authenticates raw hex
+against its txid via `rawTransactionEvidence.ts`'s existing weight-preflight
+parser and returns `Transaction.virtualSize()`. `crossWallet.ts` and
+`walletTransactions/pending.ts` now both prefer this vsize and only fall back
+to byte length/mempool.space weight when it is unavailable. Non-regression
+tests added in `transactionVsize.test.ts`, `transactionsCrossWallet.test.ts`,
+and `transactionsHttpRoutes.reads.contracts.ts`.
+
 ## Phase 12 — P2: the UTXO route uses the shared confirmation default
 
 Owner: `server/src/api/transactions/utxos.ts`.

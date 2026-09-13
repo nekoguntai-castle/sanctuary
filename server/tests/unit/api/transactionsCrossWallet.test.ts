@@ -1,7 +1,24 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
+import * as bitcoin from 'bitcoinjs-lib';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
+
+/**
+ * Structurally realistic 1-in/2-out P2WPKH transaction (see
+ * transactionVsize.test.ts for why the witness bytes don't need to verify
+ * cryptographically: vsize only depends on their length).
+ */
+const makeSegwitPendingTransaction = (): bitcoin.Transaction => {
+  const script = Uint8Array.from([0x00, 0x14, ...new Uint8Array(20).fill(0xab)]);
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  transaction.addInput(new Uint8Array(32).fill(0x11), 0);
+  transaction.addOutput(script, 60_000n);
+  transaction.addOutput(script, 38_590n);
+  transaction.setWitness(0, [new Uint8Array(71).fill(0x30), new Uint8Array(33).fill(0x02)]);
+  return transaction;
+};
 
 const mocks = vi.hoisted(() => ({
   getCachedBlockHeight: vi.fn(),
@@ -273,6 +290,39 @@ describe('transactions cross-wallet routes', () => {
       size: 0,
       feeRate: 0,
     });
+  });
+
+  it('GET /transactions/pending computes fee rate from virtual size, not serialized bytes', async () => {
+    const transaction = makeSegwitPendingTransaction();
+    const rawHex = transaction.toHex();
+    const byteLength = Math.ceil(rawHex.length / 2);
+    const fee = 1410;
+
+    mockPrismaClient.wallet.findMany.mockResolvedValue([
+      { id: 'wallet-1', name: 'Main Wallet' },
+    ]);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        txid: transaction.getId(),
+        walletId: 'wallet-1',
+        type: 'sent',
+        amount: BigInt(-60000),
+        fee: BigInt(fee),
+        rawTx: rawHex,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await request(app).get('/api/v1/transactions/pending');
+
+    expect(response.status).toBe(200);
+    const expectedFeeRate = Math.round((fee / transaction.virtualSize()) * 100) / 100;
+    // Serialized-byte division understates the rate for a segwit spend; the
+    // byte-based rate would have been fee / byteLength ≈ 6.35, not ≈10.
+    expect(fee / byteLength).toBeLessThan(expectedFeeRate);
+    expect(response.body[0].feeRate).toBe(expectedFeeRate);
+    expect(response.body[0].feeRate).toBeGreaterThan(9);
+    expect(response.body[0].feeRate).toBeLessThan(11);
   });
 
   it('GET /transactions/pending returns empty array when no wallets are accessible', async () => {

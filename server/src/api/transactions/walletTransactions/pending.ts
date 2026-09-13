@@ -12,6 +12,7 @@ import { createLogger } from '../../../utils/logger';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { mapWithConcurrency } from '../../../utils/async';
 import { getMempoolApiBase } from '../../../services/bitcoin/mempool/config';
+import { computeVirtualSizeFromRawTx } from '../../../services/bitcoin/transactionVsize';
 import { normalizeLegacyBitcoinNetwork } from '../../../services/bitcoin/networks';
 import { getDefaultNodeMempoolApiBase } from '@sanctuary/shared/constants/nodeConfig';
 
@@ -51,10 +52,15 @@ const fetchMempoolTxData = async (
   }
 };
 
-const calculateRawTransactionFeeRate = (rawTx: string | null, fee: number): number => {
+const calculateRawTransactionFeeRate = (txid: string, rawTx: string | null, fee: number): number => {
   if (!rawTx || fee <= 0) return 0;
 
-  const size = Math.ceil(rawTx.length / 2);
+  // Prefer virtual size (ceil(weight / 4)) over serialized byte length: for
+  // segwit spends the witness inflates the byte count relative to weight,
+  // understating the fee rate. Fall back to the byte-based size when the raw
+  // hex can't be authenticated (malformed, or a txid mismatch).
+  const vsize = computeVirtualSizeFromRawTx(txid, rawTx);
+  const size = vsize ?? Math.ceil(rawTx.length / 2);
   return size > 0 ? Math.round((fee / size) * 10) / 10 : 0;
 };
 
@@ -79,7 +85,7 @@ const buildPendingTransactionResponse = async (
   }
 
   if (feeRate === 0) {
-    feeRate = calculateRawTransactionFeeRate(tx.rawTx, fee);
+    feeRate = calculateRawTransactionFeeRate(tx.txid, tx.rawTx, fee);
   }
 
   const displayType: 'sent' | 'received' =

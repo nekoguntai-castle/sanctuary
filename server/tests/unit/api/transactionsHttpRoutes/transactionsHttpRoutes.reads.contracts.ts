@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import request from "supertest";
+import * as bitcoin from "bitcoinjs-lib";
 
 import { PERSISTED_TRANSACTION_TYPES } from "@sanctuary/shared/constants/transactions";
 import { mockPrismaClient } from "../../../mocks/prisma";
@@ -22,6 +23,22 @@ import {
   mockWalletFindById,
   walletId,
 } from "./transactionsHttpRoutesTestHarness";
+
+/**
+ * Structurally realistic 1-in/2-out P2WPKH transaction (see
+ * transactionVsize.test.ts for why the witness bytes don't need to verify
+ * cryptographically: vsize only depends on their length).
+ */
+const makeSegwitPendingTransaction = (): bitcoin.Transaction => {
+  const script = Uint8Array.from([0x00, 0x14, ...new Uint8Array(20).fill(0xab)]);
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  transaction.addInput(new Uint8Array(32).fill(0x11), 0);
+  transaction.addOutput(script, 60_000n);
+  transaction.addOutput(script, 38_590n);
+  transaction.setWitness(0, [new Uint8Array(71).fill(0x30), new Uint8Array(33).fill(0x02)]);
+  return transaction;
+};
 
 export function registerTransactionHttpReadTests(): void {
   it("lists wallet transactions with pagination and dynamic confirmations", async () => {
@@ -467,6 +484,45 @@ export function registerTransactionHttpReadTests(): void {
     });
     expect(response.body[0].feeRate).toBe(2.5);
     expect(response.body[0].timeInQueue).toBeGreaterThanOrEqual(0);
+  });
+
+  it("falls back to virtual size, not serialized bytes, for a segwit raw transaction when mempool fetch fails", async () => {
+    const transaction = makeSegwitPendingTransaction();
+    const rawHex = transaction.toHex();
+    const byteLength = Math.ceil(rawHex.length / 2);
+    const fee = 1410;
+
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      name: "Test Wallet",
+      network: "testnet",
+    });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        txid: transaction.getId(),
+        walletId,
+        type: "sent",
+        amount: BigInt(-60000),
+        fee: BigInt(fee),
+        createdAt: new Date(Date.now() - 2000),
+        counterpartyAddress: "tb1qcounterparty",
+        rawTx: rawHex,
+        blockHeight: null,
+      },
+    ]);
+    mockFetch.mockRejectedValueOnce(new Error("mempool unavailable"));
+
+    const response = await request(app).get(
+      `/api/v1/wallets/${walletId}/transactions/pending`,
+    );
+
+    expect(response.status).toBe(200);
+    const expectedFeeRate = Math.round((fee / transaction.virtualSize()) * 10) / 10;
+    // Serialized-byte division would have understated the rate (~6.35);
+    // vsize division should land close to the true ~10 sat/vB.
+    expect(fee / byteLength).toBeLessThan(expectedFeeRate);
+    expect(response.body[0].feeRate).toBe(expectedFeeRate);
+    expect(response.body[0].feeRate).toBeGreaterThan(9);
+    expect(response.body[0].feeRate).toBeLessThan(11);
   });
 
   it("uses mempool transaction weight and fee when available for pending fee rate", async () => {

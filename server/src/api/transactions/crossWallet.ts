@@ -12,6 +12,7 @@ import { buildWalletAccessWhere } from '../../repositories/accessControl';
 import { asyncHandler } from '../../errors/errorHandler';
 import { bigIntToNumber, bigIntToNumberOrZero } from '../../utils/errors';
 import { getCachedBlockHeight, type Network } from '../../services/bitcoin/blockchain';
+import { computeVirtualSizeFromRawTx } from '../../services/bitcoin/transactionVsize';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import { walletCache } from '../../services/cache';
 
@@ -298,7 +299,13 @@ router.get('/transactions/pending', asyncHandler(async (req, res) => {
     const fee = bigIntToNumber(tx.fee) || 0;
     // Calculate size from rawTx hex (2 hex chars = 1 byte), or estimate ~200 bytes
     const size = tx.rawTx ? Math.ceil(tx.rawTx.length / 2) : 200;
-    const feeRate = size > 0 ? fee / size : 0;
+    // Fee rate must divide by virtual size, not serialized byte length: for
+    // segwit spends the witness inflates the byte count relative to weight,
+    // understating the rate. Fall back to the byte-based size above when the
+    // raw hex can't be authenticated (malformed, missing, or txid mismatch).
+    const vsize = tx.rawTx ? computeVirtualSizeFromRawTx(tx.txid, tx.rawTx) : undefined;
+    const effectiveSize = vsize ?? size;
+    const feeRate = effectiveSize > 0 ? fee / effectiveSize : 0;
 
     return {
       txid: tx.txid,
