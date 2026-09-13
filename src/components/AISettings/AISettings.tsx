@@ -206,6 +206,7 @@ export default function AISettings() {
               providerType={settings.providerType}
               aiEnabled={settings.aiEnabled}
               isSaving={toggle.isSaving}
+              saveError={toggle.saveError}
               aiEndpoint={settings.aiEndpoint}
               aiModel={settings.aiModel}
               onToggleAI={toggle.handleToggleAI}

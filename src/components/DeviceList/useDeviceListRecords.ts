@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Device, HardwareDeviceModel, User } from '../../types';
 import { useLoadingState } from '../../hooks/useLoadingState';
 import { getDevices, updateDevice, deleteDevice, getDeviceModels } from '../../api/devices';
@@ -16,20 +16,22 @@ export function useDeviceListRecords(user: User | null) {
   const [editType, setEditType] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const { loading, execute: runLoad } = useLoadingState({ initialLoading: true });
+  const { loading, error, execute: runLoad } = useLoadingState({ initialLoading: true });
+
+  const loadDevices = useCallback(() => runLoad(async () => {
+    const [deviceData, models] = await Promise.all([
+      getDevices(),
+      getDeviceModels()
+    ]);
+    setDevices(deviceData);
+    setDeviceModels(models);
+  }), [runLoad]);
 
   useEffect(() => {
     if (!user) return;
 
-    runLoad(async () => {
-      const [deviceData, models] = await Promise.all([
-        getDevices(),
-        getDeviceModels()
-      ]);
-      setDevices(deviceData);
-      setDeviceModels(models);
-    });
-  }, [user]);
+    void loadDevices();
+  }, [user, loadDevices]);
 
   const editState = useMemo<DeviceGroupedEditState>(() => ({
     editingId,
@@ -51,6 +53,8 @@ export function useDeviceListRecords(user: User | null) {
     devices,
     deviceModels,
     loading,
+    error,
+    reload: loadDevices,
     editState,
     deleteState,
     handleEdit: (device: Device) => {

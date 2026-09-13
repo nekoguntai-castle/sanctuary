@@ -97,6 +97,8 @@ vi.mock('lucide-react', () => ({
   Trash2: () => <span data-testid="trash-icon" />,
   Wallet: () => <span data-testid="wallet-icon-lucide" />,
   ChevronDown: () => <span data-testid="chevron-down-icon" />,
+  AlertTriangle: () => <span data-testid="alert-triangle-icon" />,
+  RefreshCw: () => <span data-testid="refresh-icon" />,
 }));
 
 // Mock custom icons
@@ -562,5 +564,47 @@ describe('DeviceList - Preference Controls', () => {
 
     await user.click(screen.getByRole('button', { name: /connect new device/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/devices/connect');
+  });
+});
+
+describe('DeviceList - Load Failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetUserPreferences();
+    mockGetDeviceModels.mockResolvedValue(mockDeviceModels);
+  });
+
+  it('renders an error state instead of the empty state when devices fail to load', async () => {
+    mockGetDevices.mockRejectedValue(new Error('Could not reach the device service'));
+
+    const { DeviceList } = await import('../../src/components/DeviceList');
+
+    render(<DeviceList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach the device service')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('No Devices Connected')).not.toBeInTheDocument();
+  });
+
+  it('retries loading devices when Retry is clicked', async () => {
+    mockGetDevices.mockRejectedValueOnce(new Error('Could not reach the device service'));
+    mockGetDevices.mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+
+    const { DeviceList } = await import('../../src/components/DeviceList');
+
+    render(<DeviceList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach the device service')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No Devices Connected')).toBeInTheDocument();
+    });
+    expect(mockGetDevices).toHaveBeenCalledTimes(2);
   });
 });

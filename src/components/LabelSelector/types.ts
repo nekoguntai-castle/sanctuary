@@ -21,6 +21,7 @@ export interface LabelBadgesProps {
 export interface LabelSelectorController {
   availableLabels: Label[];
   creating: boolean;
+  createError: string | null;
   dropdownRef: RefObject<HTMLDivElement | null>;
   filteredLabels: Label[];
   handleCreateLabel: () => Promise<void>;

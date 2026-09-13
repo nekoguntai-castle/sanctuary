@@ -111,17 +111,33 @@ export function registerAISettingsToggleContracts() {
       }
     });
 
-    // Note: Toggle error handling is tested implicitly through the save error test
-    // The toggle uses the same error state mechanism
-    it('should verify error state exists in component', async () => {
+    it('renders the toggle save error message when enabling AI fails', async () => {
+      mockUpdateSystemSettings.mockRejectedValueOnce(new Error('network unreachable'));
+      const user = userEvent.setup();
       render(<AISettings />);
 
       await waitFor(() => {
         expect(screen.getByText('Enable AI Features')).toBeInTheDocument();
       });
 
-      // Verify the component structure that would display errors
-      expect(screen.getByText('AI Settings')).toBeInTheDocument();
+      const toggleButtons = screen.getAllByRole('button');
+      const toggle = toggleButtons.find(btn => btn.className.includes('rounded-full'));
+      expect(toggle).toBeDefined();
+      await user.click(toggle!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enable AI')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Enable AI' }));
+
+      await waitFor(() => {
+        expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to update AI settings')).toBeInTheDocument();
+      });
     });
   });
 }

@@ -513,6 +513,7 @@ describe("StatusTab", () => {
     providerType: "ollama" as const,
     aiEnabled: false,
     isSaving: false,
+    saveError: null as string | null,
     aiEndpoint: "",
     aiModel: "",
     onToggleAI: vi.fn(),
@@ -556,5 +557,19 @@ describe("StatusTab", () => {
 
     expect(onNavigateToSettings).toHaveBeenCalled();
     expect(screen.queryByText(/local ai container/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the toggle save error when set", () => {
+    render(<StatusTab {...baseProps} saveError="Failed to update AI settings" />);
+
+    expect(screen.getByText("Failed to update AI settings")).toBeInTheDocument();
+  });
+
+  it("renders no save error text when saveError is null", () => {
+    render(<StatusTab {...baseProps} />);
+
+    expect(
+      screen.queryByText("Failed to update AI settings"),
+    ).not.toBeInTheDocument();
   });
 });

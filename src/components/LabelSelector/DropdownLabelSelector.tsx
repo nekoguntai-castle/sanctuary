@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Plus, Tag, X } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { Label } from '../../types';
+import { ErrorAlert } from '../ui/ErrorAlert';
 import { LabelChip } from './LabelChip';
 import type { LabelSelectorController } from './types';
 
@@ -215,33 +216,36 @@ function CreateLabelSection({
 
 function CreateLabelForm({ controller }: { controller: LabelSelectorController }) {
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="text"
-        value={controller.newLabelName}
-        onChange={(event) => controller.setNewLabelName(event.target.value)}
-        placeholder="New label name..."
-        className="flex-1 px-2 py-1 surface-muted border border-sanctuary-200 dark:border-sanctuary-800 rounded text-sm text-sanctuary-900 dark:text-sanctuary-100 placeholder-sanctuary-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
-        autoFocus
-        onKeyDown={controller.handleCreateKeyDown}
-      />
-      <button
-        onClick={controller.handleCreateLabel}
-        disabled={!controller.newLabelName.trim() || controller.creating}
-        className="p-1.5 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-300 dark:bg-sanctuary-700 dark:hover:bg-sanctuary-600 dark:disabled:bg-sanctuary-800 dark:border dark:border-sanctuary-600 text-white dark:text-sanctuary-100 rounded transition-colors"
-      >
-        {controller.creating ? (
-          <div className="animate-spin rounded-full h-4 w-4 border border-white border-t-transparent" />
-        ) : (
-          <Check className="w-4 h-4" />
-        )}
-      </button>
-      <button
-        onClick={controller.cancelCreate}
-        className="p-1.5 text-sanctuary-500 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 rounded transition-colors"
-      >
-        <X className="w-4 h-4" />
-      </button>
+    <div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={controller.newLabelName}
+          onChange={(event) => controller.setNewLabelName(event.target.value)}
+          placeholder="New label name..."
+          className="flex-1 px-2 py-1 surface-muted border border-sanctuary-200 dark:border-sanctuary-800 rounded text-sm text-sanctuary-900 dark:text-sanctuary-100 placeholder-sanctuary-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          autoFocus
+          onKeyDown={controller.handleCreateKeyDown}
+        />
+        <button
+          onClick={controller.handleCreateLabel}
+          disabled={!controller.newLabelName.trim() || controller.creating}
+          className="p-1.5 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-300 dark:bg-sanctuary-700 dark:hover:bg-sanctuary-600 dark:disabled:bg-sanctuary-800 dark:border dark:border-sanctuary-600 text-white dark:text-sanctuary-100 rounded transition-colors"
+        >
+          {controller.creating ? (
+            <div className="animate-spin rounded-full h-4 w-4 border border-white border-t-transparent" />
+          ) : (
+            <Check className="w-4 h-4" />
+          )}
+        </button>
+        <button
+          onClick={controller.cancelCreate}
+          className="p-1.5 text-sanctuary-500 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 rounded transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <ErrorAlert message={controller.createError} className="mt-2" />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type {
 } from 'react';
 import type { Label } from '../../types';
 import { useCreateWalletLabel, useWalletLabels } from '../../hooks/queries/useWalletLabels';
+import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import { createLogger } from '../../utils/logger';
 import type { LabelSelectorController } from './types';
 
@@ -95,6 +96,7 @@ export function useLabelSelectorController({
     availableLabels,
     cancelCreate,
     creating: createMutation.isPending,
+    createError: createMutation.error ? extractErrorMessage(createMutation.error) : null,
     dropdownRef,
     filteredLabels,
     handleCreateKeyDown,

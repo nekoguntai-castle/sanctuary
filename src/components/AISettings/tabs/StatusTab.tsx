@@ -1,10 +1,11 @@
-import { Shield } from "lucide-react";
+import { AlertCircle, Shield } from "lucide-react";
 import type { StatusTabProps } from "../types";
 
 export function StatusTab({
   providerType,
   aiEnabled,
   isSaving,
+  saveError,
   aiEndpoint,
   aiModel,
   onToggleAI,
@@ -60,6 +61,14 @@ export function StatusTab({
           />
         </button>
       </div>
+
+      {/* Toggle Save Error */}
+      {saveError && (
+        <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-400">
+          <AlertCircle className="w-4 h-4" />
+          <span className="text-sm">{saveError}</span>
+        </div>
+      )}
 
       {/* Quick Status Summary */}
       <div className="grid grid-cols-3 gap-3">

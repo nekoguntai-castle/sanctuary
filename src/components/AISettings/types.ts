@@ -14,6 +14,7 @@ export interface StatusTabProps {
   providerType: AIProviderType;
   aiEnabled: boolean;
   isSaving: boolean;
+  saveError: string | null;
   aiEndpoint: string;
   aiModel: string;
   onToggleAI: () => void;

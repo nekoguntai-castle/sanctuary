@@ -507,6 +507,14 @@ exposes `createMutation.error` and renders it (mirror `useLabelManagerController
 **Failing-first tests:** one per site — reject the API call, assert an error renders (currently
 nothing does).
 
+**Status: done.** `DeviceList` now renders a rose-toned error state with a Retry button on load
+failure instead of `EmptyState`; `StatusTab` renders `toggle.saveError`; `LabelSelector`'s
+dropdown create form renders `createMutation.error` via the shared `ErrorAlert` component
+(mirroring `useLabelManagerController.ts:95`). Six failing-first tests added across
+`tests/components/DeviceList.test.tsx`, `tests/components/AISettingsSubcomponents.test.tsx`,
+`tests/components/AISettings/AISettings.toggle.contracts.tsx`, and
+`tests/components/LabelSelector.test.tsx`, all confirmed red before the fix.
+
 ## Phase 19 — P2: parsed-account import reports total failure
 
 Owner: `src/components/DeviceDetail/accounts/hooks/useAddAccountFlow.ts`.

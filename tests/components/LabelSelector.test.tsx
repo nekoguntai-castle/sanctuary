@@ -388,6 +388,20 @@ describe('LabelSelector', () => {
         });
         expect(onChange).not.toHaveBeenCalled();
       });
+
+      it('shows an inline error when label creation has failed', async () => {
+        mockCreateMutationReturn = {
+          ...mockCreateMutationReturn,
+          error: new Error('Label name already exists'),
+        };
+
+        render(<LabelSelector {...defaultProps} />);
+
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        expect(screen.getByText('Label name already exists')).toBeInTheDocument();
+      });
     });
 
     describe('disabled state', () => {
