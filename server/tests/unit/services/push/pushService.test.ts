@@ -50,13 +50,14 @@ vi.mock('../../../../src/services/push/providers', () => ({
 }));
 
 // Mock logger
+const mockLog = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
 vi.mock('../../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+  createLogger: () => mockLog,
 }));
 
 // Import after mocks
@@ -287,6 +288,81 @@ describe('Push Service', () => {
       await sendPushNotification(userId, message);
 
       expect(mockProvider.send).not.toHaveBeenCalled();
+    });
+
+    it('should record and log a resolved provider failure that is not an invalid-token error', async () => {
+      const { recordPushFailure } = await import(
+        '../../../../src/services/deadLetterQueue'
+      );
+      const device = {
+        id: 'device-1',
+        userId,
+        platform: 'ios',
+        token: 'token-1',
+        lastUsedAt: new Date(),
+      };
+
+      mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
+      mockGetProviderForPlatform.mockReturnValue(mockProvider);
+      mockProvider.send.mockResolvedValue({
+        success: false,
+        errorCode: 'provider_rate_limited',
+        error: 'rate limited',
+      });
+
+      await sendPushNotification(userId, message);
+
+      expect(recordPushFailure).toHaveBeenCalledWith(
+        userId,
+        'token-1',
+        'rate limited',
+        1,
+        expect.objectContaining({
+          platform: 'ios',
+          errorCode: 'provider_rate_limited',
+          messageTitle: message.title,
+        }),
+      );
+      expect(mockLog.error).toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.update).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to a default message when a resolved failure has no error text', async () => {
+      const { recordPushFailure } = await import(
+        '../../../../src/services/deadLetterQueue'
+      );
+      const device = {
+        id: 'device-1',
+        userId,
+        platform: 'ios',
+        token: 'token-1',
+        lastUsedAt: new Date(),
+      };
+
+      mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
+      mockGetProviderForPlatform.mockReturnValue(mockProvider);
+      mockProvider.send.mockResolvedValue({
+        success: false,
+        errorCode: 'provider_unavailable',
+      });
+
+      await sendPushNotification(userId, message);
+
+      expect(recordPushFailure).toHaveBeenCalledWith(
+        userId,
+        'token-1',
+        'Unknown push provider failure',
+        1,
+        expect.objectContaining({
+          platform: 'ios',
+          errorCode: 'provider_unavailable',
+          messageTitle: message.title,
+        }),
+      );
+      expect(mockLog.error).toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.update).not.toHaveBeenCalled();
     });
 
     it('should remove invalid token when provider returns unsuccessful invalid-token response', async () => {

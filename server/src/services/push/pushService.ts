@@ -170,6 +170,20 @@ class PushService {
           log.info(
             `Removed invalid ${device.platform} token for user ${userId}`,
           );
+        } else {
+          // Provider resolved without throwing but did not succeed, and it
+          // is not an invalid-token result: record it the same way a thrown
+          // failure is recorded so it isn't silently dropped.
+          const errorMsg = result.error ?? 'Unknown push provider failure';
+          log.error(
+            `Push to ${device.platform} device failed: ${errorMsg}`,
+            { platform: device.platform, errorCode: result.errorCode, error: errorMsg },
+          );
+          await recordPushFailure(userId, device.token, errorMsg, 1, {
+            platform: device.platform,
+            messageTitle: message.title,
+            errorCode: result.errorCode,
+          });
         }
       } catch (err) {
         const errorMsg = getErrorMessage(err);

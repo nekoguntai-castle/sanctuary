@@ -94,6 +94,8 @@ Failing tests first: `server/tests/unit/services/push/pushService*.test.ts` — 
 
 Verification: as Phase 3.
 
+Status: done
+
 ## Phase 6 — a completed broadcast always reports and refreshes (frontend)
 
 Finding: `send-broadcast-lease-drop-silent-success`.
