@@ -126,6 +126,8 @@ Failing-first tests: service — race `connect()` against `disconnect()` with a 
 
 Contract: `createMutation.reset()` in `cancelCreate`, the Escape path, the click-outside handler and the opener. Failing-first test: reject once, cancel, reopen → no `ErrorAlert` (today shown). Verification: frontend gates. Rollback: revert.
 
+Status: done — `createMutation.reset()` added in `cancelCreate`, the Escape path of `handleCreateKeyDown`, the click-outside handler, and the `setIsCreating(true)` opener in `useLabelSelectorController.ts`; 4 new tests in `tests/components/LabelSelector.test.tsx` confirmed red pre-fix, green post-fix.
+
 ## Phase 14 — P2: server CRUD failures in the network connection card are shown
 
 Contract: a `serverActionError` state set in every catch of `useNetworkConnectionCardController` (add/update/delete/toggle/reorder), cleared at the start of each action, rendered in the card with the existing inline-error idiom; success paths unchanged (render-regression baselines capture non-error states).

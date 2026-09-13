@@ -37,12 +37,13 @@ export function useLabelSelectorController({
         setIsOpen(false);
         setIsCreating(false);
         setSearchQuery('');
+        createMutation.reset();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [createMutation]);
 
   const handleToggleLabel = (label: Label) => {
     const isSelected = selectedLabels.some((selectedLabel) => selectedLabel.id === label.id);
@@ -77,12 +78,22 @@ export function useLabelSelectorController({
 
   const handleCreateKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') void handleCreateLabel();
-    if (event.key === 'Escape') setIsCreating(false);
+    if (event.key === 'Escape') {
+      setIsCreating(false);
+      createMutation.reset();
+    }
   };
 
   const cancelCreate = () => {
     setIsCreating(false);
     setNewLabelName('');
+    createMutation.reset();
+  };
+
+  const openCreate = (nextIsCreating: boolean) => {
+    // Clear any error left by a previous attempt so a reopened form starts clean.
+    createMutation.reset();
+    setIsCreating(nextIsCreating);
   };
 
   const filteredLabels = labels.filter((label) =>
@@ -109,7 +120,7 @@ export function useLabelSelectorController({
     loading,
     newLabelName,
     searchQuery,
-    setIsCreating,
+    setIsCreating: openCreate,
     setIsOpen,
     setNewLabelName,
     setSearchQuery,

@@ -402,6 +402,108 @@ describe('LabelSelector', () => {
 
         expect(screen.getByText('Label name already exists')).toBeInTheDocument();
       });
+
+      it('clears the create error when the form is cancelled via X and reopened', async () => {
+        mockCreateMutationReturn.reset = vi.fn(() => {
+          mockCreateMutationReturn = { ...mockCreateMutationReturn, error: null };
+        });
+
+        const { rerender } = render(<LabelSelector {...defaultProps} />);
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        // Simulate the create mutation settling into a rejected state.
+        mockCreateMutationReturn = {
+          ...mockCreateMutationReturn,
+          error: new Error('Label name already exists'),
+        };
+        rerender(<LabelSelector {...defaultProps} />);
+        expect(screen.getByText('Label name already exists')).toBeInTheDocument();
+
+        const input = screen.getByPlaceholderText('New label name...') as HTMLInputElement;
+        const actionButtons = input.parentElement?.querySelectorAll('button');
+        fireEvent.click(actionButtons![1]); // Cancel (X)
+
+        fireEvent.click(screen.getByText('Create new label'));
+        expect(screen.queryByText('Label name already exists')).not.toBeInTheDocument();
+      });
+
+      it('clears the create error when Escape is pressed and the form is reopened', async () => {
+        mockCreateMutationReturn.reset = vi.fn(() => {
+          mockCreateMutationReturn = { ...mockCreateMutationReturn, error: null };
+        });
+
+        const { rerender } = render(<LabelSelector {...defaultProps} />);
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        mockCreateMutationReturn = {
+          ...mockCreateMutationReturn,
+          error: new Error('Label name already exists'),
+        };
+        rerender(<LabelSelector {...defaultProps} />);
+        expect(screen.getByText('Label name already exists')).toBeInTheDocument();
+
+        const input = screen.getByPlaceholderText('New label name...');
+        fireEvent.keyDown(input, { key: 'Escape' });
+
+        fireEvent.click(screen.getByText('Create new label'));
+        expect(screen.queryByText('Label name already exists')).not.toBeInTheDocument();
+      });
+
+      it('clears the create error when clicking outside and the form is reopened', async () => {
+        mockCreateMutationReturn.reset = vi.fn(() => {
+          mockCreateMutationReturn = { ...mockCreateMutationReturn, error: null };
+        });
+
+        const { rerender } = render(<LabelSelector {...defaultProps} />);
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        mockCreateMutationReturn = {
+          ...mockCreateMutationReturn,
+          error: new Error('Label name already exists'),
+        };
+        rerender(<LabelSelector {...defaultProps} />);
+        expect(screen.getByText('Label name already exists')).toBeInTheDocument();
+
+        fireEvent.mouseDown(document.body);
+
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+        expect(screen.queryByText('Label name already exists')).not.toBeInTheDocument();
+      });
+
+      it('shows a fresh create error after the form is reopened', async () => {
+        mockCreateMutationReturn.reset = vi.fn(() => {
+          mockCreateMutationReturn = { ...mockCreateMutationReturn, error: null };
+        });
+
+        const { rerender } = render(<LabelSelector {...defaultProps} />);
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        mockCreateMutationReturn = {
+          ...mockCreateMutationReturn,
+          error: new Error('Label name already exists'),
+        };
+        rerender(<LabelSelector {...defaultProps} />);
+        expect(screen.getByText('Label name already exists')).toBeInTheDocument();
+
+        const input = screen.getByPlaceholderText('New label name...') as HTMLInputElement;
+        const actionButtons = input.parentElement?.querySelectorAll('button');
+        fireEvent.click(actionButtons![1]); // Cancel (X)
+
+        fireEvent.click(screen.getByText('Create new label'));
+        expect(screen.queryByText('Label name already exists')).not.toBeInTheDocument();
+
+        mockCreateMutationReturn = {
+          ...mockCreateMutationReturn,
+          error: new Error('Another name conflict'),
+        };
+        rerender(<LabelSelector {...defaultProps} />);
+        expect(screen.getByText('Another name conflict')).toBeInTheDocument();
+      });
     });
 
     describe('disabled state', () => {
