@@ -52,6 +52,73 @@ export const registerOutputManagementReducerContracts = () => {
       expect(newState.outputs).toHaveLength(1);
     });
 
+    it('should decrement scanningOutputIndex when removing an output before it', () => {
+      const state = createInitialState();
+      state.outputs = [
+        { address: 'addr1', amount: '1000', sendMax: false },
+        { address: 'addr2', amount: '2000', sendMax: false },
+        { address: 'addr3', amount: '3000', sendMax: false },
+      ];
+      state.outputsValid = [true, true, true];
+      state.scanningOutputIndex = 2;
+
+      const action: TransactionAction = { type: 'REMOVE_OUTPUT', index: 0 };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.scanningOutputIndex).toBe(1);
+    });
+
+    it('should clear scanningOutputIndex when removing the scanning output', () => {
+      const state = createInitialState();
+      state.outputs = [
+        { address: 'addr1', amount: '1000', sendMax: false },
+        { address: 'addr2', amount: '2000', sendMax: false },
+        { address: 'addr3', amount: '3000', sendMax: false },
+      ];
+      state.outputsValid = [true, true, true];
+      state.scanningOutputIndex = 2;
+
+      const action: TransactionAction = { type: 'REMOVE_OUTPUT', index: 2 };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.scanningOutputIndex).toBeNull();
+    });
+
+    it('should leave scanningOutputIndex unchanged when removing a later output', () => {
+      const state = createInitialState();
+      state.outputs = [
+        { address: 'addr1', amount: '1000', sendMax: false },
+        { address: 'addr2', amount: '2000', sendMax: false },
+        { address: 'addr3', amount: '3000', sendMax: false },
+      ];
+      state.outputsValid = [true, true, true];
+      state.scanningOutputIndex = 0;
+
+      const action: TransactionAction = { type: 'REMOVE_OUTPUT', index: 2 };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.scanningOutputIndex).toBe(0);
+    });
+
+    it('should leave scanningOutputIndex null when it is already null and an output is removed', () => {
+      const state = createInitialState();
+      state.outputs = [
+        { address: 'addr1', amount: '1000', sendMax: false },
+        { address: 'addr2', amount: '2000', sendMax: false },
+      ];
+      state.outputsValid = [true, true];
+      state.scanningOutputIndex = null;
+
+      const action: TransactionAction = { type: 'REMOVE_OUTPUT', index: 0 };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.scanningOutputIndex).toBeNull();
+    });
+
     it('should update output field', () => {
       const state = createInitialState();
       const action: TransactionAction = {

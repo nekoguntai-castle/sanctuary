@@ -31,10 +31,21 @@ export function reduceOutputCollection(
   if (action.type === 'REMOVE_OUTPUT') {
     if (state.outputs.length <= 1) return state;
 
+    const { scanningOutputIndex } = state;
+    const newScanningOutputIndex =
+      scanningOutputIndex === null
+        ? null
+        : scanningOutputIndex === action.index
+          ? null
+          : scanningOutputIndex > action.index
+            ? scanningOutputIndex - 1
+            : scanningOutputIndex;
+
     return {
       ...state,
       outputs: state.outputs.filter((_, i) => i !== action.index),
       outputsValid: state.outputsValid.filter((_, i) => i !== action.index),
+      scanningOutputIndex: newScanningOutputIndex,
     };
   }
 
