@@ -69,7 +69,13 @@ function inventoryFailure(readFile: (path: string) => string, prefilter: boolean
   throw new Error(`Expected the ${prefilter ? 'filtered' : 'unfiltered'} scan to reject drift`);
 }
 
-describe('generated signer implementation inventory', { timeout: 20_000 }, () => {
+// The inventory scan walks src/ several times per case; alone it takes ~8-15 s,
+// but under a loaded host (parallel coverage/mutation runs) it has exceeded a
+// 20 s pin repeatedly while still healthy (iterations 14-16, 2026-09-12/13).
+// The pin overrides --testTimeout, so it is the only ceiling that matters here.
+const INVENTORY_SUITE_TIMEOUT_MS = 120_000;
+
+describe('generated signer implementation inventory', { timeout: INVENTORY_SUITE_TIMEOUT_MS }, () => {
   it('matches the checked-in deterministic projection', () => {
     expect(() => checkSignerInventory(readRepositoryFile)).not.toThrow();
   });
