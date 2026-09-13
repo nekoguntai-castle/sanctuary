@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { userRepository } from '../../../repositories';
 import * as twoFactorService from '../../../services/twoFactorService';
+import { verifyAndConsumeTotp } from './consumeVerifiedTotp';
 import { auditService, AuditAction, AuditCategory } from '../../../services/auditService';
 import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth';
 import { validate } from '../../../middleware/validate';
@@ -70,8 +71,9 @@ export function createSetupRouter(): Router {
       throw new InvalidInputError('2FA is already enabled');
     }
 
-    // Verify the token
-    const isValid = twoFactorService.verifyToken(user.twoFactorSecret, token);
+    // Verify the token and make it single-use so the same code cannot be
+    // replayed to (re-)enable 2FA.
+    const isValid = await verifyAndConsumeTotp(user.id, user.twoFactorSecret, token);
 
     if (!isValid) {
       throw new InvalidInputError('Invalid verification code');

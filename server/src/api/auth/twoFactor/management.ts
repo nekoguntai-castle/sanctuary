@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { userRepository } from '../../../repositories';
 import { verifyPassword } from '../../../utils/password';
 import * as twoFactorService from '../../../services/twoFactorService';
+import { verifyAndConsumeTotp } from './consumeVerifiedTotp';
 import { auditService, AuditAction, AuditCategory } from '../../../services/auditService';
 import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth';
 import { validate } from '../../../middleware/validate';
@@ -48,10 +49,12 @@ export function createManagementRouter(): Router {
       throw new UnauthorizedError('Invalid password');
     }
 
-    // Verify 2FA token (allow backup code too)
+    // Verify 2FA token (allow backup code too). A code whose time step was
+    // already consumed is rejected even if cryptographically valid, so the
+    // same code cannot be replayed.
     let tokenValid = false;
     if (user.twoFactorSecret) {
-      tokenValid = twoFactorService.verifyToken(user.twoFactorSecret, token);
+      tokenValid = await verifyAndConsumeTotp(user.id, user.twoFactorSecret, token);
     }
 
     if (!tokenValid && user.twoFactorBackupCodes) {
@@ -130,8 +133,10 @@ export function createManagementRouter(): Router {
       throw new UnauthorizedError('Invalid password');
     }
 
-    // Verify 2FA token
-    const tokenValid = twoFactorService.verifyToken(user.twoFactorSecret, token);
+    // Verify 2FA token. A code whose time step was already consumed is
+    // rejected even if cryptographically valid, so the same code cannot be
+    // replayed to regenerate backup codes repeatedly.
+    const tokenValid = await verifyAndConsumeTotp(user.id, user.twoFactorSecret, token);
     if (!tokenValid) {
       throw new UnauthorizedError('Invalid 2FA code');
     }

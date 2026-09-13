@@ -4,6 +4,14 @@ import { expect, it, vi } from 'vitest';
 import { app } from './auth2faTestHarness';
 import { mockPrismaClient } from '../auth.testHelpers';
 import { expectCanonicalAuthSessionUser } from '../authSessionUser.contractHelper';
+import { Prisma } from '../../../../src/generated/prisma/client';
+
+function totpStepAlreadyConsumedError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`jti`)', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
+}
 
 export function registerTwoFactorVerifyContracts() {
   it('rejects and clears a stale browser cookie pair before 2FA verification executes', async () => {
@@ -68,12 +76,36 @@ export function registerTwoFactorVerifyContracts() {
       twoFactorBackupCodes: null,
     });
 
-    const { verifyToken } = await import('../../../../src/services/twoFactorService');
-    vi.mocked(verifyToken).mockReturnValueOnce(false);
+    const { verifyTokenStep } = await import('../../../../src/services/twoFactorService');
+    vi.mocked(verifyTokenStep).mockReturnValueOnce({ valid: false });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/verify')
       .send({ tempToken: 'valid-token', code: '000000' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('Invalid verification code');
+  });
+
+  it('should reject a replayed TOTP code whose time step was already consumed (today: accepted)', async () => {
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      isAdmin: false,
+      sessionVersion: 0,
+      twoFactorEnabled: true,
+      twoFactorSecret: 'some-secret',
+      twoFactorBackupCodes: null,
+    });
+
+    const { verifyTokenStep } = await import('../../../../src/services/twoFactorService');
+    vi.mocked(verifyTokenStep).mockReturnValueOnce({ valid: true, timeStep: 41152264 });
+    // A prior submission (or a concurrent one) already consumed this step.
+    mockPrismaClient.revokedToken.create.mockRejectedValueOnce(totpStepAlreadyConsumedError());
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/verify')
+      .send({ tempToken: 'valid-token', code: '123456' });
 
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('Invalid verification code');
@@ -286,7 +318,7 @@ export function registerTwoFactorVerifyContracts() {
     // test at "should successfully verify 2FA and return tokens".
     const twoFactorService = await import('../../../../src/services/twoFactorService');
     vi.mocked(twoFactorService.isBackupCode).mockReset().mockReturnValue(false);
-    vi.mocked(twoFactorService.verifyToken).mockReset().mockReturnValue(true);
+    vi.mocked(twoFactorService.verifyTokenStep).mockReset().mockReturnValue({ valid: true, timeStep: 1 });
 
     mockPrismaClient.user.findUnique.mockResolvedValue({
       id: 'test-user-id',

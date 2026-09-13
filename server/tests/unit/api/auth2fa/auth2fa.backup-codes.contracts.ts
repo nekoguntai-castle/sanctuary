@@ -4,6 +4,14 @@ import { expect, it, vi } from 'vitest';
 import { app } from './auth2faTestHarness';
 import { mockPrismaClient } from '../auth.testHelpers';
 import { hashPassword } from '../../../../src/utils/password';
+import { Prisma } from '../../../../src/generated/prisma/client';
+
+function totpStepAlreadyConsumedError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`jti`)', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
+}
 
 export function registerTwoFactorBackupCodeCountContracts() {
   it('should return 400 when password is missing', async () => {
@@ -176,12 +184,36 @@ export function registerTwoFactorBackupCodeRegenerateContracts() {
       twoFactorSecret: 'some-secret',
     });
 
-    const { verifyToken } = await import('../../../../src/services/twoFactorService');
-    vi.mocked(verifyToken).mockReturnValueOnce(false);
+    const { verifyTokenStep } = await import('../../../../src/services/twoFactorService');
+    vi.mocked(verifyTokenStep).mockReturnValueOnce({ valid: false });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/backup-codes/regenerate')
       .send({ password: correctPassword, token: '000000' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('Invalid 2FA code');
+  });
+
+  it('should reject a replayed 2FA token whose time step was already consumed (today: accepted)', async () => {
+    const correctPassword = 'CorrectPassword123!';
+    const hashedPassword = await hashPassword(correctPassword);
+
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      password: hashedPassword,
+      twoFactorEnabled: true,
+      twoFactorSecret: 'some-secret',
+    });
+
+    const { verifyTokenStep } = await import('../../../../src/services/twoFactorService');
+    vi.mocked(verifyTokenStep).mockReturnValueOnce({ valid: true, timeStep: 41152264 });
+    mockPrismaClient.revokedToken.create.mockRejectedValueOnce(totpStepAlreadyConsumedError());
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/backup-codes/regenerate')
+      .send({ password: correctPassword, token: '123456' });
 
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('Invalid 2FA code');
@@ -200,9 +232,9 @@ export function registerTwoFactorBackupCodeRegenerateContracts() {
     });
     mockPrismaClient.user.update.mockResolvedValue({});
 
-    // Reset and explicitly set verifyToken to return true
+    // Reset and explicitly set verifyTokenStep to return valid
     const twoFactorService = await import('../../../../src/services/twoFactorService');
-    vi.mocked(twoFactorService.verifyToken).mockReset().mockReturnValue(true);
+    vi.mocked(twoFactorService.verifyTokenStep).mockReset().mockReturnValue({ valid: true, timeStep: 1 });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/backup-codes/regenerate')
@@ -226,7 +258,7 @@ export function registerTwoFactorBackupCodeRegenerateContracts() {
     });
 
     const twoFactorService = await import('../../../../src/services/twoFactorService');
-    vi.mocked(twoFactorService.verifyToken).mockReturnValueOnce(true);
+    vi.mocked(twoFactorService.verifyTokenStep).mockReturnValueOnce({ valid: true, timeStep: 1 });
     vi.mocked(twoFactorService.hashBackupCodes).mockRejectedValueOnce(new Error('Hash failed'));
 
     const response = await request(app)

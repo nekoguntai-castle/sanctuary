@@ -8,6 +8,7 @@ import prisma from '../models/prisma';
 import crypto from 'crypto';
 import { Prisma, type RefreshToken, type RevokedToken } from '../generated/prisma/client';
 import { createLogger } from '../utils/logger';
+import { isPrismaError } from '../utils/errors';
 import {
   consumeAndReplaceRefreshTokenWithClient,
   type RotateRefreshTokenInput,
@@ -292,6 +293,35 @@ export async function revokeJwt(
 }
 
 /**
+ * Make a TOTP code single-use by recording its RFC 6238 time step as a
+ * consumed one-time marker, reusing `revoked_tokens` rather than adding a
+ * schema column (the release gate pins the migration tree's SHA-256, so this
+ * phase cannot add a migration). The primary key (`jti`) is the atomic
+ * one-time boundary: two concurrent submissions of the same code race to
+ * insert the same `jti` and exactly one insert wins. Expires two time steps
+ * out (60s past the step boundary), matching the ±1 step verification
+ * tolerance, and is swept by the existing `cleanupExpiredRevokedTokens` sweep.
+ */
+export async function consumeTotpStep(userId: string, timeStep: number): Promise<boolean> {
+  try {
+    await prisma.revokedToken.create({
+      data: {
+        jti: `totp-step:${userId}:${timeStep}`,
+        userId,
+        reason: 'totp-step-consumed',
+        expiresAt: new Date((timeStep + 2) * 30 * 1000),
+      },
+    });
+    return true;
+  } catch (error) {
+    if (isPrismaError(error) && error.code === 'P2002') {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
  * Clean up expired revoked tokens
  */
 export async function cleanupExpiredRevokedTokens(): Promise<number> {
@@ -423,6 +453,7 @@ export const sessionRepository = {
   updateLastUsed,
   isTokenRevoked,
   revokeJwt,
+  consumeTotpStep,
   cleanupExpiredRevokedTokens,
   upsertRevokedToken,
   findRevokedTokenByJti,

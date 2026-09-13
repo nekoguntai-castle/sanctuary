@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { encrypt, decryptIfEncrypted } from '../utils/encryption';
 import { safeJsonParse } from '../utils/safeJson';
 import { createLogger } from '../utils/logger';
+import { sessionRepository } from '../repositories';
 
 const log = createLogger('TWO_FACTOR:SVC');
 
@@ -43,11 +44,17 @@ export async function generateSecret(username: string): Promise<{
   return { secret: encryptedSecret, qrCodeDataUrl };
 }
 
+export interface TotpStepVerification {
+  valid: boolean;
+  /** RFC 6238 time step the code matched at. Only set when `valid` is true. */
+  timeStep?: number;
+}
+
 /**
- * Verify a TOTP token against a secret
+ * Verify a TOTP token against a secret.
  * Handles both encrypted secrets (new) and plaintext secrets (legacy) for backward compatibility
  */
-export function verifyToken(secret: string, token: string): boolean {
+function verifyTotp(secret: string, token: string): TotpStepVerification {
   try {
     // Decrypt the secret if it's encrypted, otherwise use as-is (backward compatibility)
     const plaintextSecret = decryptIfEncrypted(secret);
@@ -58,11 +65,35 @@ export function verifyToken(secret: string, token: string): boolean {
       epochTolerance: 30,
       guardrails: TOTP_GUARDRAILS,
     });
-    return result.valid;
+    // `verifySync` is typed as a TOTP/HOTP union; `epochTolerance` is a
+    // TOTP-only option, so a valid result here is always the TOTP shape,
+    // which is the only one that carries `timeStep`. Fail closed (treat as
+    // invalid) in the unreachable case where a valid result lacks it, since
+    // callers rely on `timeStep` to make the code single-use.
+    return result.valid && 'timeStep' in result
+      ? { valid: true, timeStep: result.timeStep }
+      : { valid: false };
   } catch (error) {
     log.debug('TOTP verification failed', { error: String(error) });
-    return false;
+    return { valid: false };
   }
+}
+
+/**
+ * Verify a TOTP token against a secret
+ * Handles both encrypted secrets (new) and plaintext secrets (legacy) for backward compatibility
+ */
+export function verifyToken(secret: string, token: string): boolean {
+  return verifyTotp(secret, token).valid;
+}
+
+/**
+ * Verify a TOTP token and report the RFC 6238 time step it matched at, so the
+ * caller can consume that step as a one-time marker (see
+ * `sessionRepository.consumeTotpStep`) and make the code single-use.
+ */
+export function verifyTokenStep(secret: string, token: string): TotpStepVerification {
+  return verifyTotp(secret, token);
 }
 
 /**
@@ -155,9 +186,20 @@ export function isBackupCode(code: string): boolean {
 export default {
   generateSecret,
   verifyToken,
+  verifyTokenStep,
   generateBackupCodes,
   hashBackupCodes,
   verifyBackupCode,
   getRemainingBackupCodeCount,
   isBackupCode,
 };
+
+/**
+ * Record a verified TOTP time step as consumed so the same code cannot be
+ * accepted again. Returns false when the step was already consumed (a replay
+ * or the losing side of a concurrent submission). Lives here so API routes
+ * reach the repository through the service layer.
+ */
+export async function consumeTotpStep(userId: string, timeStep: number): Promise<boolean> {
+  return sessionRepository.consumeTotpStep(userId, timeStep);
+}

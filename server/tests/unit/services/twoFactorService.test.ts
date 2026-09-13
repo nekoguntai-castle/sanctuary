@@ -13,6 +13,7 @@ import * as encryption from '../../../src/utils/encryption';
 import {
   generateSecret,
   verifyToken,
+  verifyTokenStep,
   generateBackupCodes,
   hashBackupCodes,
   verifyBackupCode,
@@ -157,6 +158,47 @@ describe('Two-Factor Authentication Service', () => {
       // 3 steps away should fail (beyond ±1 step tolerance)
       const farToken = generateSync({ secret, epoch: currentEpoch - TOTP_STEP_SECONDS * 3 });
       expect(verifyToken(secret, farToken)).toBe(false);
+    });
+  });
+
+  describe('Token verification with matched time step (verifyTokenStep)', () => {
+    it('reports the matched time step on a valid code', () => {
+      const secret = otpGenerateSecret();
+      const currentEpoch = Math.floor(Date.now() / 1000);
+      const token = generateSync({ secret, epoch: currentEpoch });
+
+      const result = verifyTokenStep(secret, token);
+
+      expect(result.valid).toBe(true);
+      expect(typeof result.timeStep).toBe('number');
+    });
+
+    it('returns the same time step for the same code, so a caller consuming it twice sees an unchanged step', () => {
+      const secret = otpGenerateSecret();
+      const currentEpoch = Math.floor(Date.now() / 1000);
+      const token = generateSync({ secret, epoch: currentEpoch });
+
+      const first = verifyTokenStep(secret, token);
+      const second = verifyTokenStep(secret, token);
+
+      expect(first.valid).toBe(true);
+      expect(second.valid).toBe(true);
+      expect(second.timeStep).toBe(first.timeStep);
+    });
+
+    it('returns invalid without a time step for a bad secret', () => {
+      const result = verifyTokenStep('not-base64:not-base64:not-base64', '123456');
+      expect(result.valid).toBe(false);
+      expect(result.timeStep).toBeUndefined();
+    });
+
+    it('returns invalid without a time step for a wrong code', () => {
+      const secret = otpGenerateSecret();
+      const result = verifyTokenStep(secret, '000000');
+      expect(typeof result.valid).toBe('boolean');
+      if (!result.valid) {
+        expect(result.timeStep).toBeUndefined();
+      }
     });
   });
 

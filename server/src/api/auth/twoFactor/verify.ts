@@ -10,6 +10,7 @@ import { userRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { verify2FAToken } from '../../../utils/jwt';
 import * as twoFactorService from '../../../services/twoFactorService';
+import { verifyAndConsumeTotp } from './consumeVerifiedTotp';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../../services/auditService';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
@@ -74,8 +75,13 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
         usedBackupCode = codeValid;
       }
     } else {
-      // Try TOTP code
-      codeValid = twoFactorService.verifyToken(user.twoFactorSecret, code);
+      // Try TOTP code. A code whose time step was already consumed is
+      // rejected even if cryptographically valid, so the same code cannot be
+      // replayed to log in twice. The consume write below is the one-time-use
+      // boundary, mirroring the backup-code path above: two concurrent
+      // submissions of the same code race to insert the same marker row, and
+      // only one insert can win.
+      codeValid = await verifyAndConsumeTotp(user.id, user.twoFactorSecret, code);
     }
 
     if (!codeValid) {

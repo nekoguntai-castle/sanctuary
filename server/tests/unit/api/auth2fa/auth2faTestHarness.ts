@@ -159,9 +159,14 @@ vi.mock('../../../../src/utils/password', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../../src/services/twoFactorService', () => ({
+vi.mock('../../../../src/services/twoFactorService', async () => ({
+  consumeTotpStep: async (userId: string, timeStep: number) => {
+    const { sessionRepository } = await import('../../../../src/repositories');
+    return sessionRepository.consumeTotpStep(userId, timeStep);
+  },
   generateSecret: vi.fn().mockResolvedValue({ secret: 'mock-secret', qrCodeDataUrl: 'data:image/png;base64,...' }),
   verifyToken: vi.fn().mockReturnValue(true),
+  verifyTokenStep: vi.fn().mockReturnValue({ valid: true, timeStep: 1 }),
   generateBackupCodes: vi.fn().mockReturnValue(['code1', 'code2', 'code3', 'code4', 'code5', 'code6', 'code7', 'code8']),
   hashBackupCodes: vi.fn().mockResolvedValue('[{"hash":"hash1"},{"hash":"hash2"}]'),
   verifyBackupCode: vi.fn().mockResolvedValue({ valid: true, updatedCodesJson: '[]' }),

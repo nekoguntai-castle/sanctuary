@@ -75,6 +75,7 @@ export const mockPrismaClient = {
   deviceAccount: createModelMock(),
   mobilePermission: createModelMock(),
   refreshToken: createModelMock(),
+  revokedToken: createModelMock(),
   revokedRefreshSessionFamily: createModelMock(),
 
   // Treasury Intelligence

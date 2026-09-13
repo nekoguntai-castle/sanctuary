@@ -621,6 +621,48 @@ describe('Session Repository', () => {
     });
   });
 
+  describe('consumeTotpStep', () => {
+    it('should insert a consumed-step marker and return true on first use', async () => {
+      (prisma.revokedToken.create as Mock).mockResolvedValue({
+        jti: 'totp-step:user-456:41152264',
+        userId: 'user-456',
+        reason: 'totp-step-consumed',
+        expiresAt: new Date((41152264 + 2) * 30 * 1000),
+        revokedAt: new Date(),
+      });
+
+      const result = await sessionRepository.consumeTotpStep('user-456', 41152264);
+
+      expect(result).toBe(true);
+      expect(prisma.revokedToken.create).toHaveBeenCalledWith({
+        data: {
+          jti: 'totp-step:user-456:41152264',
+          userId: 'user-456',
+          reason: 'totp-step-consumed',
+          expiresAt: new Date((41152264 + 2) * 30 * 1000),
+        },
+      });
+    });
+
+    it('should return false (today: throws uncaught) when the step was already consumed', async () => {
+      (prisma.revokedToken.create as Mock).mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`jti`)', {
+          code: 'P2002',
+          clientVersion: 'test',
+        })
+      );
+
+      await expect(sessionRepository.consumeTotpStep('user-456', 41152264)).resolves.toBe(false);
+    });
+
+    it('should rethrow non-unique-constraint errors', async () => {
+      (prisma.revokedToken.create as Mock).mockRejectedValue(new Error('database unavailable'));
+
+      await expect(sessionRepository.consumeTotpStep('user-456', 41152264))
+        .rejects.toThrow('database unavailable');
+    });
+  });
+
   describe('cleanupExpiredRevokedTokens', () => {
     it('should clean up expired revoked tokens', async () => {
       (prisma.revokedToken.deleteMany as Mock).mockResolvedValue({ count: 25 });
