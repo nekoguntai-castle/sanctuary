@@ -4,6 +4,7 @@ import {
   HEX_TEXT_PATTERN,
   bytesToBase64,
   hasBip174BinaryPsbtMagic,
+  hasPsbtMagicBytes,
   hasPsbtMagicText,
   hexTextToBytes,
 } from '../../../utils/psbtFormat';
@@ -108,5 +109,12 @@ function parseHexTextPsbt(content: string): SignedPsbtImport | null {
     return null;
   }
 
-  return { base64: bytesToBase64(hexTextToBytes(content)), source: 'hex' };
+  let bytes: Uint8Array;
+  try {
+    bytes = hexTextToBytes(content);
+  } catch {
+    return null;
+  }
+
+  return hasPsbtMagicBytes(bytes) ? { base64: bytesToBase64(bytes), source: 'hex' } : null;
 }

@@ -390,6 +390,68 @@ describe('DraftList', () => {
       matchSpy.mockRestore();
     });
 
+    it('rejects hex PSBT text lacking the PSBT magic bytes', async () => {
+      renderDraftList();
+      await screen.findByText('Unsigned');
+
+      const realMatch = String.prototype.match;
+      const matchSpy = vi.spyOn(String.prototype, 'match').mockImplementation(function (
+        this: string,
+        pattern: any
+      ) {
+        if (this.toString() === 'deadbeef' && pattern instanceof RegExp && pattern.source === '^[A-Za-z0-9+/=\\s]+$') {
+          return null as any;
+        }
+        return realMatch.call(this.toString(), pattern);
+      });
+
+      const file = {
+        name: 'signed.hex',
+        arrayBuffer: () => Promise.resolve(new Uint8Array([0x00]).buffer),
+        text: () => Promise.resolve('deadbeef'),
+      } as unknown as File;
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      fireEvent.change(fileInputs[0] as HTMLInputElement, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByText('Invalid hex PSBT file')).toBeInTheDocument();
+      });
+      expect(draftsApi.updateDraft).not.toHaveBeenCalled();
+
+      matchSpy.mockRestore();
+    });
+
+    it('rejects odd-length hex PSBT text instead of silently truncating it', async () => {
+      renderDraftList();
+      await screen.findByText('Unsigned');
+
+      const realMatch = String.prototype.match;
+      const matchSpy = vi.spyOn(String.prototype, 'match').mockImplementation(function (
+        this: string,
+        pattern: any
+      ) {
+        if (this.toString() === '70736274fff' && pattern instanceof RegExp && pattern.source === '^[A-Za-z0-9+/=\\s]+$') {
+          return null as any;
+        }
+        return realMatch.call(this.toString(), pattern);
+      });
+
+      const file = {
+        name: 'signed.hex',
+        arrayBuffer: () => Promise.resolve(new Uint8Array([0x00]).buffer),
+        text: () => Promise.resolve('70736274fff'),
+      } as unknown as File;
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      fireEvent.change(fileInputs[0] as HTMLInputElement, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByText('Invalid hex PSBT file')).toBeInTheDocument();
+      });
+      expect(draftsApi.updateDraft).not.toHaveBeenCalled();
+
+      matchSpy.mockRestore();
+    });
+
     it('shows operation error when uploaded PSBT format is invalid', async () => {
       renderDraftList();
       await screen.findByText('Unsigned');

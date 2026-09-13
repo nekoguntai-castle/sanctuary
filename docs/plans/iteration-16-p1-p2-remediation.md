@@ -104,6 +104,8 @@ Failing-first tests: `feeDelta = -50` path throws (today returns inconsistent fe
 Contract: `hexTextToBytes` rejects odd-length hex; both hex import sites check `hasPsbtMagicBytes` after decoding and raise the same invalid-format error the base64/binary branches raise.
 Failing-first tests: `deadbeef` and odd-length hex through `draftListHelpers` and `psbtFileImport` → rejected (today accepted); a real hex PSBT still imports. Verification: frontend gates. Rollback: revert.
 
+Status: done — `hexTextToBytes` now rejects odd-length hex, and both hex import sites check `hasPsbtMagicBytes` before accepting; 5 new tests cover the previously-accepted `deadbeef`/odd-length cases and the still-passing real hex PSBT path.
+
 ## Phase 11 — P2: removing an output keeps the QR scanner on the intended output
 
 Contract: `REMOVE_OUTPUT` sets `scanningOutputIndex` to `null` when it equals the removed index and decrements it when greater.

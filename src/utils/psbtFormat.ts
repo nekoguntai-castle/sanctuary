@@ -46,6 +46,10 @@ export function bytesToBase64(bytes: ArrayLike<number>): string {
 
 export function hexTextToBytes(content: string): Uint8Array {
   const cleanHex = content.replace(/\s/g, '');
+  if (cleanHex.length % 2 !== 0) {
+    throw new Error('Invalid hex PSBT text: odd-length hex string');
+  }
+
   const hexPairs = cleanHex.match(/.{1,2}/g) ?? [];
   return new Uint8Array(hexPairs.map(byte => parseInt(byte, 16)));
 }

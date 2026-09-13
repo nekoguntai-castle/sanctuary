@@ -6,6 +6,7 @@ import {
   base64ToBytes,
   bytesToBase64,
   hasBip174BinaryPsbtMagic,
+  hasPsbtMagicBytes,
   hasPsbtMagicText,
   hexTextToBytes,
 } from '../../utils/psbtFormat';
@@ -86,10 +87,7 @@ function parseTextPsbt(text: string): ParsedPsbtFile {
   }
 
   if (content.match(HEX_TEXT_PATTERN)) {
-    return {
-      base64: bytesToBase64(hexTextToBytes(content)),
-      format: 'hex',
-    };
+    return parseHexPsbt(content);
   }
 
   throw new Error('Invalid PSBT file format. Expected binary, base64, or hex.');
@@ -110,5 +108,21 @@ function parseBase64Psbt(content: string): ParsedPsbtFile {
     };
   } catch {
     throw new Error('Invalid base64 PSBT file');
+  }
+}
+
+function parseHexPsbt(content: string): ParsedPsbtFile {
+  try {
+    const bytes = hexTextToBytes(content);
+    if (!hasPsbtMagicBytes(bytes)) {
+      throw new Error('Not a valid PSBT (missing magic bytes)');
+    }
+
+    return {
+      base64: bytesToBase64(bytes),
+      format: 'hex',
+    };
+  } catch {
+    throw new Error('Invalid hex PSBT file');
   }
 }

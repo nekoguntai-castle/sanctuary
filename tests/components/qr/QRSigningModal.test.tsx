@@ -382,6 +382,32 @@ describe('QRSigningModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('rejects hex text lacking the PSBT magic bytes', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByText("I've Signed It"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['deadbeef'], 'signed.txt', { type: 'text/plain' });
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText('Invalid PSBT file format. Expected binary PSBT, base64, or hex.')).toBeInTheDocument();
+  });
+
+  it('rejects odd-length hex text instead of silently truncating it', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByText("I've Signed It"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['70736274fff'], 'signed.txt', { type: 'text/plain' });
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText('Invalid PSBT file format. Expected binary PSBT, base64, or hex.')).toBeInTheDocument();
+  });
+
   it('shows an error for invalid uploaded file content', async () => {
     const user = userEvent.setup();
     renderModal();

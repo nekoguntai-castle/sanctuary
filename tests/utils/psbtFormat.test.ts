@@ -37,6 +37,11 @@ describe('psbtFormat', () => {
     expect(Array.from(hexTextToBytes(''))).toEqual([]);
   });
 
+  it('rejects odd-length hex text instead of silently truncating the last nibble', () => {
+    expect(() => hexTextToBytes('abc')).toThrow('Invalid hex PSBT text: odd-length hex string');
+    expect(() => hexTextToBytes('70 73 62 7')).toThrow('Invalid hex PSBT text: odd-length hex string');
+  });
+
   it('exports text patterns used by flow-specific parsers', () => {
     expect(BASE64_TEXT_PATTERN.test('cHNidP8=\n')).toBe(true);
     expect(BASE64_TEXT_PATTERN.test('not-base64!')).toBe(false);
