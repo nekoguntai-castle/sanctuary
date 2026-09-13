@@ -821,6 +821,131 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(result.current.addAccountError).toBe("Failed to add accounts");
   });
 
+  it("reports total failure when every parsed account fails to save", async () => {
+    parseDeviceJsonMock.mockReturnValueOnce({
+      accounts: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/8'",
+          xpub: "xpub-8",
+        },
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/9'",
+          xpub: "xpub-9",
+        },
+      ],
+      fingerprint: "abcd1234",
+    });
+
+    const { result } = renderFlowHook();
+
+    act(() => {
+      result.current.handleQrScan([{ rawValue: "plain-two-accounts" }]);
+    });
+    await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(2));
+
+    addDeviceAccountMock.mockRejectedValue(new Error("duplicate account"));
+
+    await act(async () => {
+      await result.current.handleAddParsedAccounts();
+    });
+
+    expect(addDeviceAccountMock).toHaveBeenCalledTimes(2);
+    expect(result.current.addAccountError).toBe(
+      "No accounts were added. Check for duplicate paths and try again.",
+    );
+    expect(getDeviceMock).not.toHaveBeenCalled();
+    expect(onDeviceUpdatedMock).not.toHaveBeenCalled();
+    expect(onCloseMock).not.toHaveBeenCalled();
+  });
+
+  it("closes and reports the added count when some parsed accounts save and others fail", async () => {
+    parseDeviceJsonMock.mockReturnValueOnce({
+      accounts: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/10'",
+          xpub: "xpub-10",
+        },
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/11'",
+          xpub: "xpub-11",
+        },
+      ],
+      fingerprint: "abcd1234",
+    });
+
+    const { result } = renderFlowHook();
+
+    act(() => {
+      result.current.handleQrScan([{ rawValue: "plain-two-accounts" }]);
+    });
+    await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(2));
+
+    addDeviceAccountMock
+      .mockRejectedValueOnce(new Error("duplicate account"))
+      .mockResolvedValueOnce(undefined);
+
+    await act(async () => {
+      await result.current.handleAddParsedAccounts();
+    });
+
+    expect(addDeviceAccountMock).toHaveBeenCalledTimes(2);
+    expect(result.current.addAccountError).toBeNull();
+    expect(onDeviceUpdatedMock).toHaveBeenCalled();
+    expect(onCloseMock).toHaveBeenCalled();
+    expect(loggerSpies.info).toHaveBeenCalledWith(
+      "Added accounts from import",
+      { addedCount: 1 },
+    );
+  });
+
+  it("closes and refreshes the device when every parsed account saves", async () => {
+    parseDeviceJsonMock.mockReturnValueOnce({
+      accounts: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/12'",
+          xpub: "xpub-12",
+        },
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/13'",
+          xpub: "xpub-13",
+        },
+      ],
+      fingerprint: "abcd1234",
+    });
+
+    const { result } = renderFlowHook();
+
+    act(() => {
+      result.current.handleQrScan([{ rawValue: "plain-two-accounts" }]);
+    });
+    await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.handleAddParsedAccounts();
+    });
+
+    expect(addDeviceAccountMock).toHaveBeenCalledTimes(2);
+    expect(result.current.addAccountError).toBeNull();
+    expect(onDeviceUpdatedMock).toHaveBeenCalled();
+    expect(onCloseMock).toHaveBeenCalled();
+    expect(loggerSpies.info).toHaveBeenCalledWith(
+      "Added accounts from import",
+      { addedCount: 2 },
+    );
+  });
+
   it("uses Error.message when parsed account refresh throws an Error", async () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       accounts: [

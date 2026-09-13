@@ -523,6 +523,10 @@ Owner: `src/components/DeviceDetail/accounts/hooks/useAddAccountFlow.ts`.
 success reports the count. **Failing-first test:** every `addDeviceAccount` rejects → `onClose`
 not called, error set (mirror the USB test at `branches.test.tsx:640`).
 
+**Status: done.** Extracted a shared `concludeAccountAdditions` tail (renamed from an initial
+`finalizeAccountAdditions` to avoid a false-positive match in the signer-inventory generator's
+`finalize*` capability matcher) used by both the USB and parsed-account handlers.
+
 ## Phase 20 — P2: autopilot load failure is surfaced and never written back
 
 Owner: `src/components/WalletDetail/WalletAutopilotSettings/useWalletAutopilotSettingsController.ts`.

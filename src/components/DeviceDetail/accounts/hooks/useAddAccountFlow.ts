@@ -24,6 +24,7 @@ import {
 } from "../../../../services/hardwareWallet/identity";
 import type { DeviceType } from "../../../../services/hardwareWallet/types";
 import { getDevice, addDeviceAccount } from "../../../../api/devices";
+import type { Device } from "../../../../types";
 import { createLogger } from "../../../../utils/logger";
 import { extractFromUrResult, normalizeDerivationPath } from "../urHelpers";
 import {
@@ -297,6 +298,32 @@ const processPlainQr = (content: string, context: QrImportContext) => {
   context.setAddAccountLoading(false);
 };
 
+/**
+ * Shared tail for the USB and parsed-account add flows: when nothing was
+ * added, surface an error and leave the dialog open; otherwise refresh the
+ * device and close. Returns whether accounts were actually added.
+ */
+const concludeAccountAdditions = async (
+  addedCount: number,
+  zeroAddedMessage: string,
+  context: {
+    deviceId: string;
+    onDeviceUpdated: (device: Device) => void;
+    onClose: () => void;
+    setAddAccountError: (error: string | null) => void;
+  },
+): Promise<boolean> => {
+  if (addedCount === 0) {
+    context.setAddAccountError(zeroAddedMessage);
+    return false;
+  }
+
+  const updatedDevice = await getDevice(context.deviceId);
+  context.onDeviceUpdated(updatedDevice);
+  context.onClose();
+  return true;
+};
+
 /** Helper to get device type from device model */
 const getDeviceTypeFromDeviceModel = (
   device: AddAccountFlowProps["device"],
@@ -568,20 +595,15 @@ export function useAddAccountFlow({
         }
       }
 
-      if (addedCount === 0) {
-        const warning = buildSkippedXpubWarning(xpubBatch.failures);
-        setAddAccountError(
-          warning
-            ? `No accounts were added. ${warning}`
-            : "No accounts were added. Check for duplicate paths and try again.",
-        );
-        return;
-      }
-
-      // Refresh device data
-      const updatedDevice = await getDevice(deviceId);
-      onDeviceUpdated(updatedDevice);
-      onClose();
+      const warning = buildSkippedXpubWarning(xpubBatch.failures);
+      const added = await concludeAccountAdditions(
+        addedCount,
+        warning
+          ? `No accounts were added. ${warning}`
+          : "No accounts were added. Check for duplicate paths and try again.",
+        { deviceId, onDeviceUpdated, onClose, setAddAccountError },
+      );
+      if (!added) return;
 
       log.info("Added accounts via USB", {
         addedCount,
@@ -645,10 +667,12 @@ export function useAddAccountFlow({
         }
       }
 
-      // Refresh device data
-      const updatedDevice = await getDevice(deviceId);
-      onDeviceUpdated(updatedDevice);
-      onClose();
+      const added = await concludeAccountAdditions(
+        addedCount,
+        "No accounts were added. Check for duplicate paths and try again.",
+        { deviceId, onDeviceUpdated, onClose, setAddAccountError },
+      );
+      if (!added) return;
 
       log.info("Added accounts from import", { addedCount });
     } catch (err) {

@@ -320,9 +320,12 @@ describe('AddAccountFlow branch coverage', () => {
     await user.click(screen.getByText('Add Selected'));
     await waitFor(() => {
       expect(addDeviceAccountMock).toHaveBeenCalled();
-      expect(defaultOnDeviceUpdated).toHaveBeenCalled();
-      expect(defaultOnClose).toHaveBeenCalled();
+      expect(
+        screen.getByText(/No accounts were added\. Check for duplicate paths and try again\./i),
+      ).toBeInTheDocument();
     });
+    expect(defaultOnDeviceUpdated).not.toHaveBeenCalled();
+    expect(defaultOnClose).not.toHaveBeenCalled();
     expect(loggerSpies.warn).toHaveBeenCalledWith('Failed to add account', expect.any(Object));
     view1.unmount();
 
