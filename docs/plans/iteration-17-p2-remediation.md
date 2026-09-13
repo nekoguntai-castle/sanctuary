@@ -58,6 +58,8 @@ Verification: as Phase 1 (rbf.ts is pinned in the wallet-safety mutation map: re
 
 ## Phase 3 — 'specific' quorum resolves against the live policy (server)
 
+Status: done
+
 Finding: `vault-policy-specific-quorum-deadlock-after-roster-shrink`.
 
 Evidence: `approvalService.ts:452-459` compares eligible votes to `request.requiredApprovals` (snapshotted at creation); `checkAllQuorumMet` (:424-444) derives its count live; `vaultPolicyService.ts:400-405` validates only the new config.

@@ -194,7 +194,7 @@ async function ensureEligibleToVote(request: ApprovalRequestWithVotes, userId: s
     return;
   }
 
-  const specificApprovers = await loadSpecificApprovers(request.policyId);
+  const { specificApprovers } = await loadSpecificApprovers(request.policyId);
 
   if (!specificApprovers.includes(userId)) {
     throw new ForbiddenError('You are not an eligible approver for this request');
@@ -202,15 +202,31 @@ async function ensureEligibleToVote(request: ApprovalRequestWithVotes, userId: s
 }
 
 /**
- * Load the current specificApprovers list from the policy backing a
- * 'specific'-quorum request. Always read live (never cached on the request)
- * so a policy edit, or a vote that predates the eligibility check at
- * castVote, is still honored at resolution time.
+ * Load the current specificApprovers list and requiredApprovals threshold
+ * from the policy backing a 'specific'-quorum request. Always read live
+ * (never cached on the request) so a policy edit, or a vote that predates
+ * the eligibility check at castVote, is still honored at resolution time.
+ *
+ * `requiredApprovals` is returned exactly as stored (possibly `undefined` or
+ * not a valid positive integer) — callers that use it as a quorum threshold
+ * must validate it themselves rather than defaulting it here, since a silent
+ * `?? 0` default would let an empty/invalid config resolve a request with
+ * zero votes. See `checkSpecificQuorumMet`.
  */
-async function loadSpecificApprovers(policyId: string): Promise<string[]> {
+async function loadSpecificApprovers(
+  policyId: string
+): Promise<{ specificApprovers: string[]; requiredApprovals: unknown }> {
   const policy = await policyRepository.findPolicyById(policyId);
   const config = policy?.config as unknown as ApprovalRequiredConfig | undefined;
-  return config?.specificApprovers ?? [];
+  return {
+    specificApprovers: config?.specificApprovers ?? [],
+    requiredApprovals: config?.requiredApprovals,
+  };
+}
+
+/** True only for a finite whole number >= 1 — a usable quorum threshold. */
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1;
 }
 
 async function getDraftForAllowedVote(
@@ -447,15 +463,61 @@ async function checkAllQuorumMet(
  * 'specific' quorum is met only by approve votes from users currently on the
  * policy's specificApprovers list — a vote from anyone else (cast before the
  * castVote-time eligibility check existed, or before a policy edit dropped
- * them from the list) must not count toward requiredApprovals.
+ * them from the list) must not count toward the threshold.
+ *
+ * The threshold itself is always the *live* policy's
+ * `min(requiredApprovals, specificApprovers.length)`, never the request's
+ * `requiredApprovals` snapshot from creation time:
+ *
+ * - `validateApprovalRequiredConfig` (vaultPolicyService.ts) already enforces
+ *   `requiredApprovals <= specificApprovers.length` on every policy write
+ *   while `quorumType === 'specific'`, so the live values alone can never
+ *   demand more votes than the live roster has. A `min` against the
+ *   request's stale snapshot would solve a problem the live values don't
+ *   have, while reintroducing a real one: after a roster shrink (e.g.
+ *   [A,B,C,D]/3 edited down to [A,B]/2), the stale snapshot of 3 can never
+ *   be reached by a 2-person roster, deadlocking the request forever.
+ * - Comparing only against the live values also means a policy *tightened*
+ *   after creation (e.g. requiredApprovals raised 3 -> 4 on the same
+ *   roster) is honored immediately: an in-flight request cannot resolve on
+ *   fewer votes than the live policy currently requires. This mirrors
+ *   `checkAllQuorumMet`/`'all'` quorum below, which also always re-derives
+ *   its required count from live state rather than trusting a
+ *   creation-time snapshot.
+ *
+ * Fails closed, mirroring `checkAllQuorumMet`'s empty-eligible-set guard:
+ * an empty live `specificApprovers` list never resolves on its own (there is
+ * no one to demand a vote from), and a missing/invalid live
+ * `requiredApprovals` falls back to the request's snapshot rather than a
+ * `0`/`NaN` default — a threshold that quietly floors at 0 would let the
+ * request resolve on zero votes, which is worse than the deadlock this
+ * function exists to fix. If neither the live value nor the snapshot is a
+ * usable threshold, the request never resolves via this path.
  */
 async function checkSpecificQuorumMet(
   request: ApprovalRequest,
   approveVotes: ApprovalVote[]
 ): Promise<boolean> {
-  const specificApprovers = await loadSpecificApprovers(request.policyId);
+  const { specificApprovers, requiredApprovals: liveRequiredApprovals } =
+    await loadSpecificApprovers(request.policyId);
+
+  if (specificApprovers.length === 0) {
+    return false;
+  }
+
+  const validRequiredApprovals = isPositiveInteger(liveRequiredApprovals)
+    ? liveRequiredApprovals
+    : isPositiveInteger(request.requiredApprovals)
+      ? request.requiredApprovals
+      : undefined;
+
+  if (validRequiredApprovals === undefined) {
+    return false;
+  }
+
+  const liveThreshold = Math.min(validRequiredApprovals, specificApprovers.length);
   const eligibleApproveVotes = approveVotes.filter(v => specificApprovers.includes(v.userId));
-  return eligibleApproveVotes.length >= request.requiredApprovals;
+  return eligibleApproveVotes.length >= liveThreshold;
 }
 
 async function checkAndResolveRequest(
