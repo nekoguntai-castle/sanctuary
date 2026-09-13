@@ -375,6 +375,32 @@ describe('JadeAdapter', () => {
     await expect(adapter.signPSBT({ psbt: 'cHNidP8=' })).rejects.toThrow('serial failed');
   });
 
+  it('rejects an overlapping connect() while one is already in flight, without touching its transport', async () => {
+    const selectedPort = port();
+    requestPort.mockResolvedValueOnce(selectedPort);
+    let resolveVersion: ((value: { id: string; result: { JADE_VERSION: string; BOARD_TYPE: string } }) => void) | undefined;
+    mocks.rpc.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveVersion = resolve;
+      })
+    );
+    const adapter = new JadeAdapter();
+
+    const firstConnect = adapter.connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(
+      adapter.connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' })
+    ).rejects.toThrow(/already in progress/i);
+    expect(requestPort).toHaveBeenCalledTimes(1);
+    expect(selectedPort.close).not.toHaveBeenCalled();
+
+    resolveVersion?.({ id: 'version', result: { JADE_VERSION: '1.0.40', BOARD_TYPE: '' } });
+    mocks.rpc.mockResolvedValueOnce({ id: 'root', result: 'root-xpub' });
+    await expect(firstConnect).resolves.toMatchObject({ fingerprint: 'deadbeef' });
+  });
+
   it('returns unsupported when browser globals are absent', () => {
     Object.defineProperty(globalThis, 'navigator', { value: undefined, configurable: true });
     expect(new JadeAdapter().isSupported()).toBe(false);

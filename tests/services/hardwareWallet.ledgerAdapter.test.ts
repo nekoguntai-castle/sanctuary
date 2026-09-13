@@ -220,6 +220,43 @@ describe('LedgerAdapter modern policy boundary', () => {
     await expect((adapter as any).getMasterFingerprint()).rejects.toThrow('No device connected');
   });
 
+  it('cancels a connect() that resolves after a concurrent disconnect() and closes its transport', async () => {
+    let resolveTransport: ((value: ReturnType<typeof transport>) => void) | undefined;
+    mocks.transportCreate.mockReturnValue(
+      new Promise((resolve) => {
+        resolveTransport = resolve;
+      })
+    );
+    const adapter = new LedgerAdapter();
+
+    const connectPromise = adapter.connect();
+    await adapter.disconnect();
+    resolveTransport?.(transport());
+
+    await expect(connectPromise).rejects.toThrow(/cancel/i);
+    expect(adapter.isConnected()).toBe(false);
+    expect(mocks.transportClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports the cancellation when closing the late transport rejects', async () => {
+    let resolveTransport: ((value: ReturnType<typeof transport>) => void) | undefined;
+    mocks.transportCreate.mockReturnValue(
+      new Promise((resolve) => {
+        resolveTransport = resolve;
+      })
+    );
+    mocks.transportClose.mockRejectedValueOnce(new Error('close failed'));
+    const adapter = new LedgerAdapter();
+
+    const connectPromise = adapter.connect();
+    await adapter.disconnect();
+    resolveTransport?.(transport());
+
+    await expect(connectPromise).rejects.toThrow(/cancel/i);
+    expect(adapter.isConnected()).toBe(false);
+    expect(mocks.transportClose).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["m/44'/0'/0'", 'Bitcoin'],
     ["m/49'/1'/7'", 'Bitcoin Test'],

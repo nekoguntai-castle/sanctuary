@@ -131,6 +131,9 @@ export class LedgerAdapter implements DeviceAdapter {
 
   private connection: LedgerConnection | null = null;
   private connectedDevice: HardwareWalletDevice | null = null;
+  // Bumped by disconnect() so a connect() attempt still in flight can detect
+  // it was superseded and cancel instead of committing a stale transport.
+  private connectGeneration = 0;
 
   constructor(private readonly options: LedgerAdapterOptions = {}) {}
 
@@ -192,6 +195,10 @@ export class LedgerAdapter implements DeviceAdapter {
       throw new Error('WebUSB is not supported. Please use Chrome/Edge on HTTPS.');
     }
 
+    // Captured before any await so a disconnect() that lands during this
+    // attempt is detected before the new transport is committed below.
+    const myGeneration = this.connectGeneration;
+
     // Close existing connection
     if (this.connection) {
       try {
@@ -249,6 +256,15 @@ export class LedgerAdapter implements DeviceAdapter {
         throw new Error(`Ledger master fingerprint unavailable: ${getLedgerErrorMessage(error)}`);
       }
 
+      if (this.connectGeneration !== myGeneration) {
+        try {
+          await transport.close();
+        } catch (closeError) {
+          log.debug('Ignoring Ledger transport close error after cancelled connect', { error: closeError });
+        }
+        throw new Error('Ledger connect cancelled by a concurrent disconnect');
+      }
+
       this.connection = { transport: transport as any, appClient, device, appName, appVersion };
 
       this.connectedDevice = {
@@ -275,6 +291,7 @@ export class LedgerAdapter implements DeviceAdapter {
    * Disconnect from device
    */
   async disconnect(): Promise<void> {
+    this.connectGeneration++;
     if (this.connection) {
       try {
         await this.connection.transport.close();

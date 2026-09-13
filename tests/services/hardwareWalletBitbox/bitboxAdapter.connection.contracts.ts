@@ -5,6 +5,7 @@ import {
   constants,
   createBitBoxAdapter,
   makeHidDevice,
+  mockApiClose,
   mockApiConnect,
   mockFirmwareProduct,
   mockFirmwareRootFingerprint,
@@ -178,6 +179,32 @@ export function registerBitBoxConnectionTests(): void {
       const adapter = createBitBoxAdapter();
       await expect(adapter.disconnect()).resolves.toBeUndefined();
       expect(adapter.getDevice()).toBeNull();
+    });
+
+    it('closes the API handle when readRootFingerprint throws after a successful connect', async () => {
+      mockFirmwareRootFingerprint.mockImplementationOnce(() => {
+        throw new Error('firmware read failed');
+      });
+
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('firmware read failed');
+      expect(mockApiClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the API handle when api.connect() itself rejects', async () => {
+      mockApiConnect.mockRejectedValueOnce(new Error('connect rejected'));
+
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Failed to connect: connect rejected');
+      expect(mockApiClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('still surfaces the connect failure when closing the API handle itself throws', async () => {
+      mockApiConnect.mockRejectedValueOnce(new Error('connect rejected'));
+      mockApiClose.mockImplementationOnce(() => {
+        throw new Error('close exploded');
+      });
+
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Failed to connect: connect rejected');
+      expect(mockApiClose).toHaveBeenCalledTimes(1);
     });
 
     it('requires connected state for xpub/address/sign operations', async () => {

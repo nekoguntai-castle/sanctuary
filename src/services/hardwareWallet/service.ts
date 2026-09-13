@@ -132,6 +132,9 @@ export class HardwareWalletService {
   private adapterLoadPromises: Map<DeviceType, Promise<DeviceAdapter | undefined>> = new Map();
   private activeAdapter: DeviceAdapter | null = null;
   private approvedConnection: ApprovedConnection | null = null;
+  // Bumped by disconnect() so a connect() attempt still in flight can detect
+  // it was superseded and cancel instead of committing a stale adapter.
+  private connectGeneration = 0;
 
   /**
    * Register a device adapter
@@ -299,6 +302,9 @@ export class HardwareWalletService {
     type?: DeviceType,
     options?: HardwareWalletConnectionOptions,
   ): Promise<HardwareWalletDevice> {
+    // Captured before any await so a disconnect() that lands during this
+    // attempt (including during adapter loading) is detected below.
+    const myGeneration = this.connectGeneration;
     let resolvedType = type;
 
     // If no type specified and only one adapter, use it
@@ -344,6 +350,9 @@ export class HardwareWalletService {
     let fingerprint: string;
     let connectedRow: CapabilityRow;
     try {
+      if (this.connectGeneration !== myGeneration) {
+        throw new Error('Hardware wallet connect cancelled by a concurrent disconnect');
+      }
       fingerprint = normalizeMasterFingerprint(
         device.fingerprint,
         `Connected ${adapter.displayName}`
@@ -387,6 +396,7 @@ export class HardwareWalletService {
    * Disconnect from the current device
    */
   async disconnect(): Promise<void> {
+    this.connectGeneration++;
     const adapter = this.activeAdapter;
     this.activeAdapter = null;
     this.approvedConnection = null;

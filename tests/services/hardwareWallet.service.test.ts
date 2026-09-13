@@ -507,6 +507,28 @@ describe('HardwareWalletService', () => {
     await expect(service.disconnect()).resolves.toBeUndefined();
   });
 
+  it('cancels a connect() that resolves after a concurrent disconnect() and disconnects the adapter', async () => {
+    const service = new HardwareWalletService();
+    let resolveConnect: ((value: HardwareWalletDevice) => void) | undefined;
+    const { adapter, device } = createMockAdapter('coldcard', {
+      connect: vi.fn(
+        () =>
+          new Promise<HardwareWalletDevice>((resolve) => {
+            resolveConnect = resolve;
+          })
+      ),
+    });
+    service.registerAdapter(adapter);
+
+    const connectPromise = service.connect('coldcard');
+    await service.disconnect();
+    resolveConnect?.(device);
+
+    await expect(connectPromise).rejects.toThrow(/cancel/i);
+    expect(service.isConnected()).toBe(false);
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+  });
+
   it('requires a connected device for xpub/sign/verify operations', async () => {
     const service = new HardwareWalletService();
     await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');

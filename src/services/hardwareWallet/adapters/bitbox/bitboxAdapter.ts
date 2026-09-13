@@ -175,84 +175,99 @@ export class BitBoxAdapter implements DeviceAdapter {
       log.info('Got device path', { devicePath });
 
       const api = new BitBox02API(devicePath);
-      let verifiedAttestation: boolean | undefined;
 
-      // Connect with callbacks
-      await api.connect(
-        // Show pairing code callback
-        (pairingCode: string) => {
-          log.info('Pairing code received', { pairingCode });
-        },
-        // User verify callback - resolve when user confirms pairing
-        async () => {
-          throw new Error(
-            'BitBox02 pairing requires explicit user confirmation, which is unavailable in this release'
-          );
-        },
-        // Attestation callback
-        (attestationResult: boolean) => {
-          log.info('Attestation result', { attestationResult });
-          if (!attestationResult) {
-            log.warn('Device attestation failed - this may be a counterfeit device');
-          }
-          verifiedAttestation = attestationResult;
-        },
-        // On close callback
-        () => {
-          log.info('BitBox02 connection closed');
-          this.connection = null;
-          if (this.connectedDevice) {
-            this.connectedDevice.connected = false;
-          }
-        },
-        // Status callback
-        (status: string) => {
-          log.info('BitBox02 status', { status });
+      try {
+        return await this.finishConnect(api, devicePath, constants);
+      } catch (error) {
+        try {
+          api.close();
+        } catch (closeError) {
+          log.debug('Ignoring BitBox close error after failed connect', { error: closeError });
         }
-      );
-
-      if (verifiedAttestation === false) {
-        api.close();
-        throw new Error('BitBox02 device attestation failed');
+        throw error;
       }
-      if (verifiedAttestation !== true) {
-        api.close();
-        throw new Error('BitBox02 device attestation was not reported');
-      }
-
-      // Get product type
-      const product = api.firmware().Product();
-      let productName: string;
-      let model: string;
-      if (product === constants.Product.BitBox02Multi) {
-        productName = 'BitBox02 Multi';
-        model = 'BitBox02';
-      } else if (product === constants.Product.BitBox02BTCOnly) {
-        productName = 'BitBox02 Bitcoin-only';
-        model = 'BitBox02 Bitcoin-only';
-      } else {
-        api.close();
-        throw new Error(`Unsupported BitBox02 product: ${String(product)}`);
-      }
-      const rootFingerprint = readRootFingerprint(api);
-
-      log.info('Connected to BitBox02', { product: productName });
-
-      this.connection = { api, devicePath, product, rootFingerprint };
-
-      this.connectedDevice = {
-        id: `bitbox-${BITBOX_VENDOR_ID}-${BITBOX_PRODUCT_ID}`,
-        type: 'bitbox',
-        name: productName,
-        model,
-        connected: true,
-        fingerprint: rootFingerprint,
-      };
-
-      return this.connectedDevice;
     } catch (error) {
       throw getConnectError(error);
     }
+  }
+
+  private async finishConnect(
+    api: InstanceType<BitBoxApiModule['BitBox02API']>,
+    devicePath: string,
+    constants: BitBoxApiModule['constants'],
+  ): Promise<HardwareWalletDevice> {
+    let verifiedAttestation: boolean | undefined;
+
+    // Connect with callbacks
+    await api.connect(
+      // Show pairing code callback
+      (pairingCode: string) => {
+        log.info('Pairing code received', { pairingCode });
+      },
+      // User verify callback - resolve when user confirms pairing
+      async () => {
+        throw new Error(
+          'BitBox02 pairing requires explicit user confirmation, which is unavailable in this release'
+        );
+      },
+      // Attestation callback
+      (attestationResult: boolean) => {
+        log.info('Attestation result', { attestationResult });
+        if (!attestationResult) {
+          log.warn('Device attestation failed - this may be a counterfeit device');
+        }
+        verifiedAttestation = attestationResult;
+      },
+      // On close callback
+      () => {
+        log.info('BitBox02 connection closed');
+        this.connection = null;
+        if (this.connectedDevice) {
+          this.connectedDevice.connected = false;
+        }
+      },
+      // Status callback
+      (status: string) => {
+        log.info('BitBox02 status', { status });
+      }
+    );
+
+    if (verifiedAttestation === false) {
+      throw new Error('BitBox02 device attestation failed');
+    }
+    if (verifiedAttestation !== true) {
+      throw new Error('BitBox02 device attestation was not reported');
+    }
+
+    // Get product type
+    const product = api.firmware().Product();
+    let productName: string;
+    let model: string;
+    if (product === constants.Product.BitBox02Multi) {
+      productName = 'BitBox02 Multi';
+      model = 'BitBox02';
+    } else if (product === constants.Product.BitBox02BTCOnly) {
+      productName = 'BitBox02 Bitcoin-only';
+      model = 'BitBox02 Bitcoin-only';
+    } else {
+      throw new Error(`Unsupported BitBox02 product: ${String(product)}`);
+    }
+    const rootFingerprint = readRootFingerprint(api);
+
+    log.info('Connected to BitBox02', { product: productName });
+
+    this.connection = { api, devicePath, product, rootFingerprint };
+
+    this.connectedDevice = {
+      id: `bitbox-${BITBOX_VENDOR_ID}-${BITBOX_PRODUCT_ID}`,
+      type: 'bitbox',
+      name: productName,
+      model,
+      connected: true,
+      fingerprint: rootFingerprint,
+    };
+
+    return this.connectedDevice;
   }
 
   /**

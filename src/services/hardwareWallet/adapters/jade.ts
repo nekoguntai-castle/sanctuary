@@ -111,6 +111,10 @@ export class JadeAdapter implements DeviceAdapter {
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private session: ActiveJadeSession | null = null;
   private connectedDevice: HardwareWalletDevice | null = null;
+  // Set for the duration of a connect() attempt so an overlapping call is
+  // rejected up front instead of tearing down this attempt's transport
+  // through the shared instance-level port/reader/writer fields.
+  private connecting = false;
 
   isSupported(): boolean {
     return typeof navigator !== 'undefined'
@@ -152,51 +156,62 @@ export class JadeAdapter implements DeviceAdapter {
     if (!this.isSupported()) {
       throw new Error('WebSerial is not supported. Please use Chrome/Edge on HTTPS.');
     }
+    // Rejecting an overlapping attempt up front keeps this.port/reader/writer
+    // addressable by exactly one in-flight connect() at a time, so a failure
+    // in one attempt can never tear down another attempt's transport.
+    if (this.connecting) {
+      throw new Error('Jade connect already in progress');
+    }
     const requested = requireConnectionOptions(options);
-    await this.disconnect();
+    this.connecting = true;
     try {
-      const port = await navigator.serial.requestPort({ filters: [
-        { usbVendorId: JADE_VENDOR_ID, usbProductId: JADE_PRODUCT_ID },
-        { usbVendorId: JADE_PLUS_VENDOR_ID, usbProductId: JADE_PLUS_PRODUCT_ID },
-      ] });
-      const info = port.getInfo();
-      const model = portModel(info);
-      if (!model || (requested.expectedModel && requested.expectedModel !== model)) {
-        throw new Error(`Selected device is not the requested ${requested.expectedModel ?? 'Jade model'}`);
+      await this.disconnect();
+      try {
+        const port = await navigator.serial.requestPort({ filters: [
+          { usbVendorId: JADE_VENDOR_ID, usbProductId: JADE_PRODUCT_ID },
+          { usbVendorId: JADE_PLUS_VENDOR_ID, usbProductId: JADE_PLUS_PRODUCT_ID },
+        ] });
+        const info = port.getInfo();
+        const model = portModel(info);
+        if (!model || (requested.expectedModel && requested.expectedModel !== model)) {
+          throw new Error(`Selected device is not the requested ${requested.expectedModel ?? 'Jade model'}`);
+        }
+        await port.open(SERIAL_OPTIONS);
+        if (!port.readable || !port.writable) throw new Error('Serial port not readable/writable');
+        this.port = port;
+        this.reader = port.readable.getReader();
+        this.writer = port.writable.getWriter();
+        const protocol = new JadeProtocolSession({
+          reader: this.reader,
+          writer: this.writer,
+          invalidate: () => this.closeTransport(),
+        });
+        const versionResponse = await protocol.rpc('get_version_info');
+        const version = responseResult<JadeVersionInfo>(versionResponse.result, 'version information');
+        if (typeof version.JADE_VERSION !== 'string' || version.JADE_VERSION.length === 0) {
+          throw new Error('Jade returned malformed version information');
+        }
+        await protocol.authenticate(requested.network, relayJadePinRequest, Math.floor(Date.now() / 1000));
+        const rootResponse = await protocol.rpc('get_xpub', { network: requested.network, path: [] });
+        const rootXpub = responseResult<unknown>(rootResponse.result, 'root xpub');
+        const fingerprint = masterFingerprintFromRootXpub(rootXpub, requested.family);
+        this.session = { protocol, fingerprint, family: requested.family, network: requested.network };
+        this.connectedDevice = {
+          id: `jade-${info.usbVendorId}-${info.usbProductId}`,
+          type: 'jade',
+          name: model,
+          model,
+          connected: true,
+          fingerprint,
+          firmwareVersion: version.JADE_VERSION,
+        };
+        return this.connectedDevice;
+      } catch (error) {
+        await this.closeTransport();
+        throw this.mapConnectionError(error);
       }
-      await port.open(SERIAL_OPTIONS);
-      if (!port.readable || !port.writable) throw new Error('Serial port not readable/writable');
-      this.port = port;
-      this.reader = port.readable.getReader();
-      this.writer = port.writable.getWriter();
-      const protocol = new JadeProtocolSession({
-        reader: this.reader,
-        writer: this.writer,
-        invalidate: () => this.closeTransport(),
-      });
-      const versionResponse = await protocol.rpc('get_version_info');
-      const version = responseResult<JadeVersionInfo>(versionResponse.result, 'version information');
-      if (typeof version.JADE_VERSION !== 'string' || version.JADE_VERSION.length === 0) {
-        throw new Error('Jade returned malformed version information');
-      }
-      await protocol.authenticate(requested.network, relayJadePinRequest, Math.floor(Date.now() / 1000));
-      const rootResponse = await protocol.rpc('get_xpub', { network: requested.network, path: [] });
-      const rootXpub = responseResult<unknown>(rootResponse.result, 'root xpub');
-      const fingerprint = masterFingerprintFromRootXpub(rootXpub, requested.family);
-      this.session = { protocol, fingerprint, family: requested.family, network: requested.network };
-      this.connectedDevice = {
-        id: `jade-${info.usbVendorId}-${info.usbProductId}`,
-        type: 'jade',
-        name: model,
-        model,
-        connected: true,
-        fingerprint,
-        firmwareVersion: version.JADE_VERSION,
-      };
-      return this.connectedDevice;
-    } catch (error) {
-      await this.closeTransport();
-      throw this.mapConnectionError(error);
+    } finally {
+      this.connecting = false;
     }
   }
 
