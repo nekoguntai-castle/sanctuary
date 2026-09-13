@@ -403,7 +403,7 @@ export function createWalletData(overrides: Partial<any> = {}) {
     fetchData: mocks.fetchData,
     refreshData: async () => {
       await mocks.fetchData(true);
-      return true;
+      return 'ok';
     },
     ...overrides,
   };

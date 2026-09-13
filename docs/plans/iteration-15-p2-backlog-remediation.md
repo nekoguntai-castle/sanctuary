@@ -474,6 +474,11 @@ checkpoint, which fires on supersession, and `refreshSyncStatus` throws on `fals
 and only throw on `failed`. **Failing-first test:** supersession → no warning; a genuine rejection →
 warning still raised.
 
+**Status: done.** `fetchDataWithResult` now returns the exported `FetchDataResult` tri-state
+(`walletDataTypes.ts`); `refreshSyncStatus` only throws on `'failed'`. New tests in
+`tests/components/WalletDetail/hooks/useWalletData.supersession.test.ts` and a
+`WalletDetailWrapper.states.contracts.tsx` case cover ok/superseded/failed end-to-end.
+
 ## Phase 16 — P2: transaction filters reset on wallet switch
 
 Owner: `src/components/WalletDetail/hooks/useTransactionFilters.ts`.

@@ -17,7 +17,7 @@ import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/no
 import {
   TX_PAGE_SIZE, UTXO_PAGE_SIZE, ADDRESS_PAGE_SIZE,
 } from './walletDataTypes';
-import type { UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
+import type { FetchDataResult, UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 import {
   loadAddressSummary as loadAddressSummaryLoader,
   loadAddressPage,
@@ -38,7 +38,7 @@ import {
 import type { ListEpochToken } from '../../../hooks/usePaginatedList';
 import { mergeWalletHttpSyncState } from '../../../utils/walletSyncSnapshot';
 
-export type { UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
+export type { FetchDataResult, UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 
 const log = createLogger('useWalletData');
 
@@ -307,10 +307,11 @@ export function useWalletData({
     }
   }, [addAppNotification, addrList, removeNotificationsByType, txList, utxoList]);
 
-  const fetchDataWithResult = useCallback(async (isRefresh = false) => {
+  const fetchDataWithResult = useCallback(async (isRefresh = false): Promise<FetchDataResult> => {
     const request = ownership.beginFetch(routeKey);
     const ownsRequest = () => ownership.isFetchOwner(request);
-    if (!id || !user || !ownsRequest()) return false;
+    if (!id || !user) return 'failed';
+    if (!ownsRequest()) return 'superseded';
     const replacements = {
       addresses: addrList.beginReplacement(),
       transactions: txList.beginReplacement(),
@@ -331,19 +332,19 @@ export function useWalletData({
       apiWallet = await fetchWalletCore(id);
     } catch (err) {
       log.error('Failed to fetch wallet', { error: err });
-      if (!ownsRequest()) return false;
+      if (!ownsRequest()) return 'superseded';
       failReplacements();
       if (err instanceof ApiError) {
-        if (err.status === 404) { navigate('/wallets'); return false; }
+        if (err.status === 404) { navigate('/wallets'); return 'failed'; }
         setError(err.message);
       } else {
         setError('Failed to load wallet');
       }
       setLoading(false);
-      return false;
+      return 'failed';
     }
 
-    if (!ownsRequest()) return false;
+    if (!ownsRequest()) return 'superseded';
     const formattedWallet = formatWalletFromApi(apiWallet, user.id);
     setWallet(current => mergeWalletHttpSyncState(current, formattedWallet));
     setLoading(false);
@@ -354,19 +355,19 @@ export function useWalletData({
       utxo: UTXO_PAGE_SIZE,
       address: ADDRESS_PAGE_SIZE,
     });
-    if (!ownsRequest()) return false;
+    if (!ownsRequest()) return 'superseded';
 
     applyAuxiliaryData(aux, id, replacements);
 
     // 3. Groups & share info (sequential, after main parallel batch)
     const fetchedGroups = await loadGroups(user);
-    if (!ownsRequest()) return false;
+    if (!ownsRequest()) return 'superseded';
     setGroups(fetchedGroups);
 
     const shareInfo = await loadWalletShareInfo(id);
-    if (!ownsRequest()) return false;
+    if (!ownsRequest()) return 'superseded';
     setWalletShareInfo(shareInfo);
-    return true;
+    return 'ok';
   }, [
     applyAuxiliaryData,
     id,

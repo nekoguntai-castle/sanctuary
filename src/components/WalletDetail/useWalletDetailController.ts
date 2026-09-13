@@ -92,8 +92,10 @@ export const useWalletDetailController = () => {
   } = useWalletData({ id, user });
   const walletUserRole = wallet?.userRole || 'viewer';
   const refreshSyncStatus = async () => {
-    const refreshed = await refreshData();
-    if (!refreshed) throw new Error('Wallet status refresh did not complete');
+    const result = await refreshData();
+    // A superseded refresh (a newer request took ownership) is not a
+    // failure — only a genuine failure should surface a warning.
+    if (result === 'failed') throw new Error('Wallet status refresh did not complete');
   };
 
   useEffect(() => {

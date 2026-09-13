@@ -25,6 +25,13 @@ export const ADDRESS_PAGE_SIZE = 25;
 // Hook parameter & return types
 // ---------------------------------------------------------------------------
 
+/**
+ * Outcome of a data-fetch attempt: `'ok'` completed and applied its results,
+ * `'superseded'` was preempted by a newer request/route (not a failure — a
+ * silent no-op for callers), and `'failed'` genuinely errored.
+ */
+export type FetchDataResult = 'ok' | 'superseded' | 'failed';
+
 export interface UseWalletDataParams {
   /** Wallet ID from route params */
   id: string | undefined;
@@ -100,5 +107,5 @@ export interface UseWalletDataReturn {
 
   // Refresh
   fetchData: (isRefresh?: boolean) => Promise<void>;
-  refreshData: () => Promise<boolean>;
+  refreshData: () => Promise<FetchDataResult>;
 }

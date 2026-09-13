@@ -1217,18 +1217,18 @@ describe('useWalletData', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     vi.mocked(walletsApi.getWallet).mockRejectedValueOnce(new Error('refresh failed'));
-    let failedRefresh = true;
+    let failedRefresh: Awaited<ReturnType<typeof result.current.refreshData>> = 'ok';
     await act(async () => {
       failedRefresh = await result.current.refreshData();
     });
-    expect(failedRefresh).toBe(false);
+    expect(failedRefresh).toBe('failed');
 
     vi.mocked(walletsApi.getWallet).mockResolvedValueOnce(baseWallet as never);
-    let successfulRefresh = false;
+    let successfulRefresh: Awaited<ReturnType<typeof result.current.refreshData>> = 'failed';
     await act(async () => {
       successfulRefresh = await result.current.refreshData();
     });
-    expect(successfulRefresh).toBe(true);
+    expect(successfulRefresh).toBe('ok');
   });
 
   it('handles non-critical fetch failures, non-admin groups path, and visibility refresh', async () => {
