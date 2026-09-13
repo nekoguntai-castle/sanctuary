@@ -17,7 +17,7 @@ import {
 import type { EncryptionKeysResponse } from '../../api/admin';
 
 interface BackupCompleteModalProps {
-  encryptionKeys: EncryptionKeysResponse;
+  encryptionKeys: EncryptionKeysResponse | null;
   copiedKey: string | null;
   dontShowAgain: boolean;
   setDontShowAgain: (value: boolean) => void;
@@ -62,56 +62,62 @@ export const BackupCompleteModal: React.FC<BackupCompleteModalProps> = ({
           </div>
 
           {/* Keys Display */}
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400">
-                ENCRYPTION_KEY
-              </label>
-              <div className="font-mono text-xs bg-sanctuary-100 dark:bg-sanctuary-800 rounded-lg px-3 py-2 text-sanctuary-900 dark:text-sanctuary-100 break-all">
-                {encryptionKeys.encryptionKey}
+          {encryptionKeys ? (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400">
+                  ENCRYPTION_KEY
+                </label>
+                <div className="font-mono text-xs bg-sanctuary-100 dark:bg-sanctuary-800 rounded-lg px-3 py-2 text-sanctuary-900 dark:text-sanctuary-100 break-all">
+                  {encryptionKeys.encryptionKey}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400">
+                  ENCRYPTION_SALT
+                </label>
+                <div className="font-mono text-xs bg-sanctuary-100 dark:bg-sanctuary-800 rounded-lg px-3 py-2 text-sanctuary-900 dark:text-sanctuary-100 break-all">
+                  {encryptionKeys.encryptionSalt}
+                </div>
+              </div>
+
+              <div className="flex space-x-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(
+                    `ENCRYPTION_KEY=${encryptionKeys.encryptionKey}\nENCRYPTION_SALT=${encryptionKeys.encryptionSalt}`,
+                    'modal-both'
+                  )}
+                  className="flex-1"
+                >
+                  {copiedKey === 'modal-both' ? (
+                    <>
+                      <Check className="w-4 h-4 mr-2 text-success-500" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy Both
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={downloadEncryptionKeys}
+                  className="flex-1"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Download .txt
+                </Button>
               </div>
             </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400">
-                ENCRYPTION_SALT
-              </label>
-              <div className="font-mono text-xs bg-sanctuary-100 dark:bg-sanctuary-800 rounded-lg px-3 py-2 text-sanctuary-900 dark:text-sanctuary-100 break-all">
-                {encryptionKeys.encryptionSalt}
-              </div>
-            </div>
-
-            <div className="flex space-x-2">
-              <Button
-                variant="secondary"
-                onClick={() => copyToClipboard(
-                  `ENCRYPTION_KEY=${encryptionKeys.encryptionKey}\nENCRYPTION_SALT=${encryptionKeys.encryptionSalt}`,
-                  'modal-both'
-                )}
-                className="flex-1"
-              >
-                {copiedKey === 'modal-both' ? (
-                  <>
-                    <Check className="w-4 h-4 mr-2 text-success-500" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copy Both
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={downloadEncryptionKeys}
-                className="flex-1"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Download .txt
-              </Button>
-            </div>
-          </div>
+          ) : (
+            <p className="text-sm text-sanctuary-600 dark:text-sanctuary-400">
+              Reveal your encryption keys below with your password, then copy or download them before you leave this page.
+            </p>
+          )}
 
           {/* Don't show again checkbox */}
           <label className="flex items-center space-x-2 text-sm text-sanctuary-600 dark:text-sanctuary-400 cursor-pointer">

@@ -179,7 +179,7 @@ export const BackupRestore: React.FC = () => {
       </div>
 
       {/* Backup Complete Modal - Encryption Key Reminder */}
-      {handlers.showBackupCompleteModal && encryptionKeys && (
+      {handlers.showBackupCompleteModal && (
         <BackupCompleteModal
           encryptionKeys={encryptionKeys}
           copiedKey={handlers.copiedKey}

@@ -423,6 +423,37 @@ describe('BackupRestore Component - Advanced Flows', () => {
     expect(screen.queryByRole('heading', { name: /backup downloaded successfully/i })).not.toBeInTheDocument();
   });
 
+  it('shows the post-backup key reminder without requiring encryption keys to be revealed first', async () => {
+    mockCreateBackup.mockResolvedValueOnce(new Blob(['{}'], { type: 'application/json' }));
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
+    const user = userEvent.setup();
+    await renderBackupRestore(BackupRestore);
+
+    // Do NOT reveal encryption keys - the reminder must still appear after a backup.
+    await user.click(screen.getByRole('button', { name: /download backup/i }));
+
+    expect(await screen.findByRole('heading', { name: /backup downloaded successfully/i })).toBeInTheDocument();
+    expect(screen.getByText(/reveal your encryption keys/i)).toBeInTheDocument();
+  });
+
+  it('does not show the reminder again after dismissal even once keys are later revealed', async () => {
+    mockCreateBackup.mockResolvedValueOnce(new Blob(['{}'], { type: 'application/json' }));
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
+    const user = userEvent.setup();
+    await renderBackupRestore(BackupRestore);
+
+    await user.click(screen.getByRole('button', { name: /download backup/i }));
+    expect(await screen.findByRole('heading', { name: /backup downloaded successfully/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /i've saved my keys/i }));
+    expect(screen.queryByRole('heading', { name: /backup downloaded successfully/i })).not.toBeInTheDocument();
+
+    // Revealing keys afterward must not resurrect the already-dismissed reminder.
+    await revealEncryptionKeys(user);
+
+    expect(screen.queryByRole('heading', { name: /backup downloaded successfully/i })).not.toBeInTheDocument();
+  });
+
   it('handles invalid JSON backup upload format', async () => {
     const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();

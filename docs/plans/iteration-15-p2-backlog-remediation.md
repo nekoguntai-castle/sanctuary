@@ -550,6 +550,10 @@ on dismiss so it cannot pop later over the key display. **Failing-first test (in
 `tests/components/BackupRestore.test.tsx`):** create a backup → reminder visible; dismiss; reveal
 keys later → reminder does not reappear.
 
+Status: done. Rendering now keys off `showBackupCompleteModal` alone; `BackupCompleteModal`
+accepts a nullable `encryptionKeys` and shows a "go reveal your keys" prompt in place of the key
+values until they're revealed, and dismissal already cleared the flag so it cannot reappear.
+
 ---
 
 ## Final verification (after all phases merge)
