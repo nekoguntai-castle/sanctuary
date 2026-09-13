@@ -75,6 +75,8 @@ Verification: server gates + the integration spec + `--check`.
 
 Contract: `requireWalletAccess('edit')` at `recalculate.ts:23`. Failing-first test: a view-only share gets 403 (today 200). Verification: server gates. Rollback: revert.
 
+Status: done — `recalculate.ts:23` now uses `requireWalletAccess('edit')`; `server/tests/unit/api/transactions-recalculate-routes.test.ts` covers the 403 (viewer) / 200 (signer) cases.
+
 ## Phase 6 — P2: PATCH autopilot/telegram merges onto stored settings
 
 Root cause (verified): `autopilot.ts:38-43` merges onto `DEFAULT_AUTOPILOT_SETTINGS`; `telegram.ts:57-65` uses `?? default`.

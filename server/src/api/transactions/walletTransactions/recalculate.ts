@@ -20,7 +20,7 @@ export function createRecalculateRouter(): Router {
    * POST /api/v1/wallets/:walletId/transactions/recalculate
    * Recalculate running balances (balanceAfter) for all transactions in a wallet
    */
-  router.post('/wallets/:walletId/transactions/recalculate', requireWalletAccess('view'), asyncHandler(async (req, res) => {
+  router.post('/wallets/:walletId/transactions/recalculate', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
 
     await recalculateWalletBalances(walletId);
