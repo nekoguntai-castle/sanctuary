@@ -85,6 +85,30 @@ export function registerTrezorSignPsbtHelperContracts() {
     });
   });
 
+  it('does not flip a mainnet account-index-1 input path to testnet via a path substring', () => {
+    const { psbt } = h.createPsbt({ includeInputDerivation: false });
+
+    expect(detectNetwork(request({ accountPath: "m/84'/0'/1'" }), psbt)).toMatchObject({
+      coin: 'Bitcoin',
+      isTestnet: false,
+      networkSource: 'request.path',
+    });
+    expect(
+      detectNetwork(request({ inputPaths: ["m/84'/0'/1'/0/0"] }), psbt)
+    ).toMatchObject({
+      coin: 'Bitcoin',
+      isTestnet: false,
+      networkSource: 'request.path',
+    });
+
+    // A real testnet path (coin type 1) is still detected as testnet.
+    expect(detectNetwork(request({ accountPath: "m/84'/1'/1'" }), psbt)).toMatchObject({
+      coin: 'Testnet',
+      isTestnet: true,
+      networkSource: 'request.path',
+    });
+  });
+
   it('uses PSBT derivation metadata when the request path has no coin-type authority', () => {
     const testnet = h.createPsbt();
     setFirstInputPath(testnet.psbt, "m/84'/1'/0'/0/0");

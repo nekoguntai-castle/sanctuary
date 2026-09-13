@@ -17,6 +17,7 @@ import type {
   XpubResult,
 } from '../../types';
 import { normalizeMasterFingerprint } from '../../identity';
+import { isTestnetPath } from '../../pathUtils';
 import type { TrezorConnection } from './types';
 import { signPsbtWithTrezor } from './signPsbt';
 import { getTrezorScriptType } from './pathUtils';
@@ -101,7 +102,7 @@ const createConnectError = (message: string): Error => {
 };
 
 const getCoinForPath = (path: string): 'Bitcoin' | 'Testnet' => {
-  return path.includes("/1'/") || path.includes('/1h/') ? 'Testnet' : 'Bitcoin';
+  return isTestnetPath(path) ? 'Testnet' : 'Bitcoin';
 };
 
 const isUserRejectedAddressDisplay = (message: string): boolean => {

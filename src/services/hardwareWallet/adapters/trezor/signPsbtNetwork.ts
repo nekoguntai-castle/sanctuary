@@ -1,8 +1,10 @@
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../../../utils/logger';
 import { uint8ArrayEquals, toHex } from '../../../../utils/bufferUtils';
 import type { PSBTSignRequest } from '../../types';
 import type { TrezorConnection } from './types';
 import { getTrezorScriptType } from './pathUtils';
+import { isTestnetPath } from '../../pathUtils';
 import type { TrezorPsbt, TrezorSpendScriptType } from './signPsbtTypes';
 
 const log = createLogger('TrezorAdapter');
@@ -23,11 +25,14 @@ const updateNetworkFromPath = (
   pathToCheck: string,
   current: Pick<NetworkDetection, 'isTestnet' | 'networkSource'>
 ): Pick<NetworkDetection, 'isTestnet' | 'networkSource'> => {
-  if (pathToCheck.includes("/1'/") || pathToCheck.includes("/1h/")) {
+  // Coin type is the second path segment (m/purpose'/coinType'/...); a substring match on
+  // "/1'/" or "/1h/" misclassifies a mainnet path with account index 1 (m/84'/0'/1'/0/0) as
+  // testnet, since the account index shares the same hardened-notation shape as the coin type.
+  if (isTestnetPath(pathToCheck)) {
     return { isTestnet: true, networkSource: 'request.path' };
   }
 
-  if (pathToCheck.includes("/0'/") || pathToCheck.includes("/0h/")) {
+  if (parseDerivationPath(pathToCheck).coinType === 0) {
     return { isTestnet: current.isTestnet, networkSource: 'request.path' };
   }
 
