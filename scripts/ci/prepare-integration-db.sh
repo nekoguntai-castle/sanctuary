@@ -22,6 +22,7 @@ set -uo pipefail
 # leak gate, scripts/ci/check-provider-leaks.sh, forbids GITHUB_WORKSPACE here).
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 check="${script_dir}/check-integration-db.mjs"
+guard="${script_dir}/integration-db-guard.mjs"
 
 wait_seconds="${SANCTUARY_DB_WAIT_SECONDS:-90}"
 attempts="${SANCTUARY_DB_MIGRATE_ATTEMPTS:-3}"
@@ -30,6 +31,19 @@ table="${SANCTUARY_DB_ASSERT_TABLE:-users}"
 if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]]; then
   echo "::error::prepare-integration-db: SANCTUARY_DB_MIGRATE_ATTEMPTS must be a positive integer" >&2
   exit 2
+fi
+
+# 0) Refuse a non-test target before `prisma migrate deploy` (which reads
+# DATABASE_URL directly, bypassing check-integration-db.mjs's own guard on
+# TEST_DATABASE_URL||DATABASE_URL) can touch it. See
+# scripts/ci/integration-db-guard.mjs for the shared contract.
+resolved_url="${TEST_DATABASE_URL:-${DATABASE_URL:-}}"
+if [[ -z "$resolved_url" ]]; then
+  echo "::error::prepare-integration-db: neither TEST_DATABASE_URL nor DATABASE_URL is set" >&2
+  exit 2
+fi
+if ! node "$guard" "$resolved_url"; then
+  exit 1
 fi
 
 # 1) Real readiness gate.

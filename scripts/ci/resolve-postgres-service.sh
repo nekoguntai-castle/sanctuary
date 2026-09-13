@@ -59,6 +59,12 @@ probe() {
 
   (
     export DATABASE_URL="$candidate_url"
+    # This probe IS the authenticated proof the integration-DB guard
+    # requires (scripts/ci/integration-db-guard.mjs) — the candidate is not
+    # yet loopback/known-safe, so bypass the guard for this self-contained
+    # subshell only. A successful probe is what lets select_candidate /
+    # select_service_container export the opt-in for later steps.
+    export SANCTUARY_ALLOW_INTEGRATION_DB_TARGET=1
     unset TEST_DATABASE_URL
     node "$check" wait "--timeout=$timeout"
   )
@@ -75,6 +81,9 @@ select_candidate() {
   echo "resolve-postgres-service: probing ${label} endpoint ${host}:${port}"
   if probe "$candidate_url" "$timeout_override"; then
     ci_emit_env "DATABASE_URL=$candidate_url"
+    # Proven above with an authenticated SELECT 1 — later steps (migrate,
+    # the guarded vitest setup) may treat this target as allowed.
+    ci_emit_env "SANCTUARY_ALLOW_INTEGRATION_DB_TARGET=1"
     echo "resolve-postgres-service: selected ${label} endpoint ${host}:${port}"
     return 0
   fi
@@ -138,6 +147,9 @@ select_service_container() {
   fi
 
   ci_emit_env "DATABASE_URL=$(database_url "${matches[0]}" 5432)"
+  # Proven above with an authenticated SELECT 1 — later steps (migrate, the
+  # guarded vitest setup) may treat this target as allowed.
+  ci_emit_env "SANCTUARY_ALLOW_INTEGRATION_DB_TARGET=1"
   echo "resolve-postgres-service: selected authenticated service endpoint ${matches[0]}:5432"
 }
 

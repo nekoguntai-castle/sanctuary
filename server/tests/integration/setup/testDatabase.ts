@@ -9,6 +9,7 @@
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { resolvePrismaTransactionTimeoutOptions } from '../../../src/models/prismaTransactionOptions';
+import { assertAllowedIntegrationDbTarget } from '../../../../scripts/ci/integration-db-guard.mjs';
 
 let prisma: PrismaClient | null = null;
 let isSetup = false;
@@ -35,6 +36,11 @@ export async function setupTestDatabase(): Promise<PrismaClient> {
       'No database URL available. Set DATABASE_URL or TEST_DATABASE_URL to run integration tests.'
     );
   }
+
+  // P2 `prepare-integration-db-no-production-guard`: refuse to migrate/connect
+  // against anything but a loopback host, the compose/CI `postgres` service,
+  // or an explicit, already-proven opt-in. See integration-db-guard.mjs.
+  assertAllowedIntegrationDbTarget(databaseUrl);
 
   // Create Prisma client for test database
   const adapter = new PrismaPg({ connectionString: databaseUrl });

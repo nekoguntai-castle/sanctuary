@@ -67,6 +67,10 @@ run_resolver "$output" \
   POSTGRES_PORT=45678 \
   FAKE_REACHABLE_ENDPOINT='172.30.0.1:45678'
 assert_env_contains "$output" '@172.30.0.1:45678/sanctuary_test?schema=public'
+# The DinD gateway IP is not loopback/the compose service name, so downstream
+# steps (prepare-integration-db.sh, the guarded vitest setup) need the
+# already-proven opt-in — see scripts/ci/integration-db-guard.mjs.
+assert_env_contains "$output" 'SANCTUARY_ALLOW_INTEGRATION_DB_TARGET=1'
 
 output="$TEST_TEMP_DIR/container-alias.env"
 run_resolver "$output" \
@@ -74,6 +78,7 @@ run_resolver "$output" \
   FAKE_ALIAS_HOSTS='172.31.0.2 172.31.0.3' \
   FAKE_REACHABLE_ENDPOINT='172.31.0.3:5432'
 assert_env_contains "$output" '@172.31.0.3:5432/sanctuary_test?schema=public'
+assert_env_contains "$output" 'SANCTUARY_ALLOW_INTEGRATION_DB_TARGET=1'
 
 output="$TEST_TEMP_DIR/container-duplicate-alias.env"
 run_resolver "$output" \
@@ -105,6 +110,7 @@ run_resolver "$output" \
   POSTGRES_PORT=45678 \
   FAKE_REACHABLE_ENDPOINT='localhost:45678'
 assert_env_contains "$output" '@localhost:45678/sanctuary_test?schema=public'
+assert_env_contains "$output" 'SANCTUARY_ALLOW_INTEGRATION_DB_TARGET=1'
 
 if env PATH="$TEST_TEMP_DIR/bin:$PATH" \
   GITHUB_ENV="$TEST_TEMP_DIR/invalid.env" \

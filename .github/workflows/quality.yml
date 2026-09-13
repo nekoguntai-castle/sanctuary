@@ -767,6 +767,7 @@ jobs:
           bash -n tests/ci/browser-e2e-groups.test.sh
           bash -n tests/ci/backend-integration-groups.test.sh
           bash -n tests/ci/prepare-integration-db.test.sh
+          bash -n tests/ci/check-integration-db-guard.test.sh
           bash -n tests/ci/ensure-toolchains.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash -n tests/ci/install-test-ports.test.sh
@@ -830,6 +831,7 @@ jobs:
           node tests/ci/check-npm-install-scripts.test.mjs
           node --test tests/ci/check-critical-mutation-config.test.mjs
           node --test tests/ci/wallet-sync-database-readiness.test.mjs
+          node --test tests/ci/integration-db-guard.test.mjs
           node --test tests/ci/wallet-sync-replay-cleanup.test.mjs
           node --test tests/ci/subject-budget.test.mjs
           node --test tests/ci/subject-budget-workflows.test.mjs
@@ -881,6 +883,7 @@ jobs:
           bash tests/ci/browser-e2e-groups.test.sh
           bash tests/ci/backend-integration-groups.test.sh
           bash tests/ci/prepare-integration-db.test.sh
+          bash tests/ci/check-integration-db-guard.test.sh
           bash tests/ci/ensure-toolchains.test.sh
           bash tests/ci/frontend-coverage-scripts.test.sh
           bash tests/ci/install-test-ports.test.sh

@@ -21,9 +21,7 @@
 // `TEST_DATABASE_URL || DATABASE_URL`, so the assertion reflects what the
 // tests see.
 
-import pgPkg from 'pg';
-
-const { Client } = pgPkg;
+import { assertAllowedIntegrationDbTarget } from './integration-db-guard.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -46,6 +44,13 @@ function resolveUrl() {
     );
     process.exit(2);
   }
+  try {
+    assertAllowedIntegrationDbTarget(url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`::error::${message}`);
+    process.exit(1);
+  }
   return url;
 }
 
@@ -58,7 +63,10 @@ function sleep(ms) {
 }
 
 async function connectClient(url) {
-  const client = new Client({ connectionString: url, connectionTimeoutMillis: 5000 });
+  // Loaded lazily so the target guard can refuse a bad DATABASE_URL before any
+  // driver is required; the quality lane runs the guard tests without `pg`.
+  const { default: pgPkg } = await import('pg');
+  const client = new pgPkg.Client({ connectionString: url, connectionTimeoutMillis: 5000 });
   await client.connect();
   return client;
 }
