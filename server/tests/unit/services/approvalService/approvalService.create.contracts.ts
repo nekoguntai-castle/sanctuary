@@ -18,6 +18,137 @@ export function registerCreateApprovalRequestsForDraftContracts() {
     expect(mockPolicyRepo.createApprovalRequest).not.toHaveBeenCalled();
   });
 
+  it('creates no approval request for a triggered time_delay policy even if mislabeled with action approval_required', async () => {
+    const result = await approvalService.createApprovalRequestsForDraft(
+      draftId,
+      walletId,
+      userId,
+      [{ policyId, policyName: 'Cooling Period', type: 'time_delay', action: 'approval_required', reason: 'cooling period' }]
+    );
+
+    expect(result).toHaveLength(0);
+    expect(mockPolicyRepo.findPolicyById).not.toHaveBeenCalled();
+    expect(mockPolicyRepo.createApprovalRequest).not.toHaveBeenCalled();
+  });
+
+  it('creates an approval request for a genuine approval_required policy alongside a non-triggering time_delay policy', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      id: policyId,
+      config: {
+        trigger: { always: true },
+        requiredApprovals: 1,
+        quorumType: 'any_n',
+        allowSelfApproval: false,
+        expirationHours: 0,
+      },
+    });
+
+    mockPolicyRepo.createApprovalRequest.mockResolvedValue({
+      id: requestId,
+      draftTransactionId: draftId,
+      policyId,
+      status: 'pending',
+      requiredApprovals: 1,
+    });
+
+    const result = await approvalService.createApprovalRequestsForDraft(
+      draftId,
+      walletId,
+      userId,
+      [
+        { policyId, policyName: 'Real Approval', type: 'approval_required', action: 'approval_required', reason: 'test' },
+        { policyId: 'p-delay', policyName: 'Cooling Period', type: 'time_delay', action: 'time_delay', reason: 'cooling period' },
+      ]
+    );
+
+    expect(result).toHaveLength(1);
+    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledTimes(1);
+    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledWith(policyId);
+  });
+
+  it('fails closed with InvalidInputError and creates nothing when an approval_required policy config is missing requiredApprovals', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      id: policyId,
+      config: {
+        trigger: { always: true },
+        // requiredApprovals intentionally omitted — the malformed shape a
+        // time-delay TimeDelayConfig would have if it were ever mislabeled.
+        quorumType: 'any_n',
+        allowSelfApproval: false,
+        expirationHours: 0,
+      },
+    });
+
+    await expect(
+      approvalService.createApprovalRequestsForDraft(
+        draftId,
+        walletId,
+        userId,
+        [{ policyId, policyName: 'Broken Config', type: 'approval_required', action: 'approval_required', reason: 'test' }]
+      )
+    ).rejects.toMatchObject({ statusCode: 400, details: { policyId } });
+
+    expect(mockPolicyRepo.createApprovalRequest).not.toHaveBeenCalled();
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with InvalidInputError and creates nothing when the policy config is null', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({ id: policyId, config: null });
+
+    await expect(
+      approvalService.createApprovalRequestsForDraft(
+        draftId,
+        walletId,
+        userId,
+        [{ policyId, policyName: 'Null Config', type: 'approval_required', action: 'approval_required', reason: 'test' }]
+      )
+    ).rejects.toMatchObject({ statusCode: 400, details: { policyId } });
+
+    expect(mockPolicyRepo.createApprovalRequest).not.toHaveBeenCalled();
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with InvalidInputError and creates nothing when the policy config is a non-object JSON value', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({ id: policyId, config: 'not-an-object' });
+
+    await expect(
+      approvalService.createApprovalRequestsForDraft(
+        draftId,
+        walletId,
+        userId,
+        [{ policyId, policyName: 'String Config', type: 'approval_required', action: 'approval_required', reason: 'test' }]
+      )
+    ).rejects.toMatchObject({ statusCode: 400, details: { policyId } });
+
+    expect(mockPolicyRepo.createApprovalRequest).not.toHaveBeenCalled();
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with InvalidInputError and creates nothing when quorumType is wrong-typed', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      id: policyId,
+      config: {
+        trigger: { always: true },
+        requiredApprovals: 2,
+        quorumType: 3, // should be a string
+        allowSelfApproval: false,
+        expirationHours: 0,
+      },
+    });
+
+    await expect(
+      approvalService.createApprovalRequestsForDraft(
+        draftId,
+        walletId,
+        userId,
+        [{ policyId, policyName: 'Wrong-typed quorumType', type: 'approval_required', action: 'approval_required', reason: 'test' }]
+      )
+    ).rejects.toMatchObject({ statusCode: 400, details: { policyId } });
+
+    expect(mockPolicyRepo.createApprovalRequest).not.toHaveBeenCalled();
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
+  });
+
   it('returns empty array when triggered list is empty', async () => {
     const result = await approvalService.createApprovalRequestsForDraft(
       draftId, walletId, userId, []

@@ -270,7 +270,7 @@ export const walletPolicySchemas = {
             policyId: { type: 'string' },
             policyName: { type: 'string' },
             type: { type: 'string', enum: [...VALID_POLICY_TYPES] },
-            action: { type: 'string', enum: ['approval_required', 'blocked', 'monitored'] },
+            action: { type: 'string', enum: ['approval_required', 'blocked', 'monitored', 'time_delay'] },
             reason: { type: 'string' },
           },
           required: ['policyId', 'policyName', 'type', 'action', 'reason'],

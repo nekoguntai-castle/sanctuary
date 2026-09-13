@@ -38,6 +38,18 @@ Failing tests first: `server/tests/unit/services/policyEvaluationEngine.test.ts`
 
 Verification: server tsc, `typecheck:tests`, lint, `check:architecture-boundaries`, unit coverage 100% on `tests/unit`, lizard 86, large-files, `arch:check`, `git diff --check`; frontend typecheck if a shared type changes.
 
+Status: done. Implemented in worktree `/home/nekoguntai/sanctuary-wt-i18-phase1` on branch `codex/bug-scrub-loop/i18-phase1`.
+- `server/src/services/vaultPolicy/types.ts`: added `'time_delay'` to the triggered-policy `action` union.
+- `server/src/services/vaultPolicy/policyEvaluationEngine.ts`: `applyTimeDelayPolicy` now labels an enforced time-delay trigger `'time_delay'` (was `'approval_required'`); monitor mode still emits `'monitored'`.
+- `server/src/services/vaultPolicy/approvalService.ts`: `createApprovalRequestsForDraft` now filters triggered policies on both `action === 'approval_required'` and `type === 'approval_required'`, and replaced the unchecked `config as unknown as ApprovalRequiredConfig` cast with a narrow `isApprovalRequiredConfig` type guard. On review feedback, a non-conforming config now fails closed — throws `InvalidInputError('Approval-required policy has an invalid configuration', 'policyId', { policyId })` (4xx, aborts draft creation) instead of logging and skipping, since skipping would silently let the draft through with no approval request for the exact policy meant to enforce one.
+- No `shared/`/`src/` consumers switch on the action union (`rg "approval_required"` returns zero hits there), confirmed unchanged, matching the plan's rejected/deferred note.
+- Failing tests written first and proven red against pre-fix source, then fixed to green:
+  - `server/tests/unit/services/policyEvaluationEngine/evaluate.controls-timing.contracts.ts` — two assertions changed from `'approval_required'` to `'time_delay'`.
+  - `server/tests/unit/services/approvalService/approvalService.create.contracts.ts` — three new tests: a mislabeled time-delay trigger creates no approval request; a genuine approval-required trigger alongside a non-triggering time-delay type still creates one; an approval-required policy config missing `requiredApprovals` rejects with the `InvalidInputError` (400, `details.policyId`) and creates nothing (`createApprovalRequest` and `updateApprovalStatus` never called).
+  - `server/tests/unit/services/draftCreate.test.ts` — new test: an enforced time-delay-only trigger (`action: 'time_delay'`) lets `createDraft` succeed with `approvalService.createApprovalRequestsForDraft` never called and `approvalStatus` left `undefined`. Proven red by temporarily substituting `action: 'approval_required'` (origin/main's actual engine output for this case), which fails the `not.toHaveBeenCalled()` assertion; reverted to `'time_delay'` for the passing test.
+  - All source-restore/red proofs used `git show origin/main:<path> > <path>` then reapplied the fix from a saved copy, per the no-stash/no-checkout rule.
+- Gates rerun after the review changes and passing: `server` `tsc --noEmit`, `typecheck:tests`; root `lint`, `check:architecture-boundaries`, `check-large-files.mjs`, `lizard-only.sh` (exactly 86 warnings), `git diff --check`; targeted vitest for all three touched test files (`policyEvaluationEngine.test.ts` 82, `approvalService.test.ts` 78, `draftCreate.test.ts` 13) — 173 passed. No `shared/` changes, so frontend typecheck was not required.
+
 ## Phase 2 — destructive sync routes require edit access (server)
 
 Finding: `sync-routes-view-role-triggers-destructive-resync`.

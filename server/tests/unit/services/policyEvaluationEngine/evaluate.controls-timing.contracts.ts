@@ -449,7 +449,7 @@ export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluat
 
         expect(result.triggered).toHaveLength(1);
         expect(result.triggered[0].type).toBe('time_delay');
-        expect(result.triggered[0].action).toBe('approval_required');
+        expect(result.triggered[0].action).toBe('time_delay');
         expect(result.triggered[0].reason).toContain('cooling period');
       });
 
@@ -478,7 +478,7 @@ export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluat
 
         expect(result.triggered).toHaveLength(1);
         expect(result.triggered[0].type).toBe('time_delay');
-        expect(result.triggered[0].action).toBe('approval_required');
+        expect(result.triggered[0].action).toBe('time_delay');
       });
 
       it('does not trigger when amount is under amountAbove threshold', async () => {

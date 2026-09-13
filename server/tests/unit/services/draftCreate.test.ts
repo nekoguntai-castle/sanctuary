@@ -151,6 +151,35 @@ describe('createDraft approval atomicity', () => {
     expect(result).toEqual(mockDraft);
   });
 
+  it('succeeds without creating an approval request when only an enforced time_delay policy triggers', async () => {
+    // This mirrors the fixed policyEvaluationEngine's output for an enforced
+    // time-delay policy: action 'time_delay', never 'approval_required'.
+    // Against origin/main's engine (which mislabels this trigger with action
+    // 'approval_required'), requiresApproval would return true and this
+    // assertion would fail because createApprovalRequestsForDraft would be
+    // called — the same misrouting that produces the Prisma
+    // non-nullable-requiredApprovals failure in the real approvalService.
+    const timeDelayEvaluation = {
+      allowed: true,
+      triggered: [
+        {
+          policyId: 'p-delay',
+          policyName: 'Cooling Period',
+          type: 'time_delay' as const,
+          action: 'time_delay' as const,
+          reason: 'Transaction will enter a cooling period after approval',
+        },
+      ],
+    };
+
+    const result = await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: timeDelayEvaluation });
+
+    expect(result).toEqual(mockDraft);
+    expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
+    const createArgs = (draftRepository.create as Mock).mock.calls[0][0] as Record<string, unknown>;
+    expect(createArgs.approvalStatus).toBeUndefined();
+  });
+
   it('dispatches the approval notification before the draft-created notification after commit', async () => {
     await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: approvalEvaluation });
 

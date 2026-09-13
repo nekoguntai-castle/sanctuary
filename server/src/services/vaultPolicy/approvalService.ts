@@ -32,6 +32,24 @@ type ApprovalRequestWithVotes = ApprovalRequest & { votes: ApprovalVote[] };
 type ApprovalDraft = Awaited<ReturnType<typeof draftRepository.findById>>;
 export type ApprovalDbClient = DraftDbClient & PolicyDbClient;
 
+/**
+ * Narrow a policy's stored config (Prisma JSON) to ApprovalRequiredConfig
+ * before it is used to build an approval request. Only a policy whose
+ * triggered `type` is 'approval_required' should reach this call, but the
+ * config is untyped JSON at rest — this guard is the last line of defense
+ * against a config shape (e.g. a time-delay policy's TimeDelayConfig, which
+ * has no `requiredApprovals`) reaching `policyRepository.createApprovalRequest`,
+ * whose `requiredApprovals` column is non-nullable.
+ */
+const isApprovalRequiredConfig = (config: unknown): config is ApprovalRequiredConfig =>
+  typeof config === 'object' &&
+  config !== null &&
+  typeof (config as Record<string, unknown>).requiredApprovals === 'number' &&
+  typeof (config as Record<string, unknown>).quorumType === 'string' &&
+  typeof (config as Record<string, unknown>).allowSelfApproval === 'boolean' &&
+  typeof (config as Record<string, unknown>).trigger === 'object' &&
+  (config as Record<string, unknown>).trigger !== null;
+
 // ========================================
 // CREATE APPROVAL REQUESTS
 // ========================================
@@ -62,7 +80,14 @@ export async function createApprovalRequestsForDraft(
   client?: ApprovalDbClient,
   suppressNotification = false
 ): Promise<ApprovalRequest[]> {
-  const approvalPolicies = triggeredPolicies.filter(t => t.action === 'approval_required');
+  // Belt and braces: only 'approval_required'-type policies ever carry an
+  // ApprovalRequiredConfig shape (requiredApprovals/quorumType). Checking
+  // the action alone is not enough — a differently-typed policy (e.g. a
+  // time-delay policy) must never reach the cast below even if its action
+  // were ever mislabeled upstream.
+  const approvalPolicies = triggeredPolicies.filter(
+    t => t.action === 'approval_required' && t.type === 'approval_required'
+  );
 
   if (approvalPolicies.length === 0) {
     return [];
@@ -76,7 +101,20 @@ export async function createApprovalRequestsForDraft(
       : await policyRepository.findPolicyById(triggered.policyId);
     if (!policy) continue;
 
-    const config = policy.config as unknown as ApprovalRequiredConfig;
+    if (!isApprovalRequiredConfig(policy.config)) {
+      // Fail closed: an approval_required policy with a malformed config is
+      // the exact control this path enforces. Skipping it would let the
+      // draft proceed with no approval request at all, silently defeating
+      // the policy. Abort draft creation with a 4xx instead of letting the
+      // caller hit a Prisma 500 on the non-nullable requiredApprovals column.
+      throw new InvalidInputError(
+        'Approval-required policy has an invalid configuration',
+        'policyId',
+        { policyId: triggered.policyId }
+      );
+    }
+
+    const config = policy.config;
 
     // Calculate expiration
     let expiresAt: Date | undefined;

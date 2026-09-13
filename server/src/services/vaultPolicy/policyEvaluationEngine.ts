@@ -231,11 +231,17 @@ const applyTimeDelayPolicy = (
   const tdConfig = config as unknown as { trigger: { always?: boolean; amountAbove?: number } };
 
   if (shouldTriggerTimeDelay(tdConfig, state.amount)) {
+    // Time-delay policies are never approval quorums: they never carry
+    // requiredApprovals/quorumType, so they must never emit the
+    // 'approval_required' action (createApprovalRequestsForDraft would then
+    // cast their config to ApprovalRequiredConfig and fail creating the
+    // approval request). The cooling-period/veto flow itself is not
+    // implemented yet — this only surfaces the trigger for the UI.
     addTriggeredPolicy(
       state,
       policy,
       'time_delay',
-      policy.enforcement === 'monitor' ? 'monitored' : 'approval_required',
+      policy.enforcement === 'monitor' ? 'monitored' : 'time_delay',
       'Transaction will enter a cooling period after approval'
     );
   }

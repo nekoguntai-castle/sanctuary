@@ -161,7 +161,13 @@ export interface PolicyEvaluationResult {
     policyId: string;
     policyName: string;
     type: PolicyType;
-    action: 'approval_required' | 'blocked' | 'monitored';
+    /**
+     * 'time_delay' is informational only: it surfaces an enforced time-delay
+     * policy to the UI without holding the draft or creating an approval
+     * request — it carries no quorum and must never be treated as one. The
+     * cooling-period/veto enforcement itself is not implemented yet.
+     */
+    action: 'approval_required' | 'blocked' | 'monitored' | 'time_delay';
     reason: string;
   }>;
   limits?: {
