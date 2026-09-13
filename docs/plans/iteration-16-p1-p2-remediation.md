@@ -85,6 +85,8 @@ Root cause (verified): `autopilot.ts:38-43` merges onto `DEFAULT_AUTOPILOT_SETTI
 Contract: read the stored settings first and merge the compacted body onto them; when nothing is stored, fall back to defaults as today.
 Failing-first tests: store `{enabled:true, minDustCount:7}`, PATCH `{notifyPush:false}` → `minDustCount` stays 7 (today: reset); same shape for telegram. Verification: server gates. Rollback: revert.
 
+Status: done. Both PATCH handlers now read the stored settings first and merge the compacted body onto them (falling back to defaults only when nothing is stored). New/updated tests in `server/tests/unit/api/wallets-autopilot-routes.test.ts` and `server/tests/unit/api/wallets-telegram-routes.test.ts` cover the preserved-field regression and the no-stored-settings fallback.
+
 ## Phase 7 — P2: gateway push registration accepts `deviceName: null`
 
 Contract: `.nullable()` on `deviceName` in `MobilePushRegisterRequestSchema` (matching `server/src/api/push.ts:51`). Failing-first test: schema parse of `{..., deviceName: null}` succeeds (today fails); a contract test that the gateway and backend schemas accept the same shapes. Verification: shared + gateway tests. Rollback: revert.

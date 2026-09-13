@@ -11,6 +11,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import { getWalletTelegramSettings, updateWalletTelegramSettings } from '../../services/telegram/telegramService';
+import type { WalletTelegramSettings } from '../../services/telegram/telegramService';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
@@ -23,6 +24,33 @@ const TelegramSettingsBodySchema = z.object({
   notifyDraft: z.boolean().optional(),
 });
 
+const DEFAULT_WALLET_TELEGRAM_SETTINGS: WalletTelegramSettings = {
+  enabled: false,
+  notifyReceived: true,
+  notifySent: true,
+  notifyConsolidation: true,
+  notifyDraft: true,
+};
+
+type TelegramSettingsPatch = Partial<WalletTelegramSettings>;
+
+function compactNullishTelegramSettings(body: TelegramSettingsPatch): TelegramSettingsPatch {
+  return Object.fromEntries(
+    Object.entries(body).filter(([, value]) => value !== undefined && value !== null)
+  ) as TelegramSettingsPatch;
+}
+
+function buildTelegramSettingsUpdate(
+  stored: WalletTelegramSettings | null | undefined,
+  body: TelegramSettingsPatch
+): WalletTelegramSettings {
+  return {
+    ...DEFAULT_WALLET_TELEGRAM_SETTINGS,
+    ...(stored ?? {}),
+    ...compactNullishTelegramSettings(body),
+  };
+}
+
 /**
  * GET /api/v1/wallets/:id/telegram
  * Get Telegram notification settings for a specific wallet
@@ -34,13 +62,7 @@ router.get('/:id/telegram', requireWalletAccess('view'), asyncHandler(async (req
   const settings = await getWalletTelegramSettings(userId, walletId);
 
   res.json({
-    settings: settings || {
-      enabled: false,
-      notifyReceived: true,
-      notifySent: true,
-      notifyConsolidation: true,
-      notifyDraft: true,
-    },
+    settings: settings || DEFAULT_WALLET_TELEGRAM_SETTINGS,
   });
 }));
 
@@ -54,15 +76,14 @@ router.patch('/:id/telegram', requireWalletAccess('view'), validate(
 ), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const userId = requireAuthenticatedUser(req).userId;
-  const { enabled, notifyReceived, notifySent, notifyConsolidation, notifyDraft } = req.body;
 
-  await updateWalletTelegramSettings(userId, walletId, {
-    enabled: enabled ?? false,
-    notifyReceived: notifyReceived ?? true,
-    notifySent: notifySent ?? true,
-    notifyConsolidation: notifyConsolidation ?? true,
-    notifyDraft: notifyDraft ?? true,
-  });
+  const stored = await getWalletTelegramSettings(userId, walletId);
+
+  await updateWalletTelegramSettings(
+    userId,
+    walletId,
+    buildTelegramSettingsUpdate(stored, req.body)
+  );
 
   res.json({
     success: true,

@@ -35,9 +35,13 @@ const AutopilotSettingsBodySchema = z.object({
 
 type AutopilotSettingsPatch = Partial<WalletAutopilotSettings>;
 
-function buildAutopilotSettingsUpdate(body: AutopilotSettingsPatch): WalletAutopilotSettings {
+function buildAutopilotSettingsUpdate(
+  stored: WalletAutopilotSettings | null | undefined,
+  body: AutopilotSettingsPatch
+): WalletAutopilotSettings {
   return {
     ...DEFAULT_AUTOPILOT_SETTINGS,
+    ...(stored ?? {}),
     ...compactNullishAutopilotSettings(body),
   };
 }
@@ -84,10 +88,12 @@ router.patch(
     const walletId = req.walletId!;
     const userId = requireAuthenticatedUser(req).userId;
 
+    const stored = await getWalletAutopilotSettings(userId, walletId);
+
     await updateWalletAutopilotSettings(
       userId,
       walletId,
-      buildAutopilotSettingsUpdate(req.body)
+      buildAutopilotSettingsUpdate(stored, req.body)
     );
 
     res.json({

@@ -49,6 +49,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import { errorHandler } from '../../../src/errors/errorHandler';
 import autopilotRouter from '../../../src/api/wallets/autopilot';
+import { DEFAULT_AUTOPILOT_SETTINGS } from '../../../src/services/autopilot/types';
 
 describe('Wallets Autopilot Routes', () => {
   let app: Express;
@@ -135,18 +136,21 @@ describe('Wallets Autopilot Routes', () => {
     });
   });
 
-  it('updates settings and applies defaults to omitted patch fields', async () => {
+  it('updates settings and merges omitted patch fields onto the stored settings', async () => {
     const response = await request(app)
       .patch('/api/v1/wallets/wallet-1/autopilot')
       .send({ enabled: true, maxFeeRate: 3, notifyTelegram: false });
 
     expect(response.status).toBe(200);
+    // Omitted fields (minUtxoCount, dustThreshold, cooldownHours, notifyPush,
+    // minDustCount, maxUtxoSize) come from the stored settings set up in
+    // beforeEach, not from DEFAULT_AUTOPILOT_SETTINGS.
     expect(mockUpdateWalletAutopilotSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
       enabled: true,
       maxFeeRate: 3,
-      minUtxoCount: 10,
-      dustThreshold: 10000,
-      cooldownHours: 24,
+      minUtxoCount: 15,
+      dustThreshold: 8000,
+      cooldownHours: 12,
       notifyTelegram: false,
       notifyPush: true,
       minDustCount: 0,
@@ -155,6 +159,49 @@ describe('Wallets Autopilot Routes', () => {
     expect(response.body).toEqual({
       success: true,
       message: 'Autopilot settings updated',
+    });
+  });
+
+  it('preserves an unrelated stored field instead of resetting it to the default on PATCH', async () => {
+    // Regression test for autopilot-telegram-patch-resets-omitted-fields-to-defaults:
+    // storing minDustCount: 7 and then patching an unrelated field used to reset
+    // minDustCount back to DEFAULT_AUTOPILOT_SETTINGS.minDustCount (0).
+    mockGetWalletAutopilotSettings.mockResolvedValueOnce({
+      enabled: true,
+      maxFeeRate: 5,
+      minUtxoCount: 10,
+      dustThreshold: 10000,
+      cooldownHours: 24,
+      notifyTelegram: true,
+      notifyPush: true,
+      minDustCount: 7,
+      maxUtxoSize: 0,
+    });
+
+    const response = await request(app)
+      .patch('/api/v1/wallets/wallet-1/autopilot')
+      .send({ notifyPush: false });
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateWalletAutopilotSettings).toHaveBeenCalledWith('user-1', 'wallet-1',
+      expect.objectContaining({
+        minDustCount: 7,
+        notifyPush: false,
+      })
+    );
+  });
+
+  it('falls back to defaults on PATCH when nothing is stored', async () => {
+    mockGetWalletAutopilotSettings.mockResolvedValueOnce(null);
+
+    const response = await request(app)
+      .patch('/api/v1/wallets/wallet-1/autopilot')
+      .send({ notifyPush: false });
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateWalletAutopilotSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
+      ...DEFAULT_AUTOPILOT_SETTINGS,
+      notifyPush: false,
     });
   });
 
@@ -205,7 +252,9 @@ describe('Wallets Autopilot Routes', () => {
     expect(mockGetUtxoHealthProfile).toHaveBeenCalledWith('wallet-1', 10000, 0);
   });
 
-  it('falls back to default enabled when enabled is omitted from PATCH body', async () => {
+  it('falls back to default enabled when enabled is omitted from PATCH body and nothing is stored', async () => {
+    mockGetWalletAutopilotSettings.mockResolvedValueOnce(null);
+
     const response = await request(app)
       .patch('/api/v1/wallets/wallet-1/autopilot')
       .send({ maxFeeRate: 8 });

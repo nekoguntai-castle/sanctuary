@@ -127,7 +127,26 @@ describe('Wallets Telegram Routes', () => {
     });
   });
 
-  it('applies default values when telegram settings fields are omitted', async () => {
+  it('merges an empty patch onto the stored settings instead of resetting to defaults', async () => {
+    // beforeEach stores { enabled: true, notifyReceived: false, notifySent: true,
+    // notifyConsolidation: false, notifyDraft: true }; an empty patch must preserve it.
+    const response = await request(app)
+      .patch('/api/v1/wallets/wallet-1/telegram')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateWalletTelegramSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
+      enabled: true,
+      notifyReceived: false,
+      notifySent: true,
+      notifyConsolidation: false,
+      notifyDraft: true,
+    });
+  });
+
+  it('applies default values when telegram settings fields are omitted and nothing is stored', async () => {
+    mockGetWalletTelegramSettings.mockResolvedValueOnce(null);
+
     const response = await request(app)
       .patch('/api/v1/wallets/wallet-1/telegram')
       .send({});
@@ -139,6 +158,32 @@ describe('Wallets Telegram Routes', () => {
       notifySent: true,
       notifyConsolidation: true,
       notifyDraft: true,
+    });
+  });
+
+  it('preserves notifySent from the stored settings when only enabled is patched', async () => {
+    // Regression test for autopilot-telegram-patch-resets-omitted-fields-to-defaults:
+    // storing notifySent: true and patching only `enabled` used to reset the
+    // other notify* fields back to their hardcoded defaults.
+    mockGetWalletTelegramSettings.mockResolvedValueOnce({
+      enabled: false,
+      notifyReceived: false,
+      notifySent: true,
+      notifyConsolidation: false,
+      notifyDraft: false,
+    });
+
+    const response = await request(app)
+      .patch('/api/v1/wallets/wallet-1/telegram')
+      .send({ enabled: true });
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateWalletTelegramSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
+      enabled: true,
+      notifyReceived: false,
+      notifySent: true,
+      notifyConsolidation: false,
+      notifyDraft: false,
     });
   });
 
