@@ -14,7 +14,7 @@ import { addressToOutputScript, getNetwork } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
-import { utxoRepository, walletRepository } from '../../../repositories';
+import { draftLockRepository, utxoRepository, walletRepository } from '../../../repositories';
 import { getDustThreshold } from './shared';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { bindPsbtAccount } from '../psbtAccountBinding';
@@ -107,6 +107,13 @@ export async function createCPFPTransaction(
 
   if (utxo.spent) {
     throw new Error('UTXO is already spent');
+  }
+  if (utxo.frozen) {
+    throw new Error('UTXO is frozen');
+  }
+  const existingDraftLock = await draftLockRepository.findByUtxoId(utxo.id);
+  if (existingDraftLock) {
+    throw new Error('UTXO is locked by a pending draft');
   }
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
   if (!wallet) throw new Error('Wallet script identity is unavailable');

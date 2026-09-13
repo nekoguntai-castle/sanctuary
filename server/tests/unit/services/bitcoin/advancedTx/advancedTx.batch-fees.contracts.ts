@@ -26,6 +26,24 @@ import {
   advancedSignableWallet,
 } from "./advancedTxTestHarness";
 
+// Mimics the frozen/draftLock predicate `findAvailableForSpending` applies
+// in its `where` clause, so a fixed-array mock can prove exclusion the same
+// way the real Prisma query would filter it.
+function mockFindManyFilteredByField<T extends Record<string, unknown>>(
+  field: "frozen" | "draftLock",
+  all: T[],
+) {
+  mockPrismaClient.uTXO.findMany.mockImplementationOnce(
+    (query: { where?: Record<string, unknown> } = {}) => {
+      const expected = query.where?.[field];
+      const filtered = expected === undefined
+        ? all
+        : all.filter(utxo => utxo[field] === expected);
+      return Promise.resolve(filtered);
+    },
+  );
+}
+
 export function registerBatchFeeAndConstantContracts() {
   describe("Batch transactions", () => {
     const walletId = "wallet-batch";
@@ -50,6 +68,90 @@ export function registerBatchFeeAndConstantContracts() {
           "testnet3",
         ),
       ).rejects.toThrow("Selected UTXOs are unavailable");
+    });
+
+    it("excludes a frozen UTXO from auto-selection, spending only the unfrozen coin", async () => {
+      const frozen = {
+        ...sampleUtxos[0], walletId, spent: false, frozen: true,
+        scriptPubKey: "0014" + "c".repeat(40), amount: 5_000_000n,
+      };
+      const unfrozen = {
+        ...sampleUtxos[0], id: "utxo-unfrozen", txid: "c".repeat(64), vout: 0,
+        walletId, spent: false, frozen: false,
+        scriptPubKey: "0014" + "a".repeat(40), amount: 30_000n,
+      };
+      mockFindManyFilteredByField("frozen", [frozen, unfrozen]);
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        undefined,
+        "testnet3",
+      );
+
+      expect(result.psbt.txInputs).toHaveLength(1);
+      expect(Buffer.from(result.psbt.txInputs[0].hash).reverse().toString("hex")).toBe(unfrozen.txid);
+      expect(mockPrismaClient.address.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("excludes a draft-locked UTXO from auto-selection, spending only the unlocked coin", async () => {
+      const locked = {
+        ...sampleUtxos[0], walletId, spent: false, frozen: false,
+        scriptPubKey: "0014" + "c".repeat(40), amount: 5_000_000n,
+        draftLock: { draftId: "other-draft", utxoId: sampleUtxos[0].id, createdAt: new Date() },
+      };
+      const unlocked = {
+        ...sampleUtxos[0], id: "utxo-unlocked", txid: "d".repeat(64), vout: 0,
+        walletId, spent: false, frozen: false,
+        scriptPubKey: "0014" + "a".repeat(40), amount: 30_000n, draftLock: null,
+      };
+      mockFindManyFilteredByField("draftLock", [locked, unlocked]);
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        undefined,
+        "testnet3",
+      );
+
+      expect(result.psbt.txInputs).toHaveLength(1);
+      expect(Buffer.from(result.psbt.txInputs[0].hash).reverse().toString("hex")).toBe(unlocked.txid);
+      expect(mockPrismaClient.address.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("rejects an explicit selection that pins a frozen UTXO", async () => {
+      const frozen = {
+        ...sampleUtxos[0], walletId, spent: false, frozen: true,
+        scriptPubKey: "0014" + "a".repeat(40), amount: 30_000n,
+      };
+      mockFindManyFilteredByField("frozen", [frozen]);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        [`${frozen.txid}:${frozen.vout}`],
+        "testnet3",
+      )).rejects.toThrow("Selected UTXOs are unavailable");
+    });
+
+    it("rejects an explicit selection that pins a draft-locked UTXO", async () => {
+      const locked = {
+        ...sampleUtxos[0], walletId, spent: false, frozen: false,
+        scriptPubKey: "0014" + "a".repeat(40), amount: 30_000n,
+        draftLock: { draftId: "other-draft", utxoId: sampleUtxos[0].id, createdAt: new Date() },
+      };
+      mockFindManyFilteredByField("draftLock", [locked]);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        [`${locked.txid}:${locked.vout}`],
+        "testnet3",
+      )).rejects.toThrow("Selected UTXOs are unavailable");
     });
 
     it("throws when the wallet has no spendable UTXOs", async () => {

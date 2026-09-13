@@ -1169,8 +1169,8 @@
         {
           "id": "advanced-batch-change-and-fee-selection",
           "productionFile": "src/services/bitcoin/advancedTx/batch.ts",
-          "lineStart": 111,
-          "lineEnd": 130,
+          "lineStart": 115,
+          "lineEnd": 134,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
@@ -1184,8 +1184,8 @@
           "canaries": [{
             "id": "advanced-batch-selection-loop-cannot-be-removed",
             "location": {
-              "start": { "line": 111, "column": 29 },
-              "end": { "line": 130, "column": 4 }
+              "start": { "line": 115, "column": 29 },
+              "end": { "line": 134, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1202,8 +1202,8 @@
           }, {
             "id": "advanced-batch-surplus-cannot-widen-tolerance",
             "location": {
-              "start": { "line": 127, "column": 24 },
-              "end": { "line": 127, "column": 46 }
+              "start": { "line": 131, "column": 24 },
+              "end": { "line": 131, "column": 46 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "fee + feeWithoutChange",

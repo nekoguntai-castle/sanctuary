@@ -55,8 +55,12 @@ export async function createBatchTransaction(
   // Get configurable thresholds
   const dustThreshold = await getDustThreshold();
 
-  // Get available UTXOs
-  let utxos = await utxoRepository.findUnspent(walletId);
+  // Get available UTXOs, excluding frozen and draft-locked coins. The
+  // advancedTx endpoints carry no draftId, so there is no "caller's own
+  // draft" to exempt: a pinned selection that names a locked or frozen
+  // outpoint is rejected below via assertExactUtxoSelection, since it will
+  // not appear in this already-filtered set.
+  let utxos = await utxoRepository.findAvailableForSpending(walletId, { excludeDraftLocked: true });
 
   // Filter by selected UTXOs if provided
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {

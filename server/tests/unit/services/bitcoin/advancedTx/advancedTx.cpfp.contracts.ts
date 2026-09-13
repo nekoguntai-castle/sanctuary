@@ -132,6 +132,43 @@ export function registerCpfpContracts() {
       ).rejects.toThrow('already spent');
     });
 
+    it('refuses a frozen parent output', async () => {
+      mockPrismaClient.uTXO.findUnique.mockResolvedValueOnce({
+        ...sampleUtxos[0],
+        id: 'frozen-parent-utxo',
+        txid: parentTxid,
+        vout: parentVout,
+        walletId,
+        spent: false,
+        frozen: true,
+      });
+
+      await expect(
+        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
+      ).rejects.toThrow('UTXO is frozen');
+    });
+
+    it('refuses a parent output locked by a pending draft', async () => {
+      mockPrismaClient.uTXO.findUnique.mockResolvedValueOnce({
+        ...sampleUtxos[0],
+        id: 'locked-parent-utxo',
+        txid: parentTxid,
+        vout: parentVout,
+        walletId,
+        spent: false,
+        frozen: false,
+      });
+      mockPrismaClient.draftUtxoLock.findUnique.mockResolvedValueOnce({
+        draftId: 'other-draft',
+        utxoId: 'locked-parent-utxo',
+        createdAt: new Date(),
+      });
+
+      await expect(
+        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
+      ).rejects.toThrow('UTXO is locked by a pending draft');
+    });
+
     it('fails closed when the CPFP wallet identity is unavailable', async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(null);
 
