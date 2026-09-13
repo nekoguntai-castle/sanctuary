@@ -14,6 +14,7 @@ import {
   advancedSignableWallet,
 } from './advancedTxTestHarness';
 import * as psbtConstruction from '../../../../../src/services/bitcoin/transactions/psbtConstruction';
+import { InvalidInputError, NotFoundError } from '../../../../../src/errors/ApiError';
 
 export function registerCpfpContracts() {
   describe('CPFP Fee Calculation', () => {
@@ -111,9 +112,11 @@ export function registerCpfpContracts() {
     it('should throw error if UTXO not found', async () => {
       mockPrismaClient.uTXO.findUnique.mockResolvedValue(null);
 
-      await expect(
-        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
-      ).rejects.toThrow('UTXO not found');
+      const error: unknown = await createCPFPTransaction(
+        parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3'
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect((error as Error).message).toBe('UTXO not found');
     });
 
     it('should throw error if UTXO already spent', async () => {
@@ -127,9 +130,11 @@ export function registerCpfpContracts() {
         spent: true, // Already spent!
       });
 
-      await expect(
-        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
-      ).rejects.toThrow('already spent');
+      const error: unknown = await createCPFPTransaction(
+        parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3'
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toContain('already spent');
     });
 
     it('refuses a frozen parent output', async () => {
@@ -143,9 +148,11 @@ export function registerCpfpContracts() {
         frozen: true,
       });
 
-      await expect(
-        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
-      ).rejects.toThrow('UTXO is frozen');
+      const error: unknown = await createCPFPTransaction(
+        parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3'
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toBe('UTXO is frozen');
     });
 
     it('refuses a parent output locked by a pending draft', async () => {
@@ -164,9 +171,11 @@ export function registerCpfpContracts() {
         createdAt: new Date(),
       });
 
-      await expect(
-        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
-      ).rejects.toThrow('UTXO is locked by a pending draft');
+      const error: unknown = await createCPFPTransaction(
+        parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3'
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toBe('UTXO is locked by a pending draft');
     });
 
     it('fails closed when the CPFP wallet identity is unavailable', async () => {

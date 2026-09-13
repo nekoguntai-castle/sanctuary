@@ -28,6 +28,7 @@ import { resolveTransactionSpendPolicy } from '../transactions/feePolicy';
 import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
 import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
+import { InvalidInputError, NotFoundError } from '../../../errors/ApiError';
 
 /**
  * Calculate CPFP fee to achieve target fee rate
@@ -102,18 +103,18 @@ export async function createCPFPTransaction(
   const utxo = await utxoRepository.findByOutpoint(walletId, parentTxid, parentVout);
 
   if (!utxo) {
-    throw new Error('UTXO not found');
+    throw new NotFoundError('UTXO not found');
   }
 
   if (utxo.spent) {
-    throw new Error('UTXO is already spent');
+    throw new InvalidInputError('UTXO is already spent', 'parentVout');
   }
   if (utxo.frozen) {
-    throw new Error('UTXO is frozen');
+    throw new InvalidInputError('UTXO is frozen', 'parentVout');
   }
   const existingDraftLock = await draftLockRepository.findByUtxoId(utxo.id);
   if (existingDraftLock) {
-    throw new Error('UTXO is locked by a pending draft');
+    throw new InvalidInputError('UTXO is locked by a pending draft', 'parentVout');
   }
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
   if (!wallet) throw new Error('Wallet script identity is unavailable');

@@ -28,6 +28,7 @@ import { estimateTransactionWeight, feeForRate } from "../transactionWeight";
 import { buildSigningIntentFeePolicy } from "../signingIntent/feePolicy";
 import type { SigningIntentFeePolicyV1 } from "../signingIntent/types";
 import { assertExactUtxoSelection } from "../utxoSelection";
+import { InvalidInputError } from "../../../errors/ApiError";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -71,7 +72,7 @@ export async function createBatchTransaction(
   }
 
   if (utxos.length === 0) {
-    throw new Error("No spendable UTXOs available");
+    throw new InvalidInputError("No spendable UTXOs available", "utxos");
   }
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
   if (!wallet) throw new Error("Wallet script identity is unavailable");
@@ -134,8 +135,9 @@ export async function createBatchTransaction(
   }
   if (fee === 0) {
     const requiredFee = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
-    throw new Error(
+    throw new InvalidInputError(
       `Insufficient funds. Need ${totalOutputAmount + requiredFee} sats, have ${totalInput} sats`,
+      "utxos",
     );
   }
 

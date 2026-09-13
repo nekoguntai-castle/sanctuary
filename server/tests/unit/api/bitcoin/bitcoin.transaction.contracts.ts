@@ -409,6 +409,44 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(500);
         expect(response.body.code).toBe('INTERNAL_ERROR');
       });
+
+      it('should return 404 when the parent UTXO is not found', async () => {
+        const { NotFoundError } = await import('../../../../src/errors/ApiError');
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockAdvancedTx.createCPFPTransaction.mockRejectedValue(new NotFoundError('UTXO not found'));
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/cpfp')
+          .send({
+            parentTxid: 'parent123',
+            parentVout: 0,
+            targetFeeRate: 30,
+            recipientAddress: 'bc1qtest',
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 400 when the parent UTXO is already spent', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockAdvancedTx.createCPFPTransaction.mockRejectedValue(
+          new InvalidInputError('UTXO is already spent', 'parentVout')
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/cpfp')
+          .send({
+            parentTxid: 'parent123',
+            parentVout: 0,
+            targetFeeRate: 30,
+            recipientAddress: 'bc1qtest',
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
     });
 
     describe('POST /bitcoin/transaction/batch', () => {
@@ -517,6 +555,42 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(500);
         expect(response.body.code).toBe('INTERNAL_ERROR');
+      });
+
+      it('should return 400 when there are no spendable UTXOs', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockAdvancedTx.createBatchTransaction.mockRejectedValue(
+          new InvalidInputError('No spendable UTXOs available', 'utxos')
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/batch')
+          .send({
+            recipients: [{ address: 'bc1qtest', amount: 250000 }],
+            feeRate: 20,
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
+
+      it('should return 400 when funds are insufficient to cover the batch', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockAdvancedTx.createBatchTransaction.mockRejectedValue(
+          new InvalidInputError('Insufficient funds. Need 260000 sats, have 250000 sats', 'utxos')
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/batch')
+          .send({
+            recipients: [{ address: 'bc1qtest', amount: 250000 }],
+            feeRate: 20,
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
       });
     });
 

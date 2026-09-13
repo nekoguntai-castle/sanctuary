@@ -25,6 +25,7 @@ import {
   resolveNextPsbtBindingNetwork,
   advancedSignableWallet,
 } from "./advancedTxTestHarness";
+import { InvalidInputError } from "../../../../../src/errors/ApiError";
 
 // Mimics the frozen/draftLock predicate `findAvailableForSpending` applies
 // in its `where` clause, so a fixed-array mock can prove exclusion the same
@@ -157,13 +158,15 @@ export function registerBatchFeeAndConstantContracts() {
     it("throws when the wallet has no spendable UTXOs", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([]);
 
-      await expect(createBatchTransaction(
+      const error: unknown = await createBatchTransaction(
         [{ address: testnetAddresses.nativeSegwit[0], amount: 1_000 }],
         5,
         walletId,
         undefined,
         "testnet3",
-      )).rejects.toThrow("No spendable UTXOs available");
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toBe("No spendable UTXOs available");
     });
 
     it("uses exactly the explicitly selected batch outpoint", async () => {
@@ -442,15 +445,15 @@ export function registerBatchFeeAndConstantContracts() {
         { ...sampleUtxos[0], walletId, spent: false, amount: BigInt(1000) },
       ]);
 
-      await expect(
-        createBatchTransaction(
-          [{ address: testnetAddresses.nativeSegwit[0], amount: 50000 }],
-          10,
-          walletId,
-          undefined,
-          "testnet3",
-        ),
-      ).rejects.toThrow("Insufficient funds");
+      const error: unknown = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 50000 }],
+        10,
+        walletId,
+        undefined,
+        "testnet3",
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toContain("Insufficient funds");
     });
 
     it("omits change output when remaining amount is below dust threshold", async () => {
