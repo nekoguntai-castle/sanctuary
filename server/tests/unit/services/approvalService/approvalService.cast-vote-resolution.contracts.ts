@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it } from 'vitest';
 
-import { makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { makePendingRequest, makeWalletUser, mockDraftRepo, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteResolutionContracts() {
@@ -73,13 +73,18 @@ export function registerCastVoteResolutionContracts() {
   });
 
   it('resolves request when all quorum is met', async () => {
+    // Pinned-buggy-behavior update: the request used to resolve once
+    // `votes.length >= requiredApprovals`, regardless of who was actually on
+    // the wallet. It must now resolve only once every currently eligible
+    // wallet approver (owner/approver role) has voted approve.
+    const secondApproverId = faker.string.uuid();
     const requestWithAllVotes = {
       ...pendingRequest,
       requiredApprovals: 2,
       quorumType: 'all',
       votes: [
         { id: 'v1', userId: otherUserId, decision: 'approve' },
-        { id: 'v2', userId: faker.string.uuid(), decision: 'approve' },
+        { id: 'v2', userId: secondApproverId, decision: 'approve' },
       ],
     };
 
@@ -88,6 +93,10 @@ export function registerCastVoteResolutionContracts() {
       .mockResolvedValueOnce(requestWithAllVotes);
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
+      makeWalletUser(otherUserId, 'approver'),
+      makeWalletUser(secondApproverId, 'approver'),
+    ]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v2', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { ...requestWithAllVotes, status: 'approved' },
@@ -99,6 +108,9 @@ export function registerCastVoteResolutionContracts() {
   });
 
   it('resolves request when specific quorum is met', async () => {
+    // Pinned-buggy-behavior update: `findPolicyById` must now be mocked
+    // because castVote refuses the vote at cast time unless the voter is
+    // listed in the policy's `specificApprovers`.
     const requestWithSpecificVotes = {
       ...pendingRequest,
       requiredApprovals: 1,
@@ -111,6 +123,9 @@ export function registerCastVoteResolutionContracts() {
       .mockResolvedValueOnce(requestWithSpecificVotes);
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      config: { specificApprovers: [otherUserId] },
+    });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { ...requestWithSpecificVotes, status: 'approved' },

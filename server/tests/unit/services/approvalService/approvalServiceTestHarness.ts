@@ -28,12 +28,16 @@ const approvalMocks = vi.hoisted(() => ({
     notifyApprovalRequested: vi.fn().mockResolvedValue(undefined),
     notifyApprovalResolved: vi.fn().mockResolvedValue(undefined),
   },
+  mockWalletSharingRepo: {
+    findWalletUsersWithUsername: vi.fn(),
+  },
 }));
 
 export const mockLog = approvalMocks.mockLog;
 export const mockPolicyRepo = approvalMocks.mockPolicyRepo;
 export const mockDraftRepo = approvalMocks.mockDraftRepo;
 export const mockNotify = approvalMocks.mockNotify;
+export const mockWalletSharingRepo = approvalMocks.mockWalletSharingRepo;
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => mockLog,
@@ -49,6 +53,10 @@ vi.mock('../../../../src/repositories/policyRepository', () => ({
 
 vi.mock('../../../../src/repositories/draftRepository', () => ({
   draftRepository: mockDraftRepo,
+}));
+
+vi.mock('../../../../src/repositories/walletSharingRepository', () => ({
+  walletSharingRepository: mockWalletSharingRepo,
 }));
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -80,6 +88,10 @@ export function makePendingRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
+export function makeWalletUser(walletUserId: string, role: string) {
+  return { id: faker.string.uuid(), walletId, userId: walletUserId, role, user: { id: walletUserId, username: walletUserId } };
+}
+
 export function registerApprovalServiceTestHarness() {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,5 +105,9 @@ export function registerApprovalServiceTestHarness() {
     mockDraftRepo.updateApprovalStatus.mockResolvedValue(undefined);
     mockNotify.notifyApprovalRequested.mockResolvedValue(undefined);
     mockNotify.notifyApprovalResolved.mockResolvedValue(undefined);
+    // Default to no wallet members so 'all'-quorum paths that don't set up
+    // membership explicitly resolve to an empty eligible set rather than
+    // throwing on an unmocked call.
+    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([]);
   });
 }

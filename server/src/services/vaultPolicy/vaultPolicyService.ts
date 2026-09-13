@@ -400,6 +400,9 @@ const validateApprovalRequiredConfig = (config: ApprovalRequiredConfig): void =>
     if (!config.specificApprovers?.length) {
       throw new InvalidInputError('specific quorum requires specificApprovers array');
     }
+    if (config.requiredApprovals > config.specificApprovers.length) {
+      throw new InvalidInputError('requiredApprovals cannot exceed the number of specificApprovers');
+    }
   }
 
   validateBooleanField(config.allowSelfApproval, 'allowSelfApproval');

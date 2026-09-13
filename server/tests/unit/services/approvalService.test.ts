@@ -12,6 +12,7 @@ import {
   registerGetApprovalsForDraftContracts,
   registerGetPendingApprovalsForUserContracts,
 } from './approvalService/approvalService.read-models.contracts';
+import { registerQuorumMembershipContracts } from './approvalService/approvalService.quorum-membership.contracts';
 import { registerApprovalServiceTestHarness } from './approvalService/approvalServiceTestHarness';
 
 describe('ApprovalService', () => {
@@ -41,6 +42,10 @@ describe('ApprovalService', () => {
 
   describe('concurrent resolution', () => {
     registerConcurrentResolutionContracts();
+  });
+
+  describe('quorum membership (specific & all)', () => {
+    registerQuorumMembershipContracts();
   });
 
   describe('getPendingApprovalsForUser', () => {

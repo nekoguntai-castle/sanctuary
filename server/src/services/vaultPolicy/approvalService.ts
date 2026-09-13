@@ -13,6 +13,8 @@ import { policyRepository } from '../../repositories/policyRepository';
 import type { PolicyDbClient } from '../../repositories/policyRepository';
 import { draftRepository } from '../../repositories/draftRepository';
 import type { DraftDbClient } from '../../repositories/draftRepository';
+import { walletSharingRepository } from '../../repositories/walletSharingRepository';
+import { WALLET_APPROVE_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -83,10 +85,19 @@ export async function createApprovalRequestsForDraft(
       expiresAt.setHours(expiresAt.getHours() + config.expirationHours);
     }
 
+    // 'all' quorum requires every currently eligible wallet approver, not the
+    // admin-typed count on the policy — derive it from live wallet membership
+    // so the stored count reflects reality at creation time. Resolution
+    // re-derives membership again (see checkAndResolveRequest) so a later
+    // membership change is still honored correctly.
+    const requiredApprovals = config.quorumType === 'all'
+      ? (await getEligibleApproverIds(walletId, createdByUserId, config.allowSelfApproval)).length
+      : config.requiredApprovals;
+
     const requestData = {
       draftTransactionId: draftId,
       policyId: triggered.policyId,
-      requiredApprovals: config.requiredApprovals,
+      requiredApprovals,
       quorumType: config.quorumType,
       allowSelfApproval: config.allowSelfApproval,
       expiresAt,
@@ -102,7 +113,7 @@ export async function createApprovalRequestsForDraft(
       requestId: request.id,
       draftId,
       policyId: triggered.policyId,
-      requiredApprovals: config.requiredApprovals,
+      requiredApprovals,
     });
   }
 
@@ -134,12 +145,13 @@ export async function castVote(
 ): Promise<{ vote: ApprovalVote; request: ApprovalRequest & { votes: ApprovalVote[] } }> {
   const request = await getPendingApprovalRequest(requestId);
   await ensureUserHasNotVoted(requestId, userId);
+  await ensureEligibleToVote(request, userId);
   const draft = await getDraftForAllowedVote(request, userId);
   const vote = await createApprovalVote(requestId, userId, decision, reason);
   const updatedRequest = await getApprovalRequestAfterVote(requestId);
 
   // Check if the request should be resolved
-  await checkAndResolveRequest(updatedRequest);
+  await checkAndResolveRequest(updatedRequest, draft);
 
   // Log policy event
   logApprovalVoteEvent(request, updatedRequest, draft, userId, decision, reason);
@@ -170,6 +182,35 @@ async function ensureUserHasNotVoted(requestId: string, userId: string): Promise
   if (existingVote) {
     throw new ConflictError('You have already voted on this request');
   }
+}
+
+/**
+ * For 'specific' quorum, only the named approvers may vote at all — an
+ * unlisted user must be refused here so ineligible votes never accumulate
+ * toward the request's quorum count. No-op for 'any_n' and 'all'.
+ */
+async function ensureEligibleToVote(request: ApprovalRequestWithVotes, userId: string): Promise<void> {
+  if (request.quorumType !== 'specific') {
+    return;
+  }
+
+  const specificApprovers = await loadSpecificApprovers(request.policyId);
+
+  if (!specificApprovers.includes(userId)) {
+    throw new ForbiddenError('You are not an eligible approver for this request');
+  }
+}
+
+/**
+ * Load the current specificApprovers list from the policy backing a
+ * 'specific'-quorum request. Always read live (never cached on the request)
+ * so a policy edit, or a vote that predates the eligibility check at
+ * castVote, is still honored at resolution time.
+ */
+async function loadSpecificApprovers(policyId: string): Promise<string[]> {
+  const policy = await policyRepository.findPolicyById(policyId);
+  const config = policy?.config as unknown as ApprovalRequiredConfig | undefined;
+  return config?.specificApprovers ?? [];
 }
 
 async function getDraftForAllowedVote(
@@ -354,8 +395,72 @@ export async function getApprovalsForDraft(
 // INTERNAL HELPERS
 // ========================================
 
+/**
+ * Resolve the wallet's currently eligible approvers — users with an
+ * approving role (owner or approver) on the wallet — excluding the
+ * requester when self-approval is not allowed. Always derived live so a
+ * membership change after request creation is honored on the next check.
+ */
+async function getEligibleApproverIds(
+  walletId: string,
+  requesterId: string,
+  allowSelfApproval: boolean
+): Promise<string[]> {
+  const walletUsers = await walletSharingRepository.findWalletUsersWithUsername(walletId);
+  const approveRoles: readonly string[] = WALLET_APPROVE_ROLE_VALUES;
+  const eligible = walletUsers
+    .filter(wu => approveRoles.includes(wu.role))
+    .map(wu => wu.userId);
+
+  if (allowSelfApproval) {
+    return eligible;
+  }
+
+  return eligible.filter(id => id !== requesterId);
+}
+
+/**
+ * 'all' quorum is met only when every currently eligible approver has an
+ * approve vote on record. An empty eligible set (e.g. the requester was the
+ * sole approver and self-approval is disallowed) never resolves on its own —
+ * that would approve a request with zero votes.
+ */
+async function checkAllQuorumMet(
+  request: ApprovalRequest,
+  approveVotes: ApprovalVote[],
+  draft: ApprovalDraft
+): Promise<boolean> {
+  if (!draft) {
+    return false;
+  }
+
+  const eligibleIds = await getEligibleApproverIds(draft.walletId, draft.userId, request.allowSelfApproval);
+  if (eligibleIds.length === 0) {
+    return false;
+  }
+
+  const approveUserIds = new Set(approveVotes.map(v => v.userId));
+  return eligibleIds.every(id => approveUserIds.has(id));
+}
+
+/**
+ * 'specific' quorum is met only by approve votes from users currently on the
+ * policy's specificApprovers list — a vote from anyone else (cast before the
+ * castVote-time eligibility check existed, or before a policy edit dropped
+ * them from the list) must not count toward requiredApprovals.
+ */
+async function checkSpecificQuorumMet(
+  request: ApprovalRequest,
+  approveVotes: ApprovalVote[]
+): Promise<boolean> {
+  const specificApprovers = await loadSpecificApprovers(request.policyId);
+  const eligibleApproveVotes = approveVotes.filter(v => specificApprovers.includes(v.userId));
+  return eligibleApproveVotes.length >= request.requiredApprovals;
+}
+
 async function checkAndResolveRequest(
-  request: ApprovalRequest & { votes: ApprovalVote[] }
+  request: ApprovalRequest & { votes: ApprovalVote[] },
+  draft: ApprovalDraft
 ): Promise<void> {
   const approveVotes = request.votes.filter(v => v.decision === 'approve');
   const rejectVotes = request.votes.filter(v => v.decision === 'reject');
@@ -385,13 +490,23 @@ async function checkAndResolveRequest(
       quorumMet = approveVotes.length >= request.requiredApprovals;
       break;
     case 'all':
-      // "all" quorum — we can't know the total eligible count here,
-      // so we treat it as requiredApprovals (set at creation time to the count of eligible approvers)
-      quorumMet = approveVotes.length >= request.requiredApprovals;
+      // "all" quorum resolves against live wallet membership, not the count
+      // stored at request creation: growth means a new approver must also
+      // vote before resolving, and if a non-voting member is removed the
+      // request no longer waits on their vote — it resolves as soon as the
+      // remaining eligible members' votes are all in. This check only runs
+      // when a vote is cast (or via owner override, which resolves
+      // unconditionally); a removal by itself does not re-trigger it, so a
+      // request can still sit pending until the next vote or an expiry sweep.
+      quorumMet = await checkAllQuorumMet(request, approveVotes, draft);
       break;
     case 'specific':
-      // For specific quorum, check is the same — requiredApprovals is set to the count of specific approvers
-      quorumMet = approveVotes.length >= request.requiredApprovals;
+      // Re-filter against the live specificApprovers list rather than
+      // trusting `approveVotes` outright: ensureEligibleToVote only guards
+      // votes cast after this fix shipped, and a policy edit can remove a
+      // voter from the list after they already approved. Only a vote from a
+      // currently-listed approver counts toward requiredApprovals.
+      quorumMet = await checkSpecificQuorumMet(request, approveVotes);
       break;
   }
 

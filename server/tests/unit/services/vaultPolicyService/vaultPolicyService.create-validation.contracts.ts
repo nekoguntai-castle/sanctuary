@@ -322,6 +322,25 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('specific quorum requires specificApprovers array');
     });
 
+    it('rejects specific quorum when requiredApprovals exceeds specificApprovers.length', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Specific Over-Required',
+        type: 'approval_required',
+        config: {
+          trigger: { always: true },
+          requiredApprovals: 2,
+          quorumType: 'specific',
+          specificApprovers: ['security-admin'],
+          allowSelfApproval: false,
+          expirationHours: 24,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('requiredApprovals cannot exceed the number of specificApprovers');
+    });
+
     it('rejects approval_required with false-only trigger flags', async () => {
       const input: CreatePolicyInput = {
         walletId,
