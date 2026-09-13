@@ -535,6 +535,12 @@ Owner: `src/components/WalletDetail/WalletAutopilotSettings/useWalletAutopilotSe
 display fallback the current test pins. **Failing-first test:** reject the load with a plain
 `Error`, trigger a toggle → `updateWalletAutopilotSettings` **not** called with defaults.
 
+**Status: done.** `useWalletAutopilotSettingsController` now sets an error, logs via
+`log.error`, and flips a `settingsLoadedRef` guard on any non-404/403 load failure; `saveSettings`
+refuses to call the API while unloaded. Added 3 tests in
+`tests/components/WalletDetail/WalletAutopilotSettings.test.tsx` (one via `renderHook` for the
+404 case, since the feature-unavailable UI has no controls to click).
+
 ## Phase 21 — P2: the backup-complete reminder shows after a backup
 
 Owner: `src/components/BackupRestore/BackupRestore.tsx`, `useBackupHandlers.ts`.

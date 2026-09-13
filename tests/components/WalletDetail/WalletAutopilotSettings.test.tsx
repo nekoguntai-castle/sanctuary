@@ -1,18 +1,23 @@
-import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act,fireEvent,render,renderHook,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletAutopilotSettings } from '../../../src/components/WalletDetail/WalletAutopilotSettings';
+import { useWalletAutopilotSettingsController } from '../../../src/components/WalletDetail/WalletAutopilotSettings/useWalletAutopilotSettingsController';
 import { useUser } from '../../../src/contexts/UserContext';
 import { ApiError } from '../../../src/api/client';
 import * as walletsApi from '../../../src/api/wallets';
 
-vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => ({
+const { mockLogger } = vi.hoisted(() => ({
+  mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-  }),
+  },
+}));
+
+vi.mock('../../../src/utils/logger', () => ({
+  createLogger: () => mockLogger,
 }));
 
 vi.mock('../../../src/contexts/UserContext', () => ({
@@ -501,6 +506,197 @@ describe('WalletAutopilotSettings', () => {
     // Should render normally with defaults (not show "Feature not available")
     expect(await screen.findByText('Enable Autopilot')).toBeInTheDocument();
     expect(screen.queryByText('Feature not available')).not.toBeInTheDocument();
+  });
+
+  const SETTINGS_LOAD_FAILED_MESSAGE =
+    'Failed to load autopilot settings. Refresh the page before making changes.';
+
+  it('refuses to save and surfaces an error when the initial load fails with a non-ApiError', async () => {
+    const user = userEvent.setup();
+    mockTelegramUser();
+    const loadError = new Error('network down');
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockRejectedValue(loadError);
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    // The load failure is surfaced (and logged) immediately, before any save attempt.
+    expect(await screen.findByText(SETTINGS_LOAD_FAILED_MESSAGE)).toBeInTheDocument();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Failed to load autopilot settings',
+      { error: loadError }
+    );
+
+    const toggle = screen.getByRole('switch');
+    await user.click(toggle);
+
+    // The guard in saveSettings re-asserts the same error rather than proceeding.
+    expect(await screen.findByText(SETTINGS_LOAD_FAILED_MESSAGE)).toBeInTheDocument();
+    expect(walletsApi.updateWalletAutopilotSettings).not.toHaveBeenCalled();
+  });
+
+  it('refuses to save when the initial load fails with a non-404/403 ApiError', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockRejectedValue(
+      new ApiError('Internal error', 500)
+    );
+
+    const { result } = renderHook(() => useWalletAutopilotSettingsController(walletId));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.featureUnavailable).toBe(false);
+
+    await act(async () => {
+      result.current.handleToggle('enabled');
+    });
+
+    expect(walletsApi.updateWalletAutopilotSettings).not.toHaveBeenCalled();
+    expect(result.current.error).toBe(SETTINGS_LOAD_FAILED_MESSAGE);
+  });
+
+  it('refuses to save via handleNumberBlur when the initial load fails', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockRejectedValue(new Error('network down'));
+
+    const { result } = renderHook(() => useWalletAutopilotSettingsController(walletId));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.handleNumberChange('maxFeeRate', '15');
+    });
+    await act(async () => {
+      result.current.handleNumberBlur('maxFeeRate');
+    });
+
+    expect(walletsApi.updateWalletAutopilotSettings).not.toHaveBeenCalled();
+    expect(result.current.error).toBe(SETTINGS_LOAD_FAILED_MESSAGE);
+  });
+
+  it('still allows saving after a 404 load (no settings yet)', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockRejectedValue(
+      new ApiError('Not found', 404)
+    );
+
+    const { result } = renderHook(() => useWalletAutopilotSettingsController(walletId));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.featureUnavailable).toBe(true);
+
+    await act(async () => {
+      result.current.handleToggle('enabled');
+    });
+
+    await waitFor(() => {
+      expect(walletsApi.updateWalletAutopilotSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ enabled: true })
+      );
+    });
+  });
+
+  it('ignores a settings load that resolves after the wallet changed', async () => {
+    mockTelegramUser();
+    let resolveFirst!: (value: typeof defaultSettings) => void;
+    // Keyed by wallet id: wallet-1's settings request stays pending until
+    // released, wallet-2's resolves immediately.
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockImplementation((id) =>
+      id === walletId
+        ? new Promise((resolve) => { resolveFirst = resolve; })
+        : Promise.resolve({ ...defaultSettings, enabled: true }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useWalletAutopilotSettingsController(id),
+      { initialProps: { id: walletId } },
+    );
+
+    rerender({ id: 'wallet-2' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.settings.enabled).toBe(true);
+
+    // The abandoned wallet-1 request now resolves with stale, disabled settings.
+    await act(async () => {
+      resolveFirst({ ...defaultSettings, enabled: false });
+    });
+
+    expect(result.current.settings.enabled).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('ignores a status load that resolves after the wallet changed', async () => {
+    mockTelegramUser();
+    let resolveFirstStatus!: (value: typeof defaultStatus) => void;
+    vi.mocked(walletsApi.getWalletAutopilotStatus).mockImplementation((id) =>
+      id === walletId
+        ? new Promise((resolve) => { resolveFirstStatus = resolve; })
+        : Promise.resolve(defaultStatus),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useWalletAutopilotSettingsController(id),
+      { initialProps: { id: walletId } },
+    );
+
+    // wallet-1's settings resolved; its status request is now the pending one.
+    await waitFor(() =>
+      expect(walletsApi.getWalletAutopilotStatus).toHaveBeenCalledWith(walletId),
+    );
+    rerender({ id: 'wallet-2' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.status).toEqual(defaultStatus);
+
+    const stale = { ...defaultStatus, utxoHealth: { ...defaultStatus.utxoHealth, totalUtxos: 999 } };
+    await act(async () => {
+      resolveFirstStatus(stale);
+    });
+
+    expect(result.current.status).toEqual(defaultStatus);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('ignores a settings load that rejects after the wallet changed', async () => {
+    mockTelegramUser();
+    let rejectFirst!: (reason: Error) => void;
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockImplementation((id) =>
+      id === walletId
+        ? new Promise((_resolve, reject) => { rejectFirst = reject; })
+        : Promise.resolve(defaultSettings),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useWalletAutopilotSettingsController(id),
+      { initialProps: { id: walletId } },
+    );
+
+    rerender({ id: 'wallet-2' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      rejectFirst(new Error('stale failure'));
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it('saves after a successful load and a toggle', async () => {
+    const user = userEvent.setup();
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue(defaultSettings);
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    const toggle = await screen.findByRole('switch');
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(walletsApi.updateWalletAutopilotSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ enabled: true })
+      );
+    });
+    expect(await screen.findByText('Saved!')).toBeInTheDocument();
   });
 
   it('hides settings fields when not enabled', async () => {

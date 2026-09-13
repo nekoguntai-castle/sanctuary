@@ -5,6 +5,8 @@ import * as walletsApi from '../../../api/wallets';
 import { ApiError } from '../../../api/client';
 import { createLogger } from '../../../utils/logger';
 
+const SETTINGS_LOAD_FAILED_MESSAGE = 'Failed to load autopilot settings. Refresh the page before making changes.';
+
 const log = createLogger('WalletAutopilotSettings');
 
 const DEFAULT_SETTINGS: AutopilotSettingsType = {
@@ -40,32 +42,58 @@ export function useWalletAutopilotSettingsController(walletId: string) {
   const [featureUnavailable, setFeatureUnavailable] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const prevSettingsRef = useRef<AutopilotSettingsType>(DEFAULT_SETTINGS);
+  // Whether the wallet's real settings are known: true only after a load for the
+  // *current* walletId has resolved (success, or a definitive 404/403 meaning
+  // there is nothing to load / no access). Starts false and is reset to false
+  // whenever walletId changes, so saveSettings below can refuse to write while
+  // the baseline is unknown instead of overwriting the server with
+  // DEFAULT_SETTINGS.
+  const settingsLoadedRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
+    settingsLoadedRef.current = false;
+
     const fetchData = async () => {
       try {
         const data = await walletsApi.getWalletAutopilotSettings(walletId);
+        if (cancelled) return;
         setSettings(data);
         prevSettingsRef.current = data;
+        settingsLoadedRef.current = true;
       } catch (err) {
+        if (cancelled) return;
         if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
           setFeatureUnavailable(true);
+          settingsLoadedRef.current = true;
+        } else {
+          log.error('Failed to load autopilot settings', { error: err });
+          setError(SETTINGS_LOAD_FAILED_MESSAGE);
         }
       }
 
       try {
         const statusData = await walletsApi.getWalletAutopilotStatus(walletId);
-        setStatus(statusData);
+        if (!cancelled) setStatus(statusData);
       } catch (error) {
         log.debug('Optional autopilot status fetch failed', { error });
       }
 
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     };
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [walletId]);
 
   const saveSettings = useCallback(async (newSettings: AutopilotSettingsType) => {
+    if (!settingsLoadedRef.current) {
+      setError(SETTINGS_LOAD_FAILED_MESSAGE);
+      return;
+    }
+
     const prev = prevSettingsRef.current;
     setSettings(newSettings);
     setSaving(true);
