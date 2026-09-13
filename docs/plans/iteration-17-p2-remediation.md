@@ -72,6 +72,8 @@ Verification: as Phase 1 (no bitcoin pins).
 
 ## Phase 4 — confirmation refresh keeps the lock until the writer settles (server)
 
+Status: done
+
 Finding: `confirmation-refresh-lock-released-before-detached-writer-settles`.
 
 Evidence: `confirmationUpdater.ts:318-382` `awaitExecutionSettlement` defaults to false and `refreshWalletConfirmations` (:373-381) omits it; `refreshWalletConfirmationsAtHeight` (:384-402) passes `signal, true`.

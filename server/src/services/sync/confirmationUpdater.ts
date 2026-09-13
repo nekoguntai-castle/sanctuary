@@ -27,8 +27,6 @@ import { getErrorMessage } from '../../utils/errors';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import {
   runSettledSyncAttemptWithTimeout,
-  runSyncAttemptWithTimeout,
-  SYNC_ABORT_GRACE_MS,
 } from './syncAttemptLifecycle';
 
 const CONFIRMATION_THRESHOLD = 6;
@@ -320,7 +318,6 @@ async function refreshWalletWithLock(
   lockWaitTimeMs: number,
   execute: WalletRefreshExecutor,
   externalSignal?: AbortSignal,
-  awaitExecutionSettlement = false,
 ): Promise<WalletConfirmationRefreshResult> {
   const ttlMs = getSyncLockTtlMs();
   const lock = await acquireLock(getSyncLockKey({ walletId }), {
@@ -348,17 +345,12 @@ async function refreshWalletWithLock(
         ? AbortSignal.any([lease.signal, externalSignal])
         : lease.signal;
       const executeAttempt = (signal: AbortSignal) => execute(signal, accumulator);
-      if (awaitExecutionSettlement) {
-        return await runSettledSyncAttemptWithTimeout(
-          executeAttempt,
-          getConfig().sync.maxSyncDurationMs,
-          parentSignal,
-        );
-      }
-      return await runSyncAttemptWithTimeout(
+      // Always wait for the executor to settle before the lock is released in
+      // `finally`: a timed-out writer that ignores its abort signal must never
+      // overlap with the next refresh of the same wallet.
+      return await runSettledSyncAttemptWithTimeout(
         executeAttempt,
         getConfig().sync.maxSyncDurationMs,
-        SYNC_ABORT_GRACE_MS,
         parentSignal,
       );
     } catch (error) {
@@ -397,7 +389,6 @@ export function refreshWalletConfirmationsAtHeight(
       accumulator,
     ),
     signal,
-    true,
   );
 }
 
