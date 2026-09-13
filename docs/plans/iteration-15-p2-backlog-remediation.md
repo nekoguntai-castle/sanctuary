@@ -419,6 +419,9 @@ and `transactionsHttpRoutes.reads.contracts.ts`.
 Owner: `server/src/api/transactions/utxos.ts`.
 **Contract:** `getParsed(..., DEFAULT_CONFIRMATION_THRESHOLD)`. **Failing-first test:** no stored
 setting, a 1-conf UTXO → `spendable: true` (currently `false`).
+**Status: done.** Replaced the hard-coded `3` default with `DEFAULT_CONFIRMATION_THRESHOLD` from
+`server/src/constants.ts`, matching `utxoSelection.ts`/`networkStatusService.ts`/
+`createBatchTransaction.ts`; no other route/service had the divergent literal.
 
 ## Phase 13 — P2: legacy `testnet` normalized before `getStatus`
 

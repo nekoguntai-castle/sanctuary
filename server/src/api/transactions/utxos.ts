@@ -11,6 +11,7 @@ import { validate } from '../../middleware/validate';
 import { systemSettingRepository, utxoRepository, transactionRepository } from '../../repositories';
 import { checkWalletAccess } from '../../services/accessControl';
 import { SystemSettingSchemas } from '../../utils/safeJson';
+import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../constants';
 import { bigIntToNumberOrZero } from '../../utils/errors';
 import { extractPagination, setTruncationHeaders } from '../../utils/pagination';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -33,7 +34,7 @@ router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler
   const { effectiveLimit, effectiveOffset } = pagination;
 
   // Get confirmation threshold setting
-  const confirmationThreshold = await systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, 3);
+  const confirmationThreshold = await systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, DEFAULT_CONFIRMATION_THRESHOLD);
 
   const [summary, utxos] = await Promise.all([
     utxoRepository.aggregateUnspent(walletId),

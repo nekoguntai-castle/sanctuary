@@ -49,6 +49,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import { errorHandler } from '../../../src/errors/errorHandler';
 import utxosRouter from '../../../src/api/transactions/utxos';
+import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../../src/constants';
 
 describe('Transactions UTXO Routes', () => {
   let app: Express;
@@ -156,6 +157,87 @@ describe('Transactions UTXO Routes', () => {
       lockedByDraftLabel: 'Hold',
       createdAt: fallbackCreatedAt.toISOString(),
     });
+  });
+
+  it('falls back to the shared DEFAULT_CONFIRMATION_THRESHOLD when no setting is stored', async () => {
+    // Simulate systemSettingRepository.getParsed with nothing stored: it resolves
+    // the caller-supplied default argument. This must be the shared
+    // DEFAULT_CONFIRMATION_THRESHOLD (1), not a route-local hard-coded value.
+    mockGetParsed.mockImplementation(
+      (_key: string, _schema: unknown, defaultValue: number) => Promise.resolve(defaultValue)
+    );
+    mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+      _count: { _all: 1 },
+      _sum: { amount: BigInt(1000) },
+    });
+    mockPrismaClient.uTXO.findMany.mockResolvedValue([
+      {
+        id: 'utxo-1',
+        txid: 'tx-1',
+        vout: 0,
+        walletId: 'wallet-1',
+        amount: BigInt(1000),
+        blockHeight: BigInt(850000),
+        confirmations: 1,
+        frozen: false,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        draftLock: null,
+      },
+    ] as any);
+
+    const response = await request(app).get('/api/v1/wallets/wallet-1/utxos');
+
+    expect(response.status).toBe(200);
+    expect(mockGetParsed).toHaveBeenCalledWith(
+      'confirmationThreshold',
+      expect.anything(),
+      DEFAULT_CONFIRMATION_THRESHOLD
+    );
+    expect(response.body.utxos[0]).toMatchObject({
+      id: 'utxo-1',
+      confirmations: 1,
+      spendable: true,
+    });
+  });
+
+  it('honors a stored confirmationThreshold when computing spendability', async () => {
+    mockGetParsed.mockResolvedValue(3);
+    mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+      _count: { _all: 2 },
+      _sum: { amount: BigInt(1500) },
+    });
+    mockPrismaClient.uTXO.findMany.mockResolvedValue([
+      {
+        id: 'utxo-2conf',
+        txid: 'tx-1',
+        vout: 0,
+        walletId: 'wallet-1',
+        amount: BigInt(1000),
+        blockHeight: BigInt(850000),
+        confirmations: 2,
+        frozen: false,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        draftLock: null,
+      },
+      {
+        id: 'utxo-3conf',
+        txid: 'tx-2',
+        vout: 0,
+        walletId: 'wallet-1',
+        amount: BigInt(500),
+        blockHeight: BigInt(850001),
+        confirmations: 3,
+        frozen: false,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        draftLock: null,
+      },
+    ] as any);
+
+    const response = await request(app).get('/api/v1/wallets/wallet-1/utxos');
+
+    expect(response.status).toBe(200);
+    expect(response.body.utxos[0]).toMatchObject({ id: 'utxo-2conf', spendable: false });
+    expect(response.body.utxos[1]).toMatchObject({ id: 'utxo-3conf', spendable: true });
   });
 
   it('uses explicit pagination params and omits unpaged response headers', async () => {
