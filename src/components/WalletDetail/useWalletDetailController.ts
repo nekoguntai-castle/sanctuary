@@ -146,6 +146,7 @@ export const useWalletDetailController = () => {
   } = useTransactionFilters({
     transactions,
     walletAddresses: walletAddressStrings,
+    ownershipKey,
     confirmationThreshold: bitcoinStatus?.confirmationThreshold,
     deepConfirmationThreshold: bitcoinStatus?.deepConfirmationThreshold,
   });

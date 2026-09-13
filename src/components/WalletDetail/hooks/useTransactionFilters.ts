@@ -5,7 +5,7 @@
  * status, and label. Applied before the AI query filter in the pipeline.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useLayoutEffect } from 'react';
 import type { Transaction } from '../../../types';
 import { isConsolidation } from '../../../utils/transaction';
 
@@ -38,6 +38,7 @@ const DEFAULT_FILTERS: TransactionFilters = {
 export interface UseTransactionFiltersParams {
   transactions: Transaction[];
   walletAddresses: string[];
+  ownershipKey: string;
   confirmationThreshold?: number;
   deepConfirmationThreshold?: number;
 }
@@ -166,10 +167,15 @@ const matchesTransactionFilters = (
 export function useTransactionFilters({
   transactions,
   walletAddresses,
+  ownershipKey,
   confirmationThreshold = 1,
   deepConfirmationThreshold = 3,
 }: UseTransactionFiltersParams): UseTransactionFiltersReturn {
   const [filters, setFilters] = useState<TransactionFilters>(DEFAULT_FILTERS);
+
+  useLayoutEffect(() => {
+    setFilters(DEFAULT_FILTERS);
+  }, [ownershipKey]);
 
   const setTypeFilter = useCallback((type: TxTypeFilter) => {
     setFilters(prev => ({ ...prev, type }));

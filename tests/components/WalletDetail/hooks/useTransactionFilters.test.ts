@@ -69,14 +69,18 @@ function renderFilters(
   walletAddresses: string[] = WALLET_ADDRESSES,
   confirmationThreshold?: number,
   deepConfirmationThreshold?: number,
+  ownershipKey = 'wallet-1',
 ) {
-  return renderHook(() =>
-    useTransactionFilters({
-      transactions,
-      walletAddresses,
-      ...(confirmationThreshold !== undefined ? { confirmationThreshold } : {}),
-      ...(deepConfirmationThreshold !== undefined ? { deepConfirmationThreshold } : {}),
-    }),
+  return renderHook(
+    ({ ownershipKey: key }: { ownershipKey: string }) =>
+      useTransactionFilters({
+        transactions,
+        walletAddresses,
+        ownershipKey: key,
+        ...(confirmationThreshold !== undefined ? { confirmationThreshold } : {}),
+        ...(deepConfirmationThreshold !== undefined ? { deepConfirmationThreshold } : {}),
+      }),
+    { initialProps: { ownershipKey } },
   );
 }
 
@@ -528,6 +532,53 @@ describe('useTransactionFilters', () => {
       });
       expect(result.current.hasActiveFilters).toBe(false);
       expect(result.current.filteredTransactions).toEqual(allTransactions);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Wallet switch (ownershipKey) reset
+  // -----------------------------------------------------------------------
+
+  describe('wallet switch reset', () => {
+    it('resets filters to defaults when ownershipKey changes', () => {
+      const { result, rerender } = renderFilters(
+        allTransactions,
+        WALLET_ADDRESSES,
+        undefined,
+        undefined,
+        'wallet-1',
+      );
+
+      act(() => result.current.setLabelFilter('lbl-1'));
+      expect(result.current.filters.labelId).toBe('lbl-1');
+
+      rerender({ ownershipKey: 'wallet-2' });
+
+      expect(result.current.filters).toEqual({
+        type: 'all',
+        confirmations: 'all',
+        datePreset: 'all',
+        dateFrom: null,
+        dateTo: null,
+        labelId: null,
+      });
+    });
+
+    it('preserves filters when ownershipKey is unchanged', () => {
+      const { result, rerender } = renderFilters(
+        allTransactions,
+        WALLET_ADDRESSES,
+        undefined,
+        undefined,
+        'wallet-1',
+      );
+
+      act(() => result.current.setLabelFilter('lbl-1'));
+      expect(result.current.filters.labelId).toBe('lbl-1');
+
+      rerender({ ownershipKey: 'wallet-1' });
+
+      expect(result.current.filters.labelId).toBe('lbl-1');
     });
   });
 

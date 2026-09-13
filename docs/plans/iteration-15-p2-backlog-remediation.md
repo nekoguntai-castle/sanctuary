@@ -485,6 +485,10 @@ Owner: `src/components/WalletDetail/hooks/useTransactionFilters.ts`.
 **Contract:** accept `ownershipKey` and reset to `DEFAULT_FILTERS` when it changes, like every
 sibling hook. **Failing-first test:** set a label filter, rerender with a new key → defaults.
 
+**Status: done.** `useTransactionFilters` now takes `ownershipKey` and resets on change (mirrors
+`useWalletMutations`'s `useLayoutEffect` idiom); `useWalletDetailController.ts` passes its existing
+`ownershipKey`.
+
 ## Phase 17 — P2: Try-again clears an operation error
 
 Owner: `src/components/DraftList/useDraftListController.ts`.
