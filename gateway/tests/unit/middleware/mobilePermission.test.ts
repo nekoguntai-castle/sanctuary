@@ -13,17 +13,26 @@ vi.mock('../../../src/config', () => ({
   config: {
     backendUrl: 'http://localhost:3000',
     gatewaySecret: 'test-gateway-secret-32-characters-long',
+    // Kept small so the timeout tests below run fast; large enough that a
+    // fetch mock resolving synchronously (the other tests) never trips it.
+    backendRequestTimeoutMs: 30,
   },
 }));
 
-// Mock logger
-vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => ({
+// Mock logger. The logger instance is created once at module load
+// (`const log = createLogger(...)`), so expose it via vi.hoisted to let
+// tests assert on calls made through that single instance.
+const { mockLog } = vi.hoisted(() => ({
+  mockLog: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
-  }),
+  },
+}));
+
+vi.mock('../../../src/utils/logger', () => ({
+  createLogger: () => mockLog,
 }));
 
 // Mock request logger
@@ -404,6 +413,57 @@ describe('Mobile Permission Middleware', () => {
 
         expect(statusMock).toHaveBeenCalledWith(403);
         expect(mockNext).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('timeout handling (fail closed)', () => {
+      beforeEach(() => {
+        (mockReq as any).user = { userId: 'user-123', username: 'testuser' };
+      });
+
+      it('should deny within the configured timeout when the backend never responds', async () => {
+        // A fetch that never settles reproduces a hung backend. Bug:
+        // mobile-permission-check-fetch-no-timeout — checkPermissionWithBackend's
+        // fetch() had no `signal`, so this middleware hung forever instead of
+        // failing closed. The mocked config's backendRequestTimeoutMs (30ms)
+        // keeps this test fast; the `it` timeout below (300ms) catches a hang.
+        // A real fetch rejects when its AbortSignal fires; replicate that so
+        // this mock exercises the same code path the timeout wiring relies on.
+        mockFetch.mockImplementationOnce((_url: string, init: { signal?: AbortSignal }) => {
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('The operation was aborted', 'AbortError'));
+            });
+          });
+        });
+
+        const middleware = requireMobilePermission('broadcast');
+
+        await middleware(mockReq as Request, mockRes as Response, mockNext as NextFunction);
+
+        expect(statusMock).toHaveBeenCalledWith(403);
+        expect(jsonMock).toHaveBeenCalledWith({
+          error: 'Forbidden',
+          message: 'Permission check unavailable',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+        expect(mockLog.error).toHaveBeenCalledWith(
+          'Error calling backend permission check',
+          expect.objectContaining({ walletId: '12345678-1234-1234-1234-123456789abc', userId: 'user-123' })
+        );
+      }, 300);
+
+      it('should pass an AbortSignal to fetch so a hung backend request is cancelled', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ allowed: true }),
+        });
+
+        const middleware = requireMobilePermission('createTransaction');
+        await middleware(mockReq as Request, mockRes as Response, mockNext as NextFunction);
+
+        const fetchCall = mockFetch.mock.calls[0];
+        expect(fetchCall[1].signal).toBeInstanceOf(AbortSignal);
       });
     });
 

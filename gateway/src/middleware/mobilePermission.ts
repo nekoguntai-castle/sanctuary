@@ -87,6 +87,7 @@ async function checkPermissionWithBackend(
           'X-Gateway-Timestamp': timestamp,
         },
         body: payload,
+        signal: AbortSignal.timeout(config.backendRequestTimeoutMs),
       }
     );
 
