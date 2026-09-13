@@ -693,7 +693,7 @@ describe('WebSocketClient', () => {
       expect(mockWsInstances.length).toBe(afterFastRetries + 1);
     });
 
-    it('should reset reconnect attempts on successful connection', () => {
+    it('should reset reconnect attempts once the connection has stayed open past the stable window', () => {
       client.connect();
       getLastWs().simulateOpen();
 
@@ -702,10 +702,103 @@ describe('WebSocketClient', () => {
       vi.advanceTimersByTime(2000);
       getLastWs().simulateOpen(); // Successful reconnect
 
+      // Hold the reconnected socket open past the stability window so the
+      // backoff is credited as reset (no message needed — the window
+      // alone should do it).
+      vi.advanceTimersByTime(5000);
+
       // Close again - should start fresh backoff
       getLastWs().simulateClose(1006, 'Abnormal');
       vi.advanceTimersByTime(2000);
       expect(mockWsInstances.length).toBe(3); // Another reconnect attempt
+    });
+
+    it('should NOT reset reconnect attempts on bare onopen (repeated open-then-close defeats backoff otherwise)', () => {
+      client.connect();
+      getLastWs().simulateOpen();
+      getLastWs().simulateClose(1008, 'Auth rejected');
+
+      // Repeatedly open-then-close, well within the stability window each
+      // time (simulating a server that accepts the upgrade and then closes
+      // for an auth reason before the client can be credited as stable).
+      // If onopen resets the counter, the exhaustion branch below is never
+      // reached because reconnectAttempts never grows past 0.
+      for (let i = 0; i < 5; i++) {
+        vi.advanceTimersByTime(60000);
+        getLastWs().simulateOpen();
+        getLastWs().simulateClose(1008, 'Auth rejected');
+      }
+
+      // Exhaustion branch: no immediate fast retry, only the 5-minute slow
+      // retry. This is only reachable if reconnectAttempts actually grew
+      // to maxReconnectAttempts across the open-then-close cycles above.
+      const afterFastRetries = mockWsInstances.length;
+      vi.advanceTimersByTime(60000); // one more fast-retry window
+      expect(mockWsInstances.length).toBe(afterFastRetries); // no immediate retry — exhausted
+
+      vi.advanceTimersByTime(5 * 60 * 1000); // slow retry fires
+      expect(mockWsInstances.length).toBe(afterFastRetries + 1);
+    });
+
+    it('should reset reconnect attempts once the first server message arrives, even before the stable window elapses', () => {
+      client.connect();
+      getLastWs().simulateOpen();
+
+      getLastWs().simulateClose(1006, 'Abnormal');
+      vi.advanceTimersByTime(2000);
+      getLastWs().simulateOpen(); // Successful reconnect
+
+      // Deliver a message well before the stability window would elapse.
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
+
+      // Close again - should start fresh backoff even though the window
+      // hadn't elapsed, because the message already credited stability.
+      getLastWs().simulateClose(1006, 'Abnormal');
+      vi.advanceTimersByTime(2000);
+      expect(mockWsInstances.length).toBe(3); // Another reconnect attempt
+    });
+
+    it('should NOT reset reconnect attempts on a server error frame that precedes close (legacy auth-message connection-limit rejection)', () => {
+      // server/src/websocket/auth.ts handleAuthMessage sends a
+      // {type:'error'} frame immediately before close(1008) when the
+      // per-user connection limit is hit. If that message credited
+      // stability the same way a real event does, backoff would never
+      // engage for this rejection — the same failure mode this fix
+      // targets, just reached via a message instead of a bare open.
+      client.connect();
+      getLastWs().simulateOpen();
+      getLastWs().simulateClose(1008, 'Auth rejected');
+
+      for (let i = 0; i < 5; i++) {
+        vi.advanceTimersByTime(60000);
+        getLastWs().simulateOpen();
+        getLastWs().simulateMessage({
+          type: 'error',
+          data: { message: 'User connection limit of 3 reached' },
+        });
+        getLastWs().simulateClose(1008, 'Auth rejected');
+      }
+
+      // Exhaustion branch reached: the error frame did not reset attempts.
+      const afterFastRetries = mockWsInstances.length;
+      vi.advanceTimersByTime(60000);
+      expect(mockWsInstances.length).toBe(afterFastRetries); // no immediate retry — exhausted
+
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(mockWsInstances.length).toBe(afterFastRetries + 1);
+    });
+
+    it('should clear the stability timer on disconnect so it cannot fire and reset backoff after the client is gone', () => {
+      client.connect();
+      getLastWs().simulateOpen();
+      expect((client as unknown as { stabilityTimer: unknown }).stabilityTimer).not.toBeNull();
+
+      client.disconnect();
+      expect((client as unknown as { stabilityTimer: unknown }).stabilityTimer).toBeNull();
+
+      // Advancing past the stability window must not throw or resurrect
+      // any state now that the timer has been cleared.
+      expect(() => vi.advanceTimersByTime(10000)).not.toThrow();
     });
   });
 

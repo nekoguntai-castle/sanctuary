@@ -42,6 +42,18 @@ export class WebSocketClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnecting: boolean = false;
   private shouldReconnect: boolean = true;
+  // Timer that credits the connection as "stable" (and resets the reconnect
+  // backoff) after it has stayed open for RECONNECT_STABLE_WINDOW_MS, or
+  // after the first server message arrives, whichever comes first. The
+  // reset used to happen unconditionally in `onopen`, but the server's
+  // close(1008) (e.g. auth rejection) fires AFTER the WebSocket upgrade
+  // completes, so `onopen` always precedes that `onclose` — resetting on
+  // open meant the counter never grew and backoff never engaged.
+  private stabilityTimer: NodeJS.Timeout | null = null;
+  // 5s is comfortably longer than a normal upgrade + cookie-auth round trip
+  // (so a real recovering connection is credited promptly) but short enough
+  // that a connection which is actually flapping still gets counted.
+  private static readonly RECONNECT_STABLE_WINDOW_MS = 5000;
   // True only after the server has sent its 'connected' welcome message.
   // Phase 4 (ADR 0001/0002): the server runs verifyWebSocketAccessToken
   // asynchronously inside authenticateOnUpgrade, and the message handler
@@ -85,8 +97,17 @@ export class WebSocketClient {
       this.ws.onopen = () => {
         log.debug('Connected');
         this.isConnecting = false;
-        this.reconnectAttempts = 0;
-        this.reconnectDelay = 1000;
+
+        // Credit this connection as stable — and reset the reconnect
+        // backoff — only after it survives RECONNECT_STABLE_WINDOW_MS
+        // without closing (onmessage below also credits it early, on the
+        // first server message). Do NOT reset here unconditionally: see
+        // the stabilityTimer comment on the field declaration.
+        this.clearStabilityTimer();
+        this.stabilityTimer = setTimeout(() => {
+          this.stabilityTimer = null;
+          this.resetReconnectState();
+        }, WebSocketClient.RECONNECT_STABLE_WINDOW_MS);
 
         // Send the legacy auth message ONLY if a token was explicitly
         // passed (perf benchmark scripts still use this path). The
@@ -123,6 +144,21 @@ export class WebSocketClient {
       this.ws.onmessage = (event) => {
         try {
           const message: WebSocketEvent = JSON.parse(event.data);
+
+          // Any message other than a control-plane error frame proves the
+          // connection is genuinely alive (past the upgrade and any auth
+          // check), so credit stability immediately instead of waiting out
+          // the full window. Excluding 'error' matters: the legacy
+          // auth-message path (server/src/websocket/auth.ts
+          // handleAuthMessage) sends a {type:'error'} frame immediately
+          // before close(1008) when the per-user connection limit is hit,
+          // and crediting stability there would defeat backoff for
+          // exactly the accept-then-reject pattern this fix targets.
+          if (this.stabilityTimer && message.type !== 'error') {
+            this.clearStabilityTimer();
+            this.resetReconnectState();
+          }
+
           this.handleMessage(message);
         } catch (err) {
           log.error('Failed to parse message', { error: err });
@@ -138,6 +174,7 @@ export class WebSocketClient {
         log.debug('Closed', { code: event.code, reason: event.reason });
         this.isConnecting = false;
         this.isServerReady = false;
+        this.clearStabilityTimer();
         this.ws = null;
 
         // Notify connection listeners
@@ -158,8 +195,7 @@ export class WebSocketClient {
 
             this.reconnectTimer = setTimeout(() => {
               log.debug('Attempting slow reconnect after 5 minute wait');
-              this.reconnectAttempts = 0;
-              this.reconnectDelay = 1000;
+              this.resetReconnectState();
               this.connect(this.token || undefined);
             }, 5 * 60 * 1000);
           }
@@ -182,6 +218,8 @@ export class WebSocketClient {
       this.reconnectTimer = null;
     }
 
+    this.clearStabilityTimer();
+
     // Reset the server-ready flag synchronously with clearing `this.ws`.
     // onclose also resets it, but browsers deliver close events async,
     // so between `ws.close()` returning and onclose firing there is a
@@ -197,6 +235,27 @@ export class WebSocketClient {
 
     this.subscriptions.clear();
     log.debug('Disconnected');
+  }
+
+  /**
+   * Clear the pending stability timer, if any. Called on close, disconnect,
+   * and before arming a new one, so no timer outlives its connection.
+   */
+  private clearStabilityTimer() {
+    if (this.stabilityTimer) {
+      clearTimeout(this.stabilityTimer);
+      this.stabilityTimer = null;
+    }
+  }
+
+  /**
+   * Reset the reconnect backoff back to its initial state. Called once a
+   * connection has proven itself stable (open past RECONNECT_STABLE_WINDOW_MS,
+   * or received a message), and by the slow-retry path after its 5 minute wait.
+   */
+  private resetReconnectState() {
+    this.reconnectAttempts = 0;
+    this.reconnectDelay = 1000;
   }
 
   /**

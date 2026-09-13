@@ -460,6 +460,11 @@ behavior this fix removes and will go red. Rewrite it to hold the connection ope
 window (or deliver a message) before closing, then assert the reset; do not delete it.
 Verification: frontend gates. Rollback: revert.
 
+**Status: done.** Reset now gated on a `RECONNECT_STABLE_WINDOW_MS = 5000` stability timer
+(started in `onopen`, cleared in `onclose`/`disconnect`, and short-circuited by the first
+`onmessage`) instead of `onopen` itself. Existing test rewritten; new tests cover repeated
+open-then-close reaching the exhaustion branch, window-based reset, and message-based reset.
+
 ## Phase 15 — P2: a superseded refresh is not a failure
 
 Owner: `src/components/WalletDetail/useWalletDetailController.ts`, `useWalletData.ts`.
