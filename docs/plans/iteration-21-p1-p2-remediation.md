@@ -104,3 +104,18 @@ One PR per phase, serial merges on `main`, each rebased only when it is next; ta
 ## Completion criteria
 
 All six findings resolved in run state with a target-CI-verified attempt record; a fresh full scrub (iteration 22) of the resulting main SHA finds zero P0–P2.
+
+## Delivery record
+
+All six phases merged serially on `main` (squash merges), each with target-branch CI verified:
+
+| Phase | PR | Merge SHA | Notes / verified divergences |
+| --- | --- | --- | --- |
+| 5 | #1153 | `d3e26da2` | Cancelled flag in the effect cleanup; superseded rejections are also suppressed. |
+| 2 | #1154 | `789a3d20` | Wallet resolved before validation; `createTransaction` maps the parse failure to `InvalidInputError('…', 'recipient')`. |
+| 1 | #1155 | `a7c8c6d5` | Reservation lives in the engine (`reserveEnforcedUsage`), called only from the broadcast routes so read-only evaluations stay read-only; reservations are released only on a definite pre-acceptance rejection (`DefiniteBroadcastRejectionError`) so unknown outcomes over-count rather than under-count; `decrementUsageWindow` renamed to the floored `releaseUsageWindow`; a DB-gated integration test proves two concurrent reservations let exactly one through. Known follow-up (P3): pre-network failures keep the reservation until the window rolls over. |
+| 3 | #1156 | `c73a818a` | Result shape mirrors #1137; the all-sends-failed branch carries an error string; regenerated notifications call graph committed. |
+| 4 | #1157 | `254550f8` | Provider-selecting fetch extracted into `fetchPrice` for clean branch instrumentation; cleanup bumps the request id on unmount/re-key. |
+| 6 | #1158 | `80889c3e` | Ref-based `applyDrafts` instead of a functional updater (synchronous count for the badge); the optional row guard was not added because it would block the interleaving the regression test exercises. |
+
+Iteration-21 plan PR: #1152 (`39388d4b`). Custody after delivery: no loop branches or worktrees remain.
