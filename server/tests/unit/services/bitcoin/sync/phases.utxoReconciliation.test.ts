@@ -271,6 +271,164 @@ describe('Sync Phases', () => {
       expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
     });
 
+    it('keeps a locally spent UTXO spent when the server still lists it', async () => {
+      const txid = 'still-listed-spent'.padEnd(64, 'a');
+      const evidence = authenticatedExisting(txid, { spent: true });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([evidence.row]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+        // Same-round authenticated history still shows this outpoint spent.
+        authenticatedSpentOutpointKeys: new Set([`${txid}:0`]),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'utxo-1' },
+          data: expect.objectContaining({
+            confirmations: 6,
+            spent: true,
+          }),
+        })
+      );
+    });
+
+    it('skips the update entirely for a locally spent UTXO whose confirmations already match', async () => {
+      const txid = 'still-listed-spent-nochange'.padEnd(64, 'a');
+      const evidence = authenticatedExisting(txid, { spent: true });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([
+        { ...evidence.row, confirmations: 6, blockHeight: 799995 },
+      ]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+        authenticatedSpentOutpointKeys: new Set([`${txid}:0`]),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps a locally spent UTXO spent when the server has not yet seen the broadcast (fail-open trigger)', async () => {
+      const txid = 'lagging-server-spend'.padEnd(64, 'a');
+      const evidence = authenticatedExisting(txid, { spent: true });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([evidence.row]);
+      // The wallet itself still has a live (non-replaced) recorded spender
+      // for this outpoint, even though the server's history this round says
+      // nothing about it — a lagging server, not a vanished spend.
+      mockPrismaClient.transactionInput.findMany.mockResolvedValue([
+        { txid, vout: 0 },
+      ]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+        // The server hasn't surfaced the spend this round: absence of
+        // evidence, not evidence of absence.
+        authenticatedSpentOutpointKeys: new Set(),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'utxo-1' },
+          data: expect.objectContaining({
+            confirmations: 6,
+            spent: true,
+          }),
+        })
+      );
+    });
+
+    it('restores a locally spent UTXO only when neither the server nor the wallet has evidence the spend is live', async () => {
+      const txid = 'spend-vanished'.padEnd(64, 'a');
+      const evidence = authenticatedExisting(txid, { spent: true });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([evidence.row]);
+      // No locally recorded spender for this outpoint either.
+      mockPrismaClient.transactionInput.findMany.mockResolvedValue([]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+        // No accepted transaction this round spends this outpoint: neither
+        // in mempool nor confirmed per the same authenticated history.
+        authenticatedSpentOutpointKeys: new Set(),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'utxo-1' },
+          data: expect.objectContaining({
+            confirmations: 6,
+            spent: false,
+          }),
+        })
+      );
+    });
+
+    it('does not query for a local spender when a locally spent UTXO has conflicting listed evidence', async () => {
+      const txid = 'conflicting-spent-utxo'.padEnd(64, 'e');
+      const evidence = authenticatedExisting(txid, { spent: true });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([evidence.row]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid, 0, 100_000n, '0014bb'),
+        ]]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+        // Not among this round's authenticated spends, so this would be an
+        // ambiguous candidate — except the listed evidence conflicts, so it
+        // must never reach the locally-recorded-spender lookup.
+        authenticatedSpentOutpointKeys: new Set(),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.transactionInput.findMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
+    });
+
     it('preserves an existing UTXO when authenticated output evidence conflicts', async () => {
       const txid = 'conflicting-utxo'.padEnd(64, 'e');
       const evidence = authenticatedExisting(txid);

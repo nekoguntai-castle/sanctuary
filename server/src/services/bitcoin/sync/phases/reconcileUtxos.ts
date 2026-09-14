@@ -8,7 +8,12 @@
  */
 
 import { getConfig } from '../../../../config';
-import { utxoRepository, draftLockRepository, draftRepository } from '../../../../repositories';
+import {
+  utxoRepository,
+  draftLockRepository,
+  draftRepository,
+  transactionRepository,
+} from '../../../../repositories';
 import { createLogger } from '../../../../utils/logger';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
@@ -24,7 +29,7 @@ type UtxoUpdate = {
   id: string;
   confirmations: number;
   blockHeight: number | null;
-  spent: false;
+  spent: boolean;
 };
 type ReconciliationChanges = {
   updates: UtxoUpdate[];
@@ -45,24 +50,82 @@ const evidenceMatchesExistingUtxo = (
     && blockchainUtxo.address === dbUtxo.address;
 };
 
+/**
+ * A locally spent coin that the server still lists never gets un-spent by the
+ * listing alone. Absence from this round's authenticated history is absence
+ * of evidence, not evidence the spend is gone — a server that simply has not
+ * yet seen our broadcast reports the same "not spent this round" shape as a
+ * spend that truly vanished. So it is restored only when BOTH hold: this
+ * outpoint is outside this round's authenticated spends, AND the wallet has
+ * no locally recorded (live, non-replaced) spender for it either. Otherwise
+ * the listing is ignored and only confirmations/blockHeight are refreshed.
+ */
+const resolveSpentUtxoUpdate = (
+  ctx: SyncContext,
+  key: string,
+  dbUtxo: ExistingUtxo,
+  confirmations: number,
+  blockHeight: number | null,
+  locallySpentKeys: ReadonlySet<string>,
+): UtxoUpdate | null => {
+  const stillAuthenticatedThisRound = ctx.authenticatedSpentOutpointKeys.has(key);
+  const spendEvidenceVanished = !stillAuthenticatedThisRound && !locallySpentKeys.has(key);
+  if (spendEvidenceVanished) {
+    return { id: dbUtxo.id, confirmations, blockHeight, spent: false };
+  }
+  // Distinguish the two keep-spent reasons so a coin stuck on a dropped local
+  // spend (no server evidence, but a still-live local TransactionInput row)
+  // is diagnosable separately from one the server itself still authenticates.
+  log.debug('[SYNC] Ignored listing for a locally spent UTXO', {
+    reason: stillAuthenticatedThisRound ? 'spend_still_authenticated' : 'local_spender_recorded',
+    utxoId: dbUtxo.id,
+  });
+  if (dbUtxo.confirmations === confirmations && dbUtxo.blockHeight === blockHeight) return null;
+  return { id: dbUtxo.id, confirmations, blockHeight, spent: true };
+};
+
 const createUtxoUpdate = (
+  ctx: SyncContext,
+  key: string,
   dbUtxo: ExistingUtxo,
   height: number,
   currentBlockHeight: number,
+  locallySpentKeys: ReadonlySet<string>,
 ): UtxoUpdate | null => {
   const confirmations = height > 0
     ? Math.max(0, currentBlockHeight - height + 1)
     : 0;
   const blockHeight = height > 0 ? height : null;
-  if (!dbUtxo.spent
-    && dbUtxo.confirmations === confirmations
-    && dbUtxo.blockHeight === blockHeight) return null;
+  if (dbUtxo.spent) {
+    return resolveSpentUtxoUpdate(ctx, key, dbUtxo, confirmations, blockHeight, locallySpentKeys);
+  }
+  if (dbUtxo.confirmations === confirmations && dbUtxo.blockHeight === blockHeight) return null;
   return { id: dbUtxo.id, confirmations, blockHeight, spent: false };
+};
+
+/**
+ * Listed, locally spent outpoints whose fate this round's authenticated
+ * history alone cannot decide (not among this round's authenticated
+ * spends) — the only candidates that need a locally-recorded-spender lookup.
+ */
+const collectAmbiguousSpentKeys = (
+  ctx: SyncContext,
+  existingUtxoMap: Map<string, ExistingUtxo>,
+): string[] => {
+  const keys: string[] = [];
+  for (const [key, dbUtxo] of existingUtxoMap) {
+    if (!dbUtxo.spent || ctx.authenticatedSpentOutpointKeys.has(key)) continue;
+    const blockchainUtxo = ctx.utxoDataMap.get(key);
+    if (!blockchainUtxo || !evidenceMatchesExistingUtxo(ctx, dbUtxo, blockchainUtxo)) continue;
+    keys.push(key);
+  }
+  return keys;
 };
 
 const collectReconciliationChanges = (
   ctx: SyncContext,
   existingUtxoMap: Map<string, ExistingUtxo>,
+  locallySpentKeys: ReadonlySet<string>,
 ): ReconciliationChanges => {
   const changes: ReconciliationChanges = { updates: [], spentIds: [] };
   for (const [key, dbUtxo] of existingUtxoMap) {
@@ -78,7 +141,9 @@ const collectReconciliationChanges = (
       });
       continue;
     }
-    const update = createUtxoUpdate(dbUtxo, blockchainUtxo.utxo.height, ctx.currentBlockHeight);
+    const update = createUtxoUpdate(
+      ctx, key, dbUtxo, blockchainUtxo.utxo.height, ctx.currentBlockHeight, locallySpentKeys,
+    );
     if (update) changes.updates.push(update);
   }
   return changes;
@@ -178,7 +243,11 @@ export async function reconcileUtxosPhase(ctx: SyncContext): Promise<SyncContext
     scriptPubKey: true,
   });
   const existingUtxoMap = new Map(existingUtxos.map(utxo => [`${utxo.txid}:${utxo.vout}`, utxo]));
-  const changes = collectReconciliationChanges(ctx, existingUtxoMap);
+  const ambiguousSpentKeys = collectAmbiguousSpentKeys(ctx, existingUtxoMap);
+  const locallySpentKeys = await transactionRepository.findLocallySpentOutpointKeys(
+    walletId, ambiguousSpentKeys,
+  );
+  const changes = collectReconciliationChanges(ctx, existingUtxoMap, locallySpentKeys);
   const batchSize = getConfig().sync.transactionBatchSize;
   await persistSpentChunks(ctx, changes.spentIds, batchSize);
   await persistUpdateChunks(ctx, changes.updates, batchSize);

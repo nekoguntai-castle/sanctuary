@@ -23,6 +23,39 @@ export async function findInputOutpointsByTransactionId(
 }
 
 /**
+ * Outpoint keys (`txid:vout`) among `keys` that this wallet has a locally
+ * recorded spender for — a `TransactionInput` row whose parent transaction is
+ * still live (not `replaced`; a replacement spends the same outpoint, so any
+ * recorded spender counts). Used to distinguish "the remote server hasn't
+ * seen our broadcast yet" from "the spend is actually gone" when reconciling
+ * a locally spent UTXO the server still lists.
+ */
+export async function findLocallySpentOutpointKeys(
+  walletId: string,
+  keys: readonly string[],
+  client: PrismaTxClient = prisma,
+  chunkSize: number = 500,
+): Promise<Set<string>> {
+  const locallySpent = new Set<string>();
+  const outpoints = keys.map(key => {
+    const separatorIndex = key.lastIndexOf(':');
+    return { txid: key.slice(0, separatorIndex), vout: Number(key.slice(separatorIndex + 1)) };
+  });
+  for (let index = 0; index < outpoints.length; index += chunkSize) {
+    const chunk = outpoints.slice(index, index + chunkSize);
+    const rows = await client.transactionInput.findMany({
+      where: {
+        OR: chunk.map(({ txid, vout }) => ({ txid, vout })),
+        transaction: { walletId, rbfStatus: { not: 'replaced' } },
+      },
+      select: { txid: true, vout: true },
+    });
+    for (const row of rows) locallySpent.add(`${row.txid}:${row.vout}`);
+  }
+  return locallySpent;
+}
+
+/**
  * The unconfirmed transaction on this wallet that a claimed RBF
  * `replacesTxid` names, if one currently exists. Confirmed or unknown
  * `txid`s resolve to `null` — a caller must not link against them. A

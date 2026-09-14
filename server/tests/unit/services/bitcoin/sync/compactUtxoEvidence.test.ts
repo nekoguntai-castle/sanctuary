@@ -9,6 +9,7 @@ const repositoryMocks = vi.hoisted(() => ({
   createMany: vi.fn(),
   findLocksByUtxoIdsWithDraftInfo: vi.fn(),
   deleteManyByIds: vi.fn(),
+  findLocallySpentOutpointKeys: vi.fn().mockResolvedValue(new Set()),
 }));
 
 vi.mock('../../../../../src/repositories', () => ({
@@ -23,6 +24,9 @@ vi.mock('../../../../../src/repositories', () => ({
     findLocksByUtxoIdsWithDraftInfo: repositoryMocks.findLocksByUtxoIdsWithDraftInfo,
   },
   draftRepository: { deleteManyByIds: repositoryMocks.deleteManyByIds },
+  transactionRepository: {
+    findLocallySpentOutpointKeys: repositoryMocks.findLocallySpentOutpointKeys,
+  },
 }));
 
 vi.mock('../../../../../src/repositories/syncIntentRepository', () => ({

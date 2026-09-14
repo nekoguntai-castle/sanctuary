@@ -653,4 +653,42 @@ describe('Transaction Repository', () => {
     });
   });
 
+  describe('findLocallySpentOutpointKeys', () => {
+    it('returns an empty set without querying when no keys are given', async () => {
+      await expect(
+        transactionRepository.findLocallySpentOutpointKeys('wallet-1', [])
+      ).resolves.toEqual(new Set());
+
+      expect(prisma.transactionInput.findMany).not.toHaveBeenCalled();
+    });
+
+    it('scopes the lookup to the wallet, excludes replaced transactions, and matches by outpoint', async () => {
+      const txid = 'c'.repeat(64);
+      (prisma.transactionInput.findMany as Mock).mockResolvedValue([
+        { txid, vout: 1 },
+      ]);
+
+      await expect(
+        transactionRepository.findLocallySpentOutpointKeys('wallet-1', [`${txid}:1`, `${txid}:2`])
+      ).resolves.toEqual(new Set([`${txid}:1`]));
+
+      expect(prisma.transactionInput.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [{ txid, vout: 1 }, { txid, vout: 2 }],
+          transaction: { walletId: 'wallet-1', rbfStatus: { not: 'replaced' } },
+        },
+        select: { txid: true, vout: true },
+      });
+    });
+
+    it('chunks large key lists to bound each query', async () => {
+      const keys = Array.from({ length: 501 }, (_, index) => `${'d'.repeat(64)}:${index}`);
+      (prisma.transactionInput.findMany as Mock).mockResolvedValue([]);
+
+      await transactionRepository.findLocallySpentOutpointKeys('wallet-1', keys);
+
+      expect(prisma.transactionInput.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
 });

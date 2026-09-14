@@ -48,6 +48,7 @@ export const mockPrisma = {
   },
   transactionInput: {
     createMany: vi.fn<any>(),
+    findMany: vi.fn<any>().mockResolvedValue([]),
   },
   transactionOutput: {
     createMany: vi.fn<any>(),
