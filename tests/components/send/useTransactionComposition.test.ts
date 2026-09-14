@@ -230,4 +230,194 @@ describe('useTransactionComposition', () => {
     expect(result.current.privacyLoading).toBe(false);
     expect(result.current.utxoPrivacyMap.size).toBe(0);
   });
+
+  it('ignores a stale privacy analysis response that resolves after a newer selection already resolved', async () => {
+    vi.useFakeTimers();
+    vi.mocked(txApi.getWalletPrivacy).mockResolvedValue({ utxos: [] } as never);
+
+    let resolveFirst: (value: unknown) => void = () => {};
+    let resolveSecond: (value: unknown) => void = () => {};
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.mocked(txApi.analyzeSpendPrivacy).mockImplementationOnce(() => firstPromise as never);
+    vi.mocked(txApi.analyzeSpendPrivacy).mockImplementationOnce(() => secondPromise as never);
+
+    const { result, rerender } = renderHook(
+      (props: HookInput) => useTransactionComposition(props),
+      {
+        initialProps: makeInput({
+          showCoinControl: true,
+          selectedUTXOs: new Set(['txid-a:0']),
+          selectedTotal: 1000,
+        }),
+      }
+    );
+
+    // Let the first request's debounce fire and kick off its in-flight call.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(301);
+    });
+    expect(txApi.analyzeSpendPrivacy).toHaveBeenCalledWith('wallet-1', ['txid-a:0']);
+    expect(result.current.privacyLoading).toBe(true);
+
+    // A second selection supersedes the first before it resolves.
+    act(() => {
+      rerender(
+        makeInput({
+          showCoinControl: true,
+          selectedUTXOs: new Set(['txid-c:0']),
+          selectedTotal: 2000,
+        })
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(301);
+    });
+    expect(txApi.analyzeSpendPrivacy).toHaveBeenCalledWith('wallet-1', ['txid-c:0']);
+    expect(txApi.analyzeSpendPrivacy).toHaveBeenCalledTimes(2);
+
+    // The second (latest) request resolves first.
+    await act(async () => {
+      resolveSecond({ score: 99 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.privacyAnalysis).toEqual({ score: 99 });
+    expect(result.current.privacyLoading).toBe(false);
+
+    // The first (superseded) request resolves afterward and must be ignored.
+    await act(async () => {
+      resolveFirst({ score: 11 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.privacyAnalysis).toEqual({ score: 99 });
+    expect(result.current.privacyLoading).toBe(false);
+  });
+
+  it('ignores a stale privacy analysis rejection that arrives after a newer selection already resolved', async () => {
+    vi.useFakeTimers();
+    vi.mocked(txApi.getWalletPrivacy).mockResolvedValue({ utxos: [] } as never);
+
+    let rejectFirst: (reason: unknown) => void = () => {};
+    let resolveSecond: (value: unknown) => void = () => {};
+    const firstPromise = new Promise((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.mocked(txApi.analyzeSpendPrivacy).mockImplementationOnce(() => firstPromise as never);
+    vi.mocked(txApi.analyzeSpendPrivacy).mockImplementationOnce(() => secondPromise as never);
+
+    const { result, rerender } = renderHook(
+      (props: HookInput) => useTransactionComposition(props),
+      {
+        initialProps: makeInput({
+          showCoinControl: true,
+          selectedUTXOs: new Set(['txid-a:0']),
+          selectedTotal: 1000,
+        }),
+      }
+    );
+
+    // Let the first request's debounce fire and kick off its in-flight call.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(301);
+    });
+    expect(txApi.analyzeSpendPrivacy).toHaveBeenCalledWith('wallet-1', ['txid-a:0']);
+
+    // A second selection supersedes the first before it settles.
+    act(() => {
+      rerender(
+        makeInput({
+          showCoinControl: true,
+          selectedUTXOs: new Set(['txid-c:0']),
+          selectedTotal: 2000,
+        })
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(301);
+    });
+    expect(txApi.analyzeSpendPrivacy).toHaveBeenCalledTimes(2);
+
+    // The second (latest) request resolves first.
+    await act(async () => {
+      resolveSecond({ score: 42 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.privacyAnalysis).toEqual({ score: 42 });
+    expect(result.current.privacyLoading).toBe(false);
+
+    // The first (superseded) request rejects afterward; it must not clear
+    // the newer result or flip loading back on.
+    await act(async () => {
+      rejectFirst(new Error('stale privacy analysis failed'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.privacyAnalysis).toEqual({ score: 42 });
+    expect(result.current.privacyLoading).toBe(false);
+  });
+
+  it('clears privacyLoading when coin control is turned off while a request is still in flight', async () => {
+    vi.useFakeTimers();
+    vi.mocked(txApi.getWalletPrivacy).mockResolvedValue({ utxos: [] } as never);
+
+    let resolveAnalysis: (value: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      resolveAnalysis = resolve;
+    });
+    vi.mocked(txApi.analyzeSpendPrivacy).mockImplementationOnce(() => pending as never);
+
+    const { result, rerender } = renderHook(
+      (props: HookInput) => useTransactionComposition(props),
+      {
+        initialProps: makeInput({
+          showCoinControl: true,
+          selectedUTXOs: new Set(['txid-a:0']),
+          selectedTotal: 1000,
+        }),
+      }
+    );
+
+    // Let the debounce fire and kick off the in-flight request.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(301);
+    });
+    expect(txApi.analyzeSpendPrivacy).toHaveBeenCalledWith('wallet-1', ['txid-a:0']);
+    expect(result.current.privacyLoading).toBe(true);
+
+    // Coin control is turned off before the request settles: the cancelled
+    // request's own finally is now suppressed, so the loading flag must be
+    // cleared by the early-return branch instead.
+    act(() => {
+      rerender(
+        makeInput({
+          showCoinControl: false,
+          selectedUTXOs: new Set(['txid-a:0']),
+          selectedTotal: 1000,
+        })
+      );
+    });
+    expect(result.current.privacyAnalysis).toBeNull();
+    expect(result.current.privacyLoading).toBe(false);
+
+    // The stale in-flight request resolving afterward must not resurrect it.
+    await act(async () => {
+      resolveAnalysis({ score: 5 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.privacyAnalysis).toBeNull();
+    expect(result.current.privacyLoading).toBe(false);
+  });
 });

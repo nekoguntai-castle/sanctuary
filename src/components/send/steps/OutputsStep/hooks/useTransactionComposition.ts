@@ -147,26 +147,38 @@ export function useTransactionComposition(input: TransactionCompositionInput) {
   useEffect(() => {
     if (!showCoinControl || selectedUTXOs.size < 1) {
       setPrivacyAnalysis(null);
+      // A request from a prior selection may still be in flight; its own
+      // cleanup-guarded finally will now skip clearing this, so clear it here.
+      setPrivacyLoading(false);
       return;
     }
+
+    let cancelled = false;
 
     const fetchPrivacy = async () => {
       setPrivacyLoading(true);
       try {
         const utxoIds = Array.from(selectedUTXOs);
         const analysis = await analyzeSpendPrivacy(walletId, utxoIds);
+        // A newer selection may have superseded this request while it was
+        // in flight; ignore results (and loading state) from a stale request.
+        if (cancelled) return;
         setPrivacyAnalysis(analysis);
       } catch (err) {
         // Silently fail - privacy analysis is optional
+        if (cancelled) return;
         setPrivacyAnalysis(null);
       } finally {
-        setPrivacyLoading(false);
+        if (!cancelled) setPrivacyLoading(false);
       }
     };
 
     // Debounce to avoid too many API calls
     const timeoutId = setTimeout(fetchPrivacy, 300);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [showCoinControl, selectedUTXOs, walletId]);
 
   return {
