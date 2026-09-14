@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { TabNetwork } from '../NetworkTabs';
 import * as syncApi from '../../api/sync';
 import { formatNetworkTitle } from '../../app/networks';
@@ -175,38 +175,89 @@ export const useNetworkSyncActions = ({
   const [showResyncDialog, setShowResyncDialog] = useState(false);
   const [result, setResult] = useState<NetworkSyncResult | null>(null);
 
+  // Always reflects the most recently rendered `network`, independent of any
+  // stale closure a handler captured before an in-flight await resolved.
+  const currentNetworkRef = useRef(network);
+  currentNetworkRef.current = network;
+
+  const clearResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Adjusting state during render (rather than in an effect) so a network
+  // switch clears stale sync/resync state in the same render pass — no flash
+  // of the previous network's spinner or banner under the new network.
+  const [ownedNetwork, setOwnedNetwork] = useState(network);
+  if (ownedNetwork !== network) {
+    setOwnedNetwork(network);
+    setResult(null);
+    setSyncing(false);
+    setResyncing(false);
+    setShowResyncDialog(false);
+    if (clearResultTimerRef.current) {
+      clearTimeout(clearResultTimerRef.current);
+      clearResultTimerRef.current = null;
+    }
+  }
+
   // An id the caller does not know about is still better named by its id than
   // dropped from the message entirely.
   const nameOf = (walletId: string) =>
     wallets.find((wallet) => wallet.id === walletId)?.name ?? walletId;
 
+  // A network switch always clears `clearResultTimerRef` first (see the
+  // render-time reset above), so this timer only ever fires while its
+  // request's network is still current — no ownership check needed here.
+  const armResultAutoClear = (timeoutMs: number) => {
+    // A prior arm (from an earlier request on this same network) must not be
+    // left running — it would otherwise fire on its own schedule and clear a
+    // result this newer request just set.
+    if (clearResultTimerRef.current) {
+      clearTimeout(clearResultTimerRef.current);
+    }
+    clearResultTimerRef.current = setTimeout(() => {
+      setResult(null);
+      clearResultTimerRef.current = null;
+    }, timeoutMs);
+  };
+
   const handleSyncAll = async () => {
+    const requestNetwork = network;
     setSyncing(true);
     setResult(null);
 
     try {
-      const response = await syncApi.syncNetworkWallets(network);
-      setResult(createSyncResult(response, nameOf));
+      const response = await syncApi.syncNetworkWallets(requestNetwork);
+      if (currentNetworkRef.current === requestNetwork) {
+        setResult(createSyncResult(response, nameOf));
+      }
       onSyncStarted?.();
     } catch (error) {
-      setResult(createErrorResult(error, 'Failed to queue wallets for sync'));
+      if (currentNetworkRef.current === requestNetwork) {
+        setResult(createErrorResult(error, 'Failed to queue wallets for sync'));
+      }
     } finally {
-      setSyncing(false);
-      setTimeout(() => setResult(null), SYNC_RESULT_TIMEOUT_MS);
+      if (currentNetworkRef.current === requestNetwork) {
+        setSyncing(false);
+        armResultAutoClear(SYNC_RESULT_TIMEOUT_MS);
+      }
     }
   };
 
   const handleResyncAll = async () => {
+    const requestNetwork = network;
     setShowResyncDialog(false);
     setResyncing(true);
     setResult(null);
 
     let outcome: NetworkSyncResult;
     try {
-      outcome = createResyncResult(await syncApi.resyncNetworkWallets(network), nameOf);
+      outcome = createResyncResult(await syncApi.resyncNetworkWallets(requestNetwork), nameOf);
       onSyncStarted?.();
     } catch (error) {
       outcome = createErrorResult(error, 'Failed to resync wallets');
+    }
+
+    if (currentNetworkRef.current !== requestNetwork) {
+      return;
     }
 
     setResult(outcome);
@@ -214,7 +265,7 @@ export const useNetworkSyncActions = ({
     // A partial failure is the one result the user most needs to read, and the
     // only one they cannot reproduce by clicking again. It stays until dismissed.
     if (outcome.type === 'success') {
-      setTimeout(() => setResult(null), RESYNC_RESULT_TIMEOUT_MS);
+      armResultAutoClear(RESYNC_RESULT_TIMEOUT_MS);
     }
   };
 
