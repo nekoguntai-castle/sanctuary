@@ -125,3 +125,20 @@ One PR per phase, serial merges on `main`, each rebased only when it is next; ta
 ## Completion criteria
 
 All eight findings resolved in run state with a target-CI-verified attempt record; a fresh full scrub (iteration 21) of the resulting main SHA finds zero P0–P2.
+
+## Delivery record
+
+All eight phases merged serially on `main` (squash merges), each with target-branch CI verified:
+
+| Phase | PR | Merge SHA | Notes / verified divergences |
+| --- | --- | --- | --- |
+| 6 | #1143 | `bc42d3fe` | Per-save request ids; failures revert to the last server-confirmed settings; toggles read a settings ref. |
+| 1 | #1144 | `10b60b1f` | Refreshes carry no `spent` key; restores go through `restoreUnspentByIds` (`updateMany where spent: true`), inventoried; two pre-existing tests updated to the new contract. |
+| 2 | #1145 | `30b17b02` | Non-throwing per-item validator; invalid items absent from the map so `missing_utxo_result` is reached for that address only. |
+| 4 | #1146 | `8ede0fe6` | `reconnectAttempts` reset moved after a successful resubscribe so repeated failures back off (Phase 3 note); stryker range 412-466 and a second canary on the pinned insufficient-funds throw. |
+| 8 | #1147 | `0a7182ed` | Render-time reset on network change; arming a new auto-clear clears the previous timer; test file's missing `afterEach` import fixed. |
+| 7 | #1148 | `a9134e13` | Route-ownership token applied to loads, mutation reloads, notices, deliveries and create/rotate/header updates; synchronous clear on switch. |
+| 3 | #1149 | `5a3d9265` | Re-arms the bounded backoff on resubscribe failure; no new state field. |
+| 5 | #1150 | `8a3ecccc` | `parentVout`/`recipientAddress` optional end to end; new `findLargestSpendableByTxid`; change address via `prepareChangeOutputs`; no shared zod schema existed for the CPFP request (server zod, OpenAPI, frontend type updated). |
+
+Iteration-20 plan PR: #1142 (`1ce0edc4`). Custody after delivery: no loop branches or worktrees remain.
