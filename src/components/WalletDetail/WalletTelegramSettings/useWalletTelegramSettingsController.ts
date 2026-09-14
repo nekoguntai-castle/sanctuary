@@ -21,14 +21,21 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Monotonically increasing marker for "which mount of the controller is
-  // current". A ref keyed only on walletId cannot distinguish A -> B -> A:
-  // switching back to the original wallet would make an old, still-pending
-  // save for that same walletId look current again. Bumping this counter on
-  // every walletId change (including a return to a previous wallet) gives
-  // each save() call a token that is only ever current for the mount that
-  // started it.
+  // Monotonically increasing marker for "which save (or mount) is current".
+  // Bumped both on every walletId change (so A -> B -> A cannot make a
+  // still-pending save from the earlier A mount look current again) and on
+  // every individual save, so an earlier save on the SAME mount becomes
+  // stale the moment a later save starts, rather than only across mounts.
   const currentRequestIdRef = useRef(0);
+  // Mirrors `settings` synchronously (state updates are batched/async), so
+  // rapid toggles compute `nextSettings` from the latest optimistic value
+  // rather than a stale render closure.
+  const settingsRef = useRef<WalletTelegramSettingsType>(DEFAULT_WALLET_TELEGRAM_SETTINGS);
+  // The last settings confirmed by the server (on load, and on each
+  // non-stale successful save). A failed save reverts to this, not to the
+  // toggle's captured pre-toggle snapshot, so an out-of-order failure can't
+  // stomp a later save's already-committed change.
+  const confirmedSettingsRef = useRef<WalletTelegramSettingsType>(DEFAULT_WALLET_TELEGRAM_SETTINGS);
 
   useEffect(() => clearSuccessTimeoutOnUnmount(successTimeoutRef), []);
 
@@ -42,6 +49,8 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
     setSaving(false);
     setError(null);
     setSuccess(false);
+    settingsRef.current = DEFAULT_WALLET_TELEGRAM_SETTINGS;
+    confirmedSettingsRef.current = DEFAULT_WALLET_TELEGRAM_SETTINGS;
     if (successTimeoutRef.current) {
       clearTimeout(successTimeoutRef.current);
       successTimeoutRef.current = null;
@@ -51,6 +60,8 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
       try {
         const data = await walletsApi.getWalletTelegramSettings(walletId);
         if (isMounted) {
+          settingsRef.current = data;
+          confirmedSettingsRef.current = data;
           setSettings(data);
         }
       } catch (err) {
@@ -70,22 +81,30 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
   }, [walletId]);
 
   const handleToggle = useCallback((field: WalletTelegramSettingKey) => {
-    const previousSettings = settings;
-    const nextSettings = { ...settings, [field]: !settings[field] };
+    // Read/write settingsRef (not the `settings` closure) so a second toggle
+    // queued before the first re-render sees the first toggle's change.
+    const nextSettings = { ...settingsRef.current, [field]: !settingsRef.current[field] };
+    settingsRef.current = nextSettings;
+
+    // Every save gets its own id: an earlier save on this same mount is
+    // stale the instant a later one starts.
+    currentRequestIdRef.current += 1;
+    const requestId = currentRequestIdRef.current;
 
     void saveSettings({
       walletId,
-      requestId: currentRequestIdRef.current,
+      requestId,
       nextSettings,
-      previousSettings,
       setSettings,
       setSaving,
       setError,
       setSuccess,
       successTimeoutRef,
       currentRequestIdRef,
+      confirmedSettingsRef,
+      settingsRef,
     });
-  }, [settings, walletId]);
+  }, [walletId]);
 
   return {
     loading,
@@ -102,26 +121,28 @@ interface SaveSettingsArgs {
   walletId: string;
   requestId: number;
   nextSettings: WalletTelegramSettingsType;
-  previousSettings: WalletTelegramSettingsType;
   setSettings: (settings: WalletTelegramSettingsType) => void;
   setSaving: (saving: boolean) => void;
   setError: (error: string | null) => void;
   setSuccess: (success: boolean) => void;
   successTimeoutRef: RefObject<ReturnType<typeof setTimeout> | null>;
   currentRequestIdRef: RefObject<number>;
+  confirmedSettingsRef: RefObject<WalletTelegramSettingsType>;
+  settingsRef: RefObject<WalletTelegramSettingsType>;
 }
 
 async function saveSettings({
   walletId,
   requestId,
   nextSettings,
-  previousSettings,
   setSettings,
   setSaving,
   setError,
   setSuccess,
   successTimeoutRef,
   currentRequestIdRef,
+  confirmedSettingsRef,
+  settingsRef,
 }: SaveSettingsArgs) {
   setSettings(nextSettings);
   setSaving(true);
@@ -134,13 +155,15 @@ async function saveSettings({
     if (isStale()) {
       return;
     }
+    confirmedSettingsRef.current = nextSettings;
     showSaveSuccess(setSuccess, successTimeoutRef);
   } catch (err) {
     if (isStale()) {
       log.debug('Ignoring stale telegram settings save rejection', { walletId, error: err });
       return;
     }
-    setSettings(previousSettings);
+    settingsRef.current = confirmedSettingsRef.current;
+    setSettings(confirmedSettingsRef.current);
     setError(getWalletTelegramSaveErrorMessage(err));
   } finally {
     if (!isStale()) {

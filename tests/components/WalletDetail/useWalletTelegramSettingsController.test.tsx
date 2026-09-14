@@ -275,3 +275,117 @@ describe('useWalletTelegramSettingsController', () => {
     expect(result.current.settings.enabled).toBe(false);
   });
 });
+
+// A separate top-level describe (rather than more `it`s above) keeps that
+// block's setup/render callback under the lizard NLOC warning threshold.
+describe('useWalletTelegramSettingsController save ordering', () => {
+  const settingsFor = (enabled: boolean) => ({
+    enabled,
+    notifyReceived: true,
+    notifySent: true,
+    notifyConsolidation: true,
+    notifyDraft: true,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    debugLog.mockClear();
+    vi.mocked(useUser).mockReturnValue({
+      user: {
+        id: 'u1',
+        preferences: {
+          telegram: { botToken: 'token', chatId: 'chat-id', enabled: true },
+        },
+      },
+      isLoading: false,
+    } as never);
+  });
+
+  it('shows the latest successful save and ignores an earlier save on the same wallet that rejects afterward', async () => {
+    vi.mocked(walletsApi.getWalletTelegramSettings).mockResolvedValue(settingsFor(false));
+
+    let rejectFirst!: (err: unknown) => void;
+    let callCount = 0;
+    vi.mocked(walletsApi.updateWalletTelegramSettings).mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        // The first save (toggling `enabled`) stays pending until released
+        // below, well after the second save has already resolved.
+        return new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        });
+      }
+      return Promise.resolve(undefined as never);
+    });
+
+    const { result } = renderHook(() => useWalletTelegramSettingsController('wallet-a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.handleToggle('enabled');
+    });
+    await waitFor(() => expect(result.current.saving).toBe(true));
+
+    act(() => {
+      result.current.handleToggle('notifyReceived');
+    });
+
+    // The second (later) save resolves first.
+    await waitFor(() => expect(result.current.success).toBe(true));
+    expect(result.current.settings.enabled).toBe(true);
+    expect(result.current.settings.notifyReceived).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    // The first save — now stale — rejects after the second already
+    // committed. It must not revert the second save's committed change.
+    await act(async () => {
+      rejectFirst(new Error('boom'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.settings.enabled).toBe(true);
+    expect(result.current.settings.notifyReceived).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reverts to the last confirmed settings when both saves in a rapid toggle sequence fail', async () => {
+    vi.mocked(walletsApi.getWalletTelegramSettings).mockResolvedValue(settingsFor(false));
+
+    const rejections: Array<(err: unknown) => void> = [];
+    vi.mocked(walletsApi.updateWalletTelegramSettings).mockImplementation(
+      () => new Promise((_resolve, reject) => {
+        rejections.push(reject);
+      })
+    );
+
+    const { result } = renderHook(() => useWalletTelegramSettingsController('wallet-a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Two rapid toggles, both queued before either save settles. Both must
+    // apply optimistically — the second must not read a stale closure and
+    // clobber the first's change.
+    act(() => {
+      result.current.handleToggle('enabled');
+      result.current.handleToggle('notifyReceived');
+    });
+
+    expect(result.current.settings.enabled).toBe(true);
+    expect(result.current.settings.notifyReceived).toBe(false);
+
+    await waitFor(() => expect(rejections.length).toBe(2));
+
+    await act(async () => {
+      rejections[0](new Error('first save failed'));
+      rejections[1](new Error('second save failed'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Only the latest (second) save's failure is live; it reverts to the
+    // last confirmed settings (the state as loaded), not the first toggle's
+    // captured snapshot.
+    expect(result.current.settings).toEqual(settingsFor(false));
+    expect(result.current.error).not.toBeNull();
+  });
+});
