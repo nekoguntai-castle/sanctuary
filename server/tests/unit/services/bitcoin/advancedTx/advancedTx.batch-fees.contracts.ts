@@ -169,6 +169,36 @@ export function registerBatchFeeAndConstantContracts() {
       expect((error as Error).message).toBe("No spendable UTXOs available");
     });
 
+    it("passes the confirmation threshold setting as minConfirmations to findAvailableForSpending", async () => {
+      mockPrismaClient.systemSetting.findUnique.mockImplementation((query: { where: { key: string } }) => {
+        if (query.where.key === "confirmationThreshold") {
+          return Promise.resolve({ key: "confirmationThreshold", value: "3" });
+        }
+        if (query.where.key === "dustThreshold") {
+          return Promise.resolve({ key: "dustThreshold", value: "546" });
+        }
+        return Promise.resolve(null);
+      });
+      const utxo = { ...sampleUtxos[0], walletId, spent: false, amount: 30_000n };
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([utxo]);
+
+      await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        undefined,
+        "testnet3",
+      );
+
+      expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            confirmations: { gte: 3 },
+          }),
+        }),
+      );
+    });
+
     it("uses exactly the explicitly selected batch outpoint", async () => {
       const selected = { ...sampleUtxos[0], walletId, spent: false, amount: 30_000n };
       const ignored = { ...sampleUtxos[1], walletId, spent: false };
@@ -188,6 +218,52 @@ export function registerBatchFeeAndConstantContracts() {
 
       expect(result.psbt.txInputs).toHaveLength(1);
       expect(Buffer.from(result.psbt.txInputs[0].hash).reverse().toString("hex")).toBe(selected.txid);
+    });
+
+    it("spends the entire pinned batch UTXO set even when the first UTXO alone covers the outputs", async () => {
+      const first = { ...sampleUtxos[0], walletId, spent: false, scriptPubKey: "0014" + "a".repeat(40) };
+      const second = { ...sampleUtxos[1], walletId, spent: false, scriptPubKey: "0014" + "b".repeat(40) };
+      const third = { ...sampleUtxos[2], walletId, spent: false, scriptPubKey: "0014" + "c".repeat(40) };
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([first, second, third]);
+      mockAddressFindManyByQuery({
+        unusedRows: [
+          changeAddressRow(walletId, 0, {
+            address: testnetAddresses.nativeSegwit[0],
+          }),
+        ],
+      });
+
+      const result = await createBatchTransaction(
+        [
+          { address: testnetAddresses.nativeSegwit[0], amount: 20_000 },
+          { address: testnetAddresses.nativeSegwit[1], amount: 15_000 },
+        ],
+        5,
+        walletId,
+        [`${first.txid}:${first.vout}`, `${second.txid}:${second.vout}`, `${third.txid}:${third.vout}`],
+        "testnet3",
+      );
+
+      expect(result.psbt.txInputs).toHaveLength(3);
+      expect(result.totalInput).toBe(Number(first.amount) + Number(second.amount) + Number(third.amount));
+      expect(result.changeAmount).toBeGreaterThan(0);
+      expect(result.totalInput).toBe(result.totalOutput + result.changeAmount + result.fee);
+    });
+
+    it("rejects an insufficient pinned batch UTXO set with InvalidInputError", async () => {
+      const small = { ...sampleUtxos[0], walletId, spent: false, amount: 1_000n };
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([small]);
+
+      const error: unknown = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        [`${small.txid}:${small.vout}`],
+        "testnet3",
+      ).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toMatch(/Insufficient funds/);
     });
 
     it("fails closed when an advanced batch UTXO lacks script evidence", async () => {
@@ -549,6 +625,36 @@ export function registerBatchFeeAndConstantContracts() {
       expect(result.psbt.txOutputs).toHaveLength(1);
       expect(result.totalInput).toBe(result.totalOutput + result.fee);
       expect(result.feePolicy.roundingToleranceSats).toBeLessThan(100);
+    });
+
+    it("absorbs a below-dust surplus into the fee for a pinned UTXO set with nothing left for change", async () => {
+      const first = {
+        ...sampleUtxos[0], walletId, spent: false, amount: 10_109n,
+        scriptPubKey: "0014" + "a".repeat(40),
+      };
+      const second = {
+        ...sampleUtxos[1], walletId, spent: false, amount: 69n,
+        scriptPubKey: "0014" + "b".repeat(40),
+      };
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([first, second]);
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        1,
+        walletId,
+        [`${first.txid}:${first.vout}`, `${second.txid}:${second.vout}`],
+        "testnet3",
+      );
+
+      expect(result).toMatchObject({
+        totalInput: 10_178,
+        totalOutput: 10_000,
+        fee: 178,
+        changeAmount: 0,
+      });
+      expect(result.psbt.txInputs).toHaveLength(2);
+      expect(result.psbt.txOutputs).toHaveLength(1);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
     });
   });
 

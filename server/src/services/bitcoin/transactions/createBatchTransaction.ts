@@ -35,6 +35,7 @@ import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
 import { assertExactUtxoSelection, type SpendEvidence } from '../utxoSelection';
 import { createTransactionSpendPolicyResolver, transactionChangeScriptTemplate } from './feePolicy';
 import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
+import { InvalidInputError } from '../../../errors/ApiError';
 
 const log = createLogger('BITCOIN:SVC_TX_BATCH');
 
@@ -55,6 +56,7 @@ export async function createBatchTransaction(
   options: BatchTransactionOptions = {}
 ): Promise<CreateBatchTransactionResult> {
   const { selectedUtxoIds, enableRBF = true } = options;
+  const isPinnedSelection = Boolean(selectedUtxoIds && selectedUtxoIds.length > 0);
 
   // Get configurable thresholds
   const dustThreshold = await getDustThreshold();
@@ -101,6 +103,7 @@ export async function createBatchTransaction(
     feeRate,
     dustThreshold,
     spendPolicies,
+    isPinnedSelection,
   );
   let preparedChangeAddress: string | undefined;
   if (!hasSendMax && calculation.changeAmount >= dustThreshold) {
@@ -116,6 +119,7 @@ export async function createBatchTransaction(
       feeRate,
       dustThreshold,
       spendPolicies,
+      isPinnedSelection,
     );
   }
   const { finalOutputs, changeAmount, selectedUtxos, estimatedFee, feeSurplusSats } = calculation;
@@ -307,6 +311,7 @@ function calculateBatchAmounts(
   feeRate: number,
   dustThreshold: number,
   spendPolicies: ReadonlyMap<string, SpendEvidence>,
+  isPinnedSelection: boolean,
 ): {
   finalOutputs: Array<{ address: string; amount: number }>;
   changeAmount: number;
@@ -356,6 +361,17 @@ function calculateBatchAmounts(
 
   // Normal batch: select UTXOs to cover all outputs + fee
   const targetAmount = fixedOutputTotal;
+
+  // A pinned (coin-control) selection must spend the entire caller-supplied
+  // set, not just as many UTXOs as happen to cover the target: the caller
+  // asked for these specific outpoints spent together (e.g. consolidation
+  // or avoiding a specific UTXO's re-use). `utxos` here already equals the
+  // exact pinned set (see getAvailableUtxos), so evaluate it as one
+  // candidate instead of growing a selection incrementally.
+  if (isPinnedSelection) {
+    return selectPinnedBatchCoverage(utxos, outputs, recipientScripts, changeScript, targetAmount, estimateFee, dustThreshold);
+  }
+
   const selectedUtxos: UtxoRecord[] = [];
   let selectedTotal = 0;
 
@@ -391,4 +407,60 @@ function calculateBatchAmounts(
   const finalScripts = changeScript ? [...recipientScripts, changeScript] : recipientScripts;
   const finalFee = estimateFee(selectedUtxos, finalScripts);
   throw new Error(`Insufficient funds. Need ${targetAmount + finalFee} sats, have ${selectedTotal} sats`);
+}
+
+/**
+ * Evaluate a pinned (coin-control) UTXO set as a single candidate: spend
+ * every pinned input, absorbing the difference into change (or the fee, if
+ * below dust), instead of stopping as soon as a prefix of the set covers
+ * the target the way auto-selection does.
+ */
+function selectPinnedBatchCoverage(
+  utxos: UtxoRecord[],
+  outputs: TransactionOutput[],
+  recipientScripts: Uint8Array[],
+  changeScript: Uint8Array | undefined,
+  targetAmount: number,
+  estimateFee: (selected: UtxoRecord[], scripts: Uint8Array[]) => number,
+  dustThreshold: number,
+): {
+  finalOutputs: Array<{ address: string; amount: number }>;
+  changeAmount: number;
+  selectedUtxos: UtxoRecord[];
+  estimatedFee: number;
+  feeSurplusSats: number;
+} {
+  const selectedTotal = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
+
+  if (changeScript) {
+    const feeWithChange = estimateFee(utxos, [...recipientScripts, changeScript]);
+    const changeAmount = selectedTotal - targetAmount - feeWithChange;
+    if (changeAmount >= dustThreshold) {
+      return {
+        finalOutputs: outputs.map(output => ({ address: output.address, amount: output.amount })),
+        changeAmount,
+        selectedUtxos: utxos,
+        estimatedFee: feeWithChange,
+        feeSurplusSats: 0,
+      };
+    }
+  }
+
+  const feeWithoutChange = estimateFee(utxos, recipientScripts);
+  if (selectedTotal >= targetAmount + feeWithoutChange) {
+    return {
+      finalOutputs: outputs.map(output => ({ address: output.address, amount: output.amount })),
+      changeAmount: 0,
+      selectedUtxos: utxos,
+      estimatedFee: selectedTotal - targetAmount,
+      feeSurplusSats: selectedTotal - targetAmount - feeWithoutChange,
+    };
+  }
+
+  const finalScripts = changeScript ? [...recipientScripts, changeScript] : recipientScripts;
+  const finalFee = estimateFee(utxos, finalScripts);
+  throw new InvalidInputError(
+    `Insufficient funds. Need ${targetAmount + finalFee} sats, have ${selectedTotal} sats`,
+    'utxos',
+  );
 }

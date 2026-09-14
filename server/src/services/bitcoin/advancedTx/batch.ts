@@ -11,7 +11,9 @@ import { addressToOutputScript, getNetwork } from "../utils";
 import { getNodeClient } from "../nodeClient";
 import type { BitcoinNetwork } from "../networks";
 import { normalizeLegacyBitcoinNetwork } from "../networks";
-import { utxoRepository, walletRepository } from "../../../repositories";
+import { utxoRepository, walletRepository, systemSettingRepository } from "../../../repositories";
+import { DEFAULT_CONFIRMATION_THRESHOLD } from "../../../constants";
+import { SystemSettingSchemas } from "../../../utils/safeJson";
 import { RBF_SEQUENCE, getDustThreshold } from "./shared";
 import { WalletScriptType } from "@sanctuary/shared/constants/walletIdentity";
 import type { PsbtSigningContext } from "@sanctuary/shared/schemas/psbtSigningContext";
@@ -56,14 +58,24 @@ export async function createBatchTransaction(
   // Get configurable thresholds
   const dustThreshold = await getDustThreshold();
 
-  // Get available UTXOs, excluding frozen and draft-locked coins. The
-  // advancedTx endpoints carry no draftId, so there is no "caller's own
-  // draft" to exempt: a pinned selection that names a locked or frozen
-  // outpoint is rejected below via assertExactUtxoSelection, since it will
-  // not appear in this already-filtered set.
-  let utxos = await utxoRepository.findAvailableForSpending(walletId, { excludeDraftLocked: true });
+  // Get available UTXOs, excluding frozen and draft-locked coins and
+  // respecting the operator's confirmation threshold. The advancedTx
+  // endpoints carry no draftId, so there is no "caller's own draft" to
+  // exempt: a pinned selection that names a locked or frozen outpoint is
+  // rejected below via assertExactUtxoSelection, since it will not appear
+  // in this already-filtered set.
+  const confirmationThreshold = await systemSettingRepository.getParsed(
+    "confirmationThreshold",
+    SystemSettingSchemas.number,
+    DEFAULT_CONFIRMATION_THRESHOLD,
+  );
+  let utxos = await utxoRepository.findAvailableForSpending(walletId, {
+    minConfirmations: confirmationThreshold,
+    excludeDraftLocked: true,
+  });
 
   // Filter by selected UTXOs if provided
+  const isPinnedSelection = selectedUtxoIds !== undefined && selectedUtxoIds.length > 0;
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
     assertExactUtxoSelection(utxos, selectedUtxoIds);
     utxos = utxos.filter((utxo) =>
@@ -96,12 +108,6 @@ export async function createBatchTransaction(
   const totalOutputAmount = recipients.reduce((sum, r) => sum + r.amount, 0);
 
   // Select UTXOs to cover the amount
-  const selectedUtxos: typeof utxos = [];
-  let totalInput = 0;
-  let fee = 0;
-  let changeAmount = 0;
-  let feeSurplusSats = 0;
-
   const estimateFee = (selected: typeof utxos, scripts: readonly Uint8Array[]) => feeForRate(
     estimateTransactionWeight({
       inputs: selected.map(utxo => ({
@@ -113,32 +119,53 @@ export async function createBatchTransaction(
     feeRate,
   );
 
-  for (const utxo of utxos) {
-    selectedUtxos.push(utxo);
-    totalInput += Number(utxo.amount);
+  let selectedUtxos: typeof utxos;
+  let totalInput: number;
+  let fee: number;
+  let changeAmount: number;
+  let feeSurplusSats: number;
 
-    const feeWithChange = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
-    const candidateChange = totalInput - totalOutputAmount - feeWithChange;
-    if (candidateChange >= dustThreshold) {
-      fee = feeWithChange;
-      changeAmount = candidateChange;
-      feeSurplusSats = 0;
-      break;
+  if (isPinnedSelection) {
+    // A pinned (coin-control) selection must spend the entire caller-supplied
+    // set as one candidate rather than stopping as soon as a prefix covers
+    // the target: `utxos` here already equals the exact pinned set.
+    ({ selectedUtxos, totalInput, fee, changeAmount, feeSurplusSats } = selectPinnedBatchCoverage(
+      utxos, totalOutputAmount, recipientScripts, changeScript, estimateFee, dustThreshold,
+    ));
+  } else {
+    selectedUtxos = [];
+    totalInput = 0;
+    fee = 0;
+    changeAmount = 0;
+    feeSurplusSats = 0;
+
+    for (const utxo of utxos) {
+      selectedUtxos.push(utxo);
+      totalInput += Number(utxo.amount);
+
+      const feeWithChange = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
+      const candidateChange = totalInput - totalOutputAmount - feeWithChange;
+      if (candidateChange >= dustThreshold) {
+        fee = feeWithChange;
+        changeAmount = candidateChange;
+        feeSurplusSats = 0;
+        break;
+      }
+      const feeWithoutChange = estimateFee(selectedUtxos, recipientScripts);
+      if (totalInput >= totalOutputAmount + feeWithoutChange) {
+        fee = totalInput - totalOutputAmount;
+        changeAmount = 0;
+        feeSurplusSats = fee - feeWithoutChange;
+        break;
+      }
     }
-    const feeWithoutChange = estimateFee(selectedUtxos, recipientScripts);
-    if (totalInput >= totalOutputAmount + feeWithoutChange) {
-      fee = totalInput - totalOutputAmount;
-      changeAmount = 0;
-      feeSurplusSats = fee - feeWithoutChange;
-      break;
+    if (fee === 0) {
+      const requiredFee = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
+      throw new InvalidInputError(
+        `Insufficient funds. Need ${totalOutputAmount + requiredFee} sats, have ${totalInput} sats`,
+        "utxos",
+      );
     }
-  }
-  if (fee === 0) {
-    const requiredFee = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
-    throw new InvalidInputError(
-      `Insufficient funds. Need ${totalOutputAmount + requiredFee} sats, have ${totalInput} sats`,
-      "utxos",
-    );
   }
 
   // Calculate savings vs individual transactions
@@ -212,4 +239,38 @@ export async function createBatchTransaction(
       feeSurplusSats,
     ),
   };
+}
+
+/**
+ * Evaluate a pinned (coin-control) UTXO set as a single candidate: spend
+ * every pinned input, absorbing the difference into change (or the fee, if
+ * below dust), instead of stopping as soon as a prefix of the set covers
+ * the target the way auto-selection does.
+ */
+function selectPinnedBatchCoverage<T extends { amount: bigint; address: string }>(
+  utxos: T[],
+  totalOutputAmount: number,
+  recipientScripts: Uint8Array[],
+  changeScript: Uint8Array,
+  estimateFee: (selected: T[], scripts: readonly Uint8Array[]) => number,
+  dustThreshold: number,
+): { selectedUtxos: T[]; totalInput: number; fee: number; changeAmount: number; feeSurplusSats: number } {
+  const totalInput = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
+
+  const feeWithChange = estimateFee(utxos, [...recipientScripts, changeScript]);
+  const candidateChange = totalInput - totalOutputAmount - feeWithChange;
+  if (candidateChange >= dustThreshold) {
+    return { selectedUtxos: utxos, totalInput, fee: feeWithChange, changeAmount: candidateChange, feeSurplusSats: 0 };
+  }
+
+  const feeWithoutChange = estimateFee(utxos, recipientScripts);
+  if (totalInput >= totalOutputAmount + feeWithoutChange) {
+    const fee = totalInput - totalOutputAmount;
+    return { selectedUtxos: utxos, totalInput, fee, changeAmount: 0, feeSurplusSats: fee - feeWithoutChange };
+  }
+
+  throw new InvalidInputError(
+    `Insufficient funds. Need ${totalOutputAmount + feeWithChange} sats, have ${totalInput} sats`,
+    "utxos",
+  );
 }

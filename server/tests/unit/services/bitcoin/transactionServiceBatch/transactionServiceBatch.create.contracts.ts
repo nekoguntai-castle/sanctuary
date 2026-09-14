@@ -8,6 +8,7 @@ import { createBatchTransaction } from "../../../../../src/services/bitcoin/tran
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as transactionFeePolicy from "../../../../../src/services/bitcoin/transactions/feePolicy";
+import { InvalidInputError } from "../../../../../src/errors/ApiError";
 import {
   inputAddressRow,
   mockAddressFindManyByQuery,
@@ -183,6 +184,56 @@ export function registerCreateBatchTransactionContracts() {
       }
     });
 
+    it("should fail closed when a pinned batch cannot derive a change script", async () => {
+      const templateSpy = vi.spyOn(
+        transactionFeePolicy,
+        "transactionChangeScriptTemplate",
+      ).mockReturnValueOnce(undefined as any);
+      const pinnedUtxo = { ...fixture.utxos[0], amount: 1_000n };
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([pinnedUtxo]);
+
+      try {
+        await expect(createBatchTransaction(
+          walletId,
+          [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+          10,
+          { selectedUtxoIds: [`${pinnedUtxo.txid}:${pinnedUtxo.vout}`] },
+        )).rejects.toThrow("Insufficient funds");
+      } finally {
+        templateSpy.mockRestore();
+      }
+    });
+
+    it("should accept a pinned batch with no change script when the pinned set exactly covers the fee", async () => {
+      const templateSpy = vi.spyOn(
+        transactionFeePolicy,
+        "transactionChangeScriptTemplate",
+      ).mockReturnValueOnce(undefined as any);
+      const first = { ...fixture.utxos[0], amount: 10_109n };
+      const second = { ...fixture.utxos[1], amount: 69n };
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([first, second]);
+
+      try {
+        const result = await createBatchTransaction(
+          walletId,
+          [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+          1,
+          { selectedUtxoIds: [`${first.txid}:${first.vout}`, `${second.txid}:${second.vout}`] },
+        );
+
+        expect(result).toMatchObject({
+          totalInput: 10_178,
+          totalOutput: 10_000,
+          fee: 178,
+          changeAmount: 0,
+        });
+        expect(result.utxos).toHaveLength(2);
+        expect(result.totalInput).toBe(result.totalOutput + result.fee);
+      } finally {
+        templateSpy.mockRestore();
+      }
+    });
+
     it("should include change output when change exceeds dust threshold", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50000 },
@@ -242,6 +293,34 @@ export function registerCreateBatchTransactionContracts() {
       expect(psbt.txOutputs).toHaveLength(1);
       expect(result.totalInput).toBe(result.totalOutput + result.fee);
       expect(result.feePolicy.roundingToleranceSats).toBeLessThan(100);
+    });
+
+    it("should accept exact no-change coverage for a pinned UTXO set with nothing left for change", async () => {
+      const pinnedUtxos = [
+        { ...fixture.utxos[0], amount: 10_109n },
+        { ...fixture.utxos[1], amount: 69n },
+      ];
+      mockPrismaClient.uTXO.findMany.mockResolvedValue(pinnedUtxos);
+      const selected = pinnedUtxos.map((utxo) => `${utxo.txid}:${utxo.vout}`);
+
+      const result = await createBatchTransaction(
+        walletId,
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        1,
+        { selectedUtxoIds: selected },
+      );
+      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
+
+      expect(result).toMatchObject({
+        totalInput: 10_178,
+        totalOutput: 10_000,
+        fee: 178,
+        changeAmount: 0,
+      });
+      expect(result.utxos).toHaveLength(2);
+      expect(psbt.txInputs).toHaveLength(2);
+      expect(psbt.txOutputs).toHaveLength(1);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
     });
 
     it("should allow a send-max output exactly at the dust threshold", async () => {
@@ -306,6 +385,51 @@ export function registerCreateBatchTransactionContracts() {
 
       expect(result.utxos).toHaveLength(1);
       expect(result.utxos[0].txid).toBe(fixture.utxos[0].txid);
+    });
+
+    it("should spend the entire pinned UTXO set even when the first UTXO alone covers the outputs", async () => {
+      const thirdUtxo = {
+        ...fixture.utxos[0],
+        id: `${"ee".repeat(32)}:0`,
+        txid: "ee".repeat(32),
+        vout: 0,
+        amount: 5_000n,
+      };
+      const pinnedUtxos = [fixture.utxos[0], fixture.utxos[1], thirdUtxo];
+      mockPrismaClient.uTXO.findMany.mockResolvedValue(pinnedUtxos);
+      const selected = pinnedUtxos.map((utxo) => `${utxo.txid}:${utxo.vout}`);
+
+      const outputs = [
+        { address: testnetAddresses.nativeSegwit[0], amount: 10_000 },
+      ];
+      const result = await createBatchTransaction(walletId, outputs, 10, {
+        selectedUtxoIds: selected,
+      });
+
+      const totalPinned = pinnedUtxos.reduce((sum, u) => sum + Number(u.amount), 0);
+      expect(result.utxos).toHaveLength(3);
+      expect(result.utxos.map((u) => u.txid).sort()).toEqual(
+        pinnedUtxos.map((u) => u.txid).sort(),
+      );
+      expect(result.totalInput).toBe(totalPinned);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
+    });
+
+    it("should reject an insufficient pinned UTXO set with InvalidInputError", async () => {
+      const smallUtxo = { ...fixture.utxos[1], amount: 1_000n };
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([smallUtxo]);
+
+      const outputs = [
+        { address: testnetAddresses.nativeSegwit[0], amount: 10_000 },
+      ];
+      const selected = [`${smallUtxo.txid}:${smallUtxo.vout}`];
+
+      const error: unknown = await createBatchTransaction(walletId, outputs, 10, {
+        selectedUtxoIds: selected,
+      }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toMatch(/Insufficient funds/);
     });
 
     it("should reject batch transactions containing UTXOs with missing scriptPubKey", async () => {

@@ -1128,8 +1128,8 @@
         {
           "id": "standard-batch-change-and-fee-selection",
           "productionFile": "src/services/bitcoin/transactions/createBatchTransaction.ts",
-          "lineStart": 362,
-          "lineEnd": 389,
+          "lineStart": 378,
+          "lineEnd": 405,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
@@ -1143,8 +1143,8 @@
           "canaries": [{
             "id": "standard-batch-selection-loop-cannot-be-removed",
             "location": {
-                "start": { "line": 362, "column": 29 },
-                "end": { "line": 389, "column": 4 }
+                "start": { "line": 378, "column": 29 },
+                "end": { "line": 405, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1155,8 +1155,8 @@
           }, {
             "id": "standard-batch-surplus-cannot-widen-tolerance",
             "location": {
-                "start": { "line": 386, "column": 25 },
-                "end": { "line": 386, "column": 72 }
+                "start": { "line": 402, "column": 25 },
+                "end": { "line": 402, "column": 72 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "selectedTotal - targetAmount + feeWithoutChange",
@@ -1167,10 +1167,35 @@
           }]
         },
         {
+          "id": "standard-batch-pinned-selection-spends-full-set",
+          "productionFile": "src/services/bitcoin/transactions/createBatchTransaction.ts",
+          "lineStart": 418,
+          "lineEnd": 447,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should spend the entire pinned UTXO set even when the first UTXO alone covers the outputs"
+            }
+          ],
+          "canaries": [{
+            "id": "standard-batch-pinned-coverage-cannot-be-removed",
+            "location": {
+              "start": { "line": 438, "column": 40 },
+              "end": { "line": 446, "column": 6 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should spend the entire pinned UTXO set even when the first UTXO alone covers the outputs"
+            }
+          }]
+        },
+        {
           "id": "advanced-batch-change-and-fee-selection",
           "productionFile": "src/services/bitcoin/advancedTx/batch.ts",
-          "lineStart": 116,
-          "lineEnd": 135,
+          "lineStart": 142,
+          "lineEnd": 161,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
@@ -1184,32 +1209,51 @@
           "canaries": [{
             "id": "advanced-batch-selection-loop-cannot-be-removed",
             "location": {
-              "start": { "line": 116, "column": 29 },
-              "end": { "line": 135, "column": 4 }
+              "start": { "line": 142, "column": 31 },
+              "end": { "line": 161, "column": 6 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
-            "requiredKillingTests": [
-              {
-                "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
-                "name": "Advanced Transaction Features Batch transactions creates a batch PSBT with recipients and change"
-              },
-              {
-                "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
-                "name": "Advanced Transaction Features Batch transactions uses exactly the explicitly selected batch outpoint"
-              }
-            ]
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features Batch transactions creates a batch PSBT with recipients and change"
+            }
           }, {
             "id": "advanced-batch-surplus-cannot-widen-tolerance",
             "location": {
-              "start": { "line": 132, "column": 24 },
-              "end": { "line": 132, "column": 46 }
+              "start": { "line": 158, "column": 26 },
+              "end": { "line": 158, "column": 48 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "fee + feeWithoutChange",
             "requiredKillingTest": {
               "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
               "name": "Advanced Transaction Features Batch transactions accepts exact no-change coverage after adding the final input"
+            }
+          }]
+        },
+        {
+          "id": "advanced-batch-pinned-selection-spends-full-set",
+          "productionFile": "src/services/bitcoin/advancedTx/batch.ts",
+          "lineStart": 250,
+          "lineEnd": 270,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features Batch transactions spends the entire pinned batch UTXO set even when the first UTXO alone covers the outputs"
+            }
+          ],
+          "canaries": [{
+            "id": "advanced-batch-pinned-coverage-cannot-be-removed",
+            "location": {
+              "start": { "line": 262, "column": 41 },
+              "end": { "line": 264, "column": 4 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features Batch transactions spends the entire pinned batch UTXO set even when the first UTXO alone covers the outputs"
             }
           }]
         },
