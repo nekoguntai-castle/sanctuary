@@ -349,7 +349,10 @@ describe('notification channel handlers', () => {
     });
 
     it('forwards transaction notifications and returns success result', async () => {
-      mockPushService.notifyNewTransactions.mockResolvedValueOnce(undefined);
+      mockPushService.notifyNewTransactions.mockResolvedValueOnce({
+        success: true,
+        usersNotified: 1,
+      });
 
       const result = await pushChannelHandler.notifyTransactions('wallet-2', [
         { txid: 'c'.repeat(64), type: 'received', amount: 6_000n },
@@ -378,6 +381,76 @@ describe('notification channel handlers', () => {
       expect(result.channelId).toBe('push');
       expect(result.usersNotified).toBe(0);
       expect(result.errors?.[0]).toContain('push failure');
+      // Not self-recorded: an unexpected throw here must still reach the
+      // job-level dead letter queue.
+      expect(result.recorded).toBe(false);
+    });
+
+    it('reports failure instead of full success when the outer lookup fails', async () => {
+      mockPushService.notifyNewTransactions.mockResolvedValueOnce({
+        success: false,
+        usersNotified: 0,
+        error: 'wallet lookup exploded',
+        recorded: false,
+      });
+
+      const result = await pushChannelHandler.notifyTransactions('wallet-2', [
+        { txid: 'e'.repeat(64), type: 'received', amount: 1_000n },
+      ]);
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'push',
+        usersNotified: 0,
+        errors: ['wallet lookup exploded'],
+        outcome: 'ambiguous',
+        failureClass: 'internal',
+        recorded: false,
+      });
+    });
+
+    it('maps a send-loop failure with a partial usersNotified count to a failed, unrecorded result', async () => {
+      mockPushService.notifyNewTransactions.mockResolvedValueOnce({
+        success: false,
+        usersNotified: 1,
+        error: 'device lookup exploded',
+        recorded: false,
+      });
+
+      const result = await pushChannelHandler.notifyTransactions('wallet-2', [
+        { txid: 'g'.repeat(64), type: 'received', amount: 3_000n },
+      ]);
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'push',
+        usersNotified: 1,
+        errors: ['device lookup exploded'],
+        outcome: 'ambiguous',
+        failureClass: 'internal',
+        recorded: false,
+      });
+    });
+
+    it('omits errors and defaults recorded to false when the push result carries neither', async () => {
+      mockPushService.notifyNewTransactions.mockResolvedValueOnce({
+        success: false,
+        usersNotified: 0,
+      });
+
+      const result = await pushChannelHandler.notifyTransactions('wallet-2', [
+        { txid: 'f'.repeat(64), type: 'received', amount: 2_000n },
+      ]);
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'push',
+        usersNotified: 0,
+        errors: undefined,
+        outcome: 'ambiguous',
+        failureClass: 'internal',
+        recorded: false,
+      });
     });
   });
 });

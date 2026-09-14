@@ -68,6 +68,13 @@ export interface NotificationResult {
   outcome?: NotificationOutcome;
   /** Closed failure class; never derived from `errors`. */
   failureClass?: NotificationFailureClass;
+  /**
+   * When `success` is `false`, whether the underlying channel already
+   * persisted a delivery-failure record itself (e.g. push devices recorded
+   * via `recordPushFailure`). Job-level dead-letter recording skips results
+   * where this is `true` to avoid double-recording the same failure.
+   */
+  recorded?: boolean;
 }
 
 export interface NotificationDispatchContext {

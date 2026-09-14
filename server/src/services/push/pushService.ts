@@ -40,6 +40,22 @@ type NotificationWallet = NonNullable<
   Awaited<ReturnType<typeof walletRepository.findNameById>>
 >;
 
+/**
+ * Result of a `notifyNewTransactions` call. A wallet/user lookup failure is
+ * reported as `success: false` (with the error message) instead of being
+ * logged and swallowed, so callers can distinguish "nothing to notify" from
+ * "notification delivery was not attempted." `recorded` tells a caller
+ * whether the failure was already persisted via `recordPushFailure` (per-
+ * device send failures are); a lookup failure has not been recorded anywhere
+ * yet, so `recorded` is `false`.
+ */
+export interface NotifyTransactionsResult {
+  success: boolean;
+  usersNotified: number;
+  error?: string;
+  recorded?: boolean;
+}
+
 function getWalletPushSettings(
   preferences: unknown,
   walletId: string,
@@ -221,25 +237,36 @@ class PushService {
   async notifyNewTransactions(
     walletId: string,
     transactions: TransactionData[],
-  ): Promise<void> {
-    if (transactions.length === 0) return;
+  ): Promise<NotifyTransactionsResult> {
+    if (transactions.length === 0) return { success: true, usersNotified: 0 };
 
     // Skip if no push providers are configured
     if (!(await this.isConfigured())) {
-      return;
+      return { success: true, usersNotified: 0 };
     }
 
+    let wallet: NotificationWallet | null;
+    let users: WalletNotificationUser[];
     try {
       // Get wallet info
-      const wallet = await walletRepository.findNameById(walletId);
-      if (!wallet) return;
+      wallet = await walletRepository.findNameById(walletId);
+      if (!wallet) return { success: true, usersNotified: 0 };
 
       // Get all users with access to this wallet, including push device counts
       // This avoids N+1 queries by fetching device counts in a single query
-      const users = await userRepository.findByWalletAccess(walletId, {
+      users = await userRepository.findByWalletAccess(walletId, {
         includePushDeviceCount: true,
       });
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      log.error(`Error sending push notifications: ${errorMsg}`);
+      // The lookup never reached per-device sends, so nothing was recorded
+      // via recordPushFailure yet -- the caller must not swallow this.
+      return { success: false, usersNotified: 0, error: errorMsg, recorded: false };
+    }
 
+    let usersNotified = 0;
+    try {
       for (const user of users) {
         await this.notifyUserNewTransactions(
           user,
@@ -247,10 +274,25 @@ class PushService {
           walletId,
           transactions,
         );
+        usersNotified++;
       }
     } catch (err) {
-      log.error(`Error sending push notifications: ${err}`);
+      // Per-device send failures are already recorded individually inside
+      // notifyUserNewTransactions/sendToUser (recordPushFailure). This catch
+      // only guards against an unexpected throw escaping that path (e.g. a
+      // provider registry lookup failure) that isn't wrapped by
+      // recordPushFailure. It does not reject -- so a BullMQ retry does not
+      // re-send to the `usersNotified` users already processed earlier in
+      // the loop -- but it does report `success: false` with `recorded:
+      // false` so the job helper still records the failure in the dead
+      // letter queue instead of it being lost, unlike main's previous
+      // single catch-and-log around this whole path.
+      const errorMsg = getErrorMessage(err);
+      log.error(`Error sending push notifications: ${errorMsg}`);
+      return { success: false, usersNotified, error: errorMsg, recorded: false };
     }
+
+    return { success: true, usersNotified };
   }
 
   private async notifyUserNewTransactions(
@@ -371,7 +413,7 @@ export async function sendPushNotification(
 export async function notifyNewTransactions(
   walletId: string,
   transactions: TransactionData[],
-): Promise<void> {
+): Promise<NotifyTransactionsResult> {
   return getPushService().notifyNewTransactions(walletId, transactions);
 }
 

@@ -42,17 +42,35 @@ export const pushChannelHandler: NotificationChannelHandler = {
         amount: tx.amount,
       }));
 
-      await pushService.notifyNewTransactions(walletId, txData);
+      const result = await pushService.notifyNewTransactions(walletId, txData);
+
+      if (!result.success) {
+        return {
+          success: false,
+          channelId: 'push',
+          usersNotified: result.usersNotified,
+          errors: result.error ? [result.error] : undefined,
+          outcome: 'ambiguous',
+          failureClass: 'internal',
+          recorded: result.recorded ?? false,
+        };
+      }
 
       return {
         success: true,
         channelId: 'push',
-        usersNotified: 1, // Push service handles user lookup internally
+        usersNotified: result.usersNotified,
         // The legacy push service does not return recipient/provider acceptance.
         outcome: 'ambiguous',
         failureClass: 'unknown',
       };
     } catch (err) {
+      // pushService.notifyNewTransactions itself catches and reports both
+      // the lookup phase and the per-user send loop, so it is not expected
+      // to reject; this is a safety net for a genuinely unexpected error
+      // (e.g. isConfigured()/ensureInitialized() throwing before either of
+      // those phases runs). It is intentionally not marked `recorded`, so
+      // it still reaches the job-level dead letter queue.
       return {
         success: false,
         channelId: 'push',
@@ -60,6 +78,7 @@ export const pushChannelHandler: NotificationChannelHandler = {
         errors: [getErrorMessage(err)],
         outcome: 'ambiguous',
         failureClass: 'internal',
+        recorded: false,
       };
     }
   },

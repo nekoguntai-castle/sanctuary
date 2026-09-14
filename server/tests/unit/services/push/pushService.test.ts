@@ -424,19 +424,21 @@ describe('Push Service', () => {
     });
 
     it('should skip when no transactions', async () => {
-      await notifyNewTransactions(walletId, []);
+      const result = await notifyNewTransactions(walletId, []);
 
       expect(mockPrismaClient.wallet.findUnique).not.toHaveBeenCalled();
+      expect(result).toEqual({ success: true, usersNotified: 0 });
     });
 
     it('should skip when push not configured', async () => {
       mockHasConfiguredProviders.mockReturnValue(false);
 
-      await notifyNewTransactions(walletId, [
+      const result = await notifyNewTransactions(walletId, [
         { txid: 'tx1', type: 'received', amount: BigInt(100000) },
       ]);
 
       expect(mockPrismaClient.wallet.findUnique).not.toHaveBeenCalled();
+      expect(result).toEqual({ success: true, usersNotified: 0 });
     });
 
     it('should notify users with enabled notifications for received transaction', async () => {
@@ -677,24 +679,167 @@ describe('Push Service', () => {
     it('should handle wallet not found', async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
 
-      await notifyNewTransactions(walletId, [
+      const result = await notifyNewTransactions(walletId, [
         { txid: 'tx1', type: 'received', amount: BigInt(100000) },
       ]);
 
       expect(mockPrismaClient.user.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual({ success: true, usersNotified: 0 });
     });
 
-    it('should handle errors gracefully', async () => {
+    it('should report success: false with the partial count when the per-user send loop throws unexpectedly, without rejecting', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        id: walletId,
+        name: 'My Wallet',
+      });
+
+      const makeUser = (id: string) => ({
+        id,
+        username: id,
+        preferences: {
+          telegram: {
+            wallets: {
+              [walletId]: {
+                enabled: true,
+                notifyReceived: true,
+                notifySent: false,
+                notifyConsolidation: false,
+              },
+            },
+          },
+        },
+        _count: { pushDevices: 1 },
+      });
+
+      mockPrismaClient.user.findMany.mockResolvedValue([
+        makeUser('user-1'),
+        makeUser('user-2'),
+        makeUser('user-3'),
+      ]);
+
+      // user-1 completes normally; user-2's device lookup throws
+      // unexpectedly (outside pushService's own per-device try/catch, so it
+      // is not already self-recorded via recordPushFailure); user-3 is
+      // never reached because the loop stops at the first such throw.
+      mockPrismaClient.pushDevice.findMany.mockResolvedValueOnce([
+        {
+          id: 'd1',
+          userId: 'user-1',
+          platform: 'ios',
+          token: 'token1',
+          lastUsedAt: new Date(),
+        },
+      ]);
+      mockPrismaClient.pushDevice.findMany.mockRejectedValueOnce(
+        new Error('device lookup exploded'),
+      );
+
+      const result = await notifyNewTransactions(walletId, [
+        { txid: 'tx1', type: 'received', amount: BigInt(100000) },
+      ]);
+
+      // Not the lookup phase this finding is scoped to, but it must not
+      // repeat the finding's anti-pattern either: report the failure
+      // (success: false, recorded: false) instead of swallowing it, so the
+      // job helper still writes a dead-letter entry. It also must not
+      // reject -- a BullMQ retry would re-send to user-1, who was already
+      // notified -- and usersNotified reflects only the users completed
+      // before the throw (user-1), not user-3, who was never reached.
+      expect(result).toEqual({
+        success: false,
+        usersNotified: 1,
+        error: 'device lookup exploded',
+        recorded: false,
+      });
+      expect(mockLog.error).toHaveBeenCalledWith(
+        expect.stringContaining('device lookup exploded'),
+      );
+      expect(mockPrismaClient.pushDevice.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('should report success: false when the wallet lookup throws, instead of swallowing it', async () => {
       mockPrismaClient.wallet.findUnique.mockRejectedValue(
         new Error('Database error'),
       );
 
       // Should not throw
-      await expect(
-        notifyNewTransactions(walletId, [
-          { txid: 'tx1', type: 'received', amount: BigInt(100000) },
-        ]),
-      ).resolves.not.toThrow();
+      const result = await notifyNewTransactions(walletId, [
+        { txid: 'tx1', type: 'received', amount: BigInt(100000) },
+      ]);
+
+      expect(result).toEqual({
+        success: false,
+        usersNotified: 0,
+        error: 'Database error',
+        recorded: false,
+      });
+      expect(mockLog.error).toHaveBeenCalledWith(
+        expect.stringContaining('Database error'),
+      );
+    });
+
+    it('should report success: false when the user lookup throws', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        id: walletId,
+        name: 'My Wallet',
+      });
+      mockPrismaClient.user.findMany.mockRejectedValue(
+        new Error('user lookup exploded'),
+      );
+
+      const result = await notifyNewTransactions(walletId, [
+        { txid: 'tx1', type: 'received', amount: BigInt(100000) },
+      ]);
+
+      expect(result).toEqual({
+        success: false,
+        usersNotified: 0,
+        error: 'user lookup exploded',
+        recorded: false,
+      });
+    });
+
+    it('should report usersNotified reflecting actual users processed', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        id: walletId,
+        name: 'My Wallet',
+      });
+
+      mockPrismaClient.user.findMany.mockResolvedValue([
+        {
+          id: 'user-1',
+          username: 'alice',
+          preferences: {
+            telegram: {
+              wallets: {
+                [walletId]: {
+                  enabled: true,
+                  notifyReceived: true,
+                  notifySent: false,
+                  notifyConsolidation: false,
+                },
+              },
+            },
+          },
+          _count: { pushDevices: 1 },
+        },
+      ]);
+
+      mockPrismaClient.pushDevice.findMany.mockResolvedValue([
+        {
+          id: 'd1',
+          userId: 'user-1',
+          platform: 'ios',
+          token: 'token1',
+          lastUsedAt: new Date(),
+        },
+      ]);
+
+      const result = await notifyNewTransactions(walletId, [
+        { txid: 'tx1', type: 'received', amount: BigInt(10000000) },
+      ]);
+
+      expect(result).toEqual({ success: true, usersNotified: 1 });
     });
   });
 

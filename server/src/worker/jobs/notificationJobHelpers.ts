@@ -34,6 +34,12 @@ export type NotificationResultLike = {
   errors?: string[];
   outcome?: NotificationOutcome;
   failureClass?: NotificationFailureClass;
+  /**
+   * Whether the channel already persisted its own delivery-failure record
+   * (e.g. push per-device failures recorded via `recordPushFailure`). Only
+   * meaningful when `success` is `false`.
+   */
+  recorded?: boolean;
 };
 
 export interface SafeTransactionJobResult extends NotifyJobResult {
@@ -99,10 +105,17 @@ export function summarizeNotificationResults(
 
 /**
  * Records a channel-scoped dead-letter entry for every failed channel in
- * `results` that does not already self-record its own failures (push does,
- * via `recordPushFailure`). Without this, a channel that fails while at
- * least one other channel succeeds is only logged — the job still completes
- * and the failure is lost once the log line rolls off.
+ * `results` that is not marked `recorded`. Today pushService swallows
+ * per-device send failures internally (self-recording them via
+ * `recordPushFailure`) and only ever returns `success: false` for a wallet
+ * or user lookup failure, which is not otherwise recorded anywhere, so it
+ * is recorded here like any other channel failure. The `recorded` flag is
+ * the general mechanism a channel result can use to opt out of this
+ * (`recorded: true`) when it has already persisted the failure itself, so a
+ * future channel (or a future pushService change) does not need this
+ * function to special-case it by `channelId`. Without this, a channel that
+ * fails while at least one other channel succeeds is only logged -- the job
+ * still completes and the failure is lost once the log line rolls off.
  *
  * Best-effort: a DLQ write failure must never affect job retry semantics, so
  * failures here are logged and swallowed rather than rethrown.
@@ -111,11 +124,11 @@ export async function recordChannelDeliveryFailures(
   results: NotificationResultLike[],
   notificationType: string,
 ): Promise<void> {
-  const failedNonPushResults = results.filter(
-    (result) => !result.success && result.channelId !== 'push'
+  const unrecordedFailures = results.filter(
+    (result) => !result.success && !result.recorded
   );
 
-  await Promise.all(failedNonPushResults.map(async (result) => {
+  await Promise.all(unrecordedFailures.map(async (result) => {
     const channel = result.channelId ?? 'unknown';
     const errorMessage = result.errors?.filter(Boolean).join('; ')
       || `${channel} notification failed without error details`;
