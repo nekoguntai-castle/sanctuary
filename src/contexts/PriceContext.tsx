@@ -19,6 +19,7 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from 'react';
 import { useCurrencyPreferencesContext } from './CurrencyPreferencesContext';
 import * as priceApi from '../api/price';
@@ -50,33 +51,55 @@ export const PriceProvider: React.FC<{ children: React.ReactNode }> = ({
   const [priceError, setPriceError] = useState<string | null>(null);
   const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
 
+  // Bumped on every refreshPrice() call and whenever fiatCurrency or
+  // priceProvider changes (via the effect's cleanup). A response that
+  // lands after the ref has moved on belongs to a superseded request and
+  // must not touch state.
+  const requestIdRef = useRef(0);
+
+  const fetchPrice = useCallback(
+    () =>
+      priceProvider === 'auto'
+        ? priceApi.getPrice(fiatCurrency, true)
+        : priceApi.getPriceFromProvider(priceProvider, fiatCurrency),
+    [fiatCurrency, priceProvider],
+  );
+
   const refreshPrice = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const isCurrent = () => requestIdRef.current === requestId;
     try {
       setPriceLoading(true);
       setPriceError(null);
 
-      const priceData =
-        priceProvider === 'auto'
-          ? await priceApi.getPrice(fiatCurrency, true)
-          : await priceApi.getPriceFromProvider(priceProvider, fiatCurrency);
-      setBtcPrice(priceData.price);
-      setPriceChange24h(priceData.change24h ?? null);
-      setLastPriceUpdate(new Date(priceData.timestamp));
+      const priceData = await fetchPrice();
+      if (isCurrent()) {
+        setBtcPrice(priceData.price);
+        setPriceChange24h(priceData.change24h ?? null);
+        setLastPriceUpdate(new Date(priceData.timestamp));
+      }
     } catch (error) {
-      log.error('Failed to fetch BTC price', { error });
-      setPriceError('Failed to fetch price');
+      if (isCurrent()) {
+        log.error('Failed to fetch BTC price', { error });
+        setPriceError('Failed to fetch price');
+      }
     } finally {
-      setPriceLoading(false);
+      if (isCurrent()) setPriceLoading(false);
     }
-  }, [fiatCurrency, priceProvider]);
+  }, [fetchPrice]);
 
   // Refresh on mount and whenever fiatCurrency or priceProvider changes;
-  // then on a 60-second interval.
+  // then on a 60-second interval. The cleanup bumps the request id so any
+  // response still in flight from the previous currency/provider (or from
+  // before unmount) is ignored when it lands.
   useEffect(() => {
     refreshPrice();
 
     const interval = setInterval(refreshPrice, 60000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      requestIdRef.current += 1;
+    };
   }, [refreshPrice]);
 
   const value = useMemo<PriceContextType>(
