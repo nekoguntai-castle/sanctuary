@@ -89,13 +89,25 @@ export function scheduleReconnect(
       // retried by the bounded status-refresh loop and must not escape the timer.
       const currentState = networks.get(network);
       if (currentState?.connected) {
-        currentState.reconnectAttempts = 0; // Reset on success
+        // Reset only after the resubscribe itself succeeds, so a repeatedly
+        // failing resubscribe keeps growing reconnectAttempts and the
+        // re-armed backoff below stays exponential instead of retrying at
+        // the base delay forever.
         await subscribeNetworkAddresses(network);
+        currentState.reconnectAttempts = 0;
       }
     } catch (error) {
+      // connectNetworkAttempt/connectNetwork always catch and self-schedule
+      // their own reconnect internally, so any error reaching here comes
+      // from subscribeNetworkAddresses after a successful connect. Leaving
+      // the network connected with no subscriptions and no timer would sit
+      // silently unsubscribed forever, so re-arm the bounded backoff.
       log.error(`Electrum ${network} reconnect restoration failed`, {
         error: getErrorMessage(error),
       });
+      if (isRunning()) {
+        boundScheduleReconnect(network);
+      }
     }
   }, delay);
 

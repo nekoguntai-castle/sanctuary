@@ -5,6 +5,7 @@ import { subscribeAddressBatch, subscribeAllAddresses, subscribeNetworkAddresses
 import { checkHealth, reconcileSubscriptions } from '../../../../src/worker/electrumManager/healthMonitoring';
 import {
   getAddressSubscriptionKey,
+  RECONNECT_BASE_DELAY_MS,
   type AddressWalletInfo,
   type BitcoinNetwork,
   type NetworkState,
@@ -1041,6 +1042,90 @@ export function registerElectrumManagerStandaloneContracts() {
         );
         await vi.advanceTimersByTimeAsync(5_000);
         expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('re-arms scheduleReconnect when resubscribe fails after a successful reconnect', async () => {
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      const addressToWallet = getAddressToWallet();
+      const state: NetworkState = {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: false,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      networks.set('mainnet', state);
+      const resubscribeSpy = vi.fn().mockRejectedValueOnce(new Error('subscribe failed'));
+
+      try {
+        scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => true, resubscribeSpy);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
+        const afterFailure = networks.get('mainnet')!;
+        // The network must not be left silently unsubscribed: either a fresh
+        // reconnect timer is armed, or the subscription was retried.
+        const stuck = afterFailure.connected
+          && afterFailure.subscribedAddresses.size === 0
+          && afterFailure.reconnectTimer === null;
+        expect(stuck).toBe(false);
+        expect(afterFailure.reconnectTimer).not.toBeNull();
+        // reconnectAttempts is left incremented (not reset) by the failed
+        // resubscribe, which is what makes the re-armed backoff below grow
+        // instead of retrying at a flat RECONNECT_BASE_DELAY_MS forever.
+        expect(afterFailure.reconnectAttempts).toBe(1);
+
+        resubscribeSpy.mockResolvedValueOnce(undefined);
+        // A flat retry (the reset-before-subscribe bug) would fire the second
+        // attempt at RECONNECT_BASE_DELAY_MS after the first failure; prove
+        // the backoff actually doubled by checking the spy is still at one
+        // call right up to that boundary...
+        await vi.advanceTimersByTimeAsync(RECONNECT_BASE_DELAY_MS);
+        expect(resubscribeSpy).toHaveBeenCalledTimes(1);
+        // ...and only fires the second attempt one further base-delay tick
+        // later, at the doubled (2x) backoff.
+        await vi.advanceTimersByTimeAsync(RECONNECT_BASE_DELAY_MS);
+        expect(resubscribeSpy).toHaveBeenCalledTimes(2);
+        expect(networks.get('mainnet')!.reconnectAttempts).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not re-arm reconnect when ownership is lost before the resubscribe failure is handled', async () => {
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      const addressToWallet = getAddressToWallet();
+      const state: NetworkState = {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: false,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      networks.set('mainnet', state);
+      let active = true;
+      const resubscribeSpy = vi.fn().mockImplementationOnce(async () => {
+        active = false;
+        throw new Error('subscribe failed');
+      });
+
+      try {
+        scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => active, resubscribeSpy);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
+        expect(networks.get('mainnet')!.reconnectTimer).toBeNull();
       } finally {
         vi.useRealTimers();
       }
