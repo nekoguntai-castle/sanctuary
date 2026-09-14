@@ -85,12 +85,14 @@ export const telegramChannelHandler: NotificationChannelHandler = {
     createdByLabel?: string
   ): Promise<NotificationResult> {
     try {
-      await telegramService.notifyNewDraft(walletId, draft, createdByUserId, createdByLabel);
+      const result = await telegramService.notifyNewDraft(walletId, draft, createdByUserId, createdByLabel);
 
       return {
-        success: true,
+        success: result.success,
         channelId: 'telegram',
-        usersNotified: 1,
+        usersNotified: result.usersNotified,
+        errors: result.error ? [result.error] : undefined,
+        recorded: result.recorded,
       };
     } catch (err) {
       return {
@@ -98,6 +100,7 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         channelId: 'telegram',
         usersNotified: 0,
         errors: [getErrorMessage(err)],
+        recorded: false,
       };
     }
   },

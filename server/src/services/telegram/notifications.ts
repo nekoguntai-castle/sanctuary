@@ -14,6 +14,7 @@ import { sendTelegramMessage } from './api';
 import { getWalletUsers, formatTransactionMessage, formatDraftMessage } from './formatting';
 import type {
   TelegramConfig,
+  TelegramDraftNotificationResult,
   TelegramNotificationSummary,
   TransactionData,
   DraftData,
@@ -183,17 +184,18 @@ async function sendDraftNotification(
   user: TelegramRecipient,
   telegram: TelegramConfig,
   message: string
-): Promise<void> {
+): Promise<boolean> {
   const result = await sendTelegramMessage(telegram.botToken, telegram.chatId, message);
 
   if (result.success) {
     log.debug(`Sent draft notification to ${user.username}`);
     walletLog(walletId, 'info', 'TELEGRAM', `Sent draft notification to ${user.username}`);
-    return;
+    return true;
   }
 
   log.warn(`Failed to send draft notification to ${user.username}: ${result.error}`);
   walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send draft notification to ${user.username}: ${result.error}`);
+  return false;
 }
 
 /**
@@ -254,17 +256,26 @@ export async function notifyNewTransactions(
 
 /**
  * Notify all eligible users about a new draft transaction
+ *
+ * Mirrors `pushService.notifyNewTransactions` (#1137): the caller can
+ * distinguish "nothing to notify" (`success: true, usersNotified: 0`) from
+ * "delivery was attempted and did not reach anyone" (`success: false`).
+ * A wallet/user lookup failure (or any other throw before delivery is
+ * known) is also `success: false` instead of being logged and swallowed.
  */
 export async function notifyNewDraft(
   walletId: string,
   draft: DraftData,
   createdByUserId: string | null,
   createdByLabel?: string
-): Promise<void> {
+): Promise<TelegramDraftNotificationResult> {
+  let attempted = 0;
+  let usersNotified = 0;
+
   try {
     // Get wallet info
     const wallet = await walletRepository.findNameById(walletId);
-    if (!wallet) return;
+    if (!wallet) return { success: true, usersNotified: 0 };
 
     const createdBy = await getDraftCreatorName(createdByUserId, createdByLabel);
     const formattedDraft = await withOperationalWalletName(draft);
@@ -277,10 +288,26 @@ export async function notifyNewDraft(
       if (!telegram) continue;
 
       const message = formatDraftMessage(formattedDraft, wallet, createdBy);
-      await sendDraftNotification(walletId, user, telegram, message);
+      attempted += 1;
+      if (await sendDraftNotification(walletId, user, telegram, message)) {
+        usersNotified += 1;
+      }
     }
   } catch (err) {
+    const errorMsg = getErrorMessage(err);
     log.error(`Error sending draft notifications: ${err}`);
     walletLog(walletId, 'error', 'TELEGRAM', `Error sending draft notifications: ${err}`);
+    return { success: false, usersNotified, error: errorMsg, recorded: false };
   }
+
+  if (attempted > 0 && usersNotified === 0) {
+    return {
+      success: false,
+      usersNotified: 0,
+      error: `All ${attempted} Telegram draft notification send(s) failed`,
+      recorded: false,
+    };
+  }
+
+  return { success: true, usersNotified };
 }

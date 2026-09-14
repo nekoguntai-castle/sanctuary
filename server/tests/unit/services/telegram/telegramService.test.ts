@@ -966,5 +966,4 @@ describe('telegramService', () => {
     const payload = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
     expect(payload.text).toContain('Created by: Unknown');
   });
-
 });

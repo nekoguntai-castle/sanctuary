@@ -157,7 +157,10 @@ describe('notification channel handlers', () => {
     });
 
     it('forwards draft notifications and returns success result', async () => {
-      mockTelegramService.notifyNewDraft.mockResolvedValueOnce(undefined);
+      mockTelegramService.notifyNewDraft.mockResolvedValueOnce({
+        success: true,
+        usersNotified: 1,
+      });
 
       const result = await telegramChannelHandler.notifyDraft!(
         'wallet-1',
@@ -185,6 +188,64 @@ describe('notification channel handlers', () => {
         success: true,
         channelId: 'telegram',
         usersNotified: 1,
+        errors: undefined,
+        recorded: undefined,
+      });
+    });
+
+    it('does not fabricate success when notifyNewDraft reports zero delivered', async () => {
+      mockTelegramService.notifyNewDraft.mockResolvedValueOnce({
+        success: false,
+        usersNotified: 0,
+        error: 'All 2 Telegram draft notification send(s) failed',
+        recorded: false,
+      });
+
+      const result = await telegramChannelHandler.notifyDraft!(
+        'wallet-1',
+        {
+          id: 'draft-3',
+          amount: 5_000n,
+          recipient: 'tb1qexample',
+          feeRate: 3,
+        },
+        'user-3'
+      );
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'telegram',
+        usersNotified: 0,
+        errors: ['All 2 Telegram draft notification send(s) failed'],
+        recorded: false,
+      });
+    });
+
+    it('maps a lookup failure reported by notifyNewDraft to a failed result', async () => {
+      mockTelegramService.notifyNewDraft.mockResolvedValueOnce({
+        success: false,
+        usersNotified: 0,
+        error: 'wallet lookup failed',
+        recorded: false,
+      });
+
+      const result = await telegramChannelHandler.notifyDraft!(
+        'wallet-1',
+        {
+          id: 'draft-4',
+          amount: 5_000n,
+          recipient: 'tb1qexample',
+          feeRate: 3,
+        },
+        'user-4'
+      );
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'telegram',
+        usersNotified: 0,
+        errors: ['wallet lookup failed'],
+        recorded: false,
       });
     });
 
@@ -206,6 +267,7 @@ describe('notification channel handlers', () => {
       expect(result.channelId).toBe('telegram');
       expect(result.usersNotified).toBe(0);
       expect(result.errors?.[0]).toContain('telegram draft failure');
+      expect(result.recorded).toBe(false);
     });
 
     it('sends consolidation suggestions only to enabled telegram recipients', async () => {

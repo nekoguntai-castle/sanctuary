@@ -42,6 +42,25 @@ export interface TelegramNotificationSummary {
   failureClass: NotificationFailureClass;
 }
 
+/**
+ * Result of a `notifyNewDraft` call. Mirrors
+ * `pushService.NotifyTransactionsResult` (#1137): a wallet/user lookup
+ * failure (or any other throw before delivery is known) is reported as
+ * `success: false` with the error message instead of being logged and
+ * swallowed, so callers can distinguish "nothing to notify" from
+ * "notification delivery was not attempted or was not confirmed." Zero
+ * eligible recipients is `success: true, usersNotified: 0` -- there was
+ * nothing to fail. `recorded` mirrors the push channel's opt-out flag for
+ * `recordChannelDeliveryFailures`; the Telegram path never self-records a
+ * delivery failure, so it is always `false` when `success` is `false`.
+ */
+export interface TelegramDraftNotificationResult {
+  success: boolean;
+  usersNotified: number;
+  error?: string;
+  recorded?: boolean;
+}
+
 export interface TelegramTransportResult {
   success: boolean;
   outcome: Extract<NotificationOutcome, 'accepted' | 'rejected' | 'ambiguous'>;
