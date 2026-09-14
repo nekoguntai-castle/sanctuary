@@ -279,6 +279,47 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.body.code).toBe('INTERNAL_ERROR');
       });
 
+      it('should return 400 INVALID_INPUT when the original transaction is not replaceable', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.createRBFTransaction.mockRejectedValue(
+          new InvalidInputError('Transaction is already confirmed', 'txid')
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
+
+      it('should return 400 INVALID_INPUT when the new fee rate is not higher than the current rate', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.createRBFTransaction.mockRejectedValue(
+          new InvalidInputError(
+            'New fee rate must be higher than current rate (10 sat/vB). Minimum: 11 sat/vB',
+            'newFeeRate'
+          )
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
+
       it('should return 400 INVALID_INPUT when the replacement fee is not raised (BIP-125 rule 3)', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',
@@ -432,6 +473,26 @@ export const registerBitcoinTransactionRouteTests = () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
         mockAdvancedTx.createCPFPTransaction.mockRejectedValue(
           new InvalidInputError('UTXO is already spent', 'parentVout')
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/cpfp')
+          .send({
+            parentTxid: 'parent123',
+            parentVout: 0,
+            targetFeeRate: 30,
+            recipientAddress: 'bc1qtest',
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
+
+      it('should return 400 when the resulting child output would be dust', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockAdvancedTx.createCPFPTransaction.mockRejectedValue(
+          new InvalidInputError('Output would be dust (100 sats). Minimum is 546 sats.', 'parentVout')
         );
 
         const response = await request(app)

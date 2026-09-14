@@ -54,6 +54,8 @@ export async function canReplaceTransaction(
   reason?: string;
   currentFeeRate?: number;
   minNewFeeRate?: number;
+  /** True when replaceable=false was caused by an upstream/node failure, not a business rule. */
+  upstreamError?: boolean;
 }> {
   try {
     // Use nodeClient which respects poolEnabled setting from node_configs
@@ -77,6 +79,7 @@ export async function canReplaceTransaction(
       return {
         replaceable: false,
         reason: 'Transaction data not available from server',
+        upstreamError: true,
       };
     }
 
@@ -129,6 +132,7 @@ export async function canReplaceTransaction(
     return {
       replaceable: false,
       reason: getErrorMessage(error, 'Failed to check transaction'),
+      upstreamError: true,
     };
   }
 }
@@ -168,12 +172,16 @@ export async function createRBFTransaction(
   // Check if transaction can be replaced
   const rbfCheck = await canReplaceTransaction(originalTxid, network);
   if (!rbfCheck.replaceable) {
-    throw new Error(rbfCheck.reason || 'Transaction cannot be replaced');
+    const reason = rbfCheck.reason || 'Transaction cannot be replaced';
+    if (rbfCheck.upstreamError) {
+      throw new Error(reason);
+    }
+    throw new InvalidInputError(reason, 'txid');
   }
 
   if (newFeeRate <= (rbfCheck.currentFeeRate || 0)) {
-    throw new Error(
-      `New fee rate must be higher than current rate (${rbfCheck.currentFeeRate} sat/vB). Minimum: ${rbfCheck.minNewFeeRate} sat/vB`
+    throw new InvalidInputError(
+      `New fee rate must be higher than current rate (${rbfCheck.currentFeeRate} sat/vB). Minimum: ${rbfCheck.minNewFeeRate} sat/vB`, 'newFeeRate'
     );
   }
 

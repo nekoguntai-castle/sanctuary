@@ -98,6 +98,7 @@ export function registerRbfDetectionContracts() {
         expect(result).toEqual({
           replaceable: false,
           reason: 'Transaction data not available from server',
+          upstreamError: true,
         });
       });
 
@@ -107,6 +108,10 @@ export function registerRbfDetectionContracts() {
         const result = await canReplaceTransaction(txid);
         expect(result.replaceable).toBe(false);
         expect(result.reason).toContain('node unavailable');
+        // Regression for advancedtx-rbf-cpfp-plain-error-still-surfaces-as-500:
+        // an upstream/node failure must stay distinguishable from a
+        // business-rule not-replaceable result so callers keep it a 5xx.
+        expect(result.upstreamError).toBe(true);
       });
 
       it('should handle malformed transaction hex in non-RBF debug logging path', async () => {

@@ -158,21 +158,21 @@ export async function createCPFPTransaction(
     parentFee,
   );
   if (cpfpCalc.childFee <= 0) {
-    throw new Error('Target fee rate does not require a positive CPFP child fee');
+    throw new InvalidInputError('Target fee rate does not require a positive CPFP child fee', 'targetFeeRate');
   }
 
   // Ensure we have enough value to create the transaction
   const utxoValue = Number(utxo.amount);
   if (cpfpCalc.childFee >= utxoValue) {
-    throw new Error(
-      `UTXO value (${utxoValue} sats) is insufficient to pay child fee (${cpfpCalc.childFee} sats)`
+    throw new InvalidInputError(
+      `UTXO value (${utxoValue} sats) is insufficient to pay child fee (${cpfpCalc.childFee} sats)`, 'parentVout'
     );
   }
 
   const outputValue = utxoValue - cpfpCalc.childFee;
   if (outputValue < dustThreshold) {
-    throw new Error(
-      `Output would be dust (${outputValue} sats). Minimum is ${dustThreshold} sats.`
+    throw new InvalidInputError(
+      `Output would be dust (${outputValue} sats). Minimum is ${dustThreshold} sats.`, 'parentVout'
     );
   }
 

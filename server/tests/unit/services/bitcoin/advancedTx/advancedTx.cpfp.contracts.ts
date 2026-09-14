@@ -220,9 +220,11 @@ export function registerCpfpContracts() {
         .mockResolvedValueOnce(chain.parent)
         .mockResolvedValueOnce(chain.funding);
 
-      await expect(createCPFPTransaction(
+      const result = createCPFPTransaction(
         parentTxid, parentVout, 0.1, recipientAddress, walletId, 'testnet3',
-      )).rejects.toThrow('does not require a positive CPFP child fee');
+      );
+      await expect(result).rejects.toThrow('does not require a positive CPFP child fee');
+      await expect(result).rejects.toBeInstanceOf(InvalidInputError);
     });
 
     it('fails closed when single-sig CPFP account-node evidence is unavailable', async () => {
@@ -262,9 +264,9 @@ export function registerCpfpContracts() {
         .mockResolvedValueOnce(chain.parent)
         .mockResolvedValueOnce(chain.funding);
 
-      await expect(
-        createCPFPTransaction(parentTxid, parentVout, 100, recipientAddress, walletId, 'testnet3')
-      ).rejects.toThrow('insufficient');
+      const result = createCPFPTransaction(parentTxid, parentVout, 100, recipientAddress, walletId, 'testnet3');
+      await expect(result).rejects.toThrow('insufficient');
+      await expect(result).rejects.toBeInstanceOf(InvalidInputError);
     });
 
     it('should create CPFP PSBT for a spendable parent output', async () => {
@@ -386,9 +388,9 @@ export function registerCpfpContracts() {
         .mockResolvedValueOnce(chain.parent)
         .mockResolvedValueOnce(chain.funding);
 
-      await expect(
-        createCPFPTransaction(parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet3')
-      ).rejects.toThrow('Output would be dust');
+      const result = createCPFPTransaction(parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet3');
+      await expect(result).rejects.toThrow('Output would be dust');
+      await expect(result).rejects.toBeInstanceOf(InvalidInputError);
     });
   });
 }

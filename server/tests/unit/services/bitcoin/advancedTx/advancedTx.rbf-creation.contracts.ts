@@ -63,17 +63,43 @@ export function registerRbfTransactionCreationContracts() {
       mockTx.hex = sampleTransactions.rbfEnabled;
       mockElectrumClient.getTransaction.mockResolvedValue(mockTx);
 
-      await expect(
-        createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
-      ).rejects.toThrow('confirmed');
+      const result = createRBFTransaction(originalTxid, 50, walletId, 'testnet3');
+      await expect(result).rejects.toThrow('confirmed');
+      await expect(result).rejects.toBeInstanceOf(InvalidInputError);
     });
 
     it('should use the default non-replaceable reason when reason text is empty', async () => {
       mockElectrumClient.getTransaction.mockRejectedValueOnce(new Error(''));
 
-      await expect(
-        createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
-      ).rejects.toThrow('Transaction cannot be replaced');
+      // Regression for advancedtx-rbf-cpfp-plain-error-still-surfaces-as-500:
+      // this hits canReplaceTransaction's catch-all (an upstream/node lookup
+      // failure), which is marked upstreamError so it stays an internal
+      // Error (500), unlike the business-rule not-replaceable cases below
+      // which are InvalidInputError (400).
+      const error: unknown = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toBe('Transaction cannot be replaced');
+    });
+
+    it('surfaces a missing transaction hex from the node as an internal error, not a 400', async () => {
+      // Same regression: canReplaceTransaction's "hex not available" branch is
+      // also upstreamError (a node/data problem, not a user-input mistake), so
+      // it must stay a 5xx too.
+      mockElectrumClient.getTransaction.mockResolvedValueOnce({
+        txid: originalTxid,
+        confirmations: 0,
+        hex: '',
+        vin: [],
+        vout: [],
+      } as any);
+
+      const error: unknown = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toBe('Transaction data not available from server');
     });
 
     it('should reject RBF for non-RBF signaled transaction', async () => {
@@ -101,9 +127,9 @@ export function registerRbfTransactionCreationContracts() {
         .mockResolvedValueOnce(prevoutResponse('b'.repeat(64), '0014aabb'));
 
       // Try to create with same or lower fee rate
-      await expect(
-        createRBFTransaction(originalTxid, 1, walletId, 'testnet3')
-      ).rejects.toThrow('must be higher');
+      const result = createRBFTransaction(originalTxid, 1, walletId, 'testnet3');
+      await expect(result).rejects.toThrow('must be higher');
+      await expect(result).rejects.toBeInstanceOf(InvalidInputError);
     });
 
     it('should throw error when wallet is missing', async () => {
