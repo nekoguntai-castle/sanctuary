@@ -236,6 +236,51 @@ export const registerBitcoinTransactionRouteTests = () => {
         );
       });
 
+      it('carries isChange per output onto the wire so a change-aware client can tell recipient from change', async () => {
+        // Regression for rbf-draft-recipient-picks-arbitrary-output-not-change-aware:
+        // the route used to pass `result.outputs` straight through, but the
+        // service stripped `isChange` before returning it. Assert here at the
+        // wire boundary so a future strip-again regression fails the contract
+        // that actually matters (what the client receives), not just the
+        // service-level shape.
+        const uppercaseTxid = 'C'.repeat(64);
+        const normalizedTxid = uppercaseTxid.toLowerCase();
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'testnet4',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.createRBFTransaction.mockResolvedValue({
+          psbt: { toBase64: () => 'base64psbt' },
+          fee: 6000,
+          feeRate: 24,
+          feeDelta: 1000,
+          inputs: [],
+          outputs: [
+            { address: 'bc1qrecipient', value: 40000, isChange: false },
+            { address: 'bc1qchange', value: 54000, isChange: true },
+          ],
+          inputPaths: [],
+        });
+
+        const response = await request(app)
+          .post(`/bitcoin/transaction/${uppercaseTxid}/rbf`)
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.outputs).toEqual([
+          { address: 'bc1qrecipient', value: 40000, isChange: false },
+          { address: 'bc1qchange', value: 54000, isChange: true },
+        ]);
+        expect(mockAdvancedTx.createRBFTransaction).toHaveBeenCalledWith(
+          normalizedTxid,
+          24,
+          'wallet-1',
+          'testnet4'
+        );
+      });
+
       it('should return 400 when newFeeRate is missing', async () => {
         const response = await request(app)
           .post('/bitcoin/transaction/abc123/rbf')

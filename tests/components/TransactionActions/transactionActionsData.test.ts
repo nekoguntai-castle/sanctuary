@@ -29,7 +29,7 @@ const result: RBFTransactionResponse = {
   feeRate: 20,
   feeDelta: 1000,
   inputs: [{ txid: 'prev-input-txid', vout: 0, value: 50000 }],
-  outputs: [{ address: 'bc1qrecipient', value: 47000 }],
+  outputs: [{ address: 'bc1qrecipient', value: 47000, isChange: false }],
 };
 
 describe('rbfDraftRequest', () => {
@@ -79,6 +79,78 @@ describe('rbfDraftRequest', () => {
       effectiveAmount: 47000,
       inputPaths: [],
     });
+  });
+
+  it('picks the first non-change output as recipient when change is listed first', () => {
+    // Regression for rbf-draft-recipient-picks-arbitrary-output-not-change-aware:
+    // `result.outputs[0]` used to be treated as the recipient unconditionally.
+    // With change at index 0, that picked the wallet's own change address as
+    // the "recipient" and always reported changeAmount: 0.
+    const changeFirstResult: RBFTransactionResponse = {
+      ...result,
+      outputs: [
+        { address: 'bc1qchange', value: 53000, isChange: true },
+        { address: 'bc1qrecipient', value: 47000, isChange: false },
+      ],
+    };
+
+    const request = rbfDraftRequest({
+      originalLabel: undefined,
+      rbfStatus,
+      result: changeFirstResult,
+      txid,
+    });
+
+    expect(request.recipient).toBe('bc1qrecipient');
+    expect(request.amount).toBe(47000);
+    expect(request.effectiveAmount).toBe(47000);
+    expect(request.changeAmount).toBe(53000);
+    expect(request.changeAddress).toBe('bc1qchange');
+    expect(request.outputs).toEqual([{ address: 'bc1qrecipient', amount: 47000 }]);
+  });
+
+  it('reports no change when every output is non-change', () => {
+    const noChangeResult: RBFTransactionResponse = {
+      ...result,
+      outputs: [{ address: 'bc1qrecipient', value: 47000, isChange: false }],
+    };
+
+    const request = rbfDraftRequest({
+      originalLabel: undefined,
+      rbfStatus,
+      result: noChangeResult,
+      txid,
+    });
+
+    expect(request.changeAmount).toBe(0);
+    expect(request.changeAddress).toBeUndefined();
+    expect(request.outputs).toEqual([{ address: 'bc1qrecipient', amount: 47000 }]);
+  });
+
+  it('treats every output as a recipient when all are flagged as change, and reports no change', () => {
+    // Defensive edge case: `RBFTransactionResponseSchema` requires at least
+    // one output but does not guarantee any of them is non-change. Nothing is
+    // distinguishable as change here, so `outputs` must stay non-empty (the
+    // server rejects a draft with none) and `changeAmount`/`changeAddress`
+    // must stay unset rather than double-counting the same output as both a
+    // recipient and change.
+    const allChangeResult: RBFTransactionResponse = {
+      ...result,
+      outputs: [{ address: 'bc1qchange', value: 53000, isChange: true }],
+    };
+
+    const request = rbfDraftRequest({
+      originalLabel: undefined,
+      rbfStatus,
+      result: allChangeResult,
+      txid,
+    });
+
+    expect(request.recipient).toBe('bc1qchange');
+    expect(request.amount).toBe(53000);
+    expect(request.outputs).toEqual([{ address: 'bc1qchange', amount: 53000 }]);
+    expect(request.changeAmount).toBe(0);
+    expect(request.changeAddress).toBeUndefined();
   });
 });
 

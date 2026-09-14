@@ -98,7 +98,14 @@ export const RBFTransactionResponseSchema = z.looseObject({
   feeRate: satoshis,
   feeDelta: satoshis,
   inputs: z.array(z.looseObject({ txid: z.string(), vout: z.number().int(), value: satoshis })).min(1),
-  outputs: z.array(z.looseObject({ address: z.string(), value: satoshis })).min(1),
+  /**
+   * `isChange` is required, not optional: `transactionActionsData.rbfDraftRequest`
+   * picks the first non-change output as the recipient and derives
+   * `changeAmount`/`changeAddress` from the change output, so a response that
+   * silently omitted `isChange` would fall back to treating the wallet's own
+   * change as the recipient again (rbf-draft-recipient-picks-arbitrary-output-not-change-aware).
+   */
+  outputs: z.array(z.looseObject({ address: z.string(), value: satoshis, isChange: z.boolean() })).min(1),
 });
 
 export const CPFPTransactionResponseSchema = z.looseObject({

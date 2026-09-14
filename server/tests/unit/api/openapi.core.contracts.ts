@@ -483,6 +483,18 @@ export function registerOpenApiCoreTests() {
       openApiSpec.components.schemas.RbfResponse.properties.inputPaths.items,
     ).toEqual({ type: "string" });
 
+    // Regression for rbf-draft-recipient-picks-arbitrary-output-not-change-aware:
+    // the documented RBF response must declare `isChange` per output so a
+    // change-aware client can trust the wire contract, not just runtime luck.
+    expect(
+      openApiSpec.components.schemas.RbfResponse.properties.outputs.items
+        .required,
+    ).toEqual(["address", "value", "isChange"]);
+    expect(
+      openApiSpec.components.schemas.RbfResponse.properties.outputs.items
+        .properties.isChange,
+    ).toEqual({ type: "boolean" });
+
     expect(openApiSpec.paths["/node/test"].post.security).toEqual(
       browserOrBearerAuthSecurity,
     );

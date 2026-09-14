@@ -32,7 +32,18 @@ export function rbfDraftRequest({
   result: RBFTransactionResponse;
   txid: string;
 }): CreateDraftRequest & { replacesTxid: string } {
-  const primaryOutput = result.outputs[0];
+  const nonChangeOutputs = result.outputs.filter((output) => !output.isChange);
+  // `RBFTransactionResponseSchema` requires at least one output, but every one
+  // of them could in principle be flagged as change. In that (unreachable in
+  // practice) case nothing is distinguishable as change, so treat every
+  // output as a recipient rather than reporting change while also emitting an
+  // empty `outputs` list — `CreateDraftRequest.outputs` backs the draft's
+  // persisted output rows, and the server rejects a draft with none.
+  const recipientOutputs = nonChangeOutputs.length > 0 ? nonChangeOutputs : result.outputs;
+  const changeOutput = nonChangeOutputs.length > 0
+    ? result.outputs.find((output) => output.isChange)
+    : undefined;
+  const primaryOutput = recipientOutputs[0];
   const totalInput = result.inputs.reduce((sum, input) => sum + input.value, 0);
   const totalOutput = result.outputs.reduce((sum, output) => sum + output.value, 0);
 
@@ -45,7 +56,7 @@ export function rbfDraftRequest({
     subtractFees: false,
     sendMax: false,
     isRBF: true,
-    outputs: result.outputs.map((output) => ({ address: output.address, amount: output.value })),
+    outputs: recipientOutputs.map((output) => ({ address: output.address, amount: output.value })),
     label: originalLabel || fallbackRbfLabel(rbfStatus, result),
     memo: `Replacing transaction ${txid}`,
     replacesTxid: txid,
@@ -55,7 +66,8 @@ export function rbfDraftRequest({
     fee: result.fee,
     totalInput,
     totalOutput,
-    changeAmount: 0,
+    changeAmount: changeOutput?.value ?? 0,
+    changeAddress: changeOutput?.address,
     effectiveAmount: primaryOutput.value,
     inputPaths: [],
   };

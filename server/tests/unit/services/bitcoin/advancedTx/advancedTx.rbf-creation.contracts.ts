@@ -270,6 +270,11 @@ export function registerRbfTransactionCreationContracts() {
       expect(result.fee).toBeGreaterThan(0);
       expect(result.feeDelta).toBeGreaterThan(0);
       expect(result.outputs.find(o => o.address === changeAddress)?.value).toBeLessThan(55_000);
+      // Regression for rbf-draft-recipient-picks-arbitrary-output-not-change-aware:
+      // the response used to strip `isChange`, so a change-aware caller could
+      // not tell the wallet's own change output from the external recipient.
+      expect(result.outputs.find(o => o.address === changeAddress)?.isChange).toBe(true);
+      expect(result.outputs.find(o => o.address === externalAddress)?.isChange).toBe(false);
       expect(result.inputPaths[0]).toBe("m/84'/1'/0'/0/0");
       expect(result.psbt.data.inputs[0].witnessUtxo).toEqual({
         script: Buffer.from(spendScriptHex, 'hex'),

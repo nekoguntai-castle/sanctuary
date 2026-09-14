@@ -93,7 +93,7 @@ const rbf = {
   feeRate: 24,
   feeDelta: 2500,
   inputs: [{ txid: 'a'.repeat(64), vout: 0, value: 500000 }],
-  outputs: [{ address: 'bc1qexample', value: 495000 }],
+  outputs: [{ address: 'bc1qexample', value: 495000, isChange: false }],
 };
 
 describe('RBFTransactionResponseSchema', () => {
@@ -122,6 +122,15 @@ describe('RBFTransactionResponseSchema', () => {
 
   it('rejects an output value that is not a number', () => {
     const bad = { ...rbf, outputs: [{ address: 'bc1qexample', value: null }] };
+    expect(RBFTransactionResponseSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an output missing isChange rather than letting a change-aware caller mistake change for the recipient', () => {
+    // Regression for rbf-draft-recipient-picks-arbitrary-output-not-change-aware:
+    // `transactionActionsData.rbfDraftRequest` relies on `isChange` to pick the
+    // external output as the recipient. A response that silently omits it must
+    // fail loudly here rather than quietly recreating the bug downstream.
+    const bad = { ...rbf, outputs: [{ address: 'bc1qexample', value: 495000 }] };
     expect(RBFTransactionResponseSchema.safeParse(bad).success).toBe(false);
   });
 });

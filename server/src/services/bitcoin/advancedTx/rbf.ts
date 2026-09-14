@@ -151,7 +151,7 @@ export async function createRBFTransaction(
   feeRate: number;
   feeDelta: number;
   inputs: Array<{ txid: string; vout: number; value: number }>;
-  outputs: Array<{ address: string; value: number }>;
+  outputs: Array<{ address: string; value: number; isChange: boolean }>;
   inputPaths: string[];
   signingContext: PsbtSigningContext;
   feePolicy: SigningIntentFeePolicyV1;
@@ -259,7 +259,7 @@ export async function createRBFTransaction(
     feeRate: newFeeRate,
     feeDelta,
     inputs: rbfInputs.inputs,
-    outputs: outputs.map(({ address, value }) => ({ address, value })),
+    outputs: outputs.map(({ address, value, isChange }) => ({ address, value, isChange })),
     inputPaths,
     signingContext,
     feePolicy: buildSigningIntentFeePolicy(psbt.toBase64(), newFeeRate, newFee),

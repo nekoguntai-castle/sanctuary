@@ -644,6 +644,12 @@ export const bitcoinSchemas = {
         type: "array",
         items: {
           type: "object",
+          properties: {
+            address: { type: "string" },
+            value: { type: "integer", minimum: 0 },
+            isChange: { type: "boolean" },
+          },
+          required: ["address", "value", "isChange"],
           additionalProperties: true,
         },
       },

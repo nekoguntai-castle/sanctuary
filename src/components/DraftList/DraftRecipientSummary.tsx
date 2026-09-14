@@ -67,6 +67,36 @@ function DraftRecipientValue({
   return <DraftMultiOutputRows outputs={draft.outputs} format={format} />;
 }
 
+/**
+ * Distinct from the recipient row: change stays with the wallet, so
+ * surfacing it as just another "To:" line (as every output used to render,
+ * pre change-awareness) misleads the reader into counting it as sent funds.
+ * See rbf-draft-recipient-picks-arbitrary-output-not-change-aware.
+ */
+function DraftChangeRow({
+  draft,
+  format,
+}: DraftRecipientSummaryProps) {
+  if (!draft.changeAddress || draft.changeAmount <= 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 flex items-center justify-between text-sm">
+      <span className="text-sanctuary-500 dark:text-sanctuary-400">
+        Change:{' '}
+        <span className="font-mono text-sanctuary-600 dark:text-sanctuary-400">
+          {truncateAddress(draft.changeAddress)}
+        </span>
+      </span>
+      <span className="ml-2 text-sanctuary-600 dark:text-sanctuary-400 flex items-center gap-1">
+        {format(draft.changeAmount)}
+        <FiatDisplaySubtle sats={draft.changeAmount} size="xs" />
+      </span>
+    </div>
+  );
+}
+
 export const DraftRecipientSummary: React.FC<DraftRecipientSummaryProps> = ({
   draft,
   format,
@@ -76,5 +106,6 @@ export const DraftRecipientSummary: React.FC<DraftRecipientSummaryProps> = ({
       To:{' '}
     </span>
     <DraftRecipientValue draft={draft} format={format} />
+    <DraftChangeRow draft={draft} format={format} />
   </div>
 );
