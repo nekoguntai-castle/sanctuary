@@ -28,6 +28,11 @@ import {
 } from '../signingIntent/broadcastLifecycle';
 import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
 
+// Re-exported so callers (the broadcast route) can distinguish a definite
+// rejection from an unknown-outcome failure without importing the blockchain
+// barrel directly.
+export { DefiniteBroadcastRejectionError };
+
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
 const MAX_PERSISTENCE_ATTEMPTS = 3;
 

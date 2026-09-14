@@ -18,6 +18,8 @@ const {
   mockFetch,
   mockEvaluatePolicies,
   mockRecordUsage,
+  mockReserveEnforcedUsage,
+  mockReleasePolicyUsage,
   mockWalletFindById,
   mockWalletFindByIdWithDevices,
   mockWalletFindNetwork,
@@ -28,6 +30,7 @@ const {
   mockValidateSignedArtifact,
   mockFindLinkedDraft,
   mockAssertWalletHardwareCapabilityById,
+  DefiniteBroadcastRejectionError,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -44,6 +47,8 @@ const {
   mockFetch: vi.fn(),
   mockEvaluatePolicies: vi.fn(),
   mockRecordUsage: vi.fn(),
+  mockReserveEnforcedUsage: vi.fn(),
+  mockReleasePolicyUsage: vi.fn(),
   mockWalletFindById: vi.fn(),
   mockWalletFindByIdWithDevices: vi.fn(),
   mockWalletFindNetwork: vi.fn(),
@@ -54,6 +59,7 @@ const {
   mockValidateSignedArtifact: vi.fn(),
   mockFindLinkedDraft: vi.fn(),
   mockAssertWalletHardwareCapabilityById: vi.fn(),
+  DefiniteBroadcastRejectionError: class DefiniteBroadcastRejectionError extends Error {},
 }));
 
 vi.mock('../../../../src/services/hardwareWalletCapabilities', () => ({
@@ -163,6 +169,7 @@ vi.mock('../../../../src/services/bitcoin/transactionService', () => ({
 
 vi.mock('../../../../src/services/bitcoin/transactions/broadcasting', () => ({
   broadcastAndSave: mockBroadcastAndSave,
+  DefiniteBroadcastRejectionError,
 }));
 
 vi.mock('../../../../src/services/bitcoin/signingIntent', () => ({
@@ -175,6 +182,8 @@ vi.mock('../../../../src/services/vaultPolicy', () => ({
   policyEvaluationEngine: {
     evaluatePolicies: mockEvaluatePolicies,
     recordUsage: mockRecordUsage,
+    reserveEnforcedUsage: mockReserveEnforcedUsage,
+    releasePolicyUsage: mockReleasePolicyUsage,
   },
 }));
 
@@ -210,6 +219,8 @@ export function setupTransactionHttpRouteHooks(): void {
     mockWalletCacheSet.mockResolvedValue(undefined);
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
     mockRecordUsage.mockResolvedValue(undefined);
+    mockReserveEnforcedUsage.mockResolvedValue({ ok: true, reservations: [] });
+    mockReleasePolicyUsage.mockResolvedValue(undefined);
     mockWalletFindNetwork.mockResolvedValue('testnet4');
     mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
     mockWalletFindByIdWithDevices.mockImplementation(async (walletId: string) => ({
@@ -321,6 +332,8 @@ export {
   mockFetch,
   mockEvaluatePolicies,
   mockRecordUsage,
+  mockReserveEnforcedUsage,
+  mockReleasePolicyUsage,
   mockWalletFindById,
   mockWalletFindByIdWithDevices,
   mockWalletFindNetwork,
@@ -330,4 +343,5 @@ export {
   mockCreateSigningIntent,
   mockValidateSignedArtifact,
   mockAssertWalletHardwareCapabilityById,
+  DefiniteBroadcastRejectionError,
 };

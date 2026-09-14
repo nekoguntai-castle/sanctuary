@@ -3,6 +3,7 @@ import request from 'supertest';
 
 import {
   app,
+  DefiniteBroadcastRejectionError,
   mockAuditLogFromRequest,
   mockBroadcastAndSave,
   mockCreateTransaction,
@@ -10,6 +11,9 @@ import {
   mockEstimateTransaction,
   mockEvaluatePolicies,
   mockValidateAddress,
+  mockRecordUsage,
+  mockReleasePolicyUsage,
+  mockReserveEnforcedUsage,
   mockValidateSignedArtifact,
   mockWalletFindNetwork,
   mockWalletFindById,
@@ -102,6 +106,93 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.status).toBe(403);
     expect(mockValidateSignedArtifact).toHaveBeenCalled();
     expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('blocks a broadcast whose usage reservation was lost to a concurrent broadcast', async () => {
+    // Simulates the TOCTOU race directly: evaluatePolicies (read-based) sees
+    // the transaction as allowed, but the atomic reservation that runs right
+    // before broadcastAndSave loses to a concurrent broadcast that already
+    // consumed the remaining window headroom.
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: false, reservations: [] });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send(validBroadcastBody);
+
+    expect(response.status).toBe(403);
+    expect(mockValidateSignedArtifact).toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('releases the usage reservation when the broadcast is definitely rejected after it was taken', async () => {
+    const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
+    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send(validBroadcastBody);
+
+    expect(response.status).toBe(500);
+    expect(mockReleasePolicyUsage).toHaveBeenCalledWith(reservations);
+  });
+
+  it('keeps the reservation held when the broadcast fails with an unknown/uncertain outcome (not a definite rejection)', async () => {
+    // broadcastAndSave can throw after the transaction was already accepted
+    // or recorded, or when the outcome is unknown — releasing here would let
+    // a spend that may have gone out stop counting against the limit it was
+    // reserved against, so only a DefiniteBroadcastRejectionError releases.
+    const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
+    mockBroadcastAndSave.mockRejectedValueOnce(new Error('persistence failed after node accepted the transaction'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send(validBroadcastBody);
+
+    expect(response.status).toBe(500);
+    expect(mockReleasePolicyUsage).not.toHaveBeenCalled();
+  });
+
+  it('logs but does not fail the response when releasing a reservation itself fails', async () => {
+    const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
+    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+    mockReleasePolicyUsage.mockRejectedValueOnce(new Error('release unavailable'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send(validBroadcastBody);
+
+    expect(response.status).toBe(500);
+    expect(mockReleasePolicyUsage).toHaveBeenCalledWith(reservations);
+  });
+
+  it('does not release anything when the broadcast fails without a reservation', async () => {
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations: [] });
+    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send(validBroadcastBody);
+
+    expect(response.status).toBe(500);
+    expect(mockReleasePolicyUsage).not.toHaveBeenCalled();
+  });
+
+  it('reserves usage before broadcasting and records usage (monitor-mode only) after success', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send(validBroadcastBody);
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(mockReserveEnforcedUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ walletId, amount: BigInt(20000) }),
+    );
+    const reserveOrder = mockReserveEnforcedUsage.mock.invocationCallOrder[0];
+    const broadcastOrder = mockBroadcastAndSave.mock.invocationCallOrder[0];
+    expect(reserveOrder).toBeLessThan(broadcastOrder);
+    expect(mockRecordUsage).toHaveBeenCalledWith(walletId, 'test-user-id', BigInt(20000));
   });
 
   it('uses the signing-intent handle bound to an approved draft', async () => {
@@ -202,6 +293,30 @@ export function registerTransactionHttpBroadcastTests(): void {
       ...intentHandle,
       signedPsbtBase64: 'cHNi',
     });
+  });
+
+  it('blocks a PSBT broadcast whose usage reservation was lost to a concurrent broadcast', async () => {
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: false, reservations: [] });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
+      .send({ signedPsbt: 'cHNi', ...intentHandle });
+
+    expect(response.status).toBe(403);
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('releases the PSBT usage reservation when the broadcast is definitely rejected after it was taken', async () => {
+    const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
+    mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
+    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
+      .send({ signedPsbt: 'cHNi', ...intentHandle });
+
+    expect(response.status).toBe(500);
+    expect(mockReleasePolicyUsage).toHaveBeenCalledWith(reservations);
   });
 
   it('validates estimate payload fields', async () => {

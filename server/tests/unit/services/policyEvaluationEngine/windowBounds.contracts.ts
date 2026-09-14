@@ -19,7 +19,7 @@ export function registerPolicyWindowBoundsTests(context: PolicyEvaluationEngineT
           id: 'p1',
           name: 'Hourly Check',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerHour: 10, scope: 'wallet' },
         }),
       ]);
@@ -112,7 +112,7 @@ export function registerPolicyWindowBoundsTests(context: PolicyEvaluationEngineT
           id: 'p1',
           name: 'Monthly Check',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { monthly: 100_000_000, scope: 'wallet' },
         }),
       ]);
@@ -145,7 +145,7 @@ export function registerPolicyWindowBoundsTests(context: PolicyEvaluationEngineT
           id: 'p1',
           name: 'Hourly Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerHour: 10, scope: 'wallet' },
         }),
       ]);
@@ -171,7 +171,7 @@ export function registerPolicyWindowBoundsTests(context: PolicyEvaluationEngineT
           id: 'p1',
           name: 'Weekly Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerWeek: 50, scope: 'wallet' },
         }),
       ]);
@@ -195,7 +195,7 @@ export function registerPolicyWindowBoundsTests(context: PolicyEvaluationEngineT
           id: 'p1',
           name: 'Monthly Cap',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { monthly: 100_000_000, scope: 'wallet' },
         }),
       ]);

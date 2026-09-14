@@ -50,6 +50,37 @@ interface UsageRecordContext {
   amount: bigint;
 }
 
+/**
+ * A held reservation against one policy usage window, returned by
+ * reserveEnforcedUsage. `amount` is the totalSpent delta that was applied —
+ * 0 for a velocity (txCount-only) reservation, since velocity windows don't
+ * track spent amount. Callers MUST pass every reservation they were handed
+ * back to releasePolicyUsage if the broadcast it was taken for does not
+ * complete (and only then — see releaseReservationsOnFailure in the
+ * broadcast route for the definite-rejection-only release rule).
+ */
+export interface UsageReservation {
+  windowId: string;
+  amount: bigint;
+}
+
+interface ReserveUsageInput {
+  walletId: string;
+  userId: string;
+  amount: bigint;
+}
+
+interface ReserveUsageOutcome {
+  ok: boolean;
+  reservations: UsageReservation[];
+}
+
+interface WindowReservationGuard {
+  amount: bigint;
+  spendLimit?: bigint;
+  txLimit?: number;
+}
+
 interface UsageWindowRecord {
   type: WindowType;
   userId?: string;
@@ -371,10 +402,171 @@ const getActivePoliciesForUsage = async (
   return vaultPolicyService.getActivePoliciesForWallet(walletId, groupId);
 };
 
+/**
+ * Reserve spending-limit/velocity usage windows atomically, BEFORE a
+ * transaction is broadcast. This closes the TOCTOU window that a read-then-
+ * write recordUsage() left open: two concurrent broadcasts could each read
+ * a window under the limit and both increment past it. Only enforce-mode
+ * spending_limit/velocity policies reserve (monitor-mode stays read-only,
+ * evaluated separately by evaluatePolicies). A lost reservation on any
+ * window releases every reservation already taken in this call before
+ * reporting failure, so the caller never has to reconcile a partial hold.
+ */
+export async function reserveEnforcedUsage(
+  input: ReserveUsageInput
+): Promise<ReserveUsageOutcome> {
+  const policies = await getActivePoliciesForUsage(input.walletId);
+  const reservations: UsageReservation[] = [];
+
+  for (const policy of policies) {
+    if (policy.enforcement === 'monitor') continue;
+
+    const ok = await reservePolicyWindows(policy, input, reservations);
+    if (!ok) {
+      await releaseReservations(reservations);
+      return { ok: false, reservations: [] };
+    }
+  }
+
+  return { ok: true, reservations };
+}
+
+/**
+ * Release usage reservations taken by reserveEnforcedUsage — either because
+ * the broadcast failed after reservation, or because a later reservation in
+ * the same request was lost.
+ */
+export async function releasePolicyUsage(
+  reservations: UsageReservation[]
+): Promise<void> {
+  await releaseReservations(reservations);
+}
+
+const releaseReservations = async (
+  reservations: UsageReservation[]
+): Promise<void> => {
+  for (const reservation of reservations) {
+    try {
+      await policyRepository.releaseUsageWindow(reservation);
+    } catch (error) {
+      log.error('Failed to release policy usage reservation', {
+        windowId: reservation.windowId,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+};
+
+const reservePolicyWindows = async (
+  policy: VaultPolicy,
+  input: ReserveUsageInput,
+  reservations: UsageReservation[]
+): Promise<boolean> => {
+  const config = policy.config as Record<string, unknown>;
+
+  if (policy.type === 'spending_limit') {
+    return reserveSpendingLimitWindows(
+      policy,
+      config as unknown as SpendingLimitConfig,
+      input,
+      reservations
+    );
+  }
+
+  if (policy.type === 'velocity') {
+    return reserveVelocityWindows(
+      policy,
+      config as unknown as VelocityConfig,
+      input,
+      reservations
+    );
+  }
+
+  return true;
+};
+
+const reserveSpendingLimitWindows = async (
+  policy: VaultPolicy,
+  config: SpendingLimitConfig,
+  input: ReserveUsageInput,
+  reservations: UsageReservation[]
+): Promise<boolean> => {
+  const scopedUserId = getScopedUsageUserId(config.scope, input.userId);
+  const checks: Array<{ type: WindowType; limit: number }> = [];
+  if (config.daily && config.daily > 0) checks.push({ type: 'daily', limit: config.daily });
+  if (config.weekly && config.weekly > 0) checks.push({ type: 'weekly', limit: config.weekly });
+  if (config.monthly && config.monthly > 0) checks.push({ type: 'monthly', limit: config.monthly });
+
+  for (const check of checks) {
+    const windowId = await reserveWindow(policy, input.walletId, scopedUserId, check.type, {
+      amount: input.amount,
+      spendLimit: BigInt(check.limit),
+    });
+    if (!windowId) return false;
+    reservations.push({ windowId, amount: input.amount });
+  }
+  return true;
+};
+
+const reserveVelocityWindows = async (
+  policy: VaultPolicy,
+  config: VelocityConfig,
+  input: ReserveUsageInput,
+  reservations: UsageReservation[]
+): Promise<boolean> => {
+  const scopedUserId = getScopedUsageUserId(config.scope, input.userId);
+  const checks: Array<{ type: WindowType; limit: number }> = [];
+  if (config.maxPerHour && config.maxPerHour > 0) checks.push({ type: 'hourly', limit: config.maxPerHour });
+  if (config.maxPerDay && config.maxPerDay > 0) checks.push({ type: 'daily', limit: config.maxPerDay });
+  if (config.maxPerWeek && config.maxPerWeek > 0) checks.push({ type: 'weekly', limit: config.maxPerWeek });
+
+  for (const check of checks) {
+    const windowId = await reserveWindow(policy, input.walletId, scopedUserId, check.type, {
+      amount: BigInt(0),
+      txLimit: check.limit,
+    });
+    if (!windowId) return false;
+    reservations.push({ windowId, amount: BigInt(0) });
+  }
+  return true;
+};
+
+const reserveWindow = async (
+  policy: VaultPolicy,
+  walletId: string,
+  userId: string | undefined,
+  type: WindowType,
+  guard: WindowReservationGuard
+): Promise<string | null> => {
+  const { start, end } = getWindowBounds(type);
+  const window = await policyRepository.findOrCreateUsageWindow({
+    policyId: policy.id,
+    walletId,
+    userId,
+    windowType: type,
+    windowStart: start,
+    windowEnd: end,
+  });
+  const { count } = await policyRepository.reserveUsageWindow({
+    windowId: window.id,
+    amount: guard.amount,
+    ...(guard.spendLimit !== undefined && { spendLimit: guard.spendLimit }),
+    ...(guard.txLimit !== undefined && { txLimit: guard.txLimit }),
+  });
+  return count > 0 ? window.id : null;
+};
+
 const recordPolicyUsage = async (
   policy: VaultPolicy,
   context: UsageRecordContext
 ): Promise<void> => {
+  // Enforce-mode spending_limit/velocity usage is recorded at reservation
+  // time (reserveEnforcedUsage), not here — recording it again post-
+  // broadcast would double-count. Monitor-mode policies never reserve, so
+  // they still need this read-then-write recording for the UI's usage
+  // display; they don't block, so the TOCTOU window that reservation exists
+  // to close does not apply to them.
+  if (policy.enforcement !== 'monitor') return;
   try {
     for (const record of getUsageWindowRecords(policy, context)) {
       await recordUsageWindow(policy, context.walletId, record);
@@ -680,6 +872,8 @@ function getWindowBounds(type: WindowType): { start: Date; end: Date } {
 export const policyEvaluationEngine = {
   evaluatePolicies,
   recordUsage,
+  reserveEnforcedUsage,
+  releasePolicyUsage,
 };
 
 export default policyEvaluationEngine;

@@ -19,7 +19,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Daily Cap',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 5_000_000, scope: 'wallet' },
         }),
       ]);
@@ -48,7 +48,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Weekly Cap',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { weekly: 20_000_000, scope: 'wallet' },
         }),
       ]);
@@ -76,7 +76,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Monthly Cap',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { monthly: 100_000_000, scope: 'wallet' },
         }),
       ]);
@@ -104,7 +104,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Full Limits',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 5_000_000, weekly: 20_000_000, monthly: 100_000_000, scope: 'wallet' },
         }),
       ]);
@@ -134,7 +134,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Hourly Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerHour: 10, scope: 'wallet' },
         }),
       ]);
@@ -163,7 +163,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Daily Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerDay: 10, scope: 'wallet' },
         }),
       ]);
@@ -188,7 +188,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Weekly Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerWeek: 50, scope: 'wallet' },
         }),
       ]);
@@ -213,7 +213,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Multi Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerHour: 5, maxPerDay: 20, maxPerWeek: 100, scope: 'wallet' },
         }),
       ]);
@@ -243,7 +243,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Per-User Cap',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 1_000_000, scope: 'per_user' },
         }),
       ]);
@@ -267,7 +267,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Per-User Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerDay: 10, scope: 'per_user' },
         }),
       ]);
@@ -291,7 +291,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Wallet Scope',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 1_000_000, scope: 'wallet' },
         }),
       ]);
@@ -315,7 +315,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Wallet Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerDay: 10, scope: 'wallet' },
         }),
       ]);
@@ -339,7 +339,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Approval',
           type: 'approval_required',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: {
             trigger: { always: true },
             requiredApprovals: 1,
@@ -352,14 +352,14 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p2',
           name: 'Addr Control',
           type: 'address_control',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { mode: 'allowlist', allowSelfSend: true, managedBy: 'owner_only' },
         }),
         makePolicy({
           id: 'p3',
           name: 'Delay',
           type: 'time_delay',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: {
             trigger: { always: true },
             delayHours: 12,
@@ -377,13 +377,39 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
       expect(mockPolicyRepo.incrementUsageWindow).not.toHaveBeenCalled();
     });
 
+    it('skips enforce-mode spending_limit/velocity policies (usage was already reserved before broadcast)', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          name: 'Daily Cap',
+          type: 'spending_limit',
+          enforcement: 'enforce',
+          config: { daily: 5_000_000, scope: 'wallet' },
+        }),
+        makePolicy({
+          id: 'p2',
+          name: 'Daily Velocity',
+          type: 'velocity',
+          enforcement: 'enforce',
+          config: { maxPerDay: 10, scope: 'wallet' },
+        }),
+      ]);
+
+      await getPolicyEvaluationEngine().recordUsage(walletId, userId, BigInt(500_000));
+
+      // Recording enforce-mode windows here would double-count on top of the
+      // reservation already taken by reserveEnforcedUsage before broadcast.
+      expect(mockPolicyRepo.findOrCreateUsageWindow).not.toHaveBeenCalled();
+      expect(mockPolicyRepo.incrementUsageWindow).not.toHaveBeenCalled();
+    });
+
     it('skips spending_limit with zero limits', async () => {
       mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
         makePolicy({
           id: 'p1',
           name: 'Zero Limits',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 0, weekly: 0, monthly: 0, scope: 'wallet' },
         }),
       ]);
@@ -399,7 +425,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Zero Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerHour: 0, maxPerDay: 0, maxPerWeek: 0, scope: 'wallet' },
         }),
       ]);
@@ -415,7 +441,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Erroring',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 100, scope: 'wallet' },
         }),
       ]);
@@ -442,7 +468,7 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Erroring',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 100, scope: 'wallet' },
         }),
       ]);
@@ -485,21 +511,21 @@ export function registerPolicyRecordUsageTests(context: PolicyEvaluationEngineTe
           id: 'p1',
           name: 'Spending Cap',
           type: 'spending_limit',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { daily: 5_000_000, scope: 'wallet' },
         }),
         makePolicy({
           id: 'p2',
           name: 'Velocity',
           type: 'velocity',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: { maxPerDay: 10, scope: 'wallet' },
         }),
         makePolicy({
           id: 'p3',
           name: 'Approval',
           type: 'approval_required',
-          enforcement: 'enforce',
+          enforcement: 'monitor',
           config: {
             trigger: { always: true },
             requiredApprovals: 1,

@@ -29,7 +29,8 @@ import {
   findPolicyAddressById,
   findOrCreateUsageWindow,
   incrementUsageWindow,
-  decrementUsageWindow,
+  reserveUsageWindow,
+  releaseUsageWindow,
   WALLET_SCOPED_USAGE_WINDOW_USER_ID,
   policyRepository,
 } from '../../../../src/repositories/policyRepository';
@@ -209,16 +210,118 @@ export const registerPolicyRepositoryUsageExportContracts = () => {
     });
   });
 
-  describe('decrementUsageWindow', () => {
-    it('decrements totalSpent and txCount', async () => {
-      (prisma.policyUsageWindow.update as Mock).mockResolvedValue(undefined);
+  describe('reserveUsageWindow', () => {
+    it('guards on totalSpent only for a spend-limit reservation', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 1 });
 
-      await decrementUsageWindow('window-1', BigInt(10000));
+      const result = await reserveUsageWindow({
+        windowId: 'window-1',
+        amount: BigInt(600_000),
+        spendLimit: BigInt(1_000_000),
+      });
 
-      expect(prisma.policyUsageWindow.update).toHaveBeenCalledWith({
+      expect(result).toEqual({ count: 1 });
+      expect(prisma.policyUsageWindow.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'window-1',
+          totalSpent: { lte: BigInt(400_000) },
+        },
+        data: {
+          totalSpent: { increment: BigInt(600_000) },
+          txCount: { increment: 1 },
+        },
+      });
+    });
+
+    it('guards on txCount only for a velocity reservation', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const result = await reserveUsageWindow({
+        windowId: 'window-1',
+        amount: BigInt(0),
+        txLimit: 10,
+      });
+
+      expect(result).toEqual({ count: 1 });
+      expect(prisma.policyUsageWindow.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'window-1',
+          txCount: { lt: 10 },
+        },
+        data: {
+          totalSpent: { increment: BigInt(0) },
+          txCount: { increment: 1 },
+        },
+      });
+    });
+
+    it('returns count 0 when the reservation is lost to a concurrent reservation', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      const result = await reserveUsageWindow({
+        windowId: 'window-1',
+        amount: BigInt(600_000),
+        spendLimit: BigInt(1_000_000),
+      });
+
+      expect(result).toEqual({ count: 0 });
+    });
+
+    it('applies no guard clause when neither spendLimit nor txLimit is given', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      await reserveUsageWindow({ windowId: 'window-1', amount: BigInt(0) });
+
+      expect(prisma.policyUsageWindow.updateMany).toHaveBeenCalledWith({
         where: { id: 'window-1' },
         data: {
+          totalSpent: { increment: BigInt(0) },
+          txCount: { increment: 1 },
+        },
+      });
+    });
+  });
+
+  describe('releaseUsageWindow', () => {
+    it('decrements totalSpent and txCount, floored via the where guard', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      await releaseUsageWindow({ windowId: 'window-1', amount: BigInt(10000) });
+
+      expect(prisma.policyUsageWindow.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'window-1',
+          totalSpent: { gte: BigInt(10000) },
+          txCount: { gt: 0 },
+        },
+        data: {
           totalSpent: { decrement: BigInt(10000) },
+          txCount: { decrement: 1 },
+        },
+      });
+    });
+
+    it('is a no-op (count 0) when the window is already below the release amount', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(
+        releaseUsageWindow({ windowId: 'window-1', amount: BigInt(10000) })
+      ).resolves.toBeUndefined();
+    });
+
+    it('still lowers txCount when releasing a zero-amount velocity reservation', async () => {
+      (prisma.policyUsageWindow.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      await releaseUsageWindow({ windowId: 'window-1', amount: BigInt(0) });
+
+      expect(prisma.policyUsageWindow.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'window-1',
+          totalSpent: { gte: BigInt(0) },
+          txCount: { gt: 0 },
+        },
+        data: {
+          totalSpent: { decrement: BigInt(0) },
           txCount: { decrement: 1 },
         },
       });
@@ -273,7 +376,8 @@ export const registerPolicyRepositoryUsageExportContracts = () => {
     it('exports all usage window operations', () => {
       expect(policyRepository.findOrCreateUsageWindow).toBe(findOrCreateUsageWindow);
       expect(policyRepository.incrementUsageWindow).toBe(incrementUsageWindow);
-      expect(policyRepository.decrementUsageWindow).toBe(decrementUsageWindow);
+      expect(policyRepository.reserveUsageWindow).toBe(reserveUsageWindow);
+      expect(policyRepository.releaseUsageWindow).toBe(releaseUsageWindow);
     });
   });
 };

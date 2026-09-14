@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   findLinkedDraft: vi.fn(),
   evaluatePolicies: vi.fn(),
   recordUsage: vi.fn(),
+  reserveEnforcedUsage: vi.fn(),
+  releasePolicyUsage: vi.fn(),
   audit: vi.fn(),
 }));
 
@@ -42,6 +44,8 @@ vi.mock('../../../src/services/vaultPolicy', () => ({
   policyEvaluationEngine: {
     evaluatePolicies: mocks.evaluatePolicies,
     recordUsage: mocks.recordUsage,
+    reserveEnforcedUsage: mocks.reserveEnforcedUsage,
+    releasePolicyUsage: mocks.releasePolicyUsage,
   },
 }));
 vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
@@ -104,6 +108,8 @@ describe('transaction signing-intent broadcast route', () => {
     mocks.findAddressStrings.mockResolvedValue([]);
     mocks.evaluatePolicies.mockResolvedValue({ allowed: true });
     mocks.recordUsage.mockResolvedValue(undefined);
+    mocks.reserveEnforcedUsage.mockResolvedValue({ ok: true, reservations: [] });
+    mocks.releasePolicyUsage.mockResolvedValue(undefined);
     mocks.audit.mockResolvedValue(undefined);
     mocks.broadcastAndSave.mockResolvedValue({
       txid: artifact.txid,
@@ -373,6 +379,7 @@ describe('transaction signing-intent broadcast route', () => {
     expect(response.status).toBe(200);
     expect(mocks.broadcastAndSave).toHaveBeenCalledOnce();
     expect(mocks.evaluatePolicies).not.toHaveBeenCalled();
+    expect(mocks.reserveEnforcedUsage).not.toHaveBeenCalled();
     expect(mocks.recordUsage).not.toHaveBeenCalled();
   });
 
@@ -389,6 +396,7 @@ describe('transaction signing-intent broadcast route', () => {
     expect(response.status).toBe(200);
     expect(mocks.broadcastAndSave).toHaveBeenCalledOnce();
     expect(mocks.evaluatePolicies).not.toHaveBeenCalled();
+    expect(mocks.reserveEnforcedUsage).not.toHaveBeenCalled();
     expect(mocks.recordUsage).not.toHaveBeenCalled();
   });
 

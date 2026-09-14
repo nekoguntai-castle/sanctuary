@@ -11,6 +11,8 @@ const { mockLog, mockPolicyRepo, mockWalletRepo, mockVaultPolicyService } = vi.h
   mockPolicyRepo: {
     findOrCreateUsageWindow: vi.fn(),
     incrementUsageWindow: vi.fn().mockResolvedValue(undefined),
+    reserveUsageWindow: vi.fn(),
+    releaseUsageWindow: vi.fn().mockResolvedValue(undefined),
     findPolicyAddresses: vi.fn(),
     createPolicyEvent: vi.fn().mockResolvedValue({}),
   },

@@ -501,14 +501,54 @@ export async function incrementUsageWindow(
   });
 }
 
-export async function decrementUsageWindow(
-  windowId: string,
-  amount: bigint
-): Promise<void> {
-  await prisma.policyUsageWindow.update({
-    where: { id: windowId },
+/**
+ * Reserve usage against a window by conditionally incrementing it only if
+ * the relevant limit is not yet exceeded. Guards on exactly one clause —
+ * `totalSpent` for a spend-limit reservation, `txCount` for a velocity
+ * reservation — mirroring the evaluator that owns that limit type. A
+ * `count` of 0 means the reservation was lost to a concurrent reservation
+ * (or another process) that already consumed the remaining headroom; the
+ * caller must not treat the window as incremented.
+ */
+export async function reserveUsageWindow(data: {
+  windowId: string;
+  amount: bigint;
+  spendLimit?: bigint;
+  txLimit?: number;
+}): Promise<{ count: number }> {
+  const where: Prisma.PolicyUsageWindowWhereInput = { id: data.windowId };
+  if (data.spendLimit !== undefined) {
+    where.totalSpent = { lte: data.spendLimit - data.amount };
+  } else if (data.txLimit !== undefined) {
+    where.txCount = { lt: data.txLimit };
+  }
+  return prisma.policyUsageWindow.updateMany({
+    where,
     data: {
-      totalSpent: { decrement: amount },
+      totalSpent: { increment: data.amount },
+      txCount: { increment: 1 },
+    },
+  });
+}
+
+/**
+ * Release a previously reserved usage window. Floored at 0 via the where
+ * guard — a window already at or below the release amount is left alone
+ * rather than driven negative, so a duplicate or out-of-order release
+ * cannot corrupt the window.
+ */
+export async function releaseUsageWindow(data: {
+  windowId: string;
+  amount: bigint;
+}): Promise<void> {
+  await prisma.policyUsageWindow.updateMany({
+    where: {
+      id: data.windowId,
+      totalSpent: { gte: data.amount },
+      txCount: { gt: 0 },
+    },
+    data: {
+      totalSpent: { decrement: data.amount },
       txCount: { decrement: 1 },
     },
   });
@@ -608,7 +648,8 @@ export const policyRepository = {
   // Usage windows
   findOrCreateUsageWindow,
   incrementUsageWindow,
-  decrementUsageWindow,
+  reserveUsageWindow,
+  releaseUsageWindow,
   // Support package
   getSupportStats,
 };

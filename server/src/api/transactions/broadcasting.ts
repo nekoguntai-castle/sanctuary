@@ -16,6 +16,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
+import type { UsageReservation } from '../../services/vaultPolicy/policyEvaluationEngine';
 import { getNetwork } from '../../services/bitcoin/utils';
 import {
   validateSignedArtifact,
@@ -23,7 +24,7 @@ import {
   type SigningIntentHandle,
   type ValidatedBroadcastArtifact,
 } from '../../services/bitcoin/signingIntent';
-import { broadcastAndSave } from '../../services/bitcoin/transactions/broadcasting';
+import { broadcastAndSave, DefiniteBroadcastRejectionError } from '../../services/bitcoin/transactions/broadcasting';
 import type {
   TransactionInputMetadata,
   TransactionOutputMetadata,
@@ -255,20 +256,37 @@ const assertOptionalMetadata = (
   }
 };
 
-const assertPolicyAllows = async (
+/**
+ * Evaluate policies for this broadcast and, for every enforce-mode
+ * spending_limit/velocity policy, reserve its usage windows atomically
+ * BEFORE broadcastAndSave. A lost reservation (concurrent broadcast already
+ * consumed the remaining headroom) blocks the same as any other triggered
+ * policy. The returned reservations must be released by the caller if the
+ * broadcast itself later fails.
+ */
+const reservePolicyUsage = async (
   req: Request,
   walletId: string,
   metadata: CanonicalRouteMetadata,
-): Promise<void> => {
-  if (metadata.externalOutputs.length === 0) return;
+): Promise<UsageReservation[]> => {
+  if (metadata.externalOutputs.length === 0) return [];
+  const userId = requireAuthenticatedUser(req).userId;
   const result = await policyEvaluationEngine.evaluatePolicies({
     walletId,
-    userId: requireAuthenticatedUser(req).userId,
+    userId,
     recipient: metadata.externalOutputs[0].address,
     amount: BigInt(metadata.amount),
     outputs: metadata.externalOutputs,
   });
   if (!result.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
+
+  const reservation = await policyEvaluationEngine.reserveEnforcedUsage({
+    walletId,
+    userId,
+    amount: BigInt(metadata.amount),
+  });
+  if (!reservation.ok) throw new ForbiddenError('Transaction blocked by vault policy');
+  return reservation.reservations;
 };
 
 const auditFailure = async (req: WalletRequest, error: unknown): Promise<void> => {
@@ -279,12 +297,53 @@ const auditFailure = async (req: WalletRequest, error: unknown): Promise<void> =
   });
 };
 
+/**
+ * Release reservations after a failed broadcast — but ONLY when the failure
+ * is a definite rejection (the node/network refused the transaction before
+ * anything was accepted). broadcastAndSave can also throw after the
+ * transaction was already accepted or recorded (markSigningIntentBroadcastAccepted
+ * / persistTransaction) or when the outcome is unknown
+ * (markSigningIntentBroadcastUnknown) — releasing the reservation in those
+ * cases would let a spend that may have gone out stop counting against the
+ * enforce-mode limit it was reserved against. Any other error therefore
+ * keeps the reservation held: fail-safe means over-counting, never
+ * under-counting, a real spend.
+ */
+const releaseReservationsOnFailure = async (
+  reservations: UsageReservation[],
+  error: unknown,
+): Promise<void> => {
+  if (reservations.length === 0) return;
+  if (!(error instanceof DefiniteBroadcastRejectionError)) return;
+  try {
+    await policyEvaluationEngine.releasePolicyUsage(reservations);
+  } catch (releaseError) {
+    log.error('Failed to release policy usage reservation', { error: getErrorMessage(releaseError) });
+    return;
+  }
+};
+
+const recordMonitorUsage = async (req: WalletRequest, artifact: ValidatedBroadcastArtifact, metadata: CanonicalRouteMetadata): Promise<void> => {
+  if (metadata.amount <= 0 || artifact.broadcastReplay) return;
+  try {
+    await policyEvaluationEngine.recordUsage(
+      artifact.walletId,
+      requireAuthenticatedUser(req).userId,
+      BigInt(metadata.amount),
+    );
+  } catch (error) {
+    log.warn('Failed to record policy usage', { error: getErrorMessage(error) });
+    return;
+  }
+};
+
 const broadcastValidated = async (
   req: WalletRequest,
   artifact: ValidatedBroadcastArtifact,
   metadata: CanonicalRouteMetadata,
   draft: BroadcastDraft,
   labels: { label?: string | null; memo?: string | null; replacesTxid?: string | null },
+  reservations: UsageReservation[],
 ) => {
   try {
     const result = await broadcastAndSave(artifact, {
@@ -303,16 +362,15 @@ const broadcastValidated = async (
       success: true,
       details: { walletId: artifact.walletId, txid: result.txid, intentId: artifact.intent.intentId },
     });
-    if (metadata.amount > 0 && !artifact.broadcastReplay) {
-      policyEvaluationEngine.recordUsage(
-        artifact.walletId,
-        requireAuthenticatedUser(req).userId,
-        BigInt(metadata.amount),
-      ).catch(error => log.warn('Failed to record policy usage', { error: getErrorMessage(error) }));
-    }
+    // Enforce-mode spending_limit/velocity usage was already recorded at
+    // reservation time (reservePolicyUsage, before broadcastAndSave); the
+    // reservation IS the record, so it is not recorded again here.
+    // Monitor-mode policies never reserve and still need it.
+    await recordMonitorUsage(req, artifact, metadata);
     return result;
   } catch (error) {
     await auditFailure(req, error);
+    await releaseReservationsOnFailure(reservations, error);
     throw error;
   }
 };
@@ -344,7 +402,7 @@ const handleTransactionBroadcast = async (
     authoritativeDraft,
     metadata,
   );
-  if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
+  const reservations = artifact.broadcastReplay ? [] : await reservePolicyUsage(req, walletId, metadata);
   // Unlike label/memo, replacesTxid has no draft fallback: it is not a
   // persisted draft column (see CreateDraftRequest.replacesTxid in
   // src/api/drafts.ts), so an RBF broadcast must send it directly in this
@@ -353,7 +411,7 @@ const handleTransactionBroadcast = async (
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
     replacesTxid: body.replacesTxid,
-  });
+  }, reservations);
 };
 
 const handlePsbtBroadcast = async (
@@ -371,12 +429,12 @@ const handlePsbtBroadcast = async (
   if (authoritativeDraft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(authoritativeDraft);
   const metadata = await buildCanonicalMetadata(artifact);
   assertOptionalMetadata({}, authoritativeDraft, metadata);
-  if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
+  const reservations = artifact.broadcastReplay ? [] : await reservePolicyUsage(req, walletId, metadata);
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
     replacesTxid: body.replacesTxid,
-  });
+  }, reservations);
 };
 
 router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {

@@ -13,6 +13,7 @@ import { registerPolicyEvaluateControlsTimingTests } from './policyEvaluationEng
 import { registerPolicyEvaluateErrorPreviewMultipleTests } from './policyEvaluationEngine/evaluate.error-preview-multiple.contracts';
 import { registerPolicyEvaluateSpendingApprovalTests } from './policyEvaluationEngine/evaluate.spending-approval.contracts';
 import { registerPolicyRecordUsageTests } from './policyEvaluationEngine/recordUsage.contracts';
+import { registerReserveEnforcedUsageTests } from './policyEvaluationEngine/reserveEnforcedUsage.contracts';
 import { setupPolicyEvaluationEngineTestHooks } from './policyEvaluationEngine/policyEvaluationEngineTestHarness';
 import { registerPolicyWindowBoundsTests } from './policyEvaluationEngine/windowBounds.contracts';
 
@@ -26,5 +27,6 @@ describe('PolicyEvaluationEngine', () => {
   });
 
   registerPolicyRecordUsageTests(context);
+  registerReserveEnforcedUsageTests(context);
   registerPolicyWindowBoundsTests(context);
 });
