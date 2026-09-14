@@ -43,6 +43,7 @@ describe('stepValidation', () => {
     psbtDeviceId: null,
     draftId: null,
     isDraftMode: false,
+    replacesTxid: null,
     isSubmitting: false,
     error: null,
     ...overrides,

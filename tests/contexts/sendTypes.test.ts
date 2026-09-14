@@ -44,6 +44,7 @@ describe('send/types', () => {
     psbtDeviceId: null,
     draftId: null,
     isDraftMode: false,
+    replacesTxid: null,
     isSubmitting: false,
     error: null,
     ...overrides,

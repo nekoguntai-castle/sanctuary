@@ -284,7 +284,7 @@ const broadcastValidated = async (
   artifact: ValidatedBroadcastArtifact,
   metadata: CanonicalRouteMetadata,
   draft: BroadcastDraft,
-  labels: { label?: string | null; memo?: string | null },
+  labels: { label?: string | null; memo?: string | null; replacesTxid?: string | null },
 ) => {
   try {
     const result = await broadcastAndSave(artifact, {
@@ -296,6 +296,7 @@ const broadcastValidated = async (
       outputs: metadata.outputs,
       ...(labels.label != null && { label: labels.label }),
       ...(labels.memo != null && { memo: labels.memo }),
+      ...(labels.replacesTxid != null && { replacesTxid: labels.replacesTxid }),
       ...(draft && { draftId: draft.id }),
     });
     await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
@@ -344,9 +345,14 @@ const handleTransactionBroadcast = async (
     metadata,
   );
   if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
+  // Unlike label/memo, replacesTxid has no draft fallback: it is not a
+  // persisted draft column (see CreateDraftRequest.replacesTxid in
+  // src/api/drafts.ts), so an RBF broadcast must send it directly in this
+  // request body to link — the memo prefix it replaces is never consulted.
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
+    replacesTxid: body.replacesTxid,
   });
 };
 
@@ -369,6 +375,7 @@ const handlePsbtBroadcast = async (
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
+    replacesTxid: body.replacesTxid,
   });
 };
 

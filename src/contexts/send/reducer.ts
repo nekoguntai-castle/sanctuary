@@ -71,6 +71,7 @@ export function createInitialState(defaultFeeRate = 1): TransactionState {
     // Draft
     draftId: null,
     isDraftMode: false,
+    replacesTxid: null,
 
     // UI state
     isSubmitting: false,

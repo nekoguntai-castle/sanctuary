@@ -1,4 +1,4 @@
-import prisma from '../../models/prisma';
+import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { Prisma, type Transaction } from '../../generated/prisma/client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type {
@@ -6,6 +6,39 @@ import type {
   TransactionPaginatedResult,
   TransactionCursor,
 } from '../types';
+
+/**
+ * Spent outpoints recorded for a transaction's own inputs, keyed by the
+ * transaction's internal id. Used to verify a claimed RBF replacement
+ * actually shares an input with the transaction it claims to replace.
+ */
+export async function findInputOutpointsByTransactionId(
+  transactionId: string,
+  client: PrismaTxClient = prisma,
+): Promise<Array<{ txid: string; vout: number }>> {
+  return client.transactionInput.findMany({
+    where: { transactionId },
+    select: { txid: true, vout: true },
+  });
+}
+
+/**
+ * The unconfirmed transaction on this wallet that a claimed RBF
+ * `replacesTxid` names, if one currently exists. Confirmed or unknown
+ * `txid`s resolve to `null` — a caller must not link against them. Accepts
+ * either the module-level client (pre-broadcast, read-only) or a
+ * transaction client (post-broadcast, inside the persistence transaction).
+ */
+export async function findUnconfirmedTransactionForReplacement(
+  txid: string,
+  walletId: string,
+  client: PrismaTxClient = prisma,
+): Promise<{ id: string; label: string | null } | null> {
+  return client.transaction.findFirst({
+    where: { txid, walletId, confirmations: 0, blockHeight: null },
+    select: { id: true, label: true },
+  });
+}
 
 export async function deleteByWalletId(walletId: string): Promise<number> {
   const result = await prisma.transaction.deleteMany({

@@ -110,6 +110,8 @@ Failing tests first: `persistTransaction` unit tests (memo prefix alone → no l
 
 Verification: server gates as Phase 1; frontend gates as Phase 4; gateway tsc + tests (shared schema change); `npm --workspace shared run build` before server/gateway tests.
 
+Status: done.
+
 ## Phase 6 — oversized dead-letter entries are truncated, never silently lost (server)
 
 Finding: `dead-letter-oversized-entry-write-rejected-and-relost-forever`.

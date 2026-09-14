@@ -9,6 +9,7 @@
 import { withTransaction } from '../../../models/prisma';
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../../../utils/logger';
+import { resolveReplacementLinkAfterBroadcast, selectCandidateOutpoints } from './replacementLink';
 import { storeTransactionInputs, storeTransactionOutputs } from './storeTransactionIO';
 import {
   createInternalReceivingTransactions,
@@ -33,6 +34,7 @@ export async function persistTransaction(
     fee: number;
     label?: string;
     memo?: string;
+    replacesTxid?: string;
     utxos: Array<{ txid: string; vout: number }>;
     draftId?: string;
     inputs?: TransactionInputMetadata[];
@@ -91,33 +93,36 @@ export async function persistTransaction(
       },
     });
 
-    // Check if this is an RBF transaction (memo starts with "Replacing transaction ")
-    let replacementForTxid: string | undefined;
+    // Structural RBF linkage: `assertReplacementLink` already verified
+    // `metadata.replacesTxid` before this transaction was broadcast. This is
+    // a best-effort re-check (the original could have confirmed in the
+    // race between that check and this persistence transaction) and must
+    // never fail persistence of an already-broadcast transaction — a stale
+    // link only skips linkage and logs a warning. `metadata.memo` is display
+    // text only and has no bearing on this decision
+    // (rbf-memo-prefix-spoofs-transaction-replacement).
+    const replacement = await resolveReplacementLinkAfterBroadcast(
+      walletId,
+      txid,
+      metadata.replacesTxid,
+      selectCandidateOutpoints(metadata.inputs, metadata.utxos),
+      tx
+    );
+    const replacementForTxid = replacement ? metadata.replacesTxid : undefined;
     let labelToUse = metadata.label;
-    let memoToUse = metadata.memo;
+    const memoToUse = metadata.memo;
 
-    if (metadata.memo && metadata.memo.startsWith('Replacing transaction ')) {
-      replacementForTxid = metadata.memo.replace('Replacing transaction ', '').trim();
-
-      const originalTx = await tx.transaction.findFirst({
-        where: {
-          txid: replacementForTxid,
-          walletId,
+    if (replacement) {
+      await tx.transaction.update({
+        where: { id: replacement.originalTransactionId },
+        data: {
+          rbfStatus: 'replaced',
+          replacedByTxid: txid,
         },
       });
 
-      if (originalTx) {
-        await tx.transaction.update({
-          where: { id: originalTx.id },
-          data: {
-            rbfStatus: 'replaced',
-            replacedByTxid: txid,
-          },
-        });
-
-        if (!labelToUse && originalTx.label) {
-          labelToUse = originalTx.label;
-        }
+      if (!labelToUse && replacement.inheritedLabel) {
+        labelToUse = replacement.inheritedLabel;
       }
     }
 

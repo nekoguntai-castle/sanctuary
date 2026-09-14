@@ -173,6 +173,7 @@ function buildDraftInitialState(
     rbfEnabled: draftData.enableRBF,
     subtractFees: draftData.subtractFees,
     draftId: draftData.id,
+    replacesTxid: draftData.replacesTxid ?? null,
     unsignedPsbt: draftData.signedPsbtBase64 || draftData.psbtBase64,
     signedDevices: draftData.signedDeviceIds || [],
     payjoinUrl: draftData.payjoinUrl || null,

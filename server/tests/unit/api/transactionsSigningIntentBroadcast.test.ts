@@ -64,6 +64,7 @@ vi.mock('../../../src/services/bitcoin/utils', () => ({
 
 import router from '../../../src/api/transactions/broadcasting';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { InvalidInputError } from '../../../src/errors/ApiError';
 
 const artifact = {
   walletId: 'wallet-1',
@@ -321,6 +322,36 @@ describe('transaction signing-intent broadcast route', () => {
     }));
   });
 
+  it('forwards a structural replacesTxid to broadcastAndSave', async () => {
+    const replacesTxid = '5'.repeat(64);
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send({
+      ...body, replacesTxid,
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+      replacesTxid,
+    }));
+  });
+
+  it('rejects a malformed replacesTxid before broadcastAndSave is called', async () => {
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send({
+      ...body, replacesTxid: 'not-a-txid',
+    });
+    expect(response.status).toBe(400);
+    expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('maps an InvalidInputError thrown by broadcastAndSave (e.g. an unverifiable replacesTxid) to 400, not 500', async () => {
+    const replacesTxid = '7'.repeat(64);
+    mocks.broadcastAndSave.mockRejectedValueOnce(
+      new InvalidInputError('replacesTxid does not match an unconfirmed transaction sharing an input', 'replacesTxid')
+    );
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send({
+      ...body, replacesTxid,
+    });
+    expect(response.status).toBe(400);
+  });
+
   it('does not fail broadcast when asynchronous policy usage recording fails', async () => {
     mocks.recordUsage.mockRejectedValueOnce(new Error('usage unavailable'));
     const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
@@ -380,6 +411,17 @@ describe('transaction signing-intent broadcast route', () => {
       signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest,
     });
     expect(response.status).toBe(200);
+  });
+
+  it('forwards a structural replacesTxid from the PSBT route to broadcastAndSave', async () => {
+    const replacesTxid = '6'.repeat(64);
+    const response = await request(app).post('/api/v1/wallets/wallet-1/psbt/broadcast').send({
+      signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest, replacesTxid,
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+      replacesTxid,
+    }));
   });
 
   describe('intent-linked draft resolution', () => {
@@ -519,6 +561,20 @@ describe('transaction signing-intent broadcast route', () => {
       expect(response.status).toBe(200);
       expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
         label: 'L', memo: 'M',
+      }));
+    });
+
+    it('does not fall back to any draft field for replacesTxid when the request omits it', async () => {
+      // Unlike label/memo, replacesTxid has no draft-persisted column to fall
+      // back to (see CreateDraftRequest.replacesTxid in src/api/drafts.ts) -
+      // an RBF broadcast must send it directly on this request.
+      mocks.findLinkedDraft.mockResolvedValue(draft({ label: 'L', memo: 'M' }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.not.objectContaining({
+        replacesTxid: expect.anything(),
       }));
     });
   });

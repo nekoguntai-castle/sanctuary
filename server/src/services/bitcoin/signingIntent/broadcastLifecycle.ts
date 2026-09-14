@@ -19,6 +19,12 @@ export const DurableBroadcastMetadataSchema = z.object({
   fee: SafeSatsSchema,
   label: z.string().optional(),
   memo: z.string().optional(),
+  // Structural RBF replacement linkage (rbf-memo-prefix-spoofs-transaction-replacement).
+  // Must round-trip through the durable claim record: broadcastReconciliation.ts
+  // re-persists an accepted broadcast from this exact metadata after a crash
+  // between network acceptance and persistence, so if this field were missing
+  // here the reconciliation path would silently drop the RBF link.
+  replacesTxid: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   utxos: z.array(OutpointSchema).min(1),
   draftId: z.string().min(1).optional(),
   inputs: z.array(OutpointSchema.extend({

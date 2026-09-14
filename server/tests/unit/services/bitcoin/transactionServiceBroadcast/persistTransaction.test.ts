@@ -1,0 +1,190 @@
+/**
+ * persistTransaction — RBF replacement linkage
+ *
+ * `metadata.replacesTxid` is the only signal that may link a broadcast
+ * transaction to the one it replaces; `metadata.memo` is display text and
+ * must have no effect on linkage. `persistTransaction` runs AFTER the
+ * transaction has already been broadcast to the network (the invalid case
+ * is rejected earlier, pre-broadcast, by `assertReplacementLink` — see
+ * replacementLink.test.ts), so a `replacesTxid` that no longer verifies
+ * here (e.g. the original confirmed in the race between the pre-broadcast
+ * check and persistence) must never fail persistence of an
+ * already-accepted transaction: it only skips linkage and logs a warning.
+ * See iteration-18 plan Phase 5 (rbf-memo-prefix-spoofs-transaction-replacement).
+ */
+import './transactionServiceBroadcastTestHarness';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockLogger = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+
+vi.mock('../../../../../src/utils/logger', () => ({
+  createLogger: () => mockLogger,
+}));
+
+import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
+import { persistTransaction } from '../../../../../src/services/bitcoin/transactions/persistTransaction';
+
+const walletId = 'wallet-under-test';
+const newTxid = 'new-tx-' + 'a'.repeat(57);
+const originalTxid = 'b'.repeat(64);
+const sharedInput = { txid: 'c'.repeat(64), vout: 0 };
+const unrelatedInput = { txid: 'd'.repeat(64), vout: 1 };
+const rawTxHex = '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000';
+
+const baseMetadata = {
+  recipient: 'tb1qexternalrecipientaddress00000000000000',
+  amount: 45000,
+  fee: 2000,
+  utxos: [sharedInput],
+  inputs: [{ txid: sharedInput.txid, vout: sharedInput.vout, address: 'addr-in', amount: 50000 }],
+  outputs: [{ address: 'addr-out', amount: 45000, outputType: 'recipient' as const, isOurs: false }],
+};
+
+describe('persistTransaction — RBF replacement linkage', () => {
+  beforeEach(() => {
+    resetPrismaMocks();
+    mockLogger.warn.mockClear();
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
+  });
+
+  it('does not link a replacement from the memo prefix alone', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-db-id',
+      txid: originalTxid,
+      walletId,
+      confirmations: 0,
+      blockHeight: null,
+      label: 'Original label',
+    });
+
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      memo: `Replacing transaction ${originalTxid}`,
+      // No replacesTxid: the memo prefix alone must have no effect.
+    });
+
+    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({
+          replacementForTxid: undefined,
+          memo: `Replacing transaction ${originalTxid}`,
+        })],
+      })
+    );
+  });
+
+  it('skips a stale link (original since confirmed) without throwing, and still stores the transaction', async () => {
+    // The where-clause filter (confirmations: 0, blockHeight: null) excludes
+    // a since-confirmed original, so the lookup resolves to null here.
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+
+    await expect(persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      replacesTxid: originalTxid,
+    })).resolves.toMatchObject({ mainTransactionCreated: true });
+
+    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ replacementForTxid: undefined })],
+      })
+    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Skipping RBF replacement link'),
+      expect.objectContaining({ txid: newTxid, replacesTxid: originalTxid })
+    );
+  });
+
+  it('skips a stale link (no shared input) without throwing, and still stores the transaction', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-db-id',
+      txid: originalTxid,
+      walletId,
+      confirmations: 0,
+      blockHeight: null,
+      label: null,
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([unrelatedInput]);
+
+    await expect(persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      replacesTxid: originalTxid,
+    })).resolves.toMatchObject({ mainTransactionCreated: true });
+
+    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ replacementForTxid: undefined })],
+      })
+    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Skipping RBF replacement link'),
+      expect.objectContaining({ txid: newTxid, replacesTxid: originalTxid })
+    );
+  });
+
+  it('links a genuine replacement and inherits the original label', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-db-id',
+      txid: originalTxid,
+      walletId,
+      confirmations: 0,
+      blockHeight: null,
+      label: 'Original payment label',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedInput]);
+
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      label: undefined,
+      replacesTxid: originalTxid,
+    });
+
+    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
+      where: { id: 'original-db-id' },
+      data: { rbfStatus: 'replaced', replacedByTxid: newTxid },
+    });
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({
+          replacementForTxid: originalTxid,
+          label: 'Original payment label',
+        })],
+      })
+    );
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it('prefers an explicitly provided label over the inherited one', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-db-id',
+      txid: originalTxid,
+      walletId,
+      confirmations: 0,
+      blockHeight: null,
+      label: 'Old label',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedInput]);
+
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      label: 'New explicit label',
+      replacesTxid: originalTxid,
+    });
+
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({
+          label: 'New explicit label',
+        })],
+      })
+    );
+  });
+});

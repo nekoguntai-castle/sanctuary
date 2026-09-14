@@ -77,6 +77,25 @@ describe('signing intent broadcast lifecycle', () => {
     expect(mocks.claim).not.toHaveBeenCalled();
   });
 
+  it('accepts and preserves a structural replacesTxid in the durable claim metadata', async () => {
+    // Non-regression: DurableBroadcastMetadataSchema is `.strict()`, so an
+    // unlisted key rejects the whole metadata object with "Broadcast
+    // metadata is malformed" before a broadcast claim is even attempted —
+    // which is exactly what happened to every RBF broadcast when
+    // replacesTxid was added to broadcastAndSave's metadata without also
+    // being added here (rbf-memo-prefix-spoofs-transaction-replacement).
+    mocks.claim.mockResolvedValue({ status: 'claimed', record: {} });
+    const replacesTxid = 'd'.repeat(64);
+    const metadataWithReplacesTxid = { ...metadata, replacesTxid };
+
+    await expect(claimSigningIntentBroadcast(artifact, metadataWithReplacesTxid))
+      .resolves.toEqual({ status: 'claimed', leaseToken: expect.any(String) });
+
+    expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: metadataWithReplacesTxid,
+    }));
+  });
+
   it('delegates every lease-bound outcome transition', async () => {
     mocks.unknown.mockResolvedValue(true);
     mocks.rejected.mockResolvedValue(true);

@@ -19,6 +19,9 @@ vi.mock('../../../src/models/prisma', () => ({
       count: vi.fn(),
       groupBy: vi.fn(),
     },
+    transactionInput: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -562,6 +565,54 @@ describe('Transaction Repository', () => {
         where: { confirmations: { lt: 6 } },
         select: { walletId: true },
         distinct: ['walletId'],
+      });
+    });
+  });
+
+  describe('findUnconfirmedTransactionForReplacement', () => {
+    it('queries by txid, walletId, and the unconfirmed filter together', async () => {
+      (prisma.transaction.findFirst as Mock).mockResolvedValue({ id: 'tx-1', label: 'L' });
+
+      await expect(transactionRepository.findUnconfirmedTransactionForReplacement(
+        'a'.repeat(64),
+        'wallet-1',
+      )).resolves.toEqual({ id: 'tx-1', label: 'L' });
+
+      // This where-clause is the actual security boundary for RBF linkage: a
+      // confirmed original or one on another wallet must not resolve here.
+      expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
+        where: {
+          txid: 'a'.repeat(64),
+          walletId: 'wallet-1',
+          confirmations: 0,
+          blockHeight: null,
+        },
+        select: { id: true, label: true },
+      });
+    });
+
+    it('resolves to null when no unconfirmed match exists on this wallet', async () => {
+      (prisma.transaction.findFirst as Mock).mockResolvedValue(null);
+
+      await expect(transactionRepository.findUnconfirmedTransactionForReplacement(
+        'a'.repeat(64),
+        'wallet-1',
+      )).resolves.toBeNull();
+    });
+  });
+
+  describe('findInputOutpointsByTransactionId', () => {
+    it('selects only txid and vout, scoped to the transaction id', async () => {
+      (prisma.transactionInput.findMany as Mock).mockResolvedValue([
+        { txid: 'b'.repeat(64), vout: 0 },
+      ]);
+
+      await expect(transactionRepository.findInputOutpointsByTransactionId('tx-1'))
+        .resolves.toEqual([{ txid: 'b'.repeat(64), vout: 0 }]);
+
+      expect(prisma.transactionInput.findMany).toHaveBeenCalledWith({
+        where: { transactionId: 'tx-1' },
+        select: { txid: true, vout: true },
       });
     });
   });

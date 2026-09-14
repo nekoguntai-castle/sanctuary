@@ -68,6 +68,18 @@ export interface DraftTransaction {
   label?: DraftTextValue;
   memo?: DraftTextValue;
 
+  // RBF replacement linkage (client-side only: not a server-persisted draft
+  // field; the RBF flow attaches it locally before navigating to the send
+  // wizard so it reaches the broadcast request unchanged). Known trade-off:
+  // it does not survive reopening the draft later from the drafts list (a
+  // fresh server fetch has no such column) or an alternate/mobile client
+  // that only sets `memo`. Both send unlinked (server still persists the
+  // transaction; it just skips the rbfStatus/replacedByTxid update) rather
+  // than falling back to the memo prefix, which is exactly the untrusted
+  // shortcut this fix removes. Extending linkage to reopened drafts needs a
+  // DraftTransaction column and migration — out of scope for this phase.
+  replacesTxid?: string;
+
   // PSBT data
   psbtBase64: string;
   signingContext?: PsbtSigningContext | null;

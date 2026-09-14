@@ -16,6 +16,7 @@ import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
 import { transactionBroadcastsTotal } from '../../../observability/metrics';
 import { persistTransaction } from './persistTransaction';
+import { assertReplacementLink, selectCandidateOutpoints } from './replacementLink';
 import type { TransactionInputMetadata, TransactionOutputMetadata, BroadcastResult } from './types';
 import type { ValidatedBroadcastArtifact } from '../signingIntent/artifactValidation';
 import {
@@ -145,6 +146,7 @@ export async function broadcastAndSave(
     fee: number;
     label?: string;
     memo?: string;
+    replacesTxid?: string;
     utxos: Array<{ txid: string; vout: number }>;
     draftId?: string; // If broadcasting from a draft, release UTXO locks
     // Enhanced metadata for full I/O storage
@@ -174,6 +176,35 @@ export async function broadcastAndSave(
       persistenceStatus: 'pending_reconciliation',
       persistenceReason: 'post_acceptance_persistence_race',
     };
+  }
+
+  // A claimed RBF replacement must verify (same wallet, unconfirmed, shares
+  // an input) BEFORE the transaction reaches the network. This only runs on
+  // a genuine first attempt: an idempotent replay of an already
+  // complete/accepted broadcast returns above without re-validating, so a
+  // `replacesTxid` that confirmed in the meantime cannot turn a harmless
+  // replay into a 400. If it does reject here, release the just-claimed
+  // lease the same way a definite broadcast rejection would, so the signing
+  // intent is not left stuck in 'claimed'.
+  if (metadata.replacesTxid) {
+    try {
+      await assertReplacementLink(
+        walletId,
+        metadata.replacesTxid,
+        selectCandidateOutpoints(metadata.inputs, metadata.utxos)
+      );
+    } catch (error) {
+      try {
+        await releaseRejectedSigningIntentBroadcast(artifact.intent.intentId, claim.leaseToken, getErrorMessage(error));
+      } catch (releaseError) {
+        log.error('Failed to release claimed lease after replacesTxid rejection; lease expiry will reconcile it', {
+          intentId: artifact.intent.intentId,
+          txid,
+          error: getErrorMessage(releaseError),
+        });
+      }
+      throw error;
+    }
   }
 
   // Broadcast to network

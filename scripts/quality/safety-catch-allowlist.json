@@ -662,8 +662,8 @@
       "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
       "functionName": "broadcastAndSave",
       "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "If outcome-state persistence fails, the original network error is preserved and the durable live claim is intentionally retained for lease-expiry reconciliation.",
+      "count": 2,
+      "reason": "If outcome-state persistence fails, the original network error is preserved and the durable live claim is intentionally retained for lease-expiry reconciliation. The second catch (added in iteration-18 Phase 5, rbf-memo-prefix-spoofs-transaction-replacement) releases the just-claimed signing-intent lease after a pre-broadcast replacesTxid rejection; if the release itself fails it is logged and the original InvalidInputError is still rethrown unchanged, so the lease is left for lease-expiry reconciliation rather than swallowing the rejection.",
       "owner": "fund-safety",
       "targetRemovalSlice": "intentional-post-boundary-claim-retention"
     }

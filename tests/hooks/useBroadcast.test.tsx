@@ -516,6 +516,44 @@ describe('useBroadcast', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
 
+  it('includes replacesTxid in the broadcast payload when the RBF flow set it', async () => {
+    const replacesTxid = 'a'.repeat(64);
+    const deps = createDeps({
+      state: {
+        outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+        draftId: 'draft-1',
+        replacesTxid,
+      } as any,
+    });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    await act(async () => {
+      await result.current.broadcastTransaction();
+    });
+
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      replacesTxid,
+    }));
+  });
+
+  it('omits replacesTxid from the broadcast payload when it is null', async () => {
+    const deps = createDeps({
+      state: {
+        outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+        draftId: null,
+        replacesTxid: null,
+      } as any,
+    });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    await act(async () => {
+      await result.current.broadcastTransaction();
+    });
+
+    const [, sentPayload] = mocks.broadcastTransaction.mock.calls[0];
+    expect(sentPayload).not.toHaveProperty('replacesTxid');
+  });
+
   it('warns without a success sound when accepted persistence needs reconciliation', async () => {
     const txid = 'e'.repeat(64);
     mocks.broadcastTransaction.mockResolvedValueOnce({

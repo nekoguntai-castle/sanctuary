@@ -75,15 +75,20 @@ export function useTransactionActions({
         newFeeRate,
         walletId,
       });
-      const draft = await draftsApi.createDraft(walletId, rbfDraftRequest({
+      // `replacesTxid` is structural RBF linkage for the eventual broadcast
+      // request; it is not part of the draft-creation schema, so it is
+      // stripped before posting and reattached to the client-held draft
+      // object that travels through router state.
+      const { replacesTxid, ...createDraftRequest } = rbfDraftRequest({
         originalLabel: originalTx.label,
         rbfStatus,
         result,
         txid,
-      }));
+      });
+      const draft = await draftsApi.createDraft(walletId, createDraftRequest);
 
       setShowRBFModal(false);
-      navigate(`/wallets/${walletId}/send`, { state: { draft } });
+      navigate(`/wallets/${walletId}/send`, { state: { draft: { ...draft, replacesTxid } } });
       onActionComplete?.();
     } catch (err) {
       log.error('RBF failed', { error: err });

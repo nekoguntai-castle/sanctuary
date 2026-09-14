@@ -138,3 +138,47 @@ describe('createDraftInitialTxData', () => {
     })?.outputs).toEqual([{ address, amount: 0, sendMax: true }]);
   });
 });
+
+describe('buildInitialState — RBF replacesTxid linkage', () => {
+  const baseDraftData = {
+    id: 'draft-rbf',
+    walletId: 'wallet-1',
+    userId: 'user-1',
+    recipient: 'bc1qrecipient',
+    amount: 10_000,
+    psbtBase64: 'draft-rbf-psbt',
+    signingIntentId: 'intent-rbf',
+    signingIntentDigest: 'c'.repeat(64),
+    feeRate: 5,
+    selectedUtxoIds: [],
+    enableRBF: true,
+    subtractFees: false,
+    isRBF: true,
+    status: 'unsigned',
+    signedDeviceIds: [],
+    fee: 100,
+    totalInput: 10_100,
+    totalOutput: 10_000,
+    changeAmount: 0,
+    effectiveAmount: 10_000,
+    inputPaths: [],
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  } as any;
+
+  it('copies the client-attached replacesTxid into the initial wizard state', () => {
+    const draftData = { ...baseDraftData, replacesTxid: 'a'.repeat(64) };
+
+    const initialState = buildInitialState({ addresses: [], draftData, showInfo: () => undefined, utxos: [] });
+
+    expect(initialState?.replacesTxid).toBe('a'.repeat(64));
+  });
+
+  it('defaults replacesTxid to null when the draft carries none', () => {
+    const initialState = buildInitialState({
+      addresses: [], draftData: baseDraftData, showInfo: () => undefined, utxos: [],
+    });
+
+    expect(initialState?.replacesTxid).toBeNull();
+  });
+});

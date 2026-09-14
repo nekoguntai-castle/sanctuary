@@ -156,6 +156,7 @@ export const createState = (override?: Partial<TransactionState>): TransactionSt
   psbtDeviceId: null,
   draftId: null,
   isDraftMode: false,
+  replacesTxid: null,
   isSubmitting: false,
   error: null,
   ...override,

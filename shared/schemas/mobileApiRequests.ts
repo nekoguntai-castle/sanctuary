@@ -317,6 +317,12 @@ export const MobileTransactionBroadcastRequestSchema = MobileTransactionMetadata
   utxos: z.array(MobileUtxoReferenceSchema).optional(),
   intentId: z.string().min(1).optional(),
   intentDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  // Structural link to the transaction this broadcast replaces (RBF). The
+  // server independently verifies the linkage (same wallet, unconfirmed,
+  // shares an input) before recording it; this field carries no trust on
+  // its own. See iteration-18 plan Phase 5
+  // (rbf-memo-prefix-spoofs-transaction-replacement).
+  replacesTxid: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).refine(
   (request) => Boolean(request.signedPsbtBase64 || request.rawTxHex || request.draftId),
   transactionBroadcastSourceRequiredMessage
@@ -355,6 +361,8 @@ export const MobilePsbtBroadcastRequestSchema = MobileTransactionMetadataSchema.
   signedPsbt: z.string({ message: 'signedPsbt is required' }).min(1, 'signedPsbt is required'),
   intentId: z.string().min(1),
   intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  // See MobileTransactionBroadcastRequestSchema.replacesTxid.
+  replacesTxid: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 
 export const MobileDeviceAccountRequestSchema = z.object({

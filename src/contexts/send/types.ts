@@ -94,6 +94,11 @@ export interface TransactionState {
   draftId: string | null;
   isDraftMode: boolean;
 
+  // RBF replacement linkage: the txid this transaction structurally replaces,
+  // sent to the broadcast endpoint (server verifies it independently). Not a
+  // draft-persisted field; it travels only through this client-side state.
+  replacesTxid: string | null;
+
   // UI state
   isSubmitting: boolean;
   error: string | null;
@@ -204,6 +209,7 @@ export interface SerializableTransactionState {
   psbtDeviceId: string | null;
   draftId: string | null;
   isDraftMode: boolean;
+  replacesTxid: string | null;
   isSubmitting: boolean;
   error: string | null;
 }

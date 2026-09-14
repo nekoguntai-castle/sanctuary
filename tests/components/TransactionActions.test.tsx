@@ -281,6 +281,43 @@ describe('TransactionActions', () => {
       });
     });
 
+    it('sends replacesTxid structurally: stripped from the draft-creation request, carried in navigate state', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bump Fee \(RBF\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Bump Fee \(RBF\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '20');
+
+      const bumpButton = screen.getAllByText(/Bump Fee/i).find(btn =>
+        btn.closest('button')?.textContent?.includes('Bump Fee') &&
+        !btn.closest('button')?.textContent?.includes('(RBF)')
+      );
+      if (bumpButton) {
+        await user.click(bumpButton);
+      }
+
+      await waitFor(() => {
+        // The draft-creation schema is strict: replacesTxid must not be sent.
+        expect(draftsApi.createDraft).toHaveBeenCalledWith(
+          'wallet-1',
+          expect.not.objectContaining({ replacesTxid: expect.anything() })
+        );
+      });
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/wallets/wallet-1/send',
+          { state: { draft: expect.objectContaining({ replacesTxid: 'abc123def456' }) } }
+        );
+      });
+    });
+
     it('shows error when RBF fails', async () => {
       vi.mocked(bitcoinApi.createRBFTransaction).mockRejectedValue(new Error('Insufficient funds'));
 
