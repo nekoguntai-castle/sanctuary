@@ -486,6 +486,34 @@ describe('UTXO Repository', () => {
     });
   });
 
+  describe('findLargestSpendableByTxid', () => {
+    it('finds the largest unspent, unfrozen, unlocked output of a txid ordered by amount desc', async () => {
+      (prisma.uTXO.findFirst as Mock).mockResolvedValue(mockUtxo);
+
+      const result = await utxoRepository.findLargestSpendableByTxid('wallet-456', 'abc123def456');
+
+      expect(result).toEqual(mockUtxo);
+      expect(prisma.uTXO.findFirst).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-456',
+          txid: 'abc123def456',
+          spent: false,
+          frozen: false,
+          draftLock: null,
+        },
+        orderBy: { amount: 'desc' },
+      });
+    });
+
+    it('returns null when no spendable output of the txid exists', async () => {
+      (prisma.uTXO.findFirst as Mock).mockResolvedValue(null);
+
+      const result = await utxoRepository.findLargestSpendableByTxid('wallet-456', 'abc123def456');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('getConfirmedUnconfirmedBalance', () => {
     it('should return confirmed and unconfirmed balances separately', async () => {
       (prisma.uTXO.aggregate as Mock)

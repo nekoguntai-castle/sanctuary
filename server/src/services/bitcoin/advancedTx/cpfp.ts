@@ -25,6 +25,7 @@ import {
   resolveWalletSigningInfo,
 } from '../transactions/psbtConstruction';
 import { resolveTransactionSpendPolicy } from '../transactions/feePolicy';
+import { prepareChangeOutputs } from '../transactions/outputBuilder';
 import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
 import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
@@ -75,9 +76,13 @@ export function calculateCPFPFee(
  */
 export async function createCPFPTransaction(
   parentTxid: string,
-  parentVout: number,
+  // Omitted resolves to the wallet's largest spendable, unspent, unlocked,
+  // unfrozen output of parentTxid.
+  parentVout: number | undefined,
   targetFeeRate: number,
-  recipientAddress: string,
+  // Omitted resolves to a freshly derived change/receive address for the
+  // wallet, the same mechanism the batch paths use for change.
+  recipientAddress: string | undefined,
   walletId: string,
   network: BitcoinNetwork = 'mainnet'
 ): Promise<{
@@ -99,12 +104,23 @@ export async function createCPFPTransaction(
   const parentTx = await client.getTransaction(parentTxid);
   const parentVsize = bitcoin.Transaction.fromHex(parentTx.hex).virtualSize();
 
-  // Get the UTXO from parent transaction
-  const utxo = await utxoRepository.findByOutpoint(walletId, parentTxid, parentVout);
+  // Get the UTXO from parent transaction. When the caller omits an explicit
+  // vout, resolve it to the wallet's largest spendable, unspent, unlocked,
+  // unfrozen output of parentTxid - the largest output gives the CPFP the
+  // most headroom to absorb the child fee without going below the dust
+  // threshold. An explicit vout is trusted as-is and is not required to be
+  // the largest output of the parent; its spent/frozen/lock state is still
+  // checked below.
+  const utxo = parentVout !== undefined
+    ? await utxoRepository.findByOutpoint(walletId, parentTxid, parentVout)
+    : await utxoRepository.findLargestSpendableByTxid(walletId, parentTxid);
 
+  /* v8 ignore next -- both outcomes are tested; v8 misattributes this branch's
+     fallthrough hits to the ternary lookup above it rather than to this check */
   if (!utxo) {
     throw new NotFoundError('UTXO not found');
   }
+  const resolvedVout = utxo.vout;
 
   if (utxo.spent) {
     throw new InvalidInputError('UTXO is already spent', 'parentVout');
@@ -120,7 +136,11 @@ export async function createCPFPTransaction(
   if (!wallet) throw new Error('Wallet script identity is unavailable');
   if (!utxo.scriptPubKey) throw new Error('UTXO is missing scriptPubKey evidence');
   const networkObj = getNetwork(network);
-  const recipientScript = addressToOutputScript(recipientAddress, network);
+  // When the caller omits a recipient address, derive a fresh change/receive
+  // address for the wallet — the same mechanism the batch paths use for change.
+  const resolvedRecipientAddress = recipientAddress
+    ?? (await prepareChangeOutputs(walletId, 1))[0].address;
+  const recipientScript = addressToOutputScript(resolvedRecipientAddress, network);
   const signingInfo = resolveWalletSigningInfo(wallet, '[CPFP] ');
   const addressPathMap = await fetchAddressDerivationPaths(walletId, [utxo.address]);
   const evidence = resolveTransactionSpendPolicy(
@@ -184,7 +204,7 @@ export async function createCPFPTransaction(
     : undefined;
   addInputsWithBip32(psbt, [{
     txid: parentTxid,
-    vout: parentVout,
+    vout: resolvedVout,
     amount: utxo.amount,
     address: utxo.address,
     scriptPubKey: utxo.scriptPubKey,

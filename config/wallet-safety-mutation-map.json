@@ -1276,8 +1276,8 @@
         {
           "id": "cpfp-package-fee-is-conserved",
           "productionFile": "src/services/bitcoin/advancedTx/cpfp.ts",
-          "lineStart": 54,
-          "lineEnd": 62,
+          "lineStart": 55,
+          "lineEnd": 63,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
             "name": "Advanced Transaction Features CPFP Fee Calculation should calculate correct child fee for target package rate"
@@ -1285,8 +1285,8 @@
           "canaries": [{
             "id": "cpfp-child-fee-subtracts-parent-fee",
             "location": {
-              "start": { "line": 58, "column": 20 },
-              "end": { "line": 58, "column": 40 }
+              "start": { "line": 59, "column": 20 },
+              "end": { "line": 59, "column": 40 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "totalFee + parentFee",

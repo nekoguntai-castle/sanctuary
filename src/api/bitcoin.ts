@@ -366,9 +366,13 @@ export interface RBFTransactionResponse {
 
 export interface CPFPTransactionRequest {
   parentTxid: string;
-  parentVout: number;
+  // Omitted resolves server-side to the wallet's largest spendable,
+  // unspent, unlocked, unfrozen output of `parentTxid`.
+  parentVout?: number;
   targetFeeRate: number;
-  recipientAddress: string;
+  // Omitted resolves server-side to a freshly derived change/receive
+  // address for the wallet, the same mechanism the batch paths use.
+  recipientAddress?: string;
   walletId: string;
 }
 

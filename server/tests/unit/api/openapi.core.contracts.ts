@@ -449,11 +449,15 @@ export function registerOpenApiCoreTests() {
     ]);
     expect(openApiSpec.components.schemas.CpfpRequest.required).toEqual([
       "parentTxid",
-      "parentVout",
       "targetFeeRate",
-      "recipientAddress",
       "walletId",
     ]);
+    expect(
+      openApiSpec.components.schemas.CpfpRequest.properties,
+    ).toHaveProperty("parentVout");
+    expect(
+      openApiSpec.components.schemas.CpfpRequest.properties,
+    ).toHaveProperty("recipientAddress");
     expect(
       openApiSpec.components.schemas.BatchTransactionRequest.required,
     ).toEqual(["recipients", "feeRate", "walletId"]);

@@ -686,6 +686,20 @@ export async function findByOutpoint(
 }
 
 /**
+ * Find the wallet's largest spendable, unspent, unlocked, unfrozen output
+ * of a given parent txid (for CPFP when the caller omits an explicit vout).
+ */
+export async function findLargestSpendableByTxid(
+  walletId: string,
+  txid: string
+): Promise<UTXO | null> {
+  return prisma.uTXO.findFirst({
+    where: { walletId, txid, spent: false, frozen: false, draftLock: null },
+    orderBy: { amount: 'desc' },
+  });
+}
+
+/**
  * Get confirmed and unconfirmed balance separately for a wallet
  */
 export async function getConfirmedUnconfirmedBalance(
@@ -796,6 +810,7 @@ export const utxoRepository = {
   findUnspentForPrivacy,
   findByIdsForPrivacy,
   findByOutpoint,
+  findLargestSpendableByTxid,
   getConfirmedUnconfirmedBalance,
   findAvailableForSelection,
 };

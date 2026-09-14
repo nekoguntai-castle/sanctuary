@@ -119,6 +119,89 @@ export function registerCpfpContracts() {
       expect((error as Error).message).toBe('UTXO not found');
     });
 
+    it('resolves the wallet\'s largest spendable output when parentVout is omitted', async () => {
+      mockPrismaClient.uTXO.findFirst.mockResolvedValueOnce({
+        txid: parentTxid,
+        vout: 3,
+        amount: BigInt(50000),
+        scriptPubKey: '0014' + 'a'.repeat(40),
+        walletId,
+        spent: false,
+        frozen: false,
+      });
+
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      const result = await createCPFPTransaction(
+        parentTxid, undefined, 5, recipientAddress, walletId, 'testnet3'
+      );
+
+      expect(mockPrismaClient.uTXO.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          walletId, txid: parentTxid, spent: false, frozen: false, draftLock: null,
+        }),
+      }));
+      expect(mockPrismaClient.uTXO.findUnique).not.toHaveBeenCalled();
+      expect(result.psbt.txInputs[0].index).toBe(3);
+    });
+
+    it('returns 404 when no spendable output of the parent exists and parentVout is omitted', async () => {
+      mockPrismaClient.uTXO.findFirst.mockResolvedValueOnce(null);
+
+      const error: unknown = await createCPFPTransaction(
+        parentTxid, undefined, 30, recipientAddress, walletId, 'testnet3'
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect((error as Error).message).toBe('UTXO not found');
+    });
+
+    it('derives a change/receive address when recipientAddress is omitted', async () => {
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      const result = await createCPFPTransaction(
+        parentTxid, parentVout, 5, undefined, walletId, 'testnet3'
+      );
+
+      const derivedScript = Buffer.from(bitcoin.address.toOutputScript(
+        testnetAddresses.nativeSegwit[1], bitcoin.networks.testnet,
+      ));
+      expect(Buffer.from(result.psbt.txOutputs[0].script)).toEqual(derivedScript);
+    });
+
+    it('resolves both the parent output and the destination when omitted together, matching the modal payload', async () => {
+      mockPrismaClient.uTXO.findFirst.mockResolvedValueOnce({
+        txid: parentTxid,
+        vout: 2,
+        amount: BigInt(50000),
+        scriptPubKey: '0014' + 'a'.repeat(40),
+        walletId,
+        spent: false,
+        frozen: false,
+      });
+
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      const result = await createCPFPTransaction(
+        parentTxid, undefined, 5, undefined, walletId, 'testnet3'
+      );
+
+      const derivedScript = Buffer.from(bitcoin.address.toOutputScript(
+        testnetAddresses.nativeSegwit[1], bitcoin.networks.testnet,
+      ));
+      expect(mockPrismaClient.uTXO.findUnique).not.toHaveBeenCalled();
+      expect(result.psbt.txInputs[0].index).toBe(2);
+      expect(Buffer.from(result.psbt.txOutputs[0].script)).toEqual(derivedScript);
+    });
+
     it('should throw error if UTXO already spent', async () => {
       // Mock UTXO that is already spent
       mockPrismaClient.uTXO.findUnique.mockResolvedValue({

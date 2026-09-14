@@ -108,9 +108,7 @@ export function useTransactionActions({
 
       const result = await bitcoinApi.createCPFPTransaction({
         parentTxid: txid,
-        parentVout: 0,
         targetFeeRate,
-        recipientAddress: '',
         walletId,
       });
 

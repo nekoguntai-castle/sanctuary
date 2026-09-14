@@ -675,20 +675,25 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       parentTxid: { type: "string" },
-      parentVout: { type: "integer", minimum: 0 },
+      parentVout: {
+        type: "integer",
+        minimum: 0,
+        description: "Omit to resolve the wallet's largest spendable, unspent, unlocked, unfrozen output of parentTxid.",
+      },
       targetFeeRate: {
         type: "number",
         minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
         maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
       },
-      recipientAddress: { type: "string" },
+      recipientAddress: {
+        type: "string",
+        description: "Omit to derive a freshly generated change/receive address for the wallet.",
+      },
       walletId: { type: "string" },
     },
     required: [
       "parentTxid",
-      "parentVout",
       "targetFeeRate",
-      "recipientAddress",
       "walletId",
     ],
     additionalProperties: false,

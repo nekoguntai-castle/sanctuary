@@ -553,9 +553,7 @@ describe('TransactionActions', () => {
       await waitFor(() => {
         expect(bitcoinApi.createCPFPTransaction).toHaveBeenCalledWith({
           parentTxid: 'abc123def456',
-          parentVout: 0,
           targetFeeRate: 50,
-          recipientAddress: '',
           walletId: 'wallet-1',
         });
       });

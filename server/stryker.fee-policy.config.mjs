@@ -12,7 +12,7 @@ export default {
     'src/services/bitcoin/transactions/createBatchTransaction.ts:412-466',
     'src/services/bitcoin/advancedTx/batch.ts:111-169',
     'src/services/bitcoin/advancedTx/batch.ts:250-270',
-    'src/services/bitcoin/advancedTx/cpfp.ts:36-68',
+    'src/services/bitcoin/advancedTx/cpfp.ts:37-69',
     'src/services/bitcoin/advancedTx/rbf.ts:217-227',
   ],
   testFiles: [

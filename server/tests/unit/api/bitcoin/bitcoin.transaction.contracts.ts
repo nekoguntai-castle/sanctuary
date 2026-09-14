@@ -495,6 +495,35 @@ export const registerBitcoinTransactionRouteTests = () => {
         );
       });
 
+      it('accepts an omitted parentVout and recipientAddress and forwards them as undefined', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'testnet' });
+        mockAdvancedTx.createCPFPTransaction.mockResolvedValue({
+          psbt: { toBase64: () => 'cpfppsbt' },
+          childFee: 3000,
+          childFeeRate: 30,
+          parentFeeRate: 5,
+          effectiveFeeRate: 20,
+        });
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/cpfp')
+          .send({
+            parentTxid: 'parent123',
+            targetFeeRate: 30,
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockAdvancedTx.createCPFPTransaction).toHaveBeenCalledWith(
+          'parent123',
+          undefined,
+          30,
+          undefined,
+          'wallet-1',
+          'testnet3'
+        );
+      });
+
       it('should return 400 when required params are missing', async () => {
         const response = await request(app)
           .post('/bitcoin/transaction/cpfp')

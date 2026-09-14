@@ -44,9 +44,13 @@ const RbfBodySchema = z.object({
 
 const CpfpBodySchema = z.object({
   parentTxid: z.string().min(1),
-  parentVout: z.number().int().nonnegative(),
+  // Omitted resolves server-side to the wallet's largest spendable,
+  // unspent, unlocked, unfrozen output of parentTxid.
+  parentVout: z.number().int().nonnegative().optional(),
   targetFeeRate: z.number().min(MIN_FEE_RATE).max(MAX_FEE_RATE),
-  recipientAddress: z.string().min(1),
+  // Omitted resolves server-side to a freshly derived change/receive
+  // address for the wallet.
+  recipientAddress: z.string().min(1).optional(),
   walletId: z.string().min(1),
 });
 
@@ -202,7 +206,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
  */
 router.post('/transaction/cpfp', authenticate, validate(
   { body: CpfpBodySchema },
-  { message: 'parentTxid, parentVout, targetFeeRate, recipientAddress, and walletId are required' }
+  { message: 'parentTxid, targetFeeRate, and walletId are required' }
 ), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const {
