@@ -16,6 +16,7 @@ import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { walletRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
+import { InvalidInputError } from '../../../errors/ApiError';
 import { getDustThreshold } from '../estimation';
 import { isLegacyScriptType } from './helpers';
 import {
@@ -84,7 +85,8 @@ export async function createTransaction(
   try {
     recipientScript = addressToOutputScript(recipient, network);
   } catch (error) {
-    throw new Error('Invalid recipient address');
+    log.debug('Invalid recipient address', { walletId, error });
+    throw new InvalidInputError('Invalid recipient address', 'recipient');
   }
 
   const desiredDecoyCount = decoyOutputs?.enabled && decoyOutputs.count >= 2

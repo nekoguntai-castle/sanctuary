@@ -8,6 +8,7 @@ import {
   multisigKeyInfo,
 } from "../../../../fixtures/bitcoin";
 import { mockPrismaClient } from "../../../../mocks/prisma";
+import { InvalidInputError } from "../../../../../src/errors/ApiError";
 import {
   buildMultisigBip32Derivations,
   buildMultisigWitnessScript,
@@ -93,6 +94,18 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       await expect(
         createTransaction(walletId, invalidAddress, 50000, 10),
       ).rejects.toThrow("Invalid recipient address");
+    });
+
+    it("should throw an InvalidInputError on the recipient field for an invalid address", async () => {
+      const invalidAddress = "invalid-address";
+
+      await expect(
+        createTransaction(walletId, invalidAddress, 50000, 10),
+      ).rejects.toMatchObject({
+        constructor: InvalidInputError,
+        statusCode: 400,
+        details: expect.objectContaining({ field: "recipient" }),
+      });
     });
 
     it("should throw error when wallet not found", async () => {

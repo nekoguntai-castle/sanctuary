@@ -280,6 +280,17 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
 
   await assertWalletHardwareCapabilityById(walletId, 'sign');
 
+  const wallet = await walletRepository.findById(walletId);
+  if (!wallet) throw new NotFoundError('Wallet not found');
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
+
+  // Validate the recipient before policy evaluation so a malformed address
+  // never consumes a policy evaluation or counts against spending-limit accounting.
+  const addressValidation = validateAddress(address, network);
+  if (!addressValidation.valid) {
+    throw new ValidationError(`Invalid Bitcoin address: ${addressValidation.error}`);
+  }
+
   // Evaluate vault policies BEFORE creating the PSBT
   const policyResult = await policyEvaluationEngine.evaluatePolicies({
     walletId,
@@ -303,9 +314,6 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
       enableRBF: true,
     }
   );
-  const wallet = await walletRepository.findById(walletId);
-  if (!wallet) throw new NotFoundError('Wallet not found');
-  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
   const signingIntent = await createSigningIntent({
     walletId,
     createdByUserId: requireAuthenticatedUser(req).userId,

@@ -9,6 +9,7 @@ import {
   mockDraftFindByIdInWallet,
   mockEstimateTransaction,
   mockEvaluatePolicies,
+  mockValidateAddress,
   mockValidateSignedArtifact,
   mockWalletFindNetwork,
   mockWalletFindById,
@@ -238,6 +239,19 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.status).toBe(400);
   });
 
+  it('rejects PSBT creation with a malformed recipient address before building a PSBT', async () => {
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockValidateAddress.mockReturnValueOnce({ valid: false, error: 'Unsupported address format' });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/create`)
+      .send({ feeRate: 1.4, recipients: [{ address: 'not-a-bitcoin-address', amount: 15000 }] });
+
+    expect(response.status).toBe(400);
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+  });
+
   it('creates PSBT for hardware wallet signing and returns its intent handle', async () => {
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/psbt/create`)
@@ -257,6 +271,8 @@ export function registerTransactionHttpBroadcastTests(): void {
       .post(`/api/v1/wallets/${walletId}/psbt/create`)
       .send({ feeRate: 1.4, recipients: [{ address: 'tb1qrecipient', amount: 15000 }] });
     expect(response.status).toBe(404);
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
   });
 
   it('returns a server error when PSBT creation fails', async () => {
