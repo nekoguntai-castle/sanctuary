@@ -9,7 +9,7 @@ export default {
     'src/services/bitcoin/utxoSelection.ts:115-205',
     'src/services/bitcoin/transactions/outputBuilder.ts:113-137',
     'src/services/bitcoin/transactions/createBatchTransaction.ts:301-406',
-    'src/services/bitcoin/transactions/createBatchTransaction.ts:412-457',
+    'src/services/bitcoin/transactions/createBatchTransaction.ts:412-466',
     'src/services/bitcoin/advancedTx/batch.ts:111-169',
     'src/services/bitcoin/advancedTx/batch.ts:250-270',
     'src/services/bitcoin/advancedTx/cpfp.ts:36-68',

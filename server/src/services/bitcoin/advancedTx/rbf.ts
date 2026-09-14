@@ -366,13 +366,14 @@ function adjustChangeOutputForFeeDelta(
   }
 
   if (changeOutputIndex < 0) {
-    throw new Error('No change output found to deduct additional fee from');
+    throw new InvalidInputError('No change output found to deduct additional fee from', 'txid');
   }
 
   outputs[changeOutputIndex].value -= feeDelta;
   if (outputs[changeOutputIndex].value < dustThreshold) {
-    throw new Error(
-      `Insufficient funds in change output to increase fee. Need ${feeDelta} sats more, but change would be dust.`
+    throw new InvalidInputError(
+      `Insufficient funds in change output to increase fee. Need ${feeDelta} sats more, but change would be dust.`,
+      'newFeeRate'
     );
   }
 }

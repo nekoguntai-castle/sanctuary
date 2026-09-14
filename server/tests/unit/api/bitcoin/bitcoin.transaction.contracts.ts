@@ -387,6 +387,47 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.body.code).toBe('INVALID_INPUT');
       });
 
+      it('should return 400 INVALID_INPUT when the replacement has no change output to absorb the fee bump', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.createRBFTransaction.mockRejectedValue(
+          new InvalidInputError('No change output found to deduct additional fee from', 'txid')
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
+
+      it('should return 400 INVALID_INPUT when the fee bump would drop change below dust', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.createRBFTransaction.mockRejectedValue(
+          new InvalidInputError(
+            'Insufficient funds in change output to increase fee. Need 5000 sats more, but change would be dust.',
+            'newFeeRate'
+          )
+        );
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+      });
+
       it('should return 400 when wallet network is unsupported', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',

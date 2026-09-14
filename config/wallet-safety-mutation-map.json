@@ -1170,11 +1170,15 @@
           "id": "standard-batch-pinned-selection-spends-full-set",
           "productionFile": "src/services/bitcoin/transactions/createBatchTransaction.ts",
           "lineStart": 418,
-          "lineEnd": 447,
+          "lineEnd": 466,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
               "name": "Transaction Service — Batch createBatchTransaction should spend the entire pinned UTXO set even when the first UTXO alone covers the outputs"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should reject an insufficient pinned UTXO set with InvalidInputError"
             }
           ],
           "canaries": [{
@@ -1188,6 +1192,18 @@
             "requiredKillingTest": {
               "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
               "name": "Transaction Service — Batch createBatchTransaction should spend the entire pinned UTXO set even when the first UTXO alone covers the outputs"
+            }
+          }, {
+            "id": "standard-batch-pinned-insufficient-funds-is-rejected",
+            "location": {
+              "start": { "line": 460, "column": 39 },
+              "end": { "line": 460, "column": 74 }
+            },
+            "mutatorName": "ArrayDeclaration",
+            "replacement": "[]",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should reject an insufficient pinned UTXO set with InvalidInputError"
             }
           }]
         },

@@ -515,9 +515,13 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      await expect(
-        createRBFTransaction(originalTxid, 90, walletId, 'testnet3')
-      ).rejects.toThrow('No change output found');
+      const error: unknown = await createRBFTransaction(originalTxid, 90, walletId, 'testnet3').catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toMatch('No change output found');
+      expect((error as InvalidInputError).details).toMatchObject({ field: 'txid' });
     });
 
     it('should fail when fee bump would drop change below dust threshold', async () => {
@@ -551,9 +555,13 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      await expect(
-        createRBFTransaction(originalTxid, 30, walletId, 'testnet3')
-      ).rejects.toThrow('change would be dust');
+      const error: unknown = await createRBFTransaction(originalTxid, 30, walletId, 'testnet3').catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toMatch('change would be dust');
+      expect((error as InvalidInputError).details).toMatchObject({ field: 'newFeeRate' });
     });
 
     it('rejects descriptor-only fallback when the immutable signer snapshot is missing', async () => {
