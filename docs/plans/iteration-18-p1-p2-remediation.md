@@ -136,6 +136,8 @@ Failing tests first: notification job handler test with a registry stub returnin
 
 Verification: as Phase 1.
 
+Status: done
+
 ## Delivery
 
 One PR per phase, serial merges on `main`, each rebased only when it is next; target-branch CI verified after each merge; branches deleted only after the merge-commit ancestry gate. PR order: 1 (P1) first, then 2, 3, 6, 7 (server), then 4 (frontend), then 5 (cross-cutting, last because it touches shared schemas). No container rebuild until the loop's clean pass (`--deploy final`).

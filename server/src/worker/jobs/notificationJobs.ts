@@ -30,6 +30,7 @@ import {
   getConsolidationCapableChannelIds,
   getEnabledConsolidationChannelIds,
   getSupportedConsolidationChannelIds,
+  recordChannelDeliveryFailures,
   recordNotificationJobResult,
   recordNotificationSummary,
   persistSafeNotificationProgress,
@@ -127,6 +128,14 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         await persistSafeNotificationProgress(job, safeResult);
         throw new NotificationJobDispatchError('NOTIFICATION_DELIVERY_FAILED');
       }
+
+      // Only record per-channel entries once the job is actually going to
+      // complete. When every channel fails, the job is retried and — on
+      // exhaustion — dead-lettered as a single job-level entry by the
+      // addExhaustedJob path; recording per-channel here too would
+      // double-record the same failure on every attempt and could flood the
+      // bounded DLQ store.
+      await recordChannelDeliveryFailures(results, 'transaction');
 
       if (summary.channelsNotified > 0) {
         log.info(`Transaction notification sent: ${txid}`, {
@@ -254,6 +263,10 @@ export const draftNotifyJob: WorkerJobHandler<DraftNotifyJobData, NotifyJobResul
         throw createNotificationJobFailure(summary, 'Draft notification failed');
       }
 
+      // Only record per-channel entries once the job is actually going to
+      // complete; see the transaction job handler above for why.
+      await recordChannelDeliveryFailures(results, 'draft');
+
       if (summary.channelsNotified > 0) {
         log.info(`Draft notification sent: ${draftId}`, {
           channelsNotified: summary.channelsNotified,
@@ -359,6 +372,10 @@ export const confirmationNotifyJob: WorkerJobHandler<ConfirmationNotifyJobData, 
       if (shouldFailBullMqNotificationJob(summary)) {
         throw createNotificationJobFailure(summary, 'Confirmation notification failed');
       }
+
+      // Only record per-channel entries once the job is actually going to
+      // complete; see the transaction job handler above for why.
+      await recordChannelDeliveryFailures(results, 'confirmation');
 
       if (summary.channelsNotified > 0) {
         log.info(`Confirmation notification sent: ${txid}`, {
@@ -469,6 +486,10 @@ export const consolidationSuggestionNotifyJob: WorkerJobHandler<
       if (shouldFailBullMqNotificationJob(summary)) {
         throw createNotificationJobFailure(summary, 'Consolidation suggestion notification failed');
       }
+
+      // Only record per-channel entries once the job is actually going to
+      // complete; see the transaction job handler above for why.
+      await recordChannelDeliveryFailures(results, 'consolidation_suggestion');
 
       if (summary.channelsNotified > 0) {
         log.info('Consolidation suggestion notification sent', {

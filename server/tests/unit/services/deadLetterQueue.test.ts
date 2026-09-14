@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DeadLetterQueue,
   createMemoryDeadLetterQueue,
+  deadLetterQueue,
   recordElectrumFailure,
+  recordNotificationChannelFailure,
   recordPushFailure,
   recordSyncFailure,
   recordTransactionFailure,
@@ -377,5 +379,34 @@ describe('DeadLetterQueue', () => {
     expect(pushId).toMatch(/^diagnostic-/);
     expect(electrumId).toMatch(/^diagnostic-/);
     expect(transactionId).toMatch(/^diagnostic-/);
+  });
+
+  it('records channel-scoped notification failures under telegram-specific and generic categories', async () => {
+    const telegramId = await recordNotificationChannelFailure(
+      'telegram',
+      'transaction',
+      'Telegram API error',
+    );
+    const webhookId = await recordNotificationChannelFailure(
+      'webhook',
+      'draft',
+      'Webhook delivery error',
+      'user-1',
+    );
+
+    await expect(deadLetterQueue.get(telegramId)).resolves.toEqual(expect.objectContaining({
+      category: 'telegram',
+      operation: 'channel_delivery',
+      payload: { channel: 'telegram', userId: null, notificationType: 'transaction' },
+      error: 'Telegram API error',
+    }));
+    // Any channel without a dedicated bucket (webhook, and any future
+    // channel) falls back to the generic singular 'notification' category.
+    await expect(deadLetterQueue.get(webhookId)).resolves.toEqual(expect.objectContaining({
+      category: 'notification',
+      operation: 'channel_delivery',
+      payload: { channel: 'webhook', userId: 'user-1', notificationType: 'draft' },
+      error: 'Webhook delivery error',
+    }));
   });
 });

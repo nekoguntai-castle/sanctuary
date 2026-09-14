@@ -398,6 +398,31 @@ export async function recordPushFailure(
   );
 }
 
+/**
+ * Records a per-channel notification delivery failure. Push self-records via
+ * `recordPushFailure` (it has a real per-device `userId`); this covers every
+ * other channel (telegram, webhook, and future channels), which have no
+ * per-recipient identity at the registry level. Telegram gets its own
+ * dedicated category, matching push's precedent; every other channel falls
+ * back to the generic singular `'notification'` category.
+ */
+export async function recordNotificationChannelFailure(
+  channel: string,
+  notificationType: string,
+  error: Error | string,
+  userId: string | null = null,
+): Promise<string> {
+  const category: DeadLetterCategory = channel === 'telegram' ? 'telegram' : 'notification';
+  return deadLetterQueue.add(
+    category,
+    'channel_delivery',
+    { channel, userId, notificationType },
+    error,
+    1,
+    userId ? { userId } : { channel },
+  );
+}
+
 export async function recordElectrumFailure(
   host: string,
   port: number,

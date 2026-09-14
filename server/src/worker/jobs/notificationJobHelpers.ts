@@ -5,6 +5,9 @@ import type {
 import { notificationChannelRegistry } from '../../services/notifications/channels';
 import type { ConsolidationSuggestionNotification } from '../../services/notifications/channels';
 import { notificationJobResultsTotal } from '../../observability/metrics/infrastructureMetrics';
+import { recordNotificationChannelFailure } from '../../services/deadLetterQueue';
+import { getErrorMessage } from '../../utils/errors';
+import { createLogger } from '../../utils/logger';
 import {
   summarizeSafeNotificationOutcome,
   type NotificationFailureClass,
@@ -12,6 +15,8 @@ import {
   type SafeChannelOutcome,
 } from '../../services/notifications/outcomes';
 import type { Job } from 'bullmq';
+
+const log = createLogger('JOB:NOTIFY_HELPERS');
 
 export type NotificationJobMetricResult =
   | 'success'
@@ -90,6 +95,46 @@ export function summarizeNotificationResults(
     channelsNotified,
     errors: errors.length > 0 ? errors : undefined,
   };
+}
+
+/**
+ * Records a channel-scoped dead-letter entry for every failed channel in
+ * `results` that does not already self-record its own failures (push does,
+ * via `recordPushFailure`). Without this, a channel that fails while at
+ * least one other channel succeeds is only logged — the job still completes
+ * and the failure is lost once the log line rolls off.
+ *
+ * Best-effort: a DLQ write failure must never affect job retry semantics, so
+ * failures here are logged and swallowed rather than rethrown.
+ */
+export async function recordChannelDeliveryFailures(
+  results: NotificationResultLike[],
+  notificationType: string,
+): Promise<void> {
+  const failedNonPushResults = results.filter(
+    (result) => !result.success && result.channelId !== 'push'
+  );
+
+  await Promise.all(failedNonPushResults.map(async (result) => {
+    const channel = result.channelId ?? 'unknown';
+    const errorMessage = result.errors?.filter(Boolean).join('; ')
+      || `${channel} notification failed without error details`;
+
+    try {
+      await recordNotificationChannelFailure(channel, notificationType, errorMessage);
+      log.error('Notification channel delivery failed', {
+        channel,
+        notificationType,
+        error: errorMessage,
+      });
+    } catch (error) {
+      log.error('Failed to record notification channel failure', {
+        channel,
+        notificationType,
+        error: getErrorMessage(error),
+      });
+    }
+  }));
 }
 
 export function recordNotificationJobResult(

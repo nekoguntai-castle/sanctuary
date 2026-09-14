@@ -3,6 +3,7 @@ import {
   createMockJob,
   mockNotificationChannelRegistry,
   mockNotificationJobResultsTotal,
+  mockRecordNotificationChannelFailure,
   mockRecordNotificationTelemetry,
   registerNotificationJobBeforeEach,
 } from './notificationJobs.testUtils';
@@ -143,6 +144,8 @@ describe('transactionNotifyJob', () => {
 
     const result = await transactionNotifyJob.handler(createMockJob(jobData));
 
+    // The job still completes (resolves rather than throws) even though one
+    // channel failed, because at least one other channel (push) succeeded.
     expect(result.success).toBe(false);
     expect(result.channelsNotified).toBe(1);
     expect(result.errors).toBeUndefined();
@@ -152,6 +155,73 @@ describe('transactionNotifyJob', () => {
       job_name: 'transaction-notify',
       result: 'partial_channel_error',
     });
+
+    // The failed channel is recorded to the dead-letter queue, channel-scoped,
+    // so the partial failure isn't lost once the log line rolls off.
+    expect(mockRecordNotificationChannelFailure).toHaveBeenCalledTimes(1);
+    expect(mockRecordNotificationChannelFailure).toHaveBeenCalledWith(
+      'telegram',
+      'transaction',
+      'Telegram API error',
+    );
+
+    // Push self-records its own failures via recordPushFailure; the job must
+    // not additionally record a channel-scoped entry for it here.
+    expect(mockRecordNotificationChannelFailure).not.toHaveBeenCalledWith(
+      'push',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('logs and swallows a DLQ write failure so the job still completes', async () => {
+    mockNotificationChannelRegistry.notifyTransactions.mockResolvedValueOnce([
+      { success: true, channelId: 'push', usersNotified: 1, outcome: 'accepted', failureClass: 'none' },
+      { success: false, channelId: 'telegram', usersNotified: 0, errors: ['Telegram API error'], outcome: 'rejected', failureClass: 'authentication' },
+    ]);
+    mockRecordNotificationChannelFailure.mockRejectedValueOnce(new Error('redis unavailable'));
+
+    const jobData: TransactionNotifyJobData = {
+      walletId: 'wallet-dlq-write-failure',
+      txid: 'txid-dlq-write-failure',
+      type: 'sent',
+      amount: '50000',
+    };
+
+    const result = await transactionNotifyJob.handler(createMockJob(jobData));
+
+    // A failed DLQ write must never change the job's own result or make it
+    // throw — it's a best-effort record of a failure that's already
+    // reflected in the (unchanged) job result below.
+    expect(result.success).toBe(false);
+    expect(result.channelsNotified).toBe(1);
+    expect(mockRecordNotificationChannelFailure).toHaveBeenCalledWith(
+      'telegram',
+      'transaction',
+      'Telegram API error',
+    );
+  });
+
+  it('falls back to an unknown channel and a generic error for a completing job', async () => {
+    mockNotificationChannelRegistry.notifyTransactions.mockResolvedValueOnce([
+      { success: true, channelId: 'push', usersNotified: 1 },
+      { success: false, usersNotified: 0 },
+    ]);
+
+    const jobData: TransactionNotifyJobData = {
+      walletId: 'wallet-unknown-channel',
+      txid: 'txid-unknown-channel',
+      type: 'sent',
+      amount: '50000',
+    };
+
+    await transactionNotifyJob.handler(createMockJob(jobData));
+
+    expect(mockRecordNotificationChannelFailure).toHaveBeenCalledWith(
+      'unknown',
+      'transaction',
+      'unknown notification failed without error details',
+    );
   });
 
   it('records no-recipient results when channels succeed but notify no users', async () => {
@@ -200,6 +270,14 @@ describe('transactionNotifyJob', () => {
     const job = createMockJob(jobData);
     await expect(transactionNotifyJob.handler(job))
       .rejects.toThrow('NOTIFICATION_DELIVERY_FAILED');
+    // All-channels-failed behaviour is unchanged: the job still throws so
+    // BullMQ retries it, and on exhaustion the existing addExhaustedJob path
+    // (worker/workerJobQueue/eventHandlers.ts) records the coarse job-level
+    // dead-letter entry. No per-channel entry is recorded here — doing so on
+    // every attempt would double-record the same failure and could flood
+    // the bounded DLQ store; only jobs that are actually going to complete
+    // record per-channel entries (see the partial-failure case above).
+    expect(mockRecordNotificationChannelFailure).not.toHaveBeenCalled();
     expect(job.updateProgress).toHaveBeenCalledWith({
       version: 1,
       attemptOrdinal: 1,

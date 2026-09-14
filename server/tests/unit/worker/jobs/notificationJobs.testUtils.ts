@@ -27,6 +27,7 @@ const mockNotificationJobResultsTotal = {
   inc: vi.fn(),
 };
 const mockRecordNotificationTelemetry = vi.fn();
+const mockRecordNotificationChannelFailure = vi.fn();
 
 vi.resetModules();
 
@@ -67,6 +68,10 @@ vi.doMock('../../../../src/services/notifications/telemetry', () => ({
   recordNotificationTelemetry: mockRecordNotificationTelemetry,
 }));
 
+vi.doMock('../../../../src/services/deadLetterQueue', () => ({
+  recordNotificationChannelFailure: mockRecordNotificationChannelFailure,
+}));
+
 export type {
   TransactionNotifyJobData,
   DraftNotifyJobData,
@@ -79,6 +84,7 @@ export {
   mockNotificationChannelRegistry,
   mockNotificationJobResultsTotal,
   mockRecordNotificationTelemetry,
+  mockRecordNotificationChannelFailure,
 };
 
 export function registerNotificationJobBeforeEach(): void {

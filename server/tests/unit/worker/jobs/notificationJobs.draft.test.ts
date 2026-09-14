@@ -4,6 +4,7 @@ import {
   mockNotificationChannelRegistry,
   mockNotificationJobResultsTotal,
   mockPrisma,
+  mockRecordNotificationChannelFailure,
   registerNotificationJobBeforeEach,
 } from './notificationJobs.testUtils';
 import type { DraftNotifyJobData } from './notificationJobs.testUtils';
@@ -141,6 +142,43 @@ describe('draftNotifyJob', () => {
       job_name: 'draft-notify',
       result: 'no_recipients',
     });
+  });
+
+  it('records a channel-scoped DLQ entry for a partial draft channel failure', async () => {
+    mockPrisma.draftTransaction.findUnique.mockResolvedValueOnce({
+      id: 'draft-partial',
+      amount: BigInt(100000),
+      feeRate: 10.0,
+      recipient: 'bc1p...',
+      label: null,
+    });
+
+    mockNotificationChannelRegistry.notifyDraft.mockResolvedValueOnce([
+      { success: true, channelId: 'push', usersNotified: 1 },
+      { success: false, channelId: 'telegram', usersNotified: 0, errors: ['Telegram draft error'] },
+    ]);
+
+    const jobData: DraftNotifyJobData = {
+      walletId: 'wallet-draft-partial',
+      draftId: 'draft-partial',
+      creatorUserId: 'user-789',
+      creatorUsername: 'charlie',
+    };
+
+    const result = await draftNotifyJob.handler(createMockJob(jobData));
+
+    // The job still completes because push succeeded.
+    expect(result.channelsNotified).toBe(1);
+    expect(mockRecordNotificationChannelFailure).toHaveBeenCalledWith(
+      'telegram',
+      'draft',
+      'Telegram draft error',
+    );
+    expect(mockRecordNotificationChannelFailure).not.toHaveBeenCalledWith(
+      'push',
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it('should retry failed draft channel result without errors list', async () => {
