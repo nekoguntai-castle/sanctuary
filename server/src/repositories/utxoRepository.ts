@@ -441,6 +441,43 @@ export async function batchUpdateByIds(
 }
 
 /**
+ * Restore UTXOs to unspent by ID in chunked batches, guarded so a coin
+ * already flipped back to unspent — or, critically, one a concurrent writer
+ * just marked spent after this round's reconciliation snapshot was read — is
+ * never clobbered. Each write is scoped to `spent: true` at write time, so it
+ * only ever applies to rows still in the exact state the caller observed the
+ * spend evidence for. Mirrors `batchUpdateByIds`'s chunking/transaction shape
+ * (sync pipeline bulk writes), but with the mandatory `spent: true` guard
+ * `batchUpdateByIds` intentionally does not carry.
+ */
+export async function restoreUnspentByIds(
+  restores: Array<{ id: string; confirmations: number; blockHeight: number | null }>,
+  batchSize: number,
+  client?: PrismaTxClient
+): Promise<number> {
+  const guardedUpdate = (restore: { id: string; confirmations: number; blockHeight: number | null }) => ({
+    where: { id: restore.id, spent: true },
+    data: { confirmations: restore.confirmations, blockHeight: restore.blockHeight, spent: false },
+  });
+  let restoredCount = 0;
+  for (let i = 0; i < restores.length; i += batchSize) {
+    const chunk = restores.slice(i, i + batchSize);
+    if (client) {
+      for (const restore of chunk) {
+        const result = await client.uTXO.updateMany(guardedUpdate(restore));
+        restoredCount += result.count;
+      }
+      continue;
+    }
+    const results = await prisma.$transaction(
+      chunk.map(restore => prisma.uTXO.updateMany(guardedUpdate(restore)))
+    );
+    restoredCount += results.reduce((sum, result) => sum + result.count, 0);
+  }
+  return restoredCount;
+}
+
+/**
  * Find existing UTXOs by outpoints (txid:vout) for a wallet, in chunks.
  * Returns a Set of "txid:vout" keys that already exist.
  */
@@ -746,6 +783,7 @@ export const utxoRepository = {
   findByWalletIdWithSelect,
   markManyAsSpent,
   batchUpdateByIds,
+  restoreUnspentByIds,
   findExistingByOutpoints,
   findByOutpointsForWallet,
   createMany,

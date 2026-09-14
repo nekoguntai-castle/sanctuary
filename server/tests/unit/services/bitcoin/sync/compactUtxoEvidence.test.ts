@@ -363,9 +363,11 @@ describe('compact UTXO persistence consumers', () => {
 
     await reconcileUtxosPhase(ctx);
 
+    // A confirmation-only refresh of an unspent-at-snapshot coin never
+    // carries a `spent` key, so it can't clobber a concurrent spend.
     expect(repositoryMocks.batchUpdateByIds).toHaveBeenCalledWith([{
       id: 'existing-utxo',
-      data: { confirmations: 6, blockHeight: 799_995, spent: false },
+      data: { confirmations: 6, blockHeight: 799_995 },
     }], 100, undefined);
   });
 

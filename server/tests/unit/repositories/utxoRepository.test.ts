@@ -258,6 +258,62 @@ describe('UTXO Repository', () => {
     });
   });
 
+  describe('restoreUnspentByIds', () => {
+    it('guards each restore write to rows still spent: true and sums the applied counts, chunked by batchSize', async () => {
+      (prisma.$transaction as Mock).mockImplementation(ops => Promise.all(ops));
+      (prisma.uTXO.updateMany as Mock)
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
+
+      const restored = await utxoRepository.restoreUnspentByIds([
+        { id: 'utxo-1', confirmations: 6, blockHeight: 799995 },
+        { id: 'utxo-2', confirmations: 0, blockHeight: null },
+        { id: 'utxo-3', confirmations: 2, blockHeight: 800001 },
+      ], 2);
+
+      expect(restored).toBe(2);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(prisma.uTXO.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'utxo-1', spent: true },
+        data: { confirmations: 6, blockHeight: 799995, spent: false },
+      });
+      expect(prisma.uTXO.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { id: 'utxo-2', spent: true },
+        data: { confirmations: 0, blockHeight: null, spent: false },
+      });
+      expect(prisma.uTXO.updateMany).toHaveBeenNthCalledWith(3, {
+        where: { id: 'utxo-3', spent: true },
+        data: { confirmations: 2, blockHeight: 800001, spent: false },
+      });
+    });
+
+    it('uses the supplied transaction client when provided, bypassing $transaction', async () => {
+      (prisma.uTXO.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const restored = await utxoRepository.restoreUnspentByIds(
+        [{ id: 'utxo-4', confirmations: 1, blockHeight: 800000 }],
+        100,
+        prisma as never,
+      );
+
+      expect(restored).toBe(1);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.uTXO.updateMany).toHaveBeenCalledWith({
+        where: { id: 'utxo-4', spent: true },
+        data: { confirmations: 1, blockHeight: 800000, spent: false },
+      });
+    });
+
+    it('returns 0 for an empty restore list without calling updateMany or $transaction', async () => {
+      const restored = await utxoRepository.restoreUnspentByIds([], 100);
+
+      expect(restored).toBe(0);
+      expect(prisma.uTXO.updateMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deleteByWalletId', () => {
     it('should delete all UTXOs for wallet', async () => {
       (prisma.uTXO.deleteMany as Mock).mockResolvedValue({ count: 50 });

@@ -168,6 +168,42 @@ describe('Sync Phases', () => {
       );
     });
 
+    it('never writes a spent key for a confirmation-only refresh of an unspent UTXO', async () => {
+      const txid = 'confirmation-refresh-no-spent-key'.padEnd(64, 'c');
+      const evidence = authenticatedExisting(txid);
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([
+        evidence.row,
+      ]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        authenticatedOutpointEvidence: new Map([[
+          `${txid}:0`, exactEvidence(txid),
+        ]]),
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.update).toHaveBeenCalledTimes(1);
+      const [callArgs] = (mockPrismaClient.uTXO.update as Mock).mock.calls[0];
+      // A concurrent writer (e.g. a broadcast spend committed between the
+      // reconciliation snapshot and this write) must never be clobbered back
+      // to unspent by a confirmation-only refresh — so the write must not
+      // even carry a `spent` key.
+      expect(callArgs.data).not.toHaveProperty('spent');
+      expect(callArgs).toEqual(
+        expect.objectContaining({
+          where: { id: 'utxo-1' },
+          data: expect.objectContaining({ confirmations: 6, blockHeight: 799995 }),
+        })
+      );
+    });
+
     it('preserves a UTXO when it is merely omitted from listunspent', async () => {
       const txid = 'a'.repeat(64);
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
@@ -391,11 +427,18 @@ describe('Sync Phases', () => {
 
       await reconcileUtxosPhase(ctx);
 
-      expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith(
+      // The restore write must be guarded so it cannot resurrect a coin
+      // another writer (a concurrent authenticated spend committed after the
+      // snapshot) just spent: it goes through a narrow, guarded update
+      // (`updateMany` scoped to `spent: true`), never the plain `update`
+      // used for confirmation-only refreshes and kept-spent outcomes.
+      expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.uTXO.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'utxo-1' },
+          where: expect.objectContaining({ id: 'utxo-1', spent: true }),
           data: expect.objectContaining({
             confirmations: 6,
+            blockHeight: 799995,
             spent: false,
           }),
         })

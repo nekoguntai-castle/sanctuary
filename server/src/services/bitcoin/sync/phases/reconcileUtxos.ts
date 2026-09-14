@@ -25,14 +25,29 @@ type DeferPostCommit = (effect: () => void | Promise<void>) => void;
 const log = createLogger('BITCOIN:SVC_SYNC_RECONCILE');
 
 type ExistingUtxo = Awaited<ReturnType<typeof utxoRepository.findByWalletIdWithSelect>>[number];
+// A confirmation-only refresh never carries a `spent` key (so it cannot
+// clobber a concurrent spend); the only explicit-spent outcome an ordinary
+// update may carry is `spent: true` (a coin the server or the wallet still
+// treats as spent). Restoring a coin to unspent is not an ordinary update —
+// see UtxoRestore below, which goes through a guarded repository write.
 type UtxoUpdate = {
   id: string;
   confirmations: number;
   blockHeight: number | null;
-  spent: boolean;
+  spent?: true;
 };
+type UtxoRestore = {
+  id: string;
+  confirmations: number;
+  blockHeight: number | null;
+};
+type SpentUtxoOutcome =
+  | { kind: 'update'; value: UtxoUpdate }
+  | { kind: 'restore'; value: UtxoRestore }
+  | null;
 type ReconciliationChanges = {
   updates: UtxoUpdate[];
+  restores: UtxoRestore[];
   spentIds: string[];
 };
 
@@ -67,11 +82,15 @@ const resolveSpentUtxoUpdate = (
   confirmations: number,
   blockHeight: number | null,
   locallySpentKeys: ReadonlySet<string>,
-): UtxoUpdate | null => {
+): SpentUtxoOutcome => {
   const stillAuthenticatedThisRound = ctx.authenticatedSpentOutpointKeys.has(key);
   const spendEvidenceVanished = !stillAuthenticatedThisRound && !locallySpentKeys.has(key);
   if (spendEvidenceVanished) {
-    return { id: dbUtxo.id, confirmations, blockHeight, spent: false };
+    // A restore is not an ordinary update: it is written through a repository
+    // call guarded to `where spent: true`, so it can never resurrect a coin a
+    // concurrent writer (e.g. a broadcast spend committed after the
+    // reconciliation snapshot) has already spent.
+    return { kind: 'restore', value: { id: dbUtxo.id, confirmations, blockHeight } };
   }
   // Distinguish the two keep-spent reasons so a coin stuck on a dropped local
   // spend (no server evidence, but a still-live local TransactionInput row)
@@ -81,7 +100,7 @@ const resolveSpentUtxoUpdate = (
     utxoId: dbUtxo.id,
   });
   if (dbUtxo.confirmations === confirmations && dbUtxo.blockHeight === blockHeight) return null;
-  return { id: dbUtxo.id, confirmations, blockHeight, spent: true };
+  return { kind: 'update', value: { id: dbUtxo.id, confirmations, blockHeight, spent: true } };
 };
 
 const createUtxoUpdate = (
@@ -91,7 +110,7 @@ const createUtxoUpdate = (
   height: number,
   currentBlockHeight: number,
   locallySpentKeys: ReadonlySet<string>,
-): UtxoUpdate | null => {
+): SpentUtxoOutcome => {
   const confirmations = height > 0
     ? Math.max(0, currentBlockHeight - height + 1)
     : 0;
@@ -100,7 +119,9 @@ const createUtxoUpdate = (
     return resolveSpentUtxoUpdate(ctx, key, dbUtxo, confirmations, blockHeight, locallySpentKeys);
   }
   if (dbUtxo.confirmations === confirmations && dbUtxo.blockHeight === blockHeight) return null;
-  return { id: dbUtxo.id, confirmations, blockHeight, spent: false };
+  // Confirmation-only refresh of an unspent-at-snapshot coin: never carries a
+  // `spent` key, so it cannot clobber a spend committed after the snapshot.
+  return { kind: 'update', value: { id: dbUtxo.id, confirmations, blockHeight } };
 };
 
 /**
@@ -127,7 +148,7 @@ const collectReconciliationChanges = (
   existingUtxoMap: Map<string, ExistingUtxo>,
   locallySpentKeys: ReadonlySet<string>,
 ): ReconciliationChanges => {
-  const changes: ReconciliationChanges = { updates: [], spentIds: [] };
+  const changes: ReconciliationChanges = { updates: [], restores: [], spentIds: [] };
   for (const [key, dbUtxo] of existingUtxoMap) {
     const blockchainUtxo = ctx.utxoDataMap.get(key);
     if (!blockchainUtxo) {
@@ -141,10 +162,11 @@ const collectReconciliationChanges = (
       });
       continue;
     }
-    const update = createUtxoUpdate(
+    const outcome = createUtxoUpdate(
       ctx, key, dbUtxo, blockchainUtxo.utxo.height, ctx.currentBlockHeight, locallySpentKeys,
     );
-    if (update) changes.updates.push(update);
+    if (outcome?.kind === 'update') changes.updates.push(outcome.value);
+    else if (outcome?.kind === 'restore') changes.restores.push(outcome.value);
   }
   return changes;
 };
@@ -183,13 +205,27 @@ const persistUtxoUpdates = async (
       data: {
         confirmations: update.confirmations,
         blockHeight: update.blockHeight,
-        spent: update.spent,
+        // Omitted entirely for a confirmation-only refresh — only the
+        // explicit kept-spent outcome carries `spent: true` here.
+        ...(update.spent !== undefined ? { spent: update.spent } : {}),
       },
     })),
     getConfig().sync.transactionBatchSize,
     tx,
   );
   deferPostCommit(() => log.debug(`[SYNC] Updated confirmations for ${updates.length} UTXOs`));
+};
+
+const persistUtxoRestores = async (
+  restores: UtxoRestore[],
+  tx: PrismaTxClient | undefined,
+  deferPostCommit: DeferPostCommit,
+): Promise<void> => {
+  // Guarded restore: only writes rows still `spent: true`, so a concurrent
+  // spend committed after the reconciliation snapshot is never clobbered
+  // back to unspent by this round's listing.
+  await utxoRepository.restoreUnspentByIds(restores, getConfig().sync.transactionBatchSize, tx);
+  deferPostCommit(() => log.debug(`[SYNC] Restored ${restores.length} UTXOs to unspent (spend evidence vanished)`));
 };
 
 function chunksOf<T>(items: T[], size: number): T[][] {
@@ -212,6 +248,14 @@ async function persistUpdateChunks(ctx: SyncContext, updates: UtxoUpdate[], batc
   for (const chunk of chunksOf(updates, batchSize)) {
     await runWalletSyncMutation(ctx, 'utxo_reconciliation', async (tx, deferPostCommit) => {
       await persistUtxoUpdates(chunk, tx, deferPostCommit);
+    });
+  }
+}
+
+async function persistRestoreChunks(ctx: SyncContext, restores: UtxoRestore[], batchSize: number) {
+  for (const chunk of chunksOf(restores, batchSize)) {
+    await runWalletSyncMutation(ctx, 'utxo_reconciliation', async (tx, deferPostCommit) => {
+      await persistUtxoRestores(chunk, tx, deferPostCommit);
     });
   }
 }
@@ -251,6 +295,7 @@ export async function reconcileUtxosPhase(ctx: SyncContext): Promise<SyncContext
   const batchSize = getConfig().sync.transactionBatchSize;
   await persistSpentChunks(ctx, changes.spentIds, batchSize);
   await persistUpdateChunks(ctx, changes.updates, batchSize);
+  await persistRestoreChunks(ctx, changes.restores, batchSize);
 
   const newUtxoCount = Array.from(allUtxoKeys).filter(key => !existingUtxoMap.has(key)).length;
   log.debug(
