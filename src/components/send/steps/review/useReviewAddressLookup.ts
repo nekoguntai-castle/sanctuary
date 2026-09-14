@@ -20,13 +20,21 @@ export function useReviewAddressLookup(
   useEffect(() => {
     if (addresses.length === 0) return;
 
+    let cancelled = false;
+
     lookupAddresses(addresses)
       .then(response => {
+        if (cancelled) return;
         setAddressLookup(response.lookup);
       })
       .catch(error => {
+        if (cancelled) return;
         log.warn('Failed to lookup addresses', { error: String(error) });
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [addresses]);
 
   return addressLookup;
