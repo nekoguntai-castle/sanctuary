@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WalletWebhooks } from '../../../src/components/WalletDetail/WalletWebhooks';
+import type { WalletWebhookEndpoint } from '../../../src/types';
 
 const {
   mockListWalletWebhooks,
@@ -260,6 +261,318 @@ describe('WalletWebhooks', () => {
     render(<WalletWebhooks walletId="wallet-1" userRole={role} />);
     expect(await screen.findByText('Webhook access is unavailable')).toBeInTheDocument();
     expect(mockListWalletWebhooks).not.toHaveBeenCalled();
+  });
+
+  it('discards a stale wallet response that resolves after switching wallets', async () => {
+    let resolveA!: (value: WalletWebhookEndpoint[]) => void;
+    let resolveB!: (value: WalletWebhookEndpoint[]) => void;
+    const pendingA = new Promise<WalletWebhookEndpoint[]>(resolve => { resolveA = resolve; });
+    const pendingB = new Promise<WalletWebhookEndpoint[]>(resolve => { resolveB = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a' ? pendingA : pendingB
+    ));
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(mockListWalletWebhooks).toHaveBeenCalledWith('wallet-a');
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(mockListWalletWebhooks).toHaveBeenCalledWith('wallet-b');
+
+    // List B never shows A's rows in the meantime.
+    expect(screen.queryByText('Accounting')).not.toBeInTheDocument();
+
+    // Resolve B first, then A arrives late; A's stale response must not overwrite B's list.
+    resolveB([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })]);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    resolveA([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })]);
+    await waitFor(() => {
+      expect(screen.queryByText('Alpha endpoint')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+  });
+
+  it('discards a stale wallet failure that rejects after switching wallets', async () => {
+    let rejectA!: (err: unknown) => void;
+    let resolveB!: (value: WalletWebhookEndpoint[]) => void;
+    const pendingA = new Promise<WalletWebhookEndpoint[]>((_resolve, reject) => { rejectA = reject; });
+    const pendingB = new Promise<WalletWebhookEndpoint[]>(resolve => { resolveB = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a' ? pendingA : pendingB
+    ));
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(mockListWalletWebhooks).toHaveBeenCalledWith('wallet-a');
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(mockListWalletWebhooks).toHaveBeenCalledWith('wallet-b');
+
+    resolveB([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })]);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    // A's late rejection must not surface as an error under wallet B.
+    rejectA(new Error('stale wallet-a failure'));
+    await waitFor(() => {
+      expect(screen.queryByText('stale wallet-a failure')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+  });
+
+  it('does not reload a stale wallet when a mutation resolves after switching wallets', async () => {
+    let resolveUpdate!: (value: WalletWebhookEndpoint) => void;
+    const pendingUpdate = new Promise<WalletWebhookEndpoint>(resolve => { resolveUpdate = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockUpdateWalletWebhook.mockReturnValue(pendingUpdate);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Enabled'));
+    await waitFor(() => expect(mockUpdateWalletWebhook).toHaveBeenCalledTimes(1));
+
+    const walletACallsBeforeSwitch = mockListWalletWebhooks.mock.calls
+      .filter(args => args[0] === 'wallet-a').length;
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    // The pending toggle for wallet A resolves after the switch; its reload must be
+    // dropped rather than re-fetching (or overwriting) wallet B's rows.
+    resolveUpdate(makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint', enabled: false }));
+    await waitFor(() => {
+      expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+    });
+    const walletACallsAfterSwitch = mockListWalletWebhooks.mock.calls
+      .filter(args => args[0] === 'wallet-a').length;
+    expect(walletACallsAfterSwitch).toBe(walletACallsBeforeSwitch);
+  });
+
+  it('does not surface a stale create failure after switching wallets', async () => {
+    let rejectCreate!: (err: unknown) => void;
+    const pendingCreate = new Promise<WalletWebhookEndpoint>((_resolve, reject) => { rejectCreate = reject; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockCreateWalletWebhook.mockReturnValue(pendingCreate);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('No webhooks configured.')).toBeInTheDocument();
+
+    fillRequiredFields();
+    fireEvent.click(screen.getByText('Add webhook'));
+    await waitFor(() => expect(mockCreateWalletWebhook).toHaveBeenCalledTimes(1));
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    rejectCreate(new Error('stale create failure'));
+    await waitFor(() => {
+      expect(screen.queryByText('stale create failure')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+  });
+
+  it('does not surface a stale mutation failure after switching wallets', async () => {
+    let rejectUpdate!: (err: unknown) => void;
+    const pendingUpdate = new Promise<WalletWebhookEndpoint>((_resolve, reject) => { rejectUpdate = reject; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockUpdateWalletWebhook.mockReturnValue(pendingUpdate);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Enabled'));
+    await waitFor(() => expect(mockUpdateWalletWebhook).toHaveBeenCalledTimes(1));
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    rejectUpdate(new Error('stale toggle failure'));
+    await waitFor(() => {
+      expect(screen.queryByText('stale toggle failure')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+  });
+
+  it('does not apply a stale secret-rotation notice after switching wallets', async () => {
+    let resolveRotate!: (value: WalletWebhookEndpoint) => void;
+    const pendingRotate = new Promise<WalletWebhookEndpoint>(resolve => { resolveRotate = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockUpdateWalletWebhook.mockReturnValue(pendingRotate);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Rotate signing secret'), {
+      target: { value: 'new-secret' },
+    });
+    fireEvent.click(screen.getByText('Rotate'));
+    await waitFor(() => expect(mockUpdateWalletWebhook).toHaveBeenCalledTimes(1));
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    resolveRotate(makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' }));
+    await waitFor(() => {
+      expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Secret rotated for Alpha endpoint')).not.toBeInTheDocument();
+  });
+
+  it('does not apply a stale header-update notice after switching wallets', async () => {
+    let resolveHeaders!: (value: WalletWebhookEndpoint) => void;
+    const pendingHeaders = new Promise<WalletWebhookEndpoint>(resolve => { resolveHeaders = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({
+          id: 'webhook-a',
+          name: 'Alpha endpoint',
+          configuredHeaderNames: ['Authorization'],
+        })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockUpdateWalletWebhook.mockReturnValue(pendingHeaders);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Header changes for Alpha endpoint'), {
+      target: { value: '{"Authorization":"replacement"}' },
+    });
+    fireEvent.click(screen.getByText('Update headers'));
+    await waitFor(() => expect(mockUpdateWalletWebhook).toHaveBeenCalledTimes(1));
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    resolveHeaders(makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' }));
+    await waitFor(() => {
+      expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Headers updated for Alpha endpoint')).not.toBeInTheDocument();
+  });
+
+  it('does not apply a stale replay notice or reload deliveries after switching wallets', async () => {
+    let resolveReplay!: (value: {
+      success: boolean;
+      queued: boolean;
+      message: string;
+      delivery: ReturnType<typeof makeDelivery>;
+    }) => void;
+    const pendingReplay = new Promise<{
+      success: boolean;
+      queued: boolean;
+      message: string;
+      delivery: ReturnType<typeof makeDelivery>;
+    }>(resolve => { resolveReplay = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockGetWalletWebhookDeliveries.mockResolvedValue([makeDelivery()]);
+    mockReplayWalletWebhookDelivery.mockReturnValue(pendingReplay);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    expect(await screen.findByText('event-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Replay'));
+    await waitFor(() => expect(mockReplayWalletWebhookDelivery).toHaveBeenCalledTimes(1));
+
+    const deliveryCallsBeforeSwitch = mockGetWalletWebhookDeliveries.mock.calls.length;
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    resolveReplay({
+      success: true,
+      queued: true,
+      message: 'Webhook delivery replay queued',
+      delivery: makeDelivery({ status: 'pending' }),
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Webhook delivery replay queued')).not.toBeInTheDocument();
+    expect(mockGetWalletWebhookDeliveries.mock.calls.length).toBe(deliveryCallsBeforeSwitch);
+  });
+
+  it('discards a stale delivery history response after switching wallets', async () => {
+    let resolveDeliveries!: (value: ReturnType<typeof makeDelivery>[]) => void;
+    const pendingDeliveries = new Promise<ReturnType<typeof makeDelivery>[]>(resolve => { resolveDeliveries = resolve; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockGetWalletWebhookDeliveries.mockReturnValue(pendingDeliveries);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    await waitFor(() => expect(mockGetWalletWebhookDeliveries).toHaveBeenCalledTimes(1));
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    resolveDeliveries([makeDelivery()]);
+    await waitFor(() => {
+      expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('event-1')).not.toBeInTheDocument();
+  });
+
+  it('discards a stale delivery history failure after switching wallets', async () => {
+    let rejectDeliveries!: (err: unknown) => void;
+    const pendingDeliveries = new Promise<ReturnType<typeof makeDelivery>[]>((_resolve, reject) => { rejectDeliveries = reject; });
+
+    mockListWalletWebhooks.mockImplementation((walletId: string) => (
+      walletId === 'wallet-a'
+        ? Promise.resolve([makeWebhook({ id: 'webhook-a', name: 'Alpha endpoint' })])
+        : Promise.resolve([makeWebhook({ id: 'webhook-b', name: 'Bravo endpoint' })])
+    ));
+    mockGetWalletWebhookDeliveries.mockReturnValue(pendingDeliveries);
+
+    const { rerender } = render(<WalletWebhooks walletId="wallet-a" userRole="owner" />);
+    expect(await screen.findByText('Alpha endpoint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    await waitFor(() => expect(mockGetWalletWebhookDeliveries).toHaveBeenCalledTimes(1));
+
+    rerender(<WalletWebhooks walletId="wallet-b" userRole="owner" />);
+    expect(await screen.findByText('Bravo endpoint')).toBeInTheDocument();
+
+    rejectDeliveries(new Error('stale history failure'));
+    await waitFor(() => {
+      expect(screen.getByText('Bravo endpoint')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('stale history failure')).not.toBeInTheDocument();
   });
 });
 

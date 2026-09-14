@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Link2, RefreshCw } from 'lucide-react';
 import { canWalletRoleEdit, parseWalletRole } from '@sanctuary/shared/constants/walletRoles';
 import type { WalletWebhookDelivery, WalletWebhookEndpoint } from '../../types';
@@ -12,6 +12,8 @@ import {
   parseHeaderConfigUpdate,
   type WebhookFormState,
 } from './webhooks/model';
+import type { RouteToken } from '../../hooks/requestOwnership';
+import { useWalletRouteOwnership } from './hooks/useWalletRouteOwnership';
 
 interface WalletWebhooksProps {
   walletId: string;
@@ -32,6 +34,19 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
   const walletRole = parseWalletRole(userRole);
   const canManage = walletRole === 'owner';
   const canInspectDeliveries = canWalletRoleEdit(walletRole);
+  const ownership = useWalletRouteOwnership(walletId);
+
+  // Clear wallet-scoped state synchronously (before the load effect below runs)
+  // so a wallet switch never renders the previous wallet's rows.
+  useLayoutEffect(() => {
+    setWebhooks([]);
+    setDeliveryState({});
+    setSecretUpdates({});
+    setHeaderUpdates({});
+    setBusyAction(null);
+    setNotice(null);
+    setSaving(false);
+  }, [walletId]);
 
   useEffect(() => {
     if (!walletRole) {
@@ -39,7 +54,7 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
       setError('Webhook access is unavailable');
       return;
     }
-    void loadWebhooks();
+    void loadWebhooks(ownership.captureRoute(walletId));
   }, [walletId, walletRole]);
 
   const canSave = useMemo(() => {
@@ -48,23 +63,28 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
     return Boolean(hasRequiredFields && authReady);
   }, [form]);
 
-  async function loadWebhooks() {
+  async function loadWebhooks(token: RouteToken = ownership.captureRoute(walletId)) {
     /* v8 ignore next -- the effect only invokes loading after parsing a valid wallet role */
     if (!walletRole) return;
+    if (!ownership.isRouteOwner(token)) return;
     setLoading(true);
     setError(null);
     try {
-      setWebhooks(await walletsApi.listWalletWebhooks(walletId));
+      const result = await walletsApi.listWalletWebhooks(walletId);
+      if (!ownership.isRouteOwner(token)) return;
+      setWebhooks(result);
     } catch (err) {
+      if (!ownership.isRouteOwner(token)) return;
       setError(err instanceof Error ? err.message : 'Failed to load webhooks');
     } finally {
-      setLoading(false);
+      if (ownership.isRouteOwner(token)) setLoading(false);
     }
   }
 
   async function createWebhook() {
     /* v8 ignore next -- the form is hidden/disabled unless both capability and validity hold */
     if (!canManage || !canSave) return;
+    const token = ownership.captureRoute(walletId);
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -72,20 +92,20 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
       await walletsApi.createWalletWebhook(walletId, buildWebhookInput(form));
       setForm(defaultForm());
       setNotice('Webhook endpoint added');
-      await loadWebhooks();
+      await loadWebhooks(token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save webhook');
+      if (ownership.isRouteOwner(token)) setError(err instanceof Error ? err.message : 'Failed to save webhook');
     } finally {
-      setSaving(false);
+      if (ownership.isRouteOwner(token)) setSaving(false);
     }
   }
 
   async function toggleWebhook(webhook: WalletWebhookEndpoint) {
     /* v8 ignore next -- non-owners are never rendered the toggle control */
     if (!canManage) return;
-    await runEndpointAction(`toggle:${webhook.id}`, 'Failed to update webhook', async () => {
+    await runEndpointAction(`toggle:${webhook.id}`, 'Failed to update webhook', async (token) => {
       await walletsApi.updateWalletWebhook(walletId, webhook.id, { enabled: !webhook.enabled });
-      await loadWebhooks();
+      await loadWebhooks(token);
     });
   }
 
@@ -95,11 +115,13 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
     const secret = secretUpdates[webhook.id]?.trim();
     /* v8 ignore next -- the rotate action is disabled while the secret is empty */
     if (!secret) return;
-    await runEndpointAction(`secret:${webhook.id}`, 'Failed to rotate secret', async () => {
+    await runEndpointAction(`secret:${webhook.id}`, 'Failed to rotate secret', async (token) => {
       await walletsApi.updateWalletWebhook(walletId, webhook.id, { secret });
-      setSecretUpdates(prev => ({ ...prev, [webhook.id]: '' }));
-      setNotice(`Secret rotated for ${webhook.name}`);
-      await loadWebhooks();
+      if (ownership.isRouteOwner(token)) {
+        setSecretUpdates(prev => ({ ...prev, [webhook.id]: '' }));
+        setNotice(`Secret rotated for ${webhook.name}`);
+      }
+      await loadWebhooks(token);
     });
   }
 
@@ -112,9 +134,13 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
     });
   }
 
-  async function loadDeliveries(webhook: WalletWebhookEndpoint) {
+  async function loadDeliveries(
+    webhook: WalletWebhookEndpoint,
+    token: RouteToken = ownership.captureRoute(walletId),
+  ) {
     /* v8 ignore next -- roles without edit capability are never rendered history controls */
     if (!canInspectDeliveries) return;
+    if (!ownership.isRouteOwner(token)) return;
     const currentDeliveries = deliveryState[webhook.id]?.deliveries ?? [];
     setDeliveryState(prev => ({
       ...prev,
@@ -122,11 +148,13 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
     }));
     try {
       const deliveries = await walletsApi.getWalletWebhookDeliveries(walletId, webhook.id, 25);
+      if (!ownership.isRouteOwner(token)) return;
       setDeliveryState(prev => ({
         ...prev,
         [webhook.id]: { loading: false, deliveries, error: null },
       }));
     } catch (err) {
+      if (!ownership.isRouteOwner(token)) return;
       setDeliveryState(prev => ({
         ...prev,
         [webhook.id]: {
@@ -141,48 +169,55 @@ export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
   async function replayDelivery(webhook: WalletWebhookEndpoint, delivery: WalletWebhookDelivery) {
     /* v8 ignore next -- roles without edit capability are never rendered replay controls */
     if (!canInspectDeliveries) return;
-    await runEndpointAction(`replay:${delivery.id}`, 'Failed to replay delivery', async () => {
+    await runEndpointAction(`replay:${delivery.id}`, 'Failed to replay delivery', async (token) => {
       const result = await walletsApi.replayWalletWebhookDelivery(walletId, webhook.id, delivery.id);
-      setNotice(result.message);
-      await loadDeliveries(webhook);
-      await loadWebhooks();
+      if (ownership.isRouteOwner(token)) setNotice(result.message);
+      await loadDeliveries(webhook, token);
+      await loadWebhooks(token);
     });
   }
 
   async function deleteWebhook(webhookId: string) {
     /* v8 ignore next -- non-owners are never rendered the delete control */
     if (!canManage) return;
-    await runEndpointAction(`delete:${webhookId}`, 'Failed to delete webhook', async () => {
+    await runEndpointAction(`delete:${webhookId}`, 'Failed to delete webhook', async (token) => {
       await walletsApi.deleteWalletWebhook(walletId, webhookId);
-      await loadWebhooks();
+      await loadWebhooks(token);
     });
   }
 
   async function updateHeaders(webhook: WalletWebhookEndpoint) {
     /* v8 ignore next -- non-owners are never rendered the header editor */
     if (!canManage) return;
-    await runEndpointAction(`headers:${webhook.id}`, 'Failed to update webhook headers', async () => {
+    await runEndpointAction(`headers:${webhook.id}`, 'Failed to update webhook headers', async (token) => {
       /* v8 ignore next -- the rendered editor always initializes an entry before enabling update */
       const headerConfig = parseHeaderConfigUpdate(headerUpdates[webhook.id] ?? '');
       /* v8 ignore next -- the update action is disabled while the delta editor is empty */
       if (!headerConfig) return;
       await walletsApi.updateWalletWebhook(walletId, webhook.id, { headerConfig });
-      setHeaderUpdates(prev => ({ ...prev, [webhook.id]: '' }));
-      setNotice(`Headers updated for ${webhook.name}`);
-      await loadWebhooks();
+      if (ownership.isRouteOwner(token)) {
+        setHeaderUpdates(prev => ({ ...prev, [webhook.id]: '' }));
+        setNotice(`Headers updated for ${webhook.name}`);
+      }
+      await loadWebhooks(token);
     });
   }
 
-  async function runEndpointAction(action: string, fallbackMessage: string, fn: () => Promise<void>) {
+  async function runEndpointAction(
+    action: string,
+    fallbackMessage: string,
+    fn: (token: RouteToken) => Promise<void>,
+  ) {
+    const token = ownership.captureRoute(walletId);
     setError(null);
     setNotice(null);
     setBusyAction(action);
     try {
-      await fn();
+      await fn(token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : fallbackMessage);
+      if (ownership.isRouteOwner(token)) setError(err instanceof Error ? err.message : fallbackMessage);
     } finally {
-      setBusyAction(null);
+      if (ownership.isRouteOwner(token)) setBusyAction(null);
     }
   }
 
