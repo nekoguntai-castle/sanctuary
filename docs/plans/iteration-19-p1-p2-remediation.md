@@ -141,3 +141,21 @@ One PR per phase, serial merges on `main`, each rebased only when it is next; ta
 ## Completion criteria
 
 All nine findings resolved in run state with a target-CI-verified attempt record; a fresh full scrub (iteration 20) of the resulting main SHA finds zero P0–P2.
+
+## Delivery record
+
+All nine phases merged serially on `main` (squash merges), each with target-branch CI verified:
+
+| Phase | PR | Merge SHA | Notes / verified divergences |
+| --- | --- | --- | --- |
+| 8 | #1132 | `d6e11d81` | Per-mount request id instead of a walletId ref (A → B → A); wallet switch resets saving/error/success and clears the success timeout. |
+| 1 | #1133 | `d6610517` | Update rule is the stricter reading: any config/enforcement edit of an enforce-mode time_delay policy is rejected until it is switched to monitor. |
+| 2 | #1134 | `30645d2a` | `canReplaceTransaction` marks upstream/node failures (`upstreamError`) so those stay 500; only business-rule rejections became 400. `rbf.ts` pins re-pinned 209-219 → 217-227. |
+| 3 | #1135 | `74ad0f5e` | The CAS lives inside `resolveReplacementLinkAfterBroadcast` (repository `linkReplacementIfUnreplaced`); `persistTransaction` no longer touches Prisma for the link. |
+| 4 | #1136 | `e57a75cc` | Restore requires BOTH no authenticated spend this round AND no live locally recorded spender (`findLocallySpentOutpointKeys`, inventoried in `config/wallet-sync-mutation-boundaries.json` after the Architecture lane caught the missing entry). |
+| 6 | #1137 | `fbde91ca` | Send-loop errors also return `success: false` with the partial `usersNotified` count (never thrown after partial sends); regenerated notifications call graph committed. |
+| 9 | #1138 | `8109694d` | Early-return branch (coin control off / selection cleared) clears the loading flag itself. |
+| 7 | #1139 | `70b06b3b` | All-change edge keeps every output as a recipient with no change fields so the draft never has zero outputs. |
+| 5 | #1140 | `c0f5bd00` | Both batch paths (`transactions/createBatchTransaction.ts` and `advancedTx/batch.ts`) spend the whole pinned set; two new wallet-safety invariants with canaries. |
+
+Iteration-19 plan PR: #1131 (`86556a22`). Custody after delivery: no loop branches or worktrees remain.
