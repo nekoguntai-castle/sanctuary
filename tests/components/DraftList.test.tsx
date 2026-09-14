@@ -289,6 +289,35 @@ describe('DraftList', () => {
       expect(onDraftsChange).toHaveBeenCalledWith(1);
     });
 
+    it('applies two back-to-back confirmed deletes without reverting either', async () => {
+      const onDraftsChange = vi.fn();
+      renderDraftList({ onDraftsChange });
+
+      await screen.findByText('Unsigned');
+
+      // Confirm delete for the first draft, but don't await its resolution yet.
+      fireEvent.click(screen.getAllByTitle('Delete draft')[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+      // Immediately confirm delete for the remaining draft, before the first
+      // delete's promise has resolved. Both handlers are created from the
+      // same pre-delete render, so a stale closure over `drafts` would make
+      // the second resolution overwrite the first's removal.
+      fireEvent.click(screen.getAllByTitle('Delete draft')[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => {
+        expect(draftsApi.deleteDraft).toHaveBeenCalledTimes(2);
+      });
+      expect(draftsApi.deleteDraft).toHaveBeenCalledWith('wallet-1', 'draft-2');
+      expect(draftsApi.deleteDraft).toHaveBeenCalledWith('wallet-1', 'draft-1');
+
+      await waitFor(() => {
+        expect(screen.getByText(/No draft transactions/i)).toBeInTheDocument();
+      });
+      expect(onDraftsChange).toHaveBeenLastCalledWith(0);
+    });
+
     it('cancels delete flow without deleting', async () => {
       const user = userEvent.setup();
       renderDraftList();

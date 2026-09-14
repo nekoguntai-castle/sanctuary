@@ -47,6 +47,7 @@ export function useDraftListController({
   const navigate = useNavigate();
   const { format } = usePriceFreeFormatter();
   const [drafts, setDrafts] = useState<DraftTransaction[]>([]);
+  const draftsRef = React.useRef<DraftTransaction[]>(drafts);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [expandedDraft, setExpandedDraft] = useState<string | null>(null);
   const { loading, error, execute: runLoad } = useLoadingState<DraftTransaction[]>({ initialLoading: true });
@@ -63,15 +64,24 @@ export function useDraftListController({
   const sortedDrafts = React.useMemo(() => sortDraftsByExpiration(drafts), [drafts]);
   const displayError = error || operationError;
 
+  // Keeps a synchronous, always-current view of the draft list alongside
+  // the render-driving state, so handlers resolving after an `await` (e.g.
+  // handleDelete) never act on a closure captured before an earlier,
+  // still-pending operation applied its own update.
+  const applyDrafts = React.useCallback((next: DraftTransaction[]) => {
+    draftsRef.current = next;
+    setDrafts(next);
+  }, []);
+
   const loadDrafts = React.useCallback(() => runLoad(async () => {
     clearOperationError();
     log.debug('Loading drafts for wallet', { walletId });
     const data = await getDrafts(walletId);
     log.debug('Loaded drafts', { count: data.length });
-    setDrafts(data);
+    applyDrafts(data);
     onDraftsChange?.(data.length);
     return data;
-  }), [clearOperationError, onDraftsChange, runLoad, walletId]);
+  }), [applyDrafts, clearOperationError, onDraftsChange, runLoad, walletId]);
 
   useEffect(() => {
     void loadDrafts();
@@ -91,12 +101,15 @@ export function useDraftListController({
     });
 
     if (result !== null) {
-      const newDrafts = drafts.filter(d => d.id !== draftId);
-      setDrafts(newDrafts);
+      // Read from the ref, not the `drafts` closure: another delete may
+      // have resolved while this one was in flight, and the closure here
+      // was captured before that update landed.
+      const newDrafts = draftsRef.current.filter(d => d.id !== draftId);
+      applyDrafts(newDrafts);
       setDeleteConfirm(null);
       onDraftsChange?.(newDrafts.length);
     }
-  }, [drafts, onDraftsChange, runOperation, walletId]);
+  }, [applyDrafts, onDraftsChange, runOperation, walletId]);
 
   const handleDownloadPsbt = React.useCallback((draft: DraftTransaction) => {
     downloadBlob(createPsbtBlob(getDownloadablePsbt(draft)), getDraftPsbtFilename(draft.id));
