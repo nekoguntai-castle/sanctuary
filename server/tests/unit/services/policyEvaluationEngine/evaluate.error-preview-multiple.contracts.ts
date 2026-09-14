@@ -427,11 +427,14 @@ export function registerPolicyEvaluateErrorPreviewMultipleTests(context: PolicyE
           amount: BigInt(100),
         });
 
-        expect(result.allowed).toBe(true);
-        // approval_required + time_delay triggered (empty allowlist doesn't block)
+        // approval_required + time_delay triggered (empty allowlist doesn't block);
+        // the enforce-mode time_delay policy fails closed and blocks the transaction.
+        expect(result.allowed).toBe(false);
         expect(result.triggered).toHaveLength(2);
         expect(result.triggered.map(t => t.type)).toContain('approval_required');
         expect(result.triggered.map(t => t.type)).toContain('time_delay');
+        const timeDelayTrigger = result.triggered.find(t => t.type === 'time_delay');
+        expect(timeDelayTrigger?.action).toBe('blocked');
       });
     });
 }

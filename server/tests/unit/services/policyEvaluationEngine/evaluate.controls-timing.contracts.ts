@@ -447,10 +447,15 @@ export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluat
           amount: BigInt(100),
         });
 
+        // Enforce-mode time_delay fails closed: no cooling-period feature
+        // exists yet, so the draft is refused instead of silently proceeding.
+        expect(result.allowed).toBe(false);
         expect(result.triggered).toHaveLength(1);
         expect(result.triggered[0].type).toBe('time_delay');
-        expect(result.triggered[0].action).toBe('time_delay');
-        expect(result.triggered[0].reason).toContain('cooling period');
+        expect(result.triggered[0].action).toBe('blocked');
+        expect(result.triggered[0].reason).toBe(
+          'time-delay enforcement is not available; switch this policy to monitor mode or disable it'
+        );
       });
 
       it('triggers when amountAbove threshold exceeded', async () => {
@@ -476,9 +481,10 @@ export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluat
           amount: BigInt(2_000_000),
         });
 
+        expect(result.allowed).toBe(false);
         expect(result.triggered).toHaveLength(1);
         expect(result.triggered[0].type).toBe('time_delay');
-        expect(result.triggered[0].action).toBe('time_delay');
+        expect(result.triggered[0].action).toBe('blocked');
       });
 
       it('does not trigger when amount is under amountAbove threshold', async () => {
@@ -556,8 +562,12 @@ export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluat
           amount: BigInt(100),
         });
 
+        expect(result.allowed).toBe(true);
         expect(result.triggered).toHaveLength(1);
         expect(result.triggered[0].action).toBe('monitored');
+        expect(result.triggered[0].reason).toBe(
+          'time-delay enforcement is not available; switch this policy to monitor mode or disable it'
+        );
       });
     });
 }

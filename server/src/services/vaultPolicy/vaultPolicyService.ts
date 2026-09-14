@@ -18,6 +18,7 @@ import type {
   UpdatePolicyInput,
   PolicyType,
   PolicyConfig,
+  PolicyEnforcement,
   SpendingLimitConfig,
   ApprovalRequiredConfig,
   TimeDelayConfig,
@@ -197,6 +198,13 @@ export async function updatePolicy(
     validateOptionalEnforcement(input.enforcement);
   }
 
+  if (input.config !== undefined || input.enforcement !== undefined) {
+    validateTimeDelayEnforcement(
+      existing.type as PolicyType,
+      (input.enforcement ?? existing.enforcement) as PolicyEnforcement
+    );
+  }
+
   const updated = await policyRepository.updatePolicy(policyId, {
     name: input.name,
     description: input.description,
@@ -310,6 +318,29 @@ const validatePolicyInput = (input: CreatePolicyInput): void => {
   validatePolicyType(input.type);
   validateOptionalEnforcement(input.enforcement);
   validatePolicyConfig(input.type, input.config);
+  // Same default resolution as createPolicy's repository call below
+  // (`enforcement: input.enforcement ?? 'enforce'`) so validation and
+  // persistence never disagree on the effective enforcement mode.
+  validateTimeDelayEnforcement(input.type, input.enforcement ?? 'enforce');
+};
+
+/**
+ * Time-delay enforcement fails closed: the cooling-period/veto hold is not
+ * implemented yet (see docs/plans/iteration-19-p1-p2-remediation.md, Phase
+ * 1), so an enforce-mode time_delay policy would otherwise be a silent
+ * no-op — evaluated and surfaced to the UI but never actually holding
+ * anything. Reject it outright at create/update time; monitor mode (purely
+ * informational) stays allowed.
+ */
+const validateTimeDelayEnforcement = (
+  type: PolicyType,
+  enforcement: PolicyEnforcement
+): void => {
+  if (type === 'time_delay' && enforcement === 'enforce') {
+    throw new InvalidInputError(
+      'time-delay enforcement is not available yet; use monitor mode'
+    );
+  }
 };
 
 const validatePolicyName = (name: string): void => {

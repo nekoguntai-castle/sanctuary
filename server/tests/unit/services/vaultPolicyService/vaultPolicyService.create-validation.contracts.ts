@@ -687,7 +687,28 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('trigger');
     });
 
-    it('creates a valid time_delay policy', async () => {
+    it('creates a valid time_delay policy in monitor mode', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Cool Down',
+        type: 'time_delay',
+        enforcement: 'monitor',
+        config: {
+          trigger: { always: true },
+          delayHours: 24,
+          vetoEligible: 'specific',
+          specificVetoers: [userId],
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+      mockPolicyRepo.createPolicy.mockResolvedValue({ id: policyId, ...input });
+      const result = await vaultPolicyService.createPolicy(userId, input);
+      expect(result.id).toBe(policyId);
+    });
+
+    it('rejects an enforce-mode time_delay policy (enforcement defaults to enforce)', async () => {
       const input: CreatePolicyInput = {
         walletId,
         name: 'Cool Down',
@@ -702,9 +723,32 @@ export function registerVaultPolicyCreateValidationContracts(): void {
           notifyOnClear: true,
         },
       };
-      mockPolicyRepo.createPolicy.mockResolvedValue({ id: policyId, ...input });
-      const result = await vaultPolicyService.createPolicy(userId, input);
-      expect(result.id).toBe(policyId);
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('time-delay enforcement is not available yet; use monitor mode');
+      expect(mockPolicyRepo.createPolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects an explicitly enforce-mode time_delay policy', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Cool Down',
+        type: 'time_delay',
+        enforcement: 'enforce',
+        config: {
+          trigger: { always: true },
+          delayHours: 24,
+          vetoEligible: 'specific',
+          specificVetoers: [userId],
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('time-delay enforcement is not available yet; use monitor mode');
+      expect(mockPolicyRepo.createPolicy).not.toHaveBeenCalled();
     });
 
     it('creates a valid velocity policy', async () => {

@@ -151,14 +151,12 @@ describe('createDraft approval atomicity', () => {
     expect(result).toEqual(mockDraft);
   });
 
-  it('succeeds without creating an approval request when only an enforced time_delay policy triggers', async () => {
-    // This mirrors the fixed policyEvaluationEngine's output for an enforced
-    // time-delay policy: action 'time_delay', never 'approval_required'.
-    // Against origin/main's engine (which mislabels this trigger with action
-    // 'approval_required'), requiresApproval would return true and this
-    // assertion would fail because createApprovalRequestsForDraft would be
-    // called — the same misrouting that produces the Prisma
-    // non-nullable-requiredApprovals failure in the real approvalService.
+  it('succeeds without creating an approval request when only a monitor-mode time_delay policy triggers', async () => {
+    // Monitor-mode time_delay is informational only (action 'monitored') and
+    // never 'approval_required', so requiresApproval must stay false and no
+    // approval request should be created — the same misrouting that produced
+    // the Prisma non-nullable-requiredApprovals failure in the real
+    // approvalService if 'approval_required' were ever mistakenly emitted.
     const timeDelayEvaluation = {
       allowed: true,
       triggered: [
@@ -166,13 +164,40 @@ describe('createDraft approval atomicity', () => {
           policyId: 'p-delay',
           policyName: 'Cooling Period',
           type: 'time_delay' as const,
-          action: 'time_delay' as const,
-          reason: 'Transaction will enter a cooling period after approval',
+          action: 'monitored' as const,
+          reason: 'time-delay enforcement is not available; switch this policy to monitor mode or disable it',
         },
       ],
     };
 
     const result = await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: timeDelayEvaluation });
+
+    expect(result).toEqual(mockDraft);
+    expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
+    const createArgs = (draftRepository.create as Mock).mock.calls[0][0] as Record<string, unknown>;
+    expect(createArgs.approvalStatus).toBeUndefined();
+  });
+
+  it('does not create an approval request for a blocked (fail-closed) enforce-mode time_delay trigger', async () => {
+    // An enforce-mode time_delay policy is refused before createDraft is ever
+    // reached (the route checks policyResult.allowed and throws), but this
+    // guards the draft-creation contract in isolation: even if a 'blocked'
+    // trigger somehow reached createDraft, it must never be treated as
+    // 'approval_required'.
+    const blockedEvaluation = {
+      allowed: false,
+      triggered: [
+        {
+          policyId: 'p-delay',
+          policyName: 'Cooling Period',
+          type: 'time_delay' as const,
+          action: 'blocked' as const,
+          reason: 'time-delay enforcement is not available; switch this policy to monitor mode or disable it',
+        },
+      ],
+    };
+
+    const result = await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: blockedEvaluation });
 
     expect(result).toEqual(mockDraft);
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();

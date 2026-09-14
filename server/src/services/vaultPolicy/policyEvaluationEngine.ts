@@ -221,29 +221,39 @@ const applyVelocityPolicy = async (
   }
 };
 
+const TIME_DELAY_NOT_AVAILABLE_REASON =
+  'time-delay enforcement is not available; switch this policy to monitor mode or disable it';
+
 const applyTimeDelayPolicy = (
   policy: VaultPolicy,
   config: Record<string, unknown>,
   state: EvaluationState
 ): void => {
-  // Time delay is evaluated post-approval, not pre-create.
-  // It's included in the triggered list so the UI knows about it.
+  // The cooling-period/veto hold itself is not implemented yet. An
+  // enforce-mode time-delay policy therefore fails CLOSED here: it blocks
+  // the transaction outright with an explicit reason instead of silently
+  // waving it through (the product gap this closes — see
+  // docs/plans/iteration-19-p1-p2-remediation.md, Phase 1). Monitor mode
+  // stays informational only, surfacing the same trigger to the UI without
+  // blocking.
+  //
+  // Time-delay policies are never approval quorums: they never carry
+  // requiredApprovals/quorumType, so this must never emit the
+  // 'approval_required' action (createApprovalRequestsForDraft would then
+  // cast their config to ApprovalRequiredConfig and fail creating the
+  // approval request). The 'time_delay' action value is kept in the type
+  // union for API/OpenAPI compatibility but is no longer emitted.
   const tdConfig = config as unknown as { trigger: { always?: boolean; amountAbove?: number } };
 
   if (shouldTriggerTimeDelay(tdConfig, state.amount)) {
-    // Time-delay policies are never approval quorums: they never carry
-    // requiredApprovals/quorumType, so they must never emit the
-    // 'approval_required' action (createApprovalRequestsForDraft would then
-    // cast their config to ApprovalRequiredConfig and fail creating the
-    // approval request). The cooling-period/veto flow itself is not
-    // implemented yet — this only surfaces the trigger for the UI.
     addTriggeredPolicy(
       state,
       policy,
       'time_delay',
-      policy.enforcement === 'monitor' ? 'monitored' : 'time_delay',
-      'Transaction will enter a cooling period after approval'
+      getBlockingAction(policy),
+      TIME_DELAY_NOT_AVAILABLE_REASON
     );
+    markBlockedWhenEnforced(state, policy);
   }
 };
 

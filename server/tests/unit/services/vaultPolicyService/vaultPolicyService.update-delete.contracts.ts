@@ -200,5 +200,78 @@ export function registerVaultPolicyUpdateDeleteContracts(): void {
 
       expect(mockPolicyRepo.updatePolicy).not.toHaveBeenCalled();
     });
+
+    it('rejects switching a monitor-mode time_delay policy to enforce', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'time_delay',
+        enforcement: 'monitor',
+        sourceType: 'wallet',
+      });
+
+      await expect(
+        vaultPolicyService.updatePolicy(policyId, userId, {
+          enforcement: 'enforce',
+        })
+      ).rejects.toThrow('time-delay enforcement is not available yet; use monitor mode');
+
+      expect(mockPolicyRepo.updatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects updating the config of an already enforce-mode time_delay policy', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'time_delay',
+        enforcement: 'enforce',
+        sourceType: 'wallet',
+      });
+
+      await expect(
+        vaultPolicyService.updatePolicy(policyId, userId, {
+          config: {
+            trigger: { always: true },
+            delayHours: 48,
+            vetoEligible: 'any_approver',
+            notifyOnStart: true,
+            notifyOnVeto: true,
+            notifyOnClear: true,
+          },
+        })
+      ).rejects.toThrow('time-delay enforcement is not available yet; use monitor mode');
+
+      expect(mockPolicyRepo.updatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('allows switching an enforce-mode time_delay policy to monitor', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'time_delay',
+        enforcement: 'enforce',
+        sourceType: 'wallet',
+      });
+      mockPolicyRepo.updatePolicy.mockResolvedValue({ id: policyId, enforcement: 'monitor' });
+
+      const result = await vaultPolicyService.updatePolicy(policyId, userId, {
+        enforcement: 'monitor',
+      });
+
+      expect(result.enforcement).toBe('monitor');
+    });
+
+    it('allows renaming an existing enforce-mode time_delay policy without touching config/enforcement', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'time_delay',
+        enforcement: 'enforce',
+        sourceType: 'wallet',
+      });
+      mockPolicyRepo.updatePolicy.mockResolvedValue({ id: policyId, name: 'Renamed' });
+
+      const result = await vaultPolicyService.updatePolicy(policyId, userId, {
+        name: 'Renamed',
+      });
+
+      expect(result.name).toBe('Renamed');
+    });
   });
 }
