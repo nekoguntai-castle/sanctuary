@@ -89,6 +89,46 @@ describe('assertReplacementLink', () => {
     await expect(assertReplacementLink(walletId, originalTxid, [sharedOutpoint]))
       .rejects.toBeInstanceOf(InvalidInputError);
   });
+
+  it('refuses an original that is already replaced, with a specific message', async () => {
+    // findUnconfirmedTransactionForReplacement excludes an already-replaced
+    // original, so the verified lookup resolves to null...
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+    // ...and the direct-by-txid lookup (used only to produce a precise
+    // error) finds it and reports it as replaced.
+    mockPrismaClient.transaction.findUnique.mockResolvedValue({
+      rbfStatus: 'replaced',
+      replacedByTxid: 'f'.repeat(64),
+    });
+
+    await expect(assertReplacementLink(walletId, originalTxid, [sharedOutpoint]))
+      .rejects.toMatchObject({
+        message: expect.stringContaining('already replaced'),
+      });
+  });
+
+  it('refuses an original with replacedByTxid set even if rbfStatus was not updated, with a specific message', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+    mockPrismaClient.transaction.findUnique.mockResolvedValue({
+      rbfStatus: 'active',
+      replacedByTxid: 'f'.repeat(64),
+    });
+
+    await expect(assertReplacementLink(walletId, originalTxid, [sharedOutpoint]))
+      .rejects.toMatchObject({
+        message: expect.stringContaining('already replaced'),
+      });
+  });
+
+  it('throws the generic message when the original truly does not exist', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+    mockPrismaClient.transaction.findUnique.mockResolvedValue(null);
+
+    await expect(assertReplacementLink(walletId, originalTxid, [sharedOutpoint]))
+      .rejects.toMatchObject({
+        message: expect.stringContaining('does not match an unconfirmed transaction'),
+      });
+  });
 });
 
 describe('resolveReplacementLinkAfterBroadcast', () => {
@@ -108,17 +148,30 @@ describe('resolveReplacementLinkAfterBroadcast', () => {
   it('returns the link and inherited label for a verified replacement', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({ id: 'original-id', label: 'Original label' });
     mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await resolveReplacementLinkAfterBroadcast(
       walletId, newTxid, originalTxid, [sharedOutpoint], mockPrismaClient as never
     );
 
     expect(result).toEqual({ originalTransactionId: 'original-id', inheritedLabel: 'Original label' });
+    expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'original-id',
+        rbfStatus: { not: 'replaced' },
+        replacedByTxid: null,
+      },
+      data: {
+        rbfStatus: 'replaced',
+        replacedByTxid: newTxid,
+      },
+    });
   });
 
   it('returns the link without an inherited label when the original has none', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({ id: 'original-id', label: null });
     mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await resolveReplacementLinkAfterBroadcast(
       walletId, newTxid, originalTxid, [sharedOutpoint], mockPrismaClient as never
@@ -129,6 +182,17 @@ describe('resolveReplacementLinkAfterBroadcast', () => {
 
   it('returns undefined (never throws) when the link no longer verifies', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+
+    await expect(resolveReplacementLinkAfterBroadcast(
+      walletId, newTxid, originalTxid, [sharedOutpoint], mockPrismaClient as never
+    )).resolves.toBeUndefined();
+    expect(mockPrismaClient.transaction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined (never throws) when the compare-and-swap loses the race to a concurrent broadcast', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({ id: 'original-id', label: 'Original label' });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(resolveReplacementLinkAfterBroadcast(
       walletId, newTxid, originalTxid, [sharedOutpoint], mockPrismaClient as never

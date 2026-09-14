@@ -95,12 +95,16 @@ export async function persistTransaction(
 
     // Structural RBF linkage: `assertReplacementLink` already verified
     // `metadata.replacesTxid` before this transaction was broadcast. This is
-    // a best-effort re-check (the original could have confirmed in the
+    // a best-effort re-check (the original could have confirmed, or been
+    // linked to a different replacement by a concurrent broadcast, in the
     // race between that check and this persistence transaction) and must
     // never fail persistence of an already-broadcast transaction — a stale
-    // link only skips linkage and logs a warning. `metadata.memo` is display
-    // text only and has no bearing on this decision
-    // (rbf-memo-prefix-spoofs-transaction-replacement).
+    // link only skips linkage and logs a warning.
+    // `resolveReplacementLinkAfterBroadcast` performs the actual
+    // compare-and-swap write (via the repository) so the check-then-link
+    // race is closed at the database layer, not re-verified here.
+    // `metadata.memo` is display text only and has no bearing on this
+    // decision (rbf-memo-prefix-spoofs-transaction-replacement).
     const replacement = await resolveReplacementLinkAfterBroadcast(
       walletId,
       txid,
@@ -112,18 +116,8 @@ export async function persistTransaction(
     let labelToUse = metadata.label;
     const memoToUse = metadata.memo;
 
-    if (replacement) {
-      await tx.transaction.update({
-        where: { id: replacement.originalTransactionId },
-        data: {
-          rbfStatus: 'replaced',
-          replacedByTxid: txid,
-        },
-      });
-
-      if (!labelToUse && replacement.inheritedLabel) {
-        labelToUse = replacement.inheritedLabel;
-      }
+    if (replacement && !labelToUse && replacement.inheritedLabel) {
+      labelToUse = replacement.inheritedLabel;
     }
 
     // Save transaction to database

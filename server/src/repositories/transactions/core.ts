@@ -25,9 +25,12 @@ export async function findInputOutpointsByTransactionId(
 /**
  * The unconfirmed transaction on this wallet that a claimed RBF
  * `replacesTxid` names, if one currently exists. Confirmed or unknown
- * `txid`s resolve to `null` — a caller must not link against them. Accepts
- * either the module-level client (pre-broadcast, read-only) or a
- * transaction client (post-broadcast, inside the persistence transaction).
+ * `txid`s resolve to `null` — a caller must not link against them. A
+ * transaction already marked `replaced` (or carrying a `replacedByTxid`)
+ * also resolves to `null`: it has already been superseded by a different
+ * replacement and must not be linked again. Accepts either the
+ * module-level client (pre-broadcast, read-only) or a transaction client
+ * (post-broadcast, inside the persistence transaction).
  */
 export async function findUnconfirmedTransactionForReplacement(
   txid: string,
@@ -35,9 +38,45 @@ export async function findUnconfirmedTransactionForReplacement(
   client: PrismaTxClient = prisma,
 ): Promise<{ id: string; label: string | null } | null> {
   return client.transaction.findFirst({
-    where: { txid, walletId, confirmations: 0, blockHeight: null },
+    where: {
+      txid,
+      walletId,
+      confirmations: 0,
+      blockHeight: null,
+      rbfStatus: { not: 'replaced' },
+      replacedByTxid: null,
+    },
     select: { id: true, label: true },
   });
+}
+
+/**
+ * Compare-and-swap link of a broadcast transaction to the original it
+ * replaces. Only succeeds (returns `true`) when the original still has no
+ * replacement recorded at write time (`rbfStatus` not `replaced` and
+ * `replacedByTxid` unset) — this closes the race between the read that
+ * verified the replacement pre-write and this write, where a concurrent
+ * broadcast could have linked a different replacement to the same
+ * original in between. A `false` result means the caller must not treat
+ * the new transaction as linked; it must persist unlinked instead.
+ */
+export async function linkReplacementIfUnreplaced(
+  originalTransactionId: string,
+  newTxid: string,
+  client: PrismaTxClient = prisma,
+): Promise<boolean> {
+  const result = await client.transaction.updateMany({
+    where: {
+      id: originalTransactionId,
+      rbfStatus: { not: 'replaced' },
+      replacedByTxid: null,
+    },
+    data: {
+      rbfStatus: 'replaced',
+      replacedByTxid: newTxid,
+    },
+  });
+  return result.count > 0;
 }
 
 export async function deleteByWalletId(walletId: string): Promise<number> {

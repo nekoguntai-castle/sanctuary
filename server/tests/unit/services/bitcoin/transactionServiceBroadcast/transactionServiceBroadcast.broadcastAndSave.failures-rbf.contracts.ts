@@ -77,6 +77,8 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       });
       // Original transaction's own spent input — the new transaction must share it.
       mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+      // The compare-and-swap link succeeds: the original is still unreplaced at write time.
+      mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
 
       const metadata = {
         recipient,
@@ -91,10 +93,16 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
 
       await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
-      // Verify original transaction was marked as replaced
-      expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith(
+      // Verify original transaction was marked as replaced via the
+      // repository compare-and-swap (updateMany), not a blind update.
+      expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'original-tx-db-id' },
+          where: expect.objectContaining({
+            id: 'original-tx-db-id',
+            rbfStatus: { not: 'replaced' },
+            replacedByTxid: null,
+          }),
           data: expect.objectContaining({
             rbfStatus: 'replaced',
             replacedByTxid: expect.any(String), // The new txid
@@ -127,6 +135,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         blockHeight: null,
       });
       mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+      mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
 
       const metadata = {
         recipient,

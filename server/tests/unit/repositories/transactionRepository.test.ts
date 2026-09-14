@@ -16,6 +16,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findMany: vi.fn(),
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      updateMany: vi.fn(),
       count: vi.fn(),
       groupBy: vi.fn(),
     },
@@ -570,7 +571,7 @@ describe('Transaction Repository', () => {
   });
 
   describe('findUnconfirmedTransactionForReplacement', () => {
-    it('queries by txid, walletId, and the unconfirmed filter together', async () => {
+    it('queries by txid, walletId, the unconfirmed filter, and the not-yet-replaced filter together', async () => {
       (prisma.transaction.findFirst as Mock).mockResolvedValue({ id: 'tx-1', label: 'L' });
 
       await expect(transactionRepository.findUnconfirmedTransactionForReplacement(
@@ -579,13 +580,16 @@ describe('Transaction Repository', () => {
       )).resolves.toEqual({ id: 'tx-1', label: 'L' });
 
       // This where-clause is the actual security boundary for RBF linkage: a
-      // confirmed original or one on another wallet must not resolve here.
+      // confirmed original, one on another wallet, or one already replaced
+      // by a different transaction must not resolve here.
       expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
         where: {
           txid: 'a'.repeat(64),
           walletId: 'wallet-1',
           confirmations: 0,
           blockHeight: null,
+          rbfStatus: { not: 'replaced' },
+          replacedByTxid: null,
         },
         select: { id: true, label: true },
       });
@@ -598,6 +602,38 @@ describe('Transaction Repository', () => {
         'a'.repeat(64),
         'wallet-1',
       )).resolves.toBeNull();
+    });
+  });
+
+  describe('linkReplacementIfUnreplaced', () => {
+    it('performs a compare-and-swap update guarded by rbfStatus and replacedByTxid', async () => {
+      (prisma.transaction.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      await expect(transactionRepository.linkReplacementIfUnreplaced(
+        'original-id',
+        'new-txid',
+      )).resolves.toBe(true);
+
+      expect(prisma.transaction.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'original-id',
+          rbfStatus: { not: 'replaced' },
+          replacedByTxid: null,
+        },
+        data: {
+          rbfStatus: 'replaced',
+          replacedByTxid: 'new-txid',
+        },
+      });
+    });
+
+    it('resolves to false when zero rows update (a concurrent broadcast already linked it)', async () => {
+      (prisma.transaction.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(transactionRepository.linkReplacementIfUnreplaced(
+        'original-id',
+        'new-txid',
+      )).resolves.toBe(false);
     });
   });
 

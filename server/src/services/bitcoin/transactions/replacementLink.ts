@@ -23,8 +23,10 @@ import type { PrismaTxClient } from '../../../models/prisma';
 import { InvalidInputError } from '../../../errors/ApiError';
 import { createLogger } from '../../../utils/logger';
 import {
+  findByTxid,
   findInputOutpointsByTransactionId,
   findUnconfirmedTransactionForReplacement,
+  linkReplacementIfUnreplaced,
 } from '../../../repositories/transactions/core';
 import type { TransactionInputMetadata } from './types';
 
@@ -82,12 +84,24 @@ export async function assertReplacementLink(
   client?: PrismaTxClient
 ): Promise<void> {
   const original = await findVerifiedReplacement(walletId, replacesTxid, candidateOutpoints, client);
-  if (!original) {
-    throw new InvalidInputError(
-      'replacesTxid does not match an unconfirmed transaction sharing an input',
-      'replacesTxid'
-    );
+  if (original) return;
+
+  // `findVerifiedReplacement` excludes an already-replaced original along
+  // with confirmed/unknown ones, so a null result alone cannot tell those
+  // apart. Look the txid up directly (ignoring the unconfirmed/replacement
+  // filters) to give a precise, actionable error rather than the generic
+  // "no match" message when the original is specifically already replaced.
+  const existing = await findByTxid(replacesTxid, walletId, {
+    select: { rbfStatus: true, replacedByTxid: true },
+  });
+  if (existing && (existing.rbfStatus === 'replaced' || existing.replacedByTxid !== null)) {
+    throw new InvalidInputError('transaction was already replaced', 'replacesTxid');
   }
+
+  throw new InvalidInputError(
+    'replacesTxid does not match an unconfirmed transaction sharing an input',
+    'replacesTxid'
+  );
 }
 
 /**
@@ -110,6 +124,23 @@ export async function resolveReplacementLinkAfterBroadcast(
     log.warn('Skipping RBF replacement link: replacesTxid no longer verifies against an unconfirmed transaction sharing an input', {
       txid: newTxid,
       replacesTxid,
+    });
+    return undefined;
+  }
+
+  // Compare-and-swap: `findVerifiedReplacement` read the original as not
+  // yet replaced, but a concurrent broadcast could have linked a different
+  // replacement to it in the window between that read and this write. The
+  // conditional `updateMany` only commits the link when the original is
+  // still unreplaced at write time; a zero-row result means another
+  // broadcast won the race, so this transaction must persist unlinked
+  // rather than clobber the other link.
+  const linked = await linkReplacementIfUnreplaced(original.id, newTxid, client);
+  if (!linked) {
+    log.warn('Skipping RBF replacement link: original was already replaced by a concurrent broadcast', {
+      txid: newTxid,
+      replacesTxid,
+      originalTransactionId: original.id,
     });
     return undefined;
   }

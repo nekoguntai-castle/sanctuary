@@ -140,6 +140,7 @@ describe('persistTransaction — RBF replacement linkage', () => {
       label: 'Original payment label',
     });
     mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedInput]);
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
 
     await persistTransaction(walletId, newTxid, rawTxHex, {
       ...baseMetadata,
@@ -147,8 +148,16 @@ describe('persistTransaction — RBF replacement linkage', () => {
       replacesTxid: originalTxid,
     });
 
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 'original-db-id' },
+    // The link is a compare-and-swap (repository `updateMany`), not a blind
+    // `update`: it only commits when the original is still unreplaced at
+    // write time, closing the race against a concurrent broadcast.
+    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'original-db-id',
+        rbfStatus: { not: 'replaced' },
+        replacedByTxid: null,
+      },
       data: { rbfStatus: 'replaced', replacedByTxid: newTxid },
     });
     expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
@@ -160,6 +169,46 @@ describe('persistTransaction — RBF replacement linkage', () => {
       })
     );
     expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it('stores the transaction without linkage and warns when the original was already replaced by a concurrent broadcast', async () => {
+    // The pre-write verification found an unreplaced original...
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-db-id',
+      txid: originalTxid,
+      walletId,
+      confirmations: 0,
+      blockHeight: null,
+      label: 'Original payment label',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedInput]);
+    // ...but a concurrent broadcast linked a different replacement to it
+    // first, so the compare-and-swap `updateMany` updates zero rows.
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      label: undefined,
+      replacesTxid: originalTxid,
+    })).resolves.toMatchObject({ mainTransactionCreated: true });
+
+    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({
+          replacementForTxid: undefined,
+          label: undefined,
+        })],
+      })
+    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('original was already replaced by a concurrent broadcast'),
+      expect.objectContaining({
+        txid: newTxid,
+        replacesTxid: originalTxid,
+        originalTransactionId: 'original-db-id',
+      })
+    );
   });
 
   it('prefers an explicitly provided label over the inherited one', async () => {
