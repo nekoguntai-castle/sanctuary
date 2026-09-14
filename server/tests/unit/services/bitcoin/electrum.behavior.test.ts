@@ -511,7 +511,7 @@ describe('ElectrumClient behavior', () => {
     await expect((client as any).batchRequest([])).resolves.toEqual([]);
   });
 
-  it('rejects missing history evidence while retaining the legacy empty UTXO mapping', async () => {
+  it('rejects missing history evidence and leaves an invalid UTXO batch item absent from the map', async () => {
     const client = makeClient();
     vi.spyOn(client as any, 'batchRequest')
       .mockResolvedValueOnce([undefined])
@@ -522,7 +522,10 @@ describe('ElectrumClient behavior', () => {
     );
     const utxos = await client.getAddressUTXOsBatch([testAddress]);
 
-    expect(utxos.get(testAddress)).toEqual([]);
+    // An invalid item must never be coerced to `[]` ("no UTXOs") — that would
+    // be indistinguishable from real evidence. It is omitted from the map so
+    // the sync pipeline's fail-closed missing_utxo_result path is reached.
+    expect(utxos.has(testAddress)).toBe(false);
   });
 
   it('handles notifications and raw response parsing', async () => {

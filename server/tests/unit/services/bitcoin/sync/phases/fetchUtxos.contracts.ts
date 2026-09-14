@@ -9,6 +9,7 @@ import {
   type SyncContext,
 } from '../../../../../../src/services/bitcoin/sync';
 import { fetchAuthenticatedOutpoints } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { getAddressUTXOsBatch } from '../../../../../../src/services/bitcoin/electrum/methods';
 
 export function registerFetchUtxosPhaseTests(): void {
   it('rejects an accepted UTXO when its authenticated cache entry is absent', async () => {
@@ -177,6 +178,40 @@ export function registerFetchUtxosPhaseTests(): void {
     expect(result.allUtxoKeys.size).toBe(0);
     expect(result.rejectedEvidenceCount).toBe(1);
     expect(fetchAuthenticatedOutpoints).not.toHaveBeenCalled();
+  });
+
+  it('routes an invalid batch item to missing_utxo_result for that address only, through the real Electrum batch validator', async () => {
+    // Wires the real getAddressUTXOsBatch (not the full test-double client) so an
+    // invalid item's absence from the map is genuine, not stubbed.
+    const goodAddress = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+    const badAddress = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn';
+    const goodUtxo = { tx_hash: 'a'.repeat(64), tx_pos: 0, height: 800000, value: 100_000 };
+    const batchRequestFn = vi.fn().mockResolvedValue([[goodUtxo], null]);
+    const realClient = {
+      getAddressUTXOsBatch: (addresses: string[]) =>
+        getAddressUTXOsBatch(batchRequestFn, addresses, 'testnet3'),
+    };
+    vi.mocked(fetchAuthenticatedOutpoints).mockImplementationOnce(async (ctx) => {
+      ctx.authenticatedOutpointEvidence.set(`${goodUtxo.tx_hash}:${goodUtxo.tx_pos}`, {
+        txid: goodUtxo.tx_hash,
+        vout: goodUtxo.tx_pos,
+        valueSats: BigInt(goodUtxo.value),
+        scriptHex: '0014',
+      });
+    });
+    const goodRecord = { id: '1', address: goodAddress, scriptPubKey: '0014' };
+    const badRecord = { id: '2', address: badAddress, scriptPubKey: '0014' };
+    const ctx = createTestContext({
+      addresses: [goodRecord, badRecord] as any,
+      addressMap: new Map([[goodAddress, goodRecord], [badAddress, badRecord]]) as any,
+      client: realClient as any,
+    });
+
+    const result = await fetchUtxosPhase(ctx);
+
+    expect(result.utxoResults).toEqual([{ address: goodAddress, utxos: [goodUtxo] }]);
+    expect(result.rejectedEvidenceReasons.get('missing_utxo_result')).toBe(1);
+    expect(result.rejectedEvidenceCount).toBe(1);
   });
 
   it('makes an omitted batch address retryable', async () => {

@@ -57,6 +57,30 @@ function validateHistoryResponse(
   return validateResponse(z.array(HistoryItemSchema), result, context);
 }
 
+/**
+ * Validate a single item of a `getAddressUTXOsBatch` response without throwing.
+ * An invalid item must NOT be coerced to an empty array — the caller omits the
+ * address from the result map so the sync pipeline's fail-closed
+ * `missing_utxo_result` path (not a false "address has zero UTXOs" evidence
+ * claim) is reached for that address only.
+ */
+function validateUtxoBatchItem(
+  result: unknown,
+  context: string,
+): Array<{ tx_hash: string; tx_pos: number; height: number; value: number }> | undefined {
+  const parsed = z.array(UtxoItemSchema).safeParse(result);
+  if (!parsed.success) {
+    log.warn(`Electrum response validation failed: ${context}`, {
+      errors: parsed.error.issues.map(e => ({
+        path: e.path.join('.'),
+        message: e.message,
+      })),
+    });
+    return undefined;
+  }
+  return parsed.data;
+}
+
 // ==============================================================================
 // NETWORK HELPERS
 // ==============================================================================
@@ -522,10 +546,13 @@ export async function getAddressUTXOsBatch(
   // Execute batch
   const results = await batchRequestFn(requests);
 
-  // Map results back to addresses
+  // Map results back to addresses. An invalid/missing item is left absent
+  // from the map rather than coerced to `[]`, so the caller can tell "no
+  // UTXOs" apart from "this address's evidence could not be validated".
   const resultMap = new Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>();
   for (let i = 0; i < addresses.length; i++) {
-    resultMap.set(addresses[i], (results[i] as Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>) || []);
+    const validated = validateUtxoBatchItem(results[i], `getAddressUTXOsBatch(${addresses[i]})`);
+    if (validated !== undefined) resultMap.set(addresses[i], validated);
   }
 
   return resultMap;
