@@ -259,7 +259,7 @@ describe('webhook endpoint service', () => {
     mockFindDeliveryById
       .mockResolvedValueOnce(delivery)
       .mockResolvedValueOnce(latestDelivery);
-    mockMarkDeliveryPendingForReplay.mockResolvedValue(pendingDelivery);
+    mockMarkDeliveryPendingForReplay.mockResolvedValue({ count: 1, delivery: pendingDelivery });
     mockQueueWebhookDeliveryNotification.mockResolvedValue(false);
     mockSendWebhookDelivery.mockResolvedValue({ success: true, statusCode: 200 });
 
@@ -285,7 +285,7 @@ describe('webhook endpoint service', () => {
     mockFindDeliveryById
       .mockResolvedValueOnce(delivery)
       .mockResolvedValueOnce(null);
-    mockMarkDeliveryPendingForReplay.mockResolvedValue(pendingDelivery);
+    mockMarkDeliveryPendingForReplay.mockResolvedValue({ count: 1, delivery: pendingDelivery });
     mockQueueWebhookDeliveryNotification.mockResolvedValue(false);
     mockSendWebhookDelivery.mockResolvedValue({ success: false, error: 'network timeout' });
 
@@ -302,6 +302,17 @@ describe('webhook endpoint service', () => {
     await expect(replayWalletWebhookDelivery('wallet-1', 'endpoint-1', 'delivery-1', 'owner'))
       .resolves.toBeNull();
     expect(mockMarkDeliveryPendingForReplay).not.toHaveBeenCalled();
+  });
+
+  it('rejects a replay that races an in-flight delivery attempt with a conflict', async () => {
+    const delivery = makeDelivery({ attemptCount: 1, status: 'pending' });
+    mockFindDeliveryById.mockResolvedValueOnce(delivery);
+    mockMarkDeliveryPendingForReplay.mockResolvedValue({ count: 0, delivery: null });
+
+    await expect(replayWalletWebhookDelivery('wallet-1', 'endpoint-1', delivery.id, 'owner'))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(mockQueueWebhookDeliveryNotification).not.toHaveBeenCalled();
+    expect(mockSendWebhookDelivery).not.toHaveBeenCalled();
   });
 
   it('converts endpoint and delivery records with null optional fields', () => {

@@ -130,7 +130,7 @@ export async function sendWebhookDelivery(
     preparedRequest = await prepareWebhookRequest(delivery);
     const result = await attemptWebhookDelivery(policy, preparedRequest);
     if (result.success && result.statusCode) {
-      await webhookRepository.markDeliveryDelivered(delivery.id, {
+      const persisted = await webhookRepository.markDeliveryDelivered(delivery.id, {
         expectedAttempt: attemptCount,
         leaseToken,
         statusCode: result.statusCode,
@@ -139,6 +139,19 @@ export async function sendWebhookDelivery(
         requestHeadersRedacted: preparedRequest.signed.redactedHeaders,
         responseBodyHash: result.responseBodyHash,
       });
+      if (!persisted) {
+        // Another actor (a replay reset, or a second delivery attempt) won the
+        // race for this row between our HTTP send and the persistence write.
+        // The remote endpoint did receive a request, but we cannot record it
+        // as delivered against a row that no longer matches our expected
+        // attempt/lease, so report the outcome as lost rather than a success
+        // no caller can act on.
+        log.warn('Webhook delivery outcome lost to a concurrent reset', {
+          deliveryId: delivery.id,
+          attemptCount,
+        });
+        return { success: false, reason: 'delivery_state_conflict' };
+      }
     }
     return result;
   } catch (error) {

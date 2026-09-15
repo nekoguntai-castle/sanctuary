@@ -355,21 +355,48 @@ export async function claimDeliveryAttempt(
   });
 }
 
-export async function markDeliveryPendingForReplay(deliveryId: string): Promise<WebhookDelivery> {
-  return prisma.webhookDelivery.update({
-    where: { id: deliveryId },
-    data: {
-      status: 'pending',
-      attemptCount: 0,
-      nextAttemptAt: new Date(),
-      attemptLeaseToken: null,
-      attemptLeaseExpiresAt: null,
-      lastAttemptAt: null,
-      deliveredAt: null,
-      lastStatusCode: null,
-      lastError: null,
-      responseBodyHash: null,
-    },
+export interface MarkDeliveryPendingForReplayResult {
+  count: number;
+  delivery: WebhookDelivery | null;
+}
+
+/**
+ * Resets a delivery to `pending` for a manual replay, but only when it has
+ * no live attempt lease. This must stay a guarded `updateMany` (not a plain
+ * `update`): an unguarded reset can race a worker mid-attempt and clobber
+ * the outcome it is about to persist (see `sendWebhookDelivery`'s
+ * `delivery_state_conflict` handling for the other half of that race).
+ */
+export async function markDeliveryPendingForReplay(
+  deliveryId: string,
+): Promise<MarkDeliveryPendingForReplayResult> {
+  return prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const result = await tx.webhookDelivery.updateMany({
+      where: {
+        id: deliveryId,
+        OR: [
+          { attemptLeaseToken: null },
+          { attemptLeaseExpiresAt: { lt: now } },
+        ],
+      },
+      data: {
+        status: 'pending',
+        attemptCount: 0,
+        nextAttemptAt: now,
+        attemptLeaseToken: null,
+        attemptLeaseExpiresAt: null,
+        lastAttemptAt: null,
+        deliveredAt: null,
+        lastStatusCode: null,
+        lastError: null,
+        responseBodyHash: null,
+      },
+    });
+    if (result.count !== 1) return { count: result.count, delivery: null };
+
+    const delivery = await tx.webhookDelivery.findUniqueOrThrow({ where: { id: deliveryId } });
+    return { count: result.count, delivery };
   });
 }
 

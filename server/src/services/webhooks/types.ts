@@ -87,6 +87,12 @@ export interface WebhookSendResult {
   statusCode?: number;
   error?: string;
   responseBodyHash?: string;
+  /**
+   * Set when `success: false` was reported because the delivery's persisted
+   * outcome was lost to a concurrent state change (e.g. a replay reset)
+   * rather than a delivery failure. No second POST is made for this result.
+   */
+  reason?: 'delivery_state_conflict';
 }
 
 export interface WebhookPayloadProfileHandler {

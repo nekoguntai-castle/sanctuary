@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { ConflictError } from '../../../src/errors/ApiError';
 
 const {
   accessCalls,
@@ -253,6 +254,18 @@ describe('wallet webhook routes', () => {
       .expect(400);
 
     expect(mockReplayWalletWebhookDelivery).not.toHaveBeenCalled();
+  });
+
+  it('reports a conflict when the delivery already has an in-flight attempt', async () => {
+    mockReplayWalletWebhookDelivery.mockRejectedValue(
+      new ConflictError('Webhook delivery replay already in progress'),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/webhooks/webhook-1/deliveries/delivery-1/replay')
+      .expect(409);
+
+    expect(response.body.message).toBe('Webhook delivery replay already in progress');
   });
 
   it.each(['owner', 'approver', 'signer', 'viewer'])(

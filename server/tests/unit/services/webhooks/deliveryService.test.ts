@@ -219,6 +219,28 @@ describe('webhook delivery service', () => {
     expect(mockMarkDeliveryDelivered).not.toHaveBeenCalled();
   });
 
+  it('reports a conflict when a concurrent reset wins the persisted outcome', async () => {
+    const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
+    const delivery = makeDelivery({
+      endpoint: makeEndpoint({ url: 'https://93.184.216.34/webhook' }),
+    });
+    mockFindDeliveryById.mockResolvedValueOnce(delivery);
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(''),
+    } as any);
+    mockMarkDeliveryDelivered.mockResolvedValueOnce(null);
+
+    await expect(sendWebhookDelivery(delivery.id)).resolves.toEqual({
+      success: false,
+      reason: 'delivery_state_conflict',
+    });
+    expect(mockMarkDeliveryDelivered).toHaveBeenCalledWith(delivery.id, expect.objectContaining({
+      statusCode: 200,
+    }));
+  });
+
   it('records endpoint policy failures without request diagnostics', async () => {
     const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
     const delivery = makeDelivery({
@@ -429,7 +451,7 @@ describe('webhook delivery service', () => {
       nextAttemptAt: new Date('2026-05-22T01:00:00.000Z'),
     };
     mockFindDeliveryById.mockResolvedValueOnce(delivery).mockResolvedValueOnce(pendingDelivery);
-    mockMarkDeliveryPendingForReplay.mockResolvedValue(pendingDelivery);
+    mockMarkDeliveryPendingForReplay.mockResolvedValue({ count: 1, delivery: pendingDelivery });
     mockQueueWebhookDeliveryNotification.mockResolvedValue(true);
 
     const result = await replayWalletWebhookDelivery(

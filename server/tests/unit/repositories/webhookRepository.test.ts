@@ -308,27 +308,96 @@ describe('webhookRepository', () => {
     }));
   });
 
-  it('finds deliveries with endpoint config and resets replay state', async () => {
+  it('finds deliveries with endpoint config', async () => {
     (prisma.webhookDelivery.findUnique as Mock).mockResolvedValueOnce(makeDelivery());
-    (prisma.webhookDelivery.update as Mock).mockResolvedValueOnce(makeDelivery({ status: 'pending' }));
 
     await webhookRepository.findDeliveryById('delivery-1');
-    await webhookRepository.markDeliveryPendingForReplay('delivery-1');
 
     expect(prisma.webhookDelivery.findUnique).toHaveBeenCalledWith({
       where: { id: 'delivery-1' },
       include: { endpoint: true },
     });
-    expect(prisma.webhookDelivery.update).toHaveBeenCalledWith({
-      where: { id: 'delivery-1' },
+  });
+
+  it('resets replay state only for a row with no live lease', async () => {
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce(makeDelivery({ status: 'pending' }));
+
+    const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(result).toEqual({ count: 1, delivery: makeDelivery({ status: 'pending' }) });
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery-1',
+        OR: [
+          { attemptLeaseToken: null },
+          { attemptLeaseExpiresAt: { lt: expect.any(Date) } },
+        ],
+      },
       data: expect.objectContaining({
         status: 'pending',
         attemptCount: 0,
         attemptLeaseToken: null,
         attemptLeaseExpiresAt: null,
         lastAttemptAt: null,
+        deliveredAt: null,
+        lastStatusCode: null,
+        lastError: null,
+        responseBodyHash: null,
       }),
     });
+    expect(mockTx.webhookDelivery.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { id: 'delivery-1' },
+    });
+  });
+
+  it('leaves a leased delivery untouched when replay races an in-flight attempt', async () => {
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(result).toEqual({ count: 0, delivery: null });
+    expect(mockTx.webhookDelivery.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('does not let a replayed delivery clobber a concurrent delivered outcome', async () => {
+    // claimDeliveryAttempt (attempt 1) succeeds and leases the row.
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce({
+      ...makeDelivery({ attemptCount: 0, attemptLeaseToken: 'lease-1' }),
+      endpoint: makeEndpoint(),
+    });
+    const claimed = await webhookRepository.claimDeliveryAttempt({
+      deliveryId: 'delivery-1',
+      expectedAttempt: 1,
+      leaseToken: 'lease-1',
+      now: new Date('2026-05-22T02:00:00.000Z'),
+      leaseExpiresAt: new Date('2026-05-22T02:02:00.000Z'),
+    });
+    expect(claimed).not.toBeNull();
+
+    // A replay resets the row (lease already expired from the caller's point of view).
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce(
+      makeDelivery({ attemptCount: 0, attemptLeaseToken: null }),
+    );
+    const replayReset = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+    expect(replayReset).toEqual({
+      count: 1,
+      delivery: makeDelivery({ attemptCount: 0, attemptLeaseToken: null }),
+    });
+
+    // The original worker's markDeliveryDelivered call for attempt 1 / lease-1 is now stale:
+    // the row it expects (attemptCount 0, attemptLeaseToken lease-1) no longer matches.
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(webhookRepository.markDeliveryDelivered('delivery-1', {
+      expectedAttempt: 1,
+      leaseToken: 'lease-1',
+      statusCode: 200,
+      requestBody: { id: 'event-1' },
+      requestBodyHash: 'a'.repeat(64),
+    })).resolves.toBeNull();
+    expect(mockTx.webhookEndpoint.update).not.toHaveBeenCalled();
   });
 
   it('lists only due unleased or expired-lease deliveries in stable batches', async () => {

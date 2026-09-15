@@ -2,7 +2,7 @@ import type { WebhookDelivery, WebhookEndpoint } from '../../generated/prisma/cl
 import { queueWebhookDeliveryNotification } from '../../infrastructure';
 import { webhookRepository } from '../../repositories';
 import { encrypt } from '../../utils/encryption';
-import { ForbiddenError, InvalidInputError } from '../../errors';
+import { ConflictError, ForbiddenError, InvalidInputError } from '../../errors';
 import {
   isWalletRole,
   type WalletRoleValue,
@@ -234,7 +234,13 @@ export async function replayWalletWebhookDelivery(
     return null;
   }
 
-  const replayDelivery = await webhookRepository.markDeliveryPendingForReplay(delivery.id);
+  const replayReset = await webhookRepository.markDeliveryPendingForReplay(delivery.id);
+  if (replayReset.count !== 1 || !replayReset.delivery) {
+    throw new ConflictError('Webhook delivery replay already in progress', undefined, {
+      deliveryId: delivery.id,
+    });
+  }
+  const replayDelivery = replayReset.delivery;
   const queued = await queueWebhookDeliveryNotification({
     deliveryId: delivery.id,
     attempt: replayDelivery.attemptCount + 1,
