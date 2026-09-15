@@ -26,6 +26,10 @@ const mockSignTransaction = vi.fn();
 const mockSignPSBT = vi.fn();
 const mockGetDevices = vi.fn();
 const mockIsConnected = vi.fn();
+// Declared via vi.hoisted so the mock factory below (which the hoisted
+// vi.mock() call runs before this file's own top-level statements) can
+// safely reference it without a temporal-dead-zone error.
+const { mockLoggerWarn } = vi.hoisted(() => ({ mockLoggerWarn: vi.fn() }));
 
 vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
@@ -47,7 +51,7 @@ vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
-    warn: vi.fn(),
+    warn: mockLoggerWarn,
     error: vi.fn(),
   }),
 }));
@@ -241,6 +245,272 @@ describe('useHardwareWallet', () => {
       });
 
       expect(result.current.device).toBeNull();
+      expect(result.current.error).toBeNull();
+    });
+    });
+  }
+
+  // Kept as its own registration function (separate from
+  // registerDisconnectionTests) so no single test-registration closure grows
+  // past the lizard complexity gate's NLOC/CCN thresholds.
+  function registerConnectGenerationGuardTests(): void {
+    describe('connect generation guard', () => {
+    it('should not resurrect the device when a stale connect resolves after a disconnect', async () => {
+      let resolveConnect: (value: MockDevice) => void;
+      mockConnect.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveConnect = resolve;
+          })
+      );
+      mockGetDevices.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      // Start a connect that will not resolve yet.
+      act(() => {
+        void result.current.connect('ledger').catch(() => {
+          // Superseded connects settle without throwing; nothing to do here.
+        });
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
+
+      // Disconnect before the pending connect resolves.
+      act(() => {
+        result.current.disconnect();
+      });
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalledTimes(1);
+      });
+
+      // The late connect now resolves with a device.
+      await act(async () => {
+        resolveConnect!(mockDevice);
+      });
+
+      // The stale connect must not resurrect `device`, and must tear down
+      // the service-level session it created (a second disconnect call).
+      expect(result.current.device).toBeNull();
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it('logs a warning when the superseded-session cleanup disconnect itself fails', async () => {
+      let resolveConnect: (value: MockDevice) => void;
+      mockConnect.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveConnect = resolve;
+          })
+      );
+      mockGetDevices.mockResolvedValue([]);
+      mockDisconnect
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('cleanup disconnect failed'));
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      act(() => {
+        void result.current.connect('ledger').catch(() => {
+          // Superseded connects settle without throwing; nothing to do here.
+        });
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
+
+      act(() => {
+        result.current.disconnect();
+      });
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalledTimes(1);
+      });
+
+      await act(async () => {
+        resolveConnect!(mockDevice);
+      });
+
+      expect(result.current.device).toBeNull();
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalledTimes(2);
+      });
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        'Failed to disconnect superseded hardware wallet session',
+        expect.objectContaining({ error: expect.any(Error) })
+      );
+    });
+
+    it('does not let a stale connect A tear down a newer connect B session when A resolves after B has started', async () => {
+      let resolveConnectA: (value: MockDevice) => void;
+      let resolveConnectB: (value: MockDevice) => void;
+      mockConnect
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveConnectA = resolve;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveConnectB = resolve;
+            })
+        );
+      mockGetDevices.mockResolvedValue([]);
+
+      const deviceA: MockDevice = { ...mockDevice, id: 'device-a' };
+      const deviceB: MockDevice = { ...mockDevice, id: 'device-b' };
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      // Start connect A.
+      act(() => {
+        void result.current.connect('ledger').catch(() => {
+          // A settles without throwing when superseded; nothing to do here.
+        });
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalledTimes(1);
+      });
+
+      // Disconnect before A resolves.
+      act(() => {
+        result.current.disconnect();
+      });
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalledTimes(1);
+      });
+
+      // Start connect B, which claims the session the disconnect vacated.
+      act(() => {
+        void result.current.connect('trezor');
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalledTimes(2);
+      });
+
+      // A resolves late, after B has already started. A must not touch the
+      // service session B now owns (no extra disconnect call) and must not
+      // set `device`. B is still pending, so `connecting` must stay true —
+      // A's stale settlement must not clear loading state that belongs to
+      // B's still-in-flight attempt.
+      await act(async () => {
+        resolveConnectA!(deviceA);
+      });
+      expect(mockDisconnect).toHaveBeenCalledTimes(1);
+      expect(result.current.connecting).toBe(true);
+      expect(result.current.device).toBeNull();
+
+      // B resolving should still set its own device normally.
+      await act(async () => {
+        resolveConnectB!(deviceB);
+      });
+      expect(result.current.device).toEqual(deviceB);
+      expect(result.current.connecting).toBe(false);
+      expect(mockDisconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not tear down a newer connect B session when a stale connect A (with no disconnect in between) resolves late', async () => {
+      let resolveConnectA: (value: MockDevice) => void;
+      let resolveConnectB: (value: MockDevice) => void;
+      mockConnect
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveConnectA = resolve;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveConnectB = resolve;
+            })
+        );
+      mockGetDevices.mockResolvedValue([]);
+
+      const deviceA: MockDevice = { ...mockDevice, id: 'device-a' };
+      const deviceB: MockDevice = { ...mockDevice, id: 'device-b' };
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      // Start connect A.
+      act(() => {
+        void result.current.connect('ledger').catch(() => {
+          // A settles without throwing when superseded; nothing to do here.
+        });
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalledTimes(1);
+      });
+
+      // Start connect B directly, with no disconnect() call in between —
+      // the last action stays 'connect' throughout.
+      act(() => {
+        void result.current.connect('trezor');
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalledTimes(2);
+      });
+
+      // A resolves late. It must not call the service disconnect at all
+      // (no disconnect() was ever issued, and B now owns the session).
+      await act(async () => {
+        resolveConnectA!(deviceA);
+      });
+      expect(mockDisconnect).not.toHaveBeenCalled();
+      expect(result.current.device).toBeNull();
+
+      // B resolving sets its own device normally.
+      await act(async () => {
+        resolveConnectB!(deviceB);
+      });
+      expect(result.current.device).toEqual(deviceB);
+      expect(mockDisconnect).not.toHaveBeenCalled();
+    });
+
+    it('does not surface a stale connect rejection as the current error, but still rejects the caller', async () => {
+      let rejectConnect: (error: Error) => void;
+      mockConnect.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectConnect = reject;
+          })
+      );
+      mockGetDevices.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      let caughtError: unknown;
+      act(() => {
+        void result.current.connect('ledger').catch((e) => {
+          caughtError = e;
+        });
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
+
+      // Disconnect before the pending connect rejects — this bumps the
+      // generation, making the eventual rejection stale.
+      act(() => {
+        result.current.disconnect();
+      });
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalledTimes(1);
+      });
+
+      const rejection = new Error('stale connect failure');
+      await act(async () => {
+        rejectConnect!(rejection);
+      });
+
+      // The caller still observes the rejection...
+      expect(caughtError).toBe(rejection);
+      // ...but the stale generation must not resurrect error state that the
+      // disconnect() call already cleared for the current generation.
       expect(result.current.error).toBeNull();
     });
     });
@@ -660,6 +930,7 @@ describe('useHardwareWallet', () => {
   registerInitialStateTests();
   registerConnectionTests();
   registerDisconnectionTests();
+  registerConnectGenerationGuardTests();
   registerTransactionSigningTests();
   registerPsbtSigningTests();
   registerDeviceRefreshTests();

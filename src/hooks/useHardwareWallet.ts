@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { isHardwareWalletSupported } from '../services/hardwareWallet/environment';
 import type {
   HardwareWalletDevice,
@@ -61,6 +61,21 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
   const [error, setError] = useState<string | null>(null);
   const [isSupported] = useState(() => isHardwareWalletSupported());
 
+  // Bumped by every connect() and disconnect() call. A connect() attempt
+  // whose async work resolves after a newer generation started (a later
+  // connect, or a disconnect) is stale: it must not resurrect `device` or
+  // apply loading/error state, and must tear down the service-level
+  // session it just created so nothing is left connected underneath.
+  const connectGenerationRef = useRef(0);
+  // The most recent action that bumped connectGenerationRef. The service
+  // holds a single session, so a stale connect must only tear it down when
+  // nothing newer has claimed it: if the last action was 'disconnect', no
+  // newer connect owns the session and the stale connect's own session is
+  // the one still live underneath, so it must be closed. If the last action
+  // was 'connect', a newer connect now owns the session — tearing it down
+  // would kill that newer connect's session instead of the stale one.
+  const lastActionRef = useRef<'connect' | 'disconnect'>('disconnect');
+
   /**
    * Refresh list of connected devices
    */
@@ -86,22 +101,59 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    */
   const connect = useCallback(
     async (type?: DeviceType, options?: HardwareWalletConnectionOptions) => {
-    try {
-      setConnecting(true);
-      setError(null);
+    connectGenerationRef.current += 1;
+    const myGeneration = connectGenerationRef.current;
+    lastActionRef.current = 'connect';
+    const isCurrent = () => connectGenerationRef.current === myGeneration;
+    // Read through `string` so TypeScript doesn't narrow this to the
+    // 'connect' literal just assigned above — disconnect() can reassign the
+    // ref from another closure during the awaits below, which TS's static
+    // control-flow analysis cannot see.
+    const wasSupersededByDisconnect = (): boolean =>
+      (lastActionRef.current as string) === 'disconnect';
 
+    // No await has happened yet, so this generation is trivially current —
+    // always apply the starting loading/error state unconditionally.
+    setConnecting(true);
+    setError(null);
+
+    try {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
       const connectedDevice = await hardwareWalletService.connect(type, options);
+
+      if (!isCurrent()) {
+        // Superseded by a newer connect or a disconnect while we were
+        // awaiting: don't resurrect `device`. Only tear down the
+        // service-level session we just created if nothing newer has
+        // claimed it — if a newer connect is now the last action, it owns
+        // the single service session and disconnecting here would kill
+        // that connect's session instead of this stale one.
+        if (wasSupersededByDisconnect()) {
+          try {
+            await hardwareWalletService.disconnect();
+          } catch (disconnectErr) {
+            log.warn('Failed to disconnect superseded hardware wallet session', {
+              error: disconnectErr,
+            });
+          }
+        }
+        return;
+      }
+
       setDevice(connectedDevice);
 
       // Refresh device list
       await refreshDevices();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to connect to device';
-      setError(message);
+      if (isCurrent()) {
+        const message = err instanceof Error ? err.message : 'Failed to connect to device';
+        setError(message);
+      }
       throw err;
     } finally {
-      setConnecting(false);
+      if (isCurrent()) {
+        setConnecting(false);
+      }
     }
     },
     [refreshDevices]
@@ -111,6 +163,8 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    * Disconnect from current device
    */
   const disconnect = useCallback(() => {
+    connectGenerationRef.current += 1;
+    lastActionRef.current = 'disconnect';
     void (async () => {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
       await hardwareWalletService.disconnect();
