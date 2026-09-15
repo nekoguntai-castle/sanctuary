@@ -109,7 +109,7 @@ describe('notifyNewDraft result contract (#1137-style)', () => {
     });
   });
 
-  it('counts partial delivery and reports success:true with the delivered count', async () => {
+  it('counts partial delivery but reports success:false naming the failed count', async () => {
     const { notifyNewDraft } = await loadService();
     (mockUserRepo.findByWalletAccess as Mock).mockResolvedValue([
       eligibleUser('u1', 'alice', 'chat-1'),
@@ -125,7 +125,12 @@ describe('notifyNewDraft result contract (#1137-style)', () => {
 
     const result = await notifyNewDraft('w1', draft, null);
 
-    expect(result).toEqual({ success: true, usersNotified: 1 });
+    expect(result).toEqual({
+      success: false,
+      usersNotified: 1,
+      error: '1 of 2 Telegram draft notification send(s) failed',
+      recorded: false,
+    });
   });
 
   it('reports success:false when the wallet/user lookup throws', async () => {

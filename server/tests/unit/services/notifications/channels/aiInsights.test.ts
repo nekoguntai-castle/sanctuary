@@ -345,7 +345,7 @@ describe('aiInsightsChannelHandler', () => {
       expect(mockSendTelegram).not.toHaveBeenCalled();
     });
 
-    it('handles Telegram send errors gracefully per user', async () => {
+    it('reports success:false and excludes the failed user when a send throws', async () => {
       mockFindMany.mockResolvedValueOnce([
         makeWalletUser({ userId: 'user-1' }),
         makeWalletUser({ userId: 'user-2', telegram: { enabled: true, botToken: 'tok2', chatId: '456' } }),
@@ -357,9 +357,55 @@ describe('aiInsightsChannelHandler', () => {
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
       expect(result.usersNotified).toBe(1);
+      expect(result.errors).toContain('Telegram API timeout');
+      expect(result.recorded).toBe(false);
       expect(mockSendTelegram).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports success:false and excludes the failed user when sendTelegramMessage resolves { success: false }', async () => {
+      mockFindMany.mockResolvedValueOnce([
+        makeWalletUser({ userId: 'user-1' }),
+        makeWalletUser({ userId: 'user-2', telegram: { enabled: true, botToken: 'tok2', chatId: '456' } }),
+      ] as any);
+
+      mockSendTelegram
+        .mockResolvedValueOnce({
+          success: false,
+          outcome: 'rejected',
+          failureClass: 'authentication',
+          retryable: false,
+          acknowledgement: 'not_accepted',
+          error: 'Invalid Telegram bot token',
+        })
+        .mockResolvedValueOnce(acceptedTelegramResult);
+
+      const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
+
+      expect(result.success).toBe(false);
+      expect(result.usersNotified).toBe(1);
+      expect(result.errors).toContain('Invalid Telegram bot token');
+      expect(result.recorded).toBe(false);
+      expect(mockSendTelegram).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to a generic error when the rejected transport result carries no error message', async () => {
+      mockFindMany.mockResolvedValueOnce([makeWalletUser()] as any);
+      mockSendTelegram.mockResolvedValueOnce({
+        success: false,
+        outcome: 'rejected',
+        failureClass: 'provider_rejected',
+        retryable: false,
+        acknowledgement: 'not_accepted',
+      });
+
+      const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
+
+      expect(result.success).toBe(false);
+      expect(result.usersNotified).toBe(0);
+      expect(result.errors).toContain('Telegram send was not accepted');
+      expect(result.recorded).toBe(false);
     });
 
     it('returns failure result when findMany throws', async () => {

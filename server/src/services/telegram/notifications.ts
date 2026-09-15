@@ -300,11 +300,14 @@ export async function notifyNewDraft(
     return { success: false, usersNotified, error: errorMsg, recorded: false };
   }
 
-  if (attempted > 0 && usersNotified === 0) {
+  if (attempted > 0 && usersNotified < attempted) {
+    const failedCount = attempted - usersNotified;
     return {
       success: false,
-      usersNotified: 0,
-      error: `All ${attempted} Telegram draft notification send(s) failed`,
+      usersNotified,
+      error: usersNotified === 0
+        ? `All ${attempted} Telegram draft notification send(s) failed`
+        : `${failedCount} of ${attempted} Telegram draft notification send(s) failed`,
       recorded: false,
     };
   }

@@ -64,44 +64,34 @@ export const aiInsightsChannelHandler: NotificationChannelHandler = {
     insight: AIInsightNotification
   ): Promise<NotificationResult> {
     let usersNotified = 0;
+    let attempted = 0;
+    const errors: string[] = [];
 
     try {
       // Get all users with access to this wallet
       const walletUsers = await userRepository.findByWalletAccess(walletId);
 
       for (const user of walletUsers) {
-        const prefs = user.preferences as Record<string, any> | null;
-        const intelligence = prefs?.intelligence;
-        const walletSettings = intelligence?.wallets?.[walletId];
+        const telegram = eligibleInsightTelegramConfig(user, walletId, insight);
+        if (!telegram) continue;
 
-        // Skip if intelligence not enabled for this wallet
-        if (!walletSettings?.enabled) continue;
-
-        // Check severity filter
-        const severityOrder = ['info', 'warning', 'critical'];
-        const filterLevel = severityOrder.indexOf(walletSettings.severityFilter || 'info');
-        const insightLevel = severityOrder.indexOf(insight.severity);
-        if (insightLevel < filterLevel) continue;
-
-        // Check type filter
-        if (walletSettings.typeFilter && !walletSettings.typeFilter.includes(insight.type)) continue;
-
-        // Send via Telegram if configured
-        if (walletSettings.notifyTelegram !== false) {
-          const telegram = prefs?.telegram;
-          if (telegram?.enabled && telegram?.botToken && telegram?.chatId) {
-            try {
-              const message = formatInsightMessage(insight);
-              await telegramApi.sendTelegramMessage(telegram.botToken, telegram.chatId, message);
-              usersNotified++;
-            } catch (error) {
-              log.error('Failed to send AI insight via Telegram', {
-                userId: user.id,
-                error: getErrorMessage(error),
-              });
-            }
-          }
+        attempted++;
+        const outcome = await sendInsightToTelegram(user.id, telegram, insight);
+        if (outcome.success) {
+          usersNotified++;
+        } else {
+          errors.push(outcome.error);
         }
+      }
+
+      if (attempted > 0 && usersNotified < attempted) {
+        return {
+          success: false,
+          channelId: 'ai-insights',
+          usersNotified,
+          errors,
+          recorded: false,
+        };
       }
 
       return {
@@ -124,6 +114,67 @@ export const aiInsightsChannelHandler: NotificationChannelHandler = {
     }
   },
 };
+
+interface InsightTelegramConfig {
+  botToken: string;
+  chatId: string;
+}
+
+/**
+ * Resolve the Telegram config to notify `user` with, or `null` when the
+ * user is not eligible for this insight (intelligence disabled for the
+ * wallet, filtered out by severity/type, Telegram delivery disabled, or no
+ * Telegram configuration present).
+ */
+function eligibleInsightTelegramConfig(
+  user: { id: string; preferences: unknown },
+  walletId: string,
+  insight: AIInsightNotification
+): InsightTelegramConfig | null {
+  const prefs = user.preferences as Record<string, any> | null;
+  const intelligence = prefs?.intelligence;
+  const walletSettings = intelligence?.wallets?.[walletId];
+  if (!walletSettings?.enabled) return null;
+
+  const severityOrder = ['info', 'warning', 'critical'];
+  const filterLevel = severityOrder.indexOf(walletSettings.severityFilter || 'info');
+  const insightLevel = severityOrder.indexOf(insight.severity);
+  if (insightLevel < filterLevel) return null;
+
+  if (walletSettings.typeFilter && !walletSettings.typeFilter.includes(insight.type)) return null;
+  if (walletSettings.notifyTelegram === false) return null;
+
+  const telegram = prefs?.telegram;
+  if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) return null;
+
+  return { botToken: telegram.botToken, chatId: telegram.chatId };
+}
+
+/**
+ * Send one insight message via Telegram, reporting a normalized
+ * success/error outcome rather than throwing (a transport crash and a
+ * `{ success: false }` transport result are both attempted-and-failed
+ * sends from the caller's perspective).
+ */
+async function sendInsightToTelegram(
+  userId: string,
+  telegram: InsightTelegramConfig,
+  insight: AIInsightNotification
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const message = formatInsightMessage(insight);
+    const result = await telegramApi.sendTelegramMessage(telegram.botToken, telegram.chatId, message);
+    if (result.success) return { success: true };
+
+    const error = result.error ?? 'Telegram send was not accepted';
+    log.error('Failed to send AI insight via Telegram', { userId, error });
+    return { success: false, error };
+  } catch (error) {
+    const errorMsg = getErrorMessage(error);
+    log.error('Failed to send AI insight via Telegram', { userId, error: errorMsg });
+    return { success: false, error: errorMsg };
+  }
+}
 
 /**
  * Format an AI insight as a Telegram message.

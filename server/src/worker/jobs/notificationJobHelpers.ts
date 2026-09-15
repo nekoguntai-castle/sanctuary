@@ -83,10 +83,15 @@ export function summarizeNotificationResults(
   const errors: string[] = [];
 
   for (const result of results) {
-    if (result.success) {
-      channelsNotified += result.usersNotified;
-      continue;
-    }
+    // `usersNotified` always reflects genuine deliveries even when a channel
+    // reports `success: false` for a partial failure (some recipients were
+    // notified, others were not) — counting it here regardless of `success`
+    // keeps a partially-delivered channel from zeroing out `channelsNotified`
+    // and tripping `shouldFailBullMqNotificationJob`, which would otherwise
+    // have BullMQ retry the whole job and re-send duplicate notifications to
+    // the recipients who were already notified.
+    channelsNotified += result.usersNotified;
+    if (result.success) continue;
 
     const resultErrors = result.errors?.filter(Boolean) ?? [];
     if (resultErrors.length > 0) {

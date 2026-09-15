@@ -181,6 +181,47 @@ describe('draftNotifyJob', () => {
     );
   });
 
+  it('does not retry a single-channel partial delivery failure (would duplicate-send)', async () => {
+    // A lone Telegram channel that delivered to 1 of 2 recipients reports
+    // success:false with usersNotified:1. The job must still complete (not
+    // throw) so BullMQ does not retry and re-send to the recipient who was
+    // already notified; the failure is recorded via the DLQ path instead.
+    mockPrisma.draftTransaction.findUnique.mockResolvedValueOnce({
+      id: 'draft-partial-solo',
+      amount: BigInt(100000),
+      feeRate: 10.0,
+      recipient: 'bc1p...',
+      label: null,
+    });
+
+    mockNotificationChannelRegistry.notifyDraft.mockResolvedValueOnce([
+      {
+        success: false,
+        channelId: 'telegram',
+        usersNotified: 1,
+        errors: ['1 of 2 Telegram draft notification send(s) failed'],
+        recorded: false,
+      },
+    ]);
+
+    const jobData: DraftNotifyJobData = {
+      walletId: 'wallet-draft-partial-solo',
+      draftId: 'draft-partial-solo',
+      creatorUserId: 'user-789',
+      creatorUsername: 'charlie',
+    };
+
+    const result = await draftNotifyJob.handler(createMockJob(jobData));
+
+    expect(result.success).toBe(false);
+    expect(result.channelsNotified).toBe(1);
+    expect(mockRecordNotificationChannelFailure).toHaveBeenCalledWith(
+      'telegram',
+      'draft',
+      '1 of 2 Telegram draft notification send(s) failed',
+    );
+  });
+
   it('should retry failed draft channel result without errors list', async () => {
     mockPrisma.draftTransaction.findUnique.mockResolvedValueOnce({
       id: 'draft-789',
