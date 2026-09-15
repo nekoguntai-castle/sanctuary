@@ -305,6 +305,37 @@ describe('Request Timeout Middleware', () => {
         expect(res.status).toHaveBeenCalledWith(408);
       });
 
+      it('should apply 60s timeout to PSBT broadcast', () => {
+        req.path = '/api/v1/wallets/wallet-123/psbt/broadcast';
+
+        requestTimeout(req, res, next);
+
+        vi.advanceTimersByTime(59000);
+        expect(res.status).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2000);
+        expect(res.status).toHaveBeenCalledWith(408);
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            timeout: '60000ms',
+          })
+        );
+      });
+
+      it('should log the tx broadcast reason for PSBT broadcast timeouts', () => {
+        req.path = '/api/v1/wallets/wallet-123/psbt/broadcast';
+
+        requestTimeout(req, res, next);
+        vi.advanceTimersByTime(61000);
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Request timeout',
+          expect.objectContaining({
+            reason: 'tx broadcast',
+          })
+        );
+      });
+
       it('should apply 60s timeout to AI routes', () => {
         req.path = '/api/v1/ai/analyze';
 

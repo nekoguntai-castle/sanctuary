@@ -37,6 +37,7 @@ const EXTENDED_TIMEOUT_ROUTES: Array<{
   { pattern: /^\/api\/v1\/sync\/.*\/full/, timeout: 90000, reason: 'full sync' },
   // Transaction broadcasts may have network delays
   { pattern: /^\/api\/v1\/wallets\/.*\/transactions\/broadcast/, timeout: 60000, reason: 'tx broadcast' },
+  { pattern: /^\/api\/v1\/wallets\/.*\/psbt\/broadcast/, timeout: 60000, reason: 'tx broadcast' },
   // AI analysis endpoints
   { pattern: /^\/api\/v1\/ai\//, timeout: 60000, reason: 'AI analysis' },
   { pattern: /^\/internal\/ai\//, timeout: 60000, reason: 'AI analysis' },
