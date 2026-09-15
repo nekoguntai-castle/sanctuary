@@ -12,6 +12,14 @@ import { DEFAULT_AUTOPILOT_SETTINGS } from './types';
 
 type AutopilotPreferenceRecord = Partial<AutopilotConfig> & Record<string, unknown>;
 
+export type AutopilotSettingsPatch = Partial<WalletAutopilotSettings>;
+
+function compactNullishPatch(patch: AutopilotSettingsPatch): AutopilotSettingsPatch {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined && value !== null)
+  ) as AutopilotSettingsPatch;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -57,23 +65,35 @@ export async function getWalletAutopilotSettings(
 }
 
 /**
- * Update a user's autopilot settings for a specific wallet
+ * Update a user's autopilot settings for a specific wallet.
+ *
+ * `patch` is applied as `DEFAULT -> stored -> patch` against the wallet
+ * record re-read fresh inside `updatePreferencesAtomically`'s transaction on
+ * every attempt (including serializable-conflict retries), so two concurrent
+ * single-field PATCHes each land on top of the other's committed value
+ * instead of one clobbering the other via a stale pre-read.
  */
 export async function updateWalletAutopilotSettings(
   userId: string,
   walletId: string,
-  settings: WalletAutopilotSettings
+  patch: AutopilotSettingsPatch
 ): Promise<void> {
   await userRepository.updatePreferencesAtomically(userId, (currentPreferences) => {
     const prefs = asRecord(currentPreferences);
     const autopilot = asRecord(prefs.autopilot) as AutopilotPreferenceRecord;
+    const stored = getOwnWalletSettings(autopilot.wallets as AutopilotConfig['wallets'] | undefined, walletId);
+    const merged: WalletAutopilotSettings = {
+      ...DEFAULT_AUTOPILOT_SETTINGS,
+      ...(stored ?? {}),
+      ...compactNullishPatch(patch),
+    };
 
     return {
       preferences: {
         ...prefs,
         autopilot: {
           ...autopilot,
-          wallets: setWalletSettings(autopilot, walletId, settings),
+          wallets: setWalletSettings(autopilot, walletId, merged),
         },
       } as unknown as Prisma.InputJsonValue,
       result: undefined,

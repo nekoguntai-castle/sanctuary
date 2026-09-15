@@ -20,6 +20,13 @@ vi.mock('../../../src/middleware/walletAccess', () => ({
 vi.mock('../../../src/services/telegram/telegramService', () => ({
   getWalletTelegramSettings: mockGetWalletTelegramSettings,
   updateWalletTelegramSettings: mockUpdateWalletTelegramSettings,
+  DEFAULT_WALLET_TELEGRAM_SETTINGS: {
+    enabled: false,
+    notifyReceived: true,
+    notifySent: true,
+    notifyConsolidation: true,
+    notifyDraft: true,
+  },
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -127,63 +134,31 @@ describe('Wallets Telegram Routes', () => {
     });
   });
 
-  it('merges an empty patch onto the stored settings instead of resetting to defaults', async () => {
-    // beforeEach stores { enabled: true, notifyReceived: false, notifySent: true,
-    // notifyConsolidation: false, notifyDraft: true }; an empty patch must preserve it.
+  it('forwards an empty patch body unchanged without pre-reading stored settings', async () => {
+    // Regression test for telegram-wallet-settings-patch-stale-read-lost-update:
+    // the route used to pre-read `stored` via GET and merge onto it before
+    // calling the service; that stale read is what caused concurrent PATCHes
+    // to clobber each other's committed fields. The DEFAULT -> stored -> patch
+    // merge now happens inside updateWalletTelegramSettings, against a fresh
+    // re-read, so the route must forward the raw patch and never call GET.
     const response = await request(app)
       .patch('/api/v1/wallets/wallet-1/telegram')
       .send({});
 
     expect(response.status).toBe(200);
-    expect(mockUpdateWalletTelegramSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
-      enabled: true,
-      notifyReceived: false,
-      notifySent: true,
-      notifyConsolidation: false,
-      notifyDraft: true,
-    });
+    expect(mockGetWalletTelegramSettings).not.toHaveBeenCalled();
+    expect(mockUpdateWalletTelegramSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {});
   });
 
-  it('applies default values when telegram settings fields are omitted and nothing is stored', async () => {
-    mockGetWalletTelegramSettings.mockResolvedValueOnce(null);
-
-    const response = await request(app)
-      .patch('/api/v1/wallets/wallet-1/telegram')
-      .send({});
-
-    expect(response.status).toBe(200);
-    expect(mockUpdateWalletTelegramSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
-      enabled: false,
-      notifyReceived: true,
-      notifySent: true,
-      notifyConsolidation: true,
-      notifyDraft: true,
-    });
-  });
-
-  it('preserves notifySent from the stored settings when only enabled is patched', async () => {
-    // Regression test for autopilot-telegram-patch-resets-omitted-fields-to-defaults:
-    // storing notifySent: true and patching only `enabled` used to reset the
-    // other notify* fields back to their hardcoded defaults.
-    mockGetWalletTelegramSettings.mockResolvedValueOnce({
-      enabled: false,
-      notifyReceived: false,
-      notifySent: true,
-      notifyConsolidation: false,
-      notifyDraft: false,
-    });
-
+  it('forwards a partial patch body unchanged without pre-reading stored settings', async () => {
     const response = await request(app)
       .patch('/api/v1/wallets/wallet-1/telegram')
       .send({ enabled: true });
 
     expect(response.status).toBe(200);
+    expect(mockGetWalletTelegramSettings).not.toHaveBeenCalled();
     expect(mockUpdateWalletTelegramSettings).toHaveBeenCalledWith('user-1', 'wallet-1', {
       enabled: true,
-      notifyReceived: false,
-      notifySent: true,
-      notifyConsolidation: false,
-      notifyDraft: false,
     });
   });
 

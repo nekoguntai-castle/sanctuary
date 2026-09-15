@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { WalletAutopilotSettings } from '../../../../src/services/autopilot/types';
 
 const { mockUserRepo } = vi.hoisted(() => ({
   mockUserRepo: {
@@ -224,6 +225,32 @@ describe('autopilot settings service', () => {
             },
           },
         },
+      );
+    });
+
+    it('applies two single-field patches sequentially without dropping the earlier field (lost-update regression)', async () => {
+      // Regression test for telegram-wallet-settings-patch-stale-read-lost-update
+      // (same finding applies to autopilot settings, identical shape):
+      // updatePreferencesAtomically re-invokes its updater against a freshly
+      // re-read `current` on every attempt/retry. The merge must happen inside
+      // that callback (against the fresh read), not be pre-computed by the
+      // caller from a stale snapshot -- otherwise a second single-field patch
+      // blind-overwrites the wallet record and drops the first patch's field.
+      let dbPreferences: unknown = {};
+      (mockUserRepo.updatePreferencesAtomically as Mock).mockImplementation(
+        async (_userId: string, updater: (preferences: unknown) => { preferences: unknown; result: unknown }) => {
+          const update = updater(dbPreferences);
+          dbPreferences = update.preferences;
+          return { user: {}, result: update.result };
+        },
+      );
+
+      await updateWalletAutopilotSettings('u1', 'wallet-1', { enabled: true });
+      await updateWalletAutopilotSettings('u1', 'wallet-1', { notifyPush: false });
+
+      const prefs = dbPreferences as { autopilot: { wallets: Record<string, WalletAutopilotSettings> } };
+      expect(prefs.autopilot.wallets['wallet-1']).toEqual(
+        expect.objectContaining({ enabled: true, notifyPush: false }),
       );
     });
 

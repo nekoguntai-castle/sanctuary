@@ -10,8 +10,11 @@ import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
-import { getWalletTelegramSettings, updateWalletTelegramSettings } from '../../services/telegram/telegramService';
-import type { WalletTelegramSettings } from '../../services/telegram/telegramService';
+import {
+  getWalletTelegramSettings,
+  updateWalletTelegramSettings,
+  DEFAULT_WALLET_TELEGRAM_SETTINGS,
+} from '../../services/telegram/telegramService';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
@@ -23,33 +26,6 @@ const TelegramSettingsBodySchema = z.object({
   notifyConsolidation: z.boolean().optional(),
   notifyDraft: z.boolean().optional(),
 });
-
-const DEFAULT_WALLET_TELEGRAM_SETTINGS: WalletTelegramSettings = {
-  enabled: false,
-  notifyReceived: true,
-  notifySent: true,
-  notifyConsolidation: true,
-  notifyDraft: true,
-};
-
-type TelegramSettingsPatch = Partial<WalletTelegramSettings>;
-
-function compactNullishTelegramSettings(body: TelegramSettingsPatch): TelegramSettingsPatch {
-  return Object.fromEntries(
-    Object.entries(body).filter(([, value]) => value !== undefined && value !== null)
-  ) as TelegramSettingsPatch;
-}
-
-function buildTelegramSettingsUpdate(
-  stored: WalletTelegramSettings | null | undefined,
-  body: TelegramSettingsPatch
-): WalletTelegramSettings {
-  return {
-    ...DEFAULT_WALLET_TELEGRAM_SETTINGS,
-    ...(stored ?? {}),
-    ...compactNullishTelegramSettings(body),
-  };
-}
 
 /**
  * GET /api/v1/wallets/:id/telegram
@@ -77,13 +53,7 @@ router.patch('/:id/telegram', requireWalletAccess('view'), validate(
   const walletId = req.walletId!;
   const userId = requireAuthenticatedUser(req).userId;
 
-  const stored = await getWalletTelegramSettings(userId, walletId);
-
-  await updateWalletTelegramSettings(
-    userId,
-    walletId,
-    buildTelegramSettingsUpdate(stored, req.body)
-  );
+  await updateWalletTelegramSettings(userId, walletId, req.body);
 
   res.json({
     success: true,

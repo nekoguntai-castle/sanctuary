@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { WalletTelegramSettings } from '../../../../src/services/telegram/types';
 
 const { mockUserRepo, mockWalletRepo, mockNodeConfigRepo, mockLogger } = vi.hoisted(() => ({
   mockUserRepo: {
@@ -225,6 +226,35 @@ describe('telegram wallet settings', () => {
       notifyConsolidation: false,
       notifyDraft: true,
     });
+  });
+
+  it('applies two single-field patches sequentially without dropping the earlier field (lost-update regression)', async () => {
+    // Regression test for telegram-wallet-settings-patch-stale-read-lost-update:
+    // updatePreferencesAtomically re-invokes its updater against a freshly
+    // re-read `current` on every attempt/retry. The merge must happen inside
+    // that callback (against the fresh read), not be pre-computed by the
+    // caller from a stale snapshot -- otherwise a second single-field patch
+    // blind-overwrites the wallet record and drops the first patch's field.
+    const { updateWalletTelegramSettings } = await loadService();
+
+    let dbPreferences: unknown = {};
+    (mockUserRepo.updatePreferencesAtomically as Mock).mockImplementation(
+      async (_userId: string, updater: (preferences: unknown) => { preferences: unknown; result: unknown }) => {
+        // Simulates the repository's real contract: the updater runs against
+        // whatever is currently committed, not against any earlier read.
+        const update = updater(dbPreferences);
+        dbPreferences = update.preferences;
+        return { user: {}, result: update.result };
+      },
+    );
+
+    await updateWalletTelegramSettings('user-1', 'wallet-1', { enabled: true });
+    await updateWalletTelegramSettings('user-1', 'wallet-1', { notifyDraft: false });
+
+    const prefs = dbPreferences as { telegram: { wallets: Record<string, WalletTelegramSettings> } };
+    expect(prefs.telegram.wallets['wallet-1']).toEqual(
+      expect.objectContaining({ enabled: true, notifyDraft: false }),
+    );
   });
 
   it('updateWalletTelegramSettings throws when user is not found', async () => {

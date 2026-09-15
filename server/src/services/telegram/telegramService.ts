@@ -16,6 +16,7 @@ export type {
   TransactionData,
   DraftData,
 } from './types';
+export { DEFAULT_WALLET_TELEGRAM_SETTINGS } from './types';
 
 export { sendTelegramMessage, getChatIdFromBot, testTelegramConfig } from './api';
 export { getWalletUsers, formatTransactionMessage, formatDraftMessage, escapeHtml } from './formatting';

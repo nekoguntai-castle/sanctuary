@@ -86,6 +86,14 @@ export interface WalletTelegramSettings {
   notifyDraft: boolean;
 }
 
+export const DEFAULT_WALLET_TELEGRAM_SETTINGS: WalletTelegramSettings = {
+  enabled: false,
+  notifyReceived: true,
+  notifySent: true,
+  notifyConsolidation: true,
+  notifyDraft: true,
+};
+
 export interface TransactionData {
   txid: string;
   type: string;
