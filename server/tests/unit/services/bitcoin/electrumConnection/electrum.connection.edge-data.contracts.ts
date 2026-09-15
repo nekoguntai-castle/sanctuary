@@ -1,5 +1,5 @@
 import { it, expect, vi } from 'vitest';
-import { ElectrumClient, FakeSocket, netConnectMock, tlsConnectMock, loggerDebugMock } from './electrumConnectionTestHarness';
+import { ElectrumClient, FakeSocket, netConnectMock, tlsConnectMock, loggerDebugMock, nodeConfigFindFirstMock } from './electrumConnectionTestHarness';
 
 export function registerElectrumConnectionEdgeDataContracts(): void {
   it('surfaces synchronous connection setup failures', async () => {
@@ -414,5 +414,225 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
 
     expect(activity).not.toHaveBeenCalled();
     expect(subscriptionResponse).not.toHaveBeenCalled();
+  });
+
+  it('cancels an in-flight TCP connect on disconnect and destroys a socket that connects late', async () => {
+    const socket = new FakeSocket();
+    // Deliberately never emits 'connect' on its own; the test controls timing.
+    netConnectMock.mockImplementationOnce(() => socket);
+
+    const client = new ElectrumClient({
+      host: 'tcp-disconnect-cancels-connect-host',
+      port: 50001,
+      protocol: 'tcp',
+      connectionTimeoutMs: 10000,
+    });
+
+    const connectPromise = client.connect();
+    // Let resolveConnectionConfig resolve and openConnection start, so the
+    // socket factory has already been invoked and is awaiting 'connect'.
+    await vi.advanceTimersByTimeAsync(0);
+
+    client.disconnect();
+
+    const rejection = await connectPromise.catch((err: Error) => err);
+    expect(rejection).toBeInstanceOf(Error);
+    if (!(rejection instanceof Error)) {
+      throw new Error('Expected disconnect() to reject the in-flight connect() with an Error');
+    }
+    expect(rejection.message).toContain('Connection closed');
+    expect(client.isConnected()).toBe(false);
+    expect((client as any).socket).toBeNull();
+
+    // The socket finally connects late, after disconnect() already cancelled
+    // the attempt. It must be destroyed and never installed as this.socket.
+    socket.emit('connect');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(socket.destroy).toHaveBeenCalled();
+    expect((client as any).socket).toBeNull();
+    expect(client.isConnected()).toBe(false);
+
+    // A subsequent connect() starts a fresh attempt and succeeds normally.
+    const secondSocket = new FakeSocket();
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => secondSocket.emit('connect'));
+      return secondSocket;
+    });
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+    expect((client as any).socket).toBe(secondSocket);
+  });
+
+  it('cancels an in-flight TLS connect on disconnect after the base socket connects but before the handshake completes', async () => {
+    const baseSocket = new FakeSocket();
+    const tlsSocket = new FakeSocket();
+    let onSecureConnect: (() => void) | undefined;
+
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => baseSocket.emit('connect'));
+      return baseSocket;
+    });
+    tlsConnectMock.mockImplementationOnce((_options: any, callback: () => void) => {
+      onSecureConnect = callback;
+      return tlsSocket;
+    });
+
+    const client = new ElectrumClient({
+      host: 'tls-disconnect-cancels-connect-host',
+      port: 50002,
+      protocol: 'ssl',
+      connectionTimeoutMs: 10000,
+    });
+
+    const connectPromise = client.connect();
+
+    // Let the base socket connect and the TLS wrapper start (this.socket
+    // becomes tlsSocket) while the handshake itself stays pending.
+    await vi.advanceTimersByTimeAsync(0);
+    expect((client as any).socket).toBe(tlsSocket);
+
+    client.disconnect();
+
+    const rejection = await connectPromise.catch((err: Error) => err);
+    expect(rejection).toBeInstanceOf(Error);
+    if (!(rejection instanceof Error)) {
+      throw new Error('Expected disconnect() to reject the in-flight connect() with an Error');
+    }
+    expect(rejection.message).toContain('Connection closed');
+    expect(client.isConnected()).toBe(false);
+    expect((client as any).socket).toBeNull();
+    expect(tlsSocket.destroy).toHaveBeenCalled();
+
+    tlsSocket.destroy.mockClear();
+
+    // The handshake finally completes late, after disconnect() already
+    // cancelled the attempt. It must be discarded without being installed.
+    expect(onSecureConnect).toBeDefined();
+    onSecureConnect?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(tlsSocket.destroy).toHaveBeenCalledTimes(1);
+    expect((client as any).socket).toBeNull();
+    expect(client.isConnected()).toBe(false);
+
+    // A subsequent connect() starts a fresh attempt and succeeds normally.
+    const secondBaseSocket = new FakeSocket();
+    const secondTlsSocket = new FakeSocket();
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => secondBaseSocket.emit('connect'));
+      return secondBaseSocket;
+    });
+    tlsConnectMock.mockImplementationOnce((_options: any, callback: () => void) => {
+      queueMicrotask(() => callback());
+      return secondTlsSocket;
+    });
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+    expect((client as any).socket).toBe(secondTlsSocket);
+  });
+
+  it('rejects immediately when disconnect() is called before connection config resolves, without ever opening a socket', async () => {
+    const client = new ElectrumClient({
+      host: 'disconnect-before-config-resolves-host',
+      port: 50001,
+      protocol: 'tcp',
+      connectionTimeoutMs: 10000,
+    });
+
+    // No await between connect() and disconnect(): the config lookup
+    // (an async mock) has not resolved yet, so openConnection never starts.
+    const connectPromise = client.connect();
+    client.disconnect();
+
+    const rejection = await connectPromise.catch((err: Error) => err);
+    expect(rejection).toBeInstanceOf(Error);
+    if (!(rejection instanceof Error)) {
+      throw new Error('Expected disconnect() to reject the in-flight connect() with an Error');
+    }
+    expect(rejection.message).toContain('Connection closed');
+    expect(netConnectMock).not.toHaveBeenCalled();
+    expect(client.isConnected()).toBe(false);
+
+    // A subsequent connect() starts a fresh attempt and succeeds normally.
+    const socket = new FakeSocket();
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => socket.emit('connect'));
+      return socket;
+    });
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+    expect((client as any).socket).toBe(socket);
+  });
+
+  it('rejects connect() when resolving the connection config fails', async () => {
+    nodeConfigFindFirstMock.mockRejectedValueOnce(new Error('config lookup failed'));
+
+    const client = new ElectrumClient();
+
+    await expect(client.connect()).rejects.toThrow('config lookup failed');
+    expect(netConnectMock).not.toHaveBeenCalled();
+    expect(client.isConnected()).toBe(false);
+  });
+
+  it('ignores a late connection-config-resolution failure after disconnect() already cancelled the attempt', async () => {
+    let rejectConfig: ((error: Error) => void) | undefined;
+    nodeConfigFindFirstMock.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { rejectConfig = reject; })
+    );
+
+    const client = new ElectrumClient();
+    const connectPromise = client.connect();
+    client.disconnect();
+
+    const rejection = await connectPromise.catch((err: Error) => err);
+    expect(rejection).toBeInstanceOf(Error);
+    if (!(rejection instanceof Error)) {
+      throw new Error('Expected disconnect() to reject the in-flight connect() with an Error');
+    }
+    expect(rejection.message).toContain('Connection closed');
+
+    // The config lookup finally rejects, after disconnect() already settled
+    // this attempt. The double-invocation guard on the pre-socket abort path
+    // must no-op instead of rejecting an already-settled promise again.
+    expect(rejectConfig).toBeDefined();
+    expect(() => rejectConfig?.(new Error('late config failure'))).not.toThrow();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(client.isConnected()).toBe(false);
+    expect(netConnectMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects connect() when a synchronous error occurs after connection config resolves, without hanging a later connect()', async () => {
+    const configModule = await import('../../../../../src/config');
+
+    // Construct the client first: its constructor already calls
+    // getDefaultTimeouts()/getConfig() once, and mockImplementationOnce must
+    // fire only on the later call made from inside establishConnection().
+    const client = new ElectrumClient({
+      host: 'sync-config-throw-host',
+      port: 50001,
+      protocol: 'tcp',
+    });
+
+    const getConfigSpy = vi.spyOn(configModule, 'getConfig').mockImplementationOnce(() => {
+      throw new Error('synchronous timeout config failure');
+    });
+
+    await expect(client.connect()).rejects.toThrow('synchronous timeout config failure');
+    expect(client.isConnected()).toBe(false);
+    getConfigSpy.mockRestore();
+
+    // A later connect() must not hang: connectionPromise must have been
+    // cleared even though the failure happened after establishConnection's
+    // post-config-resolution phase started.
+    const socket = new FakeSocket();
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => socket.emit('connect'));
+      return socket;
+    });
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+    expect((client as any).socket).toBe(socket);
   });
 }

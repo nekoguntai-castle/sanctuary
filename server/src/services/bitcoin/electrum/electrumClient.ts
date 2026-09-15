@@ -75,6 +75,9 @@ interface ConnectionState {
 class ElectrumClient extends EventEmitter {
   private socket: net.Socket | tls.TLSSocket | null = null;
   private connectionPromise: Promise<void> | null = null;
+  // Set while a connect() attempt is in flight (from the moment connect() is
+  // called until it settles); disconnect() invokes it to cancel that attempt.
+  private pendingConnectAbort: ((error: Error) => void) | null = null;
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private readonly frameDecoder = new ElectrumFrameDecoder();
@@ -143,11 +146,39 @@ class ElectrumClient extends EventEmitter {
     }
   }
 
-  private async establishConnection(): Promise<void> {
-    const connectionConfig = await this.resolveConnectionConfig();
-    const defaults = getDefaultTimeouts();
-    const connectionTimeoutMs = this.explicitConfig?.connectionTimeoutMs ?? defaults.connectionTimeoutMs;
-    return this.openConnection(connectionConfig, connectionTimeoutMs);
+  private establishConnection(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      // Cancels the attempt before openConnection has taken ownership of
+      // this.pendingConnectAbort (i.e. while still resolving connection
+      // config). Once openConnection starts, it replaces this with its own
+      // abort (state.handleError), which also tears down any socket.
+      const abortBeforeSocket = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        this.pendingConnectAbort = null;
+        reject(error);
+      };
+      this.pendingConnectAbort = abortBeforeSocket;
+
+      void this.resolveConnectionConfig()
+        .then((connectionConfig) => {
+          if (settled) return; // disconnect() already cancelled this attempt
+          const defaults = getDefaultTimeouts();
+          const connectionTimeoutMs = this.explicitConfig?.connectionTimeoutMs ?? defaults.connectionTimeoutMs;
+          // Only mark this phase settled once openConnection has actually
+          // taken over (it reassigns this.pendingConnectAbort synchronously
+          // inside its Promise executor). If getDefaultTimeouts() or the
+          // openConnection() call itself threw above, settled stays false so
+          // the catch below still rejects via abortBeforeSocket instead of
+          // silently no-opping and hanging connect() forever.
+          const attempt = this.openConnection(connectionConfig, connectionTimeoutMs);
+          settled = true;
+          void attempt.then(resolve, reject);
+        })
+        .catch((error) => abortBeforeSocket(error as Error));
+    });
   }
 
   private async resolveConnectionConfig(): Promise<ResolvedConnectionConfig> {
@@ -185,6 +216,7 @@ class ElectrumClient extends EventEmitter {
           return;
         }
         settled = true;
+        this.pendingConnectAbort = null;
         cleanup();
         this.connected = true;
         resolve();
@@ -193,6 +225,7 @@ class ElectrumClient extends EventEmitter {
       const handleError = (error: Error) => {
         if (settled) return;
         settled = true;
+        this.pendingConnectAbort = null;
         cleanup();
         this.connected = false;
         if (this.socket) {
@@ -202,6 +235,10 @@ class ElectrumClient extends EventEmitter {
       };
 
       const state = { cleanup, handleSuccess, handleError, isSettled: () => settled };
+      // disconnect() cancels this attempt via the same path used for a
+      // connection timeout/error: it destroys any socket already assigned
+      // and rejects the pending connect() call.
+      this.pendingConnectAbort = handleError;
 
       try {
         connectionTimeout = setTimeout(() => {
@@ -326,6 +363,12 @@ class ElectrumClient extends EventEmitter {
    * Disconnect from Electrum server
    */
   disconnect(): void {
+    const abortInFlightConnect = this.pendingConnectAbort;
+    if (abortInFlightConnect) {
+      this.pendingConnectAbort = null;
+      abortInFlightConnect(new Error('Connection closed'));
+    }
+
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed'));
 
     if (this.socket) {
