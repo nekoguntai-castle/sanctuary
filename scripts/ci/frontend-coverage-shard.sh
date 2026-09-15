@@ -36,6 +36,36 @@ coverage_reports_dir_for_shard() {
   printf '%s' "${SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR:-coverage-shards/shard-${shard_index}-${shard_total}}"
 }
 
+assert_no_stale_coverage_artifacts() {
+  local coverage_reports_dir="$1"
+  local expected_blob="$2"
+
+  [ ! -e "$expected_blob" ] || fail "refusing stale Vitest blob report: $expected_blob"
+  [ ! -e "$coverage_reports_dir" ] || \
+    fail "refusing stale frontend coverage report directory: $coverage_reports_dir"
+}
+
+stash_attempt_coverage_artifacts() {
+  local coverage_reports_dir="$1"
+  local expected_blob="$2"
+  local attempt="$3"
+  local reports_parent blob_parent tmp_entry
+
+  if [ -e "$coverage_reports_dir" ]; then
+    mv "$coverage_reports_dir" "${coverage_reports_dir}-attempt-${attempt}-failed"
+  fi
+  if [ -e "$expected_blob" ]; then
+    mv "$expected_blob" "${expected_blob}.attempt-${attempt}-failed"
+  fi
+
+  reports_parent="$(dirname "$coverage_reports_dir")"
+  blob_parent="$(dirname "$expected_blob")"
+  for tmp_entry in "${reports_parent}"/.tmp-* "${blob_parent}"/.tmp-*; do
+    [ -e "$tmp_entry" ] || continue
+    mv "$tmp_entry" "${tmp_entry}.attempt-${attempt}-failed"
+  done
+}
+
 run_vitest_shard_once() {
   local vitest_bin="$1"
   local shard_index="$2"
@@ -47,9 +77,6 @@ run_vitest_shard_once() {
   is_safe_relative_path "$coverage_reports_dir" || \
     fail 'SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR must be a safe relative path'
 
-  [ ! -e "$expected_blob" ] || fail "refusing stale Vitest blob report: $expected_blob"
-  [ ! -e "$coverage_reports_dir" ] || \
-    fail "refusing stale frontend coverage report directory: $coverage_reports_dir"
   mkdir -p "$(dirname "$coverage_reports_dir")"
 
   SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR="$coverage_reports_dir" "$vitest_bin" run \
@@ -88,6 +115,9 @@ run_vitest_shard_with_native_retry() {
   local log_dir="${SANCTUARY_FRONTEND_COVERAGE_LOG_DIR:-.tmp/frontend-coverage}"
   mkdir -p "$log_dir"
 
+  local coverage_reports_dir
+  coverage_reports_dir="$(coverage_reports_dir_for_shard "$shard_index" "$shard_total")"
+
   local attempt attempt_log status
   for attempt in $(seq 1 "$attempts"); do
     attempt_log="${log_dir}/shard-${shard_index}-${shard_total}-attempt-${attempt}.log"
@@ -104,6 +134,7 @@ run_vitest_shard_with_native_retry() {
       return "$status"
     fi
 
+    stash_attempt_coverage_artifacts "$coverage_reports_dir" "$expected_blob" "$attempt"
     echo "frontend-coverage-shard: retrying shard ${shard_index}/${shard_total} after retryable Vitest infrastructure failure (attempt $((attempt + 1))/${attempts})" >&2
   done
 }
@@ -153,6 +184,7 @@ main() {
 
   local expected_blob=".vitest-reports/blob-${shard_index}-${shard_total}.json"
   mkdir -p .vitest-reports
+  assert_no_stale_coverage_artifacts "$coverage_reports_dir" "$expected_blob"
   run_vitest_shard_with_native_retry "$vitest_bin" "$shard_index" "$shard_total" "$expected_blob"
 
   if [ ! -f "$expected_blob" ]; then

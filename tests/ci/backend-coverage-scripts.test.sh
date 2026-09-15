@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MERGE_SCRIPT="$ROOT_DIR/scripts/ci/backend-coverage-merge.sh"
+SHARD_SCRIPT="$ROOT_DIR/scripts/ci/backend-coverage-shard.sh"
 TEST_TEMP_DIR=''
 
 fail() {
@@ -28,11 +29,98 @@ assert_fails_with() {
   grep -Fq -- "$expected" "$output_file" || fail "expected output to contain: ${expected}"
 }
 
+assert_file_contains() {
+  local expected="$1"
+  local file="$2"
+
+  grep -Fq -- "$expected" "$file" || fail "expected ${file} to contain: ${expected}"
+}
+
+assert_file_equals() {
+  local expected="$1"
+  local file="$2"
+  local actual
+  actual="$(cat "$file")"
+
+  [ "$actual" = "$expected" ] || fail "expected ${file} to equal ${expected}, got ${actual}"
+}
+
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
 
   bash -n "$MERGE_SCRIPT"
+  bash -n "$SHARD_SCRIPT"
+
+  # A crashed first attempt that already created the shard's coverage report
+  # directory (and blob, and a scratch .tmp-* artifact) before segfaulting
+  # must have those attempt artifacts renamed aside -- never deleted -- so
+  # the retry attempt starts clean without losing crash diagnostics.
+  local stale_dir_vitest_bin="$TEST_TEMP_DIR/stale-dir-vitest"
+  local stale_dir_count="$TEST_TEMP_DIR/stale-dir-count"
+  cat >"$stale_dir_vitest_bin" <<'STALE_DIR_VITEST'
+#!/usr/bin/env bash
+set -euo pipefail
+attempt=1
+if [ -f "$CAPTURED_VITEST_ATTEMPTS" ]; then
+  attempt="$(($(cat "$CAPTURED_VITEST_ATTEMPTS") + 1))"
+fi
+printf '%s' "$attempt" >"$CAPTURED_VITEST_ATTEMPTS"
+if [ "$attempt" -eq 1 ]; then
+  mkdir -p coverage-shards/shard-1-2
+  printf 'attempt-1-partial-coverage\n' > coverage-shards/shard-1-2/partial-coverage.json
+  mkdir -p .vitest-reports
+  printf 'attempt-1-partial-blob\n' > .vitest-reports/blob-1-2.json
+  printf 'attempt-1-scratch\n' > coverage-shards/.tmp-scratch
+  exit 139
+fi
+mkdir -p .vitest-reports
+printf 'attempt-2-final-blob\n' > .vitest-reports/blob-1-2.json
+STALE_DIR_VITEST
+  chmod +x "$stale_dir_vitest_bin"
+
+  (
+    cd "$TEST_TEMP_DIR"
+    CAPTURED_VITEST_ATTEMPTS="$stale_dir_count" VITEST_BIN="$stale_dir_vitest_bin" \
+      bash "$SHARD_SCRIPT" 1 2
+  )
+  assert_file_equals '2' "$stale_dir_count"
+
+  [ ! -e "$TEST_TEMP_DIR/coverage-shards/shard-1-2" ] || \
+    fail 'expected the crashed attempt report directory not to remain at its original path'
+  [ -d "$TEST_TEMP_DIR/coverage-shards/shard-1-2-attempt-1-failed" ] || \
+    fail 'expected the crashed attempt report directory to be renamed aside, not deleted'
+  assert_file_contains 'attempt-1-partial-coverage' \
+    "$TEST_TEMP_DIR/coverage-shards/shard-1-2-attempt-1-failed/partial-coverage.json"
+
+  [ -f "$TEST_TEMP_DIR/.vitest-reports/blob-1-2.json.attempt-1-failed" ] || \
+    fail 'expected the crashed attempt blob report to be renamed aside, not deleted'
+  assert_file_contains 'attempt-1-partial-blob' \
+    "$TEST_TEMP_DIR/.vitest-reports/blob-1-2.json.attempt-1-failed"
+  assert_file_contains 'attempt-2-final-blob' "$TEST_TEMP_DIR/.vitest-reports/blob-1-2.json"
+
+  [ -f "$TEST_TEMP_DIR/coverage-shards/.tmp-scratch.attempt-1-failed" ] || \
+    fail 'expected the crashed attempt .tmp-* scratch artifact to be renamed aside, not deleted'
+  assert_file_contains 'attempt-1-scratch' \
+    "$TEST_TEMP_DIR/coverage-shards/.tmp-scratch.attempt-1-failed"
+
+  rm -rf "$TEST_TEMP_DIR/.vitest-reports" "$TEST_TEMP_DIR/coverage-shards" \
+    "$TEST_TEMP_DIR/.tmp"
+
+  # A coverage report directory that already existed before the shard script
+  # ran at all (not created by a retry attempt) must still be refused.
+  mkdir -p "$TEST_TEMP_DIR/coverage-shards/shard-1-2"
+  local pre_existing_output="$TEST_TEMP_DIR/pre-existing-output"
+  if (
+    cd "$TEST_TEMP_DIR"
+    VITEST_BIN="$stale_dir_vitest_bin" bash "$SHARD_SCRIPT" 1 2
+  ) >"$pre_existing_output" 2>&1; then
+    fail 'expected pre-existing backend coverage report directory to be refused'
+  fi
+  assert_file_contains 'refusing stale backend coverage report directory' "$pre_existing_output"
+
+  rm -rf "$TEST_TEMP_DIR/.vitest-reports" "$TEST_TEMP_DIR/coverage-shards" \
+    "$TEST_TEMP_DIR/.tmp"
 
   assert_fails_with 'blob report directory does not exist' bash "$MERGE_SCRIPT" "$TEST_TEMP_DIR/missing"
   mkdir "$TEST_TEMP_DIR/empty-reports"
