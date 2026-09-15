@@ -525,6 +525,34 @@ describe('TrezorAdapter class', () => {
     expect(adapter.getDevice()).toBeNull();
   });
 
+  it('cancels a connect() that resolves after a concurrent disconnect() and does not resurrect the session', async () => {
+    let resolvePublicKey: ((value: unknown) => void) | undefined;
+    mockGetPublicKey.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePublicKey = resolve;
+      })
+    );
+    const adapter = new TrezorAdapter();
+
+    const connectPromise = adapter.connect();
+    await adapter.disconnect();
+    resolvePublicKey?.({
+      success: true,
+      payload: {
+        xpub: 'xpub-from-device',
+        descriptor: 'wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum',
+        fingerprint: 0x12345678,
+        depth: 3,
+        childNum: 0x80000000,
+      },
+      device: selectedDevice,
+    });
+
+    await expect(connectPromise).rejects.toThrow(/cancel/i);
+    expect(adapter.isConnected()).toBe(false);
+    expect(adapter.getDevice()).toBeNull();
+  });
+
   it('requires connected state for getXpub/signPSBT', async () => {
     const adapter = new TrezorAdapter();
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Trezor not connected');

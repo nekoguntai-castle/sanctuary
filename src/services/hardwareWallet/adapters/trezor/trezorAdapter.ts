@@ -123,6 +123,9 @@ export class TrezorAdapter implements DeviceAdapter {
     connected: false,
   };
   private connectedDevice: HardwareWalletDevice | null = null;
+  // Bumped by disconnect() so a connect() attempt still in flight can detect
+  // it was superseded and cancel instead of resurrecting a stale session.
+  private connectGeneration = 0;
 
   constructor(private readonly initSettings?: TrezorInitSettings) {}
 
@@ -194,6 +197,11 @@ export class TrezorAdapter implements DeviceAdapter {
    * Connect to a Trezor device
    */
   async connect(): Promise<HardwareWalletDevice> {
+    // Captured before any await so a disconnect() (or a newer connect())
+    // that lands during this attempt is detected before the session is
+    // committed below, instead of resurrecting a stale connection.
+    const myGeneration = this.connectGeneration;
+
     await this.ensureInitialized();
 
     try {
@@ -201,6 +209,11 @@ export class TrezorAdapter implements DeviceAdapter {
 
       const { features, session } = await this.getDeviceFeatures();
       const fingerprint = await this.getMasterFingerprint(session);
+
+      if (this.connectGeneration !== myGeneration) {
+        throw new Error('Trezor connect cancelled by a concurrent disconnect');
+      }
+
       const modelName = getTrezorModelName(features);
       const device = this.setConnectedDevice(features, fingerprint, modelName, session);
 
@@ -323,6 +336,7 @@ export class TrezorAdapter implements DeviceAdapter {
    * Disconnect from Trezor
    */
   async disconnect(): Promise<void> {
+    this.connectGeneration++;
     this.clearSelectedSession();
     log.info('Trezor disconnected');
   }
