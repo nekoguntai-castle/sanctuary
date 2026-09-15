@@ -249,6 +249,24 @@ main() {
   assert_eq "nested .integration.test → backend_integration" "true" \
     "$(json_query "$plan" lanes.backend_integration.run)"
 
+  # ---- Rename detection blind spot: a renamed backend file still selects
+  # ---- the backend_unit lane from its vacated path -------------------------
+  base="$head"
+  mkdir -p "$repo/server/src/services/notifications"
+  printf 'export const renamed = true\n' > "$repo/server/src/services/notifications/renamed.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'add backend source before rename'
+  base="$(git -C "$repo" rev-parse HEAD)"
+
+  mkdir -p "$repo/docs"
+  git -C "$repo" mv server/src/services/notifications/renamed.ts docs/renamed.md
+  git -C "$repo" commit -qm 'rename backend source to docs'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "renamed backend source -> backend_unit run" "true" \
+    "$(json_query "$plan" lanes.backend_unit.run)"
+
   echo "plan-test-run regression checks passed"
 }
 

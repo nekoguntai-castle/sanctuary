@@ -624,6 +624,22 @@ EOF_DOC
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "build_changed" "true"
 
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/src/components/RenameSource"
+  printf 'export const RenameSource = () => null;\n' > "$repo_dir/src/components/RenameSource/RenameSource.tsx"
+  git -C "$repo_dir" add src/components/RenameSource/RenameSource.tsx
+  git -C "$repo_dir" commit -qm "add frontend source before rename"
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  mkdir -p "$repo_dir/docs"
+  git -C "$repo_dir" mv src/components/RenameSource/RenameSource.tsx docs/RenameSource.md
+  git -C "$repo_dir" commit -qm "rename frontend source to docs"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_contains_output "$output_file" "frontend_files" "src/components/RenameSource/RenameSource.tsx"
+
   echo "classify-test-changes regression checks passed"
 }
 

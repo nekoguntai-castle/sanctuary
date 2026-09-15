@@ -219,7 +219,7 @@ else
       build_run="true"
       build_files+=("$file")
     fi
-  done < <(git diff --name-only "$base_sha" "$head_sha")
+  done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 fi
 
 # JSON emit. We hand-build the document so jq is not required at runtime.

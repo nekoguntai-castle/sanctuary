@@ -254,6 +254,6 @@ while IFS= read -r file; do
   if is_test_file "$file"; then
     append_file test_files "$file"
   fi
-done < <(git diff --name-only "$base_sha" "$head_sha")
+done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 
 emit_outputs

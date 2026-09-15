@@ -277,6 +277,18 @@ main() {
   )
   assert_images "$output_file" "true" "true" "true" "true" "true"
 
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "server/src/renamed.ts" "export const renamed = true;" "backend source before rename"
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  mkdir -p "$repo_dir/docs"
+  git -C "$repo_dir" mv server/src/renamed.ts docs/renamed.md
+  git -C "$repo_dir" commit -qm "rename backend source to docs"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "true"
+
   echo "docker image scope classifier regression checks passed"
 }
 

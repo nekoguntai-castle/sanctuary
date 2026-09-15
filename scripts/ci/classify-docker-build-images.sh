@@ -209,6 +209,6 @@ while IFS= read -r file; do
     grafana_migration_image=true
     reason="Grafana migration image input changed: $file"
   fi
-done < <(git diff --name-only "$base_sha" "$head_sha")
+done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 
 emit_outputs
