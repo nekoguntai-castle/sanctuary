@@ -123,7 +123,7 @@ router.post('/backup', authenticate, requireAdmin, asyncHandler(async (req, res)
  *
  * Response: ValidationResult
  */
-router.post('/backup/validate', largeBodyParser, authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/backup/validate', authenticate, requireAdmin, largeBodyParser, asyncHandler(async (req, res) => {
   const { backup } = parseAdminRequestBody(RestoreBackupSchema, req.body, 'Missing backup data');
 
   const validation = await backupService.validateBackupForRestore(backup);
@@ -142,7 +142,7 @@ router.post('/backup/validate', largeBodyParser, authenticate, requireAdmin, asy
  *
  * Response: RestoreResult
  */
-router.post('/restore', largeBodyParser, authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/restore', authenticate, requireAdmin, largeBodyParser, asyncHandler(async (req, res) => {
   const { backup } = parseAdminRequestBody(
     ConfirmRestoreSchema,
     req.body,
