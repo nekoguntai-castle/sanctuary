@@ -145,9 +145,11 @@ export function useConsoleDrawerController({
     async (sessionId: string) => {
       try {
         const result = await consoleApi.listConsoleTurns(sessionId);
+        if (selectedSessionIdRef.current !== sessionId) return;
         setMessages(turnsToMessages(result.turns));
         setSetupReason(null);
       } catch (caught) {
+        if (selectedSessionIdRef.current !== sessionId) return;
         handleConsoleError(caught, "Failed to load Console session");
       }
     },
@@ -284,6 +286,7 @@ export function useConsoleDrawerController({
       }
 
       setSelectedSessionId(sessionId);
+      setMessages([]);
       await loadSessionTurns(sessionId);
     },
     [loadSessionTurns, setSelectedSessionId, startNewSession],
