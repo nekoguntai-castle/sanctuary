@@ -10,9 +10,9 @@ export default {
     'src/services/bitcoin/transactions/outputBuilder.ts:113-137',
     'src/services/bitcoin/transactions/createBatchTransaction.ts:301-406',
     'src/services/bitcoin/transactions/createBatchTransaction.ts:412-466',
-    'src/services/bitcoin/advancedTx/batch.ts:111-169',
-    'src/services/bitcoin/advancedTx/batch.ts:250-270',
-    'src/services/bitcoin/advancedTx/cpfp.ts:37-69',
+    'src/services/bitcoin/advancedTx/batch.ts:120-178',
+    'src/services/bitcoin/advancedTx/batch.ts:259-279',
+    'src/services/bitcoin/advancedTx/cpfp.ts:38-70',
     'src/services/bitcoin/advancedTx/rbf.ts:217-227',
   ],
   testFiles: [

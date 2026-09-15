@@ -532,6 +532,26 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(400);
       });
 
+      it('should return 400 when recipientAddress is malformed for the wallet network', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockUtils.validateAddress.mockReturnValueOnce({ valid: false, error: 'Invalid checksum' });
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/cpfp')
+          .send({
+            parentTxid: 'parent123',
+            parentVout: 0,
+            targetFeeRate: 30,
+            recipientAddress: 'not-a-real-address',
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('VALIDATION_ERROR');
+        expect(mockUtils.validateAddress).toHaveBeenCalledWith('not-a-real-address', 'mainnet');
+        expect(mockAdvancedTx.createCPFPTransaction).not.toHaveBeenCalled();
+      });
+
       it('should return 403 when user lacks wallet permission', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue(null);
 
@@ -701,6 +721,42 @@ export const registerBitcoinTransactionRouteTests = () => {
           });
 
         expect(response.status).toBe(400);
+      });
+
+      it('should return 400 when a recipient amount is fractional', async () => {
+        const response = await request(app)
+          .post('/bitcoin/transaction/batch')
+          .send({
+            recipients: [{ address: 'bc1qtest', amount: 250000.5 }],
+            feeRate: 20,
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(mockAdvancedTx.createBatchTransaction).not.toHaveBeenCalled();
+      });
+
+      it('should return 400 when a recipient address is malformed for the wallet network', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
+        mockUtils.validateAddress
+          .mockReturnValueOnce({ valid: true })
+          .mockReturnValueOnce({ valid: false, error: 'Invalid checksum' });
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/batch')
+          .send({
+            recipients: [
+              { address: 'bc1qtest1', amount: 100000 },
+              { address: 'not-a-real-address', amount: 100000 },
+            ],
+            feeRate: 20,
+            walletId: 'wallet-1',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('VALIDATION_ERROR');
+        expect(mockUtils.validateAddress).toHaveBeenNthCalledWith(2, 'not-a-real-address', 'mainnet');
+        expect(mockAdvancedTx.createBatchTransaction).not.toHaveBeenCalled();
       });
 
       it('should return 403 when user lacks wallet permission', async () => {

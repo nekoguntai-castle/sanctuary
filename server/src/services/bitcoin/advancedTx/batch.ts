@@ -31,6 +31,7 @@ import { buildSigningIntentFeePolicy } from "../signingIntent/feePolicy";
 import type { SigningIntentFeePolicyV1 } from "../signingIntent/types";
 import { assertExactUtxoSelection } from "../utxoSelection";
 import { InvalidInputError } from "../../../errors/ApiError";
+import { getErrorMessage } from "../../../utils/errors";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -91,8 +92,16 @@ export async function createBatchTransaction(
   if (utxos.some(utxo => !utxo.scriptPubKey)) throw new Error("UTXO is missing scriptPubKey evidence");
   const networkObj = getNetwork(network);
   const signingInfo = resolveWalletSigningInfo(wallet, "[ADVANCED_BATCH] ");
-  const recipientScripts = recipients.map(recipient =>
-    addressToOutputScript(recipient.address, network));
+  const recipientScripts = recipients.map((recipient, index) => {
+    try {
+      return addressToOutputScript(recipient.address, network);
+    } catch (error) {
+      throw new InvalidInputError(
+        `Invalid recipient address: ${getErrorMessage(error)}`,
+        `recipients[${index}].address`,
+      );
+    }
+  });
   const changeScript = transactionChangeScriptTemplate(signingInfo);
   const addressPathMap = await fetchAddressDerivationPaths(walletId, utxos.map(utxo => utxo.address));
   const spendEvidence = new Map(utxos.map(utxo => [

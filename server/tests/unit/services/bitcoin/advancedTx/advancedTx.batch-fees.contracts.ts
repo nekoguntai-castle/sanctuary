@@ -155,6 +155,24 @@ export function registerBatchFeeAndConstantContracts() {
       )).rejects.toThrow("Selected UTXOs are unavailable");
     });
 
+    it("rejects a malformed recipient address with InvalidInputError instead of an unguarded parser crash", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+      ]);
+
+      const error: unknown = await createBatchTransaction(
+        [{ address: "not-a-real-address", amount: 1_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      ).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toContain("Invalid recipient address");
+      expect((error as InvalidInputError).details?.field).toBe("recipients[0].address");
+    });
+
     it("throws when the wallet has no spendable UTXOs", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([]);
 

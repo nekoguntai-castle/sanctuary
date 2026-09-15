@@ -36,6 +36,7 @@ const bitcoinApiMocks = vi.hoisted(() => ({
     getAddressType: vi.fn(),
     estimateTransactionSize: vi.fn(),
     calculateFee: vi.fn(),
+    validateAddress: vi.fn(),
   },
   mockAdvancedTx: {
     getAdvancedFeeEstimates: vi.fn(),
@@ -272,6 +273,7 @@ export const setupBitcoinApiMocks = () => {
   mockNodeClient.isConnected.mockReturnValue(true);
   mockNodeClient.getElectrumPool.mockReturnValue(mockElectrumPool);
   mockNodeClient.getNodeClient.mockResolvedValue(mockElectrumClient);
+  mockUtils.validateAddress.mockReturnValue({ valid: true });
   mockSilentPayments.getSilentPaymentReadiness.mockResolvedValue({
     featureEnabled: true,
     ready: true,

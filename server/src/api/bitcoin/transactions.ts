@@ -16,8 +16,10 @@ import {
   ForbiddenError,
   InvalidInputError,
   TransactionNotFoundError,
+  ValidationError,
 } from '../../errors/ApiError';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
+import { validateAddress } from '../../services/bitcoin/utils';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { resolveBitcoinNetworkParam } from './networkParam';
 import { createSigningIntent } from '../../services/bitcoin/signingIntent';
@@ -57,12 +59,19 @@ const CpfpBodySchema = z.object({
 const BatchTransactionBodySchema = z.object({
   recipients: z.array(z.object({
     address: z.string().min(1),
-    amount: z.number().positive(),
+    amount: z.number().positive().int(),
   }).passthrough()).min(1),
   feeRate: z.number().min(MIN_FEE_RATE).max(MAX_FEE_RATE),
   walletId: z.string().min(1),
   selectedUtxoIds: z.array(z.string()).optional(),
 });
+
+const assertValidRecipientAddress = (address: string, network: BitcoinNetwork, label: string): void => {
+  const addressValidation = validateAddress(address, network);
+  if (!addressValidation.valid) {
+    throw new ValidationError(`${label}: Invalid Bitcoin address: ${addressValidation.error}`);
+  }
+};
 
 const batchTransactionValidationMessage = (issues: Array<{ path: string }>) => {
   if (issues.some(issue => issue.path.startsWith('recipients.') && issue.path !== 'recipients')) {
@@ -225,6 +234,9 @@ router.post('/transaction/cpfp', authenticate, validate(
   }
   await assertWalletHardwareCapabilityById(walletId, 'sign');
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
+  if (recipientAddress !== undefined) {
+    assertValidRecipientAddress(recipientAddress, network, 'Recipient address');
+  }
 
   const result = await advancedTx.createCPFPTransaction(
     parentTxid,
@@ -279,6 +291,9 @@ router.post('/transaction/batch', authenticate, validate(
   }
   await assertWalletHardwareCapabilityById(walletId, 'sign');
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
+  (recipients as Array<{ address: string }>).forEach((recipient, index) => {
+    assertValidRecipientAddress(recipient.address, network, `Recipient ${index + 1}`);
+  });
 
   const result = await advancedTx.createBatchTransaction(
     recipients,

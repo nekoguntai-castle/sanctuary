@@ -158,6 +158,21 @@ export function registerCpfpContracts() {
       expect((error as Error).message).toBe('UTXO not found');
     });
 
+    it('rejects a malformed recipientAddress with InvalidInputError instead of an unguarded parser crash', async () => {
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      const error: unknown = await createCPFPTransaction(
+        parentTxid, parentVout, 5, 'not-a-real-address', walletId, 'testnet3',
+      ).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as Error).message).toContain('Invalid recipient address');
+      expect((error as InvalidInputError).details?.field).toBe('recipientAddress');
+    });
+
     it('derives a change/receive address when recipientAddress is omitted', async () => {
       const chain = cpfpChain();
       mockElectrumClient.getTransaction

@@ -30,6 +30,7 @@ import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
 import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
 import { InvalidInputError, NotFoundError } from '../../../errors/ApiError';
+import { getErrorMessage } from '../../../utils/errors';
 
 /**
  * Calculate CPFP fee to achieve target fee rate
@@ -140,7 +141,15 @@ export async function createCPFPTransaction(
   // address for the wallet — the same mechanism the batch paths use for change.
   const resolvedRecipientAddress = recipientAddress
     ?? (await prepareChangeOutputs(walletId, 1))[0].address;
-  const recipientScript = addressToOutputScript(resolvedRecipientAddress, network);
+  let recipientScript: Buffer;
+  try {
+    recipientScript = addressToOutputScript(resolvedRecipientAddress, network);
+  } catch (error) {
+    throw new InvalidInputError(
+      `Invalid recipient address: ${getErrorMessage(error)}`,
+      'recipientAddress',
+    );
+  }
   const signingInfo = resolveWalletSigningInfo(wallet, '[CPFP] ');
   const addressPathMap = await fetchAddressDerivationPaths(walletId, [utxo.address]);
   const evidence = resolveTransactionSpendPolicy(

@@ -468,6 +468,13 @@ export function registerOpenApiCoreTests() {
       minItems: 1,
     });
     expect(
+      openApiSpec.components.schemas.BatchTransactionRecipient.properties
+        .amount,
+    ).toMatchObject({
+      type: "integer",
+      minimum: 1,
+    });
+    expect(
       openApiSpec.components.schemas.BitcoinLegacyWalletSyncResponse.$ref,
     ).toBe("#/components/schemas/WalletSyncAdmissionResponse");
     expect(openApiSpec.components.schemas.AddressSyncResponse.$ref).toBe(

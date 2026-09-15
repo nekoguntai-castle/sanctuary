@@ -1210,8 +1210,8 @@
         {
           "id": "advanced-batch-change-and-fee-selection",
           "productionFile": "src/services/bitcoin/advancedTx/batch.ts",
-          "lineStart": 142,
-          "lineEnd": 161,
+          "lineStart": 151,
+          "lineEnd": 170,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
@@ -1225,8 +1225,8 @@
           "canaries": [{
             "id": "advanced-batch-selection-loop-cannot-be-removed",
             "location": {
-              "start": { "line": 142, "column": 31 },
-              "end": { "line": 161, "column": 6 }
+              "start": { "line": 151, "column": 31 },
+              "end": { "line": 170, "column": 6 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1237,8 +1237,8 @@
           }, {
             "id": "advanced-batch-surplus-cannot-widen-tolerance",
             "location": {
-              "start": { "line": 158, "column": 26 },
-              "end": { "line": 158, "column": 48 }
+              "start": { "line": 167, "column": 26 },
+              "end": { "line": 167, "column": 48 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "fee + feeWithoutChange",
@@ -1251,8 +1251,8 @@
         {
           "id": "advanced-batch-pinned-selection-spends-full-set",
           "productionFile": "src/services/bitcoin/advancedTx/batch.ts",
-          "lineStart": 250,
-          "lineEnd": 270,
+          "lineStart": 259,
+          "lineEnd": 279,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
@@ -1262,8 +1262,8 @@
           "canaries": [{
             "id": "advanced-batch-pinned-coverage-cannot-be-removed",
             "location": {
-              "start": { "line": 262, "column": 41 },
-              "end": { "line": 264, "column": 4 }
+              "start": { "line": 271, "column": 41 },
+              "end": { "line": 273, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1276,8 +1276,8 @@
         {
           "id": "cpfp-package-fee-is-conserved",
           "productionFile": "src/services/bitcoin/advancedTx/cpfp.ts",
-          "lineStart": 55,
-          "lineEnd": 63,
+          "lineStart": 56,
+          "lineEnd": 64,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
             "name": "Advanced Transaction Features CPFP Fee Calculation should calculate correct child fee for target package rate"
@@ -1285,8 +1285,8 @@
           "canaries": [{
             "id": "cpfp-child-fee-subtracts-parent-fee",
             "location": {
-              "start": { "line": 59, "column": 20 },
-              "end": { "line": 59, "column": 40 }
+              "start": { "line": 60, "column": 20 },
+              "end": { "line": 60, "column": 40 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "totalFee + parentFee",

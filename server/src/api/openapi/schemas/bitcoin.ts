@@ -725,7 +725,7 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       address: { type: "string" },
-      amount: { type: "number", minimum: 0 },
+      amount: { type: "integer", minimum: 1 },
     },
     required: ["address", "amount"],
     additionalProperties: true,
