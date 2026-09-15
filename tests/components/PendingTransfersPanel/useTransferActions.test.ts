@@ -1,6 +1,22 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+interface Deferred<T> {
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+  promise: Promise<T>;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { resolve, reject, promise };
+}
+
 const mockGetTransfers = vi.fn();
 const mockAcceptTransfer = vi.fn();
 const mockDeclineTransfer = vi.fn();
@@ -203,6 +219,18 @@ describe('useTransferActions', () => {
     expect(onTransferComplete).toHaveBeenCalled();
   });
 
+  it('sets a load error when fetching transfers fails for the current resource', async () => {
+    mockGetTransfers.mockRejectedValueOnce(new Error('network down'));
+
+    const { result } = renderHook(() =>
+      useTransferActions('wallet', 'wallet-1'),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBe('network down');
+  });
+
   it('sets error on ApiError failure', async () => {
     mockAcceptTransfer.mockRejectedValue(new (ApiError as unknown as new (msg: string) => Error)('Transfer expired'));
 
@@ -276,5 +304,155 @@ describe('useTransferActions', () => {
     });
 
     expect(result.current.confirmModal).toBeNull();
+  });
+
+  it('clears the list synchronously when the resource switches, before any refetch resolves', async () => {
+    mockGetTransfers.mockResolvedValue({
+      transfers: [makeTransfer({ id: 'a1', resourceId: 'wallet-A', toUserId: 'user-1' })],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) => useTransferActions('wallet', resourceId),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(result.current.incomingPending).toHaveLength(1));
+
+    // Switching resources must clear the previous resource's data
+    // synchronously (no leftover A data shown even for a single paint),
+    // before the new fetch for B has had any chance to resolve.
+    rerender({ resourceId: 'wallet-B' });
+    expect(result.current.incomingPending).toHaveLength(0);
+
+    // Let B's refetch (also resolving to the same fixture data, filtered
+    // out by resourceId) settle within act before the test ends.
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  });
+
+  it('scopes fetched transfers to the currently mounted resource when a stale fetch resolves late', async () => {
+    const deferreds: Deferred<{ transfers: ReturnType<typeof makeTransfer>[] }>[] = [];
+    mockGetTransfers.mockImplementation(() => {
+      const deferred = createDeferred<{ transfers: ReturnType<typeof makeTransfer>[] }>();
+      deferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    const { result, rerender } = renderHook(
+      ({ resourceType, resourceId }: { resourceType: 'wallet' | 'device'; resourceId: string }) =>
+        useTransferActions(resourceType, resourceId),
+      { initialProps: { resourceType: 'wallet' as const, resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(1));
+
+    // Switch to resource B while A's fetch is still pending.
+    rerender({ resourceType: 'wallet', resourceId: 'wallet-B' });
+
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(2));
+
+    // Resolve B's fetch first, then A's stale fetch late.
+    await act(async () => {
+      deferreds[1].resolve({
+        transfers: [makeTransfer({ id: 'b1', resourceId: 'wallet-B', toUserId: 'user-1' })],
+      });
+    });
+    await act(async () => {
+      deferreds[0].resolve({
+        transfers: [makeTransfer({ id: 'a1', resourceId: 'wallet-A', toUserId: 'user-1' })],
+      });
+    });
+
+    await waitFor(() => expect(result.current.incomingPending).toHaveLength(1));
+    expect(result.current.incomingPending[0].id).toBe('b1');
+  });
+
+  it('does not surface a stale load error when the resource switches before the fetch rejects', async () => {
+    const deferreds: Deferred<{ transfers: ReturnType<typeof makeTransfer>[] }>[] = [];
+    mockGetTransfers.mockImplementation(() => {
+      const deferred = createDeferred<{ transfers: ReturnType<typeof makeTransfer>[] }>();
+      deferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) => useTransferActions('wallet', resourceId),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(1));
+
+    // Switch to resource B while A's fetch is still pending, then let B's
+    // fetch resolve successfully before A's stale fetch rejects.
+    rerender({ resourceId: 'wallet-B' });
+
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      deferreds[1].resolve({ transfers: [] });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      deferreds[0].reject(new Error('stale wallet-A fetch failure'));
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('does not invoke onTransferComplete when the resource switches before confirm resolves', async () => {
+    const confirmDeferred = createDeferred<unknown>();
+    mockConfirmTransfer.mockReturnValue(confirmDeferred.promise);
+    const onTransferComplete = vi.fn();
+
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) =>
+        useTransferActions('wallet', resourceId, onTransferComplete),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let actionPromise!: Promise<void>;
+    act(() => {
+      actionPromise = result.current.handleConfirm('t1');
+    });
+
+    // Switch resources while the confirm call is still in flight.
+    rerender({ resourceId: 'wallet-B' });
+
+    await act(async () => {
+      confirmDeferred.resolve({});
+      await actionPromise;
+    });
+
+    expect(onTransferComplete).not.toHaveBeenCalled();
+  });
+
+  it('does not surface a stale action error when the resource switches before the call rejects', async () => {
+    const acceptDeferred = createDeferred<unknown>();
+    mockAcceptTransfer.mockReturnValue(acceptDeferred.promise);
+
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) => useTransferActions('wallet', resourceId),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let actionPromise!: Promise<void>;
+    act(() => {
+      actionPromise = result.current.handleAccept('t1');
+    });
+
+    // Switch resources while the accept call is still in flight.
+    rerender({ resourceId: 'wallet-B' });
+
+    await act(async () => {
+      acceptDeferred.reject(new Error('stale failure'));
+      await actionPromise;
+    });
+
+    expect(result.current.error).toBeNull();
   });
 });

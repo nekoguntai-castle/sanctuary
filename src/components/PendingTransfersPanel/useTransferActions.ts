@@ -5,11 +5,11 @@
  * along with their shared loading/error state and confirmation modal management.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { getErrorMessage } from '@sanctuary/shared/utils/errors';
 import * as transfersApi from '../../api/transfers';
 import { ApiError } from '../../api/client';
 import { useUser } from '../../contexts/UserContext';
-import { useLoadingState } from '../../hooks/useLoadingState';
 import type { Transfer } from '../../types';
 
 export type TransferAction = 'accept' | 'decline' | 'cancel' | 'confirm';
@@ -46,24 +46,67 @@ export function useTransferActions(
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const { loading, error: loadError, execute: runLoad } = useLoadingState({ initialLoading: true });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const error = loadError || actionError;
 
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   const [declineReason, setDeclineReason] = useState('');
 
-  const fetchTransfers = useCallback(() => runLoad(async () => {
-    const result = await transfersApi.getTransfers({
-      status: 'active',
-      resourceType,
-    });
-    const resourceTransfers = result.transfers.filter(
-      (t: Transfer) => t.resourceId === resourceId,
-    );
-    setTransfers(resourceTransfers);
-  }), [resourceType, resourceId, runLoad]);
+  // Tracks the resourceType/resourceId this hook instance is currently
+  // scoped to. The panel is rendered without a `key`, so the same hook
+  // instance survives a resource switch (e.g. navigating from one wallet's
+  // detail page to another's) — any fetch or action started against the
+  // previous resource must not be allowed to apply its result once the
+  // resource has moved on.
+  const currentResourceRef = useRef({ resourceType, resourceId });
+  currentResourceRef.current = { resourceType, resourceId };
+  const isCurrentResource = (requestResourceType: string, requestResourceId: string): boolean => (
+    currentResourceRef.current.resourceType === requestResourceType
+    && currentResourceRef.current.resourceId === requestResourceId
+  );
+
+  // Reset all resource-scoped state synchronously (during render, not in an
+  // effect) the moment resourceType/resourceId changes, so stale data from
+  // the previous resource is never visible even for a single paint.
+  const [trackedResourceKey, setTrackedResourceKey] = useState(`${resourceType}:${resourceId}`);
+  const resourceKey = `${resourceType}:${resourceId}`;
+  if (resourceKey !== trackedResourceKey) {
+    setTrackedResourceKey(resourceKey);
+    setTransfers([]);
+    setActionLoading(null);
+    setActionError(null);
+    setConfirmModal(null);
+    setLoadError(null);
+    setDeclineReason('');
+  }
+
+  const fetchTransfers = useCallback(async () => {
+    const requestResourceType = resourceType;
+    const requestResourceId = resourceId;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const result = await transfersApi.getTransfers({
+        status: 'active',
+        resourceType: requestResourceType,
+      });
+      if (!isCurrentResource(requestResourceType, requestResourceId)) return;
+      const resourceTransfers = result.transfers.filter(
+        (t: Transfer) => t.resourceId === requestResourceId,
+      );
+      setTransfers(resourceTransfers);
+    } catch (err) {
+      if (isCurrentResource(requestResourceType, requestResourceId)) {
+        setLoadError(getErrorMessage(err));
+      }
+    } finally {
+      if (isCurrentResource(requestResourceType, requestResourceId)) {
+        setLoading(false);
+      }
+    }
+  }, [resourceType, resourceId]);
 
   useEffect(() => {
     fetchTransfers();
@@ -75,20 +118,28 @@ export function useTransferActions(
     fallbackMessage: string,
     afterSuccess?: () => void,
   ) => {
+    const requestResourceType = resourceType;
+    const requestResourceId = resourceId;
     setActionLoading(transferId);
     setActionError(null);
     try {
       await apiCall();
       await fetchTransfers();
-      setConfirmModal(null);
-      afterSuccess?.();
+      if (isCurrentResource(requestResourceType, requestResourceId)) {
+        setConfirmModal(null);
+        afterSuccess?.();
+      }
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : fallbackMessage;
-      setActionError(message);
+      if (isCurrentResource(requestResourceType, requestResourceId)) {
+        const message = err instanceof ApiError ? err.message : fallbackMessage;
+        setActionError(message);
+      }
     } finally {
-      setActionLoading(null);
+      if (isCurrentResource(requestResourceType, requestResourceId)) {
+        setActionLoading(null);
+      }
     }
-  }, [fetchTransfers]);
+  }, [fetchTransfers, resourceType, resourceId]);
 
   const handleAccept = useCallback(async (transferId: string) => {
     await runAction(
