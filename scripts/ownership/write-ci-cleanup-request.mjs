@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson } from './canonical-json.mjs';
 import { writeExternalFileAtomic } from './safe-file.mjs';
 import { validateSubjectDeadlineEpochMs } from './ci-subject-deadline.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 function parse(argv) {
   const values = {};
@@ -89,7 +90,7 @@ export function writeCiCleanupRequest(values) {
   return output;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try { process.stdout.write(writeCiCleanupRequest(parse(process.argv.slice(2)))); }
   catch (error) {
     process.stderr.write(`write-ci-cleanup-request: ${error.message}\n`);

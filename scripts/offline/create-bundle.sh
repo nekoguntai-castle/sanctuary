@@ -414,7 +414,8 @@ copy_bootstrap_tools() {
   local stage_dir="$1"
 
   mkdir -p "$stage_dir/tools" "$stage_dir/keys" \
-    "$stage_dir/authority/scripts/ci" "$stage_dir/authority/scripts/ownership"
+    "$stage_dir/authority/scripts/ci" "$stage_dir/authority/scripts/ownership" \
+    "$stage_dir/authority/scripts/lib"
   cp "$SCRIPT_DIR/bundle-common.sh" "$stage_dir/tools/bundle-common.sh"
   cp "$SCRIPT_DIR/apply-bundle.sh" "$stage_dir/tools/apply-bundle.sh"
   cp "$OFFLINE_REPO_ROOT/scripts/create-upgrade-backup.sh" "$stage_dir/tools/create-upgrade-backup.sh"
@@ -424,6 +425,10 @@ copy_bootstrap_tools() {
     "$OFFLINE_REPO_ROOT/scripts/ci/provider-context.mjs" \
     "$stage_dir/authority/scripts/ci/"
   cp -R "$OFFLINE_REPO_ROOT/scripts/ownership/." "$stage_dir/authority/scripts/ownership/"
+  # scripts/ownership/*.mjs (and some scripts/ci/*.mjs) resolve their direct-
+  # execution guard via the shared ../lib/is-main-module.mjs helper; ship it
+  # alongside every authority tree that copies either of those directories.
+  cp -R "$OFFLINE_REPO_ROOT/scripts/lib/." "$stage_dir/authority/scripts/lib/"
   chmod +x "$stage_dir/tools/apply-bundle.sh"
   chmod +x "$stage_dir/tools/create-upgrade-backup.sh"
 

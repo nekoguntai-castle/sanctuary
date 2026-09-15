@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { isMainModule } from './lib/is-main-module.mjs';
 
 const CONTRACT_PATH = 'config/wallet-sync-lifecycle-contract.json';
 const ADR_PATH = 'docs/adr/0004-wallet-sync-lifecycle.md';
@@ -2214,5 +2215,4 @@ function runCli() {
   }
 }
 
-const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
-if (invokedPath === fileURLToPath(import.meta.url)) runCli();
+if (isMainModule(import.meta.url)) runCli();

@@ -1829,6 +1829,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/esm-main-guard-symlink.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/ci/frontend-coverage-scripts.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
@@ -1858,6 +1865,13 @@
     },
     {
       "path": "tests/ci/install-test-ports.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/is-main-module.test.mjs",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
       "disposition": "exempt",

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   acquireProjectMutationLock, assertProjectMutationLock, releaseProjectMutationLock,
 } from './project-lock.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 function required(name) {
   const value = process.env[name];
@@ -26,7 +27,7 @@ function projectLock(command, project, token) {
   else throw new Error('usage: project-lock-cli.mjs acquire|assert|release PROJECT [TOKEN]');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try { projectLock(...process.argv.slice(2)); } catch (error) {
     process.stderr.write(`project-lock-cli: ${error.message}\n`);
     process.exitCode = 1;

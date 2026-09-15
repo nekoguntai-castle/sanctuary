@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { sha256File } from './release-asset-common.mjs';
 import { verifyReleaseArtifacts } from './release-artifact-verifier.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
@@ -398,7 +399,7 @@ function parseArgs(argv) {
   return options;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     const result = prepareReleaseAssets(parseArgs(process.argv.slice(2)));
     console.log(`Prepared and verified release assets for ${result.commit} in ${path.dirname(result.manifestPath)}`);

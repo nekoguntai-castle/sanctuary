@@ -8,6 +8,7 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStrictJson, canonicalJson } from '../ownership/canonical-json.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const PAGE_SIZE = 50;
 const MAX_PAGES = 20;
@@ -201,4 +202,4 @@ export async function main(argv) {
   process.exitCode = report.state === 'success' ? 0 : 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main(process.argv.slice(2));
+if (isMainModule(import.meta.url)) await main(process.argv.slice(2));

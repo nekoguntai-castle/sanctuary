@@ -10,6 +10,7 @@ import {
   shardIncrementalFileName,
   shardReportFileName,
 } from '../../server/scripts/mutation/shards.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -75,7 +76,7 @@ export function checkCriticalMutationConfig(root = REPO_ROOT) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   checkCriticalMutationConfig();
   process.stdout.write('critical mutation configuration is complete and non-vacuous\n');
 }

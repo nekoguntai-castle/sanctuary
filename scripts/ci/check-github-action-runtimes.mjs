@@ -7,6 +7,7 @@ import {
   inspectStrictFullTestSummaryGate,
   inspectWorkspaceAbsoluteHelperCalls,
 } from './action-runtime-workflow-guards.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const DEFAULT_BANNED_RUNTIMES = ['node12', 'node16', 'node20'];
 const DEFAULT_FETCH_TIMEOUT_MS = 10000;
@@ -508,7 +509,7 @@ function printResult(result) {
   );
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   const options = parseArgs(process.argv.slice(2));
   const result = await checkActionRuntimes(options);
   printResult(result);

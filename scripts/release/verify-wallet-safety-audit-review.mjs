@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matchesClassifierPath } from '../ci/check-wallet-safety-classifier.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 export const REVIEW_SCHEMA_VERSION = 'sanctuary.wallet-safety-release-review.v1';
 export const AUDIT_SCHEMA_VERSION = 'sanctuary.wallet-safety-audit.v2';
@@ -189,4 +190,4 @@ function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isMainModule(import.meta.url)) main();

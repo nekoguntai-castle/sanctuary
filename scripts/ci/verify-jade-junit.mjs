@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const EXPECTED_SUITE = 'tests/integration/jadeEmulator.integration.test.ts';
 export const EXPECTED_JADE_TEST_CASES = Object.freeze([
@@ -114,7 +114,7 @@ function main() {
   process.stdout.write(`${JSON.stringify(verifyJadeJunit(readFileSync(junitPath, 'utf8')))}\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   try {
     main();
   } catch (error) {

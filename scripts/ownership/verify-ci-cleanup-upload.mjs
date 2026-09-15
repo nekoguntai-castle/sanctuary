@@ -10,6 +10,7 @@ import { assertCiCleanupAuthority } from './ci-cleanup-authority.mjs';
 import { ciCleanupProviderContext } from './ci-cleanup-trust.mjs';
 import { assertUploadSafe } from './privacy.mjs';
 import { parseStrictJson } from './canonical-json.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const MAX_STATE_FILES = 512;
 const MAX_ARTIFACT_DIRECTORIES = 512;
@@ -201,7 +202,7 @@ function parseArgs(argv) {
   };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try { verifyCiCleanupUploads(parseArgs(process.argv.slice(2))); } catch (error) {
     process.stderr.write(`verify-ci-cleanup-upload: ${error.message}\n`);
     process.exitCode = 1;

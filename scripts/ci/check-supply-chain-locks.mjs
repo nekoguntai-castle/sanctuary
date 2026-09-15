@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 const IMAGE_TOKEN = /[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*(?::[A-Za-z0-9._-]+)?@sha256:[a-f0-9]{64}|[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*:[A-Za-z0-9._-]+/g;
@@ -248,4 +249,4 @@ function main() {
   console.log('Supply-chain image, toolchain, and funds-critical package locks verified');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isMainModule(import.meta.url)) main();

@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { dirname, relative, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
@@ -464,11 +465,7 @@ export async function runGate({
   return { targetCount: targets.length, exceptionCount: exceptions.length };
 }
 
-function isMainModule() {
-  return process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
-}
-
-if (isMainModule()) {
+if (isMainModule(import.meta.url)) {
   try {
     const result = await runGate();
     const rootLabel = relative(process.cwd(), REPO_ROOT).split(sep).join('/') || '.';

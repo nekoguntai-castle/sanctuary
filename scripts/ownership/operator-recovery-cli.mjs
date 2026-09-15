@@ -8,6 +8,7 @@ import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 import { createEphemeralCleanupSigners } from './cleanup-ephemeral-signers.mjs';
 import { publicKeyFingerprint } from './crypto.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 import {
   executePreparedOperatorRecovery, prepareOperatorRecoverySession,
 } from './operator-recovery-coordinator.mjs';
@@ -481,7 +482,7 @@ export async function runOperatorRecoveryCli(argv = process.argv.slice(2), check
   return runRecovery(request, checkoutRoot, command);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   runOperatorRecoveryCli().then((result) => process.stdout.write(canonicalJson(result)))
     .catch((error) => { process.stderr.write(`operator recovery refused: ${error.message}\n`); process.exitCode = 1; });
 }

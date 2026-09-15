@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { isMainModule } from './lib/is-main-module.mjs';
 
 export const supportPackageModuleCandidates = Object.freeze([
   './dist/app/src/services/supportPackage',
@@ -89,9 +90,7 @@ async function main() {
   }
 }
 
-const isDirectExecution = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
+const isDirectExecution = isMainModule(import.meta.url);
 const isStdinExecution = process.argv[1] === '-';
 
 if (isDirectExecution || isStdinExecution) {

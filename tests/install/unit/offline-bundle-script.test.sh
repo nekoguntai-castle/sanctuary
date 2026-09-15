@@ -485,6 +485,13 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
       assert_contains "$list" "./authority/$authority_relative" \
         "bundle should include ownership authority file $authority_relative" || failures=1
     done < <(find "$PROJECT_ROOT/scripts/ownership" -type f | LC_ALL=C sort)
+    local lib_source lib_relative
+    while IFS= read -r lib_source; do
+      lib_relative="${lib_source#"$PROJECT_ROOT/"}"
+      assert_contains "$list" "./authority/$lib_relative" \
+        "bundle should include shared script helper $lib_relative (scripts/ownership/*.mjs import it for direct-execution detection)" \
+        || failures=1
+    done < <(find "$PROJECT_ROOT/scripts/lib" -type f | LC_ALL=C sort)
     for authority_relative in \
       scripts/ci/cleanup-ci-callsite.sh \
       scripts/ci/create-registered-staging.sh \
@@ -865,6 +872,7 @@ test_create_bundle_signs_outer_archive() {
     "$PROJECT_ROOT/scripts/ci/provider-context.mjs" \
     "$release_repo/scripts/ci/"
   cp -R "$PROJECT_ROOT/scripts/ownership" "$release_repo/scripts/ownership"
+  cp -R "$PROJECT_ROOT/scripts/lib" "$release_repo/scripts/lib"
   git -C "$release_repo" init -q
   git -C "$release_repo" config user.name "Sanctuary Tests"
   git -C "$release_repo" config user.email "tests@sanctuary.local"

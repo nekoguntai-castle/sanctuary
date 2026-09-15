@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const MAP_PATH = 'config/wallet-safety-mutation-map.json';
@@ -177,7 +178,7 @@ export function checkWalletSafetyMutationMap(root = REPO_ROOT) {
   validateMutationEvidence(map, reports);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   checkWalletSafetyMutationMap();
   process.stdout.write('wallet-safety mutation map is complete and non-vacuous\n');
 }

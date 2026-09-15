@@ -3,12 +3,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { waitForDatabaseReadiness } from './wallet-sync-database-readiness.mjs';
 import { collectHealthProbe, healthProbeUrl } from './wallet-sync-health-probe.mjs';
 import { registerReplayResource, replayOwnershipLabels } from './wallet-sync-replay-ownership.mjs';
 import { buildReplayCleanupEvidence, cleanup } from './wallet-sync-replay-cleanup.mjs';
 import { createRegisteredReplayResource } from './wallet-sync-replay-creation.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 export { buildReplayCleanupEvidence, cleanup, collectHealthProbe, healthProbeUrl, replayOwnershipLabels, waitForDatabaseReadiness };
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../..');
@@ -1023,6 +1024,6 @@ export async function main(argv = process.argv.slice(2)) {
   return summary;
 }
 
-if (import.meta.url === (process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '')) {
+if (isMainModule(import.meta.url)) {
   main().catch(error => { process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`); process.exitCode = 1; });
 }

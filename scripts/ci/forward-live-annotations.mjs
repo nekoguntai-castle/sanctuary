@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, parseStrictJson } from '../ownership/canonical-json.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const LIFECYCLE_PREFIX = 'SANCTUARY_CI_LIFECYCLE_V1 ';
 const LIFECYCLE_TITLE = '::notice title=CI lifecycle::';
@@ -133,7 +134,7 @@ export function lifecycleCandidate(value) {
   return `${LIFECYCLE_PREFIX}${canonicalJson(value).toString('utf8')}`;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   forwardLiveAnnotations(process.stdin, process.stdout, process.stderr).catch(() => {
     process.exitCode = 1;
   });

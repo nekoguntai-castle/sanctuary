@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStrictJson } from './canonical-json.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const DOCKER_CLASSES = new Set([
   'compose_container', 'compose_network', 'compose_volume', 'oci_image', 'buildkit_cache',
@@ -1356,4 +1357,4 @@ function main() {
   console.log(`lifecycle callsite registry is complete (${result.callsites} lifecycle identities; ${result.migrations} Docker migrations and ${hostMigrations} host migrations remain)`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isMainModule(import.meta.url)) main();

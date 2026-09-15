@@ -4,6 +4,7 @@ import { lstat, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { isMainModule } from "../lib/is-main-module.mjs";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -362,7 +363,7 @@ export async function runCli(
   fail(usage());
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     await runCli(process.argv.slice(2));
   } catch (error) {

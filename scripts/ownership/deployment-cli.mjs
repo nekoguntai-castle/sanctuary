@@ -8,6 +8,7 @@ import { composeArguments, diagnoseLegacyDeployment, resolveDeploymentDefinition
 import {
   acquireDeploymentLock, heartbeatDeploymentLock, inspectDeploymentLock, recoverStaleDeploymentLock, releaseDeploymentLock,
 } from './deployment-lock.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 import { DeploymentStore } from './deployment-store.mjs';
 import {
   acquireProjectMutationLock, heartbeatProjectMutationLock, inspectProjectMutationLock,
@@ -278,7 +279,7 @@ function exitCode(error) {
   return EXIT.runtime;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try { runDeploymentCli(process.argv.slice(2)); } catch (error) {
     process.stderr.write(`deployment-cli: ${error.message}\n`);
     process.exitCode = exitCode(error);

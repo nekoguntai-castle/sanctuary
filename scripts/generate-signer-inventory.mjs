@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { isMainModule } from './lib/is-main-module.mjs';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const OUTPUT_PATH = 'config/hardware-wallet-implementation-inventory.json';
@@ -870,4 +871,4 @@ function main() {
   process.stdout.write(`Generated ${OUTPUT_PATH}.\n`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isMainModule(import.meta.url)) main();

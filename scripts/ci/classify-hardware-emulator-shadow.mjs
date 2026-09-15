@@ -13,6 +13,7 @@ import {
   validateInventoryShape,
 } from "./hardware-emulator-source-inventory.mjs";
 import { ciStepSummaryFile } from "./provider-context.mjs";
+import { isMainModule } from "../lib/is-main-module.mjs";
 
 const execFileAsync = promisify(execFile);
 const FORCE_ALL_EVENTS = new Set(["schedule", "workflow_dispatch"]);
@@ -381,7 +382,7 @@ export async function runCli(
   return report;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     await runCli(process.argv.slice(2));
   } catch (error) {

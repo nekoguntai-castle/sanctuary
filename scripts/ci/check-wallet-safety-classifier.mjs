@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const execFileAsync = promisify(execFile);
@@ -135,7 +136,7 @@ export async function checkWalletSafetyClassifier(root = repoRoot) {
   validateClassifier(manifest, workflowText, repositoryFiles, proofManifest);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   await checkWalletSafetyClassifier();
   process.stdout.write('wallet-safety classifier is complete\n');
 }

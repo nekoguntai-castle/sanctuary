@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { isMainModule } from '../lib/is-main-module.mjs';
+
 // Shared guard for every integration-DB entry point (P2 finding
 // `prepare-integration-db-no-production-guard`).
 //
@@ -83,11 +85,7 @@ export function assertAllowedIntegrationDbTarget(url, env = process.env) {
   );
 }
 
-function isMainModule() {
-  return process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-}
-
-if (isMainModule()) {
+if (isMainModule(import.meta.url)) {
   const url = process.argv[2];
   if (!url) {
     console.error('Usage: integration-db-guard.mjs <database-url>');

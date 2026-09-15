@@ -99,6 +99,7 @@ setup_fake_project() {
     "$TEST_TMP_DIR/subject/scripts/ci"
   cp "$BACKUP_SCRIPT" "$BACKUP_SUBJECT"
   cp -R "$PROJECT_ROOT/scripts/ownership" "$TEST_TMP_DIR/subject/scripts/ownership"
+  cp -R "$PROJECT_ROOT/scripts/lib" "$TEST_TMP_DIR/subject/scripts/lib"
   cp "$PROJECT_ROOT/scripts/ci/provider-context.sh" "$TEST_TMP_DIR/subject/scripts/ci/provider-context.sh"
   cp "$PROJECT_ROOT/scripts/ci/provider-context.mjs" "$TEST_TMP_DIR/subject/scripts/ci/provider-context.mjs"
   cat > "$TEST_TMP_DIR/subject/scripts/ownership/deployment-lifecycle.sh" <<'EOF'
@@ -259,6 +260,24 @@ test_help_describes_single_archive() {
   assert_contains "$output" "runtime secrets" "help should warn about secrets" || return 1
 }
 
+test_subject_tree_ships_shared_script_helper() {
+  setup_fake_project
+
+  local failures=0
+  # scripts/ownership/register-resource.mjs (invoked via producer-hooks.sh's
+  # ownership_register_resource) imports ../lib/is-main-module.mjs for
+  # direct-execution detection; the subject tree mirrors the repo layout for
+  # an isolated run, so it must carry scripts/lib alongside scripts/ownership
+  # or every ownership CLI invocation in this fixture dies with
+  # ERR_MODULE_NOT_FOUND.
+  assert_file_exists "$TEST_TMP_DIR/subject/scripts/lib/is-main-module.mjs" \
+    "subject tree should ship the shared script helper scripts/lib/is-main-module.mjs" \
+    || failures=1
+
+  teardown_fake_project
+  return "$failures"
+}
+
 test_backup_creates_single_valid_archive() {
   setup_fake_project
 
@@ -397,6 +416,7 @@ main() {
 
   run_test "script has valid syntax" test_script_has_valid_syntax
   run_test "help describes single archive" test_help_describes_single_archive
+  run_test "subject tree ships shared script helper" test_subject_tree_ships_shared_script_helper
   run_test "backup creates single valid archive" test_backup_creates_single_valid_archive
   run_test "sidecar checksum is explicit" test_sidecar_checksum_is_explicit
   run_test "strict Compose receives persisted identity" test_strict_compose_receives_persisted_identity

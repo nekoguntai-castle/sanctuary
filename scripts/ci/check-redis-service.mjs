@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import net from "node:net";
+import { isMainModule } from "../lib/is-main-module.mjs";
 
 const PING_REQUEST = "*1\r\n$4\r\nPING\r\n";
 const MAX_RESPONSE_BYTES = 256;
@@ -92,7 +93,7 @@ export async function runCli(args) {
   process.stdout.write(`Redis PING succeeded at ${host}:${portValue}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   try {
     await runCli(process.argv.slice(2));
   } catch (error) {

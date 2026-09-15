@@ -6,6 +6,7 @@ import { canonicalJson, canonicalSha256 } from './canonical-json.mjs';
 import {
   readCleanupScriptIdentity, readLinuxProcessIdentity,
 } from './cleanup-safe-helper.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 function usage() {
   throw new Error('usage: describe-host-authority.mjs temporary PATH RUN_ID | collector PID SCRIPT HEARTBEAT TERMINAL | worktree PATH BASE_OID DEPLOYMENT_ID RUN_ID');
@@ -144,7 +145,7 @@ export function describeHostAuthority([command, ...args]) {
   return usage();
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   try { process.stdout.write(canonicalJson(describeHostAuthority(process.argv.slice(2)))); }
   catch (error) {
     process.stderr.write(`describe-host-authority: ${error.message}\n`);

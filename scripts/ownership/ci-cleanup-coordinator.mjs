@@ -8,6 +8,7 @@ import {
 } from 'node:worker_threads';
 import { ciEnvFile } from '../ci/provider-context.mjs';
 import { canonicalJson, parseStrictJson } from './canonical-json.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 import {
   resumeCiCleanupEvidence,
 } from './ci-cleanup-evidence.mjs';
@@ -407,8 +408,7 @@ if (!isMainThread && workerData?.task === 'finish-outcome') {
     workerData.subjectExitStatus, workerData.cleanupSuppression,
   );
   parentPort.postMessage(result);
-} else if (isMainThread && process.argv[1]
-    && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+} else if (isMainThread && isMainModule(import.meta.url)) {
   run(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`ci-cleanup-coordinator: ${error.message}\n`);
     process.exitCode = Number.isInteger(error.exitCode) ? error.exitCode : 2;

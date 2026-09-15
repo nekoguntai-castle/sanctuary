@@ -1,6 +1,6 @@
 import { appendFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { ciEnvFile } from './provider-context.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 export const DEADLINE_VARIABLE = 'SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS';
 export const JOB_STARTED_VARIABLE = 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS';
@@ -83,7 +83,7 @@ export function runSubjectBudget(args, {
   throw new Error('usage: subject-budget.mjs initialize JOB_SECONDS RESERVE_SECONDS | lock-wait CONFIGURED_SECONDS | step-deadline STEP_SECONDS RESERVE_SECONDS');
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   try { runSubjectBudget(process.argv.slice(2)); } catch (error) {
     process.stderr.write(`subject-budget: ${error.message}\n`);
     process.exitCode = error.exitCode ?? 1;

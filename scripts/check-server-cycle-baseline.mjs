@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cruise } from 'dependency-cruiser';
 import extractOptions from 'dependency-cruiser/config-utl/extract-depcruise-options';
+import { isMainModule } from './lib/is-main-module.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const serverRoot = path.join(repoRoot, 'server');
@@ -83,7 +84,7 @@ async function main() {
   );
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   main().catch(error => {
     console.error('server-cycle-baseline: failed');
     console.error(error instanceof Error ? error.message : String(error));

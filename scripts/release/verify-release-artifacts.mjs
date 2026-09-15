@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { verifyReleaseArtifacts } from './release-artifact-verifier.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 export function parseCliArgs(argv) {
   const options = {
@@ -77,9 +76,7 @@ function main() {
   console.log(`Release artifact verification passed: ${result.artifactsChecked} artifacts, ${result.localFilesChecked} local files, ${result.checksumEntries} checksum entries.`);
 }
 
-if (import.meta.url === pathToFileURL(fileURLToPath(import.meta.url)).href
-  && process.argv[1]
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     main();
   } catch (error) {

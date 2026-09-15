@@ -21,6 +21,7 @@ import {
   validateAssetDirectory,
   validateManifestIdentity,
 } from './release-asset-common.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 import { verifyReleaseArtifacts } from './release-artifact-verifier.mjs';
 
 const MAX_GITHUB_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
@@ -442,7 +443,7 @@ function parseArgs(argv) {
   return options;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     const receipt = await publishReleaseAssets(parseArgs(process.argv.slice(2)));
     console.log(`${receipt.dryRun ? 'Preflighted' : 'Published and verified'} release assets on Forgejo and GitHub.`);

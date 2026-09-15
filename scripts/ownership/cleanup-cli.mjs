@@ -8,6 +8,7 @@ import { buildCleanupApproval } from './cleanup-approval.mjs';
 import { createCleanupDockerRuntime } from './cleanup-docker-runtime.mjs';
 import { createCleanupHostRuntime, HOST_RESOURCE_CLASSES } from './cleanup-host-runtime.mjs';
 import { createCleanupHostOperations } from './cleanup-host-operations.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 import { createCleanupCompositeRuntime } from './cleanup-composite-runtime.mjs';
 import { resolveCleanupHostAuthority } from './cleanup-host-authority.mjs';
 import { createDockerCleanupAdapter } from './cleanup-docker-adapter.mjs';
@@ -556,7 +557,7 @@ export function cleanupExitCode(error) {
   return EXIT.invalid;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   run(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`cleanup-cli: ${error.message}\n`);
     process.exitCode = cleanupExitCode(error);

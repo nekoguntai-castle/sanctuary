@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 import { defaultOwnershipRoot, registerResource } from './registration.mjs';
+import { isMainModule } from '../lib/is-main-module.mjs';
 
 const OPTIONS = new Set([
   'deployment-id', 'run-id', 'owner-id', 'class', 'lifecycle', 'policy',
@@ -58,7 +59,7 @@ export function run(argv) {
   process.stdout.write(`${output}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   try { run(process.argv.slice(2)); } catch (error) {
     process.stderr.write(`register-resource: ${error.message}\n`);
     process.exitCode = 1;
