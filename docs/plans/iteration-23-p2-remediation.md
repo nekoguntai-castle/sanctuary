@@ -17,13 +17,14 @@
   `install-test-summary-fail-open-non-release`,
   `run-compose-e2e-subject-migration-wait-noop`,
   `classifier-rename-detection-blind-spot`,
-  `coverage-shard-retry-defeated-by-own-guard`;
+  `coverage-shard-retry-defeated-by-own-guard`,
+  `upgrade-e2e-2fa-phases-reuse-totp-step` (added mid-drain, Phase 14);
   P1 `esm-main-guard-silent-noop-under-symlink` (delivered first, Phase 0).
 - P3 backlog (outside the blocking fix set): `electrum-pool-reconnect-reentrant-on-remote-drop-during-verify`, `gateway-validate-request-no-body-reassignment`, `push-unregister-token-missing-max-length`, `openapi-console-toolcalls-undocumented`, `audit-logs-pagination-stale-page-overwrite`, `websocket-disconnect-permanently-disables-reconnect`, `hardware-hook-service-connect-disconnect-unserialized`, plus the earlier P3 items in run state.
 
 ## Goal, non-goals, assumptions
 
-Goal: fix the fifteen blocking findings (one P1, fourteen P2) with a failing regression test per finding, in fourteen independently mergeable phases, without schema migrations. The P1 (Phase 0) is delivered first.
+Goal: fix the sixteen blocking findings (one P1, fifteen P2) with a failing regression test per finding, in fifteen independently mergeable phases, without schema migrations. The P1 (Phase 0) is delivered first.
 
 Non-goals: a generic frontend cancellation layer; redesigning policy usage accounting beyond releasing pre-network rejections; changing Electrum reconnect strategy beyond cancellation of an abandoned connect; changing label semantics beyond bounds and nullability.
 
@@ -199,13 +200,25 @@ Failing tests first (red against `origin/main`): extend the existing `tests/ci/b
 
 Verification: `tests/ci` bash tests, lint, `git diff --check`.
 
+## Phase 14 — upgrade e2e 2FA phases never reuse a TOTP step (tests-ci, added mid-drain)
+
+Finding: `upgrade-e2e-2fa-phases-reuse-totp-step` (P2, found 2026-09-15 on PR #1177's Upgrade Baseline lane).
+
+Evidence: run 16845, job 211758 (Upgrade Baseline, head 313d1995): "Verify 2FA Preserved" logged in at 11:16:30 and its next 2FA login at 11:16:33 was rejected `UNAUTHORIZED Invalid verification code`; postgres logged `Key (jti)=(totp-step:<user>:59649033) already exists` — the single-use TOTP step guard (the fix for `totp-code-replay-within-tolerance-window`) refuses a second login inside the same 30 s step. "Reset 2FA And Re-Enroll" hit the same step counter and the later phases cascaded. `tests/install/utils/upgrade-two-factor-verification-helpers.sh` `generate_totp_code`/`generate_upgrade_totp_code` (:200-221) mint the code for the current step and the phases log in back to back with no step-boundary wait, so the lane fails whenever two 2FA logins land in one step. No module-resolution or product error appears in the log.
+
+Contract: a shared helper (in `tests/install/utils/upgrade-two-factor-verification-helpers.sh` or `upgrade-two-factor-auth-helpers.sh`) records the TOTP step counter of the last successful 2FA login per secret and, before minting the next code for the same secret, waits until the current step differs (bounded by one step, 30 s, with a log line); every phase that performs a 2FA login (verify-preserved, re-enroll, user-visible smoke, and any other caller of `generate_totp_code`) goes through it. No product change: the single-use step guard is the intended behavior.
+
+Failing tests first: a `tests/install/unit` case that drives the helper with a stubbed clock/step source — two consecutive logins in the same step must produce a wait to the next step and distinct step counters (red today: the second code carries the same step); a case proving no wait when the step already advanced. Register the new test where `ci-registration-completeness` expects it.
+
+Verification: `bash -n`, the new unit test, `bash tests/ci/ci-registration-completeness.test.sh`, root lint, large-file classifier, lizard 86/86, `git diff --check`; deployed proof is a green Upgrade Baseline lane on the delivering PR.
+
 ## Delivery
 
-One PR per phase, serial merges on `main`, each rebased only when it is next; target-branch CI verified after each merge; branches deleted only after the merge-commit ancestry gate. PR order: 0 (P1), 1, 2, 3, 4, 7, 8 (server), 5, 6, 9 (frontend), 10, 11, 12, 13 (ci). No container rebuild until the loop's clean pass (`--deploy final`).
+One PR per phase, serial merges on `main`, each rebased only when it is next; target-branch CI verified after each merge; branches deleted only after the merge-commit ancestry gate. PR order: 0 (P1), 1, 2, 3, 4, 7, 8 (server), 5, 6, 9 (frontend), 10, 11, 12, 13, 14 (ci); phases are merged as their rebased heads go green, with the P1 first among those ready. No container rebuild until the loop's clean pass (`--deploy final`).
 
 ## Completion criteria
 
-All fifteen findings resolved in run state with a target-CI-verified attempt record; a fresh full scrub (iteration 24) of the resulting main SHA finds zero P0–P2.
+All sixteen findings resolved in run state with a target-CI-verified attempt record; a fresh full scrub (iteration 24) of the resulting main SHA finds zero P0–P2.
 
 ## Review notes (pass 1)
 
