@@ -67,8 +67,9 @@ async function awaitForCaller<T>(promise: Promise<T>, signal?: AbortSignal): Pro
 
 interface ConnectionState {
   cleanup: () => void;
-  handleSuccess: () => void;
+  handleSuccess: (socket: net.Socket | tls.TLSSocket) => void;
   handleError: (error: Error) => void;
+  isSettled: () => boolean;
 }
 
 class ElectrumClient extends EventEmitter {
@@ -169,9 +170,20 @@ class ElectrumClient extends EventEmitter {
         }
       };
 
-      const handleSuccess = () => {
-        /* v8 ignore next -- socket success/error race guard is defensive */
-        if (settled) return;
+      const handleSuccess = (socket: net.Socket | tls.TLSSocket) => {
+        if (settled) {
+          // The connect attempt already settled (timeout or error). This socket
+          // arrived late (a connect/secureConnect after we gave up) and must
+          // never be left referenced as this.socket or leaked open.
+          log.debug('Discarding late-arriving Electrum socket after connect attempt already settled', {
+            host, port, protocol,
+          });
+          if (this.socket === socket) {
+            this.socket = null;
+          }
+          socket.destroy();
+          return;
+        }
         settled = true;
         cleanup();
         this.connected = true;
@@ -189,7 +201,7 @@ class ElectrumClient extends EventEmitter {
         reject(error);
       };
 
-      const state = { cleanup, handleSuccess, handleError };
+      const state = { cleanup, handleSuccess, handleError, isSettled: () => settled };
 
       try {
         connectionTimeout = setTimeout(() => {
@@ -216,6 +228,19 @@ class ElectrumClient extends EventEmitter {
     connectionConfig: ResolvedConnectionConfig,
     state: ConnectionState
   ): void {
+    if (state.isSettled()) {
+      // This attempt already settled (timeout or error) before the base socket
+      // finished connecting. A newer connect() may already own this.socket by
+      // now, so this late socket must be discarded without ever touching
+      // this.socket - assigning it first (even transiently) could null out a
+      // different, currently-live connection once handleSuccess runs its
+      // late-arrival check.
+      log.debug('Discarding late-arriving Electrum base socket after connect attempt already settled', {
+        host: connectionConfig.host, port: connectionConfig.port, protocol: connectionConfig.protocol,
+      });
+      baseSocket.destroy();
+      return;
+    }
     let socket: net.Socket | tls.TLSSocket;
     if (connectionConfig.protocol === 'ssl') {
       socket = this.finishTlsConnection(baseSocket, connectionConfig, state);
@@ -237,7 +262,7 @@ class ElectrumClient extends EventEmitter {
     this.frameDecoder.reset();
     this.socket = tlsSocket;
     handshakePromise
-      .then(() => state.handleSuccess())
+      .then(() => state.handleSuccess(tlsSocket))
       .catch((err) => state.handleError(err));
     return tlsSocket;
   }
@@ -252,7 +277,7 @@ class ElectrumClient extends EventEmitter {
     this.socket = baseSocket;
     log.info(`Connected to ${host}:${port} (${protocol})${proxy?.enabled ? ' via proxy' : ''}`);
     applySocketOptimizations(baseSocket);
-    state.handleSuccess();
+    state.handleSuccess(baseSocket);
     return baseSocket;
   }
 

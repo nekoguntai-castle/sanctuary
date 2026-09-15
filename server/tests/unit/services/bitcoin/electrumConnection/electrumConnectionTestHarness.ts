@@ -6,11 +6,13 @@ const {
   tlsConnectMock,
   socksCreateConnectionMock,
   nodeConfigFindFirstMock,
+  loggerDebugMock,
 } = vi.hoisted(() => ({
   netConnectMock: vi.fn(),
   tlsConnectMock: vi.fn(),
   socksCreateConnectionMock: vi.fn(),
   nodeConfigFindFirstMock: vi.fn(),
+  loggerDebugMock: vi.fn(),
 }));
 
 vi.mock('net', () => ({
@@ -62,7 +64,7 @@ vi.mock('../../../../../src/repositories', () => ({
 
 vi.mock('../../../../../src/utils/logger', () => ({
   createLogger: () => ({
-    debug: vi.fn(),
+    debug: loggerDebugMock,
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
@@ -80,7 +82,7 @@ export class FakeSocket extends EventEmitter {
   setKeepAlive = vi.fn();
 }
 
-export { netConnectMock, tlsConnectMock, socksCreateConnectionMock, nodeConfigFindFirstMock };
+export { netConnectMock, tlsConnectMock, socksCreateConnectionMock, nodeConfigFindFirstMock, loggerDebugMock };
 
 export function setupElectrumConnectionTestHooks(): void {
   beforeAll(async () => {
