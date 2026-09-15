@@ -11,6 +11,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
@@ -22,16 +23,16 @@ import { assertUnusedAddressesSafeForDisplay } from '../services/addressDisplayS
 
 const router = Router();
 
-const LabelCreateBodySchema = z.object({
-  name: z.string().trim().min(1),
-  color: z.string().optional(),
-  description: z.string().optional(),
+export const LabelCreateBodySchema = z.object({
+  name: z.string().trim().min(MOBILE_API_REQUEST_LIMITS.labelNameMinLength).max(MOBILE_API_REQUEST_LIMITS.labelNameMaxLength),
+  color: z.string().max(MOBILE_API_REQUEST_LIMITS.labelColorMaxLength).optional(),
+  description: z.string().max(MOBILE_API_REQUEST_LIMITS.labelDescriptionMaxLength).optional().nullable(),
 });
 
-const LabelUpdateBodySchema = z.object({
-  name: z.string().trim().min(1).optional(),
-  color: z.string().optional(),
-  description: z.string().optional(),
+export const LabelUpdateBodySchema = z.object({
+  name: z.string().trim().min(MOBILE_API_REQUEST_LIMITS.labelNameMinLength).max(MOBILE_API_REQUEST_LIMITS.labelNameMaxLength).optional(),
+  color: z.string().max(MOBILE_API_REQUEST_LIMITS.labelColorMaxLength).optional(),
+  description: z.string().max(MOBILE_API_REQUEST_LIMITS.labelDescriptionMaxLength).optional().nullable(),
 });
 
 const LabelIdsAddBodySchema = z.object({

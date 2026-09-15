@@ -243,6 +243,48 @@ describe('Labels API Routes', () => {
 
       expect(response.status).toBe(500);
     });
+
+    it('should reject a name over the shared length limit', async () => {
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/labels')
+        .send({ name: 'a'.repeat(101) });
+
+      expect(response.status).toBe(400);
+      expect(mockCreateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should reject a color over the shared length limit', async () => {
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/labels')
+        .send({ name: 'Exchange', color: 'a'.repeat(33) });
+
+      expect(response.status).toBe(400);
+      expect(mockCreateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should reject a description over the shared length limit', async () => {
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/labels')
+        .send({ name: 'Exchange', description: 'a'.repeat(501) });
+
+      expect(response.status).toBe(400);
+      expect(mockCreateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should accept a null description and pass it through as a cleared description', async () => {
+      mockCreateLabel.mockResolvedValue(mockLabel);
+
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/labels')
+        .send({ name: 'Exchange', description: null });
+
+      expect(response.status).toBe(201);
+      expect(mockCreateLabel).toHaveBeenCalledWith('wallet-1', {
+        name: 'Exchange',
+        color: undefined,
+        description: null,
+      });
+    });
   });
 
   describe('PUT /wallets/:walletId/labels/:labelId', () => {
@@ -281,6 +323,49 @@ describe('Labels API Routes', () => {
         .send({ name: 'Test' });
 
       expect(response.status).toBe(500);
+    });
+
+    it('should reject a name over the shared length limit', async () => {
+      const response = await request(app)
+        .put('/api/v1/wallets/wallet-1/labels/label-1')
+        .send({ name: 'a'.repeat(101) });
+
+      expect(response.status).toBe(400);
+      expect(mockUpdateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should reject a color over the shared length limit', async () => {
+      const response = await request(app)
+        .put('/api/v1/wallets/wallet-1/labels/label-1')
+        .send({ name: 'Exchange', color: 'a'.repeat(33) });
+
+      expect(response.status).toBe(400);
+      expect(mockUpdateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should reject a description over the shared length limit', async () => {
+      const response = await request(app)
+        .put('/api/v1/wallets/wallet-1/labels/label-1')
+        .send({ name: 'Exchange', description: 'a'.repeat(501) });
+
+      expect(response.status).toBe(400);
+      expect(mockUpdateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should accept a null description and clear the stored description', async () => {
+      const updatedLabel = { ...mockLabel, description: null };
+      mockUpdateLabel.mockResolvedValue(updatedLabel);
+
+      const response = await request(app)
+        .put('/api/v1/wallets/wallet-1/labels/label-1')
+        .send({ name: 'Exchange', description: null });
+
+      expect(response.status).toBe(200);
+      expect(mockUpdateLabel).toHaveBeenCalledWith('wallet-1', 'label-1', {
+        name: 'Exchange',
+        color: undefined,
+        description: null,
+      });
     });
   });
 

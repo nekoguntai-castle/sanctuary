@@ -57,7 +57,7 @@ export async function getLabel(
  */
 export async function createLabel(
   walletId: string,
-  data: { name: string; color?: string; description?: string }
+  data: { name: string; color?: string; description?: string | null }
 ): Promise<Label> {
   // Validate name
   if (!data.name || typeof data.name !== 'string' || data.name.trim().length === 0) {
@@ -91,7 +91,7 @@ export async function createLabel(
 export async function updateLabel(
   walletId: string,
   labelId: string,
-  data: { name?: string; color?: string; description?: string }
+  data: { name?: string; color?: string; description?: string | null }
 ): Promise<Label> {
   // Check label exists
   const existing = await labelRepository.findByIdInWallet(labelId, walletId);
