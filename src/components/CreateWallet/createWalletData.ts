@@ -93,19 +93,26 @@ export function getNextSelectedSigners(
   return [...selectedSigners, signer];
 }
 
+function quorumExceedsSelectedSigners(
+  state: Pick<CreateWalletState, 'walletType' | 'selectedSigners' | 'quorumM'>
+): boolean {
+  return state.walletType === WalletType.MULTI_SIG
+    && state.quorumM > state.selectedSigners.length;
+}
+
 export function canAdvanceCreateWalletStep(
   step: CreateWalletStep,
-  state: Pick<CreateWalletState, 'walletType' | 'selectedSigners' | 'walletName'>
+  state: Pick<CreateWalletState, 'walletType' | 'selectedSigners' | 'walletName' | 'quorumM'>
 ): boolean {
   if (step === 1) return Boolean(state.walletType);
   if (step === 2) return state.selectedSigners.length > 0;
-  if (step === 3) return Boolean(state.walletName);
+  if (step === 3) return Boolean(state.walletName) && !quorumExceedsSelectedSigners(state);
   return true;
 }
 
 export function getNextCreateWalletStep(
   step: CreateWalletStep,
-  state: Pick<CreateWalletState, 'walletType' | 'selectedSigners' | 'walletName'>
+  state: Pick<CreateWalletState, 'walletType' | 'selectedSigners' | 'walletName' | 'quorumM'>
 ): NextStepResult {
   if (step === 1 && state.walletType) return { nextStep: 2 };
 
@@ -122,7 +129,20 @@ export function getNextCreateWalletStep(
     return { nextStep: 3 };
   }
 
-  if (step === 3 && state.walletName) return { nextStep: 4 };
+  if (step === 3 && state.walletName) {
+    // Defensive: unreachable once the controller re-clamps quorumM on every
+    // selectedSigners change, but the gate must not depend on that timing.
+    if (quorumExceedsSelectedSigners(state)) {
+      return {
+        error: {
+          message: 'Quorum cannot exceed the number of selected signers.',
+          title: 'Validation Error',
+        },
+      };
+    }
+
+    return { nextStep: 4 };
+  }
 
   return {};
 }

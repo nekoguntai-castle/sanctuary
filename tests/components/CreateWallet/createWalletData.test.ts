@@ -6,9 +6,11 @@ import {
 import { WalletType } from '../../../src/types';
 import {
   buildCreateWalletPayload,
+  canAdvanceCreateWalletStep,
   getCompatibleDevices,
   getExactAccount,
   getIncompatibleDevices,
+  getNextCreateWalletStep,
   getNextSelectedSigners,
   getRequiredAccountPurpose,
 } from '../../../src/components/CreateWallet/createWalletData';
@@ -226,5 +228,52 @@ describe('createWalletData', () => {
       network: 'mainnet',
       quorumM: 1,
     })).toThrow('At least one exact signer account is required');
+  });
+
+  it('defensively blocks the step-3 gate when the quorum still exceeds the selected signers', () => {
+    const overQuorumState = {
+      walletType: WalletType.MULTI_SIG,
+      selectedSigners: [
+        { deviceId: 'device-1', deviceAccountId: 'account-1' },
+        { deviceId: 'device-2', deviceAccountId: 'account-2' },
+      ],
+      walletName: 'Treasury',
+      quorumM: 3,
+    };
+
+    expect(canAdvanceCreateWalletStep(3, overQuorumState)).toBe(false);
+    expect(getNextCreateWalletStep(3, overQuorumState)).toEqual({
+      error: {
+        message: 'Quorum cannot exceed the number of selected signers.',
+        title: 'Validation Error',
+      },
+    });
+  });
+
+  it('allows the step-3 gate to pass once the quorum is within the selected signer count', () => {
+    const validState = {
+      walletType: WalletType.MULTI_SIG,
+      selectedSigners: [
+        { deviceId: 'device-1', deviceAccountId: 'account-1' },
+        { deviceId: 'device-2', deviceAccountId: 'account-2' },
+      ],
+      walletName: 'Treasury',
+      quorumM: 2,
+    };
+
+    expect(canAdvanceCreateWalletStep(3, validState)).toBe(true);
+    expect(getNextCreateWalletStep(3, validState)).toEqual({ nextStep: 4 });
+  });
+
+  it('does not apply the quorum gate to single-sig wallets', () => {
+    const singleSigState = {
+      walletType: WalletType.SINGLE_SIG,
+      selectedSigners: [{ deviceId: 'device-1', deviceAccountId: 'account-1' }],
+      walletName: 'Cold Wallet',
+      quorumM: 5,
+    };
+
+    expect(canAdvanceCreateWalletStep(3, singleSigState)).toBe(true);
+    expect(getNextCreateWalletStep(3, singleSigState)).toEqual({ nextStep: 4 });
   });
 });

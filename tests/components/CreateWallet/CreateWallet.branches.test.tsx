@@ -376,4 +376,46 @@ describe('CreateWallet branch coverage', () => {
     expect(view.result.current.step).toBe(1);
     expect(view.result.current.selectedSigners).toEqual([]);
   });
+
+  it('re-clamps the quorum to the selected signer count after a deselect', async () => {
+    mocks.getDevices.mockResolvedValueOnce([
+      {
+        id: 'multi-a',
+        label: 'Multi A',
+        accounts: [{ id: 'acc-a', purpose: 'multisig', scriptType: 'native_segwit', derivationPath: "m/48'/0'/0'/2'" }],
+      },
+      {
+        id: 'multi-b',
+        label: 'Multi B',
+        accounts: [{ id: 'acc-b', purpose: 'multisig', scriptType: 'native_segwit', derivationPath: "m/48'/0'/1'/2'" }],
+      },
+      {
+        id: 'multi-c',
+        label: 'Multi C',
+        accounts: [{ id: 'acc-c', purpose: 'multisig', scriptType: 'native_segwit', derivationPath: "m/48'/0'/2'/2'" }],
+      },
+    ]);
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>{children}</MemoryRouter>
+    );
+    const view = renderHook(() => useCreateWalletController(), { wrapper });
+
+    await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(3));
+
+    act(() => view.result.current.setWalletType('multi_sig' as any));
+    act(() => view.result.current.toggleDevice('multi-a'));
+    act(() => view.result.current.toggleDevice('multi-b'));
+    act(() => view.result.current.toggleDevice('multi-c'));
+    expect(view.result.current.selectedSigners).toHaveLength(3);
+
+    act(() => view.result.current.setQuorumM(3));
+    expect(view.result.current.quorumM).toBe(3);
+
+    // Deselecting a signer must re-clamp the quorum instead of leaving M > N.
+    act(() => view.result.current.toggleDevice('multi-b'));
+
+    expect(view.result.current.selectedSigners).toHaveLength(2);
+    expect(view.result.current.quorumM).toBe(2);
+  });
 });

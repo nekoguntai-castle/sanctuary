@@ -32,7 +32,7 @@ export function useCreateWalletController() {
   const [selectedSigners, setSelectedSigners] = useState<CreateWalletState['selectedSigners']>([]);
   const [walletName, setWalletName] = useState('');
   const [scriptType, setScriptType] = useState<ScriptType>(WalletScriptType.NATIVE_SEGWIT);
-  const [quorumM, setQuorumM] = useState(2);
+  const [desiredQuorumM, setDesiredQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const previousNetwork = useRef(selectedNetwork);
 
@@ -64,6 +64,19 @@ export function useCreateWalletController() {
     setSelectedSigners([]);
     setStep(current => current === 1 ? current : 2);
   }, [selectedNetwork]);
+
+  // Effective quorum: re-clamped to the selected signer count on every
+  // render so the review step can never show M > N and the step gate stays
+  // defensive-only. Derived (not mutated in place) so a transient dip in
+  // selection count doesn't permanently destroy the user's chosen quorum --
+  // it's recovered once the signer count rises back to or above it.
+  // Kept at the desired value while nothing is selected yet.
+  const quorumM = useMemo(
+    () => (selectedSigners.length === 0
+      ? desiredQuorumM
+      : Math.min(desiredQuorumM, selectedSigners.length)),
+    [desiredQuorumM, selectedSigners]
+  );
 
   const createWalletState: CreateWalletState = {
     walletType,
@@ -171,7 +184,7 @@ export function useCreateWalletController() {
     setScriptType: selectScriptType,
     network: selectedNetwork,
     quorumM,
-    setQuorumM,
+    setQuorumM: setDesiredQuorumM,
     compatibleDevices,
     incompatibleDevices,
     canContinue,
