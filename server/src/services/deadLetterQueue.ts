@@ -17,6 +17,8 @@ import {
   type DeadLetterJobEnvelope,
   type DeadLetterStats,
   type DeadLetterStore,
+  type DeadLetterUpsertOptions,
+  type DeadLetterUpsertResult,
 } from './deadLetterQueueTypes';
 import { MemoryDeadLetterStore } from './memoryDeadLetterStore';
 import { RedisDeadLetterStore } from './redisDeadLetterStore';
@@ -198,7 +200,7 @@ export class DeadLetterQueue {
     attempts: number,
     metadata?: Record<string, unknown>,
   ): Promise<string> {
-    return this.upsert({
+    const result = await this.upsert({
       version: DEAD_LETTER_VERSION,
       id: `diagnostic-${randomUUID()}`,
       category,
@@ -211,15 +213,25 @@ export class DeadLetterQueue {
       lastFailedAt: new Date(),
       metadata,
     });
+    return result.id;
   }
 
+  /**
+   * `isRepairSweep` distinguishes the reconciler's bounded repair pass
+   * (`deadLetterReconciler.ts`, which must keep respecting a live tombstone
+   * so an already-acknowledged entry is not resurrected) from a fresh
+   * `worker.on('failed', ...)` exhaustion (`eventHandlers.ts`, which clears
+   * any tombstone first, since a job failing again after acknowledgement is
+   * a new failure that must be recorded rather than silently suppressed).
+   */
   async addExhaustedJob(
     category: DeadLetterCategory,
     queueName: string,
     job: Job,
     error: Error | string,
     failedAt = new Date(),
-  ): Promise<string> {
+    isRepairSweep = false,
+  ): Promise<DeadLetterUpsertResult> {
     const exhaustedAttempt = job.attemptsMade;
     const envelope: DeadLetterJobEnvelope = {
       version: DEAD_LETTER_VERSION,
@@ -230,7 +242,7 @@ export class DeadLetterQueue {
       options: retryOptions(job),
       exhaustedAttempt,
     };
-    const id = await this.upsert({
+    const result = await this.upsert({
       version: DEAD_LETTER_VERSION,
       id: exhaustedJobId(envelope),
       category,
@@ -248,7 +260,7 @@ export class DeadLetterQueue {
       firstFailedAt: failedAt,
       lastFailedAt: failedAt,
       metadata: { queueName, jobId: envelope.jobId },
-    });
+    }, { clearTombstone: !isRepairSweep });
     if (
       category === 'notification'
       && queueName === 'notifications'
@@ -262,7 +274,7 @@ export class DeadLetterQueue {
         });
       }
     }
-    return id;
+    return result;
   }
 
   async update(
@@ -341,17 +353,25 @@ export class DeadLetterQueue {
     await this.storeProvider().cleanup();
   }
 
-  private async upsert(entry: DeadLetterEntry): Promise<string> {
+  private async upsert(
+    entry: DeadLetterEntry,
+    options: DeadLetterUpsertOptions = {},
+  ): Promise<DeadLetterUpsertResult> {
     const bounded = boundEntrySize(entry);
     validateEntrySize(bounded);
-    const id = await this.storeProvider().upsert(bounded);
-    log.warn('Dead letter entry recorded', {
-      id,
+    const result = await this.storeProvider().upsert(bounded, options);
+    const logFields = {
+      id: result.id,
       category: bounded.category,
       operation: bounded.operation,
       attempts: bounded.attempts,
-    });
-    return id;
+    };
+    if (result.written) {
+      log.warn('Dead letter entry recorded', logFields);
+    } else {
+      log.warn('Dead letter entry suppressed by tombstone', logFields);
+    }
+    return result;
   }
 }
 

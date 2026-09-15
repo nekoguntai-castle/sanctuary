@@ -13,6 +13,21 @@ import {
 import { MemoryDeadLetterStore } from '../../../src/services/memoryDeadLetterStore';
 import { isSyncWalletEnvelope } from '../../../src/services/deadLetterJobEnvelope';
 
+const capturedWarnLogs: Array<{ message: string; meta?: unknown }> = [];
+
+// Overrides the global logger mock (tests/setup.ts) for this file only, so
+// the "suppressed by tombstone" vs. "recorded" warn line can be asserted on.
+vi.mock('../../../src/utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: (message: string, meta?: unknown) => {
+      capturedWarnLogs.push({ message, meta });
+    },
+    error: vi.fn(),
+  }),
+}));
+
 function exhaustedJob(overrides: Partial<Job> = {}): Job {
   return {
     id: 'job-1',
@@ -32,6 +47,7 @@ function exhaustedJob(overrides: Partial<Job> = {}): Job {
 
 describe('DeadLetterQueue', () => {
   afterEach(() => {
+    capturedWarnLogs.length = 0;
     vi.useRealTimers();
   });
 
@@ -103,15 +119,16 @@ describe('DeadLetterQueue', () => {
     const job = exhaustedJob();
     const firstFailedAt = new Date(Date.now() - 1_000);
     const duplicateFailedAt = new Date();
-    const firstId = await queue.addExhaustedJob(
+    const { id: firstId, written: firstWritten } = await queue.addExhaustedJob(
       'sync',
       'sync',
       job,
       new Error('first failure'),
       firstFailedAt,
     );
+    expect(firstWritten).toBe(true);
     const first = await queue.get(firstId);
-    const secondId = await queue.addExhaustedJob(
+    const { id: secondId, written: secondWritten } = await queue.addExhaustedJob(
       'sync',
       'sync',
       job,
@@ -119,6 +136,7 @@ describe('DeadLetterQueue', () => {
       duplicateFailedAt,
     );
 
+    expect(secondWritten).toBe(true);
     expect(secondId).toBe(firstId);
     await expect(queue.get(firstId)).resolves.toEqual(expect.objectContaining({
       id: firstId,
@@ -154,7 +172,7 @@ describe('DeadLetterQueue', () => {
       },
     });
 
-    const id = await queue.addExhaustedJob(
+    await queue.addExhaustedJob(
       'notification',
       'notifications',
       job,
@@ -176,7 +194,7 @@ describe('DeadLetterQueue', () => {
     const store = new MemoryDeadLetterStore();
     const queue = new DeadLetterQueue(() => store, aggregateRecorder);
 
-    const id = await queue.addExhaustedJob(
+    const { id } = await queue.addExhaustedJob(
       'notification',
       'notifications',
       exhaustedJob({ name: 'transaction-notify' }),
@@ -191,7 +209,7 @@ describe('DeadLetterQueue', () => {
     const queue = createMemoryDeadLetterQueue();
     const job = exhaustedJob({ id: undefined, timestamp: 12345 });
 
-    const id = await queue.addExhaustedJob('sync', 'sync', job, 'failed');
+    const { id } = await queue.addExhaustedJob('sync', 'sync', job, 'failed');
 
     await expect(queue.get(id)).resolves.toEqual(expect.objectContaining({
       job: expect.objectContaining({
@@ -202,7 +220,7 @@ describe('DeadLetterQueue', () => {
 
   it('claims with a lease and requires the exact token to release or acknowledge', async () => {
     const queue = createMemoryDeadLetterQueue();
-    const id = await queue.addExhaustedJob(
+    const { id } = await queue.addExhaustedJob(
       'sync',
       'sync',
       exhaustedJob(),
@@ -227,15 +245,76 @@ describe('DeadLetterQueue', () => {
     ).resolves.toBe(true);
     await expect(queue.get(id)).resolves.toBeNull();
 
-    await queue.addExhaustedJob('sync', 'sync', exhaustedJob(), 'late event');
+    // A fresh (non-repair-sweep) exhaustion for the same job identity is a
+    // new failure — the job failed again after being acknowledged — so it
+    // must clear the tombstone and be recorded, not silently suppressed.
+    const { written } = await queue.addExhaustedJob('sync', 'sync', exhaustedJob(), 'late event');
+    expect(written).toBe(true);
+    await expect(queue.get(id)).resolves.not.toBeNull();
+  });
+
+  it('suppresses a repair-sweep write under a live tombstone but records a fresh failure', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    const job = exhaustedJob();
+    const { id } = await queue.addExhaustedJob('sync', 'sync', job, 'failed');
+    await expect(queue.remove(id)).resolves.toBe(true);
     await expect(queue.get(id)).resolves.toBeNull();
+
+    // The repair sweep (isRepairSweep = true) must keep respecting the
+    // tombstone left by the removal.
+    const sweepResult = await queue.addExhaustedJob(
+      'sync',
+      'sync',
+      job,
+      'repair sweep replay',
+      new Date(),
+      true,
+    );
+    expect(sweepResult).toEqual({ id, written: false });
+    await expect(queue.get(id)).resolves.toBeNull();
+
+    // A fresh (non-sweep) exhaustion of the same identity clears the
+    // tombstone and is recorded.
+    const freshResult = await queue.addExhaustedJob('sync', 'sync', job, 'fresh failure');
+    expect(freshResult).toEqual({ id, written: true });
+    await expect(queue.get(id)).resolves.toEqual(expect.objectContaining({
+      id,
+      error: 'fresh failure',
+    }));
+  });
+
+  it('logs suppression, not a false "recorded" line, when a repair sweep is tombstoned', async () => {
+    const store = new MemoryDeadLetterStore();
+    const queue = new DeadLetterQueue(() => store);
+    const job = exhaustedJob();
+    const { id } = await queue.addExhaustedJob('sync', 'sync', job, 'failed');
+    await queue.remove(id);
+    capturedWarnLogs.length = 0;
+
+    await queue.addExhaustedJob('sync', 'sync', job, 'sweep replay', new Date(), true);
+
+    expect(capturedWarnLogs).toEqual([
+      expect.objectContaining({
+        message: 'Dead letter entry suppressed by tombstone',
+        meta: expect.objectContaining({ id }),
+      }),
+    ]);
+
+    capturedWarnLogs.length = 0;
+    await queue.addExhaustedJob('sync', 'sync', job, 'fresh failure');
+    expect(capturedWarnLogs).toEqual([
+      expect.objectContaining({
+        message: 'Dead letter entry recorded',
+        meta: expect.objectContaining({ id }),
+      }),
+    ]);
   });
 
   it('recovers an expired claim and rejects invalid lease durations', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-30T00:00:00.000Z'));
     const queue = createMemoryDeadLetterQueue();
-    const id = await queue.addExhaustedJob(
+    const { id } = await queue.addExhaustedJob(
       'sync',
       'sync',
       exhaustedJob(),
@@ -297,7 +376,7 @@ describe('DeadLetterQueue', () => {
       data: { walletId: 'wallet-1', reason },
     });
 
-    const id = await queue.addExhaustedJob('sync', 'sync', job, 'sync failed');
+    const { id } = await queue.addExhaustedJob('sync', 'sync', job, 'sync failed');
     const entry = await queue.get(id);
 
     expect(entry).not.toBeNull();
@@ -319,7 +398,7 @@ describe('DeadLetterQueue', () => {
       data: oversizedData,
     });
 
-    const id = await queue.addExhaustedJob('other', 'maintenance', job, 'failed');
+    const { id } = await queue.addExhaustedJob('other', 'maintenance', job, 'failed');
     const entry = await queue.get(id);
 
     expect(entry).not.toBeNull();
@@ -342,7 +421,7 @@ describe('DeadLetterQueue', () => {
     const oversizedData = { walletId: 'wallet-1', blob: '\u{1F512}'.repeat(80 * 1_024) };
     const job = exhaustedJob({ id: 'job-oversized-multibyte', name: 'other-job', data: oversizedData });
 
-    const id = await queue.addExhaustedJob('other', 'maintenance', job, 'failed');
+    const { id } = await queue.addExhaustedJob('other', 'maintenance', job, 'failed');
     const entry = await queue.get(id);
     const summary = entry!.job?.data as { truncated: true; originalBytes: number; preview: string };
 

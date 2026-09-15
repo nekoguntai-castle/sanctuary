@@ -184,6 +184,27 @@ describe('MemoryDeadLetterStore', () => {
     await expect(store.acknowledge('entry-1', 'token-2')).resolves.toBe(false);
   });
 
+  it('reports written:false under a live tombstone and written:true once cleared', async () => {
+    const store = new MemoryDeadLetterStore();
+    const first = currentEntry('tombstoned-1');
+    await expect(store.upsert(first)).resolves.toEqual({ id: 'tombstoned-1', written: true });
+    await expect(store.remove('tombstoned-1')).resolves.toBe(true);
+
+    // A repair sweep (no clearTombstone) must keep respecting the tombstone.
+    await expect(store.upsert(currentEntry('tombstoned-1', { error: 'sweep replay' })))
+      .resolves.toEqual({ id: 'tombstoned-1', written: false });
+    await expect(store.get('tombstoned-1')).resolves.toBeNull();
+
+    // A fresh write clears the tombstone first and is recorded.
+    await expect(
+      store.upsert(currentEntry('tombstoned-1', { error: 'fresh failure' }), { clearTombstone: true }),
+    ).resolves.toEqual({ id: 'tombstoned-1', written: true });
+    await expect(store.get('tombstoned-1')).resolves.toEqual(expect.objectContaining({
+      id: 'tombstoned-1',
+      error: 'fresh failure',
+    }));
+  });
+
   it('clears only the selected category and tombstones removed identities', async () => {
     const store = new MemoryDeadLetterStore();
     await store.upsert(currentEntry('sync-1'));
@@ -242,7 +263,7 @@ describe('RedisDeadLetterStore', () => {
 
   it('upserts canonical replies, accepts tombstones, and propagates invalid replies', async () => {
     evalMock.mockResolvedValueOnce(serializeDeadLetterEntry(entry()));
-    await expect(store.upsert(entry())).resolves.toBe('entry-1');
+    await expect(store.upsert(entry())).resolves.toEqual({ id: 'entry-1', written: true });
     expect(evalMock).toHaveBeenCalledWith(
       expect.any(String),
       5,
@@ -258,6 +279,7 @@ describe('RedisDeadLetterStore', () => {
       'test:dlq:{v1}:category:',
       'test:dlq:{v1}:claim:',
       'test:dlq:{v1}:tombstone:',
+      '0',
     );
     const script = String(evalMock.mock.calls[0]?.[0]);
     expect(script).toContain('if decoded.job and candidate.job then');
@@ -266,10 +288,66 @@ describe('RedisDeadLetterStore', () => {
     expect(script).not.toContain('cjson.encode(candidate)');
 
     evalMock.mockResolvedValueOnce(0).mockResolvedValueOnce('0');
-    await expect(store.upsert(entry('zero-number'))).resolves.toBe('zero-number');
-    await expect(store.upsert(entry('zero-string'))).resolves.toBe('zero-string');
+    await expect(store.upsert(entry('zero-number'))).resolves.toEqual({
+      id: 'zero-number',
+      written: false,
+    });
+    await expect(store.upsert(entry('zero-string'))).resolves.toEqual({
+      id: 'zero-string',
+      written: false,
+    });
     evalMock.mockResolvedValueOnce('invalid');
     await expect(store.upsert(entry('invalid'))).rejects.toThrow();
+  });
+
+  it('sends a clear-tombstone flag only for a fresh write and reports suppression under a live tombstone', async () => {
+    evalMock.mockResolvedValueOnce(serializeDeadLetterEntry(entry()));
+    await store.upsert(entry(), { clearTombstone: true });
+    expect(evalMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      5,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      1_000,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      '1',
+    );
+
+    // Simulate a live tombstone (Lua's EXISTS-then-return-0 branch) when
+    // the caller is a repair sweep that must not clear it.
+    evalMock.mockResolvedValueOnce(0);
+    await expect(store.upsert(entry('tombstoned'))).resolves.toEqual({
+      id: 'tombstoned',
+      written: false,
+    });
+    expect(evalMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      5,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      1_000,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      '0',
+    );
+    const script = String(evalMock.mock.calls.at(-1)?.[0]);
+    expect(script).toContain("if ARGV[8] == '1' then");
+    expect(script).toContain("redis.call('DEL', KEYS[5])");
   });
 
   it('gets existing and missing entries directly from expiring entry keys', async () => {

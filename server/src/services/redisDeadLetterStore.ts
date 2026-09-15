@@ -8,6 +8,8 @@ import type {
   DeadLetterClaimResult,
   DeadLetterEntry,
   DeadLetterStore,
+  DeadLetterUpsertOptions,
+  DeadLetterUpsertResult,
 } from './deadLetterQueueTypes';
 
 const MAX_ENTRIES = 1_000;
@@ -18,7 +20,11 @@ const ROOT_KEY = 'sanctuary:dlq:{v1}';
 // Scripts preserve the caller's canonical JSON bytes: Redis cjson cannot
 // distinguish an empty object from an empty array when re-encoding.
 const UPSERT_SCRIPT = `
-if redis.call('EXISTS', KEYS[5]) == 1 then return 0 end
+if ARGV[8] == '1' then
+  redis.call('DEL', KEYS[5])
+elseif redis.call('EXISTS', KEYS[5]) == 1 then
+  return 0
+end
 local serverTime = redis.call('TIME')
 local now = (tonumber(serverTime[1]) * 1000) + math.floor(tonumber(serverTime[2]) / 1000)
 local candidate = cjson.decode(ARGV[1])
@@ -177,7 +183,10 @@ export class RedisDeadLetterStore implements DeadLetterStore {
     private readonly rootKey = ROOT_KEY,
   ) {}
 
-  async upsert(entry: DeadLetterEntry): Promise<string> {
+  async upsert(
+    entry: DeadLetterEntry,
+    options: DeadLetterUpsertOptions = {},
+  ): Promise<DeadLetterUpsertResult> {
     const raw = await this.redis.eval(
       UPSERT_SCRIPT,
       5,
@@ -193,9 +202,11 @@ export class RedisDeadLetterStore implements DeadLetterStore {
       this.categoryPrefix(),
       this.claimPrefix(),
       this.tombstonePrefix(),
+      options.clearTombstone ? '1' : '0',
     );
-    if (raw !== 0 && raw !== '0') parseDeadLetterEntry(String(raw));
-    return entry.id;
+    const written = raw !== 0 && raw !== '0';
+    if (written) parseDeadLetterEntry(String(raw));
+    return { id: entry.id, written };
   }
 
   async get(id: string): Promise<DeadLetterEntry | null> {

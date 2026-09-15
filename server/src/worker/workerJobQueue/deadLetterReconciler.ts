@@ -71,6 +71,7 @@ const reconcileQueue = async (
         job,
         job.failedReason ?? 'Exhausted worker job',
         failureTime(job),
+        true,
       );
       retained.add(identity);
       reconciled += 1;

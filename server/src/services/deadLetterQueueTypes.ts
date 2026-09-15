@@ -61,8 +61,27 @@ export type DeadLetterClaimResult =
   | { status: 'busy' }
   | { status: 'missing' };
 
+export interface DeadLetterUpsertOptions {
+  /**
+   * A fresh (non-repair-sweep) write clears any live tombstone left by a
+   * prior removal/acknowledgement before writing, so a job that fails again
+   * after being acknowledged is recorded rather than silently suppressed.
+   * The repair sweep omits this so it keeps respecting tombstones.
+   */
+  clearTombstone?: boolean;
+}
+
+export interface DeadLetterUpsertResult {
+  id: string;
+  /** False when a live tombstone (or, for Redis, an already-expired TTL) suppressed the write. */
+  written: boolean;
+}
+
 export interface DeadLetterStore {
-  upsert(entry: DeadLetterEntry): Promise<string>;
+  upsert(
+    entry: DeadLetterEntry,
+    options?: DeadLetterUpsertOptions,
+  ): Promise<DeadLetterUpsertResult>;
   get(id: string): Promise<DeadLetterEntry | null>;
   list(options?: {
     category?: DeadLetterCategory;

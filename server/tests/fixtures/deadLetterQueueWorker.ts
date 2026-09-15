@@ -33,7 +33,7 @@ async function main(): Promise<void> {
       } as Job;
       void queue
         .addExhaustedJob('sync', 'sync', job, new Error('worker failed'))
-        .then((id) => notify({ type: 'added', id }))
+        .then(({ id }) => notify({ type: 'added', id }))
         .catch((error) => notify({ type: 'error', error: String(error) }));
       return;
     }

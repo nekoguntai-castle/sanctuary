@@ -3,6 +3,8 @@ import type {
   DeadLetterClaimResult,
   DeadLetterEntry,
   DeadLetterStore,
+  DeadLetterUpsertOptions,
+  DeadLetterUpsertResult,
 } from './deadLetterQueueTypes';
 
 const MAX_ENTRIES = 1_000;
@@ -26,18 +28,25 @@ export class MemoryDeadLetterStore implements DeadLetterStore {
   private readonly claims = new Map<string, MemoryClaim>();
   private readonly tombstones = new Map<string, number>();
 
-  async upsert(entry: DeadLetterEntry): Promise<string> {
+  async upsert(
+    entry: DeadLetterEntry,
+    options: DeadLetterUpsertOptions = {},
+  ): Promise<DeadLetterUpsertResult> {
     await this.cleanup();
-    if (this.tombstones.has(entry.id)) return entry.id;
+    if (options.clearTombstone) {
+      this.tombstones.delete(entry.id);
+    } else if (this.tombstones.has(entry.id)) {
+      return { id: entry.id, written: false };
+    }
     const existing = this.entries.get(entry.id);
     // Match Redis idempotency: repair sweeps do not refresh failure age.
-    if (existing?.job && entry.job) return entry.id;
+    if (existing?.job && entry.job) return { id: entry.id, written: true };
     this.entries.set(entry.id, {
       ...cloneEntry(entry),
       firstFailedAt: existing?.firstFailedAt ?? entry.firstFailedAt,
     });
     this.evictOverflow();
-    return entry.id;
+    return { id: entry.id, written: true };
   }
 
   async get(id: string): Promise<DeadLetterEntry | null> {

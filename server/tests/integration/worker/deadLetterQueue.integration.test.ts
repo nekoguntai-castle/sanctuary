@@ -173,7 +173,7 @@ describeWithRedis('dead letter queue Redis integration', () => {
     const second = new DeadLetterQueue(
       () => new RedisDeadLetterStore(redis!, root),
     );
-    const id = await first.addExhaustedJob(
+    const { id } = await first.addExhaustedJob(
       'sync',
       'sync',
       exhaustedJob(),
@@ -196,8 +196,27 @@ describeWithRedis('dead letter queue Redis integration', () => {
       second.acknowledgeRetry(id, recovered.claim.token),
     ).resolves.toBe(true);
 
-    await first.addExhaustedJob('sync', 'sync', exhaustedJob(), 'late event');
+    // A repair sweep (isRepairSweep = true) must keep respecting the
+    // tombstone the acknowledgement left, over real Redis.
+    const sweepResult = await first.addExhaustedJob(
+      'sync',
+      'sync',
+      exhaustedJob(),
+      'late sweep replay',
+      new Date(),
+      true,
+    );
+    expect(sweepResult).toEqual({ id, written: false });
     await expect(first.get(id)).resolves.toBeNull();
+
+    // A fresh (non-sweep) exhaustion of the same job identity is a new
+    // failure after acknowledgement, so it clears the tombstone and writes.
+    const freshResult = await first.addExhaustedJob('sync', 'sync', exhaustedJob(), 'late event');
+    expect(freshResult).toEqual({ id, written: true });
+    await expect(first.get(id)).resolves.toEqual(expect.objectContaining({
+      id,
+      error: 'late event',
+    }));
   });
 
   it('repairs expired index entries and propagates Redis failures', async () => {
@@ -376,7 +395,7 @@ describeWithRedis('dead letter queue Redis integration', () => {
       ...exhaustedJob(),
       id: `retry-source-${process.pid}-${Date.now()}`,
     } as Job;
-    const entryId = await dlq.addExhaustedJob(
+    const { id: entryId } = await dlq.addExhaustedJob(
       'sync',
       'sync',
       originalJob,

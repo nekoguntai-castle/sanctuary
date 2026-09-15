@@ -73,6 +73,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.objectContaining({ id: 'job-1' }),
       'sync failed',
       new Date(10_000),
+      true,
     );
     expect(mockAddExhaustedJob).toHaveBeenCalledWith(
       'notification',
@@ -80,6 +81,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.objectContaining({ id: 'notification' }),
       'sync failed',
       new Date(10_000),
+      true,
     );
     expect(mockAddExhaustedJob).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -119,6 +121,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.objectContaining({ id: 'invalid-payload', attemptsMade: 1 }),
       'Unrecoverable job payload: invalid payload for sync:sync-wallet',
       new Date(10_000),
+      true,
     );
     expect(mockAddExhaustedJob).toHaveBeenCalledWith(
       'sync',
@@ -126,6 +129,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.objectContaining({ id: 'handler-unrecoverable', attemptsMade: 1 }),
       'handler rejected the job',
       new Date(10_000),
+      true,
     );
   });
 
@@ -150,6 +154,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.anything(),
       'Exhausted worker job',
       new Date(5_000),
+      true,
     );
 
     mockAddExhaustedJob.mockClear();
@@ -175,6 +180,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.objectContaining({ id: 'later' }),
       'sync failed',
       new Date(10_000),
+      true,
     );
 
     mockAddExhaustedJob.mockClear();
@@ -193,6 +199,7 @@ describe('reconcileExhaustedJobs', () => {
       expect.objectContaining({ id: 'later' }),
       'sync failed',
       new Date(10_000),
+      true,
     );
   });
 
