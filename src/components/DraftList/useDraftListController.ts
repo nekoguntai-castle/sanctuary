@@ -53,6 +53,29 @@ export function useDraftListController({
   const { loading, error, execute: runLoad } = useLoadingState<DraftTransaction[]>({ initialLoading: true });
   const { error: operationError, execute: runOperation, clearError: clearOperationError } = useLoadingState();
 
+  // Tracks the walletId this hook instance is currently scoped to. DraftList
+  // is mounted without a `key` (see DraftsTab), so the same hook instance
+  // survives a wallet switch — a load started for the previous wallet must
+  // not be allowed to apply its result (or its error) once the wallet has
+  // moved on.
+  const currentWalletIdRef = React.useRef(walletId);
+  currentWalletIdRef.current = walletId;
+  const isCurrentWallet = (requestWalletId: string): boolean => (
+    currentWalletIdRef.current === requestWalletId
+  );
+
+  // Reset draft-list state synchronously (during render, not in an effect)
+  // the moment walletId changes, so stale drafts from the previous wallet
+  // are never visible even for a single paint.
+  const [trackedWalletId, setTrackedWalletId] = useState(walletId);
+  if (walletId !== trackedWalletId) {
+    setTrackedWalletId(walletId);
+    draftsRef.current = [];
+    setDrafts([]);
+    setDeleteConfirm(null);
+    setExpandedDraft(null);
+  }
+
   const knownAddresses = React.useMemo(() => {
     return new Set(walletAddresses.map(wa => wa.address));
   }, [walletAddresses]);
@@ -73,15 +96,30 @@ export function useDraftListController({
     setDrafts(next);
   }, []);
 
-  const loadDrafts = React.useCallback(() => runLoad(async () => {
-    clearOperationError();
-    log.debug('Loading drafts for wallet', { walletId });
-    const data = await getDrafts(walletId);
-    log.debug('Loaded drafts', { count: data.length });
-    applyDrafts(data);
-    onDraftsChange?.(data.length);
-    return data;
-  }), [applyDrafts, clearOperationError, onDraftsChange, runLoad, walletId]);
+  const loadDrafts = React.useCallback(() => {
+    const requestWalletId = walletId;
+    return runLoad(async () => {
+      clearOperationError();
+      log.debug('Loading drafts for wallet', { walletId: requestWalletId });
+      try {
+        const data = await getDrafts(requestWalletId);
+        log.debug('Loaded drafts', { count: data.length });
+        if (isCurrentWallet(requestWalletId)) {
+          applyDrafts(data);
+          onDraftsChange?.(data.length);
+        }
+        return data;
+      } catch (err) {
+        if (!isCurrentWallet(requestWalletId)) {
+          // A load for a wallet the user has since switched away from
+          // resolved late (or failed late) — swallow it so it can't
+          // surface an error for the wallet that is now mounted.
+          return draftsRef.current;
+        }
+        throw err;
+      }
+    });
+  }, [applyDrafts, clearOperationError, onDraftsChange, runLoad, walletId]);
 
   useEffect(() => {
     void loadDrafts();
