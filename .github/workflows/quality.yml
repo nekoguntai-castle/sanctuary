@@ -819,6 +819,7 @@ jobs:
           bash -n tests/ci/podman-socket-canary-composition.test.sh
           bash -n scripts/ci/wait-for-migration.sh
           bash -n tests/ci/wait-for-migration.test.sh
+          bash -n tests/ci/run-compose-e2e-subject-migration-wait.test.sh
           bash -n scripts/ci/check-workflows-test-only.sh
           bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
@@ -897,6 +898,7 @@ jobs:
           bash tests/ci/wait-for-docker.test.sh
           bash tests/ci/ci-registration-completeness.test.sh
           bash tests/ci/wait-for-migration.test.sh
+          bash tests/ci/run-compose-e2e-subject-migration-wait.test.sh
           bash tests/ci/backend-coverage-scripts.test.sh
           bash tests/ci/build-runtime-image.test.sh
           bash tests/ci/observe-runtime-image-cves.test.sh

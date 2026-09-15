@@ -3,6 +3,8 @@
 # cleanup-ci-callsite.sh run; this script never tears resources down.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 workspace=
 mode=
 run_health=false
@@ -99,10 +101,11 @@ env "${compose_env[@]}" docker compose up -d --build
 register_ci_compose_resources "${compose_registration_args[@]}"
 compose_registered=true
 
-timeout 120 bash -c \
-  'until docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -q "Exited"; do sleep 5; done' \
-  || true
-sleep 30
+# Delegates to the shared helper (#741): it uses `ps --all` (a one-shot
+# migrate container is invisible to `ps` without it), distinguishes "exited
+# non-zero" from "never observed", and fails fast instead of the fixed
+# 120s-timeout-then-sleep-30 that always proceeded regardless of outcome.
+"$SCRIPT_DIR/wait-for-migration.sh" "$PWD"
 
 if [ "$mode" = container-health ] || [ "$run_health" = true ]; then
   ./tests/install/e2e/container-health.test.sh --verbose
