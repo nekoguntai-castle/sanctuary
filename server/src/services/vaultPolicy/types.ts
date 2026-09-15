@@ -153,6 +153,16 @@ export interface PolicyEvaluationInput {
   recipient: string;
   amount: bigint;
   outputs?: Array<{ address: string; amount: number }>;
+  // Present only for a verified RBF fee bump: the amount already held by
+  // the original transaction's own reservation. spending_limit's rolling
+  // windows compare against max(0, amount - replacedAmount) — the
+  // incremental usage — while per-transaction and approval-threshold
+  // checks stay on the full `amount` (an authorization threshold must not
+  // be weakened by reframing a bump as its delta). velocity's txCount
+  // comparison is skipped entirely for a bump, consistent with
+  // reserveEnforcedUsage leaving velocity windows untouched.
+  replacedAmount?: bigint;
+  isReplacementBump?: boolean;
 }
 
 export interface PolicyEvaluationResult {

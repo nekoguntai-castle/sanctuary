@@ -598,4 +598,154 @@ export function registerPolicyEvaluateSpendingApprovalTests(context: PolicyEvalu
         expect(result.triggered[0].action).toBe('monitored');
       });
     });
+
+    // ========================================
+    // RBF fee bump (rbf-fee-bump-double-reserves-policy-usage-window)
+    // ========================================
+
+    describe('RBF fee bump (replacedAmount / isReplacementBump)', () => {
+      it('a bump above an approval_required amountAbove threshold still triggers approval on the FULL amount', async () => {
+        mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+          makePolicy({
+            id: 'p1',
+            name: 'Large Tx',
+            type: 'approval_required',
+            enforcement: 'enforce',
+            config: {
+              trigger: { amountAbove: 1_000_000 },
+              requiredApprovals: 1,
+              quorumType: 'any_n',
+              allowSelfApproval: false,
+              expirationHours: 24,
+            },
+          }),
+        ]);
+
+        // A 1.5M sat bump of a 1.0M sat original: the incremental delta
+        // (500k) is under the threshold, but the real transaction value
+        // (1.5M) is not — approval must still trigger on the full amount,
+        // not the delta, or an authorization threshold would be weakened.
+        const result = await getPolicyEvaluationEngine().evaluatePolicies({
+          walletId, userId, recipient,
+          amount: BigInt(1_500_000),
+          replacedAmount: BigInt(1_000_000),
+          isReplacementBump: true,
+        });
+
+        expect(result.triggered).toHaveLength(1);
+        expect(result.triggered[0].action).toBe('approval_required');
+      });
+
+      it('a bump under an exhausted per-transaction limit is still blocked on the FULL amount', async () => {
+        mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+          makePolicy({
+            id: 'p1',
+            name: 'Tx Limit',
+            type: 'spending_limit',
+            enforcement: 'enforce',
+            config: { perTransaction: 1_000_000, scope: 'wallet' },
+          }),
+        ]);
+
+        const result = await getPolicyEvaluationEngine().evaluatePolicies({
+          walletId, userId, recipient,
+          amount: BigInt(2_000_000),
+          replacedAmount: BigInt(1_900_000),
+          isReplacementBump: true,
+        });
+
+        expect(result.allowed).toBe(false);
+        expect(result.triggered[0].reason).toContain('per-transaction limit');
+      });
+
+      it('a bump reserves only the incremental amount against a rolling spending_limit window', async () => {
+        mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+          makePolicy({
+            id: 'p1',
+            name: 'Daily Cap',
+            type: 'spending_limit',
+            enforcement: 'enforce',
+            config: { daily: 1_000_000, scope: 'wallet' },
+          }),
+        ]);
+
+        // The window already holds the original's own reservation (600k of
+        // a 1,000,000 daily cap). An equal-amount bump adds nothing
+        // incremental and must not be blocked, even though used + the full
+        // amount would exceed the cap.
+        mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValue({
+          id: 'w1',
+          totalSpent: BigInt(600_000),
+          txCount: 1,
+        });
+
+        const result = await getPolicyEvaluationEngine().evaluatePolicies({
+          walletId, userId, recipient,
+          amount: BigInt(600_000),
+          replacedAmount: BigInt(600_000),
+          isReplacementBump: true,
+        });
+
+        expect(result.allowed).toBe(true);
+      });
+
+      it('treats a bump with no replacedAmount supplied as replacing nothing (reserves the full amount)', async () => {
+        mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+          makePolicy({
+            id: 'p1',
+            name: 'Daily Cap',
+            type: 'spending_limit',
+            enforcement: 'enforce',
+            config: { daily: 1_000_000, scope: 'wallet' },
+          }),
+        ]);
+
+        mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValue({
+          id: 'w1',
+          totalSpent: BigInt(500_000),
+          txCount: 1,
+        });
+
+        const result = await getPolicyEvaluationEngine().evaluatePolicies({
+          walletId, userId, recipient,
+          amount: BigInt(600_000),
+          isReplacementBump: true,
+        });
+
+        expect(result.allowed).toBe(false);
+        expect(result.triggered[0].reason).toContain('daily');
+      });
+
+      it('skips the velocity txCount comparison entirely for a bump', async () => {
+        mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+          makePolicy({
+            id: 'p1',
+            name: 'Velocity Cap',
+            type: 'velocity',
+            enforcement: 'enforce',
+            config: { maxPerDay: 1, scope: 'wallet' },
+          }),
+        ]);
+
+        // The window is already at its limit; a fresh transaction would be
+        // blocked, but a verified bump is the same logical transaction and
+        // must not be — and must not even read the window.
+        mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValue({
+          id: 'w1',
+          totalSpent: BigInt(0),
+          txCount: 1,
+        });
+
+        const result = await getPolicyEvaluationEngine().evaluatePolicies({
+          walletId, userId, recipient,
+          amount: BigInt(100),
+          replacedAmount: BigInt(100),
+          isReplacementBump: true,
+        });
+
+        expect(result.allowed).toBe(true);
+        expect(result.triggered).toHaveLength(0);
+        expect(mockPolicyRepo.findOrCreateUsageWindow).not.toHaveBeenCalled();
+      });
+    });
 }

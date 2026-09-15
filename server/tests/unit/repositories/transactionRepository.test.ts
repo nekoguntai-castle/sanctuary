@@ -571,17 +571,24 @@ describe('Transaction Repository', () => {
   });
 
   describe('findUnconfirmedTransactionForReplacement', () => {
-    it('queries by txid, walletId, the unconfirmed filter, and the not-yet-replaced filter together', async () => {
-      (prisma.transaction.findFirst as Mock).mockResolvedValue({ id: 'tx-1', label: 'L' });
+    it('queries by txid, walletId, the unconfirmed filter, and the not-yet-replaced filter together, selecting the original amount/fee/type', async () => {
+      (prisma.transaction.findFirst as Mock).mockResolvedValue({
+        id: 'tx-1', label: 'L', amount: -9500n, fee: 500n, type: 'sent',
+      });
 
       await expect(transactionRepository.findUnconfirmedTransactionForReplacement(
         'a'.repeat(64),
         'wallet-1',
-      )).resolves.toEqual({ id: 'tx-1', label: 'L' });
+      )).resolves.toEqual({ id: 'tx-1', label: 'L', amount: -9500n, fee: 500n, type: 'sent' });
 
       // This where-clause is the actual security boundary for RBF linkage: a
       // confirmed original, one on another wallet, or one already replaced
-      // by a different transaction must not resolve here.
+      // by a different transaction must not resolve here. `amount`, `fee`,
+      // and `type` are selected so a verified replacement's reservation can
+      // be reduced by the original's positive, fee-excluded external send
+      // amount — NOT the raw signed `amount` column, which
+      // persistTransaction.ts stores as -(external + fee)
+      // (rbf-fee-bump-double-reserves-policy-usage-window).
       expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
         where: {
           txid: 'a'.repeat(64),
@@ -591,7 +598,7 @@ describe('Transaction Repository', () => {
           rbfStatus: { not: 'replaced' },
           replacedByTxid: null,
         },
-        select: { id: true, label: true },
+        select: { id: true, label: true, amount: true, fee: true, type: true },
       });
     });
 

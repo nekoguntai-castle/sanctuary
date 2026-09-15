@@ -39,6 +39,8 @@ interface EvaluationState {
   recipient: string;
   amount: bigint;
   outputs?: PolicyEvaluationInput['outputs'];
+  replacedAmount?: bigint;
+  isReplacementBump?: boolean;
   triggered: PolicyEvaluationResult['triggered'];
   limits: NonNullable<PolicyEvaluationResult['limits']>;
   blocked: boolean;
@@ -68,7 +70,26 @@ interface ReserveUsageInput {
   walletId: string;
   userId: string;
   amount: bigint;
+  // Present only for a verified RBF fee bump: the amount already held by
+  // the original transaction's own reservation. Spending-limit windows
+  // then reserve only max(0, amount - replacedAmount) — the incremental
+  // usage — instead of double-reserving the whole amount again.
+  replacedAmount?: bigint;
+  // A verified RBF fee bump is the same logical transaction as the
+  // original it replaces: velocity windows (which are amount-independent)
+  // are left entirely untouched rather than counting it as a new one.
+  isReplacementBump?: boolean;
 }
+
+/**
+ * The usage a verified RBF fee bump reserves against a spending-limit
+ * window: the excess of its amount over the amount already held by the
+ * original transaction's reservation, floored at zero. A bump that does
+ * not raise the amount reserves nothing.
+ */
+export const reservedAmountAfterReplacement = (amount: bigint, replacedAmount: bigint): bigint => (
+  amount > replacedAmount ? amount - replacedAmount : BigInt(0)
+);
 
 interface ReserveUsageOutcome {
   ok: boolean;
@@ -128,6 +149,8 @@ const createEvaluationState = (input: EvaluationInput): EvaluationState => ({
   recipient: input.recipient,
   amount: input.amount,
   outputs: input.outputs,
+  replacedAmount: input.replacedAmount,
+  isReplacementBump: input.isReplacementBump,
   triggered: [],
   limits: {},
   blocked: false,
@@ -179,7 +202,8 @@ const applySpendingLimitPolicy = async (
     config as unknown as SpendingLimitConfig,
     state.walletId,
     state.userId,
-    state.amount
+    state.amount,
+    state.isReplacementBump ? state.replacedAmount ?? BigInt(0) : undefined
   );
 
   if (result.triggered) {
@@ -243,7 +267,8 @@ const applyVelocityPolicy = async (
     policy,
     config as unknown as VelocityConfig,
     state.walletId,
-    state.userId
+    state.userId,
+    state.isReplacementBump ?? false
   );
 
   if (result.triggered) {
@@ -474,6 +499,11 @@ const reservePolicyWindows = async (
   }
 
   if (policy.type === 'velocity') {
+    // A verified RBF bump is the same logical transaction as the original:
+    // velocity windows are amount-independent (they gate on txCount), so
+    // there is no delta to reserve and the window is left entirely
+    // untouched — no read, no write, no txLimit gate applied to it.
+    if (input.isReplacementBump) return true;
     return reserveVelocityWindows(
       policy,
       config as unknown as VelocityConfig,
@@ -492,6 +522,9 @@ const reserveSpendingLimitWindows = async (
   reservations: UsageReservation[]
 ): Promise<boolean> => {
   const scopedUserId = getScopedUsageUserId(config.scope, input.userId);
+  const reserveAmount = input.isReplacementBump
+    ? reservedAmountAfterReplacement(input.amount, input.replacedAmount ?? BigInt(0))
+    : input.amount;
   const checks: Array<{ type: WindowType; limit: number }> = [];
   if (config.daily && config.daily > 0) checks.push({ type: 'daily', limit: config.daily });
   if (config.weekly && config.weekly > 0) checks.push({ type: 'weekly', limit: config.weekly });
@@ -499,11 +532,11 @@ const reserveSpendingLimitWindows = async (
 
   for (const check of checks) {
     const windowId = await reserveWindow(policy, input.walletId, scopedUserId, check.type, {
-      amount: input.amount,
+      amount: reserveAmount,
       spendLimit: BigInt(check.limit),
     });
     if (!windowId) return false;
-    reservations.push({ windowId, amount: input.amount });
+    reservations.push({ windowId, amount: reserveAmount });
   }
   return true;
 };
@@ -670,11 +703,18 @@ async function evaluateSpendingLimit(
   config: SpendingLimitConfig,
   walletId: string,
   userId: string,
-  amount: bigint
+  amount: bigint,
+  // Present only for a verified RBF bump. The per-transaction limit is an
+  // authorization threshold on the transaction's real value and must stay
+  // on the full `amount` (reframing a 1.5 BTC bump of a 1.0 BTC original as
+  // its 0.5 BTC delta must not let it slip under a 1.0 BTC threshold). Only
+  // the rolling-window comparison — which tracks incremental usage already
+  // counted against the original — uses the reduced amount.
+  replacedAmount?: bigint
 ): Promise<SpendingLimitResult> {
   const limits: PolicyEvaluationResult['limits'] = {};
 
-  // Check per-transaction limit
+  // Check per-transaction limit — always the full amount, never reduced.
   if (config.perTransaction && config.perTransaction > 0) {
     limits.perTransaction = { limit: config.perTransaction };
     if (amount > BigInt(config.perTransaction)) {
@@ -687,6 +727,9 @@ async function evaluateSpendingLimit(
   }
 
   // Check rolling window limits
+  const windowAmount = replacedAmount !== undefined
+    ? reservedAmountAfterReplacement(amount, replacedAmount)
+    : amount;
   const windowChecks: Array<{ type: WindowType; limit: number; key: 'daily' | 'weekly' | 'monthly' }> = [];
   if (config.daily && config.daily > 0) windowChecks.push({ type: 'daily', limit: config.daily, key: 'daily' });
   if (config.weekly && config.weekly > 0) windowChecks.push({ type: 'weekly', limit: config.weekly, key: 'weekly' });
@@ -712,10 +755,10 @@ async function evaluateSpendingLimit(
       remaining: Math.max(0, Number(remaining)),
     };
 
-    if (used + amount > BigInt(check.limit)) {
+    if (used + windowAmount > BigInt(check.limit)) {
       return {
         triggered: true,
-        reason: `${check.key} spending limit exceeded: ${used + amount} / ${check.limit} sats`,
+        reason: `${check.key} spending limit exceeded: ${used + windowAmount} / ${check.limit} sats`,
         limits,
       };
     }
@@ -801,8 +844,15 @@ async function evaluateVelocity(
   policy: VaultPolicy,
   config: VelocityConfig,
   walletId: string,
-  userId: string
+  userId: string,
+  // A verified RBF bump is the same logical transaction as the original it
+  // replaces: velocity's txCount comparison is amount-independent and would
+  // otherwise count the bump as an extra transaction, so it is skipped
+  // entirely here — consistent with reserveEnforcedUsage leaving velocity
+  // windows untouched at reservation time.
+  isReplacementBump: boolean
 ): Promise<SimpleResult> {
+  if (isReplacementBump) return { triggered: false, reason: '' };
   const checks: Array<{ type: WindowType; limit: number; label: string }> = [];
   if (config.maxPerHour && config.maxPerHour > 0) checks.push({ type: 'hourly', limit: config.maxPerHour, label: 'hourly' });
   if (config.maxPerDay && config.maxPerDay > 0) checks.push({ type: 'daily', limit: config.maxPerDay, label: 'daily' });

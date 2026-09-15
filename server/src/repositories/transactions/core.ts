@@ -64,12 +64,21 @@ export async function findLocallySpentOutpointKeys(
  * replacement and must not be linked again. Accepts either the
  * module-level client (pre-broadcast, read-only) or a transaction client
  * (post-broadcast, inside the persistence transaction).
+ *
+ * `amount`, `fee`, and `type` are selected so a verified replacement's
+ * policy reservation can be reduced by the original's external send
+ * amount: `Transaction.amount` is the SIGNED wallet-ledger delta
+ * (persistTransaction.ts stores `-(external + fee)` for a `sent` row, or
+ * `-fee` for a `consolidation`), not the positive, fee-excluded amount
+ * policy evaluation reserves — callers must derive that amount from all
+ * three fields rather than using `amount` directly
+ * (rbf-fee-bump-double-reserves-policy-usage-window).
  */
 export async function findUnconfirmedTransactionForReplacement(
   txid: string,
   walletId: string,
   client: PrismaTxClient = prisma,
-): Promise<{ id: string; label: string | null } | null> {
+): Promise<{ id: string; label: string | null; amount: bigint; fee: bigint | null; type: string } | null> {
   return client.transaction.findFirst({
     where: {
       txid,
@@ -79,7 +88,7 @@ export async function findUnconfirmedTransactionForReplacement(
       rbfStatus: { not: 'replaced' },
       replacedByTxid: null,
     },
-    select: { id: true, label: true },
+    select: { id: true, label: true, amount: true, fee: true, type: true },
   });
 }
 

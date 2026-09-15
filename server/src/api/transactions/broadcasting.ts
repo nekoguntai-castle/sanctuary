@@ -25,6 +25,7 @@ import {
   type ValidatedBroadcastArtifact,
 } from '../../services/bitcoin/signingIntent';
 import { broadcastAndSave, DefiniteBroadcastRejectionError } from '../../services/bitcoin/transactions/broadcasting';
+import { findVerifiedReplacement, selectCandidateOutpoints } from '../../services/bitcoin/transactions/replacementLink';
 import type {
   TransactionInputMetadata,
   TransactionOutputMetadata,
@@ -263,27 +264,60 @@ const assertOptionalMetadata = (
  * consumed the remaining headroom) blocks the same as any other triggered
  * policy. The returned reservations must be released by the caller if the
  * broadcast itself later fails.
+ *
+ * When `replacesTxid` names a verified RBF replacement (the same
+ * shared-input check `assertReplacementLink` uses, via
+ * `findVerifiedReplacement`), `replacedAmount`/`isReplacementBump` are
+ * threaded into both `evaluatePolicies` and `reserveEnforcedUsage` so a
+ * bump's incremental amount is evaluated/reserved against spending-limit
+ * windows and velocity is left untouched — the bump is the same logical
+ * transaction as the original, whose reservation stays held
+ * (rbf-fee-bump-double-reserves-policy-usage-window). `evaluatePolicies` is
+ * still called with the FULL amount: per-transaction and approval-required
+ * thresholds are authorization checks on the transaction's real value and
+ * must not be weakened by reframing a bump as its delta — only its
+ * internal rolling-window comparison uses the reduced amount. An
+ * unverifiable `replacesTxid` is treated as a fresh broadcast here;
+ * `broadcastAndSave` still rejects it via `assertReplacementLink` before
+ * anything is transmitted.
  */
 const reservePolicyUsage = async (
   req: Request,
   walletId: string,
   metadata: CanonicalRouteMetadata,
+  replacesTxid: string | undefined,
 ): Promise<UsageReservation[]> => {
   if (metadata.externalOutputs.length === 0) return [];
   const userId = requireAuthenticatedUser(req).userId;
+  const amount = BigInt(metadata.amount);
+
+  const replacement = replacesTxid
+    ? await findVerifiedReplacement(
+        walletId,
+        replacesTxid,
+        selectCandidateOutpoints(metadata.inputs, metadata.utxos),
+        undefined,
+      )
+    : null;
+  const isReplacementBump = replacement !== null;
+  const replacedAmount = replacement?.amount ?? BigInt(0);
+  const replacementContext = isReplacementBump ? { replacedAmount, isReplacementBump } : {};
+
   const result = await policyEvaluationEngine.evaluatePolicies({
     walletId,
     userId,
     recipient: metadata.externalOutputs[0].address,
-    amount: BigInt(metadata.amount),
+    amount,
     outputs: metadata.externalOutputs,
+    ...replacementContext,
   });
   if (!result.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
 
   const reservation = await policyEvaluationEngine.reserveEnforcedUsage({
     walletId,
     userId,
-    amount: BigInt(metadata.amount),
+    amount,
+    ...replacementContext,
   });
   if (!reservation.ok) throw new ForbiddenError('Transaction blocked by vault policy');
   return reservation.reservations;
@@ -402,7 +436,9 @@ const handleTransactionBroadcast = async (
     authoritativeDraft,
     metadata,
   );
-  const reservations = artifact.broadcastReplay ? [] : await reservePolicyUsage(req, walletId, metadata);
+  const reservations = artifact.broadcastReplay
+    ? []
+    : await reservePolicyUsage(req, walletId, metadata, body.replacesTxid);
   // Unlike label/memo, replacesTxid has no draft fallback: it is not a
   // persisted draft column (see CreateDraftRequest.replacesTxid in
   // src/api/drafts.ts), so an RBF broadcast must send it directly in this
@@ -429,7 +465,9 @@ const handlePsbtBroadcast = async (
   if (authoritativeDraft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(authoritativeDraft);
   const metadata = await buildCanonicalMetadata(artifact);
   assertOptionalMetadata({}, authoritativeDraft, metadata);
-  const reservations = artifact.broadcastReplay ? [] : await reservePolicyUsage(req, walletId, metadata);
+  const reservations = artifact.broadcastReplay
+    ? []
+    : await reservePolicyUsage(req, walletId, metadata, body.replacesTxid);
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,

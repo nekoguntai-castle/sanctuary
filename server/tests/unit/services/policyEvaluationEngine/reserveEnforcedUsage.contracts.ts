@@ -312,6 +312,107 @@ export function registerReserveEnforcedUsageTests(context: PolicyEvaluationEngin
       expect(mockPolicyRepo.reserveUsageWindow).not.toHaveBeenCalled();
     });
 
+    it('an RBF bump reserves nothing against a spending_limit window when its amount equals the replaced original', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'spending_limit',
+          enforcement: 'enforce',
+          config: { daily: 1_000_000, scope: 'wallet' },
+        }),
+      ]);
+      mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValue({ id: 'w1', totalSpent: BigInt(600_000), txCount: 1 });
+      mockPolicyRepo.reserveUsageWindow.mockResolvedValue({ count: 1 });
+
+      const result = await getPolicyEvaluationEngine().reserveEnforcedUsage({
+        walletId,
+        userId,
+        amount: BigInt(600_000),
+        replacedAmount: BigInt(600_000),
+        isReplacementBump: true,
+      });
+
+      expect(result).toEqual({ ok: true, reservations: [{ windowId: 'w1', amount: BigInt(0) }] });
+      expect(mockPolicyRepo.reserveUsageWindow).toHaveBeenCalledWith({
+        windowId: 'w1',
+        amount: BigInt(0),
+        spendLimit: BigInt(1_000_000),
+      });
+    });
+
+    it('an RBF bump reserves only the delta against a spending_limit window when its amount exceeds the replaced original', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'spending_limit',
+          enforcement: 'enforce',
+          config: { daily: 1_000_000, scope: 'wallet' },
+        }),
+      ]);
+      mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValue({ id: 'w1', totalSpent: BigInt(600_000), txCount: 1 });
+      mockPolicyRepo.reserveUsageWindow.mockResolvedValue({ count: 1 });
+
+      const result = await getPolicyEvaluationEngine().reserveEnforcedUsage({
+        walletId,
+        userId,
+        amount: BigInt(650_000),
+        replacedAmount: BigInt(600_000),
+        isReplacementBump: true,
+      });
+
+      expect(result).toEqual({ ok: true, reservations: [{ windowId: 'w1', amount: BigInt(50_000) }] });
+      expect(mockPolicyRepo.reserveUsageWindow).toHaveBeenCalledWith({
+        windowId: 'w1',
+        amount: BigInt(50_000),
+        spendLimit: BigInt(1_000_000),
+      });
+    });
+
+    it('leaves velocity windows entirely untouched for an RBF bump', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'velocity',
+          enforcement: 'enforce',
+          config: { maxPerDay: 10, scope: 'wallet' },
+        }),
+      ]);
+
+      const result = await getPolicyEvaluationEngine().reserveEnforcedUsage({
+        walletId,
+        userId,
+        amount: BigInt(650_000),
+        replacedAmount: BigInt(600_000),
+        isReplacementBump: true,
+      });
+
+      expect(result).toEqual({ ok: true, reservations: [] });
+      expect(mockPolicyRepo.findOrCreateUsageWindow).not.toHaveBeenCalled();
+      expect(mockPolicyRepo.reserveUsageWindow).not.toHaveBeenCalled();
+    });
+
+    it('treats a bump with no replacedAmount supplied as replacing nothing (reserves the full amount)', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'spending_limit',
+          enforcement: 'enforce',
+          config: { daily: 1_000_000, scope: 'wallet' },
+        }),
+      ]);
+      mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValue({ id: 'w1', totalSpent: BigInt(0), txCount: 0 });
+      mockPolicyRepo.reserveUsageWindow.mockResolvedValue({ count: 1 });
+
+      const result = await getPolicyEvaluationEngine().reserveEnforcedUsage({
+        walletId,
+        userId,
+        amount: BigInt(600_000),
+        isReplacementBump: true,
+      });
+
+      expect(result).toEqual({ ok: true, reservations: [{ windowId: 'w1', amount: BigInt(600_000) }] });
+    });
+
     it('skips velocity windows with zero limits', async () => {
       mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
         makePolicy({

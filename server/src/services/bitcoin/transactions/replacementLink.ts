@@ -57,19 +57,50 @@ export const selectCandidateOutpoints = (
   utxos: Outpoint[]
 ): Outpoint[] => (inputs && inputs.length > 0 ? inputs : utxos);
 
-const findVerifiedReplacement = async (
+/**
+ * `Transaction.amount` is the SIGNED wallet-ledger delta, not the positive,
+ * fee-excluded external send amount that policy evaluation reserves:
+ * persistTransaction.ts stores `-(external + fee)` for a `sent` row (funds
+ * leaving the wallet) or `-fee` for a `consolidation` (no external
+ * recipient). This inverts that to recover the external amount a `sent`
+ * original's policy reservation was actually taken on; any other type
+ * (consolidation, or an unexpected match) has no external amount to
+ * subtract.
+ */
+const originalExternalAmount = (amount: bigint, fee: bigint | null, type: string): bigint => {
+  if (type !== 'sent') return BigInt(0);
+  const external = -amount - (fee ?? BigInt(0));
+  return external > BigInt(0) ? external : BigInt(0);
+};
+
+/**
+ * Verifies a claimed `replacesTxid` and resolves the original it names,
+ * with `amount` normalized to the original's positive, fee-excluded
+ * external send amount — the same basis policy usage reservation used for
+ * the original broadcast — so it can be subtracted to reserve only the
+ * incremental amount of a fee bump rather than double-reserving the full
+ * amount already held against the original
+ * (rbf-fee-bump-double-reserves-policy-usage-window). Exported for that
+ * caller; `assertReplacementLink` below uses it for its own pre-broadcast
+ * gate (which does not use `amount`).
+ */
+export const findVerifiedReplacement = async (
   walletId: string,
   replacesTxid: string,
   candidateOutpoints: Outpoint[],
   client: PrismaTxClient | undefined
-): Promise<{ id: string; label: string | null } | null> => {
+): Promise<{ id: string; label: string | null; amount: bigint } | null> => {
   const original = await findUnconfirmedTransactionForReplacement(replacesTxid, walletId, client);
   if (!original) return null;
 
   const originalOutpoints = await findInputOutpointsByTransactionId(original.id, client);
   if (!sharesAnyInput(candidateOutpoints, originalOutpoints)) return null;
 
-  return original;
+  return {
+    id: original.id,
+    label: original.label,
+    amount: originalExternalAmount(original.amount, original.fee, original.type),
+  };
 };
 
 /**

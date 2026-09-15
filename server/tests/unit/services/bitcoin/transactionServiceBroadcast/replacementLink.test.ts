@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
 import {
   assertReplacementLink,
+  findVerifiedReplacement,
   resolveReplacementLinkAfterBroadcast,
   selectCandidateOutpoints,
 } from '../../../../../src/services/bitcoin/transactions/replacementLink';
@@ -128,6 +129,74 @@ describe('assertReplacementLink', () => {
       .rejects.toMatchObject({
         message: expect.stringContaining('does not match an unconfirmed transaction'),
       });
+  });
+});
+
+describe('findVerifiedReplacement', () => {
+  beforeEach(() => {
+    resetPrismaMocks();
+  });
+
+  it('resolves the original with its NORMALIZED (positive, fee-excluded) external amount for a verified replacement', async () => {
+    // persistTransaction.ts stores a `sent` row's amount as
+    // -(external + fee) — here a 9000-sat external send with a 500-sat fee
+    // persists as amount: -9500n, fee: 500n. findVerifiedReplacement must
+    // invert that back to the external amount (9000n), not return the
+    // signed, fee-inclusive ledger value.
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-id', label: null, amount: -9500n, fee: 500n, type: 'sent',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+
+    await expect(findVerifiedReplacement(walletId, originalTxid, [sharedOutpoint], undefined))
+      .resolves.toEqual({ id: 'original-id', label: null, amount: 9000n });
+  });
+
+  it('resolves a consolidation original (no external recipient) to a zero replaced amount', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-id', label: null, amount: -500n, fee: 500n, type: 'consolidation',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+
+    await expect(findVerifiedReplacement(walletId, originalTxid, [sharedOutpoint], undefined))
+      .resolves.toEqual({ id: 'original-id', label: null, amount: 0n });
+  });
+
+  it('floors a null fee to zero when normalizing the external amount', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-id', label: null, amount: -9000n, fee: null, type: 'sent',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+
+    await expect(findVerifiedReplacement(walletId, originalTxid, [sharedOutpoint], undefined))
+      .resolves.toEqual({ id: 'original-id', label: null, amount: 9000n });
+  });
+
+  it('floors a degenerate external amount (fee exceeding the ledger delta) to zero', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-id', label: null, amount: -300n, fee: 500n, type: 'sent',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([sharedOutpoint]);
+
+    await expect(findVerifiedReplacement(walletId, originalTxid, [sharedOutpoint], undefined))
+      .resolves.toEqual({ id: 'original-id', label: null, amount: 0n });
+  });
+
+  it('resolves null when the original does not exist', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+
+    await expect(findVerifiedReplacement(walletId, originalTxid, [sharedOutpoint], undefined))
+      .resolves.toBeNull();
+  });
+
+  it('resolves null when no candidate outpoint shares an input with the original', async () => {
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      id: 'original-id', label: null, amount: -9500n, fee: 500n, type: 'sent',
+    });
+    mockPrismaClient.transactionInput.findMany.mockResolvedValue([unrelatedOutpoint]);
+
+    await expect(findVerifiedReplacement(walletId, originalTxid, [sharedOutpoint], undefined))
+      .resolves.toBeNull();
   });
 });
 

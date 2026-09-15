@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   reserveEnforcedUsage: vi.fn(),
   releasePolicyUsage: vi.fn(),
   audit: vi.fn(),
+  findVerifiedReplacement: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/addressRepository', () => ({
@@ -52,8 +53,17 @@ vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   validateSignedArtifact: mocks.validateSignedArtifact,
   findDraftBySigningIntent: mocks.findLinkedDraft,
 }));
-vi.mock('../../../src/services/bitcoin/transactions/broadcasting', () => ({
-  broadcastAndSave: mocks.broadcastAndSave,
+vi.mock('../../../src/services/bitcoin/transactions/broadcasting', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/services/bitcoin/transactions/broadcasting')>(
+    '../../../src/services/bitcoin/transactions/broadcasting',
+  );
+  return { ...actual, broadcastAndSave: mocks.broadcastAndSave };
+});
+vi.mock('../../../src/services/bitcoin/transactions/replacementLink', () => ({
+  findVerifiedReplacement: mocks.findVerifiedReplacement,
+  selectCandidateOutpoints: (inputs: unknown[] | undefined, utxos: unknown[]) => (
+    inputs && inputs.length > 0 ? inputs : utxos
+  ),
 }));
 vi.mock('../../../src/services/bitcoin/utils', () => ({
   getNetwork: () => ({
@@ -69,6 +79,7 @@ vi.mock('../../../src/services/bitcoin/utils', () => ({
 import router from '../../../src/api/transactions/broadcasting';
 import { errorHandler } from '../../../src/errors/errorHandler';
 import { InvalidInputError } from '../../../src/errors/ApiError';
+import { DefiniteBroadcastRejectionError } from '../../../src/services/bitcoin/transactions/broadcasting';
 
 const artifact = {
   walletId: 'wallet-1',
@@ -111,6 +122,7 @@ describe('transaction signing-intent broadcast route', () => {
     mocks.reserveEnforcedUsage.mockResolvedValue({ ok: true, reservations: [] });
     mocks.releasePolicyUsage.mockResolvedValue(undefined);
     mocks.audit.mockResolvedValue(undefined);
+    mocks.findVerifiedReplacement.mockResolvedValue(null);
     mocks.broadcastAndSave.mockResolvedValue({
       txid: artifact.txid,
       broadcasted: true,
@@ -358,6 +370,104 @@ describe('transaction signing-intent broadcast route', () => {
     expect(response.status).toBe(400);
   });
 
+  it('does not block an RBF broadcast under an exhausted daily limit when its amount does not exceed the original\'s', async () => {
+    // Simulates a daily spending_limit window that is already fully used:
+    // evaluatePolicies's internal rolling-window comparison would reject
+    // any additional (non-zero) incremental amount, but a verified
+    // fee-bump whose amount does not exceed the original it replaces
+    // reserves nothing incremental and so must pass. evaluatePolicies
+    // itself is still called with the FULL amount (an authorization
+    // threshold must not be weakened by reframing the bump as its delta)
+    // — only the replacement context distinguishes it.
+    const replacesTxid = '8'.repeat(64);
+    mocks.findVerifiedReplacement.mockResolvedValue({ id: 'original-id', label: null, amount: 9000n });
+    mocks.evaluatePolicies.mockImplementation(async (input: { isReplacementBump?: boolean }) => ({
+      allowed: input.isReplacementBump === true,
+    }));
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send({
+      ...body, replacesTxid,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.evaluatePolicies).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 9000n, replacedAmount: 9000n, isReplacementBump: true,
+    }));
+    expect(mocks.reserveEnforcedUsage).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 9000n, replacedAmount: 9000n, isReplacementBump: true,
+    }));
+    // findVerifiedReplacement must be given the transaction's own spent
+    // outpoints (from the signing-intent snapshot's inputs) as candidates —
+    // not an unrelated or empty set — or a wrong outpoint set would let a
+    // real bump silently fall back to being treated as a fresh broadcast.
+    expect(mocks.findVerifiedReplacement).toHaveBeenCalledWith(
+      'wallet-1',
+      replacesTxid,
+      [expect.objectContaining({ txid: '1'.repeat(64), vout: 0 })],
+      undefined,
+    );
+  });
+
+  it('reserves the full amount for a fresh broadcast even when replacesTxid does not verify', async () => {
+    const replacesTxid = '9'.repeat(64);
+    mocks.findVerifiedReplacement.mockResolvedValue(null);
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send({
+      ...body, replacesTxid,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.evaluatePolicies).toHaveBeenCalledWith(expect.objectContaining({ amount: 9000n }));
+    expect(mocks.reserveEnforcedUsage).toHaveBeenCalledWith({
+      walletId: 'wallet-1', userId: 'user-1', amount: 9000n,
+    });
+  });
+
+  it('blocks the broadcast when a policy usage reservation is lost (concurrent headroom already consumed)', async () => {
+    mocks.reserveEnforcedUsage.mockResolvedValue({ ok: false, reservations: [] });
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
+
+    expect(response.status).toBe(403);
+    expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('keeps a held reservation when the broadcast fails without a definite rejection', async () => {
+    mocks.reserveEnforcedUsage.mockResolvedValue({
+      ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
+    });
+    mocks.broadcastAndSave.mockRejectedValueOnce(new Error('outcome unknown'));
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
+
+    expect(response.status).toBe(500);
+    expect(mocks.releasePolicyUsage).not.toHaveBeenCalled();
+  });
+
+  it('releases held reservations when broadcastAndSave definitely rejects the transaction', async () => {
+    mocks.reserveEnforcedUsage.mockResolvedValue({
+      ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
+    });
+    mocks.broadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('rejected by node'));
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
+
+    expect(response.status).toBe(500);
+    expect(mocks.releasePolicyUsage).toHaveBeenCalledWith([{ windowId: 'w1', amount: BigInt(9000) }]);
+  });
+
+  it('does not fail broadcast handling when releasing a held reservation itself throws', async () => {
+    mocks.reserveEnforcedUsage.mockResolvedValue({
+      ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
+    });
+    mocks.broadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('rejected by node'));
+    mocks.releasePolicyUsage.mockRejectedValueOnce(new Error('release unavailable'));
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
+
+    expect(response.status).toBe(500);
+  });
+
   it('does not fail broadcast when asynchronous policy usage recording fails', async () => {
     mocks.recordUsage.mockRejectedValueOnce(new Error('usage unavailable'));
     const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
@@ -429,6 +539,30 @@ describe('transaction signing-intent broadcast route', () => {
     expect(response.status).toBe(200);
     expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
       replacesTxid,
+    }));
+  });
+
+  it('does not block a PSBT-route RBF broadcast under an exhausted daily limit when its amount does not exceed the original\'s', async () => {
+    // Same incremental-usage contract as the transaction-broadcast route
+    // (see the equivalent test above), exercised on the PSBT route — both
+    // handlers call the same reservePolicyUsage, but only one was covered
+    // before this test.
+    const replacesTxid = '8'.repeat(64);
+    mocks.findVerifiedReplacement.mockResolvedValue({ id: 'original-id', label: null, amount: 9000n });
+    mocks.evaluatePolicies.mockImplementation(async (input: { isReplacementBump?: boolean }) => ({
+      allowed: input.isReplacementBump === true,
+    }));
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/psbt/broadcast').send({
+      signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest, replacesTxid,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.evaluatePolicies).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 9000n, replacedAmount: 9000n, isReplacementBump: true,
+    }));
+    expect(mocks.reserveEnforcedUsage).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 9000n, replacedAmount: 9000n, isReplacementBump: true,
     }));
   });
 
