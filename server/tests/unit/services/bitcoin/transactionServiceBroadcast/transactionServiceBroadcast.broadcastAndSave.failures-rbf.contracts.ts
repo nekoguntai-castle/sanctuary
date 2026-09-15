@@ -6,6 +6,8 @@ import {
 } from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { describe, expect, it, type Mock } from 'vitest';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
+import { ApiError } from '../../../../../src/errors/ApiError';
+import { PreNetworkBroadcastRejectionError } from '../../../../../src/services/bitcoin/transactions/broadcasting';
 import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos } from '../../../../fixtures/bitcoin';
 import {
@@ -258,6 +260,35 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       expect(broadcastTransaction).not.toHaveBeenCalled();
       expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
       expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+    });
+
+    it('wraps a pre-network replacesTxid rejection as a PreNetworkBroadcastRejectionError carrying the original 400 mapping', async () => {
+      const nonExistentTxid = 'nonexistent-tx-marker-123456789012345678901234567890123456789012';
+      mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+
+      const metadata = {
+        recipient,
+        amount: 50000,
+        fee: 3000,
+        replacesTxid: nonExistentTxid,
+        utxos: [sharedOutpoint],
+        rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
+      };
+
+      let caught: unknown;
+      try {
+        await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(PreNetworkBroadcastRejectionError);
+      expect(caught).toBeInstanceOf(ApiError);
+      expect((caught as ApiError).statusCode).toBe(400);
+      expect((caught as Error).message).toBe(
+        'replacesTxid does not match an unconfirmed transaction sharing an input',
+      );
+      expect(broadcastTransaction).not.toHaveBeenCalled();
     });
 
     it('should reject a replacesTxid that exists and is unconfirmed but shares no input, BEFORE anything reaches the network', async () => {

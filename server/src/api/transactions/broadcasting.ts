@@ -24,7 +24,11 @@ import {
   type SigningIntentHandle,
   type ValidatedBroadcastArtifact,
 } from '../../services/bitcoin/signingIntent';
-import { broadcastAndSave, DefiniteBroadcastRejectionError } from '../../services/bitcoin/transactions/broadcasting';
+import {
+  broadcastAndSave,
+  DefiniteBroadcastRejectionError,
+  PreNetworkBroadcastRejectionError,
+} from '../../services/bitcoin/transactions/broadcasting';
 import { findVerifiedReplacement, selectCandidateOutpoints } from '../../services/bitcoin/transactions/replacementLink';
 import type {
   TransactionInputMetadata,
@@ -334,21 +338,24 @@ const auditFailure = async (req: WalletRequest, error: unknown): Promise<void> =
 /**
  * Release reservations after a failed broadcast — but ONLY when the failure
  * is a definite rejection (the node/network refused the transaction before
- * anything was accepted). broadcastAndSave can also throw after the
- * transaction was already accepted or recorded (markSigningIntentBroadcastAccepted
- * / persistTransaction) or when the outcome is unknown
- * (markSigningIntentBroadcastUnknown) — releasing the reservation in those
- * cases would let a spend that may have gone out stop counting against the
- * enforce-mode limit it was reserved against. Any other error therefore
- * keeps the reservation held: fail-safe means over-counting, never
- * under-counting, a real spend.
+ * anything was accepted) or a pre-network rejection (broadcastAndSave threw
+ * before the transaction ever reached the network — hardware capability, an
+ * intent claim conflict, an unverifiable replacesTxid). broadcastAndSave can
+ * also throw after the transaction was already accepted or recorded
+ * (markSigningIntentBroadcastAccepted / persistTransaction) or when the
+ * outcome is unknown (markSigningIntentBroadcastUnknown) — releasing the
+ * reservation in those cases would let a spend that may have gone out stop
+ * counting against the enforce-mode limit it was reserved against. Any other
+ * error therefore keeps the reservation held: fail-safe means over-counting,
+ * never under-counting, a real spend.
  */
 const releaseReservationsOnFailure = async (
   reservations: UsageReservation[],
   error: unknown,
 ): Promise<void> => {
   if (reservations.length === 0) return;
-  if (!(error instanceof DefiniteBroadcastRejectionError)) return;
+  if (!(error instanceof DefiniteBroadcastRejectionError)
+    && !(error instanceof PreNetworkBroadcastRejectionError)) return;
   try {
     await policyEvaluationEngine.releasePolicyUsage(reservations);
   } catch (releaseError) {

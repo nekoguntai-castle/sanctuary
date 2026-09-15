@@ -11,6 +11,7 @@ import {
   DefiniteBroadcastRejectionError,
   recalculateWalletBalances,
 } from '../blockchain';
+import { ApiError } from '../../../errors/ApiError';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
@@ -32,6 +33,29 @@ import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabili
 // rejection from an unknown-outcome failure without importing the blockchain
 // barrel directly.
 export { DefiniteBroadcastRejectionError };
+
+/**
+ * Thrown by broadcastAndSave for every failure raised BEFORE the transaction
+ * reaches the network (hardware capability, intent claim conflict, an
+ * unverifiable replacesTxid). Extends the original ApiError so errorHandler
+ * still maps it to the original status/code/body; gives callers (the
+ * broadcast route's releaseReservationsOnFailure) a marker distinct from
+ * DefiniteBroadcastRejectionError to recognize that nothing was transmitted,
+ * so any policy usage reserved before the call must be released the same as
+ * a definite node rejection would be.
+ */
+export class PreNetworkBroadcastRejectionError extends ApiError {
+  constructor(original: ApiError) {
+    super(original.message, original.statusCode, original.code, original.details, original.isOperational);
+  }
+}
+
+/** Wrap an ApiError raised before the network broadcast call as a pre-network
+ * rejection; anything else (an unexpected non-ApiError failure) is rethrown
+ * unchanged since there is no HTTP mapping to preserve. */
+const asPreNetworkRejection = (error: unknown): unknown => (
+  error instanceof ApiError ? new PreNetworkBroadcastRejectionError(error) : error
+);
 
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
 const MAX_PERSISTENCE_ATTEMPTS = 3;
@@ -160,17 +184,22 @@ export async function broadcastAndSave(
   }
 ): Promise<BroadcastResult> {
   const { walletId, rawTx, txid } = artifact;
-  // Cover every network path before a broadcast claim or network side effect,
-  // including replay and reconciliation entry points.
-  await assertWalletHardwareCapabilityById(walletId, 'broadcast');
-  // Log which broadcast path we're taking
-  log.info('broadcastAndSave called', {
-    intentId: artifact.intent.intentId,
-    recipient: metadata.recipient,
-    draftId: metadata.draftId,
-  });
+  let claim: Awaited<ReturnType<typeof claimSigningIntentBroadcast>>;
+  try {
+    // Cover every network path before a broadcast claim or network side
+    // effect, including replay and reconciliation entry points.
+    await assertWalletHardwareCapabilityById(walletId, 'broadcast');
+    // Log which broadcast path we're taking
+    log.info('broadcastAndSave called', {
+      intentId: artifact.intent.intentId,
+      recipient: metadata.recipient,
+      draftId: metadata.draftId,
+    });
 
-  const claim = await claimSigningIntentBroadcast(artifact, metadata);
+    claim = await claimSigningIntentBroadcast(artifact, metadata);
+  } catch (error) {
+    throw asPreNetworkRejection(error);
+  }
   if (claim.status === 'complete') {
     return { txid, broadcasted: true, persistenceStatus: 'complete' };
   }
@@ -208,7 +237,7 @@ export async function broadcastAndSave(
           error: getErrorMessage(releaseError),
         });
       }
-      throw error;
+      throw asPreNetworkRejection(error);
     }
   }
 

@@ -7,6 +7,8 @@ import {
 } from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { expect, it, type Mock } from 'vitest';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
+import { ApiError, ForbiddenError } from '../../../../../src/errors/ApiError';
+import { PreNetworkBroadcastRejectionError } from '../../../../../src/services/bitcoin/transactions/broadcasting';
 import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos } from '../../../../fixtures/bitcoin';
 import { mockAssertWalletHardwareCapabilityById } from './transactionServiceBroadcastTestHarness';
@@ -29,6 +31,33 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       .rejects.toThrow('broadcast blocked');
     expect(mockAssertWalletHardwareCapabilityById)
       .toHaveBeenCalledWith(walletId, 'broadcast');
+    expect(broadcastTransaction).not.toHaveBeenCalled();
+  });
+
+  it('wraps a pre-network hardware-capability ApiError rejection as a PreNetworkBroadcastRejectionError carrying the original mapping', async () => {
+    mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+      new ForbiddenError('Hardware wallet broadcast is temporarily unavailable'),
+    );
+    const metadata = {
+      network: broadcastNetwork,
+      recipient,
+      amount: 50_000,
+      fee: 1_000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex: '00',
+    };
+
+    let caught: unknown;
+    try {
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(PreNetworkBroadcastRejectionError);
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).statusCode).toBe(403);
+    expect((caught as Error).message).toBe('Hardware wallet broadcast is temporarily unavailable');
     expect(broadcastTransaction).not.toHaveBeenCalled();
   });
   it('should persist an accepted validated transaction', async () => {

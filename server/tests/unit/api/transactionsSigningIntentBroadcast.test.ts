@@ -79,7 +79,10 @@ vi.mock('../../../src/services/bitcoin/utils', () => ({
 import router from '../../../src/api/transactions/broadcasting';
 import { errorHandler } from '../../../src/errors/errorHandler';
 import { InvalidInputError } from '../../../src/errors/ApiError';
-import { DefiniteBroadcastRejectionError } from '../../../src/services/bitcoin/transactions/broadcasting';
+import {
+  DefiniteBroadcastRejectionError,
+  PreNetworkBroadcastRejectionError,
+} from '../../../src/services/bitcoin/transactions/broadcasting';
 
 const artifact = {
   walletId: 'wallet-1',
@@ -456,6 +459,22 @@ describe('transaction signing-intent broadcast route', () => {
     expect(mocks.releasePolicyUsage).toHaveBeenCalledWith([{ windowId: 'w1', amount: BigInt(9000) }]);
   });
 
+  it('releases held reservations and preserves the 400 mapping when broadcastAndSave rejects before the network call (e.g. an unverifiable replacesTxid)', async () => {
+    mocks.reserveEnforcedUsage.mockResolvedValue({
+      ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
+    });
+    mocks.broadcastAndSave.mockRejectedValueOnce(
+      new PreNetworkBroadcastRejectionError(
+        new InvalidInputError('replacesTxid does not match an unconfirmed transaction sharing an input', 'replacesTxid'),
+      ),
+    );
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
+
+    expect(response.status).toBe(400);
+    expect(mocks.releasePolicyUsage).toHaveBeenCalledWith([{ windowId: 'w1', amount: BigInt(9000) }]);
+  });
+
   it('does not fail broadcast handling when releasing a held reservation itself throws', async () => {
     mocks.reserveEnforcedUsage.mockResolvedValue({
       ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
@@ -564,6 +583,24 @@ describe('transaction signing-intent broadcast route', () => {
     expect(mocks.reserveEnforcedUsage).toHaveBeenCalledWith(expect.objectContaining({
       amount: 9000n, replacedAmount: 9000n, isReplacementBump: true,
     }));
+  });
+
+  it('releases held reservations from the PSBT route when broadcastAndSave rejects before the network call', async () => {
+    mocks.reserveEnforcedUsage.mockResolvedValue({
+      ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
+    });
+    mocks.broadcastAndSave.mockRejectedValueOnce(
+      new PreNetworkBroadcastRejectionError(
+        new InvalidInputError('replacesTxid does not match an unconfirmed transaction sharing an input', 'replacesTxid'),
+      ),
+    );
+
+    const response = await request(app).post('/api/v1/wallets/wallet-1/psbt/broadcast').send({
+      signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.releasePolicyUsage).toHaveBeenCalledWith([{ windowId: 'w1', amount: BigInt(9000) }]);
   });
 
   describe('intent-linked draft resolution', () => {
