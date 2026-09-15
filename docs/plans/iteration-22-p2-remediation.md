@@ -20,7 +20,7 @@
 
 ## Goal, non-goals, assumptions
 
-Goal: fix the eleven blocking findings with a failing regression test per finding, in ten independently mergeable phases, without schema migrations.
+Goal: fix the twelve blocking findings with a failing regression test per finding, in eleven independently mergeable phases, without schema migrations.
 
 Non-goals: a generic frontend cancellation layer; redesigning the dead-letter store; changing Electrum transport behavior beyond the connect-timeout cleanup; changing what policy usage a fresh (non-RBF) broadcast reserves.
 
@@ -163,3 +163,23 @@ One PR per phase, serial merges on `main`, each rebased only when it is next; ta
 ## Completion criteria
 
 All twelve findings resolved in run state with a target-CI-verified attempt record; the scheduled Release Candidate Validation gate is green on a `main` SHA that includes Phase 11; a fresh full scrub (iteration 23) of the resulting main SHA finds zero P0–P2.
+
+## Delivery record
+
+All eleven phases merged serially on `main` (squash merges), each with target-branch CI verified:
+
+| Phase | PR | Merge SHA | Notes / verified divergences |
+| --- | --- | --- | --- |
+| 2 | #1161 | `aca4a818` | Second commit also fixes `summarizeNotificationResults`, which zeroed `channelsNotified` for a partial-failure result and would have made BullMQ retry and duplicate-send; regenerated notifications call graph committed. |
+| 3 | #1162 | `224e2c04` | `Transaction.amount` is the signed, fee-inclusive ledger delta, so `findVerifiedReplacement` normalizes a `sent` original back to its positive external amount (`originalExternalAmount`, zero for consolidations, floored at zero) before the delta is computed; PSBT broadcast route covered as well as the transaction route. |
+| 1 | #1163 | `d72dc510` | As planned; fee-policy mutation score 90.12 with scoped `serverFeePolicy` evidence validated after re-pinning. |
+| 4 | #1164 | `2a2bae50` | `add()` keeps its string return (its callers use fresh random ids and never meet a tombstone); `isRepairSweep` is a sixth positional argument to `addExhaustedJob`; a real-Redis integration case covers both branches. |
+| 5 | #1165 | `0b252f85` | `finishSocketConnection` also discards a late base socket without touching `this.socket`; a fourth test covers a stale TLS handshake after a second connect replaced the socket (harness exposes the debug logger mock). |
+| 6 | #1166 | `40f62e61` | As planned. |
+| 7 | #1167 | `91042179` | Stale connect tears down its service session only when the last action was a disconnect (`lastActionRef`), so a newer connect's session is never killed. Known follow-up (P3): service-level connect/disconnect are not serialized. |
+| 11 | #1168 | `f9e18582` | Added mid-drain: the scheduled Release Candidate Validation run 16685 on `2a2bae50` failed its live-shape replay because the driver did not trace the guarded restore from iteration 20; driver wraps `restoreUnspentByIds`, `driverSha256` re-sealed; proven by `workflow_dispatch` run 16727 on `f9e18582` (all jobs green). Merged after Phase 7 rather than directly after Phase 6 so the already-rebased Phase 7 branch was not re-rebased. |
+| 8 | #1169 | `093a485d` | Mirrors Ledger exactly: only `disconnect()` bumps the generation (a newer `connect()` does not), as in `ledgerAdapter.ts`. |
+| 9 | #1170 | `2115f697` | Reset on transaction change runs in an effect rather than at render time; stale responses are ignored by captured-id comparison. |
+| 10 | #1171 | `d014f883` | `useLoadingState` dropped for the fetch so a stale rejection cannot set the error through the shared helper; `loadError` and `declineReason` included in the synchronous render-time reset; regenerated frontend architecture doc committed. |
+
+Iteration-22 plan PR: #1160 (`f7108210`). Custody after delivery: no loop branches or worktrees remain.
