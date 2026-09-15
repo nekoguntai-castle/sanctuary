@@ -795,6 +795,7 @@ test('sealed fixture deterministically matches its manifest union and counts', f
   assert.equal(createHash('sha256').update(driverHelperSource).digest('hex'), sealed.driverHelperSha256);
   assert.match(driverSource.toString(), /emit\('phase_failed'.*elapsedMs:/s);
   assert.match(driverSource.toString(), /emit\('phase_budget_exceeded'.*elapsedMs:.*limitMs:/s);
+  assert.match(driverSource.toString(), /'restoreUnspentByIds'/);
   assert.deepEqual(sealed.maxAxes.inputCounts, [24999, 25000, 25001]);
   assert.equal(sealed.maxAxes.inputLimit, 25000);
   assert.equal(sealed.maxAxes.outputLimit, 25000);
@@ -811,6 +812,25 @@ test('sealed fixture deterministically matches its manifest union and counts', f
     sealed.maxCombinedFixtureProgressSequence,
     MAX_COMBINED_FIXTURE_PROGRESS_SEQUENCE,
   );
+});
+
+test('driver wraps restoreUnspentByIds and attributes restored UTXO ids to the active mutation', async function driverWrapsRestoreUnspentByIds() {
+  const driverRequire = createRequire(new URL('../../scripts/perf/wallet-sync-persistence-driver.cjs', import.meta.url));
+  const { wrapUtxoRepository } = driverRequire('../../scripts/perf/wallet-sync-persistence-driver.cjs');
+  let activeMutation;
+  const fakeUtxoRepository = {
+    createMany: async () => 0,
+    batchUpdateByIds: async () => 0,
+    markManyAsSpent: async () => 0,
+    restoreUnspentByIds: async (restores) => restores.length,
+  };
+  wrapUtxoRepository(fakeUtxoRepository, () => activeMutation);
+  activeMutation = { utxoIds: [], utxoKeys: [] };
+  await fakeUtxoRepository.restoreUnspentByIds(
+    [{ id: 'replay-seeded-valid-utxo', confirmations: 1, blockHeight: 800000 }],
+    100,
+  );
+  assert.ok(activeMutation.utxoIds.includes('replay-seeded-valid-utxo'));
 });
 
 test('combined maximum fixture has one coherent transaction identity and shape', function combinedMaximumFixtureIsCoherent() {

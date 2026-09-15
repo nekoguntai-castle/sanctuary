@@ -14,7 +14,8 @@
   `hardwarewallet-hook-connect-resurrects-after-disconnect`,
   `trezor-adapter-connect-disconnect-interleave-resurrects-session`,
   `ai-label-suggestion-cross-transaction-stale-overwrite`,
-  `pending-transfers-panel-cross-resource-stale-overwrite`.
+  `pending-transfers-panel-cross-resource-stale-overwrite`,
+  `wallet-sync-replay-driver-untraced-guarded-restore`.
 - P3 backlog (outside the blocking fix set; `advanced-batch-noninteger-amount-bigint-crash` is folded into Phase 1 because it is the same request schema): `transfer-ownership-modal-search-out-of-order`, `electrum-pool-single-mode-acquire-typeerror-after-reconnect-exhaustion`, `block-height-indicator-stale-network-overwrite`, `telegram-settings-global-toggle-out-of-order-revert`, `check-provider-leaks-detection-guard-is-line-scoped-not-match-scoped`, `check-shared-deps-orphaned-not-wired-into-any-gate`, `release-candidate-jobs-missing-timeout-minutes`, `server-stryker-fee-policy-createBatchTransaction-second-stale-range`, `check-supply-chain-locks-docker-only-image-scanner`, plus the earlier P3 items in run state.
 
 ## Goal, non-goals, assumptions
@@ -145,10 +146,20 @@ Failing tests first: hook/component test — mount A, switch to B, resolve B the
 
 Verification: frontend gates.
 
+## Phase 11 — replay driver traces the guarded UTXO restore (release gate, added mid-drain)
+
+Finding: `wallet-sync-replay-driver-untraced-guarded-restore` (P2, found 2026-09-15 while draining; blocks the scheduled Release Candidate Validation gate on `main`).
+
+Evidence: scheduled `release-candidate.yml` run 16685 on `main` 2a2bae50 — job "Wallet Sync Live Shape Replay" fails with `RC11 replay process failed`; the RC11 stream (evidence artifact 87199, `rc11-live.jsonl` sequence 110) shows exactly one `utxo_reconciliation` mutation with `utxoIds: []` and `utxoKeys: []`, then the driver exits 1 after pass 1. `scripts/perf/wallet-sync-persistence-driver.cjs:128-141` wraps only `createMany`, `batchUpdateByIds` and `markManyAsSpent` on `utxoRepository`; since 10b60b1f4a (iteration 20 Phase 1, merged 2026-09-14 16:32Z) `reconcileUtxos.ts:255-261` writes restores through the new `utxoRepository.restoreUnspentByIds`, so the fixture's seeded spent-then-listed UTXO (`wallet-sync-persistence-fixture.cjs:155`, `spent: true`) is restored untraced and `assertUtxoMutationSet` (`driver:446-450`) throws `UTXO reconciliation/insert mutation identities were not both observed`. The last green scheduled run (16350) was on d6e11d81, before that merge; every scheduled run since fails the same way. The driver's sha256 is sealed in `scripts/perf/wallet-sync-persistence-manifest.json` (`driverSha256`, checked by `wallet-sync-high-fanout-replay.mjs:992-996` and `tests/ci/wallet-sync-persistence-replay-controller.test.mjs:794`).
+
+Contract: the driver wraps `restoreUnspentByIds` alongside the other three UTXO writers and attributes each restore's `id` to `activeMutation.utxoIds`, so the pass-one reconciliation mutation carries the seeded UTXO's identity again; no other driver behavior changes. `driverSha256` in the sealed manifest is updated to the new driver digest (only that field; `migrationTreeSha256`, fixture and helper digests are untouched — no Prisma migration, no fixture change). The controller test's sealed-digest assertion stays and must pass against the re-sealed manifest.
+
+Failing tests first: a controller-test case that loads the driver's repository-wrapping under a fake `repositories.utxoRepository` exposing `restoreUnspentByIds`, runs a wrapped mutation that calls it with `[{ id: 'seeded' }]`, and asserts the recorded mutation's `utxoIds` includes `seeded` (red on `origin/main`: the wrapper list omits the method); plus a source-level assertion that the wrapped-name list includes `restoreUnspentByIds`. Verification: `node --test tests/ci/wallet-sync-persistence-replay-controller.test.mjs`, root `typecheck:tests`, lint, `check-large-files`, lizard, `git diff --check`; the sealed digest test proves the manifest matches the new driver. Deployed proof is the next scheduled Release Candidate Validation run on `main` after merge (or a `workflow_dispatch` of it); record its run id in the delivery record.
+
 ## Delivery
 
-One PR per phase, serial merges on `main`, each rebased only when it is next; target-branch CI verified after each merge; branches deleted only after the merge-commit ancestry gate. PR order: 3, 1, 2, 4, 5, 6 (server), 7, 8, 9, 10 (frontend). No container rebuild until the loop's clean pass (`--deploy final`).
+One PR per phase, serial merges on `main`, each rebased only when it is next; target-branch CI verified after each merge; branches deleted only after the merge-commit ancestry gate. PR order: 3, 1, 2, 4, 5, 6 (server), 11 (release gate, inserted when found), 7, 8, 9, 10 (frontend). No container rebuild until the loop's clean pass (`--deploy final`).
 
 ## Completion criteria
 
-All eleven findings resolved in run state with a target-CI-verified attempt record; a fresh full scrub (iteration 23) of the resulting main SHA finds zero P0–P2.
+All twelve findings resolved in run state with a target-CI-verified attempt record; the scheduled Release Candidate Validation gate is green on a `main` SHA that includes Phase 11; a fresh full scrub (iteration 23) of the resulting main SHA finds zero P0–P2.

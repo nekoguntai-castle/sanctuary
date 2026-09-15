@@ -4,6 +4,35 @@ const { readFileSync, writeFileSync, unlinkSync } = require('node:fs');
 const { readdir } = require('node:fs/promises');
 const { createRequire } = require('node:module');
 const { resolve } = require('node:path');
+
+// Pure UTXO-repository instrumentation, extracted so it can be exercised
+// directly (e.g. from a test) without triggering this script's side-effecting
+// top-level setup below. `module.exports` plus the `require.main` guard let a
+// caller `require()` this file to reach `wrapUtxoRepository` while the script
+// still runs exactly as before when invoked directly (`require.main ===
+// module` is true in that case, so the guard is a no-op).
+function wrapUtxoRepository(utxoRepository, getActiveMutation) {
+  for (const name of ['createMany', 'batchUpdateByIds', 'markManyAsSpent', 'restoreUnspentByIds']) {
+    const original = utxoRepository[name];
+    if (typeof original !== 'function') continue;
+    utxoRepository[name] = async (...args) => {
+      const activeMutation = getActiveMutation();
+      if (activeMutation) {
+        if (name === 'createMany') {
+          activeMutation.utxoKeys.push(...(args[0] || []).map(row => `${row.txid}:${row.vout}`));
+        } else if (name === 'batchUpdateByIds' || name === 'restoreUnspentByIds') {
+          activeMutation.utxoIds.push(...(args[0] || []).map(row => row.id));
+        } else {
+          activeMutation.utxoIds.push(...(args[0] || []));
+        }
+      }
+      return original(...args);
+    };
+  }
+}
+module.exports = { wrapUtxoRepository };
+if (require.main !== module) return;
+
 const IMAGE_ROOT = resolve(process.env.SANCTUARY_REPLAY_IMAGE_ROOT || '/app');
 const COMPILED_ROOT = resolve(IMAGE_ROOT, 'dist/server/src');
 const fixturePath = resolve(process.env.SANCTUARY_REPLAY_FIXTURE || '/replay/wallet-sync-persistence-fixture.cjs');
@@ -125,20 +154,7 @@ function instrumentProductionModules() {
     };
   }
   const utxoRepository = repositories.utxoRepository;
-  for (const name of ['createMany', 'batchUpdateByIds', 'markManyAsSpent']) {
-    const original = utxoRepository[name];
-    if (typeof original !== 'function') continue;
-    utxoRepository[name] = async (...args) => {
-      if (activeMutation) {
-        if (name === 'createMany') {
-          activeMutation.utxoKeys.push(...(args[0] || []).map(row => `${row.txid}:${row.vout}`));
-        } else if (name === 'batchUpdateByIds') {
-          activeMutation.utxoIds.push(...(args[0] || []).map(row => row.id));
-        } else activeMutation.utxoIds.push(...(args[0] || []));
-      }
-      return original(...args);
-    };
-  }
+  wrapUtxoRepository(utxoRepository, () => activeMutation);
   const draftRepository = repositories.draftRepository;
   if (typeof draftRepository.deleteManyByIds === 'function') {
     const originalDeleteDrafts = draftRepository.deleteManyByIds;
