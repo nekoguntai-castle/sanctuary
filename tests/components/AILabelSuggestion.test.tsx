@@ -5,7 +5,7 @@
  * Covers rendering states, user interactions, and error handling.
  */
 
-import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 
 // Mock the AI API
@@ -446,14 +446,68 @@ describe('AILabelSuggestion', () => {
         expect(screen.getByText('First suggestion')).toBeInTheDocument();
       });
 
-      // Note: The component doesn't automatically reset on transaction change
-      // This tests current behavior - user needs to dismiss and re-request
       const newTransaction = { ...mockTransaction, id: 'tx-new-001' };
 
       rerender(<AILabelSuggestion transaction={newTransaction} />);
 
-      // Previous suggestion should still be visible (current behavior)
-      expect(screen.getByText('First suggestion')).toBeInTheDocument();
+      // Switching to a different transaction clears the previous suggestion.
+      expect(screen.queryByText('First suggestion')).not.toBeInTheDocument();
+      expect(screen.queryByText('AI Suggestion')).not.toBeInTheDocument();
+    });
+
+    it('should not display a stale suggestion for a transaction that resolves after switching away', async () => {
+      let resolveA!: (value: { suggestion: string }) => void;
+      mockSuggestLabel.mockImplementation(
+        () => new Promise(resolve => { resolveA = resolve; })
+      );
+
+      const { rerender } = render(
+        <AILabelSuggestion transaction={mockTransaction} />
+      );
+
+      // Request suggestion for transaction A, then switch to B before it resolves.
+      fireEvent.click(screen.getByText('Suggest with AI'));
+
+      const transactionB = { ...mockTransaction, id: 'tx-new-001' };
+      rerender(<AILabelSuggestion transaction={transactionB} />);
+
+      // A's request resolves late; flush the microtask queue so any (incorrect)
+      // state update from the stale request has a chance to land before we assert.
+      await act(async () => {
+        resolveA({ suggestion: 'Stale suggestion for A' });
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByText('Stale suggestion for A')).not.toBeInTheDocument();
+      expect(screen.queryByText('AI Suggestion')).not.toBeInTheDocument();
+      expect(screen.getByText('Suggest with AI')).toBeInTheDocument();
+    });
+
+    it('should not display a stale error for a transaction that rejects after switching away', async () => {
+      let rejectA!: (reason: Error) => void;
+      mockSuggestLabel.mockImplementation(
+        () => new Promise((_resolve, reject) => { rejectA = reject; })
+      );
+
+      const { rerender } = render(
+        <AILabelSuggestion transaction={mockTransaction} />
+      );
+
+      // Request suggestion for transaction A, then switch to B before it rejects.
+      fireEvent.click(screen.getByText('Suggest with AI'));
+
+      const transactionB = { ...mockTransaction, id: 'tx-new-001' };
+      rerender(<AILabelSuggestion transaction={transactionB} />);
+
+      // A's request rejects late; flush the microtask queue so any (incorrect)
+      // state update from the stale request has a chance to land before we assert.
+      await act(async () => {
+        rejectA(new Error('Test error'));
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByText(/Failed to get suggestion/)).not.toBeInTheDocument();
+      expect(screen.getByText('Suggest with AI')).toBeInTheDocument();
     });
   });
 
