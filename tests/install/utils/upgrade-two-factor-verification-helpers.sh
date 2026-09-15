@@ -456,7 +456,11 @@ reenroll_admin_two_factor_via_api() {
     fi
 
     local token enable_response
-    token=$(generate_upgrade_totp_code)
+    # "admin" -- login_as_upgrade_user above authenticated the same account,
+    # and the product's single-use step guard is keyed by account, not
+    # secret, so /auth/2fa/enable here must be tracked under the same key as
+    # that prior login even though this call mints from the NEW secret.
+    token=$(generate_upgrade_totp_code "admin")
     if [ -z "$token" ]; then
         log_error "Failed to generate TOTP token for re-enrollment"
         return 1
