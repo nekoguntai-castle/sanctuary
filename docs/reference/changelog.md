@@ -9,14 +9,160 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Track the release-candidate canary drivers in `scripts/release/canary/`. They
-  previously existed only on the deployment host, so the probe's activation
-  timeout could not be reviewed, tested or diffed.
-
 ### Changed
 
 ### Fixed
 
+## [0.8.72] - 2026-09-16
+
+No upgrade-path-relevant changes since v0.8.71: this release adds no Prisma
+migration, no Compose or service-topology change, and no new runtime
+environment variable. The TOTP single-use fix below is covered by the existing
+upgrade browser-smoke and 2FA preservation assertions.
+
+### Added
+
+- Track the release-candidate canary drivers in `scripts/release/canary/`. They
+  previously existed only on the deployment host, so the probe's activation
+  timeout could not be reviewed, tested or diffed.
+- Track the ownership TOTP step-guard test in the lifecycle callsite inventory,
+  and refuse non-test database targets at every integration-DB entry point.
+
+### Changed
+
+- Pin `uint8array-tools` 0.0.10 so Node-side transaction parsing is linear, and
+  preflight hex raw-transaction weight before handing it to bitcoinjs.
+- Bound the HTTP metrics path label so unbounded request paths cannot grow the
+  Prometheus label set.
+- Gate `.tsx` files in the lizard complexity check.
+
+### Fixed
+
+#### Sending, RBF, CPFP and batching
+
+- RBF drafts are change-aware end to end, derive replacement linkage from a
+  structured `replacesTxid` instead of the memo, guard that linkage with a
+  compare-and-swap, and refuse a replacement whose fee does not exceed the
+  original.
+- CPFP resolves the parent output and destination server-side, and batch and
+  CPFP transactions honour frozen and draft-locked UTXOs, spend the whole
+  pinned UTXO set, and respect the confirmation threshold.
+- RBF, CPFP and batch user-input failures (recipient addresses, integer
+  amounts, change adjustment) map to 400/404 responses instead of 500s.
+- `psbt/create` validates the recipient address, hex PSBT imports check the
+  magic and reject odd-length hex, decoy change never emits sub-dust outputs,
+  and pending fee rates are computed from virtual size.
+- Send-max and subtract-fees honour the confirmation and draft-lock
+  spendability filters; the broadcast has its own operation lease, locks the
+  signing controls while in flight, always reports and refreshes after a
+  server-accepted broadcast, and gets the transaction-broadcast timeout.
+- A signing attempt always releases the USB transport it opened, QR signing
+  surfaces a PSBT combine failure instead of dropping collected signatures, and
+  the send flow ignores superseded review-address and privacy-analysis
+  responses and keeps the scanning output index aligned when an earlier output
+  is removed.
+
+#### Vault policy and approvals
+
+- Spending-limit and velocity usage is reserved atomically before broadcast,
+  RBF replacements reserve only the incremental usage, and reservations are
+  released when a broadcast is rejected before reaching the network.
+- Enforce-mode time-delay policies fail closed and are no longer treated as
+  approval quorums; specific-quorum requests resolve against the live policy
+  threshold and enforce specific-approver and all-quorum membership.
+- Approval requests resolve only while still pending, and the draft status is
+  derived correctly after an owner override.
+
+#### Wallet sync, Electrum and UTXOs
+
+- Sync never un-spends a locally spent UTXO on a listing alone, confirmation
+  refresh never rewrites spent state, restores are guarded and traced in the
+  release replay driver, and the confirmation-refresh lock is held until a
+  timed-out writer settles.
+- Electrum re-arms reconnect when resubscribe fails after a successful connect,
+  destroys a socket that connects after its attempt settled, lets
+  `disconnect()` cancel an in-flight connect, treats a non-positive
+  `estimatefee` as no estimate, and leaves invalid `listunspent` batch items
+  absent instead of empty.
+- Destructive wallet and network resyncs and balance recalculation require edit
+  access; sync results and spinners are scoped to the requested network.
+
+#### Hardware wallets
+
+- Trezor and generic hardware-wallet connects are generation-guarded so a
+  stale connect cannot resurrect a disconnected device, in-flight connects are
+  cancelled on disconnect, adapter handles are released on failure, and Trezor
+  derives the coin from the BIP44 coin type instead of a path substring.
+- Device import reports a total failure when no parsed account could be added.
+
+#### Notifications, webhooks and push
+
+- Telegram draft and AI-insight notifications report real per-send outcomes,
+  per-channel delivery failures are recorded when other channels succeed, and
+  push lookup and provider failures are reported instead of full success.
+- Webhooks compare `minAmountSats` against the transaction magnitude, retire
+  outstanding deliveries when an endpoint is repointed, and guard replay resets
+  against in-flight attempts.
+- Dead-letter entries that are oversized are truncated instead of dropped, and
+  tombstone-suppressed writes are reported with tombstones cleared on fresh
+  failures.
+- Mobile push registration accepts a null `deviceName` and bounds its length.
+
+#### Authentication, admin and settings
+
+- A TOTP code is single-use via a `RevokedToken` marker, with no migration.
+- The React Query cache is cleared on every logout path, and the wallet access
+  cache is invalidated after an ownership transfer.
+- Backup validate/restore authenticates before parsing the 200 MB body, a
+  legacy backup that would restore nothing is rejected, and the backup-complete
+  reminder shows after a backup and clears on dismiss.
+- Deleting a user who is the sole member of a wallet is refused; the
+  UsersGroups create-user form resets and group creation is single-flight.
+- Node config saves keep the stored proxy password when the masked value is
+  submitted; autopilot and Telegram PATCH bodies merge onto the stored settings
+  inside the atomic preferences update; a failed preference save is reported.
+- Autopilot surfaces a settings load failure instead of writing back defaults.
+- Labels enforce the shared length bounds and nullable description on the
+  backend schemas.
+
+#### Frontend state scoping
+
+- Draft lists, pending transfers, AI label suggestions, wallet webhooks, wallet
+  Telegram saves, session transcripts, and the LabelManager draft are scoped to
+  the mounted wallet, resource, or session, so a stale response can no longer
+  land on a different one.
+- Draft deletes apply against the current list, the create-label mutation
+  resets when the form is cancelled, the operation error clears on retry, and
+  transaction filters reset when the wallet changes.
+- A superseded wallet refresh is a no-op instead of a failure, only the latest
+  price refresh response is applied, UTXO stats load once per wallet on the
+  Stats tab, and captured device-list, AI-toggle and label-create errors are
+  rendered.
+- The create-wallet wizard re-clamps the quorum to the selected signers and
+  gates review on a valid pair; the network card surfaces server
+  add/update/delete/toggle/reorder failures.
+- WebSocket reconnect backoff resets only after a stable connection, so it
+  survives accept-then-close.
+
+#### Backend and infrastructure
+
+- The worker initialises the encryption key before registering jobs.
+- Route-specific body parsers match paths with a trailing slash or case
+  variant; legacy testnet is normalised inside `getStatus`; the UTXO route uses
+  the shared confirmation-threshold default; telemetry consumers and block
+  explorers honour the active network identity.
+- Maintenance applies the VACUUM statement timeout PostgreSQL accepts and pins
+  it to one connection, restoring the configured default afterwards.
+- The gateway bounds the mobile permission check with the backend request
+  timeout.
+- Symlinked ESM CLIs detect direct execution by resolved path instead of
+  silently no-oping, and the backup script keeps the operator project identity
+  under the cleanup coordinator.
+- CI: renamed files are classified by their old path, coverage shard retries
+  survive a crashed attempt's partial report directory, the compose e2e subject
+  waits for the migration container, the install-test summary fails when any
+  job failed on non-release runs, and the upgrade e2e waits for a fresh TOTP
+  step before minting the next 2FA code.
 - Correct the v0.8.71 changelog heading date to the date its tag was created.
 
 ## [0.8.71] - 2026-09-09
