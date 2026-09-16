@@ -1,6 +1,7 @@
 # Iteration 23 — P2 remediation plan
 
 - Iteration: 23 (bug-scrub-loop run `bug-scrub-loop-20260912t210000z-p2-backlog`)
+- Status: complete — all fifteen phases merged (see Delivery record); the run was stopped by the user after this iteration, so no iteration-24 scrub follows
 - Source target-branch SHA: `99da288d63b2525c156ec5319b9c6d47cf40bf10` (main after PR #1172; last code merge `d014f883`)
 - Scope: whole repository
 - Blocking findings (coordinator-reconfirmed at source, all P2):
@@ -227,3 +228,29 @@ Accepted (applied above): Phase 0 mischaracterized `check-lifecycle-callsites.mj
 Deferred (not applied — out of scope of this plan's coordinator-locked finding list, flagged for iteration-24 triage): `scripts/ownership/check-lifecycle-callsites.mjs` itself guards its own `main()` call at line 1359 with `process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)` — `path.resolve` does not resolve symlinks the way `fileURLToPath(import.meta.url)` does, so this script may carry the same silent-no-op class of bug as the six Phase 0 CLIs. It is not in the coordinator-reconfirmed finding list and pulling it in would expand Phase 0's scope beyond the six named files; note it for the next scrub instead of editing Phase 0.
 
 All other evidence citations (file:line spans across Phases 1, 4, 5, 6, 9, 12, 13) were independently re-verified against source at `99da288d63b2525c156ec5319b9c6d47cf40bf10` and are accurate as written; no further changes found. Full pass 2 over the updated file yielded no new verified actionable comment — plan is clean.
+
+## Delivery record
+
+All fifteen phases merged serially on `main` (squash merges), each with target-branch CI verified, in the order the rebased heads went green (P1 first):
+
+| Phase | PR | Merge SHA | Notes / verified divergences |
+| --- | --- | --- | --- |
+| 5 | #1175 | `223b6df1` | As planned. |
+| 2 | #1176 | `d0c72b20` | As planned (route-order change; `largeJsonBodyRoutes` untouched). |
+| 0 (P1) | #1177 | `e9edfb2d` | Shared helper `scripts/lib/is-main-module.mjs` across all 41 direct-execution guards (not only the six named CLIs); two extra commits add `scripts/lib` to the offline-bundle authority tree (`scripts/offline/create-bundle.sh`) and the upgrade-backup subject tree allowlist, which the install unit tests enforce; the two new `tests/ci` fixtures are registered in `config/resource-lifecycle-callsites.json`. Its Upgrade Baseline lane exposed the same-step TOTP collision that became Phase 14. |
+| 3 | #1178 | `0e6356d8` | As planned; Semgrep runner stall retriggered with recorded evidence. |
+| 7 | #1179 | `45071b49` | `markDeliveryPendingForReplay` returns `{ count, delivery }`; a lost race surfaces as `ConflictError` (`delivery_state_conflict`). |
+| 14 | #1181 | `d026dfb1` | Added mid-drain via plan amendment #1180 (`860307dd`). Step tracking is keyed by account rather than by secret (re-enroll mints a new secret inside the same step), the state file is `TOTP_STEP_STATE_FILE` so phases in separate shells share it, and the wait log goes to stderr because `generate_totp_code` runs under command substitution. Hotfix #1184 (`e5a81543`) registers the new unit test's temp fixture in the lifecycle callsite inventory, which the Architecture lane requires for every host cleanup site. |
+| 8 | #1182 | `65fac1a0` | As planned. |
+| 1 | #1183 | `15e494b7` | `PreNetworkBroadcastRejectionError` marks the pre-network path; Jade image-retirement postcondition failure (host-side) retriggered with recorded evidence. |
+| 4 | #1185 | `fea680d9` | `pendingConnectAbort` cancels the in-flight connect; as planned otherwise. |
+| 6 | #1186 | `a6729d29` | As planned. |
+| 9 | #1187 | `f6d417f0` | Quorum clamp is a `useMemo` over the selected signers; review gated on a valid pair. |
+| 12 | #1188 | `0bb017c6` | All three classifiers run `--no-renames`. |
+| 13 | #1189 | `6629f6e6` | Crashed attempt's report directory is renamed aside (`stash_attempt_coverage_artifacts`, `mv`) instead of deleted: a recursive delete in `scripts/` is an unclassified host lifecycle site that the ownership contract refuses to exempt. |
+| 11 | #1190 | `a6a5ed9d` | `run-compose-e2e-subject.sh` delegates to `wait-for-migration.sh`; a second commit registers the new test's temp-fixture cleanup in `config/resource-lifecycle-callsites.json` (the Quality "CI classifier tests" lane fails on any unregistered host cleanup site). |
+| 10 | #1174 | `2a8d51af` | `scripts/ci/compute-test-summary-status.sh` sources `scripts/ci/provider-context.sh` (`ci_step_summary_file`) because the provider-leak gate forbids raw `GITHUB_*` names under `scripts/`; the summary job gained a pinned checkout step because it used to be an inline `run:` and the job container has no repo without one (first rebased run failed exit 127 on the script path); an earlier Architecture failure on `7e6a9dbf` (`deployment-lifecycle.test.sh`, host-side, passes on the exact tree locally) was retriggered through the serial rebase with the four evidence items recorded on the PR. |
+
+Iteration-23 plan PRs: #1173 (`b6208408`), #1180 (`860307dd`). Custody after delivery: no loop branches or worktrees remain.
+
+The bug-scrub-loop run stops after this iteration at the user's request; iteration 24's fresh scrub was not started, so the completion criterion above (a clean iteration-24 scrub) is deliberately unmet. Candidates parked for the next run: label name trim asymmetry between backend and gateway, the provenance-pinned guard in `generate-address-key-corpora.mjs`, and the P3 backlog in run state.
