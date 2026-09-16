@@ -1,7 +1,7 @@
 # Bug-scrub loop 2026-09-16 — iteration 1 remediation plan
 
 - Iteration: 1 (bug-scrub-loop run `bug-scrub-loop-20260916t1812z-whole-repo`)
-- Status: reviewed — converged after four recursive review passes by two independent reviewers (see Review notes); implementation starts with Phase 1
+- Status: complete — all seven phases merged (#1197, #1199, #1200, #1201, #1202, #1203, #1204; see Delivery record) plus the interposed changelog fix #1198; iteration 2 rescrub follows on the resulting main SHA
 - Source target-branch SHA: `e22a9aaa01b28e0172db6894e4ed75b6f7cf86d0` (main after PR #1195, release prep v0.8.72; all push runs green)
 - Scope: whole repository (locked at run start)
 - Blocking findings (coordinator-reconfirmed at source; one P1, six P2):
@@ -153,6 +153,7 @@ One PR per phase on `codex/bug-scrub/it1-<phase-slug>` branches, serial merges o
 | 4 | #1201 | `165ff861` | Head `c5780682` (code `6c4671e3` + `4b324eb9` pinning the unknown-BIP48-script fallback; rebased on `6316ded2`). `createSingleAccount` derives purpose and script type from `parseDerivationPath`. Required checks green; target-main CI verified. |
 | 5 | #1202 | `d91f76cb` | Head `d92887ed` (code `6039eea5` + two test-layout commits: the four new race tests moved to a top-level describe with a nested `turnFor` declaration because lizard fuses a describe without one into a single function and the Code Quality lane counts warnings against main). Required checks green after the layout fix; target-main CI verified. |
 | 6 | #1203 | `b2a4ff44` | Head `15d7b76b` (code `2f669576`; rebased on `d91f76cb`). One `resetSensitiveFields` helper shared by closeDisable, closeBackupCodes and completeBackupCodes; new renderHook controller test red on origin/main. Required checks green; target-main CI verified. |
+| 7 | #1204 | `66974760` | Head `59c347ca` (code `dd824995`; the two terminal-logout contracts moved to `AppNotificationContext.terminal-logout.contracts.tsx` so the persistence/expiration registration stays under lizard's nloc=200; rebased on `b2a4ff44`). Provider subscribes to `onTerminalLogout` and clears state, closes the panel, and removes the stored entry. Required checks green; target-main CI verified. |
 
 ## Completion criteria
 
