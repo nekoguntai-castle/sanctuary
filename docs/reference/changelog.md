@@ -803,6 +803,7 @@ upgrade browser-smoke and 2FA preservation assertions.
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
 [Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...HEAD
+[0.8.72]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...v0.8.72
 [0.8.71]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.70...v0.8.71
 [0.8.70]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.69...v0.8.70
 [0.8.69]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.68...v0.8.69
