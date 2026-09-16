@@ -178,6 +178,12 @@ export function clampNumber(value: string, min: number, max = Number.MAX_SAFE_IN
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
+export function clampFloat(value: string, min: number, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export function formatTimestamp(value: string | null): string {
   if (!value) return '-';
   const date = new Date(value);

@@ -128,6 +128,20 @@ describe('WalletWebhookForm', () => {
       retryBackoffMultiplier: 1.5,
     }));
 
+    fireEvent.change(screen.getByLabelText('Backoff'), {
+      target: { value: '0.5' },
+    });
+    expect(onFormChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      retryBackoffMultiplier: 1,
+    }));
+
+    fireEvent.change(screen.getByLabelText('Backoff'), {
+      target: { value: '' },
+    });
+    expect(onFormChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      retryBackoffMultiplier: 1,
+    }));
+
     fireEvent.change(screen.getByLabelText('Initial retry delay ms'), {
       target: { value: '0' },
     });

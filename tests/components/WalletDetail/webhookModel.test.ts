@@ -10,6 +10,7 @@ import {
 } from '../../../shared/constants/webhooks';
 import {
   buildWebhookInput,
+  clampFloat,
   clampNumber,
   DEFAULT_EVENTS,
   defaultForm,
@@ -150,6 +151,13 @@ describe('wallet webhook form model', () => {
     expect(clampNumber('0', 1, 25)).toBe(1);
     expect(clampNumber('26', 1, 25)).toBe(25);
     expect(clampNumber('2.6', 1, 25)).toBe(3);
+
+    expect(clampFloat('not-a-number', 1, 25)).toBe(1);
+    expect(clampFloat('', 1)).toBe(1);
+    expect(clampFloat('0.5', 1, 25)).toBe(1);
+    expect(clampFloat('26', 1, 25)).toBe(25);
+    expect(clampFloat('2.6', 1, 25)).toBe(2.6);
+    expect(clampFloat('1.5', 1)).toBe(1.5);
 
     expect(formatTimestamp(null)).toBe('-');
     expect(formatTimestamp('not-a-date')).toBe('not-a-date');

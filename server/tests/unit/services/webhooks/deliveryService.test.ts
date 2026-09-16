@@ -365,6 +365,37 @@ describe('webhook delivery service', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('never schedules a retry delay below initialDelayMs for a sub-1 stored backoff multiplier', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
+    const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
+    const delivery = makeDelivery({
+      attemptCount: 2,
+      nextAttemptAt: new Date('2026-05-22T00:00:00.000Z'),
+      endpoint: makeEndpoint({
+        maxAttempts: 5,
+        // A stored 0.5 multiplier would shrink attempt 3's delay below initialDelayMs
+        // if the floor in getRetryConfig were not applied.
+        retryConfig: { initialDelayMs: 10_000, maxDelayMs: 1_000_000, backoffMultiplier: 0.5 },
+        url: 'https://93.184.216.34/webhook',
+      }),
+    });
+    mockFindDeliveryById.mockResolvedValueOnce(delivery);
+    mockClaimDeliveryAttempt.mockResolvedValueOnce(delivery);
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('network timeout'));
+    mockMarkDeliveryFailed.mockResolvedValueOnce(delivery);
+    mockQueueWebhookDeliveryNotification.mockResolvedValueOnce(true);
+
+    await expect(sendWebhookDelivery(delivery.id, 3)).resolves.toEqual({
+      success: false,
+      error: 'network timeout',
+    });
+
+    const call = mockMarkDeliveryFailed.mock.calls[0][0] as { nextAttemptAt: Date };
+    const delayMs = call.nextAttemptAt.getTime() - new Date('2026-05-22T00:00:00.000Z').getTime();
+    expect(delayMs).toBeGreaterThanOrEqual(10_000);
+  });
+
   it('re-enqueues due rows without changing their eligibility first', async () => {
     const { recoverDueWebhookDeliveries } = await import('../../../../src/services/webhooks/deliveryService');
     mockListDueDeliveries.mockResolvedValueOnce([

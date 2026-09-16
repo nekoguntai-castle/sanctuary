@@ -337,6 +337,18 @@ describe('webhook core', () => {
     });
   });
 
+  it('floors the backoff multiplier at 1, falling back to the default below the floor', () => {
+    const shrinking = makeEndpoint({ retryConfig: { backoffMultiplier: 0.5 } });
+    const zero = makeEndpoint({ retryConfig: { backoffMultiplier: 0 } });
+    const atFloor = makeEndpoint({ retryConfig: { backoffMultiplier: 1 } });
+    const aboveFloor = makeEndpoint({ retryConfig: { backoffMultiplier: 1.5 } });
+
+    expect(getRetryConfig(shrinking).backoffMultiplier).toBe(2);
+    expect(getRetryConfig(zero).backoffMultiplier).toBe(2);
+    expect(getRetryConfig(atFloor).backoffMultiplier).toBe(1);
+    expect(getRetryConfig(aboveFloor).backoffMultiplier).toBe(1.5);
+  });
+
   it('matches endpoint filters for direction, amount, and confirmations', async () => {
     const event = makeEvent();
 

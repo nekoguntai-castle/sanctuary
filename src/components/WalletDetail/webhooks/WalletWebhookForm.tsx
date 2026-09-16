@@ -11,6 +11,7 @@ import {
   WEBHOOK_VALUATION_MODE_REQUIRED,
 } from '@sanctuary/shared/constants/webhooks';
 import {
+  clampFloat,
   clampNumber,
   DEFAULT_HMAC_CONFIG,
   inputClassName,
@@ -183,7 +184,7 @@ function AdvancedWebhookFields({
             min={1}
             step={0.1}
             value={form.retryBackoffMultiplier}
-            onChange={(event) => update('retryBackoffMultiplier', Number(event.target.value))}
+            onChange={(event) => update('retryBackoffMultiplier', clampFloat(String(event.target.value), 1))}
             className={inputClassName}
           />
         </label>

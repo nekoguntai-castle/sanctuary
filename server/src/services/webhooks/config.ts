@@ -23,7 +23,7 @@ export function getRetryConfig(endpoint: WebhookEndpoint): Required<WebhookRetry
   return {
     initialDelayMs: getPositiveNumber(retryConfig.initialDelayMs, 30_000),
     maxDelayMs: getPositiveNumber(retryConfig.maxDelayMs, 30 * 60_000),
-    backoffMultiplier: getPositiveNumber(retryConfig.backoffMultiplier, 2),
+    backoffMultiplier: getNumberAtLeast(retryConfig.backoffMultiplier, 1, 2),
   };
 }
 
@@ -47,4 +47,8 @@ function getOptionalNumber(value: unknown): number | undefined {
 
 function getPositiveNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function getNumberAtLeast(value: unknown, minimum: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= minimum ? value : fallback;
 }
