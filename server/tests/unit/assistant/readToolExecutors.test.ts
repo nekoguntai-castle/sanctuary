@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANONICAL_ADDRESS_COORDINATE_VERSION } from '@sanctuary/shared/constants/walletPolicy';
+import { Prisma } from '../../../src/generated/prisma/client';
 
 const mocks = vi.hoisted(() => ({
   assistantReadRepository: {
@@ -391,9 +392,12 @@ describe('assistant read-tool executors', () => {
       fees: { count: 2, sumFee: '12', averageFee: '6' },
     });
 
+    // Mixed runtime shapes: a `::bigint`-cast row arrives as a real bigint, while an uncast
+    // numeric aggregate arrives as a Prisma.Decimal. Both must accumulate as integers, never
+    // via string concatenation (the pre-fix result here was "0100" / "0100-25").
     mocks.transactionRepository.getBucketedBalanceDeltas.mockResolvedValue([
       { bucket: '2026-04-25', amount: 100n },
-      { bucket: '2026-04-26', amount: -25n },
+      { bucket: '2026-04-26', amount: new Prisma.Decimal(-25) },
     ]);
 
     const history = await assistantReadToolRegistry.execute(

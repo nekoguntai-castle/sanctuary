@@ -59,6 +59,14 @@ function periodUnitDays(unit: PeriodUnit): number {
   }
 }
 
+// Balance-history aggregates are declared `bigint` but Postgres SUM() widens to `numeric`,
+// which Prisma deserializes as a Decimal unless the query casts the result back to `::bigint`.
+// Convert defensively at this seam so a corrupt/undeclared aggregate type fails loudly instead
+// of silently string-concatenating during accumulation.
+function toSatoshiBigInt(value: bigint | number | string | { toString(): string }): bigint {
+  return typeof value === 'bigint' ? value : BigInt(String(value));
+}
+
 function toFeeAggregateDto(fees: {
   _count: { id: number };
   _sum: { fee: bigint | number | null };
@@ -163,10 +171,11 @@ export const balanceHistoryTool: AssistantReadToolDefinition<typeof balanceHisto
 
     let cumulativeFromStart = BigInt(0);
     const history = buckets.map(bucket => {
-      cumulativeFromStart += bucket.amount;
+      const deltaSats = toSatoshiBigInt(bucket.amount);
+      cumulativeFromStart += deltaSats;
       return {
         bucket: bucket.bucket,
-        deltaSats: bucket.amount.toString(),
+        deltaSats: deltaSats.toString(),
         cumulativeDeltaSats: cumulativeFromStart.toString(),
       };
     });

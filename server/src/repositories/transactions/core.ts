@@ -311,7 +311,7 @@ export async function getBucketedBalanceDeltas(
     case 'hour':
       return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
         SELECT date_trunc('hour', "blockTime") AS bucket,
-               COALESCE(SUM("amount"), 0) AS amount
+               COALESCE(SUM("amount"), 0)::bigint AS amount
         FROM "transactions"
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
@@ -322,7 +322,7 @@ export async function getBucketedBalanceDeltas(
     case 'day':
       return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
         SELECT date_trunc('day', "blockTime") AS bucket,
-               COALESCE(SUM("amount"), 0) AS amount
+               COALESCE(SUM("amount"), 0)::bigint AS amount
         FROM "transactions"
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
@@ -333,7 +333,7 @@ export async function getBucketedBalanceDeltas(
     case 'week':
       return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
         SELECT date_trunc('week', "blockTime") AS bucket,
-               COALESCE(SUM("amount"), 0) AS amount
+               COALESCE(SUM("amount"), 0)::bigint AS amount
         FROM "transactions"
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
@@ -344,7 +344,7 @@ export async function getBucketedBalanceDeltas(
     case 'month':
       return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
         SELECT date_trunc('month', "blockTime") AS bucket,
-               COALESCE(SUM("amount"), 0) AS amount
+               COALESCE(SUM("amount"), 0)::bigint AS amount
         FROM "transactions"
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
