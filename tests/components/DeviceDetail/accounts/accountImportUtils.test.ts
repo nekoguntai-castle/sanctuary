@@ -209,5 +209,94 @@ describe('accountImportUtils', () => {
         xpub: '',
       });
     });
+
+    it('derives purpose and script type from the parsed derivation path, not substring matching', () => {
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-84-account-1',
+          derivationPath: "m/84'/0'/1'",
+        })
+      ).toEqual({
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/0'/1'",
+        xpub: 'xpub-84-account-1',
+      });
+
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-84-coin-1',
+          derivationPath: "m/84'/1'/0'",
+        })
+      ).toEqual({
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/1'/0'",
+        xpub: 'xpub-84-coin-1',
+      });
+
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-48-nested-account-2',
+          derivationPath: "m/48'/0'/2'/1'",
+        })
+      ).toEqual({
+        purpose: 'multisig',
+        scriptType: 'nested_segwit',
+        derivationPath: "m/48'/0'/2'/1'",
+        xpub: 'xpub-48-nested-account-2',
+      });
+
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-49',
+          derivationPath: "m/49'/0'/0'",
+        })
+      ).toEqual({
+        purpose: 'single_sig',
+        scriptType: 'nested_segwit',
+        derivationPath: "m/49'/0'/0'",
+        xpub: 'xpub-49',
+      });
+
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-44',
+          derivationPath: "m/44'/0'/0'",
+        })
+      ).toEqual({
+        purpose: 'single_sig',
+        scriptType: 'legacy',
+        derivationPath: "m/44'/0'/0'",
+        xpub: 'xpub-44',
+      });
+
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-86',
+          derivationPath: "m/86'/0'/0'",
+        })
+      ).toEqual({
+        purpose: 'single_sig',
+        scriptType: 'taproot',
+        derivationPath: "m/86'/0'/0'",
+        xpub: 'xpub-86',
+      });
+
+      // A BIP-48 path whose script index is not 1 or 2 parses as an unknown
+      // script type; the import keeps today's native_segwit fallback rather
+      // than failing the import, and stays classified as multisig.
+      expect(
+        createSingleAccount({
+          xpub: 'xpub-48-unknown-script',
+          derivationPath: "m/48'/0'/0'/3'",
+        })
+      ).toEqual({
+        purpose: 'multisig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/48'/0'/0'/3'",
+        xpub: 'xpub-48-unknown-script',
+      });
+    });
   });
 });

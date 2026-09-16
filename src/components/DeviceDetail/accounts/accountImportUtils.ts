@@ -7,7 +7,9 @@
 import {
   DeviceAccountPurpose,
   WalletScriptType,
+  isWalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import type { DeviceAccount as ParsedDeviceAccount } from '../../../services/deviceParsers';
 import type { Device } from '../../../types';
 
@@ -103,20 +105,20 @@ export function parseFileContent(
  * Create a single ParsedDeviceAccount from a parse result that has an xpub
  * but no multi-account array.
  *
- * BIP-48 defines script type indices in the derivation path: m/48'/coin'/account'/script'
- * Script type index: /1' = nested_segwit (P2SH-P2WSH), /2' = native_segwit (P2WSH)
+ * Purpose and script type are derived from the parsed derivation path
+ * components (not substring matching on the raw string, which misclassifies
+ * paths whose coin type or account index happens to equal a script-type
+ * digit, e.g. m/84'/0'/1' or m/84'/1'/0').
  */
 export function createSingleAccount(
   parseResult: { xpub?: string; derivationPath?: string }
 ): ParsedDeviceAccount {
+  const parsed = parseDerivationPath(parseResult.derivationPath);
   return {
-    purpose: parseResult.derivationPath?.includes("48'")
-      ? DeviceAccountPurpose.MULTISIG
-      : DeviceAccountPurpose.SINGLE_SIG,
-    scriptType: parseResult.derivationPath?.includes("/2'")
-      ? WalletScriptType.NATIVE_SEGWIT
-      : parseResult.derivationPath?.includes("/1'")
-      ? WalletScriptType.NESTED_SEGWIT
+    purpose:
+      parsed.purpose === 48 ? DeviceAccountPurpose.MULTISIG : DeviceAccountPurpose.SINGLE_SIG,
+    scriptType: isWalletScriptType(parsed.scriptType)
+      ? parsed.scriptType
       : WalletScriptType.NATIVE_SEGWIT,
     derivationPath: parseResult.derivationPath || '',
     xpub: parseResult.xpub || '',
