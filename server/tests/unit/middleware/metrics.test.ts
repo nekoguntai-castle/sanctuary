@@ -52,7 +52,12 @@ vi.mock('../../../src/observability/metrics', () => ({
   normalizePath: mockNormalizePath,
 }));
 
-import { metricsMiddleware, metricsHandler, responseTimeMiddleware } from '../../../src/middleware/metrics';
+import {
+  metricsMiddleware,
+  metricsHandler,
+  responseTimeMiddleware,
+  resetHttpPathLabelCache,
+} from '../../../src/middleware/metrics';
 
 describe('Metrics Middleware', () => {
   let req: any;
@@ -61,6 +66,7 @@ describe('Metrics Middleware', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetHttpPathLabelCache();
 
     req = {
       method: 'GET',
@@ -171,11 +177,28 @@ describe('Metrics Middleware', () => {
         middleware(req, res, next);
         res.end();
 
-        expect(mockInc).toHaveBeenCalledWith(
-          expect.objectContaining({
-            status: '404',
-          })
-        );
+        // A 404 is labeled /:unmatched regardless of the requested path,
+        // decided at response time (the path was /api/v1/wallets on entry).
+        expect(mockInc).toHaveBeenCalledWith({
+          method: 'GET',
+          path: '/:unmatched',
+          status: '404',
+        });
+      });
+
+      it('should label a rejected request on a never-served path as /:other', () => {
+        const middleware = metricsMiddleware();
+        req.path = '/api/v99/anything';
+        res.statusCode = 400;
+
+        middleware(req, res, next);
+        res.end();
+
+        expect(mockInc).toHaveBeenCalledWith({
+          method: 'GET',
+          path: '/:other',
+          status: '400',
+        });
       });
 
       it('should record POST method', () => {

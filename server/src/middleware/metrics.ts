@@ -53,6 +53,89 @@ const DEFAULT_EXCLUDE_PATHS = [
 ];
 
 /**
+ * Hard bound on the number of distinct normalized path label values this
+ * process will ever emit on `sanctuary_http_*` series. The current route
+ * table is well under 300 templates, so 500 leaves generous headroom for
+ * legitimate growth while still bounding a client that probes many distinct
+ * unrecognized paths. A 404 response never consumes a slot here — it always
+ * collapses to `/:unmatched` before this cap is consulted (see
+ * decideRequestPathLabel).
+ */
+export const MAX_DISTINCT_HTTP_PATH_LABELS = 500;
+
+const seenPathLabels = new Set<string>();
+let capWarningLogged = false;
+
+/**
+ * Bounds the number of distinct path label values this process will ever
+ * emit. A path is admitted to the cache only by a non-error response: a
+ * request that was rejected before or during routing (version 400/410,
+ * CSRF 403, rate limit 429, auth 401 on a path nothing has ever served
+ * successfully) cannot spend a slot, so junk paths can neither fill the cap
+ * nor pollute it, while an already-admitted path keeps its real label for
+ * every status. Once the cap is reached, every further new path collapses
+ * into the shared `/:other` bucket so cardinality stops growing; a single
+ * warning is logged the first time the cap is hit.
+ */
+function boundPathLabelCardinality(path: string, admit: boolean): string {
+  if (seenPathLabels.has(path)) {
+    return path;
+  }
+  if (!admit) {
+    return '/:other';
+  }
+  if (seenPathLabels.size >= MAX_DISTINCT_HTTP_PATH_LABELS) {
+    if (!capWarningLogged) {
+      capWarningLogged = true;
+      log.warn('HTTP path label cardinality cap reached; further new paths collapse to /:other', {
+        cap: MAX_DISTINCT_HTTP_PATH_LABELS,
+      });
+    }
+    return '/:other';
+  }
+  seenPathLabels.add(path);
+  return path;
+}
+
+/**
+ * Test-only reset for the per-process distinct-path-label cache and its
+ * warning latch. Exported and called explicitly from tests rather than
+ * wired into MetricsService.reset(): registry.ts is imported by
+ * middleware/metrics.ts (via the observability/metrics barrel), so having
+ * registry.ts import back into middleware/metrics.ts to clear this cache
+ * would create a circular import.
+ */
+export function resetHttpPathLabelCache(): void {
+  seenPathLabels.clear();
+  capWarningLogged = false;
+}
+
+/**
+ * Decides the path label for a completed request. A 404 always collapses to
+ * `/:unmatched` regardless of the requested path — the only producer of a
+ * 404 for an unrouted path is notFoundHandler, and a routed handler that
+ * legitimately 404s for a missing object collapses too (method+status still
+ * distinguishes it, and its path was already normalized to `:id`). Every
+ * other response is run through the distinct-label cap, which only a
+ * successful (< 400) or server-error (>= 500) response may extend: a 5xx
+ * proves the request reached a real route (an unrouted path can only 404),
+ * so per-route error visibility survives a restart during an incident,
+ * while client-side rejections (400/401/403/410/429) on never-served paths
+ * cannot spend a slot.
+ */
+function decideRequestPathLabel(
+  statusCode: number,
+  rawPath: string,
+  pathNormalizer: (path: string) => string
+): string {
+  if (statusCode === 404) {
+    return '/:unmatched';
+  }
+  const admit = statusCode < 400 || statusCode >= 500;
+  return boundPathLabelCardinality(pathNormalizer(rawPath), admit);
+}
+
+/**
  * Metrics collection middleware
  *
  * Automatically records:
@@ -75,15 +158,8 @@ export function metricsMiddleware(options: MetricsMiddlewareOptions = {}): Reque
 
     const startTime = process.hrtime.bigint();
     const method = req.method;
-    const path = pathNormalizer(req.path);
-
-    // Record request size if enabled
-    if (includeSizes) {
-      const requestSize = parseInt(req.headers['content-length'] || '0', 10);
-      if (requestSize > 0) {
-        httpRequestSize.observe({ method, path }, requestSize);
-      }
-    }
+    const rawPath = req.path;
+    const requestSize = includeSizes ? parseInt(req.headers['content-length'] || '0', 10) : 0;
 
     // Intercept response to record metrics
     const originalEnd = res.end;
@@ -100,15 +176,22 @@ export function metricsMiddleware(options: MetricsMiddlewareOptions = {}): Reque
         }
       }
 
-      // Record metrics
+      // Record metrics — the path label is decided here, now that
+      // res.statusCode is known (see decideRequestPathLabel).
       const duration = Number(process.hrtime.bigint() - startTime) / 1e9; // Convert to seconds
       const status = String(res.statusCode);
+      const path = decideRequestPathLabel(res.statusCode, rawPath, pathNormalizer);
 
       httpRequestDuration.observe({ method, path, status }, duration);
       httpRequestsTotal.inc({ method, path, status });
 
-      if (includeSizes && responseSize > 0) {
-        httpResponseSize.observe({ method, path, status }, responseSize);
+      if (includeSizes) {
+        if (requestSize > 0) {
+          httpRequestSize.observe({ method, path }, requestSize);
+        }
+        if (responseSize > 0) {
+          httpResponseSize.observe({ method, path, status }, responseSize);
+        }
       }
 
       // Call original end

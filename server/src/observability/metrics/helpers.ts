@@ -16,20 +16,53 @@ import {
   electrumServerWeight,
 } from './electrumMetrics';
 
+const UUID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NUMERIC_SEGMENT = /^\d+$/;
+const BITCOIN_ADDRESS_SEGMENT = /^(1|3|bc1)[a-zA-HJ-NP-Z0-9]{25,62}$/;
+const TXID_SEGMENT = /^[a-f0-9]{64}$/i;
+
+/**
+ * A short safe token: printable ASCII letters/digits and a small set of URL
+ * path punctuation, bounded in length. Anything outside this shape (percent
+ * encoding, unicode, whitespace, or an over-long segment) is not a
+ * recognizable route template piece and is collapsed to `:other` below.
+ */
+const SAFE_SEGMENT = /^[A-Za-z0-9._~-]{1,64}$/;
+
+/**
+ * Normalizes one path segment for metrics labels: known dynamic shapes
+ * (UUID, numeric id, Bitcoin address, tx hash) become their placeholder;
+ * any other segment that isn't a short safe token collapses to `:other` so
+ * it cannot mint unbounded label cardinality.
+ */
+function normalizeSegment(segment: string): string {
+  if (segment === '') {
+    return segment;
+  }
+  if (UUID_SEGMENT.test(segment) || NUMERIC_SEGMENT.test(segment)) {
+    return ':id';
+  }
+  // A 64-hex segment is a transaction id even when it happens to start with
+  // an address prefix (e.g. `bc1…`), so the txid check runs first.
+  if (TXID_SEGMENT.test(segment)) {
+    return ':txid';
+  }
+  if (BITCOIN_ADDRESS_SEGMENT.test(segment)) {
+    return ':address';
+  }
+  if (SAFE_SEGMENT.test(segment)) {
+    return segment;
+  }
+  return ':other';
+}
+
 /**
  * Normalize path for metrics labels
- * Replaces dynamic path segments with placeholders
+ * Replaces dynamic path segments with placeholders, and bounds any other
+ * segment that is not a short safe token to `:other` (see normalizeSegment).
  */
 export function normalizePath(path: string): string {
-  return path
-    // Replace UUIDs
-    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ':id')
-    // Replace numeric IDs
-    .replace(/\/\d+/g, '/:id')
-    // Replace Bitcoin addresses (P2PKH, P2SH, Bech32)
-    .replace(/\/(1|3|bc1)[a-zA-HJ-NP-Z0-9]{25,62}/g, '/:address')
-    // Replace transaction hashes
-    .replace(/\/[a-f0-9]{64}/gi, '/:txid');
+  return path.split('/').map(normalizeSegment).join('/');
 }
 
 /**
