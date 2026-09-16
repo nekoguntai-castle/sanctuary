@@ -5,6 +5,7 @@
  */
 
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { LabelManager } from '../../src/components/LabelManager';
 import type { Label } from '../../src/types';
@@ -622,6 +623,365 @@ describe('LabelManager', () => {
       await waitFor(() => {
         expect(screen.getByText('Exchange')).toBeInTheDocument();
       });
+    });
+
+    it('should close and clear an open create draft when the wallet changes', async () => {
+      const { rerender } = render(<LabelManager walletId="wallet-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('New Label'));
+      expect(screen.getByText('Create New Label')).toBeInTheDocument();
+
+      const nameInput = screen.getByPlaceholderText('e.g., Exchange, Donation, Business');
+      fireEvent.change(nameInput, { target: { value: 'Draft for wallet 1' } });
+
+      rerender(<LabelManager walletId="wallet-2" />);
+
+      expect(screen.queryByDisplayValue('Draft for wallet 1')).not.toBeInTheDocument();
+      expect(screen.queryByText('Create New Label')).not.toBeInTheDocument();
+    });
+
+    it('should close an open edit draft when the wallet changes', async () => {
+      const { rerender } = render(<LabelManager walletId="wallet-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+
+      const editButtons = screen.getAllByTitle('Edit label');
+      fireEvent.click(editButtons[0]);
+      expect(screen.getByText('Edit Label')).toBeInTheDocument();
+
+      rerender(<LabelManager walletId="wallet-2" />);
+
+      expect(screen.queryByText('Edit Label')).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('Exchange')).not.toBeInTheDocument();
+    });
+
+    it('should close an open delete confirmation when the wallet changes', async () => {
+      const { rerender } = render(<LabelManager walletId="wallet-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+
+      const deleteButtons = screen.getAllByTitle('Delete label');
+      fireEvent.click(deleteButtons[0]);
+      expect(screen.getByTitle('Confirm delete')).toBeInTheDocument();
+
+      rerender(<LabelManager walletId="wallet-2" />);
+
+      expect(screen.queryByTitle('Confirm delete')).not.toBeInTheDocument();
+    });
+
+    it('should reset mutation error state exactly once when the wallet changes', async () => {
+      const { rerender } = render(<LabelManager walletId="wallet-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+
+      const createResetCallsBefore = mockCreateReset.mock.calls.length;
+      const updateResetCallsBefore = mockUpdateReset.mock.calls.length;
+      const deleteResetCallsBefore = mockDeleteReset.mock.calls.length;
+
+      rerender(<LabelManager walletId="wallet-2" />);
+
+      await waitFor(() => {
+        expect(mockCreateReset.mock.calls.length).toBe(createResetCallsBefore + 1);
+      });
+      expect(mockUpdateReset.mock.calls.length).toBe(updateResetCallsBefore + 1);
+      expect(mockDeleteReset.mock.calls.length).toBe(deleteResetCallsBefore + 1);
+
+      // An unchanged rerender must not call reset again.
+      rerender(<LabelManager walletId="wallet-2" />);
+      expect(mockCreateReset.mock.calls.length).toBe(createResetCallsBefore + 1);
+      expect(mockUpdateReset.mock.calls.length).toBe(updateResetCallsBefore + 1);
+      expect(mockDeleteReset.mock.calls.length).toBe(deleteResetCallsBefore + 1);
+    });
+
+    it('should not reset mutation state on mount, even under StrictMode effect replay', async () => {
+      const { rerender } = render(
+        <StrictMode>
+          <LabelManager walletId="wallet-1" />
+        </StrictMode>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+
+      expect(mockCreateReset).not.toHaveBeenCalled();
+      expect(mockUpdateReset).not.toHaveBeenCalled();
+      expect(mockDeleteReset).not.toHaveBeenCalled();
+
+      rerender(
+        <StrictMode>
+          <LabelManager walletId="wallet-2" />
+        </StrictMode>
+      );
+
+      await waitFor(() => {
+        expect(mockCreateReset).toHaveBeenCalledTimes(1);
+      });
+      expect(mockUpdateReset).toHaveBeenCalledTimes(1);
+      expect(mockDeleteReset).toHaveBeenCalledTimes(1);
+    });
+
+    it('should discard a save that fails after the wallet changed instead of showing its error', async () => {
+      let rejectSave: (error: Error) => void = () => {};
+      mockCreateMutateAsync.mockImplementation(
+        () => new Promise((_, reject) => { rejectSave = reject; })
+      );
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('New Label'));
+      fireEvent.change(screen.getByPlaceholderText('e.g., Exchange, Donation, Business'), {
+        target: { value: 'Stale draft' },
+      });
+      fireEvent.click(screen.getByText('Create Label'));
+      expect(mockCreateMutateAsync).toHaveBeenCalledWith({
+        walletId: 'wallet-1',
+        data: { name: 'Stale draft', color: expect.any(String), description: undefined },
+      });
+      const resetCallsBeforeSwitch = mockCreateReset.mock.calls.length;
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(mockCreateReset).toHaveBeenCalledTimes(resetCallsBeforeSwitch + 1);
+      });
+
+      rejectSave(new Error('Save failed'));
+
+      // The stale failure clears the mutation error again and never refreshes wallet 2.
+      await waitFor(() => {
+        expect(mockCreateReset).toHaveBeenCalledTimes(resetCallsBeforeSwitch + 2);
+      });
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+    });
+
+    it('should not refresh the new wallet when a save issued for the previous wallet succeeds', async () => {
+      let resolveSave: (value: unknown) => void = () => {};
+      mockCreateMutateAsync.mockImplementation(
+        () => new Promise((resolve) => { resolveSave = resolve; })
+      );
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('New Label'));
+      fireEvent.change(screen.getByPlaceholderText('e.g., Exchange, Donation, Business'), {
+        target: { value: 'Stale draft' },
+      });
+      fireEvent.click(screen.getByText('Create Label'));
+      const resetCallsBeforeSwitch = mockCreateReset.mock.calls.length;
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(mockCreateReset).toHaveBeenCalledTimes(resetCallsBeforeSwitch + 1);
+      });
+
+      resolveSave({ id: 'label-new' });
+
+      await waitFor(() => {
+        expect(mockCreateReset).toHaveBeenCalledTimes(resetCallsBeforeSwitch + 2);
+      });
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+    });
+
+    it('should not reset a newer in-flight save for the new wallet when the previous wallet save settles', async () => {
+      const pending: Array<{ reject: (error: Error) => void }> = [];
+      mockCreateMutateAsync.mockImplementation(
+        () => new Promise((_, reject) => { pending.push({ reject }); })
+      );
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+      // Save on wallet 1 (stays in flight).
+      fireEvent.click(screen.getByText('New Label'));
+      fireEvent.change(screen.getByPlaceholderText('e.g., Exchange, Donation, Business'), {
+        target: { value: 'Wallet 1 label' },
+      });
+      fireEvent.click(screen.getByText('Create Label'));
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+      // Save on wallet 2 while wallet 1's save is still in flight.
+      fireEvent.click(screen.getByText('New Label'));
+      fireEvent.change(screen.getByPlaceholderText('e.g., Exchange, Donation, Business'), {
+        target: { value: 'Wallet 2 label' },
+      });
+      fireEvent.click(screen.getByText('Create Label'));
+      expect(pending).toHaveLength(2);
+      const resetsBeforeStaleSettle = mockCreateReset.mock.calls.length;
+
+      // Wallet 1's save fails late: it must not reset the shared mutation
+      // (that would detach wallet 2's in-flight save).
+      pending[0].reject(new Error('Wallet 1 save failed'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockCreateReset.mock.calls.length).toBe(resetsBeforeStaleSettle);
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+
+      // Wallet 2's own failure still surfaces through the hook state path.
+      pending[1].reject(new Error('Wallet 2 save failed'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockCreateReset.mock.calls.length).toBe(resetsBeforeStaleSettle);
+      expect(screen.getByDisplayValue('Wallet 2 label')).toBeInTheDocument();
+    });
+
+    it('should still reset a stale edit when only a different kind of mutation is in flight for the new wallet', async () => {
+      let rejectUpdate: (error: Error) => void = () => {};
+      mockUpdateMutateAsync.mockImplementation(
+        () => new Promise((_, reject) => { rejectUpdate = reject; })
+      );
+      mockCreateMutateAsync.mockImplementation(() => new Promise(() => {}));
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+      // Edit on wallet 1 (stays in flight).
+      fireEvent.click(screen.getAllByTitle('Edit label')[0]);
+      fireEvent.click(screen.getByText('Save Changes'));
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+      // A create (different kind) is in flight for wallet 2.
+      fireEvent.click(screen.getByText('New Label'));
+      fireEvent.change(screen.getByPlaceholderText('e.g., Exchange, Donation, Business'), {
+        target: { value: 'Wallet 2 label' },
+      });
+      fireEvent.click(screen.getByText('Create Label'));
+      const updateResetsBefore = mockUpdateReset.mock.calls.length;
+      const createResetsBefore = mockCreateReset.mock.calls.length;
+
+      rejectUpdate(new Error('Wallet 1 update failed'));
+
+      // The update kind has no newer issue, so its stale error is reset;
+      // the in-flight create for wallet 2 is left untouched.
+      await waitFor(() => {
+        expect(mockUpdateReset.mock.calls.length).toBe(updateResetsBefore + 1);
+      });
+      expect(mockCreateReset.mock.calls.length).toBe(createResetsBefore);
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+    });
+
+    it('should discard an edit that fails after the wallet changed and reset only that mutation', async () => {
+      let rejectUpdate: (error: Error) => void = () => {};
+      mockUpdateMutateAsync.mockImplementation(
+        () => new Promise((_, reject) => { rejectUpdate = reject; })
+      );
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getAllByTitle('Edit label')[0]);
+      fireEvent.click(screen.getByText('Save Changes'));
+      expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+        walletId: 'wallet-1',
+        labelId: 'label-1',
+        data: { name: 'Exchange', color: '#6366f1', description: 'Exchange deposits' },
+      });
+      const updateResetsBeforeSwitch = mockUpdateReset.mock.calls.length;
+      const createResetsBeforeSwitch = mockCreateReset.mock.calls.length;
+      const deleteResetsBeforeSwitch = mockDeleteReset.mock.calls.length;
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(mockUpdateReset).toHaveBeenCalledTimes(updateResetsBeforeSwitch + 1);
+      });
+
+      rejectUpdate(new Error('Update failed'));
+
+      // Only the update mutation is reset by the stale settle; create/delete
+      // (possibly already in flight for wallet 2) are left alone.
+      await waitFor(() => {
+        expect(mockUpdateReset).toHaveBeenCalledTimes(updateResetsBeforeSwitch + 2);
+      });
+      expect(mockCreateReset).toHaveBeenCalledTimes(createResetsBeforeSwitch + 1);
+      expect(mockDeleteReset).toHaveBeenCalledTimes(deleteResetsBeforeSwitch + 1);
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+    });
+
+    it('should not refresh the new wallet when a delete issued for the previous wallet succeeds', async () => {
+      let resolveDelete: (value: unknown) => void = () => {};
+      mockDeleteMutateAsync.mockImplementation(
+        () => new Promise((resolve) => { resolveDelete = resolve; })
+      );
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getAllByTitle('Delete label')[0]);
+      fireEvent.click(screen.getByTitle('Confirm delete'));
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(mockDeleteReset).toHaveBeenCalledTimes(1);
+      });
+
+      resolveDelete(undefined);
+
+      await waitFor(() => {
+        expect(mockDeleteReset).toHaveBeenCalledTimes(2);
+      });
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+    });
+
+    it('should discard a delete that fails after the wallet changed', async () => {
+      let rejectDelete: (error: Error) => void = () => {};
+      mockDeleteMutateAsync.mockImplementation(
+        () => new Promise((_, reject) => { rejectDelete = reject; })
+      );
+      const { rerender } = render(
+        <LabelManager walletId="wallet-1" onLabelsChange={mockOnLabelsChange} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getAllByTitle('Delete label')[0]);
+      fireEvent.click(screen.getByTitle('Confirm delete'));
+      expect(mockDeleteMutateAsync).toHaveBeenCalledWith({ walletId: 'wallet-1', labelId: 'label-1' });
+
+      rerender(<LabelManager walletId="wallet-2" onLabelsChange={mockOnLabelsChange} />);
+      await waitFor(() => {
+        expect(mockDeleteReset).toHaveBeenCalledTimes(1);
+      });
+
+      rejectDelete(new Error('Delete failed'));
+
+      await waitFor(() => {
+        expect(mockDeleteReset).toHaveBeenCalledTimes(2);
+      });
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
     });
   });
 });
