@@ -151,6 +151,7 @@ One PR per phase on `codex/bug-scrub/it1-<phase-slug>` branches, serial merges o
 | 2 | #1199 | `8130ad27` | Head `c8d9fb21` (code `da4389c5` + `72b74f7f` moving the raw-parse marking after the parse guard and adding the raw-parse-path test; rebased on `032e4203`). Both persistence branches mark owned outputs used via `addressRepository.markManyAsUsedByAddress` inside the same transaction. Required checks green; target-main CI verified. |
 | 3 | #1200 | `6316ded2` | Head `2c442456` (code `c5b72889` + `d3fc56ec` adding `clampFloat` model tests; rebased on `8130ad27`). Server floors the multiplier at 1 (fallback 2); the Backoff field clamps through the float-preserving `clampFloat`. Required checks green; target-main CI verified. |
 | 4 | #1201 | `165ff861` | Head `c5780682` (code `6c4671e3` + `4b324eb9` pinning the unknown-BIP48-script fallback; rebased on `6316ded2`). `createSingleAccount` derives purpose and script type from `parseDerivationPath`. Required checks green; target-main CI verified. |
+| 5 | #1202 | `d91f76cb` | Head `d92887ed` (code `6039eea5` + two test-layout commits: the four new race tests moved to a top-level describe with a nested `turnFor` declaration because lizard fuses a describe without one into a single function and the Code Quality lane counts warnings against main). Required checks green after the layout fix; target-main CI verified. |
 
 ## Completion criteria
 

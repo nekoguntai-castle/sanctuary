@@ -121,24 +121,28 @@ export const useTwoFactorController = (
     setTwoFactorError(null);
   };
 
-  const closeDisable = () => {
-    setShowDisableModal(false);
-    setTwoFactorError(null);
+  const resetSensitiveFields = () => {
     setDisablePassword('');
     setDisableToken('');
+    setRegenerateToken('');
+    setTwoFactorError(null);
+  };
+
+  const closeDisable = () => {
+    setShowDisableModal(false);
+    resetSensitiveFields();
   };
 
   const closeBackupCodes = () => {
     setShowBackupCodesModal(false);
     setBackupCodes([]);
-    setTwoFactorError(null);
-    setDisablePassword('');
-    setRegenerateToken('');
+    resetSensitiveFields();
   };
 
   const completeBackupCodes = () => {
     setShowBackupCodesModal(false);
     setBackupCodes([]);
+    resetSensitiveFields();
   };
 
   return {
