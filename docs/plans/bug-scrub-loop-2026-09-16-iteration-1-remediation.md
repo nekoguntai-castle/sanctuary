@@ -146,6 +146,8 @@ One PR per phase on `codex/bug-scrub/it1-<phase-slug>` branches, serial merges o
 
 | Phase | PR | Merge commit | Notes |
 | --- | --- | --- | --- |
+| 1 | #1197 | `032e4203` | Head `55e31330` (code `8a495180` + `55e31330` registering the new integration spec in `scripts/ci/backend-integration-groups.sh`, which the CI classifier lane requires; rebased on `9a9ae3e4`). Required checks green after the rebase; target-main CI verified. Coverage: unit test mocks both runtime shapes (`100n` and `Prisma.Decimal`) so `toSatoshiBigInt`'s fast path stays covered. |
+| — (interposed) | #1198 | `9a9ae3e4` | Not a plan phase. Main's required Code Quality lane went red for every PR once the `v0.8.72` tag became visible: `tests/release/changelog-coverage.test.mjs` requires a footer comparison link per stable tag and the release-prep commit (#1195) added the `[0.8.72]` heading without it. Docs-only fix; recorded in run state as `changelog-0-8-72-missing-comparison-link`. |
 
 ## Completion criteria
 

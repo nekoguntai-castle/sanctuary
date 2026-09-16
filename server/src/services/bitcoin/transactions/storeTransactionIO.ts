@@ -9,9 +9,23 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork } from '../utils';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
+import { addressRepository } from '../../../repositories';
 import type { PrismaTxClient, TransactionInputMetadata, TransactionOutputMetadata } from './types';
 
 const log = createLogger('BITCOIN:SVC_TX_IO');
+
+/**
+ * Collect the wallet's own output addresses so they can be marked used,
+ * preventing the same change or consolidation address from being handed out
+ * again before the next sync observes the broadcast. An output is only ever
+ * `isOurs` when its address decoded and matched the wallet, so the list never
+ * contains an empty address.
+ */
+function collectOwnedOutputAddresses(
+  outputs: Array<{ address: string; isOurs: boolean }>
+): string[] {
+  return outputs.filter(output => output.isOurs).map(output => output.address);
+}
 
 /**
  * Store transaction inputs, either from provided metadata or by looking up UTXO records.
@@ -132,10 +146,12 @@ export async function storeTransactionOutputs(
       skipDuplicates: true,
     });
     log.debug(`Stored ${outputData.length} transaction outputs for ${txid}`);
+    await addressRepository.markManyAsUsedByAddress(walletId, collectOwnedOutputAddresses(outputData), tx);
     return;
   }
 
   // Fallback: parse outputs from the raw transaction
+  let ownedOutputAddresses: string[] = [];
   try {
     const txParsed = bitcoin.Transaction.fromHex(rawTx);
     const network = await tx.wallet.findUnique({
@@ -191,8 +207,12 @@ export async function storeTransactionOutputs(
         skipDuplicates: true,
       });
       log.debug(`Stored ${outputData.length} transaction outputs (from raw tx) for ${txid}`);
+      ownedOutputAddresses = collectOwnedOutputAddresses(outputData);
     }
   } catch (e) {
     log.warn(`Failed to parse outputs from raw transaction: ${e}`);
   }
+  // Outside the parse guard: a failed address write must surface (and roll the
+  // persistence transaction back) rather than be mislogged as a parse failure.
+  await addressRepository.markManyAsUsedByAddress(walletId, ownedOutputAddresses, tx);
 }

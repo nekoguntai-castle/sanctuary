@@ -13,6 +13,7 @@
  * See iteration-18 plan Phase 5 (rbf-memo-prefix-spoofs-transaction-replacement).
  */
 import './transactionServiceBroadcastTestHarness';
+import { createRawTxHex } from './transactionServiceBroadcastTestHarness';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockLogger = vi.hoisted(() => ({
@@ -235,5 +236,74 @@ describe('persistTransaction — RBF replacement linkage', () => {
         })],
       })
     );
+  });
+});
+
+describe('persistTransaction — marks the wallet\'s own output addresses used', () => {
+  beforeEach(() => {
+    resetPrismaMocks();
+    mockLogger.warn.mockClear();
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+  });
+
+  it('marks a change output used with one updateMany scoped to the wallet', async () => {
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      outputs: [
+        { address: 'bc1qrecipient', amount: 45000, outputType: 'recipient', isOurs: false },
+        { address: 'bc1qchange', amount: 4000, outputType: 'change', isOurs: true },
+      ],
+    });
+
+    expect(mockPrismaClient.address.updateMany).toHaveBeenCalledTimes(1);
+    expect(mockPrismaClient.address.updateMany).toHaveBeenCalledWith({
+      where: { walletId, address: { in: ['bc1qchange'] }, used: false },
+      data: { used: true },
+    });
+  });
+
+  it('includes the recipient address when the recipient is our own (consolidation)', async () => {
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      recipient: 'bc1qownrecipient',
+      outputs: [
+        { address: 'bc1qownrecipient', amount: 45000, outputType: 'consolidation', isOurs: true },
+      ],
+    });
+
+    expect(mockPrismaClient.address.updateMany).toHaveBeenCalledTimes(1);
+    expect(mockPrismaClient.address.updateMany).toHaveBeenCalledWith({
+      where: { walletId, address: { in: ['bc1qownrecipient'] }, used: false },
+      data: { used: true },
+    });
+  });
+
+  it('marks our output used when ownership is derived from the raw transaction (no output metadata)', async () => {
+    const ownedChange = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+    mockPrismaClient.address.findMany.mockResolvedValue([{ address: ownedChange }]);
+
+    await persistTransaction(walletId, newTxid, createRawTxHex([
+      { address: 'tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7', value: 45000 },
+      { address: ownedChange, value: 4000 },
+    ]), { ...baseMetadata, outputs: undefined });
+
+    expect(mockPrismaClient.address.updateMany).toHaveBeenCalledTimes(1);
+    expect(mockPrismaClient.address.updateMany).toHaveBeenCalledWith({
+      where: { walletId, address: { in: [ownedChange] }, used: false },
+      data: { used: true },
+    });
+  });
+
+  it('does not mark anything used when no output is our own', async () => {
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      outputs: [
+        { address: 'bc1qrecipient', amount: 45000, outputType: 'recipient', isOurs: false },
+      ],
+    });
+
+    expect(mockPrismaClient.address.updateMany).not.toHaveBeenCalled();
   });
 });
