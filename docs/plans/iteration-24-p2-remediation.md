@@ -1,7 +1,7 @@
 # Iteration 24 — P2 remediation plan
 
 - Iteration: 24 (bug-scrub-loop run `bug-scrub-loop-20260912t210000z-p2-backlog`, resumed 2026-09-16 with a user-imposed cap of two iterations: 24 and 25)
-- Status: implementing — Phase 2 merged (#1192), Phase 1 in PR (see Delivery record)
+- Status: complete — both phases merged (#1192, #1193; see Delivery record); iteration 25 rescrub follows
 - Source target-branch SHA: `14d822bc897cbcfab87908d17a205ce7a7b10743` (main after PR #1191; last code merge `2a8d51aff0`)
 - Scope: whole repository
 - Blocking findings (coordinator-reconfirmed at source, both P2):
@@ -68,7 +68,7 @@ One PR per phase on `codex/bug-scrub/iteration-24-<phase-slug>` branches, serial
 | Phase | PR | Merge commit | Notes |
 | --- | --- | --- | --- |
 | 2 | #1192 | `6441c1fd` | Head `4866d365`. Required checks green; non-required Verify Bitcoin Vectors run 17118 failed in `verify-trezor-emulator` with `no such image: …/sanctuary-ci-go@sha256:c8562e65…` (runner image availability, unrelated). |
-| 1 | (this PR) | — | Implementation divergences from the Phase 1 contract, all from pre-commit/adversarial review: the mutation-error reset effect keys on a "reset for wallet" ref instead of an initial-mount flag (StrictMode replay-safe); a save or delete that settles after a wallet switch is discarded (`settledForCurrentWallet`) — it resets only its own mutation's error and skips the form/refresh continuation — and that reset is skipped when a newer mutation of the same kind has been issued since, because react-query's `reset()` acts on the hook's shared observer and would detach the in-flight mutation. Tests: 41 in `tests/components/LabelManager.test.tsx` (StrictMode mount, stale create/update/delete success and failure, overlapping same-kind and different-kind in-flight mutations). |
+| 1 | #1193 | `3045f5e4` | Head `f04bfdcf` (code `2889549b` rebased on `6441c1fd` + plan record). PR runs 17126-17130 all green. Implementation divergences from the Phase 1 contract, all from pre-commit/adversarial review: the mutation-error reset effect keys on a "reset for wallet" ref instead of an initial-mount flag (StrictMode replay-safe); a save or delete that settles after a wallet switch is discarded (`settledForCurrentWallet`) — it resets only its own mutation's error and skips the form/refresh continuation — and that reset is skipped when a newer mutation of the same kind has been issued since, because react-query's `reset()` acts on the hook's shared observer and would detach the in-flight mutation. Tests: 41 in `tests/components/LabelManager.test.tsx` (StrictMode mount, stale create/update/delete success and failure, overlapping same-kind and different-kind in-flight mutations). |
 
 ## Completion criteria
 
