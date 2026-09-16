@@ -9,6 +9,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
+import { onTerminalLogout } from '../api/refresh';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('AppNotification');
@@ -146,6 +147,15 @@ const saveNotifications = (notifications: AppNotification[]): void => {
   }
 };
 
+// Remove any persisted notifications from localStorage (terminal logout)
+const clearStoredNotifications = (): void => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (err) {
+    log.error('Failed to clear stored notifications', { error: err });
+  }
+};
+
 export const AppNotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -162,6 +172,14 @@ export const AppNotificationProvider: React.FC<{ children: ReactNode }> = ({ chi
   useEffect(() => {
     saveNotifications(notifications);
   }, [notifications]);
+
+  // Clear all notifications on terminal logout (explicit or forced) so a
+  // persisted entry from one account cannot resurface after the next login.
+  useEffect(() => onTerminalLogout(() => {
+    setNotifications([]);
+    setIsPanelOpen(false);
+    clearStoredNotifications();
+  }), []);
 
   // Clean up expired notifications periodically
   useEffect(() => {

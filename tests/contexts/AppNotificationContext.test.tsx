@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe } from 'vitest';
 
 import { registerAppNotificationLifecycleCrudContracts } from './AppNotificationContext/AppNotificationContext.lifecycle-crud.contracts';
 import { registerAppNotificationPersistenceExpirationContracts } from './AppNotificationContext/AppNotificationContext.persistence-expiration.contracts';
+import { registerAppNotificationTerminalLogoutContracts } from './AppNotificationContext/AppNotificationContext.terminal-logout.contracts';
 import { registerAppNotificationScopedHookContracts } from './AppNotificationContext/AppNotificationContext.scoped-hooks.contracts';
 import { registerAppNotificationSelectorsPanelContracts } from './AppNotificationContext/AppNotificationContext.selectors-panel.contracts';
 import {
@@ -23,6 +24,7 @@ describe('AppNotificationContext', () => {
   registerAppNotificationLifecycleCrudContracts();
   registerAppNotificationSelectorsPanelContracts();
   registerAppNotificationPersistenceExpirationContracts();
+  registerAppNotificationTerminalLogoutContracts();
 });
 
 registerAppNotificationScopedHookContracts();

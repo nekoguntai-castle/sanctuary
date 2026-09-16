@@ -152,6 +152,7 @@ One PR per phase on `codex/bug-scrub/it1-<phase-slug>` branches, serial merges o
 | 3 | #1200 | `6316ded2` | Head `2c442456` (code `c5b72889` + `d3fc56ec` adding `clampFloat` model tests; rebased on `8130ad27`). Server floors the multiplier at 1 (fallback 2); the Backoff field clamps through the float-preserving `clampFloat`. Required checks green; target-main CI verified. |
 | 4 | #1201 | `165ff861` | Head `c5780682` (code `6c4671e3` + `4b324eb9` pinning the unknown-BIP48-script fallback; rebased on `6316ded2`). `createSingleAccount` derives purpose and script type from `parseDerivationPath`. Required checks green; target-main CI verified. |
 | 5 | #1202 | `d91f76cb` | Head `d92887ed` (code `6039eea5` + two test-layout commits: the four new race tests moved to a top-level describe with a nested `turnFor` declaration because lizard fuses a describe without one into a single function and the Code Quality lane counts warnings against main). Required checks green after the layout fix; target-main CI verified. |
+| 6 | #1203 | `b2a4ff44` | Head `15d7b76b` (code `2f669576`; rebased on `d91f76cb`). One `resetSensitiveFields` helper shared by closeDisable, closeBackupCodes and completeBackupCodes; new renderHook controller test red on origin/main. Required checks green; target-main CI verified. |
 
 ## Completion criteria
 
