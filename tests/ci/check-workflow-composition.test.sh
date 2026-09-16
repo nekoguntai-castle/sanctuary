@@ -275,6 +275,49 @@ assert_named_job_not_contains() {
   fi
 }
 
+assert_named_job_contains_in_order() {
+  local file="$1"
+  local job_name="$2"
+  local label="$3"
+  shift 3
+  local needles=("$@")
+  local job normalized pattern needle escaped first
+
+  job="$(extract_named_job "$file" "$job_name")"
+  if [ -z "$job" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: job not found: $job_name")
+    echo "FAIL: $label" >&2
+    return
+  fi
+
+  # Scoped variant of assert_contains_in_order: normalizes and orders within
+  # the extracted job body only, so a checkout (or other needle) satisfied by
+  # a different job in the same file cannot make this pass.
+  normalized="$(sed 's/#.*$//' <<<"$job" | tr '\n' ' ' | tr -s ' ')"
+
+  pattern=""
+  first=1
+  for needle in "${needles[@]}"; do
+    escaped="$(printf '%s' "$needle" | sed -e 's/[.[\*^$()+?{|]/\\&/g')"
+    if [ "$first" -eq 1 ]; then
+      pattern="$escaped"
+      first=0
+    else
+      pattern="$pattern.*$escaped"
+    fi
+  done
+
+  if grep -Eq -- "$pattern" <<<"$normalized"; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: composition order not found in $job_name of $file (looking for: ${needles[*]})")
+    echo "FAIL: $label" >&2
+  fi
+}
+
 assert_named_job_if_equals() {
   local file="$1"
   local job_name="$2"
@@ -1062,11 +1105,21 @@ for suspended_wallet_review_input in \
 done
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/install-test.yml" \
-  "install-test preserves its stable summary context and reports the workflow commit" \
+  "install-test preserves its stable summary context and wires the workflow commit" \
   "test-summary:" \
   "name: Install Test Summary" \
   'COMMIT_SHA: ${{ github.sha }}' \
+  "scripts/ci/compute-test-summary-status.sh"
+
+assert_contains_in_order "$REPO_ROOT/scripts/ci/compute-test-summary-status.sh" \
+  "install-test summary script reports the workflow commit" \
   'Workflow commit: \`$COMMIT_SHA\`'
+
+assert_named_job_contains_in_order "$REPO_ROOT/.github/workflows/install-test.yml" \
+  "test-summary" \
+  "install-test summary job checks out the repo before invoking its script" \
+  "uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd" \
+  "scripts/ci/compute-test-summary-status.sh"
 
 assert_contains_in_order "$RC" \
   "release-candidate emits revision-bound hardware compatibility evidence" \
@@ -1663,14 +1716,27 @@ assert_contains_in_order "$IT" \
   "Selected extended upgrade fixtures did not pass"
 
 assert_contains_in_order "$IT" \
-  "install-test selected upgrade summary gate" \
+  "install-test summary job wires every needs result into the summary env" \
   "test-summary:" \
   "RUN_UPGRADE_BASELINE:" \
-  "RUN_UPGRADE_EXTENDED:" \
-  "SELECTED_UPGRADE_FAILED=false" \
-  "Selected baseline upgrade refs did not pass" \
-  "Selected extended upgrade fixtures did not pass" \
-  'if [ "$SELECTED_UPGRADE_FAILED" = "true" ]; then'
+  "RUN_UPGRADE_EXTENDED:"
+
+# install-test-summary-fail-open-non-release: the "Generate summary" step
+# used to compute only SELECTED_UPGRADE_FAILED inline, so on a non-release
+# run a failing unit-tests/fresh-install-test/etc. result left the job green
+# -- the only place that checked every result was "Check release gate",
+# gated `if: is_release == 'true'`. This harness is a static grep/structure
+# checker and cannot execute a step's shell body, so the step body now
+# delegates to scripts/ci/compute-test-summary-status.sh (exercised
+# directly by tests/ci/compute-test-summary-status.test.sh), and this
+# assertion just proves the step still invokes it, unconditionally, on
+# every run.
+assert_named_job_step_contains "$IT" "test-summary" "Generate summary" \
+  "install-test summary step invokes the extracted status script" \
+  "scripts/ci/compute-test-summary-status.sh"
+assert_named_job_step_not_contains "$IT" "test-summary" "Generate summary" \
+  "install-test summary step is not gated to release runs only" \
+  "if: needs.determine-scope.outputs.is_release"
 
 assert_contains_in_order "$IT" \
   "install-test ownership acceptance proves and uploads signed recovery evidence" \

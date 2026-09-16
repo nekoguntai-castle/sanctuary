@@ -822,6 +822,8 @@ jobs:
           bash -n tests/ci/run-compose-e2e-subject-migration-wait.test.sh
           bash -n scripts/ci/check-workflows-test-only.sh
           bash -n tests/ci/workflows-test-only.test.sh
+          bash -n scripts/ci/compute-test-summary-status.sh
+          bash -n tests/ci/compute-test-summary-status.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
           node tests/ci/check-wallet-safety-classifier.test.mjs
@@ -935,6 +937,7 @@ jobs:
           bash tests/ci/git-default-branch.test.sh
           bash tests/ci/check-workflow-composition.test.sh
           bash tests/ci/workflows-test-only.test.sh
+          bash tests/ci/compute-test-summary-status.test.sh
           # One canonical aggregate owns every release policy/distribution test.
           # Keep this invocation converged with package.json as the suite grows.
           npm run test:release-distribution

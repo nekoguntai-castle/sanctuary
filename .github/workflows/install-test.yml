@@ -1152,6 +1152,11 @@ jobs:
     if: always()
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
+
       - name: Generate summary
         env:
           AUTH_FLOW: ${{ needs.auth-flow-test.result }}
@@ -1176,117 +1181,7 @@ jobs:
           UPGRADE_EXTENDED: ${{ needs.upgrade-extended-test.result }}
           UPGRADE_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
         run: |
-          summary="$GITHUB_STEP_SUMMARY"
-
-          append_status() {
-            label="$1"
-            result="$2"
-
-            if [ "$result" = "success" ]; then
-              echo "- $label: :white_check_mark: Passed" >> "$summary"
-            elif [ "$result" = "skipped" ]; then
-              echo "- $label: :arrow_right: Skipped" >> "$summary"
-            else
-              echo "- $label: :x: Failed" >> "$summary"
-            fi
-          }
-
-          echo "## Install Test Results" >> "$summary"
-          echo "" >> "$summary"
-          echo "Workflow commit: \`$COMMIT_SHA\`" >> "$summary"
-          echo "" >> "$summary"
-
-          # Check if tests were skipped due to no relevant changes
-          if [ "$SHOULD_RUN" != "true" ]; then
-            echo "### Tests Skipped" >> "$summary"
-            echo "" >> "$summary"
-            echo "> No install-relevant files changed. Tests were skipped." >> "$summary"
-            echo "" >> "$summary"
-            echo "Install tests run when these files change:" >> "$summary"
-            echo "- \`install.sh\`, \`scripts/setup.sh\`, \`scripts/reset-user-2fa.sh\`" >> "$summary"
-            echo "- \`docker-compose*.yml\`, \`server/Dockerfile\`, \`docker/**\`" >> "$summary"
-            echo "- \`server/prisma/**\`, \`tests/install/**\`" >> "$summary"
-            echo "- \`.github/workflows/install-test.yml\`" >> "$summary"
-            exit 0
-          fi
-
-          # Show test context
-          if [ "$IS_RELEASE" = "true" ]; then
-            echo "### Release Validation: $REF_NAME" >> "$summary"
-            echo "" >> "$summary"
-            echo "> Running release-critical tests to validate installation before release." >> "$summary"
-          else
-            echo "### Test Suite: $TEST_SUITE" >> "$summary"
-          fi
-          echo "" >> "$summary"
-          echo "- Scope: \`$SCOPE\`" >> "$summary"
-          echo "- Reason: $REASON" >> "$summary"
-          echo "- Upgrade baseline refs: \`${UPGRADE_BASELINE_REFS:-none}\`" >> "$summary"
-          echo "- Upgrade extended fixtures: \`${UPGRADE_EXTENDED_FIXTURES:-none}\`" >> "$summary"
-          echo "" >> "$summary"
-
-          # Unit tests
-          if [ "$UNIT_TESTS" = "success" ]; then
-            echo "- Unit Tests: :white_check_mark: Passed" >> "$summary"
-          elif [ "$UNIT_TESTS" = "skipped" ] && \
-               [ "$EVENT_NAME" = "workflow_dispatch" ] && \
-               [ "$RUN_UNIT" == "true" ] && \
-               [ "$TEST_SUITE" != "unit" ]; then
-            echo "- Unit Tests: :white_check_mark: Passed in Fresh Install E2E job" >> "$summary"
-          elif [ "$UNIT_TESTS" = "skipped" ]; then
-            echo "- Unit Tests: :arrow_right: Skipped" >> "$summary"
-          else
-            echo "- Unit Tests: :x: Failed" >> "$summary"
-          fi
-
-          append_status "Fresh Install E2E" "$FRESH_INSTALL"
-          append_status "Install Script E2E" "$INSTALL_SCRIPT"
-          append_status "Install Stack Smoke" "$INSTALL_STACK_SMOKE"
-          append_status "Container Health" "$CONTAINER_HEALTH"
-          append_status "Auth Flow" "$AUTH_FLOW"
-          append_status "Baseline Upgrade Install" "$UPGRADE_BASELINE"
-          append_status "Extended Upgrade Fixtures" "$UPGRADE_EXTENDED"
-
-          SELECTED_UPGRADE_FAILED=false
-          if [ "$RUN_UPGRADE_BASELINE" = "true" ] && [ "$UPGRADE_BASELINE" != "success" ]; then
-            echo "::error::Selected baseline upgrade refs did not pass: ${UPGRADE_BASELINE_REFS:-none} (job result: $UPGRADE_BASELINE)"
-            SELECTED_UPGRADE_FAILED=true
-          fi
-          if [ "$RUN_UPGRADE_EXTENDED" = "true" ] && [ "$UPGRADE_EXTENDED" != "success" ]; then
-            echo "::error::Selected extended upgrade fixtures did not pass: ${UPGRADE_EXTENDED_FIXTURES:-none} (job result: $UPGRADE_EXTENDED)"
-            SELECTED_UPGRADE_FAILED=true
-          fi
-
-          echo "" >> "$summary"
-          echo "### Test Configuration" >> "$summary"
-          echo "- HTTPS Port: $HTTPS_PORT" >> "$summary"
-          echo "- HTTP Port: $HTTP_PORT" >> "$summary"
-
-          # Release gate warning
-          if [ "$IS_RELEASE" = "true" ]; then
-            echo "" >> "$summary"
-            echo "---" >> "$summary"
-            echo "" >> "$summary"
-            STACK_OK=false
-            if [ "$INSTALL_STACK_SMOKE" = "success" ] || \
-               { [ "$CONTAINER_HEALTH" = "success" ] && [ "$AUTH_FLOW" = "success" ]; }; then
-              STACK_OK=true
-            fi
-            if [ "$UNIT_TESTS" = "success" ] && \
-               [ "$FRESH_INSTALL" = "success" ] && \
-               [ "$INSTALL_SCRIPT" = "success" ] && \
-               [ "$STACK_OK" = "true" ] && \
-               [ "$UPGRADE_BASELINE" = "success" ] && \
-               [ "$UPGRADE_EXTENDED" = "success" ]; then
-              echo ":rocket: **Release validation passed!** Installation has been verified." >> "$summary"
-            else
-              echo ":stop_sign: **Release validation FAILED!** Do not proceed with release until issues are resolved." >> "$summary"
-            fi
-          fi
-
-          if [ "$SELECTED_UPGRADE_FAILED" = "true" ]; then
-            exit 1
-          fi
+          scripts/ci/compute-test-summary-status.sh
 
       - name: Check release gate
         if: needs.determine-scope.outputs.is_release == 'true'
