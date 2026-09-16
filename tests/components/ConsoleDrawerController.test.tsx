@@ -62,21 +62,39 @@ function mockReplayResult() {
   } as any);
 }
 
+function makeTurn(sessionId: string) {
+  return {
+    id: `turn-${sessionId}`,
+    sessionId,
+    promptHistoryId: `prompt-${sessionId}`,
+    state: "completed",
+    prompt: `prompt for ${sessionId}`,
+    response: `response for ${sessionId}`,
+    maxSensitivity: "high",
+    createdAt: "2026-04-26T01:00:00.000Z",
+    completedAt: "2026-04-26T01:00:01.000Z",
+  };
+}
+
+function installBaseConsoleMocks() {
+  vi.clearAllMocks();
+  vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+    sessions: [],
+  } as any);
+  vi.mocked(consoleApi.listPromptHistory).mockResolvedValue({
+    prompts: [],
+  } as any);
+  vi.mocked(consoleApi.listConsoleTools).mockResolvedValue({
+    tools: [],
+  } as any);
+  vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
+    turns: [],
+  } as any);
+}
+
 describe("useConsoleDrawerController", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [],
-    } as any);
-    vi.mocked(consoleApi.listPromptHistory).mockResolvedValue({
-      prompts: [],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTools).mockResolvedValue({
-      tools: [],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
-      turns: [],
-    } as any);
+    installBaseConsoleMocks();
   });
 
   it("clears display state without deleting when no Console session is selected", async () => {
@@ -234,18 +252,10 @@ describe("useConsoleDrawerController", () => {
   });
 
   describe("session switch races", () => {
+    // Nested function declaration: lizard only splits the describe callback
+    // into per-test functions when one is present; keep it.
     function turnFor(sessionId: string) {
-      return {
-        id: `turn-${sessionId}`,
-        sessionId,
-        promptHistoryId: `prompt-${sessionId}`,
-        state: "completed",
-        prompt: `prompt for ${sessionId}`,
-        response: `response for ${sessionId}`,
-        maxSensitivity: "high",
-        createdAt: "2026-04-26T01:00:00.000Z",
-        completedAt: "2026-04-26T01:00:01.000Z",
-      };
+      return makeTurn(sessionId);
     }
 
     it("keeps B's messages when A's load resolves after B was selected", async () => {
@@ -401,5 +411,158 @@ describe("useConsoleDrawerController", () => {
         result.current.messages.map((message) => message.content),
       ).toEqual(["prompt for session-b", "response for session-b"]);
     });
+  });
+});
+
+describe("useConsoleDrawerController in-flight turn results after a session switch", () => {
+  // See the note in "session switch races": the nested declaration keeps
+  // lizard's per-function accounting intact.
+  function turnFor(sessionId: string) {
+    return makeTurn(sessionId);
+  }
+
+  const turnsBySession: Record<string, unknown[]> = {
+    "session-1": [],
+    "session-a": [],
+    "session-b": [turnFor("session-b")],
+  };
+  const sessionBTranscript = ["prompt for session-b", "response for session-b"];
+  const resultForSessionA = () => ({
+    session: { ...session, id: "session-a" },
+    promptHistory,
+    turn: turnFor("session-a"),
+    toolTraces: [],
+  });
+
+  const renderReadyController = async () => {
+    const { result } = renderHook(() =>
+      useConsoleDrawerController({
+        isOpen: true,
+        wallets,
+        selectedNetwork: "mainnet",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    return result;
+  };
+
+  const contentsOf = (
+    result: { current: { messages: Array<{ content: string }> } },
+  ) => result.current.messages.map((message) => message.content);
+
+  beforeEach(() => {
+    installBaseConsoleMocks();
+    vi.mocked(consoleApi.listConsoleTurns).mockImplementation(
+      (sessionId: string) =>
+        Promise.resolve({ turns: turnsBySession[sessionId] }) as any,
+    );
+  });
+
+  it("applies sendPrompt result to the same session when no switch occurs", async () => {
+    vi.mocked(consoleApi.runConsoleTurn).mockResolvedValue({
+      session,
+      promptHistory,
+      turn,
+      toolTraces: [],
+    } as any);
+    const result = await renderReadyController();
+
+    act(() => {
+      result.current.setInput("hello");
+    });
+    await act(async () => {
+      await result.current.sendPrompt();
+    });
+
+    expect(result.current.selectedSessionId).toBe("session-1");
+    expect(contentsOf(result)).toEqual(["high sensitivity prompt", "retried"]);
+  });
+
+  it("keeps B's messages when A's sendPrompt resolves after B was selected", async () => {
+    const deferredSend = createDeferred<any>();
+    vi.mocked(consoleApi.runConsoleTurn).mockReturnValueOnce(deferredSend.promise);
+    const result = await renderReadyController();
+
+    await act(async () => {
+      await result.current.selectSession("session-a");
+    });
+    act(() => {
+      result.current.setInput("hello from a");
+    });
+    let sendA: Promise<void> = Promise.resolve();
+    await act(async () => {
+      sendA = result.current.sendPrompt();
+    });
+    await act(async () => {
+      await result.current.selectSession("session-b");
+    });
+
+    expect(result.current.selectedSessionId).toBe("session-b");
+    expect(contentsOf(result)).toEqual(sessionBTranscript);
+
+    await act(async () => {
+      deferredSend.resolve(resultForSessionA());
+      await sendA;
+    });
+
+    expect(result.current.selectedSessionId).toBe("session-b");
+    expect(contentsOf(result)).toEqual(sessionBTranscript);
+  });
+
+  it("does not append a failed message into B after A's sendPrompt rejects", async () => {
+    const deferredSend = createDeferred<any>();
+    vi.mocked(consoleApi.runConsoleTurn).mockReturnValueOnce(deferredSend.promise);
+    const result = await renderReadyController();
+
+    await act(async () => {
+      await result.current.selectSession("session-a");
+    });
+    act(() => {
+      result.current.setInput("hello from a");
+    });
+    let sendA: Promise<void> = Promise.resolve();
+    await act(async () => {
+      sendA = result.current.sendPrompt();
+    });
+    await act(async () => {
+      await result.current.selectSession("session-b");
+    });
+    await act(async () => {
+      deferredSend.reject(new Error("boom"));
+      await sendA;
+    });
+
+    expect(result.current.selectedSessionId).toBe("session-b");
+    expect(contentsOf(result)).toEqual(sessionBTranscript);
+  });
+
+  it("keeps B's messages when A's replayPrompt resolves after B was selected", async () => {
+    const deferredReplay = createDeferred<any>();
+    vi.mocked(consoleApi.replayPromptHistory).mockReturnValueOnce(deferredReplay.promise);
+    const result = await renderReadyController();
+
+    await act(async () => {
+      await result.current.selectSession("session-a");
+    });
+    let replayA: Promise<void> = Promise.resolve();
+    await act(async () => {
+      replayA = result.current.replayPrompt("prompt-1");
+    });
+    await act(async () => {
+      await result.current.selectSession("session-b");
+    });
+
+    expect(result.current.selectedSessionId).toBe("session-b");
+    expect(contentsOf(result)).toEqual(sessionBTranscript);
+
+    await act(async () => {
+      deferredReplay.resolve(resultForSessionA());
+      await replayA;
+    });
+
+    expect(result.current.selectedSessionId).toBe("session-b");
+    expect(contentsOf(result)).toEqual(sessionBTranscript);
   });
 });
