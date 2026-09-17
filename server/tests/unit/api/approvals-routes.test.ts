@@ -12,9 +12,11 @@ import request from 'supertest';
 const {
   mockGetPendingApprovalsForUser,
   mockFindManyWalletUser,
+  mockFindManyWallet,
 } = vi.hoisted(() => ({
   mockGetPendingApprovalsForUser: vi.fn(),
   mockFindManyWalletUser: vi.fn(),
+  mockFindManyWallet: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
@@ -36,6 +38,9 @@ vi.mock('../../../src/models/prisma', () => ({
   default: {
     walletUser: {
       findMany: mockFindManyWalletUser,
+    },
+    wallet: {
+      findMany: mockFindManyWallet,
     },
   },
 }));
@@ -105,8 +110,8 @@ describe('Global Approvals Routes', () => {
 
     it('should return pending approvals for wallets the user can approve', async () => {
       mockFindManyWalletUser.mockResolvedValue([
-        { walletId: 'wallet-1' },
-        { walletId: 'wallet-2' },
+        { walletId: 'wallet-1', role: 'owner' },
+        { walletId: 'wallet-2', role: 'owner' },
       ]);
 
       const mockPending = [
@@ -137,11 +142,15 @@ describe('Global Approvals Routes', () => {
 
       expect(response.status).toBe(200);
       expect(mockFindManyWalletUser).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        select: { walletId: true, role: true },
+      });
+      expect(mockFindManyWallet).toHaveBeenCalledWith({
         where: {
-          userId: 'user-1',
-          role: { in: ['owner', 'approver'] },
+          groupRole: { in: ['owner', 'approver'] },
+          group: { members: { some: { userId: 'user-1' } } },
         },
-        select: { walletId: true },
+        select: { id: true },
       });
       expect(mockGetPendingApprovalsForUser).toHaveBeenCalledWith(['wallet-1', 'wallet-2']);
       expect(response.body.total).toBe(2);
@@ -187,7 +196,7 @@ describe('Global Approvals Routes', () => {
 
     it('should return empty results when no pending approvals exist', async () => {
       mockFindManyWalletUser.mockResolvedValue([
-        { walletId: 'wallet-1' },
+        { walletId: 'wallet-1', role: 'owner' },
       ]);
       mockGetPendingApprovalsForUser.mockResolvedValue([]);
 
@@ -198,7 +207,7 @@ describe('Global Approvals Routes', () => {
     });
 
     it('should correctly count approvals vs total votes', async () => {
-      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1' }]);
+      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1', role: 'owner' }]);
 
       const mockPending = [
         {
@@ -226,7 +235,7 @@ describe('Global Approvals Routes', () => {
     });
 
     it('should handle approval with zero votes', async () => {
-      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1' }]);
+      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1', role: 'owner' }]);
 
       const mockPending = [
         {
@@ -250,7 +259,7 @@ describe('Global Approvals Routes', () => {
     });
 
     it('should convert BigInt amount to string', async () => {
-      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1' }]);
+      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1', role: 'owner' }]);
 
       const mockPending = [
         {
@@ -272,6 +281,17 @@ describe('Global Approvals Routes', () => {
       expect(response.body.approvals[0].amount).toBe('2100000000000000');
     });
 
+    it('should include wallets where the user only has an approve-capable group role', async () => {
+      mockFindManyWalletUser.mockResolvedValue([]);
+      mockFindManyWallet.mockResolvedValueOnce([{ id: 'wallet-group' }]);
+      mockGetPendingApprovalsForUser.mockResolvedValue([]);
+
+      const response = await request(app).get(url);
+
+      expect(response.status).toBe(200);
+      expect(mockGetPendingApprovalsForUser).toHaveBeenCalledWith(['wallet-group']);
+    });
+
     it('should return 500 when walletUser.findMany throws', async () => {
       mockFindManyWalletUser.mockRejectedValue(new Error('DB connection failed'));
 
@@ -282,7 +302,7 @@ describe('Global Approvals Routes', () => {
     });
 
     it('should return 500 when getPendingApprovalsForUser throws', async () => {
-      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1' }]);
+      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-1', role: 'owner' }]);
       mockGetPendingApprovalsForUser.mockRejectedValue(new Error('Service error'));
 
       const response = await request(app).get(url);
@@ -292,15 +312,16 @@ describe('Global Approvals Routes', () => {
     });
 
     it('should query only owner and approver roles', async () => {
-      mockFindManyWalletUser.mockResolvedValue([]);
+      mockFindManyWalletUser.mockResolvedValue([{ walletId: 'wallet-viewer', role: 'viewer' }]);
       mockGetPendingApprovalsForUser.mockResolvedValue([]);
 
       await request(app).get(url);
 
-      expect(mockFindManyWalletUser).toHaveBeenCalledWith(
+      expect(mockGetPendingApprovalsForUser).toHaveBeenCalledWith([]);
+      expect(mockFindManyWallet).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            role: { in: ['owner', 'approver'] },
+            groupRole: { in: ['owner', 'approver'] },
           }),
         }),
       );

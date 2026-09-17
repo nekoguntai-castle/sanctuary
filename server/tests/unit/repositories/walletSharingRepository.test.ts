@@ -22,6 +22,7 @@ vi.mock('../../../src/models/prisma', () => ({
     wallet: {
       update: vi.fn(),
       findUnique: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -209,17 +210,22 @@ describe('walletSharingRepository', () => {
 
   it('queries wallet-user list helpers with the expected selectors', async () => {
     (prisma.walletUser.findMany as Mock)
-      .mockResolvedValueOnce([{ walletId: 'wallet-1' }, { walletId: 'wallet-2' }])
+      .mockResolvedValueOnce([{ walletId: 'wallet-1', role: 'owner' }, { walletId: 'wallet-2', role: 'signer' }])
       .mockResolvedValueOnce([{ id: 'wu-name' }]);
+    (prisma.wallet.findMany as Mock).mockResolvedValueOnce([]);
     (prisma.walletUser.findUnique as Mock).mockResolvedValueOnce({ role: 'signer' });
 
     await expect(findWalletIdsByUserRole('user-1', ['owner', 'signer'])).resolves.toEqual(['wallet-1', 'wallet-2']);
     expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(1, {
+      where: { userId: 'user-1' },
+      select: { walletId: true, role: true },
+    });
+    expect(prisma.wallet.findMany).toHaveBeenCalledWith({
       where: {
-        userId: 'user-1',
-        role: { in: ['owner', 'signer'] },
+        groupRole: { in: ['owner', 'signer'] },
+        group: { members: { some: { userId: 'user-1' } } },
       },
-      select: { walletId: true },
+      select: { id: true },
     });
 
     await expect(findWalletUsersWithUsername('wallet-1')).resolves.toEqual([{ id: 'wu-name' }]);
@@ -238,6 +244,38 @@ describe('walletSharingRepository', () => {
         walletId_userId: { walletId: 'wallet-1', userId: 'user-1' },
       },
       select: { role: true },
+    });
+  });
+
+  describe('findWalletIdsByUserRole group-role parity', () => {
+    it('includes a wallet where only a group role grants access', async () => {
+      (prisma.walletUser.findMany as Mock).mockResolvedValueOnce([]);
+      (prisma.wallet.findMany as Mock).mockResolvedValueOnce([{ id: 'wallet-g' }]);
+
+      await expect(findWalletIdsByUserRole('user-1', ['owner', 'approver'])).resolves.toEqual(['wallet-g']);
+    });
+
+    it('deduplicates a wallet id present in both the direct and group sources', async () => {
+      (prisma.walletUser.findMany as Mock).mockResolvedValueOnce([{ walletId: 'wallet-a', role: 'owner' }]);
+      (prisma.wallet.findMany as Mock).mockResolvedValueOnce([{ id: 'wallet-a' }]);
+
+      await expect(findWalletIdsByUserRole('user-1', ['owner', 'approver'])).resolves.toEqual(['wallet-a']);
+      expect(prisma.walletUser.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('excludes a group-approver wallet when the user also has a non-approve direct role there (vote-path parity)', async () => {
+      (prisma.walletUser.findMany as Mock).mockResolvedValueOnce([{ walletId: 'wallet-b', role: 'viewer' }]);
+      (prisma.wallet.findMany as Mock).mockResolvedValueOnce([{ id: 'wallet-b' }]);
+
+      await expect(findWalletIdsByUserRole('user-1', ['owner', 'approver'])).resolves.toEqual([]);
+      expect(prisma.walletUser.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('includes a wallet via a direct in-role grant with no group grant', async () => {
+      (prisma.walletUser.findMany as Mock).mockResolvedValueOnce([{ walletId: 'wallet-c', role: 'approver' }]);
+      (prisma.wallet.findMany as Mock).mockResolvedValueOnce([]);
+
+      await expect(findWalletIdsByUserRole('user-1', ['owner', 'approver'])).resolves.toEqual(['wallet-c']);
     });
   });
 

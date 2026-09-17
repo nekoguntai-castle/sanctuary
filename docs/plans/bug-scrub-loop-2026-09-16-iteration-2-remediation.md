@@ -116,6 +116,7 @@ One PR per phase on `codex/bug-scrub/it2-<phase-slug>` branches, serial merges o
 | Phase | PR | Merge commit | Notes |
 | --- | --- | --- | --- |
 | 1 | #1208 | `83beafe7` | Head `0bb935a8` (code `50f09e28`; rebased on `996b2c58`). registerDevice resolves the caller's device role before touching an existing fingerprint match; no role → 403 without leaking device details, merge writes owner-only; devices API harness mock gained getUserDeviceRole. All four lanes green incl. Architecture; target-main CI verified. |
+| 2 | #1209 | `630ffa34` | Head `b88ee0a7` (code `9a73f87a`; rebased on `83beafe7`). reserveEnforcedUsage wraps its loop in try/catch and releases every taken reservation before rethrowing. All four lanes green; target-main CI verified. |
 
 ## Completion criteria
 

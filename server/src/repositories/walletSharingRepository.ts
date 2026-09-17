@@ -166,20 +166,45 @@ export async function getWalletSharingInfo(walletId: string) {
 }
 
 /**
- * Find wallet IDs where a user has specific roles
+ * Find wallet IDs where a user has specific roles, either via a direct
+ * `walletUser` grant or via the group role on wallets the user's groups
+ * can access.
+ *
+ * Parity with the vote path (`getUserWalletRoleUncached` in
+ * `services/accessControl.ts`): when a direct `walletUser` row exists for a
+ * wallet, that row's role wins outright and the group role is never
+ * consulted. A wallet reachable only through a group's `groupRole` is
+ * therefore excluded here whenever the user also has a direct role on it
+ * that is not in `roles` - otherwise this list would surface a request the
+ * same user's vote would then be rejected for.
  */
 export async function findWalletIdsByUserRole(
   userId: string,
   roles: string[]
 ): Promise<string[]> {
-  const walletUsers = await prisma.walletUser.findMany({
-    where: {
-      userId,
-      role: { in: roles },
-    },
-    select: { walletId: true },
-  });
-  return walletUsers.map(wu => wu.walletId);
+  const [directWalletUsers, groupWallets] = await Promise.all([
+    prisma.walletUser.findMany({
+      where: { userId },
+      select: { walletId: true, role: true },
+    }),
+    prisma.wallet.findMany({
+      where: {
+        groupRole: { in: roles },
+        group: { members: { some: { userId } } },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const directRoleByWallet = new Map(directWalletUsers.map(wu => [wu.walletId, wu.role]));
+  const walletIds = new Set<string>();
+  for (const [walletId, role] of directRoleByWallet) {
+    if (roles.includes(role)) walletIds.add(walletId);
+  }
+  for (const wallet of groupWallets) {
+    if (!directRoleByWallet.has(wallet.id)) walletIds.add(wallet.id);
+  }
+  return Array.from(walletIds);
 }
 
 /**
