@@ -436,6 +436,10 @@ const getActivePoliciesForUsage = async (
  * evaluated separately by evaluatePolicies). A lost reservation on any
  * window releases every reservation already taken in this call before
  * reporting failure, so the caller never has to reconcile a partial hold.
+ * A thrown error from a reservation call (e.g. a database failure) is
+ * treated the same way: every reservation already taken in this call is
+ * released before the error is rethrown, so a partial hold can never
+ * outlive the failed request.
  */
 export async function reserveEnforcedUsage(
   input: ReserveUsageInput
@@ -443,14 +447,19 @@ export async function reserveEnforcedUsage(
   const policies = await getActivePoliciesForUsage(input.walletId);
   const reservations: UsageReservation[] = [];
 
-  for (const policy of policies) {
-    if (policy.enforcement === 'monitor') continue;
+  try {
+    for (const policy of policies) {
+      if (policy.enforcement === 'monitor') continue;
 
-    const ok = await reservePolicyWindows(policy, input, reservations);
-    if (!ok) {
-      await releaseReservations(reservations);
-      return { ok: false, reservations: [] };
+      const ok = await reservePolicyWindows(policy, input, reservations);
+      if (!ok) {
+        await releaseReservations(reservations);
+        return { ok: false, reservations: [] };
+      }
     }
+  } catch (error) {
+    await releaseReservations(reservations);
+    throw error;
   }
 
   return { ok: true, reservations };

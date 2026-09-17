@@ -185,6 +185,95 @@ export function registerReserveEnforcedUsageTests(context: PolicyEvaluationEngin
       });
     });
 
+    it('releases an already-reserved spending_limit window when a later reservation call throws', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'spending_limit',
+          enforcement: 'enforce',
+          config: { daily: 1_000_000, weekly: 2_000_000, scope: 'wallet' },
+        }),
+      ]);
+      mockPolicyRepo.findOrCreateUsageWindow
+        .mockResolvedValueOnce({ id: 'daily-window', totalSpent: BigInt(0), txCount: 0 })
+        .mockResolvedValueOnce({ id: 'weekly-window', totalSpent: BigInt(0), txCount: 0 });
+      mockPolicyRepo.reserveUsageWindow
+        .mockResolvedValueOnce({ count: 1 }) // daily reserved
+        .mockRejectedValueOnce(new Error('db down')); // weekly throws
+
+      await expect(
+        getPolicyEvaluationEngine().reserveEnforcedUsage({
+          walletId,
+          userId,
+          amount: BigInt(600_000),
+        }),
+      ).rejects.toThrow('db down');
+
+      expect(mockPolicyRepo.releaseUsageWindow).toHaveBeenCalledTimes(1);
+      expect(mockPolicyRepo.releaseUsageWindow).toHaveBeenCalledWith({
+        windowId: 'daily-window',
+        amount: BigInt(600_000),
+      });
+    });
+
+    it('releases an already-reserved velocity window when a later reservation call throws', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'velocity',
+          enforcement: 'enforce',
+          config: { maxPerHour: 3, maxPerDay: 10, scope: 'wallet' },
+        }),
+      ]);
+      mockPolicyRepo.findOrCreateUsageWindow
+        .mockResolvedValueOnce({ id: 'hourly-window', totalSpent: BigInt(0), txCount: 0 })
+        .mockResolvedValueOnce({ id: 'daily-window', totalSpent: BigInt(0), txCount: 0 });
+      mockPolicyRepo.reserveUsageWindow
+        .mockResolvedValueOnce({ count: 1 }) // hourly reserved
+        .mockRejectedValueOnce(new Error('db down')); // daily throws
+
+      await expect(
+        getPolicyEvaluationEngine().reserveEnforcedUsage({
+          walletId,
+          userId,
+          amount: BigInt(1),
+        }),
+      ).rejects.toThrow('db down');
+
+      expect(mockPolicyRepo.releaseUsageWindow).toHaveBeenCalledTimes(1);
+      expect(mockPolicyRepo.releaseUsageWindow).toHaveBeenCalledWith({
+        windowId: 'hourly-window',
+        amount: BigInt(0),
+      });
+    });
+
+    it('releases nothing when the first reservation call throws', async () => {
+      mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+        makePolicy({
+          id: 'p1',
+          type: 'spending_limit',
+          enforcement: 'enforce',
+          config: { daily: 1_000_000, scope: 'wallet' },
+        }),
+      ]);
+      mockPolicyRepo.findOrCreateUsageWindow.mockResolvedValueOnce({
+        id: 'daily-window',
+        totalSpent: BigInt(0),
+        txCount: 0,
+      });
+      mockPolicyRepo.reserveUsageWindow.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        getPolicyEvaluationEngine().reserveEnforcedUsage({
+          walletId,
+          userId,
+          amount: BigInt(600_000),
+        }),
+      ).rejects.toThrow('db down');
+
+      expect(mockPolicyRepo.releaseUsageWindow).not.toHaveBeenCalled();
+    });
+
     it('releases reservations from an earlier policy when a later policy loses its reservation', async () => {
       mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
         makePolicy({
