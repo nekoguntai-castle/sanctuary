@@ -1,7 +1,7 @@
 # Bug-scrub loop 2026-09-16 — iteration 4 remediation plan
 
 - Iteration: 4 (bug-scrub-loop run `bug-scrub-loop-20260916t1812z-whole-repo`)
-- Status: reviewed — converged after three recursive review passes by two independent reviewers each (see Review notes); implementation starts with Phase 1
+- Status: complete — Phase 1 merged (#1218; see Delivery record); iteration 5 rescrub follows on the resulting main SHA
 - Source target-branch SHA: `176ad4e3fbb85c882d9a41be348f474164548656` (main after PR #1216; push runs for the iteration-3 merges `52bdfeae` (5/5) and `176ad4e3` (3/3) green)
 - Scope: whole repository (locked at run start)
 - Iteration-3 outcome: the single blocking finding (`mcp-audit-log-unbounded-operation-string-preauth`) merged in #1215 with verified target-branch CI; the iteration-4 clean-gate rescrub (five domain shards plus seven exhaustive gap walkers, every inventory rebuilt from source with counts; coverage manifest sealed complete for all eight domains) found none of the fourteen resolved findings recurring.
@@ -54,6 +54,7 @@ One PR on `codex/bug-scrub/it4-keystone-path-parse`, serial merge on `main`; the
 
 | Phase | PR | Merge commit | Notes |
 | --- | --- | --- | --- |
+| 1 | #1218 | `0bb26a9e` | Head `b1a49ae7` (code `b1b9c7bd`; rebased on `4ad4a816`). One `classifyKeystonePath` helper backed by `parseDerivationPath`/`isWalletScriptType` replaces both substring classifiers; the multisig parser reuses it. Three contracts red on origin/main (`M/48'/0'/1'/2'`, `M/44'/0'/86'`, multisig `M/48'/1'/0'/2'`) plus an unhardened parity pin. All four lanes green incl. Architecture; frontend coverage 100%/100%/100%/100%; lizard unchanged; `arch:check` no diff. |
 
 ## Review notes (pass 1)
 
