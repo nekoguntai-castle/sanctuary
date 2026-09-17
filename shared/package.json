@@ -27,11 +27,11 @@
     }
   },
   "dependencies": {
-    "zod": "4.3.6"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
-    "typescript": "^6.0.0"
+    "typescript": "~6.0.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

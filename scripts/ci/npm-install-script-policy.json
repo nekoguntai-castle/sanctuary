@@ -103,7 +103,7 @@
     {
       "location": "node_modules/protobufjs",
       "package": "protobufjs",
-      "version": "7.6.5",
+      "version": "7.6.6",
       "scripts": { "postinstall": "node scripts/postinstall" },
       "allowed": false,
       "optional": false,
