@@ -1113,6 +1113,146 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  # optional-profiles was pinned to a pre-ownership source (v0.8.69, #1053)
+  # because tracking latest-stable put its source install on an
+  # ownership-aware tree and the Grafana grafana_data volume-identity
+  # refusal killed it in ~80s on every RC. That restored real coverage on the
+  # legacy path but left monitoring-over-an-owned-source untested (#1057).
+  #
+  # This canary runs the identical Tor/monitoring/MCP scenario against
+  # latest-stable instead. It is deliberately NOT in upgrade-extended-test's
+  # `needs` or test-summary's release gate: continue-on-error plus staying
+  # outside every required job's `needs` keeps it fully non-blocking while
+  # the volume-identity root cause is still open. Do not wire this into the
+  # release gate until #1057 is resolved.
+  upgrade-extended-fixture-owned-source-canary:
+    name: Upgrade Extended Fixture Canary (optional-profiles, owned source)
+    runs-on: [ubuntu-22.04, docker-socket]
+    needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
+    continue-on-error: true
+    if: |
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.determine-scope.outputs.should_run == 'true' &&
+      needs.determine-scope.outputs.run_upgrade_extended == 'true' &&
+      (needs.fresh-install-test.result == 'success' ||
+       (needs.fresh-install-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_fresh_install != 'true')) &&
+      (needs.install-script-test.result == 'success' ||
+       (needs.install-script-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_install_script != 'true')) &&
+      (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped' || needs.install-stack-smoke.result == 'failure') &&
+      (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
+    timeout-minutes: 180
+    env:
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-extended-fixture-owned-source-canary
+
+    steps:
+      - name: Capture job budget origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          budget_started_seconds=$(date +%s)
+          budget_env_file="${SANCTUARY_CI_ENV_FILE:-${GITHUB_ENV:-${FORGEJO_ENV:-}}}"
+          test -n "$budget_env_file"
+          printf 'SANCTUARY_CI_JOB_STARTED_EPOCH_MS=%s000\n' "$budget_started_seconds" >> "$budget_env_file"
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
+          fetch-depth: 0
+
+      - name: Initialize subject budget
+        shell: bash
+        run: node scripts/ci/subject-budget.mjs initialize 10800 600
+
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Check Docker
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
+
+      - name: Run optional-profiles-owned-source canary fixture
+        timeout-minutes: 150
+        env:
+          SANCTUARY_UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
+        run: |
+          set -euo pipefail
+          SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 9000 300)"
+          export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixture-owned-source-canary.log" \
+            scripts/ci/run-extended-upgrade-fixtures.sh \
+              --fixtures optional-profiles-owned-source \
+              --source-ref latest-stable
+
+      - name: Post-canary DIND diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-ci-upgrade-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-upgrade-dind.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Write canary timing summary
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f "$JOB_LOG_DIR/upgrade-extended-fixture-owned-source-canary.log" ]; then
+            scripts/ci/report-timing-notices.sh --log-file "$JOB_LOG_DIR/upgrade-extended-fixture-owned-source-canary.log" > "$JOB_LOG_DIR/upgrade-extended-timing.md" || \
+              echo "::warning::Could not write canary timing summary"
+          else
+            echo "No canary log found for timing summary" > "$JOB_LOG_DIR/upgrade-extended-timing.md"
+          fi
+
+      - name: Upload canary upgrade artifacts
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: upgrade-extended-fixture-owned-source-canary
+          path: .tmp/upgrade-artifacts/
+          if-no-files-found: ignore
+
+      - name: Verify canary cleanup receipts
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended
+          recursive: 'true'
+
+      - name: Upload canary cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-upgrade-extended-owned-source-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/upgrade-extended
+          recursive: 'true'
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
+      - name: Write canary diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Extended Fixture Canary (owned source)"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-upgrade-extended-fixture-owned-source-canary-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
+
   upgrade-extended-test:
     name: Upgrade Extended
     runs-on: [ubuntu-22.04, docker-socket]

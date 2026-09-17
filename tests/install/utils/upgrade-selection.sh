@@ -45,6 +45,26 @@ upgrade_active_extended_fixtures_csv() {
     printf '%s\n' "$output"
 }
 
+# Non-blocking canary fixtures: real coverage that must not gate a release
+# while its root cause is still open. Never folded into
+# upgrade_active_extended_fixture_records/_csv, so classify-install-scope.sh's
+# default selection (the required nightly/release lane) never picks them up;
+# a dedicated workflow job selects one explicitly with --fixtures.
+#
+# optional-profiles-owned-source (#1057): optional-profiles was pinned to the
+# last pre-ownership stable (v0.8.69) by #1053 because tracking latest-stable
+# put its source install on an ownership-aware tree and the Grafana
+# grafana_data volume-identity refusal killed it in ~80s on every RC. That
+# restored coverage on the legacy path but left monitoring-over-an-owned-source
+# untested. This canary runs the same Tor/monitoring/MCP scenario against
+# latest-stable so the gap is visible without blocking merges or releases on a
+# failure whose root cause is not yet established.
+upgrade_canary_extended_fixture_records() {
+    cat <<'EOF'
+optional-profiles-owned-source 36
+EOF
+}
+
 upgrade_extended_fixture_port_offset() {
     local requested="$1"
     local fixture offset
@@ -54,7 +74,7 @@ upgrade_extended_fixture_port_offset() {
             printf '%s\n' "$offset"
             return 0
         fi
-    done < <(upgrade_active_extended_fixture_records)
+    done < <(upgrade_active_extended_fixture_records; upgrade_canary_extended_fixture_records)
 
     return 1
 }

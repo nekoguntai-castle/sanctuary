@@ -1174,7 +1174,7 @@ INSTALL_ISOLATED_SUBJECT="$REPO_ROOT/scripts/ci/run-install-e2e-isolated-subject
 UPGRADE_BASELINE_SUBJECT="$REPO_ROOT/scripts/ci/run-upgrade-baseline-isolated-subject.sh"
 assert_occurrence_count "$IT" \
   "install-test binds every cleanup evidence upload to its verification root" \
-  'cleanup-root:' 6
+  'cleanup-root:' 7
 
 assert_not_contains "$IT" \
   "stable tags do not launch a duplicate install matrix" \
@@ -1498,7 +1498,8 @@ for cleanup_upload in \
   'container-health-test|Upload container health cleanup evidence' \
   'auth-flow-test|Upload auth flow cleanup evidence' \
   'upgrade-baseline-test|Upload upgrade baseline cleanup evidence' \
-  'upgrade-extended-fixture-test|Upload extended upgrade cleanup evidence'; do
+  'upgrade-extended-fixture-test|Upload extended upgrade cleanup evidence' \
+  'upgrade-extended-fixture-owned-source-canary|Upload canary cleanup evidence'; do
   IFS='|' read -r upload_job upload_step <<< "$cleanup_upload"
   assert_named_job_step_config "$IT" \
     "install-test $upload_job uploads complete signed cleanup artifacts" \
@@ -1515,7 +1516,8 @@ for cleanup_gate in \
   'container-health-test|Verify container health cleanup receipt|Upload container health cleanup evidence' \
   'auth-flow-test|Verify auth flow cleanup receipt|Upload auth flow cleanup evidence' \
   'upgrade-baseline-test|Verify upgrade baseline cleanup receipts|Upload upgrade baseline cleanup evidence' \
-  'upgrade-extended-fixture-test|Verify extended upgrade cleanup receipts|Upload extended upgrade cleanup evidence'; do
+  'upgrade-extended-fixture-test|Verify extended upgrade cleanup receipts|Upload extended upgrade cleanup evidence' \
+  'upgrade-extended-fixture-owned-source-canary|Verify canary cleanup receipts|Upload canary cleanup evidence'; do
   IFS='|' read -r cleanup_job verify_step upload_step <<< "$cleanup_gate"
   assert_named_job_step_contains "$IT" "$cleanup_job" "$verify_step" \
     "install-test $cleanup_job requires final signed cleanup evidence" \

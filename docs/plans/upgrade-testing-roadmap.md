@@ -122,6 +122,16 @@ Fixture definitions:
 - `optional-profiles`
   - monitoring and/or Tor enabled before upgrade
   - validates profile survival and non-default compose shape
+  - pinned to the last pre-ownership stable source (v0.8.69, #1053): tracking
+    latest-stable put its source install on an ownership-aware tree and the
+    Grafana `grafana_data` volume-identity refusal killed it in ~80s
+- `optional-profiles-owned-source`
+  - identical Tor/monitoring/MCP scenario as `optional-profiles`, run against
+    an ownership-aware source (default `latest-stable`)
+  - non-blocking canary (`continue-on-error`, outside every required job's
+    `needs`) added by #1057 to keep monitoring-over-an-owned-source visible
+    while the volume-identity root cause is still open; must not be wired
+    into the blocking matrix until that root cause is fixed
 - `wallet-sync-retirement`
   - retained v0.8.66 stale-wallet scheduler plus stale/manual/activity queue work
   - proves irreversible marker creation, selective cleanup, floor-aware restart,
