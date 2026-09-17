@@ -147,7 +147,7 @@ function deriveCase(testCase: DerivationTestCase, seeds: Map<string, TestSeed>):
 export const bitcoinjsImpl: DerivationImplementation = {
   id: 'bitcoinjs-lib',
   name: 'bitcoinjs-lib',
-  version: '7.0.1',
+  version: '7.0.2',
   async isAvailable() { return true; },
   async deriveCases(cases, seeds) {
     const mappedSeeds = seedMap(seeds);

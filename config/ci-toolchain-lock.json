@@ -25,8 +25,8 @@
   "fundsCriticalPackages": [
     {
       "name": "bitcoinjs-lib",
-      "version": "7.0.1",
-      "integrity": "sha512-vwEmpL5Tpj0I0RBdNkcDMXePoaYSTeKY6mL6/l5esbnTs+jGdPDuLp4NY1hSh6Zk5wSgePygZ4Wx5JJao30Pww==",
+      "version": "7.0.2",
+      "integrity": "sha512-ugLk9SR+2gvhpNA7kqQL1eVDKyBNo/rbr+df72nrZj4OOdZvQRHDVtyogPGXAU2MLQimLL7EbUdz95QGh6Th5Q==",
       "manifests": ["package.json", "server/package.json", "scripts/verify-addresses/package.json", "scripts/verify-psbt/package.json"],
       "lockfiles": ["package-lock.json", "scripts/verify-addresses/package-lock.json", "scripts/verify-psbt/package-lock.json"]
     },

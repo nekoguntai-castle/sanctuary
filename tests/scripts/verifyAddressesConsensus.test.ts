@@ -22,7 +22,7 @@ const key: AccountKeyEvidence = {
 function results(): DerivationEvidence[] {
   return [
     { caseId: testCase.id, implementation: 'Bitcoin Core', implementationVersion: '29.0.0', evidenceScope: 'root-private-descriptor-to-output', accountKeys: [], address: 'address', scriptPubKeyHex: '0014' },
-    { caseId: testCase.id, implementation: 'bitcoinjs-lib', implementationVersion: '7.0.1', evidenceScope: 'seed-to-account-and-output', accountKeys: [key], address: 'address', scriptPubKeyHex: '0014' },
+    { caseId: testCase.id, implementation: 'bitcoinjs-lib', implementationVersion: '7.0.2', evidenceScope: 'seed-to-account-and-output', accountKeys: [key], address: 'address', scriptPubKeyHex: '0014' },
     { caseId: testCase.id, implementation: 'bip_utils (Python)', implementationVersion: '2.12.1', evidenceScope: 'seed-to-account-and-output', accountKeys: [key], address: 'address', scriptPubKeyHex: '0014' },
     { caseId: testCase.id, implementation: 'btcd/btcutil (Go)', implementationVersion: '0.25.0', evidenceScope: 'seed-to-account-and-output', accountKeys: [key], address: 'address', scriptPubKeyHex: '0014' },
   ];

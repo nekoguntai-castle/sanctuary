@@ -5,7 +5,7 @@
   "revision": null,
   "source": {
     "applicationVersion": "0.8.72",
-    "signingDependencySha256": "908fb4259ba18f0f3b4cca798abc76a7b3c27b13724d9666fd111a761f0ef742",
+    "signingDependencySha256": "8964db0d7302d40231cc41f6184a16a8e12602ff7b210f7fc3ef6fc9d15c0e74",
     "signingDependencyPackages": [
       "@bitcoinerlab/secp256k1@1.2.0",
       "@keystonehq/bc-ur-registry@0.7.1",
@@ -44,11 +44,11 @@
       "bip32@5.0.1",
       "bip39@3.1.0",
       "bitbox02-api@0.15.1",
-      "bitcoinjs-lib@7.0.1",
+      "bitcoinjs-lib@7.0.2",
       "bs58check@2.1.2",
       "bs58check@4.0.0",
       "cbor-x@1.6.4",
-      "ecpair@3.0.1",
+      "ecpair@3.0.2",
       "tiny-secp256k1@1.1.7",
       "tiny-secp256k1@2.2.4"
     ],
@@ -5116,7 +5116,7 @@
       "signedPsbtVectorCount": 6,
       "independentImplementations": [
         "Bitcoin Core 29.0.0",
-        "bitcoinjs-lib 7.0.1",
+        "bitcoinjs-lib 7.0.2",
         "bip_utils (Python) 2.12.1",
         "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
       ]
