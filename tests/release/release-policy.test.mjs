@@ -126,6 +126,6 @@ test('bump script arms rollback before writes and validates generated parity', (
   const write = bump.indexOf('"$NPM_BIN" version');
   assert.ok(begin > -1 && write > begin);
   assert.match(bump, /cp -p "\$TRANSACTION_DIR\/\$output" "\$output"/);
-  assert.match(bump, /source\.packageLockSha256/);
+  assert.match(bump, /source\.signingDependencySha256/);
   assert.match(bump, /cmp -s "\$HARDWARE_JSON"[\s\S]*cmp -s "\$HARDWARE_MARKDOWN"/);
 });

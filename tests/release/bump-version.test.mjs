@@ -41,12 +41,12 @@ function canonicalReport(repo) {
     revision: existing.revision,
     source: {
       applicationVersion: version,
-      packageLockSha256: digest(join(repo, 'package-lock.json')),
+      signingDependencySha256: digest(join(repo, 'package-lock.json')),
     },
     rows: ['canonical'],
   };
   writeJson(reportPath, report);
-  writeFileSync(join(repo, outputs[7]), `# Hardware evidence\n\nApplication: ${version}\nLock: ${report.source.packageLockSha256}\n`);
+  writeFileSync(join(repo, outputs[7]), `# Hardware evidence\n\nApplication: ${version}\nLock: ${report.source.signingDependencySha256}\n`);
 }
 
 function createFixture() {
@@ -75,7 +75,7 @@ mktemp -d "\${TMPDIR:-/tmp}/registered-\${1}.XXXXXX"
   });
   writeJson(join(repo, outputs[6]), {
     schemaVersion: 1, generatedAt: '2026-08-01T00:00:00.000Z', revision: null,
-    source: { applicationVersion: 'placeholder', packageLockSha256: 'placeholder' }, rows: ['canonical'],
+    source: { applicationVersion: 'placeholder', signingDependencySha256: 'placeholder' }, rows: ['canonical'],
   });
   canonicalReport(repo);
 
@@ -108,7 +108,7 @@ if (process.env.STUB_REPORT_FAIL === '1') process.exit(24);
 const value = flag => process.argv[process.argv.indexOf(flag) + 1];
 const version = JSON.parse(readFileSync('package.json')).version;
 const hash = createHash('sha256').update(readFileSync('package-lock.json')).digest('hex');
-const report = { schemaVersion: 1, generatedAt: value('--as-of'), revision: process.argv.includes('--revision') ? value('--revision') : null, source: { applicationVersion: version, packageLockSha256: hash }, rows: ['canonical'] };
+const report = { schemaVersion: 1, generatedAt: value('--as-of'), revision: process.argv.includes('--revision') ? value('--revision') : null, source: { applicationVersion: version, signingDependencySha256: hash }, rows: ['canonical'] };
 writeFileSync(value('--json'), JSON.stringify(report, null, 2) + '\\n');
 writeFileSync(value('--markdown'), '# Hardware evidence\\n\\nApplication: ' + version + '\\nLock: ' + hash + '\\n');
 `);
@@ -183,7 +183,7 @@ const corruptions = [
   ['llm-egress-proxy/package-lock.json', (value) => { value.version = '9.9.9'; }],
   ['llm-egress-proxy/package-lock.json', (value) => { value.packages[''].version = '9.9.9'; }],
   [outputs[6], (value) => { value.source.applicationVersion = '9.9.9'; }],
-  [outputs[6], (value) => { value.source.packageLockSha256 = '0'.repeat(64); }],
+  [outputs[6], (value) => { value.source.signingDependencySha256 = '0'.repeat(64); }],
   [outputs[6], (value) => { value.rows = ['not-canonical']; }],
 ];
 

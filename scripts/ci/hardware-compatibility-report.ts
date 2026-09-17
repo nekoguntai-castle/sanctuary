@@ -39,6 +39,99 @@ const readJson = <T>(path: string): T =>
 const rowKey = (row: RequiredHardwareSignedRow): string =>
   `${row.vendor}:${row.scriptType}`;
 
+interface SigningDependencyScope {
+  exactPackageNames: readonly string[];
+  packageNamePrefixes: readonly string[];
+}
+
+const SIGNING_DEPENDENCY_SCOPE = readJson<SigningDependencyScope>(
+  "config/signing-dependency-scope.json",
+);
+
+interface PackageLockPackageEntry {
+  version?: string;
+  resolved?: string;
+  integrity?: string;
+}
+
+export interface PackageLockFile {
+  packages?: Record<string, PackageLockPackageEntry | undefined>;
+}
+
+/**
+ * True when a `packages` path key (e.g. `node_modules/x/node_modules/ecpair`)
+ * names a package inside the signing-dependency scope declared in
+ * config/signing-dependency-scope.json. Nested copies match on their own
+ * trailing package name, so a transitive re-vendoring of a scoped package is
+ * still covered even when its own transitive dependencies are not.
+ */
+export const packageNameFromLockPath = (pathKey: string): string | null => {
+  const marker = "node_modules/";
+  const index = pathKey.lastIndexOf(marker);
+  if (index === -1) return null;
+  const name = pathKey.slice(index + marker.length);
+  return name === "" ? null : name;
+};
+
+export const isSigningDependencyPackageName = (name: string): boolean =>
+  (SIGNING_DEPENDENCY_SCOPE.exactPackageNames as readonly string[]).includes(name) ||
+  (SIGNING_DEPENDENCY_SCOPE.packageNamePrefixes as readonly string[]).some(
+    (prefix) => name.startsWith(prefix),
+  );
+
+/**
+ * Hashes only the resolved identity (path, version, resolved URL, integrity)
+ * of every `package-lock.json` entry whose package name falls inside the
+ * signing-dependency scope — never the whole lockfile. An unrelated bump
+ * (e.g. hono, eslint) leaves this digest unchanged; a bump of a scoped
+ * package, including a nested `node_modules/x/node_modules/<scoped>` copy,
+ * always changes it. Transitive dependencies of a scoped package that are
+ * not themselves in scope are intentionally excluded: they can float without
+ * forcing a re-pin of this statement.
+ *
+ * Every exact-named package in scope must be found in the lockfile at least
+ * once; a missing one is a hard configuration error, not a silent skip,
+ * since it would otherwise let the digest go stale unnoticed if the package
+ * were ever removed as a direct dependency without updating the scope.
+ */
+export function computeSigningDependencySha256(
+  lockfile: PackageLockFile,
+): { sha256: string; packages: readonly string[] } {
+  const packages = lockfile.packages ?? {};
+  const matched: { path: string; name: string; version: string; resolved: string; integrity: string }[] = [];
+  for (const [path, entry] of Object.entries(packages)) {
+    if (path === "") continue;
+    const name = packageNameFromLockPath(path);
+    if (!name || !isSigningDependencyPackageName(name)) continue;
+    if (!entry || typeof entry.version !== "string") {
+      throw new Error(
+        `signing-dependency scope: "${path}" has no resolved version in package-lock.json`,
+      );
+    }
+    matched.push({
+      path,
+      name,
+      version: entry.version,
+      resolved: entry.resolved ?? "",
+      integrity: entry.integrity ?? "",
+    });
+  }
+  for (const required of SIGNING_DEPENDENCY_SCOPE.exactPackageNames) {
+    if (!matched.some((entry) => entry.name === required)) {
+      throw new Error(
+        `signing-dependency scope: required package "${required}" is not present in package-lock.json`,
+      );
+    }
+  }
+  // Code-unit order, not localeCompare: the digest must not depend on the host ICU locale.
+  matched.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const canonical = matched
+    .map((entry) => `${entry.path}\0${entry.version}\0${entry.resolved}\0${entry.integrity}`)
+    .join("\n");
+  const packageVersions = [...new Set(matched.map((entry) => `${entry.name}@${entry.version}`))].sort();
+  return { sha256: sha256(canonical), packages: packageVersions };
+}
+
 interface ReportOptions {
   asOf: string;
   revision: string | null;
@@ -269,10 +362,8 @@ export function buildHardwareCompatibilityReport(options: ReportOptions) {
     );
   }
 
-  const packageLock = readFileSync(
-    resolve(REPO_ROOT, "package-lock.json"),
-    "utf8",
-  );
+  const packageLock = readJson<PackageLockFile>("package-lock.json");
+  const signingDependency = computeSigningDependencySha256(packageLock);
   const packageJson = JSON.parse(
     readFileSync(resolve(REPO_ROOT, "package.json"), "utf8"),
   ) as { version: string };
@@ -372,7 +463,8 @@ export function buildHardwareCompatibilityReport(options: ReportOptions) {
     revision: options.revision,
     source: {
       applicationVersion: packageJson.version,
-      packageLockSha256: sha256(packageLock),
+      signingDependencySha256: signingDependency.sha256,
+      signingDependencyPackages: signingDependency.packages,
       capabilityManifestId: HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
     },
     capabilityRows: HARDWARE_WALLET_CAPABILITY_ROWS.map((row) => ({ ...row })),

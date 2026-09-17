@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "description": "Packages whose resolved version in package-lock.json is relevant to a hardware-wallet or Bitcoin signing/PSBT compatibility claim. scripts/ci/hardware-compatibility-report.ts hashes only these packages (by every packages[] path, including nested copies) into source.signingDependencySha256. An unrelated dependency bump must never change that digest; a bump of one of these packages must always force a re-pin. Evidence for each entry: direct imports under src/services/hardwareWallet/** (including bitbox02-api and the bs58check xpub/address codec), server/src/services/bitcoin/**, the QR/BC-UR decoding path (src/hooks/qr/**, src/utils/urPsbt.ts, src/utils/urDeviceDecoder.ts), and the sdk sections of config/ledger-emulator/proof.json, config/trezor-emulator-proof.json, and config/jade-emulator-proof.json.",
+  "exactPackageNames": [
+    "@bitcoinerlab/secp256k1",
+    "@keystonehq/bc-ur-registry",
+    "@ngraveio/bc-ur",
+    "bip32",
+    "bip39",
+    "bitbox02-api",
+    "bitcoinjs-lib",
+    "bs58check",
+    "cbor-x",
+    "ecpair",
+    "tiny-secp256k1"
+  ],
+  "packageNamePrefixes": [
+    "@ledgerhq/",
+    "@trezor/"
+  ]
+}

@@ -94,7 +94,6 @@ run_hardware_report() {
 
 validate_version_identities() {
   node - "$HARDWARE_JSON" <<'NODE'
-const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const root = read('package.json');
@@ -119,9 +118,14 @@ const checks = [
 ];
 const errors = checks.filter(([, actual]) => actual !== expected)
   .map(([label, actual]) => `${label}: ${String(actual)} (expected ${expected})`);
-const digest = createHash('sha256').update(readFileSync('package-lock.json')).digest('hex');
-if (report.source?.packageLockSha256 !== digest) {
-  errors.push(`generated JSON source.packageLockSha256: ${String(report.source?.packageLockSha256)} (expected ${digest})`);
+// source.signingDependencySha256 is a scoped digest over only the
+// hardware-wallet/signing packages declared in
+// config/signing-dependency-scope.json (see scripts/ci/hardware-compatibility-report.ts),
+// not the whole lockfile, so it cannot be recomputed here without duplicating
+// that scope/algorithm. This is a structural sanity check only; full byte-for-byte
+// correctness is enforced afterward by check_release_evidence's regenerate-and-cmp.
+if (!/^[0-9a-f]{64}$/.test(String(report.source?.signingDependencySha256))) {
+  errors.push(`generated JSON source.signingDependencySha256 is missing or malformed: ${String(report.source?.signingDependencySha256)}`);
 }
 if (errors.length) { process.stderr.write(`${errors.join('\n')}\n`); process.exit(1); }
 NODE
