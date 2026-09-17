@@ -18,6 +18,16 @@ const mocks = vi.hoisted(() => ({
     res.type('text/plain');
     res.send('metrics');
   }),
+  logWarn: vi.fn(),
+}));
+
+vi.mock('../../../src/utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: mocks.logWarn,
+    error: vi.fn(),
+  }),
 }));
 
 vi.mock('@modelcontextprotocol/sdk/server/express.js', async () => {
@@ -236,6 +246,64 @@ describe('MCP HTTP transport', () => {
 
     expect(mocks.authFailuresInc).toHaveBeenCalledWith({ reason: 'unauthorized' });
     expect(mocks.recordMcpRequest).toHaveBeenCalledWith('prompt:wallet_health', 401, expect.any(Number));
+  });
+
+  it('bounds an oversized tool name before it reaches audit, logs and metrics', async () => {
+    const app = createMcpHttpApp();
+    mocks.authenticateMcpRequest.mockRejectedValueOnce(new McpUnauthorizedError('bad token'));
+    const oversizedName = 'x'.repeat(5000);
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-11-25')
+      .send({ method: 'tools/call', params: { name: oversizedName } })
+      .expect(401);
+
+    expect(mocks.auditLog).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      details: expect.objectContaining({ operation: expect.any(String) }),
+    }));
+    const auditedOperation = mocks.auditLog.mock.calls[0][0].details.operation as string;
+    expect(Array.from(auditedOperation).length).toBeLessThanOrEqual(129);
+    expect(auditedOperation.startsWith('tool:x')).toBe(true);
+    expect(auditedOperation.endsWith('…')).toBe(true);
+
+    expect(mocks.recordMcpRequest).toHaveBeenCalledWith(auditedOperation, 401, expect.any(Number));
+    expect(mocks.logWarn).toHaveBeenCalledWith('MCP request failed', expect.objectContaining({
+      operation: auditedOperation,
+    }));
+  });
+
+  it('bounds an oversized resource URI scheme before it reaches audit', async () => {
+    const app = createMcpHttpApp();
+    mocks.authenticateMcpRequest.mockRejectedValueOnce(new McpUnauthorizedError('bad token'));
+    const oversizedScheme = `${'a'.repeat(5000)}://x`;
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-11-25')
+      .send({ method: 'resources/read', params: { uri: oversizedScheme } })
+      .expect(401);
+
+    const auditedOperation = mocks.auditLog.mock.calls[0][0].details.operation as string;
+    expect(auditedOperation.startsWith('resource:a')).toBe(true);
+    expect(Array.from(auditedOperation).length).toBeLessThanOrEqual(129);
+  });
+
+  it('cuts on code points, not UTF-16 code units, so a surrogate pair is never split', async () => {
+    const app = createMcpHttpApp();
+    mocks.authenticateMcpRequest.mockRejectedValueOnce(new McpUnauthorizedError('bad token'));
+    const name = `${'x'.repeat(122)}😀😀😀😀`;
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-11-25')
+      .send({ method: 'tools/call', params: { name } })
+      .expect(401);
+
+    const auditedOperation = mocks.auditLog.mock.calls[0][0].details.operation as string;
+    expect(auditedOperation.endsWith('😀…')).toBe(true);
+    expect(Buffer.from(auditedOperation, 'utf8').toString('utf8')).toBe(auditedOperation);
   });
 
   it('does not overwrite an unauthorized transport response after headers are sent', async () => {

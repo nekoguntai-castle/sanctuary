@@ -60,6 +60,14 @@ const validateProtocolHeader = (req: Request): void => {
   }
 };
 
+const MAX_OPERATION_LENGTH = 128;
+
+const boundOperation = (operation: string): string => {
+  const chars = Array.from(operation);
+  return chars.length <= MAX_OPERATION_LENGTH ? operation : `${chars.slice(0, MAX_OPERATION_LENGTH).join('')}…`;
+};
+
+// classifyMcpOperation does not bound its output; every call site must wrap the result in boundOperation.
 const classifyMcpOperation = (body: unknown): string => {
   if (Array.isArray(body)) {
     return 'batch';
@@ -115,7 +123,7 @@ const auditMcpOperation = async (
 };
 
 async function handleMcpPost(req: Request, res: Response): Promise<void> {
-  const operation = classifyMcpOperation(req.body);
+  const operation = boundOperation(classifyMcpOperation(req.body));
   const started = process.hrtime.bigint();
   let context: McpRequestContext | null = null;
   let status = 200;
