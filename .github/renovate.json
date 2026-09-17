@@ -10,6 +10,19 @@
       "matchDatasources": ["docker"],
       "matchPackageNames": ["sanctuary-bitcoind"],
       "enabled": false
+    },
+    {
+      "description": "Funds-critical packages pinned in config/ci-toolchain-lock.json (fundsCriticalPackages): a Renovate PR can never pass scripts/ci/check-supply-chain-locks.mjs because the exact version and integrity must move together across every listed manifest and lockfile. List them on the dashboard instead of opening an unmergeable PR; bump them with scripts/bump-funds-critical.sh <package> <version> (see \"Bumping a funds-critical package\" in docs/reference/ci-cd-strategy.md), then approve the dashboard entry so Renovate can pick up the reviewed version.",
+      "matchPackageNames": [
+        "bitcoinjs-lib",
+        "@ledgerhq/hw-transport-webusb",
+        "@ledgerhq/ledger-bitcoin",
+        "@ledgerhq/hw-transport-node-speculos",
+        "@trezor/connect",
+        "@trezor/connect-web",
+        "cbor-x"
+      ],
+      "dependencyDashboardApproval": true
     }
   ]
 }

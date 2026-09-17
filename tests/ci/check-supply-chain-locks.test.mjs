@@ -96,10 +96,21 @@ test('rejects version ranges, integrity drift, and undeclared package boundaries
     write(root, 'package.json', { dependencies: { 'bitcoinjs-lib': '^7.0.1' } });
     write(root, 'package-lock.json', { packages: { 'node_modules/bitcoinjs-lib': { version: '7.0.1', integrity: 'sha512-drift' } } });
     write(root, 'extra/package.json', { dependencies: { 'bitcoinjs-lib': '7.0.1' } });
-    const errors = inspectSupplyChainLocks(root).join('\n');
+    const errorList = inspectSupplyChainLocks(root);
+    const errors = errorList.join('\n');
     assert.match(errors, /must declare exact bitcoinjs-lib@7\.0\.1/);
     assert.match(errors, /lock drift for bitcoinjs-lib/);
     assert.match(errors, /unreviewed manifest boundary/);
+    const hints = errorList.filter((line) => line.includes('scripts/bump-funds-critical.sh'));
+    assert.equal(hints.length, 1, 'exactly one funds-critical remediation hint, not one per error');
+    assert.match(hints[0], /scripts\/bump-funds-critical\.sh <package> <version>/);
+    assert.match(hints[0], /ci-cd-strategy\.md/);
+  });
+});
+
+test('emits no funds-critical remediation hint when locks are clean', () => {
+  withFixture((root) => {
+    assert.deepEqual(inspectSupplyChainLocks(root), []);
   });
 });
 

@@ -106,6 +106,62 @@ Repository workflow permissions are intentionally read-only:
   Forgejo/GitHub Release objects. The complete command sequence is in
   [Release distribution](release-distribution.md#release-sequence).
 
+## Bumping a funds-critical package
+
+`config/ci-toolchain-lock.json` `fundsCriticalPackages` pins one reviewed
+`version` + `integrity` per Bitcoin/hardware-wallet-signing dependency
+(currently `bitcoinjs-lib`, the `@ledgerhq/*` transports, `@trezor/connect{,-web}`,
+and `cbor-x`), together with the exact `manifests` and `lockfiles` that must
+all agree on it. `scripts/ci/check-supply-chain-locks.mjs` (`npm run
+check:supply-chain-locks`, run in the "CI classifier tests" job) fails closed
+if any of them drift. `bitcoinjs-lib` alone spans four manifests and three
+lockfiles (root, `server`, `scripts/verify-addresses`,
+`scripts/verify-psbt`); those verifier lockfiles are deliberately **not**
+consolidated into the root workspace, because a shared lockfile would let an
+unrelated root dependency bump change `scripts/verify-addresses`'
+resolved dependency tree and silently invalidate its address-generation
+provenance digest. The separate lockfiles are the point, not an oversight —
+which is why a bump has to touch all of them together instead of via a normal
+`npm update`.
+
+Renovate cannot open a passing PR for these packages (`.github/renovate.json`
+gates them behind `dependencyDashboardApproval: true` instead, so they show up
+on the dashboard rather than as doomed PRs). A human or agent bump goes
+through `scripts/bump-funds-critical.sh <package> <version>`:
+
+- `--dry-run` prints the plan (which manifests/lockfiles would change, whether
+  the hardware-compatibility statement needs re-pinning) without touching
+  anything; run it first.
+- The real run edits every listed manifest's exact pin, updates each listed
+  lockfile via `npm install <package>@<version> --package-lock-only` in its
+  own directory (never by hand — a pre-commit hook blocks direct lockfile
+  edits), asserts the lockfile diff touched only that package's entries,
+  re-pins `config/ci-toolchain-lock.json`, re-pins
+  `docs/reference/generated/hardware-wallet-compatibility.{json,md}` when the
+  package is in `config/signing-dependency-scope.json`, and finally runs
+  `npm run check:supply-chain-locks`.
+- It never runs Docker and never regenerates verification vectors — those
+  stay manual, because they require live Bitcoin Core containers and a
+  byte-identical proof a script should not wave through unsupervised. The
+  script's own final output lists the exact commands: regenerate address
+  vectors with `npm run generate:repeatable` then `npm run verify:repeatable`
+  in `scripts/verify-addresses` (Docker + 5 Bitcoin Core containers + Go +
+  pinned Python image), regenerate PSBT vectors with
+  `scripts/ci/run-psbt-core-subject.sh live`, update the version string in
+  `scripts/verify-addresses/implementations/bitcoinjs.ts` and the version
+  expectations in `tests/scripts/verifyAddressesGenerated.test.ts` /
+  `verifyAddressesConsensus.test.ts` (the script greps for the old version
+  literal to surface any file it did not already rewrite), and prove the
+  regenerated vector data is byte-identical to the previous vectors apart from
+  version labels / provenance `version` / `sourceSha256`.
+- Review the upstream tarball diff (`npm pack <pkg>@<old> <pkg>@<new>` +
+  `diff -r`) before trusting the new version at all.
+
+PR #1225 (bitcoinjs-lib 7.0.1 → 7.0.2) is the worked example of the full
+procedure, including the vector regeneration and byte-identical proof.
+`scripts/verify-addresses/README.md` links back here for the vector side of
+the process.
+
 ## Lizard Remediation PR Loop
 
 The lizard cleanup loop now uses the same PR-first workflow as other development:

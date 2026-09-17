@@ -47,6 +47,17 @@ function isImageSource(relativePath) {
   ].includes(relativePath);
 }
 
+// Declared above contextualImageLine on purpose: lizard misparses that function
+// as running to the end of the file (exactly at the nloc=200 limit), so new
+// logic below it would trip the complexity lane.
+function verifyFundsCriticalPackages(root, config, manifests, locks, errors) {
+  const before = errors.length;
+  for (const policy of config.fundsCriticalPackages ?? []) verifyCriticalPackage(root, policy, manifests, locks, errors);
+  if (errors.length > before) {
+    errors.push('Fix funds-critical package drift with scripts/bump-funds-critical.sh <package> <version>; see "Bumping a funds-critical package" in docs/reference/ci-cd-strategy.md.');
+  }
+}
+
 function contextualImageLine(line, relativePath) {
   if (relativePath === 'scripts/ci/observe-runtime-image-cves.sh' && /^readonly TRIVY_IMAGE=/.test(line)) return true;
   if (/^\s*FROM\s+/i.test(line) || /^\s*image:\s*/.test(line) || /"image"\s*:/.test(line)) return true;
@@ -228,7 +239,7 @@ export function inspectToolchainLocks(root) {
   const allFiles = walk(root);
   const packageManifests = allFiles.filter((file) => path.basename(file) === 'package.json');
   const packageLocks = allFiles.filter((file) => path.basename(file) === 'package-lock.json');
-  for (const policy of config.fundsCriticalPackages ?? []) verifyCriticalPackage(root, policy, packageManifests, packageLocks, errors);
+  verifyFundsCriticalPackages(root, config, packageManifests, packageLocks, errors);
   verifyToolchainSources(root, config, errors);
   return errors;
 }

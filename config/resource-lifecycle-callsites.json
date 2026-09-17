@@ -2683,6 +2683,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/release/bump-funds-critical.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/release/bump-version.test.mjs",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",

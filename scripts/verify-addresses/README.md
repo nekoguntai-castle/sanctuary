@@ -18,6 +18,13 @@ protocol proof, or physical-device proof. Those tiers are never interchangeable.
 An unavailable implementation is a hard failure. Addresses are never rewritten
 between networks to manufacture agreement.
 
+Bumping `bitcoinjs-lib` (or any other funds-critical package pinned in
+`config/ci-toolchain-lock.json`) is a coordinated procedure, not a normal
+`npm update` — see "Bumping a funds-critical package" in
+[`docs/reference/ci-cd-strategy.md`](../../docs/reference/ci-cd-strategy.md)
+for the full sequence, including when the vector regeneration below is
+required.
+
 ## Locked derivation matrix
 
 The schema-v2 matrix contains exactly 480 cases:
