@@ -11,7 +11,9 @@
 import {
   DeviceAccountPurpose,
   WalletScriptType,
+  isWalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import type { DeviceParser, DeviceParseResult, DeviceAccount, FormatDetectionResult } from '../types';
 
 type KeystoneAccount = {
@@ -66,20 +68,24 @@ const normalizeKeystonePath = (path?: string): string => (path || '').replace(/^
 
 const getKeystoneAccountXpub = (account: KeystoneAccount): string => account.xPub || account.xpub || '';
 
-const getKeystoneAccountPurpose = (path: string): DeviceAccount['purpose'] =>
-  path.includes("48'") || path.includes('48h')
-    ? DeviceAccountPurpose.MULTISIG
-    : DeviceAccountPurpose.SINGLE_SIG;
-
-const getKeystoneScriptType = (path: string): DeviceAccount['scriptType'] => {
-  if (path.includes("48'") || path.includes('48h')) {
-    if (path.includes("/1'") || path.includes('/1h')) return WalletScriptType.NESTED_SEGWIT;
-    return WalletScriptType.NATIVE_SEGWIT;
-  }
-  if (path.includes("86'") || path.includes('86h')) return WalletScriptType.TAPROOT;
-  if (path.includes("49'") || path.includes('49h')) return WalletScriptType.NESTED_SEGWIT;
-  if (path.includes("44'") || path.includes('44h')) return WalletScriptType.LEGACY;
-  return WalletScriptType.NATIVE_SEGWIT;
+/**
+ * Derive account purpose and script type from the parsed derivation path
+ * components (not substring matching on the raw string, which misclassifies
+ * paths whose coin type or account index happens to equal a script-type
+ * digit, e.g. m/48'/0'/1'/2' or m/44'/0'/86'). Mirrors
+ * accountImportUtils.ts's createSingleAccount mapping byte-for-byte so the
+ * two import paths cannot drift again.
+ */
+const classifyKeystonePath = (
+  path: string
+): { purpose: DeviceAccount['purpose']; scriptType: DeviceAccount['scriptType'] } => {
+  const parsed = parseDerivationPath(path);
+  return {
+    purpose: parsed.purpose === 48 ? DeviceAccountPurpose.MULTISIG : DeviceAccountPurpose.SINGLE_SIG,
+    scriptType: isWalletScriptType(parsed.scriptType)
+      ? parsed.scriptType
+      : WalletScriptType.NATIVE_SEGWIT,
+  };
 };
 
 const createKeystoneAccount = (account: KeystoneAccount): DeviceAccount | undefined => {
@@ -90,8 +96,7 @@ const createKeystoneAccount = (account: KeystoneAccount): DeviceAccount | undefi
   return {
     xpub,
     derivationPath,
-    purpose: getKeystoneAccountPurpose(derivationPath),
-    scriptType: getKeystoneScriptType(derivationPath),
+    ...classifyKeystonePath(derivationPath),
   };
 };
 
@@ -189,12 +194,7 @@ export const keystoneMultisigParser: DeviceParser = {
     const ks = data as KeystoneMultisigFormat;
     const xpub = ks.ExtendedPublicKey || '';
     const derivationPath = (ks.Path || '').replace(/^M/, 'm');
-
-    // Determine script type from path (BIP-48)
-    let scriptType: DeviceAccount['scriptType'] = WalletScriptType.NATIVE_SEGWIT;
-    if (derivationPath.includes("/1'") || derivationPath.includes("/1h")) {
-      scriptType = WalletScriptType.NESTED_SEGWIT;
-    }
+    const { scriptType } = classifyKeystonePath(derivationPath);
 
     const accounts: DeviceAccount[] = xpub ? [{
       xpub,

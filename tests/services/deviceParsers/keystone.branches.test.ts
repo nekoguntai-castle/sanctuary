@@ -47,6 +47,9 @@ describe('keystoneStandardParser branch coverage', () => {
             { hdPath: "M/48'/0'/0'/2'", xPub: 'xpub-multi-native' },
             { hdPath: "M/49'/0'/0'", xPub: 'xpub-nested-quote' },
             { hdPath: 'M/84/0/0', xPub: '' },
+            { hdPath: "M/48'/0'/1'/2'", xPub: 'xpub-multi-native-account-1' },
+            { hdPath: "M/44'/0'/86'", xPub: 'xpub-legacy-account-86' },
+            { hdPath: 'M/84/0/0', xPub: 'xpub-unhardened' },
           ],
         },
       ],
@@ -64,6 +67,9 @@ describe('keystoneStandardParser branch coverage', () => {
         expect.objectContaining({ xpub: 'xpub-multi-nested', scriptType: 'nested_segwit', purpose: 'multisig' }),
         expect.objectContaining({ xpub: 'xpub-multi-nested-quote', scriptType: 'nested_segwit', purpose: 'multisig' }),
         expect.objectContaining({ xpub: 'xpub-multi-native', scriptType: 'native_segwit', purpose: 'multisig' }),
+        expect.objectContaining({ xpub: 'xpub-multi-native-account-1', scriptType: 'native_segwit', purpose: 'multisig' }),
+        expect.objectContaining({ xpub: 'xpub-legacy-account-86', scriptType: 'legacy', purpose: 'single_sig' }),
+        expect.objectContaining({ xpub: 'xpub-unhardened', scriptType: 'native_segwit', purpose: 'single_sig' }),
       ])
     );
   });
@@ -195,6 +201,13 @@ describe('keystoneMultisigParser branch coverage', () => {
       Path: "M/48h/0h/0h/2h",
     });
     expect(native.accounts?.[0].scriptType).toBe('native_segwit');
+
+    const testnetNative = keystoneMultisigParser.parse({
+      ExtendedPublicKey: 'Zpub-testnet-native',
+      Path: "M/48'/1'/0'/2'",
+    });
+    expect(testnetNative.accounts?.[0].scriptType).toBe('native_segwit');
+    expect(testnetNative.derivationPath).toBe("m/48'/1'/0'/2'");
 
     const noXpub = keystoneMultisigParser.parse({
       Path: "M/48'/0'/0'/2'",
