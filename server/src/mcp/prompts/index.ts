@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import { requireMcpWalletAccess } from '../auth';
 import { getMcpContext } from '../types';
+import { MCP_PROMPT_NAMES } from '../promptNames';
 
 function userPrompt(text: string) {
   return {
@@ -19,7 +20,7 @@ function userPrompt(text: string) {
 
 export function registerMcpPrompts(server: McpServer): void {
   server.registerPrompt(
-    'transaction_analysis',
+    MCP_PROMPT_NAMES.transactionAnalysis,
     {
       title: 'Transaction Analysis',
       description: 'Analyze a wallet transaction for fee efficiency, labels, and privacy signals',
@@ -43,7 +44,7 @@ export function registerMcpPrompts(server: McpServer): void {
   );
 
   server.registerPrompt(
-    'utxo_management',
+    MCP_PROMPT_NAMES.utxoManagement,
     {
       title: 'UTXO Management',
       description: 'Review UTXO health and consolidation opportunities',
@@ -66,7 +67,7 @@ export function registerMcpPrompts(server: McpServer): void {
   );
 
   server.registerPrompt(
-    'spending_analysis',
+    MCP_PROMPT_NAMES.spendingAnalysis,
     {
       title: 'Spending Analysis',
       description: 'Analyze spending patterns and label trends',
@@ -90,7 +91,7 @@ export function registerMcpPrompts(server: McpServer): void {
   );
 
   server.registerPrompt(
-    'fee_optimization',
+    MCP_PROMPT_NAMES.feeOptimization,
     {
       title: 'Fee Optimization',
       description: 'Review current cached fee conditions for transaction timing',
@@ -116,7 +117,7 @@ export function registerMcpPrompts(server: McpServer): void {
   );
 
   server.registerPrompt(
-    'wallet_health',
+    MCP_PROMPT_NAMES.walletHealth,
     {
       title: 'Wallet Health',
       description: 'Overall wallet health check across sync, UTXOs, transactions, policies, and insights',

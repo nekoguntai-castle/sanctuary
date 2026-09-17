@@ -1,5 +1,64 @@
 import { Counter, Histogram } from 'prom-client';
 import { registry } from '../observability/metrics/registry';
+import { assistantReadToolRegistry } from '../assistant/tools';
+import { MCP_PROMPT_NAME_VALUES } from './promptNames';
+
+/**
+ * JSON-RPC methods that are always safe to record verbatim: this is a small,
+ * fixed vocabulary independent of any caller-supplied name.
+ */
+const ALLOWLISTED_JSONRPC_METHODS = new Set([
+  'initialize',
+  'ping',
+  'tools/list',
+  'tools/call',
+  'resources/list',
+  'resources/templates/list',
+  'resources/read',
+  'prompts/list',
+  'prompts/get',
+  'notifications/initialized',
+  'batch',
+  'unknown',
+]);
+
+// Computed once (not per-call): the registry of read tools is fixed at
+// process startup, so there is no reason to re-derive this set on every
+// request.
+let registeredToolNames: Set<string> | null = null;
+
+function getRegisteredToolNames(): Set<string> {
+  if (!registeredToolNames) {
+    registeredToolNames = new Set(assistantReadToolRegistry.list().map(definition => definition.name));
+  }
+  return registeredToolNames;
+}
+
+const REGISTERED_PROMPT_NAMES = new Set<string>(MCP_PROMPT_NAME_VALUES);
+
+/**
+ * Bounds an MCP operation label to a finite set of values so that an
+ * unauthenticated or malicious caller cannot mint unbounded Prometheus
+ * series by supplying arbitrary tool/prompt/resource names or JSON-RPC
+ * methods. Unregistered names collapse to their bucket's "other" value.
+ */
+export function metricOperationLabel(operation: string): string {
+  if (ALLOWLISTED_JSONRPC_METHODS.has(operation)) {
+    return operation;
+  }
+  if (operation.startsWith('tool:')) {
+    const name = operation.slice('tool:'.length);
+    return getRegisteredToolNames().has(name) ? operation : 'tool:other';
+  }
+  if (operation.startsWith('prompt:')) {
+    const name = operation.slice('prompt:'.length);
+    return REGISTERED_PROMPT_NAMES.has(name) ? operation : 'prompt:other';
+  }
+  if (operation.startsWith('resource:')) {
+    return operation === 'resource:sanctuary:' ? operation : 'resource:other';
+  }
+  return 'other';
+}
 
 export const mcpRequestsTotal = new Counter({
   name: 'sanctuary_mcp_requests_total',
@@ -31,7 +90,7 @@ export const mcpRateLimitHitsTotal = new Counter({
 
 export function recordMcpRequest(operation: string, status: number, durationSeconds: number): void {
   const labels = {
-    operation,
+    operation: metricOperationLabel(operation),
     status: String(status),
   };
   mcpRequestsTotal.inc(labels);
