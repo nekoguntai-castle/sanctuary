@@ -1,7 +1,7 @@
 # Bug-scrub loop 2026-09-16 — iteration 2 remediation plan
 
 - Iteration: 2 (bug-scrub-loop run `bug-scrub-loop-20260916t1812z-whole-repo`)
-- Status: reviewed — converged after four recursive review passes by two independent reviewers (see Review notes); implementation starts with Phase 1
+- Status: complete — all five phases merged (#1208, #1209, #1210, #1211, #1212; see Delivery record); iteration 3 rescrub follows on the resulting main SHA
 - Source target-branch SHA: `36000cc65ec55c625de39d8fc4e8e2f569c9973c` (main after PR #1206; all push runs green incl. the Architecture lane)
 - Scope: whole repository (locked at run start)
 - Iteration-1 outcome: all seven blocking findings (#1197, #1199–#1204) plus the interposed changelog (#1198) and architecture-graph (#1206) fixes are merged with verified target-branch CI; the iteration-2 rescrub found none of them recurring.
@@ -119,6 +119,7 @@ One PR per phase on `codex/bug-scrub/it2-<phase-slug>` branches, serial merges o
 | 2 | #1209 | `630ffa34` | Head `b88ee0a7` (code `9a73f87a`; rebased on `83beafe7`). reserveEnforcedUsage wraps its loop in try/catch and releases every taken reservation before rethrowing. All four lanes green; target-main CI verified. |
 | 3 | #1210 | `4068fc9d` | Head `08d43511` (code `c775dff3` + `7cea5272`; rebased on `630ffa34`). findWalletIdsByUserRole unions direct walletUser rows in the requested roles with group-role wallets the user is a member of, excluding group wallets that also carry a direct row (vote-path parity with requireWalletAccess). approvals-routes and walletSharingRepository unit mocks gained wallet.findMany. All four lanes green incl. Architecture. |
 | 4 | #1211 | `a2024c29` | Head `ff129144` (code `5726bd6a` + `239ada09`; rebased on `4068fc9d`). recordMcpRequest passes the operation through metricOperationLabel(): JSON-RPC allowlist, `tool:`/`prompt:`/`resource:` prefixes bounded to registered names or `other`; registered prompt names live in a dependency-free promptNames module. All four lanes green incl. Architecture (no generated-graph diff). |
+| 5 | #1212 | `bf3616d9` | Head `6851ff9e` (code `fdb1b2db`; rebased on `a2024c29`). operator-recovery-session derives its terminal state from executionTerminalOutcome(results, recovered), so a run that halts after an applied action is recorded `partial` instead of a clean rejection; three two-action contracts red on origin/main. All four lanes green incl. Architecture. |
 
 ## Completion criteria
 
