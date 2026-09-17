@@ -42,6 +42,9 @@
     "serialize-javascript": "7.0.5",
     "svgo": "3.3.5",
     "uuid": "14.0.0",
-    "webpack": "5.106.2"
+    "webpack": "5.106.2",
+    "image-size": "2.0.4",
+    "colord": "2.9.4",
+    "joi": "17.13.6"
   }
 }
