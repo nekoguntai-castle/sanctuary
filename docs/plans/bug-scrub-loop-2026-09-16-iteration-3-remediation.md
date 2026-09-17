@@ -1,7 +1,7 @@
 # Bug-scrub loop 2026-09-16 — iteration 3 remediation plan
 
 - Iteration: 3 (bug-scrub-loop run `bug-scrub-loop-20260916t1812z-whole-repo`)
-- Status: reviewed — converged after eight recursive review passes by two independent reviewers each (see Review notes); implementation starts with Phase 1
+- Status: complete — Phase 1 merged (#1215; see Delivery record); iteration 4 rescrub follows on the resulting main SHA
 - Source target-branch SHA: `b43ea0cb932f1cae450a06fba87edb61baaee443` (main after PR #1213; push runs for the code merges `4068fc9d`, `a2024c29` green, `bf3616d9` and `b43ea0cb` in progress at planning time — re-check before implementation)
 - Scope: whole repository (locked at run start)
 - Iteration-2 outcome: all five blocking findings merged (#1208–#1212) with verified target-branch CI; the iteration-3 rescrub (four read-only shards plus coordinator re-verification, coverage manifest sealed for all eight domains) found none of the twelve resolved findings recurring.
@@ -54,6 +54,7 @@ One PR on `codex/bug-scrub/it3-mcp-audit-operation-bound`, serial merge on `main
 
 | Phase | PR | Merge commit | Notes |
 | --- | --- | --- | --- |
+| 1 | #1215 | `52bdfeae` | Head `a86c22b8` (code `18959fcf`; rebased on `7b10b905`). `boundOperation` (128 code points + `…`) wraps `classifyMcpOperation` at its single call site so audit `details.operation`, the warn line and the metrics label share one bounded, well-formed string; three contracts red on origin/main (5005/5010-character raw strings, surrogate-pair cut) plus a hoisted logger mock. All four lanes green incl. Architecture; coverage 100%/100%/100%/100%; lizard 86 unchanged; longest registered name 29. |
 
 ## Review notes (pass 1)
 
