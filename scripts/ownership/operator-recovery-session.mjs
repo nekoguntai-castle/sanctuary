@@ -1,6 +1,7 @@
 import { canonicalSha256 } from './canonical-json.mjs';
 import { publicKeyFingerprint } from './crypto.mjs';
 import { runCleanupActions } from './cleanup-action-runner.mjs';
+import { executionTerminalOutcome } from './cleanup-execution.mjs';
 import {
   appendCleanupCheckpoint, createCleanupJournal, deriveCleanupJournalPath,
   verifyCleanupJournal,
@@ -12,11 +13,7 @@ import {
 import { existsSync } from 'node:fs';
 
 function terminalState(result, recovered) {
-  if (result.terminalState === 'completed') return recovered ? 'recovered' : 'cleaned';
-  if (result.terminalState === 'ambiguous') return 'ambiguous';
-  if (result.terminalState === 'refused') return 'refused';
-  if (result.results.some((entry) => entry.failureClass === 'cancelled')) return 'cancelled';
-  return 'partial';
+  return executionTerminalOutcome(result.results, recovered);
 }
 
 function receiptResult(entry) {

@@ -118,6 +118,7 @@ One PR per phase on `codex/bug-scrub/it2-<phase-slug>` branches, serial merges o
 | 1 | #1208 | `83beafe7` | Head `0bb935a8` (code `50f09e28`; rebased on `996b2c58`). registerDevice resolves the caller's device role before touching an existing fingerprint match; no role → 403 without leaking device details, merge writes owner-only; devices API harness mock gained getUserDeviceRole. All four lanes green incl. Architecture; target-main CI verified. |
 | 2 | #1209 | `630ffa34` | Head `b88ee0a7` (code `9a73f87a`; rebased on `83beafe7`). reserveEnforcedUsage wraps its loop in try/catch and releases every taken reservation before rethrowing. All four lanes green; target-main CI verified. |
 | 3 | #1210 | `4068fc9d` | Head `08d43511` (code `c775dff3` + `7cea5272`; rebased on `630ffa34`). findWalletIdsByUserRole unions direct walletUser rows in the requested roles with group-role wallets the user is a member of, excluding group wallets that also carry a direct row (vote-path parity with requireWalletAccess). approvals-routes and walletSharingRepository unit mocks gained wallet.findMany. All four lanes green incl. Architecture. |
+| 4 | #1211 | `a2024c29` | Head `ff129144` (code `5726bd6a` + `239ada09`; rebased on `4068fc9d`). recordMcpRequest passes the operation through metricOperationLabel(): JSON-RPC allowlist, `tool:`/`prompt:`/`resource:` prefixes bounded to registered names or `other`; registered prompt names live in a dependency-free promptNames module. All four lanes green incl. Architecture (no generated-graph diff). |
 
 ## Completion criteria
 

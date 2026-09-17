@@ -15,7 +15,21 @@ import { executeOperatorRecoverySession } from '../../scripts/ownership/operator
 const D = (value) => value.repeat(64);
 const NOW = new Date('2026-09-02T10:00:00.000Z');
 
-function fixture() {
+function buildResource(identityLetter, observationLetter) {
+  const ownership = {
+    project: 'ci-1-fresh-install', deploymentId: 'ci-1-deploy', ownerId: 'ci-1-owner',
+    resourceClass: 'compose_network', lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
+    createdAt: '2026-09-02T00:00:00.000Z', createdByRelease: 'unreleased',
+    createdByCommit: 'a'.repeat(40), creationRunId: 'ci-1-run', immutableIdentity: D(identityLetter),
+  };
+  return {
+    resourceClass: 'compose_network', locatorKind: 'engine_id', locator: D(identityLetter),
+    immutableIdentity: D(identityLetter), ownership, ownershipDigest: canonicalSha256(ownership),
+    observationDigest: D(observationLetter), dependencyIdentities: [], target: true,
+  };
+}
+
+function fixture({ actionCount = 1 } = {}) {
   const authorization = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const evidence = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const authorizationId = publicKeyFingerprint(authorization.publicKey);
@@ -25,42 +39,33 @@ function fixture() {
     validUntil: '2026-09-03T09:00:00.000Z',
     authorizationFingerprints: [authorizationId], evidenceFingerprints: [evidenceId],
   });
-  const ownership = {
-    project: 'ci-1-fresh-install', deploymentId: 'ci-1-deploy', ownerId: 'ci-1-owner',
-    resourceClass: 'compose_network', lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
-    createdAt: '2026-09-02T00:00:00.000Z', createdByRelease: 'unreleased',
-    createdByCommit: 'a'.repeat(40), creationRunId: 'ci-1-run', immutableIdentity: D('b'),
-  };
-  const resource = {
-    resourceClass: 'compose_network', locatorKind: 'engine_id', locator: D('b'),
-    immutableIdentity: D('b'), ownership, ownershipDigest: canonicalSha256(ownership),
-    observationDigest: D('c'), dependencyIdentities: [], target: true,
-  };
+  const resource = buildResource('b', 'c');
+  const resources = actionCount === 2 ? [resource, buildResource('5', '6')] : [resource];
   const assertion = buildOperatorRecoveryAssertion({
-    trust, assertionId: 'assertion-1', project: ownership.project,
-    deploymentId: ownership.deploymentId, ownerId: ownership.ownerId,
-    sourceCommit: ownership.createdByCommit, sourceExecutionId: ownership.creationRunId,
+    trust, assertionId: 'assertion-1', project: resource.ownership.project,
+    deploymentId: resource.ownership.deploymentId, ownerId: resource.ownership.ownerId,
+    sourceCommit: resource.ownership.createdByCommit, sourceExecutionId: resource.ownership.creationRunId,
     sourceState: 'terminal', historicalTerminalityAuthority: 'operator_assertion_only',
     issuedAt: NOW.toISOString(), expiresAt: '2026-09-02T11:00:00.000Z',
     trustDigest: canonicalSha256(trust), providerCorrelationEvidenceDigest: D('1'),
     queryResultCoreDigest: D('2'), signerKeyId: authorizationId,
   });
   const scope = buildOperatorRecoveryScope({
-    trust, assertion, scopeId: 'scope-1', deploymentId: ownership.deploymentId,
-    operationRunId: 'operator-run-1', project: ownership.project, ownerId: ownership.ownerId,
+    trust, assertion, scopeId: 'scope-1', deploymentId: resource.ownership.deploymentId,
+    operationRunId: 'operator-run-1', project: resource.ownership.project, ownerId: resource.ownership.ownerId,
     observedAt: NOW.toISOString(), expiresAt: '2026-09-02T11:00:00.000Z',
     trustDigest: canonicalSha256(trust), policyDigest: D('d'),
     daemonContextFingerprint: D('e'), operatorAssertionDigest: canonicalSha256(assertion),
     providerCorrelationEvidenceDigest: D('1'), queryResultCoreDigest: D('2'),
-    resources: [resource], signerKeyId: authorizationId,
+    resources, signerKeyId: authorizationId,
   });
-  const actions = [{
-    sequence: 1, resourceClass: resource.resourceClass,
-    immutableIdentity: resource.immutableIdentity, action: 'remove',
-    locatorKind: resource.locatorKind, locator: resource.locator,
-    ownershipDigest: resource.ownershipDigest, observationDigest: resource.observationDigest,
+  const actions = resources.map((entry, index) => ({
+    sequence: index + 1, resourceClass: entry.resourceClass,
+    immutableIdentity: entry.immutableIdentity, action: 'remove',
+    locatorKind: entry.locatorKind, locator: entry.locator,
+    ownershipDigest: entry.ownershipDigest, observationDigest: entry.observationDigest,
     dependencyIdentities: [],
-  }];
+  }));
   const approval = buildOperatorRecoveryApproval({
     scope, trust, scopeDigest: canonicalSha256(scope), trustDigest: scope.trustDigest,
     deploymentId: scope.deploymentId, operationRunId: scope.operationRunId,
@@ -89,6 +94,84 @@ function successfulRuntime(action, resource) {
       immutableIdentity: action.immutableIdentity, postconditionDigest: D('9'), failureClass: 'none' }),
   };
 }
+
+/**
+ * A runtime whose callbacks branch on the `action.sequence` they receive at call time, so a
+ * single runtime can drive a multi-action approval where different actions take different
+ * outcomes. `outcomes` maps each action's sequence number to 'success', 'refused' or 'ambiguous'.
+ */
+function branchingRuntime(actions, resources, outcomes) {
+  // `resources` (typically `scope.resources`) is sorted by the schema and may not share
+  // `actions`' index order, so match resource to action by identity, not position.
+  const resourceBySequence = new Map(actions.map((action) => [
+    action.sequence, resources.find((entry) => entry.immutableIdentity === action.immutableIdentity),
+  ]));
+  return {
+    reloadAuthority: async ({ action, predecessorResultDigest }) => {
+      const outcome = outcomes[action.sequence];
+      if (outcome === 'refused') return { state: 'refused', failureClass: 'identity_changed' };
+      if (outcome === 'ambiguous') return { state: 'ambiguous', failureClass: 'query_failed' };
+      const resource = resourceBySequence.get(action.sequence);
+      const row = {
+        resourceClass: action.resourceClass, locatorKind: action.locatorKind,
+        locator: action.locator, immutableIdentity: action.immutableIdentity,
+        ownership: resource.ownership, ownershipDigest: action.ownershipDigest,
+        observationDigest: action.observationDigest, disposition: 'eligible', failureClasses: [],
+        references: [], contentDigests: [], dependencyIdentities: [], running: null,
+        active: false, protected: false, data: false,
+      };
+      return { state: 'eligible', row, derivedFromResultDigest: predecessorResultDigest };
+    },
+    mutate: async () => ({ outcome: 'success' }),
+    reconcile: async ({ action }) => ({
+      state: 'absent', resourceClass: action.resourceClass,
+      immutableIdentity: action.immutableIdentity, postconditionDigest: D('9'), failureClass: 'none',
+    }),
+  };
+}
+
+test('a two-action approval where the first cleans and the second is refused completes as partial', async () => {
+  const f = fixture({ actionCount: 2 });
+  const runtime = branchingRuntime(f.approval.actions, f.scope.resources, { 1: 'success', 2: 'refused' });
+  const result = await executeOperatorRecoverySession({
+    ...f, evidencePrivateKey: f.evidence.privateKey, evidencePublicKey: f.evidence.publicKey,
+    runtime, now: () => NOW,
+    buildFinalObservation: async () => ({ closed: true, observationDigest: D('8') }),
+    revalidatedProviderCorrelationEvidenceDigest: D('7'),
+  });
+  assert.equal(result.receipt.state, 'partial');
+  assert.equal(result.receipt.results[0].result, 'absent');
+  assert.equal(result.receipt.results[1].result, 'refused');
+  assert.match(result.journalDigest, /^[a-f0-9]{64}$/);
+});
+
+test('a two-action approval where both actions are refused completes as refused (control)', async () => {
+  const f = fixture({ actionCount: 2 });
+  const runtime = branchingRuntime(f.approval.actions, f.scope.resources, { 1: 'refused', 2: 'refused' });
+  const result = await executeOperatorRecoverySession({
+    ...f, evidencePrivateKey: f.evidence.privateKey, evidencePublicKey: f.evidence.publicKey,
+    runtime, now: () => NOW,
+    buildFinalObservation: async () => ({ closed: true, observationDigest: D('8') }),
+    revalidatedProviderCorrelationEvidenceDigest: D('7'),
+  });
+  assert.equal(result.receipt.state, 'refused');
+  assert.equal(result.receipt.results[0].result, 'refused');
+  assert.equal(result.receipt.results[1].result, 'refused');
+});
+
+test('a two-action approval where the first cleans and the second is ambiguous completes as ambiguous (control)', async () => {
+  const f = fixture({ actionCount: 2 });
+  const runtime = branchingRuntime(f.approval.actions, f.scope.resources, { 1: 'success', 2: 'ambiguous' });
+  const result = await executeOperatorRecoverySession({
+    ...f, evidencePrivateKey: f.evidence.privateKey, evidencePublicKey: f.evidence.publicKey,
+    runtime, now: () => NOW,
+    buildFinalObservation: async () => ({ closed: true, observationDigest: D('8') }),
+    revalidatedProviderCorrelationEvidenceDigest: D('7'),
+  });
+  assert.equal(result.receipt.state, 'ambiguous');
+  assert.equal(result.receipt.results[0].result, 'absent');
+  assert.equal(result.receipt.results[1].result, 'ambiguous');
+});
 
 test('session uses signed synced journal and returns a successful bound receipt', async () => {
   const f = fixture();
