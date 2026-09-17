@@ -8,8 +8,9 @@ import {
   DeviceAccountPurpose,
   WalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
-import { InvalidInputError } from '../errors';
+import { ForbiddenError, InvalidInputError } from '../errors';
 import { deviceRepository } from '../repositories';
+import { getUserDeviceRole } from './deviceAccess';
 import { createLogger } from '../utils/logger';
 import {
   compareAccounts,
@@ -103,6 +104,8 @@ export async function registerDevice(
   const existingDevice = await deviceRepository.findByFingerprintWithAccounts(fingerprint);
 
   if (existingDevice) {
+    const role = await getUserDeviceRole(existingDevice.id, userId);
+    assertRegistrationAccess(role, merge);
     assertHardwareWalletCapability(existingDevice, 'import');
     return handleExistingDevice(existingDevice, incomingAccounts, fingerprint, merge);
   }
@@ -114,6 +117,27 @@ export async function registerDevice(
     modelSlug,
     incomingAccounts,
   });
+}
+
+/**
+ * Ensure the caller has access to a device that already exists for the
+ * requested fingerprint, and that merge writes are owner-only.
+ *
+ * Deliberately does not include the device id, label, model or accounts in
+ * either error message, so an unauthorized caller learns nothing about the
+ * device beyond the fact that the fingerprint is already registered.
+ */
+function assertRegistrationAccess(
+  role: Awaited<ReturnType<typeof getUserDeviceRole>>,
+  merge: boolean | undefined,
+): void {
+  if (role === null) {
+    throw new ForbiddenError('Device with this fingerprint is registered to another account');
+  }
+
+  if (merge === true && role !== 'owner') {
+    throw new ForbiddenError('Only a device owner can merge accounts into it');
+  }
 }
 
 async function handleExistingDevice(

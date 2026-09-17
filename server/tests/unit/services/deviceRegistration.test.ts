@@ -9,9 +9,14 @@ const mockDeviceRepository = vi.hoisted(() => ({
   mergeAccounts: vi.fn(),
 }));
 const mockAssertHardwareWalletCapability = vi.hoisted(() => vi.fn());
+const mockGetUserDeviceRole = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../src/services/hardwareWalletCapabilities', () => ({
   assertHardwareWalletCapability: mockAssertHardwareWalletCapability,
+}));
+
+vi.mock('../../../src/services/deviceAccess', () => ({
+  getUserDeviceRole: mockGetUserDeviceRole,
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -37,6 +42,7 @@ describe('deviceRegistration', () => {
     mockDeviceRepository.findHardwareModel.mockResolvedValue({ id: 'model-1' });
     mockDeviceRepository.createWithOwnerAndAccounts.mockResolvedValue({ id: 'device-1' });
     mockDeviceRepository.findByIdWithModelAndAccounts.mockResolvedValue({ id: 'device-1', accounts: [] });
+    mockGetUserDeviceRole.mockResolvedValue('owner');
   });
 
   it('rejects missing required device identity fields', async () => {
@@ -228,6 +234,134 @@ describe('deviceRegistration', () => {
         xpub: 'xpub',
       }],
     );
+  });
+
+  it('rejects registration to an existing fingerprint the caller has no access to', async () => {
+    mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue({
+      id: 'other-device-1',
+      type: 'coldcard',
+      model: null,
+      label: 'Someone else’s Coldcard',
+      fingerprint: 'aabbccdd',
+      accounts: [],
+    });
+    mockGetUserDeviceRole.mockResolvedValue(null);
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'xpub',
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Device with this fingerprint is registered to another account',
+    });
+
+    expect(mockGetUserDeviceRole).toHaveBeenCalledWith('other-device-1', 'user-1');
+    expect(mockDeviceRepository.mergeAccounts).not.toHaveBeenCalled();
+  });
+
+  it('rejects a merge into an existing fingerprint the caller has no access to', async () => {
+    mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue({
+      id: 'other-device-1',
+      type: 'coldcard',
+      model: null,
+      label: 'Someone else’s Coldcard',
+      fingerprint: 'aabbccdd',
+      accounts: [],
+    });
+    mockGetUserDeviceRole.mockResolvedValue(null);
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'xpub',
+      merge: true,
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Device with this fingerprint is registered to another account',
+    });
+
+    expect(mockDeviceRepository.mergeAccounts).not.toHaveBeenCalled();
+  });
+
+  it('rejects a viewer attempting to merge accounts into an existing device', async () => {
+    mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue({
+      id: 'device-1',
+      type: 'coldcard',
+      model: null,
+      label: 'Coldcard',
+      fingerprint: 'aabbccdd',
+      accounts: [],
+    });
+    mockGetUserDeviceRole.mockResolvedValue('viewer');
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'xpub',
+      merge: true,
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Only a device owner can merge accounts into it',
+    });
+
+    expect(mockDeviceRepository.mergeAccounts).not.toHaveBeenCalled();
+  });
+
+  it('allows a viewer to read the duplicate device without merging', async () => {
+    mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue({
+      id: 'device-1',
+      type: 'coldcard',
+      model: null,
+      label: 'Coldcard',
+      fingerprint: 'aabbccdd',
+      accounts: [],
+    });
+    mockGetUserDeviceRole.mockResolvedValue('viewer');
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'xpub',
+    })).resolves.toMatchObject({ kind: 'duplicate' });
+
+    expect(mockDeviceRepository.mergeAccounts).not.toHaveBeenCalled();
+  });
+
+  it('allows an owner to merge new accounts into an existing device', async () => {
+    mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue({
+      id: 'device-1',
+      type: 'coldcard',
+      model: null,
+      label: 'Coldcard',
+      fingerprint: 'aabbccdd',
+      accounts: [],
+    });
+    mockGetUserDeviceRole.mockResolvedValue('owner');
+    mockDeviceRepository.mergeAccounts.mockResolvedValue([{ id: 'account-1' }]);
+    mockDeviceRepository.findByIdWithModelAndAccounts.mockResolvedValue({
+      id: 'device-1',
+      accounts: [{ id: 'account-1' }],
+    });
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'xpub',
+      merge: true,
+    })).resolves.toMatchObject({ kind: 'merged', added: 1 });
+
+    expect(mockDeviceRepository.mergeAccounts).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an unrecognized canonical model before device creation', async () => {

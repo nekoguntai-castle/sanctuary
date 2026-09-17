@@ -48,6 +48,7 @@ vi.mock('../../../../src/services/deviceAccess', () => ({
   removeUserFromDevice: vi.fn(),
   shareDeviceWithGroup: vi.fn(),
   checkDeviceOwnerAccess: vi.fn(),
+  getUserDeviceRole: vi.fn().mockResolvedValue('owner'),
 }));
 
 // Mock logger
