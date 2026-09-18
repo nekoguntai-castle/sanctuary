@@ -125,7 +125,14 @@ inspect_compose_volume() {
             and .[0].Labels["io.sanctuary.lifecycle"] == "active"
             and .[0].Labels["io.sanctuary.cleanup-policy"] == "preserve_ambiguous"
             and (.[0].Labels["io.sanctuary.created-at"] | type == "string"
-                and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.000Z$"))
+                # sanctuary#1057: accept exactly what the ownership contract
+                # accepts (timestamp() in scripts/ownership/validation.mjs and
+                # ownership_require_identity in scripts/ownership/producer-hooks.sh)
+                # -- a canonical UTC toISOString value with any 3-digit
+                # millisecond component, not only ".000Z". The CI cleanup
+                # coordinator supplies a real millisecond value (e.g. ".016Z");
+                # only an unset SANCTUARY_CLEANUP_CREATED_AT falls back to ".000Z".
+                and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"))
             and (.[0].Labels["io.sanctuary.created-by-release"] == "unreleased"
                 or (.[0].Labels["io.sanctuary.created-by-release"] | type == "string"
                     and test("^[a-z0-9][a-z0-9._:-]{0,127}$")))

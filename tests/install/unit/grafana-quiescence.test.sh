@@ -877,6 +877,52 @@ test_foreign_malformed_and_unstable_volumes_fail_closed() {
     done
 }
 
+# sanctuary#1057: CI's cleanup coordinator supplies SANCTUARY_CLEANUP_CREATED_AT
+# from `new Date().toISOString()`, e.g. "...T01:38:55.016Z" -- a canonical
+# timestamp whose milliseconds are not "000". Only an unset variable makes
+# ownership_initialize() fall back to the ".000Z" generator (used by real
+# operator installs), so CI's own label never matches that literal. The
+# ownership contract (scripts/ownership/validation.mjs timestamp(), and
+# ownership_require_identity in scripts/ownership/producer-hooks.sh) accepts
+# any canonical millisecond-precision toISOString() value; the volume-identity
+# schema below must accept the same values, not a narrower one.
+test_canonical_millisecond_created_at_is_accepted() {
+    reset_case
+    local output status=0
+    output="$(SANCTUARY_CLEANUP_CREATED_AT=2026-09-18T01:38:55.016Z run_helper success 2>&1)" || status=$?
+    [ "$status" -eq 0 ] || {
+        echo "FAIL: a canonical non-.000 millisecond created-at was refused" >&2
+        printf '%s\n' "$output" >&2
+        return 1
+    }
+    ! grep -Fq 'volume identity is unavailable, unexpected, or unstable' <<< "$output" || {
+        echo "FAIL: canonical millisecond created-at rejected as an unstable identity" >&2
+        return 1
+    }
+}
+
+# Negative control for the positive case above: the schema must stay exact.
+# Only a canonical UTC toISOString() value (exactly three millisecond digits)
+# may pass -- not a missing-millis timestamp, a wrong digit count, or a
+# non-UTC offset.
+test_non_canonical_created_at_is_still_rejected() {
+    local value status output
+    for value in '2026-09-18T01:38:55Z' '2026-09-18T01:38:55.0160Z' '2026-09-18T01:38:55.016+00:00'; do
+        reset_case
+        status=0
+        output="$(SANCTUARY_CLEANUP_CREATED_AT="$value" run_helper success 2>&1)" || status=$?
+        [ "$status" -ne 0 ] || {
+            echo "FAIL: non-canonical created-at '$value' was unexpectedly accepted" >&2
+            return 1
+        }
+        grep -Fq 'volume identity is unavailable, unexpected, or unstable' <<< "$output" || {
+            echo "FAIL: non-canonical created-at '$value' was refused for the wrong reason" >&2
+            printf '%s\n' "$output" >&2
+            return 1
+        }
+    done
+}
+
 test_manifest_bound_legacy_volumes_are_used_without_claim_or_create() {
     reset_case
     run_helper legacy-volume >/dev/null
@@ -1360,6 +1406,8 @@ test_no_flock_path_succeeds
 test_fresh_data_volume_is_created_with_compose_identity
 test_volume_create_response_loss_recovers_without_deleting_data
 test_foreign_malformed_and_unstable_volumes_fail_closed
+test_canonical_millisecond_created_at_is_accepted
+test_non_canonical_created_at_is_still_rejected
 test_manifest_bound_legacy_volumes_are_used_without_claim_or_create
 test_legacy_volume_classifier_errors_refuse_before_mutation
 test_legacy_volume_drift_is_refused_before_start
