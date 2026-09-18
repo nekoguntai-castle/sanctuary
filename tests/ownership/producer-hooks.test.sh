@@ -210,6 +210,52 @@ test "$retirement_status" -ne 0
 printf '%s\n' "$retirement_diagnostic" \
   | grep -Fq "Exact image retirement postcondition is unavailable: $image_ref"
 ownership_run_docker_before_deadline() { shift; docker "$@"; }
+
+# Non-regression (run 17590, job verify-jade-emulator 220951, kumo,
+# 2026-09-18): a slow-but-successful `docker image rm` of a multi-gigabyte
+# image must not starve the postcondition's own bound when retire_exact_built_image
+# computes its own default deadline (the shape used by run-jade-emulator-proof.sh
+# and run-ledger-emulator-proof.sh, which call it with no explicit deadline).
+# Restore the real timeout-driven helpers and let a fake `timeout` simulate an
+# `image rm` that takes far longer than the default deadline's whole window but
+# still succeeds -- unlike the `image_rm_mode` fixtures above, this exercises
+# the actual deadline arithmetic in
+# ownership_bounded_image_remove/ownership_run_docker_before_deadline, not a
+# stubbed short-circuit.
+eval "$original_ownership_run_docker_before_deadline"
+eval "$original_ownership_bounded_image_remove"
+image_inspect="$original_image_inspect"
+image_rm_mode=success
+slow_rm_calls="$(mktemp)"
+: > "$slow_rm_calls"
+original_ownership_new_image_deadline_for_slow_rm="$(declare -f ownership_new_image_deadline)"
+ownership_new_image_deadline() { printf '%s\n' "$(( $(ownership_image_now_ms) + 700 ))"; }
+timeout() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --foreground|--kill-after=*) shift ;;
+      *) break ;;
+    esac
+  done
+  shift # window
+  if [ "$1 $2 $3" = 'docker image rm' ]; then
+    printf '1\n' >> "$slow_rm_calls"
+    sleep 1
+  fi
+  "$@"
+}
+retirement_status=0
+retire_exact_built_image "$image_ref" "$image_id" test-run || retirement_status=$?
+test "$(cat "$slow_rm_calls")" -eq 1
+test "$retirement_status" -eq 0
+test "$(jq -r '.[0].RepoTags[]' <<< "$image_inspect")" = 'shared:keep'
+unset -f timeout
+eval "$original_ownership_new_image_deadline_for_slow_rm"
+image_inspect="$original_image_inspect"
+image_rm_mode=success
+ownership_run_docker_before_deadline() { shift; docker "$@"; }
+ownership_bounded_image_remove() { shift; docker image rm "$1"; }
+
 unset -f docker
 
 original_list_ci_compose_lane_images="$(declare -f list_ci_compose_lane_images)"

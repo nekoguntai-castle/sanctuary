@@ -36,8 +36,23 @@ ownership_new_image_deadline() {
   printf '%s\n' "$(( $(ownership_image_now_ms) + 3500 ))"
 }
 
+# `docker image rm` of a multi-gigabyte image (the Jade QEMU proof image is
+# ~3.3 GiB) can take far longer than the fast daemon-observation calls on a
+# loaded rootless-Podman host without the daemon being stuck (run 17590, job
+# verify-jade-emulator 220951, kumo, 2026-09-18T02:24:09Z: tests passed, then
+# cleanup failed with "Exact image retirement postcondition is unavailable"
+# because the single shared 3.5s deadline was spent by the removal itself).
+# 60s is a generous multiple of typical rootless-Podman multi-GiB rmi times
+# and is still bounded -- a daemon that cannot even finish removing one image
+# in 60s is unhealthy, and this budget is only used for the removal call
+# itself (see retire_exact_built_image), never for the fast observation
+# calls below.
+ownership_new_image_removal_deadline() {
+  printf '%s\n' "$(( $(ownership_image_now_ms) + 60000 ))"
+}
+
 ownership_timeout_window_before_deadline() {
-  local deadline="$1" now remaining window
+  local deadline="$1" max_window="${2:-3000}" now remaining window
   now="$(ownership_image_now_ms)" || return 1
   remaining=$((deadline - now))
   # Reserve time for timeout's forced-kill interval and the caller's
@@ -48,9 +63,11 @@ ownership_timeout_window_before_deadline() {
   # Keep every daemon call independently bounded while allowing a final
   # post-removal observation to consume the budget left by earlier fast calls.
   # Docker can hold its image-store lock for more than a second after a large
-  # --load. The shared 3.5s deadline, not this slice, remains the hard
-  # end-to-end bound and still leaves 400ms for forced termination/return.
-  [ "$window" -le 3000 ] || window=3000
+  # --load. The shared deadline, not this slice, remains the hard end-to-end
+  # bound and still leaves 400ms for forced termination/return. Callers that
+  # need a longer single-call allowance (image removal) pass a larger
+  # max_window explicitly; every other call keeps the default 3s cap.
+  [ "$window" -le "$max_window" ] || window="$max_window"
   if [ "$window" -ge 1000 ]; then
     printf '%d.%03ds\n' "$((window / 1000))" "$((window % 1000))"
   else
@@ -74,8 +91,8 @@ ownership_run_docker_before_deadline() {
 }
 
 ownership_bounded_image_remove() {
-  local deadline="$1" image_ref="$2" window
-  window="$(ownership_timeout_window_before_deadline "$deadline")" || return $?
+  local deadline="$1" image_ref="$2" max_window="${3:-3000}" window
+  window="$(ownership_timeout_window_before_deadline "$deadline" "$max_window")" || return $?
   timeout --foreground --kill-after=0.1s "$window" docker image rm "$image_ref"
 }
 
@@ -186,7 +203,19 @@ ownership_verify_registered_image_identity() {
 retire_exact_built_image() {
   local image_ref="$1" image_id="$2" build_id="$3" deadline="${4:-}"
   local listed remove_status=0 identity_status=0
-  [ -n "$deadline" ] || deadline="$(ownership_new_image_deadline)"
+  local removal_deadline removal_max_window=3000 postcondition_deadline
+  # A caller that supplies its own deadline is the coordinator's shared,
+  # tightly bounded retirement budget (retire_shared_ci_compose_image_references):
+  # a genuinely stuck daemon there must still be killed inside the
+  # coordinator's grace, so that budget is honored unchanged end to end. A
+  # caller with no deadline (the emulator-proof cleanup scripts, which run
+  # outside that grace) gets the short 3.5s bound for observation here, but
+  # removal and the postcondition each get their own fresh budget below.
+  local has_caller_deadline=1
+  if [ -z "$deadline" ]; then
+    deadline="$(ownership_new_image_deadline)"
+    has_caller_deadline=0
+  fi
   ownership_verify_registered_image_identity "$image_ref" "$image_id" "$build_id" "$deadline" \
     || identity_status=$?
   if [ "$identity_status" -eq 2 ]; then
@@ -196,9 +225,23 @@ retire_exact_built_image() {
     echo "Exact image retirement identity changed: $image_ref" >&2
     return 1
   fi
-  ownership_bounded_image_remove "$deadline" "$image_ref" \
+  removal_deadline="$deadline"
+  if [ "$has_caller_deadline" -eq 0 ]; then
+    removal_deadline="$(ownership_new_image_removal_deadline)"
+    removal_max_window=59900
+  fi
+  ownership_bounded_image_remove "$removal_deadline" "$image_ref" "$removal_max_window" \
     >/dev/null || remove_status=$?
-  listed="$(ownership_run_docker_before_deadline "$deadline" image ls --no-trunc \
+  # Fresh, taken now that removal has returned, rather than whatever the
+  # removal budget left behind -- the postcondition keeps the same fast 3.5s
+  # bound as every other observation call in this file. A caller-supplied
+  # deadline is honored unchanged end to end (see comment above), so it is
+  # reused here rather than replaced.
+  postcondition_deadline="$deadline"
+  if [ "$has_caller_deadline" -eq 0 ]; then
+    postcondition_deadline="$(ownership_new_image_deadline)"
+  fi
+  listed="$(ownership_run_docker_before_deadline "$postcondition_deadline" image ls --no-trunc \
     --filter "reference=$image_ref" --format '{{.ID}}\t{{.Repository}}:{{.Tag}}')" || {
     echo "Exact image retirement postcondition is unavailable: $image_ref" >&2
     return 1
