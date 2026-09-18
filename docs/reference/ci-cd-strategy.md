@@ -546,6 +546,68 @@ Initial targets:
 - Frontend/backend PRs without E2E-heavy changes: under 8 minutes p50.
 - Merge/main full gate: under 15 minutes p50.
 
+### Playwright version and follow-up capability inventory
+
+`@playwright/test` was bumped from `^1.49.1` to `^1.63.0` (bundled Chromium
+moved from revision 1228 / Chrome for Testing 149.0.7827.55 to revision 1243 /
+Chrome for Testing 153.0.8010.12). Browsers are still installed per-run from
+the package itself via `scripts/ci/install-playwright-chromium.sh` — no
+pinned browser image or digest exists for the two Playwright CI jobs (`Full
+Browser E2E Tests`, `Full Render E2E Tests`), so this bump required no runner
+or workflow change, only the version pin and lockfile update.
+
+The following are **not implemented in this PR** — a follow-up list of
+capabilities the 1.50-1.63 range adds that this suite could adopt:
+
+- **Clock API** (`page.clock`) — deterministic time control (`install`,
+  `pauseAt`, `fastForward`) for time-based UI assertions instead of mocking
+  `Date`/timers by hand.
+- **Aria snapshots** (`toMatchAriaSnapshot()`) — YAML-backed accessibility-tree
+  snapshots; could replace some brittle role/name locator chains in
+  `render-regression`.
+- **`test.step()` improvements** — per-step timeouts, `test.step.skip()`, and
+  `TestStepInfo.attach()` for richer step-level diagnostics in the longer
+  flow specs (`user-journeys.spec.ts`, `send-transaction-flow.spec.ts`).
+- **`locator.filter({ visible: true })`** — filters by visibility without a
+  separate assertion.
+- **`expect(locator).toContainClass()`** — a dedicated class-membership
+  assertion instead of manual class-string checks.
+- **`locator.describe()`** — human-readable step descriptions in the trace
+  viewer for custom locator chains.
+- **Accessibility assertions** (`toHaveAccessibleName()`,
+  `toHaveAccessibleDescription()`, `toHaveRole()`) — could tighten the
+  `accessibility.spec.ts` checks.
+- **Screencast API** — recording, action annotations, and frame capture
+  beyond the existing `video: 'on-first-retry'` option.
+- **WebAuthn Credentials API** (`browserContext.credentials`) — relevant if
+  passkey/WebAuthn flows are ever added.
+- **WebStorage API** (`page.localStorage`/`page.sessionStorage`) — direct
+  storage assertions without `page.evaluate()`, useful for the
+  `settings-persistence.spec.ts` and theme-persistence checks.
+- **HAR recording as a first-class API** (`tracing.startHar()`).
+- **Isolated retries** (`retryStrategy: 'isolated'`) — reruns a failing test
+  in a clean environment, which could reduce cross-test leakage as a source
+  of flake.
+- **Test locks** — serialize tests that share a named lock, useful for specs
+  that mutate shared/mocked global state.
+- **HTML report timeline/"speedboard" improvements** — per-test and per-step
+  duration waterfalls in `playwright-report/`, useful input for the CI Timing
+  Review Checkpoint above.
+- **`page.consoleMessages()`/`pageErrors()`/`requests()`** — simpler
+  structured access than manual event-listener wiring; could simplify
+  `renderRegressionHarness.ts`'s `setupRenderRegressionErrorChecks()`.
+
+Also worth a follow-up: a prebuilt Playwright runner image. `runner-infra`
+already publishes one for another repo (label `playwright-1.61.1`, version
+keyed off that repo's `playwright-core` lockfile pin), which is why Sanctuary
+cannot simply adopt it: the version would follow the other repo. The decision
+is to build a dedicated `sanctuary-ci-playwright` image whose version is read
+from Sanctuary's own lockfile, so this bump and any later one flow into it
+automatically. That is tracked separately (Dockerfile under
+`scripts/ci/images/`, image definition and host labels in `runner-infra`,
+then the two e2e jobs switch `runs-on`); until it lands, the e2e jobs keep
+installing Chromium per run.
+
 ## Diagnostic harness for Docker-backed install jobs
 
 Release tags use distinct workflow-level concurrency groups for

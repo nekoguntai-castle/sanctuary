@@ -68,17 +68,6 @@
       "reviewOn": "2026-11-29"
     },
     {
-      "location": "node_modules/fsevents",
-      "package": "fsevents",
-      "version": "2.3.2",
-      "scripts": { "install": "node-gyp rebuild" },
-      "allowed": false,
-      "optional": true,
-      "owner": "Sanctuary maintainers",
-      "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
-      "reviewOn": "2026-11-29"
-    },
-    {
       "location": "node_modules/msgpackr-extract",
       "package": "msgpackr-extract",
       "version": "3.0.4",
