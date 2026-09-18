@@ -847,6 +847,7 @@ jobs:
           node --test tests/ci/check-supply-chain-locks.test.mjs
           node --test tests/ci/renovate-funds-critical.test.mjs
           node --test tests/ci/runtime-image-evidence.test.mjs
+          node --test tests/ci/check-playwright-runner-contract.test.mjs
           npm run check:supply-chain-locks
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs

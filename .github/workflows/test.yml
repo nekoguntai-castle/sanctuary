@@ -1635,7 +1635,24 @@ jobs:
       (needs.detect-changes.outputs.browser_smoke_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
-    runs-on: ubuntu-22.04
+    # Runs inside the digest-pinned sanctuary-ci-playwright image rather than
+    # on a runner label (see docs/reference/ci-cd-strategy.md's "CI job
+    # images" note and runner-infra's docs/how-to/runner-job-images.md,
+    # "Prefer container: for new images"). docker-socket is the capability
+    # that can pull and run a named image -- not the image itself -- and is
+    # the same capability the verify-vectors.yml sanctuary-ci-go jobs use.
+    # A missing/unpushed image fails at pull time instead of queueing until
+    # timeout-minutes below expires, which is the failure mode a runs-on
+    # label has.
+    #
+    # The digest is the one the registry serves for the tag (its
+    # docker-content-digest), not the RepoDigest Podman computes locally on
+    # the build host -- the two differ, and only the registry's resolves.
+    # tests/ci/check-playwright-runner-contract.test.mjs requires both e2e
+    # jobs to pin the same real digest.
+    runs-on: docker-socket
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4
     timeout-minutes: 90
     # Serialized after full-backend-unit-coverage-shards so the two heavy full
     # lanes do not co-reside on the shared DIND daemon (see the
@@ -1696,16 +1713,13 @@ jobs:
           scripts/ci/time-command.sh "browser npm ci"
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
-      - name: Cache Playwright browsers
-        continue-on-error: true
-        uses: ./.github/actions/cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install Playwright browsers
+      # No "Cache Playwright browsers" step here: the sanctuary-playwright-*
+      # image already bakes Chromium into /root/.cache/ms-playwright, so
+      # caching that path on this runner would only cache what the image
+      # already provides. The install step below is a no-op fallback (see
+      # scripts/ci/install-playwright-chromium.sh) for any runner that lands
+      # on a host without the image, so it stays.
+      - name: Ensure Playwright browsers (no-op on the prebaked image)
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-playwright.log"
           scripts/ci/time-command.sh "browser playwright install"
@@ -1861,7 +1875,11 @@ jobs:
       (needs.detect-changes.outputs.render_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
-    runs-on: ubuntu-22.04
+    # See full-browser-e2e-tests above for the container: image decision and
+    # the placeholder-digest gate.
+    runs-on: docker-socket
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4
     timeout-minutes: 60
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
     env:
@@ -1885,16 +1903,8 @@ jobs:
           scripts/ci/time-command.sh "render npm ci"
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
-      - name: Cache Playwright browsers
-        continue-on-error: true
-        uses: ./.github/actions/cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install Playwright browsers
+      # No "Cache Playwright browsers" step: see full-browser-e2e-tests above.
+      - name: Ensure Playwright browsers (no-op on the prebaked image)
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-playwright.log"
           scripts/ci/time-command.sh "render playwright install"

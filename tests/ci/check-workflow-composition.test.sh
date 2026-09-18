@@ -564,6 +564,7 @@ node24_runner_report() {
           print job
         }
         job = ""
+        docker_socket = 0
       }
 
       /^jobs:$/ {
@@ -590,6 +591,23 @@ node24_runner_report() {
       }
 
       in_jobs && /^    runs-on: ubuntu-22\.04$/ {
+        selected = 1
+      }
+
+      # docker-socket is a capability, not an image (see
+      # docs/reference/ci-cd-strategy.md, the CI job images note, and
+      # runner-infra docs/how-to/runner-job-images.md, Prefer container:
+      # for new images). A job runs-on: docker-socket + container.image:
+      # sanctuary-ci-playwright is equally Node 24-capable: that image is
+      # built FROM the same digest-pinned act-ubuntu-node base as
+      # ubuntu-22.04 (see scripts/ci/images/playwright-runner.Dockerfile).
+      # The two E2E jobs use it instead of ubuntu-22.04 to get the prebaked
+      # Chromium without a per-host runner-label rollout.
+      in_jobs && /^    runs-on: docker-socket$/ {
+        docker_socket = 1
+      }
+
+      in_jobs && docker_socket && /^      image: nexus\.tabineko\.dev\/nekoguntai-castle\/sanctuary-ci-playwright@sha256:/ {
         selected = 1
       }
 

@@ -36,6 +36,15 @@ MOCK
   chmod +x "$bin_dir/npx"
 }
 
+# Builds a probe command that returns success once the shared counter file
+# reaches $1, so a test can control exactly which call to probe_chromium
+# succeeds (1-indexed).
+probe_cmd_succeeding_on_call() {
+  local target="$1" counter="$2"
+  printf 'count=$(cat "%s"); count=$((count + 1)); printf %%s "$count" > "%s"; [ "$count" -ge %s ]' \
+    "$counter" "$counter" "$target"
+}
+
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
@@ -47,22 +56,41 @@ main() {
   mkdir -p "$bin_dir"
   write_mock_npx "$bin_dir" "$log_file"
 
-  PATH="$bin_dir:$PATH" SANCTUARY_RETRY_DELAY_SECONDS=0 SANCTUARY_PLAYWRIGHT_PROBE_CMD=true bash "$SCRIPT"
-  assert_contains "$log_file" 'playwright install chromium'
-  assert_not_contains "$log_file" 'install-deps'
-
-  : >"$log_file"
+  # Case 1: the browser is already present (the sanctuary-playwright-* image
+  # bakes it in) -- the leading probe succeeds on its first call, and the
+  # script must skip the install entirely, making it a no-op fallback.
   local probe_count="$TEST_TEMP_DIR/probe-count"
   printf '0' >"$probe_count"
-  local probe_cmd
-  probe_cmd="count=\$(cat \"$probe_count\"); count=\$((count + 1)); printf '%s' \"\$count\" > \"$probe_count\"; [ \"\$count\" -ge 2 ]"
   PATH="$bin_dir:$PATH" \
     SANCTUARY_RETRY_DELAY_SECONDS=0 \
-    SANCTUARY_PLAYWRIGHT_PROBE_CMD="$probe_cmd" \
+    SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 1 "$probe_count")" \
+    bash "$SCRIPT"
+  [ ! -s "$log_file" ] || fail 'expected no npx calls when Chromium is already present'
+  [ "$(cat "$probe_count")" = '1' ] || fail 'expected exactly one probe call when already present'
+
+  # Case 2: not present yet, but launches cleanly right after
+  # `playwright install chromium` -- no OS dependency install needed.
+  : >"$log_file"
+  printf '0' >"$probe_count"
+  PATH="$bin_dir:$PATH" \
+    SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 2 "$probe_count")" \
+    bash "$SCRIPT"
+  assert_contains "$log_file" 'playwright install chromium'
+  assert_not_contains "$log_file" 'install-deps'
+  [ "$(cat "$probe_count")" = '2' ] || fail 'expected exactly two probe calls'
+
+  # Case 3: still fails to launch after `install chromium` -- falls through
+  # to `install-deps` and verifies once more.
+  : >"$log_file"
+  printf '0' >"$probe_count"
+  PATH="$bin_dir:$PATH" \
+    SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 3 "$probe_count")" \
     bash "$SCRIPT"
   assert_contains "$log_file" 'playwright install chromium'
   assert_contains "$log_file" 'playwright install-deps chromium'
-  [ "$(cat "$probe_count")" = '2' ] || fail 'expected probe to run twice'
+  [ "$(cat "$probe_count")" = '3' ] || fail 'expected exactly three probe calls'
 
   echo 'install-playwright-chromium regression checks passed'
 }

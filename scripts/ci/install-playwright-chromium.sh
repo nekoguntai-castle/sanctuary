@@ -26,6 +26,16 @@ NODE
 main() {
   [ -x "$retry_command" ] || fail "retry helper is not executable: $retry_command"
 
+  # The sanctuary-playwright-* runner image bakes Chromium in already (see
+  # scripts/ci/images/playwright-runner.Dockerfile); on that image the probe
+  # succeeds immediately and the install below is unnecessary work on every
+  # run. This script stays as the fallback path for any runner that does not
+  # carry the prebaked browser -- do not remove the install below.
+  if probe_chromium; then
+    echo "Playwright Chromium already present; skipping install"
+    return 0
+  fi
+
   "$retry_command" "playwright chromium browser install" npx playwright install chromium
 
   if probe_chromium; then

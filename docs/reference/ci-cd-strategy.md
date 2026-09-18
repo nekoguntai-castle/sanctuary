@@ -669,6 +669,92 @@ under its `DOCKER_BUILDKIT` guidance):
 - Compat builds store the name as `docker.io/library/<name>`, native builds as
   `localhost/<name>`, and inspect reports `RepoDigests` for local builds.
 
+**CI job images.** A handful of lanes run inside a purpose-built image rather
+than the stock `act` base, to keep a slow or flaky per-run install off the
+critical path. `scripts/ci/images/go-runner.Dockerfile` bakes the Go
+toolchain for the address cross-verification lane, and
+`scripts/ci/images/playwright-runner.Dockerfile` bakes Playwright's Chromium
++ OS dependencies for the browser/render E2E lanes (`Full Browser E2E Tests`,
+`Full Render E2E Tests` in `.github/workflows/test.yml`) — modelled directly
+on counting-cats' image of the same name, both FROM runner-infra's
+digest-pinned `act-ubuntu-node` base. The Dockerfile lives in this repo (a
+clone should describe its own CI environment); runner-infra owns the build
+and publish tooling fleet-wide (`docs/how-to/runner-job-images.md`, "Adding
+an image"). `sanctuary-ci-playwright` is consumed via a job-level
+`container:` block (below), so there is no runner-label mapping step for
+it — `go-runner.Dockerfile`'s `sanctuary-ci-go`, by contrast, is also
+consumed via `container:` in `verify-vectors.yml`, and neither image needs
+`config/runner-images.env` or a host re-render. The Dockerfile's
+`ARG PLAYWRIGHT_VERSION` default is pinned to `package-lock.json`'s resolved
+`node_modules/playwright-core` version and enforced by
+`tests/ci/check-playwright-runner-contract.test.mjs`, so a Playwright bump in
+this repo cannot silently leave the baked image stale.
+
+The two E2E jobs name the image directly with a job-level `container:` block
+— the same shape `verify-vectors.yml`'s `sanctuary-ci-go` jobs already use —
+rather than a `sanctuary-playwright-<version>` runner label, per
+runner-infra's documented "Prefer `container:` for new images" pattern
+(`docs/how-to/runner-job-images.md`, proven fleet-wide by its
+`job-image-canary` workflow):
+
+```yaml
+runs-on: docker-socket   # a capability, not an image
+container:
+  image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:<digest>
+```
+
+`docker-socket` is the same capability label `verify-vectors.yml`'s
+`sanctuary-ci-go` jobs already run on — every `docker-socket` host can pull
+and run a named image, so there is no per-host label to publish and no
+rollout order to sequence. A missing or unpushed image fails the job at pull
+time; it does not queue silently until `timeout-minutes` expires the way an
+unpublished runner label would.
+
+`scripts/ci/install-playwright-chromium.sh` stays wired into both jobs as a
+fallback — it probes for an already-launchable Chromium first (via
+Playwright's own browser-path resolution, so it needs no hardcoded path) and
+is a no-op on the prebaked image, but still does the real install on any
+runner that lands without it.
+
+**Bumping the Playwright version:**
+
+1. Bump the Playwright dependency (`package-lock.json`'s resolved
+   `node_modules/playwright-core` version changes).
+   `tests/ci/check-playwright-runner-contract.test.mjs` starts failing
+   because the Dockerfile's `ARG PLAYWRIGHT_VERSION` no longer matches.
+2. Update the Dockerfile's `ARG PLAYWRIGHT_VERSION` default to match (this
+   also updates the `org.opencontainers.image.version` OCI label the
+   contract test checks for, since the label reads the same ARG).
+3. Build and push from a runner-infra checkout:
+
+   ```bash
+   scripts/ops/build-runner-image.sh --image sanctuary-ci-playwright \
+     --repo /path/to/sanctuary --push \
+     --registry nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright
+   ```
+
+4. Take the digest **the registry serves for the tag**, not the one the
+   builder prints: the builder reports Podman's locally computed RepoDigest,
+   which differs from the manifest digest the registry stores (observed on
+   the first 1.63.0 build: printed `db88f6…`, served `14f52c…`; only the
+   served one resolves on pull). Read it from the response header:
+
+   ```bash
+   curl -sI -u "nekoguntai:$FORGEJO_TOKEN" \
+     -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+     https://nexus.tabineko.dev/v2/nekoguntai-castle/sanctuary-ci-playwright/manifests/<version> \
+     | grep -i docker-content-digest
+   ```
+
+   Paste it into both `container.image` lines in `.github/workflows/test.yml`
+   (`full-browser-e2e-tests` and `full-render-e2e-tests`) — both jobs must
+   pin the identical digest, which the contract test also checks — and into
+   the `sanctuary-ci-playwright` entry of `config/container-image-lock.json`,
+   which `npm run check:supply-chain-locks` requires to match.
+
+No host re-render, no drain, and no `runner-job-images.md` rollout ordering
+is needed at any step — the whole bump lands in this repo's own PR.
+
 A lane that fails on one host only is a builder divergence, not flake: read
 the host name before retriggering. The cleanup coordinator's job-log summary
 carries `refusedResources` (class, identity, locator, classifications,
