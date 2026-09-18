@@ -4,7 +4,7 @@
   "generatedAt": "2026-08-11T00:00:00.000Z",
   "revision": null,
   "source": {
-    "applicationVersion": "0.8.72",
+    "applicationVersion": "0.8.73",
     "signingDependencySha256": "8964db0d7302d40231cc41f6184a16a8e12602ff7b210f7fc3ef6fc9d15c0e74",
     "signingDependencyPackages": [
       "@bitcoinerlab/secp256k1@1.2.0",

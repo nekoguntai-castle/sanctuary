@@ -13,6 +13,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.8.73] - 2026-09-17
+
+The only upgrade-path-relevant change since v0.8.72 is the Grafana volume
+identity fix below: this release adds no Prisma migration, no Compose or
+service-topology change, and no new runtime environment variable. That fix is
+covered by the monitoring-enabled `optional-profiles` upgrade fixture, by new
+`tests/install/unit/grafana-quiescence.test.sh` cases, and by the
+`optional-owned-source` canary lane added here.
+
+### Added
+
+- A non-blocking `optional-owned-source` upgrade lane that runs the Tor,
+  monitoring and MCP fixture against an ownership-aware source, restoring the
+  coverage that pinning `optional-profiles` to v0.8.69 had removed.
+- `scripts/bump-funds-critical.sh`, which performs the coordinated bump of a
+  package pinned in `config/ci-toolchain-lock.json` across every manifest and
+  lockfile that file names, and a Renovate dashboard-approval gate so those
+  packages stop producing pull requests that cannot pass.
+- A dedicated `sanctuary-ci-playwright` job image, so the browser and render
+  E2E lanes start with Chromium already present instead of downloading it on
+  every run.
+
+### Changed
+
+- The hardware-wallet compatibility statement pins only the resolved signing
+  and hardware-wallet dependencies named in
+  `config/signing-dependency-scope.json` rather than the whole lockfile, so an
+  unrelated dependency change no longer invalidates it.
+- `bitcoinjs-lib` 7.0.2 and `ecpair` 3.0.2 across the application and both
+  verifier trees, with the address and PSBT vectors regenerated and their
+  vector data byte-identical.
+- `@playwright/test` 1.63 and routine backend, frontend and tooling dependency
+  updates; `hono`, `qs`, `vitest` and the docs-site overrides move for
+  published advisories.
+
+### Fixed
+
+#### Upgrade and operations
+
+- The Grafana volume identity schema accepts any canonical millisecond
+  timestamp instead of only `.000Z`, matching the ownership contract in
+  `scripts/ownership/validation.mjs`. The stricter form made the credential
+  migration reject the volume it had just created whenever the creation
+  timestamp carried real milliseconds, which is what an ownership-aware
+  monitoring upgrade produces.
+- Exact image retirement gives the removal its own budget, so a slow
+  multi-gigabyte image removal can no longer fail a job whose tests passed.
+- An operator recovery run that halts after a success is labelled partial
+  rather than complete.
+
+#### Devices and hardware wallets
+
+- Keystone account purpose and script type are derived from the parsed
+  derivation path components, and an imported account's script type comes from
+  the parsed path rather than a default.
+- Disclosing or merging a device by fingerprint requires access to an existing
+  device first.
+
+#### Wallets and transactions
+
+- A wallet's own output addresses are marked used when a transaction is
+  persisted, so change and receive addresses are not handed out twice.
+- Assistant balance-history buckets are summed as bigint instead of
+  concatenating Decimal strings.
+
+#### Access control
+
+- Group-granted approver roles appear in the pending approvals list.
+- Vault-policy usage reservations already taken are released when a later
+  reservation call throws.
+
+#### Notifications, console and account
+
+- App notifications are cleared on terminal logout.
+- Console turn results are applied only to the session they were sent from.
+- The shared 2FA password field is cleared when backup-code regeneration
+  completes.
+
+#### Webhooks and MCP
+
+- The webhook retry backoff multiplier is floored at 1.
+- The MCP operation metric label is bounded to registered operations, and the
+  audited MCP operation string is bounded before it reaches audit records, logs
+  and metrics.
+
 ## [0.8.72] - 2026-09-16
 
 No upgrade-path-relevant changes since v0.8.71: this release adds no Prisma
@@ -802,7 +887,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.73...HEAD
+[0.8.73]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.72...v0.8.73
 [0.8.72]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...v0.8.72
 [0.8.71]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.70...v0.8.71
 [0.8.70]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.69...v0.8.70
