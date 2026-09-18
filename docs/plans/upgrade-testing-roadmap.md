@@ -125,7 +125,7 @@ Fixture definitions:
   - pinned to the last pre-ownership stable source (v0.8.69, #1053): tracking
     latest-stable put its source install on an ownership-aware tree and the
     Grafana `grafana_data` volume-identity refusal killed it in ~80s
-- `optional-profiles-owned-source`
+- `optional-owned-source`
   - identical Tor/monitoring/MCP scenario as `optional-profiles`, run against
     an ownership-aware source (default `latest-stable`)
   - non-blocking canary (`continue-on-error`, outside every required job's

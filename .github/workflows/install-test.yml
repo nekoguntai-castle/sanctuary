@@ -1177,7 +1177,7 @@ jobs:
       - name: Check Docker
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
-      - name: Run optional-profiles-owned-source canary fixture
+      - name: Run optional-owned-source canary fixture
         timeout-minutes: 150
         env:
           SANCTUARY_UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
@@ -1187,7 +1187,7 @@ jobs:
           export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixture-owned-source-canary.log" \
             scripts/ci/run-extended-upgrade-fixtures.sh \
-              --fixtures optional-profiles-owned-source \
+              --fixtures optional-owned-source \
               --source-ref latest-stable
 
       - name: Post-canary DIND diagnostics

@@ -51,7 +51,7 @@ upgrade_active_extended_fixtures_csv() {
 # default selection (the required nightly/release lane) never picks them up;
 # a dedicated workflow job selects one explicitly with --fixtures.
 #
-# optional-profiles-owned-source (#1057): optional-profiles was pinned to the
+# optional-owned-source (#1057): optional-profiles was pinned to the
 # last pre-ownership stable (v0.8.69) by #1053 because tracking latest-stable
 # put its source install on an ownership-aware tree and the Grafana
 # grafana_data volume-identity refusal killed it in ~80s on every RC. That
@@ -59,9 +59,15 @@ upgrade_active_extended_fixtures_csv() {
 # untested. This canary runs the same Tor/monitoring/MCP scenario against
 # latest-stable so the gap is visible without blocking merges or releases on a
 # failure whose root cause is not yet established.
+#
+# Named optional-owned-source rather than optional-profiles-owned-source: the
+# longer name produced an "extended-optional-profiles-owned-source" cleanup
+# lane (39 chars), over ci-cleanup-authority.mjs's 32-char LANE limit, and
+# killed the canary's first real run in seconds before any install work
+# (run 17568, job 220695).
 upgrade_canary_extended_fixture_records() {
     cat <<'EOF'
-optional-profiles-owned-source 36
+optional-owned-source 36
 EOF
 }
 

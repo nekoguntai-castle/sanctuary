@@ -154,8 +154,8 @@ Upgrade fixtures:
   legacy-runtime-env   Baseline using repo-root .env compatibility path across source/target checkouts.
   notification-delivery Baseline plus seeded notification config and post-upgrade worker/DLQ proof.
   optional-profiles    Baseline with monitoring, Tor, and MCP enabled through setup/start paths.
-                       Pinned to a pre-ownership source (v0.8.69); see optional-profiles-owned-source.
-  optional-profiles-owned-source
+                       Pinned to a pre-ownership source (v0.8.69); see optional-owned-source.
+  optional-owned-source
                        Same coverage as optional-profiles, run against an ownership-aware source
                        (default: latest-stable) instead of the pre-ownership pin. Non-blocking
                        canary lane while #1057 is open.
@@ -193,7 +193,7 @@ validate_upgrade_fixture() {
         fixture="${fixture//[[:space:]]/}"
         fixture_count=$((fixture_count + 1))
         case "$fixture" in
-            baseline|browser-origin-ip|legacy-runtime-env|notification-delivery|optional-profiles|optional-profiles-owned-source|seeded-app-state|wallet-sync-retirement)
+            baseline|browser-origin-ip|legacy-runtime-env|notification-delivery|optional-profiles|optional-owned-source|seeded-app-state|wallet-sync-retirement)
                 ;;
             "")
                 echo "Fixture list contains an empty fixture" >&2
@@ -233,7 +233,7 @@ apply_upgrade_fixture_defaults() {
     fi
 
     if fixture_list_contains "$fixture_list" "optional-profiles" \
-        || fixture_list_contains "$fixture_list" "optional-profiles-owned-source"; then
+        || fixture_list_contains "$fixture_list" "optional-owned-source"; then
         UPGRADE_ENABLE_MONITORING=yes
         UPGRADE_ENABLE_TOR=yes
         UPGRADE_ENABLE_MCP=yes

@@ -569,31 +569,31 @@ test_active_extended_fixture_selection_contract() {
   return "$failures"
 }
 
-# #1057: optional-profiles-owned-source is the non-blocking canary that
+# #1057: optional-owned-source is the non-blocking canary that
 # exercises the identical Tor/monitoring/MCP scenario against an
 # ownership-aware source (latest-stable) while optional-profiles itself stays
 # pinned to v0.8.69. It must resolve a port offset without joining the
 # required/active registry, and it must not silently pick up the same v0.8.69
 # pin as optional-profiles -- doing so would defeat the whole point of the
 # canary.
-test_optional_profiles_owned_source_canary_fixture_contract() {
+test_optional_owned_source_canary_fixture_contract() {
   local failures=0
 
-  assert_equals "36" "$(upgrade_extended_fixture_port_offset optional-profiles-owned-source)" \
+  assert_equals "36" "$(upgrade_extended_fixture_port_offset optional-owned-source)" \
     "canary fixture should resolve a stable dedicated port offset" || failures=1
-  assert_not_contains "$(upgrade_active_extended_fixture_records)" "optional-profiles-owned-source" \
+  assert_not_contains "$(upgrade_active_extended_fixture_records)" "optional-owned-source" \
     "canary fixture must not join the required/active fixture registry" || failures=1
-  assert_not_contains "$(upgrade_active_extended_fixtures_csv)" "optional-profiles-owned-source" \
+  assert_not_contains "$(upgrade_active_extended_fixtures_csv)" "optional-owned-source" \
     "canary fixture must not join the required/active fixture CSV" || failures=1
-  assert_contains "$(upgrade_canary_extended_fixture_records)" "optional-profiles-owned-source 36" \
+  assert_contains "$(upgrade_canary_extended_fixture_records)" "optional-owned-source 36" \
     "canary fixture registry should carry the dedicated fixture" || failures=1
-  assert_equals "latest-stable" "$(upgrade_extended_fixture_source_ref optional-profiles-owned-source latest-stable)" \
+  assert_equals "latest-stable" "$(upgrade_extended_fixture_source_ref optional-owned-source latest-stable)" \
     "canary fixture should track the default source ref, not the optional-profiles pin" || failures=1
-  upgrade_validate_extended_fixture_selection "optional-profiles-owned-source" || {
+  upgrade_validate_extended_fixture_selection "optional-owned-source" || {
     echo -e "${RED}ASSERTION FAILED:${NC} canary fixture selection should validate"
     failures=1
   }
-  validate_upgrade_fixture "optional-profiles-owned-source" || {
+  validate_upgrade_fixture "optional-owned-source" || {
     echo -e "${RED}ASSERTION FAILED:${NC} canary fixture should be an accepted --fixture value"
     failures=1
   }
@@ -607,12 +607,54 @@ test_optional_profiles_owned_source_canary_fixture_contract() {
   local JAEGER_OTLP_GRPC_PORT="" JAEGER_OTLP_HTTP_PORT="" MCP_PORT=""
   local GRAFANA_CONTAINER_NAME="" PROMETHEUS_CONTAINER_NAME="" TOR_CONTAINER_NAME=""
 
-  validate_upgrade_fixture "optional-profiles-owned-source"
-  apply_upgrade_fixture_defaults "optional-profiles-owned-source"
+  validate_upgrade_fixture "optional-owned-source"
+  apply_upgrade_fixture_defaults "optional-owned-source"
 
   assert_equals "yes" "$UPGRADE_ENABLE_MONITORING" "canary fixture should enable monitoring like optional-profiles" || failures=1
   assert_equals "yes" "$UPGRADE_ENABLE_TOR" "canary fixture should enable Tor like optional-profiles" || failures=1
   assert_equals "yes" "$UPGRADE_ENABLE_MCP" "canary fixture should enable MCP like optional-profiles" || failures=1
+
+  return "$failures"
+}
+
+# #1057 canary incident (run 17568, job 220695): every extended-fixture name
+# the selection registry can produce becomes a "extended-<fixture>" cleanup
+# lane in run-extended-upgrade-fixtures.sh, and
+# scripts/ownership/ci-cleanup-authority.mjs rejects any lane that does not
+# match /^[a-z0-9][a-z0-9-]{0,31}$/ (max 32 chars). The
+# optional-profiles-owned-source canary's first real run produced a
+# 39-character lane and died in seconds with "cleanup lane has an invalid
+# format", before any install work ran. This reads the real regex out of the
+# .mjs (rather than duplicating the literal) so a future registry addition or
+# a regex change there is both caught here.
+test_extended_fixture_lane_names_fit_cleanup_lane_limit() {
+  local failures=0
+  local authority_mjs="$PROJECT_ROOT/scripts/ownership/ci-cleanup-authority.mjs"
+  local fixture lane result
+
+  while read -r fixture _offset; do
+    [ -n "$fixture" ] || continue
+    lane="extended-${fixture}"
+    if ! result="$(node -e '
+      const fs = require("fs");
+      const src = fs.readFileSync(process.argv[1], "utf8");
+      const m = src.match(/const LANE = (\/.*\/);/);
+      if (!m) {
+        console.error("LANE regex not found in ci-cleanup-authority.mjs");
+        process.exit(2);
+      }
+      const LANE = eval(m[1]);
+      const lane = process.argv[2];
+      if (!LANE.test(lane)) {
+        console.error(`cleanup lane "${lane}" (length ${lane.length}) does not match ci-cleanup-authority LANE ${m[1]}`);
+        process.exit(1);
+      }
+    ' "$authority_mjs" "$lane" 2>&1)"; then
+      echo -e "${RED}ASSERTION FAILED:${NC} extended fixture cleanup lane must fit ci-cleanup-authority.mjs LANE format"
+      echo "  $result"
+      failures=1
+    fi
+  done < <(upgrade_active_extended_fixture_records; upgrade_canary_extended_fixture_records)
 
   return "$failures"
 }
@@ -2719,7 +2761,8 @@ main() {
   run_test "optional profile ports follow install port scope" test_optional_profile_ports_follow_install_port_scope
   run_test "optional profiles is in release coverage" test_optional_profiles_is_in_release_coverage
   run_test "active extended fixture selection contract" test_active_extended_fixture_selection_contract
-  run_test "optional-profiles-owned-source canary fixture contract" test_optional_profiles_owned_source_canary_fixture_contract
+  run_test "optional-owned-source canary fixture contract" test_optional_owned_source_canary_fixture_contract
+  run_test "extended fixture lane names fit cleanup lane limit" test_extended_fixture_lane_names_fit_cleanup_lane_limit
   run_test "upgrade selection rejects invalid values" test_upgrade_selection_rejects_invalid_values
   run_test "release force rebuild selection is exact" test_release_force_rebuild_selection_is_exact
   run_test "upgrade harness force rebuild contract" test_upgrade_harness_force_rebuild_contract

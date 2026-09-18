@@ -55,6 +55,44 @@ write_selection_manifest() {
     "$(ci_run_id)"
 }
 
+# scripts/ownership/ci-cleanup-authority.mjs rejects any cleanup lane that
+# does not match its LANE regex (currently /^[a-z0-9][a-z0-9-]{0,31}$/, max
+# 32 chars). run_fixture below builds the lane as "extended-${fixture}" and
+# hands it to that coordinator only after spinning up an isolated,
+# Docker-visible workspace. A fixture name long enough to violate LANE dies
+# there in seconds with "cleanup lane has an invalid format" -- after a
+# runner has already been consumed (issue #1057 canary, run 17568, job
+# 220695: "extended-optional-profiles-owned-source", 39 chars). Validate
+# every selected fixture's lane up front instead, by reading the real regex
+# out of the .mjs (never touched here) so this guard cannot drift from it.
+cleanup_lane_regex_source() {
+  local authority_mjs="$1"
+  node -e '
+    const fs = require("fs");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const m = src.match(/const LANE = (\/.*\/);/);
+    if (!m) { process.exit(2); }
+    process.stdout.write(m[1]);
+  ' "$authority_mjs"
+}
+
+validate_cleanup_lane() {
+  local fixture="$1"
+  local lane="extended-${fixture}"
+  local authority_mjs="$ROOT_DIR/scripts/ownership/ci-cleanup-authority.mjs"
+  local regex_source
+
+  regex_source="$(cleanup_lane_regex_source "$authority_mjs")" \
+    || fail "could not read the cleanup lane LANE regex from $authority_mjs"
+
+  if ! node -e '
+        const LANE = eval(process.argv[1]);
+        process.exit(LANE.test(process.argv[2]) ? 0 : 1);
+      ' "$regex_source" "$lane"; then
+    fail "extended fixture \"$fixture\" produces cleanup lane \"$lane\" (${#lane} chars), which does not match ci-cleanup-authority.mjs's LANE format ($regex_source). Shorten the fixture name."
+  fi
+}
+
 run_fixture() {
   local fixture="$1"
   local port_offset="$2"
@@ -190,6 +228,10 @@ run_all_fixtures() {
   write_selection_manifest "$original_workspace"
 
   IFS=',' read -ra fixtures <<< "$selected_fixtures"
+  for fixture in "${fixtures[@]}"; do
+    validate_cleanup_lane "$fixture"
+  done
+
   for fixture in "${fixtures[@]}"; do
     port_offset="$(upgrade_extended_fixture_port_offset "$fixture")"
     fixture_source_ref="$(upgrade_extended_fixture_source_ref "$fixture" "$source_ref")"

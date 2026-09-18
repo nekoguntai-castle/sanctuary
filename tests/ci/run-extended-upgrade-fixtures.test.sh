@@ -80,6 +80,43 @@ main() {
     fail 'legacy witness must be conditional on the source being pre-ownership, not hardcoded'
   fi
 
+  # #1057 canary incident (run 17568, job 220695): the wrapper builds
+  # cleanup_lane="extended-${fixture}" and hands it to
+  # scripts/ownership/ci-cleanup-authority.mjs's coordinator only after
+  # spinning up an isolated, Docker-visible workspace. A fixture name whose
+  # lane exceeds that authority's 32-char LANE limit died there in seconds,
+  # after a runner had already been consumed. validate_cleanup_lane must
+  # catch this up front, before run_fixture ever runs, and must name both
+  # the offending fixture and its lane length.
+  grep -Fq 'validate_cleanup_lane "$fixture"' "$SCRIPT" ||
+    fail 'expected run_all_fixtures to validate every selected fixture cleanup lane'
+  guard_order="$(grep -n 'validate_cleanup_lane "\$fixture"\|run_fixture "\$fixture"' "$SCRIPT")"
+  [ "$(echo "$guard_order" | head -1 | cut -d: -f1)" -lt "$(echo "$guard_order" | tail -1 | cut -d: -f1)" ] ||
+    fail 'cleanup lane guard must run before run_fixture, not after'
+
+  guard_funcs="$(sed -n '/^cleanup_lane_regex_source() {/,/^}/p; /^validate_cleanup_lane() {/,/^}/p' "$SCRIPT")"
+  [ -n "$guard_funcs" ] || fail 'expected to find the cleanup lane guard functions in the wrapper'
+
+  if guard_output="$(
+        eval "$guard_funcs"
+        ROOT_DIR="$ROOT_DIR"
+        validate_cleanup_lane 'a-canary-fixture-name-far-too-long-for-any-cleanup-lane' 2>&1
+      )"; then
+    fail 'expected an oversized fixture name to fail the cleanup lane guard'
+  fi
+  echo "$guard_output" | grep -Fq 'a-canary-fixture-name-far-too-long-for-any-cleanup-lane' ||
+    fail "expected the offending fixture name in the guard failure, got: $guard_output"
+  echo "$guard_output" | grep -Fq 'does not match' ||
+    fail "expected the guard failure to explain the LANE mismatch, got: $guard_output"
+
+  if ! guard_output="$(
+        eval "$guard_funcs"
+        ROOT_DIR="$ROOT_DIR"
+        validate_cleanup_lane 'optional-owned-source' 2>&1
+      )"; then
+    fail "expected the renamed #1057 canary fixture to pass the cleanup lane guard, got: $guard_output"
+  fi
+
   echo "extended upgrade fixture helper checks passed"
 }
 

@@ -62,6 +62,6 @@
     "upgrade extended latest-stable legacy-runtime-env": { "warnSeconds": 3600, "hardSeconds": 86400 },
     "upgrade extended latest-stable notification-delivery": { "warnSeconds": 3600, "hardSeconds": 86400 },
     "upgrade extended latest-stable optional-profiles": { "warnSeconds": 3600, "hardSeconds": 86400 },
-    "upgrade extended latest-stable optional-profiles-owned-source": { "warnSeconds": 3600, "hardSeconds": 86400 }
+    "upgrade extended latest-stable optional-owned-source": { "warnSeconds": 3600, "hardSeconds": 86400 }
   }
 }
