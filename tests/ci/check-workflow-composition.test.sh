@@ -1198,6 +1198,20 @@ assert_not_contains "$IT" \
   "stable tags do not launch a duplicate install matrix" \
   "      - 'v*.*.*'"
 
+# The owned-source canary is informational until #1057 is resolved. It must not
+# be able to fail its own run: this fleet's runner marks a run failed when any
+# job fails regardless of `continue-on-error`, and scripts/release/release-operator-api.sh
+# refuses to publish unless install-test.yml reports a SUCCESSFUL push run for
+# the release tag. v0.8.73-rc1 (run 17677) proved it: every required job passed,
+# the canary failed, the run went red, and the publication gate would have
+# refused the stable tag. Keep the fixture invocation guarded and exiting 0.
+assert_named_job_step_contains "$IT" \
+  "upgrade-extended-fixture-owned-source-canary" \
+  "Run optional-owned-source canary fixture" \
+  "owned-source canary cannot fail its own run" \
+  "--source-ref latest-stable || canary_status=\$?" \
+  "::warning title=Owned-source canary"
+
 for prerelease_pattern in "v*.*.*-rc*" "v*.*.*-alpha*" "v*.*.*-beta*" "v*.*.*-dev*"; do
   assert_occurrence_count "$IT" \
     "install-test retains $prerelease_pattern tag coverage" \

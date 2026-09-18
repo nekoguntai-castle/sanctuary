@@ -1185,10 +1185,25 @@ jobs:
           set -euo pipefail
           SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS="$(node "$GITHUB_WORKSPACE/scripts/ci/subject-budget.mjs" step-deadline 9000 300)"
           export SANCTUARY_CI_SUBJECT_DEADLINE_EPOCH_MS
+          # This lane is informational until #1057 is resolved, and it must never
+          # fail its own run. `continue-on-error: true` does NOT keep the run
+          # green on this fleet: the runner marks a run failed when any job
+          # fails, so on v0.8.73-rc1 (install-test run 17677) every required job
+          # passed and the run still reported failure. A failed run at a release
+          # tag then blocks publication outright, because
+          # scripts/release/release-operator-api.sh requires a successful
+          # install-test.yml push run for the tag. Capture the fixture's status,
+          # surface it as an annotation, and exit 0.
+          canary_status=0
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixture-owned-source-canary.log" \
             scripts/ci/run-extended-upgrade-fixtures.sh \
               --fixtures optional-owned-source \
-              --source-ref latest-stable
+              --source-ref latest-stable || canary_status=$?
+          if [ "$canary_status" -ne 0 ]; then
+            echo "::warning title=Owned-source canary::optional-owned-source failed (exit ${canary_status}); this lane is informational and does not gate the release. See #1057."
+          else
+            echo "optional-owned-source canary passed"
+          fi
 
       - name: Post-canary DIND diagnostics
         if: always()
