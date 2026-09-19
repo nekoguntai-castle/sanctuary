@@ -4,7 +4,7 @@
   "description": "Cross-implementation address verification for Sanctuary",
   "allowScripts": {
     "core-js": false,
-    "esbuild@0.27.2": true,
+    "esbuild@0.28.1": true,
     "fsevents": false,
     "tiny-secp256k1": false
   },
@@ -28,5 +28,9 @@
     "node-linux-x64": "24.19.0",
     "tsx": "^4.7.0",
     "typescript": "~6.0.2"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "valibot": "1.4.2"
   }
 }

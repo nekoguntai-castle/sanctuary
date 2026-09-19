@@ -2,6 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "timezone": "Pacific/Honolulu",
   "schedule": ["at any time"],
+  "minimumReleaseAge": "3 days",
   "prHourlyLimit": 1,
   "prConcurrentLimit": 2,
   "packageRules": [
