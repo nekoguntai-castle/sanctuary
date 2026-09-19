@@ -14,12 +14,12 @@ main() {
 
   bash -n "$SCRIPT"
 
-  expected=$'browser-origin-ip 21\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 30\nwallet-sync-retirement 33'
+  expected=$'browser-origin-ip 30\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 21\nwallet-sync-retirement 33'
   actual="$(bash "$SCRIPT" --list)"
   [ "$actual" = "$expected" ] || fail "unexpected fixture list: ${actual}"
 
   actual="$(bash "$SCRIPT" --fixtures optional-profiles --source-ref 'release/v0.8.39' --validate-only)"
-  [ "$actual" = 'optional-profiles 30' ] || fail "unexpected selected fixture validation: ${actual}"
+  [ "$actual" = 'optional-profiles 21' ] || fail "unexpected selected fixture validation: ${actual}"
 
   actual="$(SANCTUARY_UPGRADE_EXTENDED_FIXTURES=legacy-runtime-env bash "$SCRIPT" --validate-only)"
   [ "$actual" = 'legacy-runtime-env 24' ] || fail "env fixture selection should preserve stable offsets: ${actual}"

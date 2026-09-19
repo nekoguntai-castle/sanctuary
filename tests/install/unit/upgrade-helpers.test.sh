@@ -490,9 +490,9 @@ test_optional_profiles_is_in_release_coverage() {
 
   assert_contains "$install_contents" 'scripts/ci/run-extended-upgrade-fixtures.sh' \
     "install workflow should run the extended fixture script" || failures=1
-  assert_contains "$extended_fixtures" 'optional-profiles 30' \
+  assert_contains "$extended_fixtures" 'optional-profiles 21' \
     "install extended upgrades should include optional profiles once" || failures=1
-  assert_equals "1" "$(grep -c '^optional-profiles 30$' <<< "$extended_fixtures")" \
+  assert_equals "1" "$(grep -c '^optional-profiles 21$' <<< "$extended_fixtures")" \
     "install extended upgrades should include optional profiles once" || failures=1
   assert_contains "$upgrade_contents" 'export COMPOSE_PROFILES=mcp' \
     "optional upgrade should activate MCP on the legacy source checkout" || failures=1
@@ -523,7 +523,7 @@ test_active_extended_fixture_selection_contract() {
   local runner_contents
   local failures=0
 
-  expected_records=$'browser-origin-ip 21\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 30\nwallet-sync-retirement 33'
+  expected_records=$'browser-origin-ip 30\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 21\nwallet-sync-retirement 33'
   expected_csv='browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles,wallet-sync-retirement'
   runner_records="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
   runner_contents="$(cat "$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh")"
@@ -576,6 +576,53 @@ test_active_extended_fixture_selection_contract() {
 # required/active registry, and it must not silently pick up the same v0.8.69
 # pin as optional-profiles -- doing so would defeat the whole point of the
 # canary.
+# sanctuary#1237: a fixture that enables monitoring also reserves an EIGHT port
+# block at HTTPS_PORT+100 (apply_optional_profile_isolation_defaults: Grafana,
+# Prometheus, Alertmanager, Jaeger UI, Loki, both Jaeger OTLP ports, MCP).
+# Fixture offsets are spaced 3 apart, which suits only the 3 main ports, so two
+# monitoring fixtures closer than 8 apart get OVERLAPPING optional blocks and
+# collide the moment they run concurrently. optional-owned-source at 36 against
+# optional-profiles at 30 put this canary's Grafana/Prometheus on the other
+# lane's Jaeger-OTLP-HTTP/MCP, and run 17713 died with "rootlessport listen tcp
+# 127.0.0.1:12249: bind: address already in use". Keep every monitoring pair at
+# least 8 apart; this catches the next fixture that turns monitoring on.
+test_monitoring_fixture_optional_port_blocks_do_not_overlap() {
+  local failures=0
+  local monitoring_fixtures=()
+  local fixture offset
+
+  while read -r fixture offset; do
+    [ -n "$fixture" ] || continue
+    # Mirrors apply_upgrade_fixture_defaults: only these enable monitoring and
+    # therefore call apply_optional_profile_isolation_defaults.
+    case "$fixture" in
+      optional-profiles|optional-owned-source)
+        monitoring_fixtures+=("$fixture $offset")
+        ;;
+    esac
+  done < <(upgrade_active_extended_fixture_records; upgrade_canary_extended_fixture_records)
+
+  local i j name_a off_a name_b off_b gap
+  for ((i = 0; i < ${#monitoring_fixtures[@]}; i++)); do
+    name_a="${monitoring_fixtures[$i]%% *}"; off_a="${monitoring_fixtures[$i]##* }"
+    for ((j = i + 1; j < ${#monitoring_fixtures[@]}; j++)); do
+      name_b="${monitoring_fixtures[$j]%% *}"; off_b="${monitoring_fixtures[$j]##* }"
+      gap=$(( off_a > off_b ? off_a - off_b : off_b - off_a ))
+      if [ "$gap" -lt 8 ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} monitoring fixtures $name_a ($off_a) and $name_b ($off_b) are $gap apart; the optional-profile block is 8 ports wide at +100, so their blocks overlap (see #1237)"
+        failures=1
+      fi
+    done
+  done
+
+  [ "${#monitoring_fixtures[@]}" -ge 2 ] || {
+    echo -e "${RED}ASSERTION FAILED:${NC} expected at least two monitoring-enabling fixtures to compare"
+    failures=1
+  }
+
+  return $failures
+}
+
 test_optional_owned_source_canary_fixture_contract() {
   local failures=0
 
@@ -792,9 +839,9 @@ test_upgrade_selection_manifest_records_resolved_refs() {
   # optional-profiles is pinned pre-ownership, so the manifest must record the
   # pin rather than the selected shared source -- otherwise the manifest would
   # claim coverage the lane does not run.
-  assert_contains "$contents" "- optional-profiles: port offset 30; source ref v0.8.69" \
+  assert_contains "$contents" "- optional-profiles: port offset 21; source ref v0.8.69" \
     "manifest should record the pinned optional-profiles source" || failures=1
-  assert_contains "$contents" "- browser-origin-ip: port offset 21; source ref v0.8.39" \
+  assert_contains "$contents" "- browser-origin-ip: port offset 30; source ref v0.8.39" \
     "manifest should include active fixture registry metadata" || failures=1
   assert_contains "$contents" "- wallet-sync-retirement: port offset 33; source ref v0.8.66" \
     "manifest should record the pinned retirement source" || failures=1
@@ -2762,6 +2809,7 @@ main() {
   run_test "optional profiles is in release coverage" test_optional_profiles_is_in_release_coverage
   run_test "active extended fixture selection contract" test_active_extended_fixture_selection_contract
   run_test "optional-owned-source canary fixture contract" test_optional_owned_source_canary_fixture_contract
+  run_test "monitoring fixture optional port blocks do not overlap" test_monitoring_fixture_optional_port_blocks_do_not_overlap
   run_test "extended fixture lane names fit cleanup lane limit" test_extended_fixture_lane_names_fit_cleanup_lane_limit
   run_test "upgrade selection rejects invalid values" test_upgrade_selection_rejects_invalid_values
   run_test "release force rebuild selection is exact" test_release_force_rebuild_selection_is_exact

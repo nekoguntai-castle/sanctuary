@@ -21,10 +21,10 @@ upgrade_should_verify_force_rebuild() {
 
 upgrade_active_extended_fixture_records() {
     cat <<'EOF'
-browser-origin-ip 21
+browser-origin-ip 30
 legacy-runtime-env 24
 notification-delivery 27
-optional-profiles 30
+optional-profiles 21
 wallet-sync-retirement 33
 EOF
 }
@@ -65,6 +65,19 @@ upgrade_active_extended_fixtures_csv() {
 # lane (39 chars), over ci-cleanup-authority.mjs's 32-char LANE limit, and
 # killed the canary's first real run in seconds before any install work
 # (run 17568, job 220695).
+#
+# Offset 36 is the TOP of the usable range, not an arbitrary pick: the lane
+# block is 144 ports and a monitoring fixture derives up to HTTPS_PORT+107, so
+# nothing above 37 fits. That is why #1237 could not be fixed by moving this
+# canary up -- optional-profiles moved down to 21 instead, leaving a 15-offset
+# gap. A monitoring-enabled fixture reserves an EIGHT port block at
+# HTTPS_PORT+100 (Grafana, Prometheus, Alertmanager, Jaeger UI, Loki, both
+# Jaeger OTLP ports, MCP) via apply_optional_profile_isolation_defaults, while
+# offsets are spaced only 3 apart, so two monitoring fixtures closer than 8
+# apart get OVERLAPPING blocks. With optional-profiles at 30 this canary's
+# Grafana/Prometheus (+136/+137) landed on its Jaeger-OTLP-HTTP/MCP and run
+# 17713 died with "rootlessport listen tcp 127.0.0.1:12249: bind: address
+# already in use". upgrade-helpers.test.sh pins the >=8 rule.
 upgrade_canary_extended_fixture_records() {
     cat <<'EOF'
 optional-owned-source 36

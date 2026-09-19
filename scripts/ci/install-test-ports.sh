@@ -40,8 +40,8 @@ fi
 PORT_RANGE_START=10240
 # Wide enough for the HIGHEST offset the workflows use plus that offset's own
 # derived span, not merely for the derived span alone. The optional-profiles
-# upgrade fixture derives HTTPS_PORT+100..+106 and runs at offset 30, so the
-# block has to hold 30+106=136; a 128-wide block rejected every extended
+# upgrade fixture derives HTTPS_PORT+100..+107 (MCP is the 8th, #1237) and the
+# highest monitoring lane runs at offset 36, so the block has to hold 36+107=143; a 128-wide block rejected every extended
 # fixture at offset >= 22 (`offset plus its derived ports overflows`), which
 # took out legacy-runtime-env, notification-delivery and optional-profiles on
 # v0.8.66-rc1. 144 leaves room above the current maximum without crowding the
@@ -52,7 +52,7 @@ PORT_SLOT_COUNT=150
 # How far past its own base a single lane reaches: the optional-profiles upgrade
 # fixture derives HTTPS_PORT+100..+106. Measured from the lane's base, not the
 # block's, so the offset is added separately below.
-LANE_SPAN=106
+LANE_SPAN=107
 
 ephemeral_floor=32768
 if [ -r /proc/sys/net/ipv4/ip_local_port_range ]; then

@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [0.8.73] - 2026-09-17
+## [0.8.73] - 2026-09-18
 
 The only upgrade-path-relevant change since v0.8.72 is the Grafana volume
 identity fix below: this release adds no Prisma migration, no Compose or
