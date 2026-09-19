@@ -6,11 +6,6 @@ self-hosted-runner:
     # is what lets the Docker-backed install and release lanes schedule on any
     # of them instead of pinning to one host.
     - docker-socket
-    # Capability label: "runner carrying the Go toolchain the address
-    # cross-verification lane needs", pinned by digest to
-    # nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go. Both runners carry
-    # it, so verify-vectors stays schedulable on either. See #709.
-    - go-1.25.12
     # Temporary host selector for the Trezor emulator proof. Kumo's rootless
     # Podman archive endpoint can remain wedged while the runner advertises
     # itself as healthy; x300 is the alternate socket-capable host. Remove this
