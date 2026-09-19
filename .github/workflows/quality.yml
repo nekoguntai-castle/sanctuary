@@ -543,9 +543,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/actionlint.log" bash -euo pipefail <<'QUALITY_ACTIONLINT'
           # Keep ShellCheck error-level analysis while serializing actionlint's
           # stdin consumers for the pinned Forgejo Podman runner.
-          /tmp/actionlint -color \
-            -shellcheck='scripts/ci/actionlint-shellcheck.sh --severity=error' \
-            -ignore 'specifying action "https://data\.forgejo\.org/forgejo/(upload|download)-artifact@v4" in invalid format'
+          scripts/ci/run-actionlint.sh
           QUALITY_ACTIONLINT
 
       - name: Write workflow lint failure breadcrumb
@@ -727,6 +725,7 @@ jobs:
           bash -n scripts/ci/report-timing-notices.sh
           bash -n scripts/ci/retry-command.sh
           bash -n scripts/ci/actionlint-shellcheck.sh
+          bash -n scripts/ci/run-actionlint.sh
           bash -n scripts/ci/download-verified-source.sh
           bash -n scripts/ci/related-test-args.sh
           bash -n scripts/ci/resolve-postgres-service.sh
@@ -751,6 +750,7 @@ jobs:
           bash -n tests/ci/upload-artifact-from-subject.test.sh
           bash -n tests/ci/isolated-subject-drivers.test.sh
           bash -n tests/ci/actionlint-shellcheck.test.sh
+          bash -n tests/ci/run-actionlint.test.sh
           bash -n tests/ci/measure-wallclock.test.sh
           bash -n tests/ci/plan-test-run.test.sh
           bash -n tests/ci/run-lane.test.sh
@@ -863,6 +863,7 @@ jobs:
           bash tests/ci/upload-artifact-from-subject.test.sh
           bash tests/ci/isolated-subject-drivers.test.sh
           bash tests/ci/actionlint-shellcheck.test.sh
+          bash tests/ci/run-actionlint.test.sh
           bash tests/ci/measure-wallclock.test.sh
           bash tests/ci/plan-test-run.test.sh
           bash tests/ci/run-lane.test.sh

@@ -3836,8 +3836,7 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   'ACTIONLINT_DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint' \
   'scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/install-actionlint-shellcheck.log"' \
   'scripts/ci/run-with-log.sh "$ACTIONLINT_DIAGNOSTIC_DIR/actionlint.log"' \
-  "/tmp/actionlint -color" \
-  "scripts/ci/actionlint-shellcheck.sh --severity=error" \
+  "scripts/ci/run-actionlint.sh" \
   "Write workflow lint diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$ACTIONLINT_DIAGNOSTIC_DIR" "Quality Workflow Lint"' \
   "ci-diagnostics-quality-workflow-lint"
