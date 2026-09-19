@@ -25,6 +25,19 @@ const servers: net.Server[] = [];
 const children: ChildProcess[] = [];
 const temporaryDirectories: string[] = [];
 
+const relayProcessState = (
+  pid: number,
+): { state: string; startTime: string } | null => {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    return { state: fields[0], startTime: fields[19] };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+};
+
 const listenEchoServer = async (): Promise<number> => {
   const server = net.createServer((socket) => socket.pipe(socket));
   servers.push(server);
@@ -174,6 +187,7 @@ describe("Docker-exec TCP forwarder", () => {
     const bridgePort = await listenEchoServer();
     const mockBin = mkdtempSync(path.join(tmpdir(), "trezor-forwarder-"));
     temporaryDirectories.push(mockBin);
+    const relayPidPath = path.join(mockBin, "relay.pid");
     const mockDocker = path.join(mockBin, "docker");
     writeFileSync(
       mockDocker,
@@ -182,7 +196,10 @@ const net = require("node:net");
 const port = Number(process.argv.at(-1));
 const socket = net.createConnection(port, "127.0.0.1");
 process.on("SIGTERM", () => {});
-process.stdin.pipe(socket);
+require("node:fs").writeFileSync(${JSON.stringify(relayPidPath)}, String(process.pid));
+let receivedData = false;
+process.stdin.on("data", (chunk) => { receivedData = true; socket.write(chunk); });
+process.stdin.on("end", () => { if (receivedData) socket.end(); });
 socket.pipe(process.stdout);
 socket.on("error", (error) => { console.error(error.message); process.exit(1); });
 `,
@@ -227,12 +244,23 @@ socket.on("error", (error) => { console.error(error.message); process.exit(1); }
       "bridge",
     );
 
+    const priorRelayPid = Number(readFileSync(relayPidPath, "utf8"));
     const stuckSocket = net.createConnection(
       endpoints.controllerPort,
       endpoints.host,
     );
     await once(stuckSocket, "connect");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    let relayPid = priorRelayPid;
+    for (let attempt = 0; attempt < 100 && relayPid === priorRelayPid; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      relayPid = Number(readFileSync(relayPidPath, "utf8"));
+    }
+    expect(relayPid).not.toBe(priorRelayPid);
+    const relayStartTime =
+      process.platform === "linux"
+        ? relayProcessState(relayPid)?.startTime
+        : undefined;
+    if (process.platform === "linux") expect(relayStartTime).toBeDefined();
     const unauthorizedStatus = await requestControl(
       endpoints.host,
       endpoints.controlPort,
@@ -252,6 +280,27 @@ socket.on("error", (error) => { console.error(error.message); process.exit(1); }
     expect(acceptedStatus).toBe(202);
     await expect(exitStatus).resolves.toBe(0);
     expect(Date.now() - shutdownStarted).toBeLessThan(4_000);
+    // An exited relay can remain briefly as a zombie, and Linux may reuse its
+    // PID. Neither case is a relay still holding the exec stream open.
+    let relayStillRunning = true;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (process.platform === "linux") {
+        const current = relayProcessState(relayPid);
+        relayStillRunning =
+          current !== null &&
+          current.startTime === relayStartTime &&
+          !["Z", "X", "x"].includes(current.state);
+      } else {
+        try {
+          process.kill(relayPid, 0);
+        } catch {
+          relayStillRunning = false;
+        }
+      }
+      if (!relayStillRunning) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(relayStillRunning).toBe(false);
     stuckSocket.destroy();
-  });
+  }, 10_000);
 });

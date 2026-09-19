@@ -45,7 +45,7 @@ backend_start_token="$(node -e 'process.stdout.write(require("node:crypto").rand
 coproc SANCTUARY_BACKEND {
   PORT="$api_port" SANCTUARY_COLLECTOR_START_TOKEN="$backend_start_token" \
     exec setsid node --import "$SCRIPT_DIR/registered-start-gate.mjs" \
-      "$backend_script" >"$backend_log" 2>&1
+      "$backend_script" >"$backend_log" 2>&1 ;
 }
 backend_pid=$SANCTUARY_BACKEND_PID
 backend_gate_fd=${SANCTUARY_BACKEND[1]}

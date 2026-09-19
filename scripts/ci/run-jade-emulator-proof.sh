@@ -123,8 +123,13 @@ cleanup() {
     forwarder_pid=0
   fi
   if [ "$forwarder_pid" -ne 0 ]; then
-    "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
-      || cleanup_status=$?
+    if terminate_forwarder_group "$forwarder_pid"; then
+      wait "$forwarder_pid" >/dev/null 2>&1 || true
+      "$SCRIPT_DIR/registered-collector-process.sh" terminal "$forwarder_terminal" \
+        || cleanup_status=$?
+    else
+      cleanup_status=1
+    fi
   fi
   if [ "$container_started" -eq 1 ]; then
     timeout --foreground --kill-after=10s 30s docker logs "$active_container_id" \
@@ -171,6 +176,28 @@ finish_forwarder() {
       unset SANCTUARY_FORWARDER SANCTUARY_FORWARDER_PID
       return 0
     fi
+    sleep 0.1
+  done
+  return 1
+}
+
+terminate_forwarder_group() {
+  local pid="$1" attempt
+  if ! kill -0 -- "-$pid" 2>/dev/null; then
+    return 0
+  fi
+  # The forwarder is launched under setsid, so terminate its exact process
+  # group before publishing the collector terminal marker. This is limited to
+  # the PID captured from our coprocess and prevents a timed-out forwarder from
+  # retaining the run-with-log stderr pipe.
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  for attempt in $(seq 1 20); do
+    kill -0 -- "-$pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  kill -KILL -- "-$pid" 2>/dev/null || true
+  for attempt in $(seq 1 20); do
+    kill -0 -- "-$pid" 2>/dev/null || return 0
     sleep 0.1
   done
   return 1

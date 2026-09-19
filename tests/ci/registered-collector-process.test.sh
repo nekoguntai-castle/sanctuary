@@ -5,10 +5,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$PROJECT_ROOT"
 
 production_files=(
-  scripts/ci/run-jade-emulator-proof.sh
   scripts/ci/run-ledger-emulator-proof.sh
   scripts/ci/run-trezor-emulator-proof.sh
-  scripts/ci/docker-exec-tcp-forwarder.mjs
   scripts/ci/run-browser-e2e-subject.sh
   .github/workflows/test.yml
 )
@@ -29,6 +27,15 @@ for proof in scripts/ci/run-{jade,ledger,trezor}-emulator-proof.sh; do
   grep -Fq 'finish_forwarder' "$proof"
   grep -Fq "trap 'exit 143' TERM" "$proof"
 done
+
+# The TCP forwarder owns short-lived `docker exec` relay children. Its shutdown
+# path may escalate those exact children after closing all relay FDs; no other
+# registered collector callsite may directly retire a process.
+grep -Fq 'relay.kill("SIGTERM")' scripts/ci/docker-exec-tcp-forwarder.mjs
+grep -Fq 'relay.kill("SIGKILL")' scripts/ci/docker-exec-tcp-forwarder.mjs
+grep -Fq 'kill -TERM -- "-$pid"' scripts/ci/run-jade-emulator-proof.sh
+grep -Fq 'kill -KILL -- "-$pid"' scripts/ci/run-jade-emulator-proof.sh
+grep -Fq 'terminate_forwarder_group "$forwarder_pid"' scripts/ci/run-jade-emulator-proof.sh
 
 grep -Fq 'register_owned_resource collector_process obsolete exact_delete authority' \
   scripts/ci/registered-collector-process.sh

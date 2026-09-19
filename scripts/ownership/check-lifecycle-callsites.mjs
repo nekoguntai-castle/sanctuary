@@ -957,6 +957,25 @@ function hasCanonicalHostInternalProof(relativePath, source) {
   return ownsProcessIdentity && processSignalStatements(executableStatements(source)).length > 0;
 }
 
+function hasExactForwarderShutdownProof(relativePath, source) {
+  if (relativePath === 'scripts/ci/docker-exec-tcp-forwarder.mjs') {
+    return /const activeChildren = new Set\(\)/.test(source)
+      && /activeChildren\.add\(relay\)/.test(source)
+      && /await Promise\.all\(\[\.\.\.activeChildren\]\.map\(\(child\) => closeRelay\(child\)\)\)/.test(source)
+      && /relay\.kill\("SIGTERM"\)/.test(source)
+      && /relay\.kill\("SIGKILL"\)/.test(source);
+  }
+  if (relativePath === 'scripts/ci/run-jade-emulator-proof.sh') {
+    return /coproc SANCTUARY_FORWARDER/.test(source)
+      && /exec setsid node/.test(source)
+      && /forwarder_pid=\$SANCTUARY_FORWARDER_PID/.test(source)
+      && /terminate_forwarder_group "\$forwarder_pid"/.test(source)
+      && /kill -TERM -- "-\$pid"/.test(source)
+      && /kill -KILL -- "-\$pid"/.test(source);
+  }
+  return false;
+}
+
 function orderedRegistrationShape(source, patterns) {
   let offset = 0;
   for (const pattern of patterns) {
@@ -1082,6 +1101,7 @@ function hasTestFixtureProof(relativePath, source, statements) {
 }
 
 function hostMechanism(relativePath, source, statements) {
+  if (hasExactForwarderShutdownProof(relativePath, source)) return 'registered_exact';
   if (hasCanonicalHostInternalProof(relativePath, source)) return 'canonical_host_internal';
   if (hasTestFixtureProof(relativePath, source, statements)) return 'test_fixture';
   return 'host_migration';

@@ -422,6 +422,13 @@
       "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
+      "path": "scripts/ci/docker-exec-tcp-forwarder.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The forwarder terminates only Docker relay child processes it spawned and tracked before its registered collector terminal marker."
+    },
+    {
       "path": "scripts/ci/observe-runtime-image-cves.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
@@ -609,6 +616,13 @@
       "operation": "create",
       "disposition": "exempt",
       "safetyContract": "This resource is an intentionally retained shared cache with bounded ownership and no cleanup mutation here."
+    },
+    {
+      "path": "scripts/ci/run-jade-emulator-proof.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The Jade subject terminates only its exact registered setsid forwarder process group before writing the collector terminal marker."
     },
     {
       "path": "scripts/ci/run-jade-emulator-proof.sh",

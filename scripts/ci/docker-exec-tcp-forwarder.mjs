@@ -70,6 +70,52 @@ const parseArguments = () => {
 
 const activeChildren = new Set();
 const activeSockets = new Set();
+const RELAY_CLOSE_TIMEOUT_MS = 2_000;
+
+const relayClosed = (relay) => {
+  if (relay.exitCode !== null || relay.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onClose = () => resolve();
+    relay.once("close", onClose);
+    if (relay.exitCode !== null || relay.signalCode !== null) {
+      relay.removeListener("close", onClose);
+      resolve();
+    }
+  });
+};
+
+const waitForRelayClose = async (relay, timeoutMs) => {
+  let timer;
+  try {
+    await Promise.race([
+      relayClosed(relay),
+      new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const closeRelay = async (relay) => {
+  // Closing stdin tells the relay to half-close the Docker exec connection.
+  // Destroying the local pipes is required as well: a daemon that has already
+  // closed its socket must not leave this process holding the exec stream open.
+  if (!relay.stdin.destroyed) relay.stdin.end();
+  if (!relay.stdout.destroyed) relay.stdout.destroy();
+  if (!relay.stderr.destroyed) relay.stderr.destroy();
+  await waitForRelayClose(relay, RELAY_CLOSE_TIMEOUT_MS);
+  if (relay.exitCode === null && relay.signalCode === null) {
+    // Docker exec should exit when its stdin closes. Escalate only for this
+    // exact, locally owned relay child so a broken daemon cannot retain the
+    // forwarder's exec stream past the terminal marker.
+    relay.kill("SIGTERM");
+    await waitForRelayClose(relay, 250);
+  }
+  if (relay.exitCode === null && relay.signalCode === null) {
+    relay.kill("SIGKILL");
+    await relayClosed(relay);
+  }
+};
 
 const createForwarder = (container, remotePort) =>
   net.createServer({ allowHalfOpen: true }, (socket) => {
@@ -134,16 +180,14 @@ const [localControllerPort, localBridgePort] = await Promise.all([
 ]);
 
 let shutdownStarted = false;
-const shutdown = () => {
+const shutdown = async () => {
   if (shutdownStarted) return;
   shutdownStarted = true;
   controllerServer.close();
   bridgeServer.close();
   controlServer.close();
   for (const socket of activeSockets) socket.destroy();
-  for (const child of activeChildren) {
-    if (!child.stdin.destroyed) child.stdin.end();
-  }
+  await Promise.all([...activeChildren].map((child) => closeRelay(child)));
 };
 
 const controlServer = http.createServer((request, response) => {
@@ -158,12 +202,12 @@ const controlServer = http.createServer((request, response) => {
     return;
   }
   response.writeHead(202, { "content-type": "application/json" });
-  response.end('{"state":"shutting_down"}\n', () => shutdown());
+  response.end('{"state":"shutting_down"}\n', () => { void shutdown(); });
 });
 const localControlPort = await listen(controlServer);
 
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.once("SIGINT", () => { void shutdown(); });
+process.once("SIGTERM", () => { void shutdown(); });
 
 process.stdout.write(
   `${JSON.stringify({
