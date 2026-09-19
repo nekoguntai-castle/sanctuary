@@ -189,16 +189,8 @@ UPGRADE_LANE_IMAGES_REGISTERED=false
 # does, so the lane registers them the same way the fresh-install harness
 # does: from the post-install runtime env, so the registration tuple is the
 # one the installer stamped on the resources (release, commit, created-at).
-readonly -a COMPOSE_REGISTRATION_ARGS=(
-    --expected-image sanctuary-backend
-    --expected-image sanctuary-frontend
-    --expected-image sanctuary-gateway
-    --expected-image sanctuary-llm-egress-proxy
-    --expected-volume backup_data
-    --expected-volume postgres_data
-    --expected-volume redis_data
-    --expected-volume support_capture_runtime
-)
+upgrade_compose_registration_args
+readonly -a COMPOSE_REGISTRATION_ARGS
 UPGRADE_SOURCE_CHECKOUT="${SANCTUARY_UPGRADE_SOURCE_CHECKOUT:-${UPGRADE_DEPLOYMENT_ROOT:-$TEST_ROOT/sanctuary-upgrade-source-${TEST_ID}/sanctuary}}"
 LEGACY_TARGET_ENV_FILE="$TARGET_PROJECT_ROOT/.env"
 if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ] && [ -z "${SANCTUARY_ENV_FILE:-}" ]; then

@@ -624,7 +624,19 @@ test_monitoring_fixture_optional_port_blocks_do_not_overlap() {
 }
 
 test_optional_owned_source_canary_fixture_contract() {
-  local failures=0
+  local failures=0 registration_args
+  local UPGRADE_ENABLE_MONITORING=no
+  local -a COMPOSE_REGISTRATION_ARGS=()
+
+  upgrade_compose_registration_args
+  registration_args="$(printf '%s\n' "${COMPOSE_REGISTRATION_ARGS[@]}")"
+  assert_not_contains "$registration_args" "sanctuary-grafana-migration" \
+    "baseline image contract should exclude the monitoring migration image" || failures=1
+  UPGRADE_ENABLE_MONITORING=yes
+  upgrade_compose_registration_args
+  registration_args="$(printf '%s\n' "${COMPOSE_REGISTRATION_ARGS[@]}")"
+  assert_contains "$registration_args" "sanctuary-grafana-migration" \
+    "monitoring image contract should include the Grafana migration image" || failures=1
 
   assert_equals "36" "$(upgrade_extended_fixture_port_offset optional-owned-source)" \
     "canary fixture should resolve a stable dedicated port offset" || failures=1
@@ -645,7 +657,7 @@ test_optional_owned_source_canary_fixture_contract() {
     failures=1
   }
 
-  local UPGRADE_ENABLE_MONITORING="no"
+  UPGRADE_ENABLE_MONITORING=no
   local UPGRADE_ENABLE_TOR="no"
   local UPGRADE_ENABLE_MCP="no"
   local UPGRADE_EXPECT_OPTIONAL_PROFILES="false"

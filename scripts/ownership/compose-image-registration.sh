@@ -338,8 +338,11 @@ wait_for_ci_compose_image_refs() {
     }
     last_successful_rows="$observed_rows"
     observed_refs="$(printf '%s' "$observed_rows" | compose_tagged_refs_from_image_rows)"
-    if [ "$observed_refs" = "$expected_refs" ] \
-        && ! printf '%s\n' "$observed_rows" | grep -q $'\t<none>:<none>$'; then
+    # A source upgrade performed in place can leave superseded images dangling
+    # while the current lane references already match. Those IDs are adopted
+    # below by register_ci_compose_images; they must not make exact reference
+    # discovery fail before that recovery step runs.
+    if [ "$observed_refs" = "$expected_refs" ]; then
       printf '%s' "$observed_rows"
       return 0
     fi
@@ -406,6 +409,8 @@ register_ci_compose_images() {
   done <<< "$dangling_ids"
   if [ "$discovery_status" -ne 0 ]; then
     echo 'CI Compose observed image references do not match the exact expected set' >&2
+    printf '  expected: %s\n' "${expected_refs//$'\n'/, }" >&2
+    printf '  observed: %s\n' "${observed_refs//$'\n'/, }" >&2
     return "$discovery_status"
   fi
   return "$registration_status"

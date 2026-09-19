@@ -420,13 +420,20 @@ list_ci_compose_lane_images() {
   printf '%s\t%s\n' "$dangling_id" '<none>:<none>'
 }
 : > "$compose_image_calls"
-set +e
 register_ci_compose_images 0 "$compose_deadline" sanctuary-backend:test-run 2>/dev/null
-dangling_registration_status=$?
-set -e
-test "$dangling_registration_status" -ne 0
+test "${#REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}" -eq 1
 grep -Fq "recover-id $dangling_id test-run" "$compose_image_calls"
 grep -Fq "register-id $dangling_id" "$compose_image_calls"
+
+# A dangling image whose provenance cannot be recovered still fails the
+# registration, even though dangling rows are allowed during exact discovery.
+recover_exact_loaded_image_id() { return 1; }
+set +e
+register_ci_compose_images 0 "$compose_deadline" sanctuary-backend:test-run 2>/dev/null
+dangling_recovery_status=$?
+set -e
+test "$dangling_recovery_status" -ne 0
+eval "$original_recover_exact_loaded_image_id"
 
 list_ci_compose_lane_images() { printf 'sha256:%064d\t%s\n' 1 'sanctuary-backend:test-run'; }
 recover_exact_loaded_image() { return 1; }

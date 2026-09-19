@@ -11,6 +11,26 @@ UPGRADE_SEED_NOTIFICATION_STATE="${UPGRADE_SEED_NOTIFICATION_STATE:-false}"
 UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-}"
 UPGRADE_EXPECT_OPTIONAL_PROFILES="${UPGRADE_EXPECT_OPTIONAL_PROFILES:-false}"
 
+# Build the exact image contract used by owned-source upgrades. Monitoring
+# materializes the repo-owned Grafana migration image in addition to the core
+# four images; keeping it conditional preserves strict extra-image detection
+# for baseline fixtures.
+upgrade_compose_registration_args() {
+    COMPOSE_REGISTRATION_ARGS=(
+        --expected-image sanctuary-backend
+        --expected-image sanctuary-frontend
+        --expected-image sanctuary-gateway
+        --expected-image sanctuary-llm-egress-proxy
+        --expected-volume backup_data
+        --expected-volume postgres_data
+        --expected-volume redis_data
+        --expected-volume support_capture_runtime
+    )
+    if [ "$UPGRADE_ENABLE_MONITORING" = "yes" ]; then
+        COMPOSE_REGISTRATION_ARGS+=(--expected-image sanctuary-grafana-migration)
+    fi
+}
+
 restore_tracked_worktree_file_for_cleanup() {
     local worktree_root="$1"
     local relative_path="$2"
