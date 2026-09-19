@@ -116,7 +116,7 @@
     "@types/node": "^24.12.2",
     "@types/nodemailer": "^8.0.0",
     "@types/qrcode": "^1.5.6",
-    "@types/supertest": "^7.2.0",
+    "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.11",
     "ecpair": "^3.0.2",
