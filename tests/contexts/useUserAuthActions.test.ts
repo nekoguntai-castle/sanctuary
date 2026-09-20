@@ -31,6 +31,7 @@ describe('useUserAuthActions logout', () => {
   function setup() {
     const setUser = vi.fn();
     const { result } = renderHook(() => useUserAuthActions({
+      invalidateAuthBootstrap: vi.fn(),
       resetPreferenceTracking: vi.fn(),
       flushPreferenceWrites: vi.fn().mockResolvedValue(undefined),
       setError: vi.fn(),

@@ -10,12 +10,14 @@ import { toContextUser } from './userModel';
 const log = createLogger('UserContext');
 
 interface AuthBootstrapArgs {
+  authEpochRef: { current: number };
   resetPreferenceTracking: () => void;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
 
 export function useAuthBootstrap({
+  authEpochRef,
   resetPreferenceTracking,
   setIsLoading,
   setUser,
@@ -26,22 +28,29 @@ export function useAuthBootstrap({
   // normal unauthenticated boot state; any other failure is logged without
   // evicting credentials.
   useEffect(() => {
+    let active = true;
+    // Logout or a newer auth result invalidates this request's session view.
+    const authEpoch = authEpochRef.current;
+    const isCurrent = () => active && authEpochRef.current === authEpoch;
     const checkAuth = async () => {
       try {
         const currentUser = await authApi.getCurrentUser();
-        resetPreferenceTracking();
-        setUser(toContextUser(currentUser));
+        if (isCurrent()) {
+          resetPreferenceTracking();
+          setUser(toContextUser(currentUser));
+        }
       } catch (err) {
         if (!(err instanceof ApiError && err.status === 401)) {
           log.error('Auth check failed', { error: err });
         }
       } finally {
-        setIsLoading(false);
+        if (isCurrent()) setIsLoading(false);
       }
     };
 
-    checkAuth();
-  }, [resetPreferenceTracking, setIsLoading, setUser]);
+    void checkAuth();
+    return () => { active = false; };
+  }, [authEpochRef, resetPreferenceTracking, setIsLoading, setUser]);
 }
 
 export function useTerminalLogoutSubscription(clearSessionState: () => void): void {

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { User } from '../types';
 import { useAuthBootstrap, useTerminalLogoutSubscription } from './useUserAuthLifecycle';
 import { useUserAuthActions } from './useUserAuthActions';
@@ -19,17 +19,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
+  const authEpochRef = useRef(0);
+  const invalidateAuthBootstrap = useCallback(() => {
+    authEpochRef.current += 1;
+  }, []);
   const { resetPreferenceTracking, updatePreferences, flushPreferenceWrites } = useUserPreferenceMutation({
     setError,
     setUser,
     user,
   });
 
-  useAuthBootstrap({ resetPreferenceTracking, setIsLoading, setUser });
+  useAuthBootstrap({ authEpochRef, resetPreferenceTracking, setIsLoading, setUser });
 
   const clearSessionState = useCallback(() => {
+    invalidateAuthBootstrap();
     resetPreferenceTracking();
     setUser(null);
+    setIsLoading(false);
     setTwoFactorPending(null);
     setError(null);
     setNotice(null);
@@ -38,7 +44,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // awaited: clearSessionState is a synchronous terminal-logout listener,
     // and the helper never throws.
     void clearQueryCacheForLogout();
-  }, [resetPreferenceTracking]);
+  }, [invalidateAuthBootstrap, resetPreferenceTracking]);
 
   useTerminalLogoutSubscription(clearSessionState);
   useUserTheme(user);
@@ -50,6 +56,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     register,
     logout,
   } = useUserAuthActions({
+    invalidateAuthBootstrap,
     resetPreferenceTracking,
     flushPreferenceWrites,
     setError,

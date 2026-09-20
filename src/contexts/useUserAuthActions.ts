@@ -15,6 +15,7 @@ import { toContextUser } from './userModel';
 import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
 interface UserAuthActionsArgs {
+  invalidateAuthBootstrap: () => void;
   resetPreferenceTracking: () => void;
   flushPreferenceWrites: () => Promise<PreferenceSaveResult>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -38,6 +39,7 @@ function getApiMessage(err: unknown, fallback: string): string {
 }
 
 export function useUserAuthActions({
+  invalidateAuthBootstrap,
   resetPreferenceTracking,
   flushPreferenceWrites,
   setError,
@@ -59,6 +61,7 @@ export function useUserAuthActions({
         return { success: false, requires2FA: true, tempToken: response.tempToken };
       }
 
+      invalidateAuthBootstrap();
       resetPreferenceTracking();
       setUser(toContextUser(response.user));
       setNotice(null);
@@ -69,7 +72,7 @@ export function useUserAuthActions({
     } finally {
       setIsLoading(false);
     }
-  }, [resetPreferenceTracking, setError, setIsLoading, setNotice, setTwoFactorPending, setUser]);
+  }, [invalidateAuthBootstrap, resetPreferenceTracking, setError, setIsLoading, setNotice, setTwoFactorPending, setUser]);
 
   const verify2FA = useCallback(async (code: string): Promise<boolean> => {
     if (!twoFactorPending) {
@@ -86,6 +89,7 @@ export function useUserAuthActions({
         tempToken: twoFactorPending.tempToken,
         code,
       });
+      invalidateAuthBootstrap();
       resetPreferenceTracking();
       setUser(toContextUser(response.user));
       setTwoFactorPending(null);
@@ -98,6 +102,7 @@ export function useUserAuthActions({
       setIsLoading(false);
     }
   }, [
+    invalidateAuthBootstrap,
     resetPreferenceTracking,
     setError,
     setIsLoading,
@@ -123,6 +128,7 @@ export function useUserAuthActions({
 
     try {
       const response = await authApi.register({ username, password, email });
+      invalidateAuthBootstrap();
       if (authApi.isPendingEmailVerification(response)) {
         resetPreferenceTracking();
         setUser(null);
@@ -146,7 +152,7 @@ export function useUserAuthActions({
     } finally {
       setIsLoading(false);
     }
-  }, [resetPreferenceTracking, setError, setIsLoading, setNotice, setUser]);
+  }, [invalidateAuthBootstrap, resetPreferenceTracking, setError, setIsLoading, setNotice, setUser]);
 
   const logout = useCallback(async () => {
     // Dispatch a preference toggled within the debounce window BEFORE the
@@ -159,16 +165,18 @@ export function useUserAuthActions({
     // enough to put the request on the wire while the cookie is still valid.
     void flushPreferenceWrites();
     await authApi.logout();
+    invalidateAuthBootstrap();
     triggerLogout();
     resetPreferenceTracking();
     setUser(null);
     setTwoFactorPending(null);
     setError(null);
     setNotice(null);
+    setIsLoading(false);
     // Runs after the user state is cleared above, so no authenticated query
     // can remount against the React Query cache before it is wiped.
     await clearQueryCacheForLogout();
-  }, [flushPreferenceWrites, resetPreferenceTracking, setError, setNotice, setTwoFactorPending, setUser]);
+  }, [flushPreferenceWrites, invalidateAuthBootstrap, resetPreferenceTracking, setError, setIsLoading, setNotice, setTwoFactorPending, setUser]);
 
   return {
     login,
