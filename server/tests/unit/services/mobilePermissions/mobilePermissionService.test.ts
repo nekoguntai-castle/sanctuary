@@ -16,6 +16,7 @@ vi.mock('../../../../src/repositories', () => ({
   mobilePermissionRepository: {
     findByWalletAndUser: vi.fn(),
     findByUserIdWithWallet: vi.fn(),
+    findWalletAccessUsers: vi.fn(),
     findByWalletIdAndUserIds: vi.fn(),
     upsert: vi.fn(),
     updateByWalletAndUser: vi.fn(),
@@ -25,6 +26,11 @@ vi.mock('../../../../src/repositories', () => ({
     findWalletUserByCompositeKey: vi.fn(),
     findWalletUsersWithUsername: vi.fn(),
   },
+  walletRepository: { findGroupRoleByMembership: vi.fn() },
+}));
+
+vi.mock('../../../../src/services/accessControl', () => ({
+  getUserWalletRoleUncached: vi.fn(),
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -36,7 +42,8 @@ vi.mock('../../../../src/utils/logger', () => ({
   }),
 }));
 
-import { mobilePermissionRepository, walletSharingRepository } from '../../../../src/repositories';
+import { mobilePermissionRepository, walletRepository, walletSharingRepository } from '../../../../src/repositories';
+import { getUserWalletRoleUncached } from '../../../../src/services/accessControl';
 import { mobilePermissionService } from '../../../../src/services/mobilePermissions';
 import { ForbiddenError, NotFoundError } from '../../../../src/errors';
 
@@ -69,10 +76,45 @@ describe('MobilePermissionService', () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    (getUserWalletRoleUncached as Mock).mockImplementation(async (wallet: string, user: string) => {
+      const direct = await walletSharingRepository.findWalletUserByCompositeKey(wallet, user);
+      return direct?.role ?? walletRepository.findGroupRoleByMembership(wallet, user);
+    });
   });
 
   describe('canPerformAction', () => {
+    it.each([
+      ['viewer', 'viewBalance', true],
+      ['viewer', 'broadcast', false],
+      ['signer', 'broadcast', true],
+      ['owner', 'manageDevices', true],
+    ] as const)('uses group-only %s access for %s', async (role, action, expected) => {
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue(role);
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(null);
+
+      await expect(mobilePermissionService.canPerformAction(walletId, userId, action))
+        .resolves.toBe(expected);
+      expect(getUserWalletRoleUncached).toHaveBeenCalledWith(walletId, userId);
+    });
+
+    it('gives a direct viewer precedence over a signer group', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'viewer' });
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue('signer');
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(null);
+
+      await expect(mobilePermissionService.canPerformAction(walletId, userId, 'broadcast'))
+        .resolves.toBe(false);
+      expect(walletRepository.findGroupRoleByMembership).not.toHaveBeenCalled();
+    });
+
+    it('denies an outsider without reading saved permissions', async () => {
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue(null);
+      await expect(mobilePermissionService.canPerformAction(walletId, userId, 'viewBalance'))
+        .resolves.toBe(false);
+      expect(mobilePermissionRepository.findByWalletAndUser).not.toHaveBeenCalled();
+    });
+
     it('should return true when role and permissions allow action', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
       (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(null);
@@ -146,6 +188,22 @@ describe('MobilePermissionService', () => {
   });
 
   describe('getEffectivePermissions', () => {
+    it('applies saved and owner restrictions to a group-only signer', async () => {
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue('signer');
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue({
+        ...mockPermission,
+        canBroadcast: false,
+        ownerMaxPermissions: { createTransaction: false },
+      });
+
+      const result = await mobilePermissionService.getEffectivePermissions(walletId, userId);
+      expect(result.role).toBe('signer');
+      expect(result.permissions.broadcast).toBe(false);
+      expect(result.permissions.createTransaction).toBe(false);
+      expect(result.hasCustomRestrictions).toBe(true);
+      expect(result.hasOwnerRestrictions).toBe(true);
+    });
+
     it('should return effective permissions for user with access', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
       (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(null);
@@ -270,6 +328,27 @@ describe('MobilePermissionService', () => {
   });
 
   describe('setMaxPermissions', () => {
+    it('lets a group-only owner cap a group-only signer', async () => {
+      (walletRepository.findGroupRoleByMembership as Mock).mockImplementation(
+        (_wallet: string, user: string) => user === ownerId ? 'owner' : 'signer'
+      );
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue({
+        ...mockPermission,
+        ownerMaxPermissions: { broadcast: false },
+      });
+
+      const result = await mobilePermissionService.setMaxPermissions(
+        walletId, targetUserId, ownerId, { broadcast: false }
+      );
+
+      expect(result.role).toBe('signer');
+      expect(result.permissions.broadcast).toBe(false);
+      expect(mobilePermissionRepository.upsert).toHaveBeenCalledWith(walletId, targetUserId, {
+        ownerMaxPermissions: { broadcast: false },
+        lastModifiedBy: ownerId,
+      });
+    });
+
     it('should set max permissions when called by owner', async () => {
       // First call for owner check, second for target check, third for getEffectivePermissions
       (walletSharingRepository.findWalletUserByCompositeKey as Mock)
@@ -382,6 +461,25 @@ describe('MobilePermissionService', () => {
   });
 
   describe('getUserMobilePermissions', () => {
+    it('reads group-only saved permissions and keeps a direct viewer over signer group', async () => {
+      (mobilePermissionRepository.findByUserIdWithWallet as Mock).mockResolvedValue([
+        { ...mockPermission, wallet: {
+          id: walletId, name: 'Group wallet', type: 'single_sig', network: 'testnet',
+          users: [], groupRole: 'signer', group: { members: [{ userId }] },
+        } },
+        { ...mockPermission, walletId: 'wallet-direct', wallet: {
+          id: 'wallet-direct', name: 'Direct wallet', type: 'single_sig', network: 'testnet',
+          users: [{ role: 'viewer' }], groupRole: 'signer', group: { members: [{ userId }] },
+        } },
+      ]);
+
+      const result = await mobilePermissionService.getUserMobilePermissions(userId);
+      expect(result.map((entry) => entry.role)).toEqual(['signer', 'viewer']);
+      expect(result[0].effectivePermissions.broadcast).toBe(true);
+      expect(result[1].effectivePermissions.broadcast).toBe(false);
+      expect(result[0].wallet).not.toHaveProperty('group');
+    });
+
     it('should return permissions with wallet details and effective permissions', async () => {
       const mockPermsWithWallet = [
         {
@@ -425,17 +523,46 @@ describe('MobilePermissionService', () => {
 
       const result = await mobilePermissionService.getUserMobilePermissions(userId);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].role).toBeNull();
-      expect(result[0].effectivePermissions.viewBalance).toBe(false);
-      expect(result[0].effectivePermissions.broadcast).toBe(false);
+      expect(result).toHaveLength(0);
     });
   });
 
   describe('getWalletPermissions', () => {
+    it('fails closed for a stored wallet role it cannot recognize', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'owner' });
+      (mobilePermissionRepository.findWalletAccessUsers as Mock).mockResolvedValue([
+        { userId: 'invalid-role', role: 'unknown-role', user: { username: 'corrupt' } },
+      ]);
+      (mobilePermissionRepository.findByWalletIdAndUserIds as Mock).mockResolvedValue(new Map());
+
+      const [entry] = await mobilePermissionService.getWalletPermissions(walletId, userId);
+      expect(entry.role).toBeNull();
+      expect(Object.values(entry.effectivePermissions).every(allowed => allowed === false)).toBe(true);
+    });
+
+    it('lists group-only users once with saved restrictions and direct-first roles', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'owner' });
+      (mobilePermissionRepository.findWalletAccessUsers as Mock).mockResolvedValue([
+        { userId: 'mixed', role: 'viewer', user: { username: 'bob' } },
+        { userId: 'group-only', role: 'signer', user: { username: 'carol' } },
+      ]);
+      (mobilePermissionRepository.findByWalletIdAndUserIds as Mock).mockResolvedValue(new Map([
+        ['group-only', { ...mockPermission, canBroadcast: false, ownerMaxPermissions: { signPsbt: false } }],
+      ]));
+
+      const result = await mobilePermissionService.getWalletPermissions(walletId, userId);
+      expect(result).toHaveLength(2);
+      expect(result[0].role).toBe('viewer');
+      expect(result[0].effectivePermissions.broadcast).toBe(false);
+      expect(result[1].role).toBe('signer');
+      expect(result[1].effectivePermissions.broadcast).toBe(false);
+      expect(result[1].effectivePermissions.signPsbt).toBe(false);
+      expect(result[1].hasOwnerRestrictions).toBe(true);
+    });
+
     it('should return permissions for all wallet users', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'owner' });
-      (walletSharingRepository.findWalletUsersWithUsername as Mock).mockResolvedValue([
+      (mobilePermissionRepository.findWalletAccessUsers as Mock).mockResolvedValue([
         { userId: 'user-1', role: 'owner', user: { id: 'user-1', username: 'alice' } },
         { userId: 'user-2', role: 'signer', user: { id: 'user-2', username: 'bob' } },
       ]);
@@ -457,7 +584,7 @@ describe('MobilePermissionService', () => {
 
     it('should include custom permissions from batch query', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'owner' });
-      (walletSharingRepository.findWalletUsersWithUsername as Mock).mockResolvedValue([
+      (mobilePermissionRepository.findWalletAccessUsers as Mock).mockResolvedValue([
         { userId: 'user-1', role: 'owner', user: { id: 'user-1', username: 'alice' } },
         { userId: 'user-2', role: 'signer', user: { id: 'user-2', username: 'bob' } },
       ]);
@@ -485,6 +612,14 @@ describe('MobilePermissionService', () => {
   });
 
   describe('checkForGateway', () => {
+    it('allows an eligible group-only signer', async () => {
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue('signer');
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(null);
+
+      await expect(mobilePermissionService.checkForGateway(walletId, userId, 'broadcast'))
+        .resolves.toEqual({ allowed: true, reason: undefined });
+    });
+
     it('should return allowed: true when action is permitted', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
       (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(null);

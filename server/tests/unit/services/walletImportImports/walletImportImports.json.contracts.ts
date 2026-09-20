@@ -5,6 +5,7 @@ import {
   mockDeriveAddressFromDescriptor,
   mockBuildDescriptorFromDevices,
   setupDeviceMocks,
+  mockCurrentDeviceRole,
 } from '../walletImport.setup';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import * as walletImport from '../../../../src/services/walletImport';
@@ -186,6 +187,7 @@ export const registerWalletImportJsonContracts = () => {
     });
 
     it('should reuse existing json-imported device and add missing account path', async () => {
+      mockCurrentDeviceRole('owner');
       const jsonConfig = {
         type: 'single_sig',
         scriptType: 'native_segwit',
@@ -263,6 +265,7 @@ export const registerWalletImportJsonContracts = () => {
     });
 
     it('should not create duplicate account for reused json-imported devices', async () => {
+      mockCurrentDeviceRole('owner');
       const jsonConfig = {
         type: 'single_sig',
         scriptType: 'native_segwit',

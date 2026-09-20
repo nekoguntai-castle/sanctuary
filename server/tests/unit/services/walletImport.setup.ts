@@ -86,6 +86,15 @@ vi.mock('../../../src/services/bitcoin/addressDerivation', () => ({
 
 export { mockPrismaClient, resetPrismaMocks };
 
+/** Represent an unchanged direct device grant in import transaction tests. */
+export function mockCurrentDeviceRole(role: 'owner' | 'viewer'): void {
+  mockPrismaClient.device.findUnique.mockResolvedValue({
+    users: [{ role }],
+    groupRole: 'viewer',
+    group: null,
+  });
+}
+
 /** Helper to setup device mocks for import tests */
 export const setupDeviceMocks = (devices: any[], existingDevices: any[] = []) => {
   // First call: check for existing devices before import

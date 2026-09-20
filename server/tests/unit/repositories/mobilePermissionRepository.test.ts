@@ -11,6 +11,7 @@ import { vi, Mock } from 'vitest';
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
+    wallet: { findUnique: vi.fn() },
     mobilePermission: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -170,16 +171,69 @@ describe('Mobile Permission Repository', () => {
               name: true,
               type: true,
               network: true,
+              groupRole: true,
               users: {
                 where: { userId: 'user-789' },
                 select: { role: true },
                 take: 1,
+              },
+              group: {
+                select: {
+                  members: {
+                    where: { userId: 'user-789' },
+                    select: { userId: true },
+                    take: 1,
+                  },
+                },
               },
             },
           },
         },
         orderBy: { createdAt: 'desc' },
       });
+    });
+  });
+
+  describe('findWalletAccessUsers', () => {
+    it('includes group-only members and keeps direct roles for overlapping users', async () => {
+      (prisma.wallet.findUnique as Mock).mockResolvedValue({
+        groupRole: 'signer',
+        users: [
+          { userId: 'owner', role: 'owner', user: { username: 'alice' } },
+          { userId: 'mixed', role: 'viewer', user: { username: 'bob' } },
+        ],
+        group: { members: [
+          { userId: 'mixed', user: { username: 'bob' } },
+          { userId: 'group-only', user: { username: 'carol' } },
+        ] },
+      });
+
+      const result = await mobilePermissionRepository.findWalletAccessUsers('wallet-456');
+
+      expect(result).toEqual([
+        { userId: 'owner', role: 'owner', user: { username: 'alice' } },
+        { userId: 'mixed', role: 'viewer', user: { username: 'bob' } },
+        { userId: 'group-only', role: 'signer', user: { username: 'carol' } },
+      ]);
+      expect(prisma.wallet.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'wallet-456' },
+        select: expect.objectContaining({ groupRole: true, group: expect.any(Object) }),
+      }));
+    });
+
+    it('returns no users when the wallet is absent', async () => {
+      (prisma.wallet.findUnique as Mock).mockResolvedValue(null);
+      await expect(mobilePermissionRepository.findWalletAccessUsers('missing')).resolves.toEqual([]);
+    });
+
+    it('keeps direct users when the wallet has no group', async () => {
+      const direct = { userId: 'owner', role: 'owner', user: { username: 'alice' } };
+      (prisma.wallet.findUnique as Mock).mockResolvedValue({
+        groupRole: 'viewer', users: [direct], group: null,
+      });
+
+      await expect(mobilePermissionRepository.findWalletAccessUsers('wallet-456'))
+        .resolves.toEqual([direct]);
     });
   });
 

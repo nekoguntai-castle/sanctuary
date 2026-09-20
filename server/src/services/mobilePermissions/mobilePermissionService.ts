@@ -35,9 +35,10 @@
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { ForbiddenError, NotFoundError } from '../../errors';
-import { mobilePermissionRepository, walletSharingRepository } from '../../repositories';
+import { mobilePermissionRepository } from '../../repositories';
 import type { MobilePermission } from '../../generated/prisma/client';
 import { parseWalletRole } from '@sanctuary/shared/constants/walletRoles';
+import { getUserWalletRoleUncached } from '../accessControl';
 import {
   type MobileAction,
   type WalletRole,
@@ -202,29 +203,31 @@ class MobilePermissionService {
 
   /**
    * Get all mobile permissions for a user with wallet details
-   * Optimized: includes wallet role in initial query to avoid N+1
+   * Includes direct and group membership in the initial query.
    */
   async getUserMobilePermissions(userId: string) {
     const permissions = await mobilePermissionRepository.findByUserIdWithWallet(userId);
 
-    // Calculate effective permissions - role is now included in the query
-    const results = permissions.map((perm) => {
-      // Extract role from the included users relation
-      const role = parseWalletRole(perm.wallet.users[0]?.role);
+    const results = permissions.flatMap((perm) => {
+      const role = parseWalletRole(
+        perm.wallet.users[0]?.role ??
+        (perm.wallet.group?.members.length ? perm.wallet.groupRole : null)
+      );
+      // A saved restriction cannot restore access after the grant was revoked.
+      if (!role) return [];
       const effectivePermissions = calculateAllEffectivePermissions(
         role,
         perm
       );
 
-      // Remove the nested users from the response
-      const { users, ...walletData } = perm.wallet;
+      const { users, group, groupRole, ...walletData } = perm.wallet;
 
-      return {
+      return [{
         ...perm,
         wallet: walletData,
         role,
         effectivePermissions,
-      };
+      }];
     });
 
     return results;
@@ -374,8 +377,7 @@ class MobilePermissionService {
       throw new ForbiddenError('User does not have access to this wallet');
     }
 
-    // Get all wallet users
-    const walletUsers = await walletSharingRepository.findWalletUsersWithUsername(walletId);
+    const walletUsers = await mobilePermissionRepository.findWalletAccessUsers(walletId);
 
     // Batch fetch all mobile permissions for this wallet's users
     const userIds = walletUsers.map((wu) => wu.userId);
@@ -436,14 +438,11 @@ class MobilePermissionService {
   // =============================================================================
 
   /**
-   * Get user's role for a wallet
+   * Resolve the current direct-first wallet role, including group-only access.
+   * Mobile actions must read durable grants rather than a cached role.
    */
   private async getWalletRole(walletId: string, userId: string): Promise<WalletRole | null> {
-    const walletUser = await walletSharingRepository.findWalletUserByCompositeKey(walletId, userId);
-
-    if (!walletUser) return null;
-
-    return parseWalletRole(walletUser.role);
+    return getUserWalletRoleUncached(walletId, userId);
   }
 }
 

@@ -19,8 +19,8 @@ import type {
 } from '../bitcoin/descriptorParser';
 import { getErrorMessage } from '../../utils/errors';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
-import { createLogger } from '../../utils/logger';
 import { resolveDevices } from './deviceResolution';
+import { reuseImportedDevice } from './deviceReuseAccess';
 import { importFromParsedData } from './descriptorImport';
 import { importFromJson } from './jsonImport';
 import {
@@ -54,8 +54,6 @@ import {
   INITIAL_SYNC_GENERATION,
   wakeInitialWalletSync,
 } from '../sync/initialSyncIntent';
-
-const log = createLogger('WALLET_IMPORT:SVC');
 
 /** Input parameters for the shared wallet creation transaction */
 interface CreateWalletTransactionInput {
@@ -147,64 +145,6 @@ async function createImportedDevice(
       fingerprint: resolution.fingerprint,
       xpub: resolution.xpub,
       derivationPath: account.derivationPath,
-      purpose: context.accountPurpose,
-      scriptType: context.scriptType,
-    },
-  };
-}
-
-async function reuseImportedDevice(
-  tx: PrismaTxClient,
-  resolution: DeviceResolution,
-  context: MaterializeDeviceContext,
-): Promise<MaterializedDevice> {
-  const deviceId = resolution.existingDeviceId;
-  if (!deviceId) throw new Error('Existing device resolution is missing device id');
-  const existingAccounts = await tx.deviceAccount.findMany({ where: { deviceId } });
-  const derivationPath = normalizeDerivationPath(resolution.derivationPath);
-  const accountsAtPath = existingAccounts.filter(
-    (account) => normalizeDerivationPath(account.derivationPath) === derivationPath,
-  );
-  if (accountsAtPath.length > 1) {
-    throw new Error(`Existing device account path ${derivationPath} is ambiguous`);
-  }
-  const [accountAtPath] = accountsAtPath;
-  const matches = accountAtPath !== undefined
-    && accountAtPath.purpose === context.accountPurpose
-    && accountAtPath.scriptType === context.scriptType
-    && accountAtPath.xpub === resolution.xpub;
-  if (accountAtPath && !matches) {
-    throw new Error(
-      `Existing device account at ${derivationPath} does not exactly match the imported signer`,
-    );
-  }
-  const account = matches && accountAtPath
-    ? accountAtPath
-    : await tx.deviceAccount.create({
-      data: {
-        deviceId,
-        purpose: context.accountPurpose,
-        scriptType: context.scriptType,
-        derivationPath,
-        xpub: resolution.xpub,
-      },
-    });
-  /* v8 ignore next -- account creation and exact reuse are asserted by contracts */
-  if (!matches) {
-    log.info('Added new device account for import', {
-      deviceId,
-      purpose: context.accountPurpose,
-      derivationPath,
-    });
-  }
-  return {
-    created: false,
-    info: {
-      deviceId,
-      deviceAccountId: account.id,
-      fingerprint: resolution.fingerprint,
-      xpub: resolution.xpub,
-      derivationPath,
       purpose: context.accountPurpose,
       scriptType: context.scriptType,
     },

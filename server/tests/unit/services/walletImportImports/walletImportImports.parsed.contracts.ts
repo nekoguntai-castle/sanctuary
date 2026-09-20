@@ -5,6 +5,7 @@ import {
   mockDeriveAddressFromDescriptor,
   mockBuildDescriptorFromDevices,
   setupDeviceMocks,
+  mockCurrentDeviceRole,
 } from '../walletImport.setup';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import * as walletImport from '../../../../src/services/walletImport';
@@ -88,6 +89,7 @@ export const registerWalletImportParsedContracts = () => {
     });
 
     it('should reuse existing devices and add missing account for parsed import', async () => {
+      mockCurrentDeviceRole('owner');
       mockPrismaClient.wallet.findMany.mockResolvedValue([]);
       mockPrismaClient.device.findMany.mockResolvedValue([
         {
@@ -141,6 +143,7 @@ export const registerWalletImportParsedContracts = () => {
     });
 
     it('should not create duplicate device account for parsed import when matching account exists', async () => {
+      mockCurrentDeviceRole('owner');
       mockPrismaClient.wallet.findMany.mockResolvedValue([]);
       mockPrismaClient.device.findMany.mockResolvedValue([
         {
@@ -201,6 +204,7 @@ export const registerWalletImportParsedContracts = () => {
     });
 
     it('rejects a reused account path whose identity differs from the import', async () => {
+      mockCurrentDeviceRole('owner');
       mockPrismaClient.wallet.findMany.mockResolvedValue([]);
       mockPrismaClient.device.findMany.mockResolvedValue([{
         id: 'device-existing-parsed',
@@ -243,6 +247,7 @@ export const registerWalletImportParsedContracts = () => {
         ],
       ],
     ])('rejects %s instead of selecting by query order', async (_case, accounts) => {
+      mockCurrentDeviceRole('owner');
       mockPrismaClient.wallet.findMany.mockResolvedValue([]);
       mockPrismaClient.device.findMany.mockResolvedValue([{
         id: 'device-existing-parsed',

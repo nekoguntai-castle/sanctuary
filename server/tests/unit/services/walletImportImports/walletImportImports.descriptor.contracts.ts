@@ -7,6 +7,7 @@ import {
   mockParseDescriptorForImport,
   mockValidateCanonicalDescriptorPair,
   setupDeviceMocks,
+  mockCurrentDeviceRole,
 } from '../walletImport.setup';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import * as walletImport from '../../../../src/services/walletImport';
@@ -341,6 +342,7 @@ export const registerWalletImportDescriptorContracts = () => {
     });
 
     it('should reuse existing device when fingerprint matches', async () => {
+      mockCurrentDeviceRole('owner');
       const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz.../<0;1>/*)";
 
       mockParseImportInput.mockReturnValue({

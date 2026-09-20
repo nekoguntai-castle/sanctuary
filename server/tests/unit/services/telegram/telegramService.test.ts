@@ -906,6 +906,23 @@ describe('telegramService', () => {
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error sending draft notifications'));
   });
 
+  it('does not send an agent draft when the edit-role audience is empty', async () => {
+    const { notifyNewDraft } = await loadService();
+
+    await expect(notifyNewDraft('w1', {
+      id: 'agent-draft',
+      amount: 1234n,
+      recipient: 'bc1qabcdefghijklmnop',
+      feeRate: 5,
+      agentId: 'agent-1',
+    }, null, 'Agent')).resolves.toMatchObject({ usersNotified: 0 });
+
+    expect(mockUserRepo.findByWalletAccess).toHaveBeenCalledWith('w1', {
+      walletRoles: ['owner', 'signer'],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('notifyNewDraft exits when wallet is missing and falls back to Unknown creator name', async () => {
     const { notifyNewDraft } = await loadService();
 

@@ -15,10 +15,10 @@ A delayed successful `/auth/me` response must not restore authenticated UI after
 
 ## Phase 1 — one mergeable application PR
 
-- [ ] Add a deferred `/auth/me` regression in `tests/contexts/UserContext.test.tsx`. Fire the captured terminal logout listener before resolving the old `/auth/me`, assert loading becomes false while the request is still pending, then resolve it and assert `user` remains null, `isAuthenticated` false, and the query cache stays clear. Show this test fails on current code.
-- [ ] Add a provider-owned generation ref. Capture its value when bootstrap starts. Guard preference reset, `setUser`, and `finally` loading update with the captured generation and effect liveness; terminal logout increments the generation synchronously before clearing state and sets loading false.
-- [ ] Prevent a pending old bootstrap from overwriting a successful login, 2FA verification, or registration outcome, including the pending-email-verification response that deliberately leaves `user` null and sets a notice. Invalidate the generation at the successful transition before changing user state. Explicit logout success must invalidate even if the mocked `triggerLogout` does not call the listener. Keep failed auth attempts and 401 boot behavior coherent.
-- [ ] Add focused overlap tests for login, 2FA, and both registration outcomes, plus unmount cleanup where needed to preserve the frontend coverage gate. Review that the same guard excludes stale preference resets; test that side effect if it can be observed behaviorally without mirroring the implementation. Re-read state ordering and the diff for error-path regressions and unintended scope.
+- [x] Add a deferred `/auth/me` regression in `tests/contexts/UserContext.bootstrapRace.test.tsx`. Fire the captured terminal logout listener before resolving the old `/auth/me`, assert loading becomes false while the request is still pending, then resolve it and assert `user` remains null, `isAuthenticated` false, and the query cache stays clear. Show this test fails on current code.
+- [x] Add a provider-owned generation ref. Capture its value when bootstrap starts. Guard preference reset, `setUser`, and `finally` loading update with the captured generation and effect liveness; terminal logout increments the generation synchronously before clearing state and sets loading false.
+- [x] Prevent a pending old bootstrap from overwriting a successful login, 2FA verification, or registration outcome, including the pending-email-verification response that deliberately leaves `user` null and sets a notice. Invalidate the generation at the successful transition before changing user state. Explicit logout success must invalidate even if the mocked `triggerLogout` does not call the listener. Keep failed auth attempts and 401 boot behavior coherent.
+- [x] Add focused overlap tests for login, 2FA, and both registration outcomes, plus unmount cleanup where needed to preserve the frontend coverage gate. Review that the same guard excludes stale preference resets; test that side effect if it can be observed behaviorally without mirroring the implementation. Re-read state ordering and the diff for error-path regressions and unintended scope.
 
 Acceptance: after logout, a stale `/auth/me` success cannot authenticate the UI or reset preference tracking. A fresh mount still hydrates normally; login, 2FA, registration, 401 boot, and logout behavior remain correct.
 
@@ -30,3 +30,7 @@ Acceptance: after logout, a stale `/auth/me` success cannot authenticate the UI 
 4. Refresh `origin/main` and rescrub all eight original domains. Close the loop only when a complete pass finds zero P0-P2 findings.
 
 Backout: revert the bounded PR if auth state transitions regress; no data migration or repair is needed. Rebuild the already-running local stack only after the final clean pass.
+
+## Delivery evidence
+
+The deferred logout/boot regression failed before the fix and passed after it. Focused auth tests, required typechecks, full root tests and 100% coverage, architecture/lint gates, adversarial review, and pre-commit checks passed. PR #1254 merged as `f593721d1fa2fae0cfd9e8e35ae8a6c676feb282`; all five exact merge-SHA push workflows passed. The running-stack rebuild remains assigned to final loop closeout.

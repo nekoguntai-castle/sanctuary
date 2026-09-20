@@ -583,6 +583,29 @@ describe('User Repository', () => {
         },
       });
     });
+
+    it('uses the direct role before group membership for a filtered audience', async () => {
+      (prisma.user.findMany as Mock).mockResolvedValueOnce([]);
+
+      await userRepository.findByWalletAccess('wallet-1', { walletRoles: ['owner', 'signer'] });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { wallets: { some: { walletId: 'wallet-1', role: { in: ['owner', 'signer'] } } } },
+            {
+              wallets: { none: { walletId: 'wallet-1' } },
+              groupMemberships: {
+                some: {
+                  group: { wallets: { some: { id: 'wallet-1', groupRole: { in: ['owner', 'signer'] } } } },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true, username: true, preferences: true },
+      });
+    });
   });
 
   describe('findWithAutopilotPreferences', () => {

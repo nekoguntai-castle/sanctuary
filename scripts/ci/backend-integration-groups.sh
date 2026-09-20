@@ -80,10 +80,13 @@ list_group_specs() {
       printf '%s\n' \
         tests/integration/repositories/deviceRepository.test.ts \
         tests/integration/repositories/deviceSharingRepository.test.ts \
+        tests/integration/repositories/importDeviceReuseAccess.test.ts \
+        tests/integration/repositories/mobilePermissionAccess.test.ts \
         tests/integration/repositories/pushDeviceRepository.test.ts \
         tests/integration/repositories/sessionRepository.test.ts \
         tests/integration/repositories/systemSettingRepository.test.ts \
         tests/integration/repositories/userRepository.test.ts \
+        tests/integration/repositories/userWalletAccess.test.ts \
         tests/integration/repositories/walletDeviceSignerBinding.test.ts \
         tests/integration/repositories/walletEditAccess.test.ts \
         tests/integration/repositories/walletSharingRepository.test.ts

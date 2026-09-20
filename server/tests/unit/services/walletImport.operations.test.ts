@@ -8,6 +8,7 @@ import {
   mockDeriveCanonicalAddress,
   setupDeviceMocks,
   setupBeforeEach,
+  mockCurrentDeviceRole,
   mockAssertHardwareWalletCapability,
   mockCheckpointCreateMany,
   mockWakeInitialWalletSync,
@@ -550,6 +551,7 @@ describe('Wallet Import Service - Operations', () => {
     });
 
     it('should handle case-insensitive fingerprint matching', async () => {
+      mockCurrentDeviceRole('owner');
       const descriptor = "wpkh([ABCD1234/84'/0'/0']xpub6Dz...)";
 
       mockParseImportInput.mockReturnValue({
@@ -800,6 +802,7 @@ describe('Wallet Import Service - Operations', () => {
     });
 
     it('should add DeviceAccount to existing device when importing multisig to device with only single-sig', async () => {
+      mockCurrentDeviceRole('owner');
       const descriptor = "wsh(sortedmulti(2,[abcd1234/48'/0'/0'/2']xpub6E1..., [efef5678/48'/0'/0'/2']xpub6E2...))";
 
       mockParseImportInput.mockReturnValue({
@@ -888,6 +891,7 @@ describe('Wallet Import Service - Operations', () => {
     });
 
     it('should not create duplicate DeviceAccount when matching account exists', async () => {
+      mockCurrentDeviceRole('owner');
       const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz...)";
 
       mockParseImportInput.mockReturnValue({
@@ -961,6 +965,7 @@ describe('Wallet Import Service - Operations', () => {
     });
 
     it('should use imported derivation paths for descriptor building, not stored device paths', async () => {
+      mockCurrentDeviceRole('owner');
       const descriptor = "wsh(sortedmulti(2,[abcd1234/48'/0'/0'/2']xpub6Multisig1..., [efef5678/48'/0'/0'/2']xpub6Multisig2...))";
 
       mockParseImportInput.mockReturnValue({

@@ -108,8 +108,7 @@ export async function findByWalletId(walletId: string): Promise<MobilePermission
 }
 
 /**
- * Find all mobile permissions for a user with wallet details and role
- * Includes the user's wallet role to avoid N+1 queries
+ * Find saved mobile permissions with direct and group access relationships.
  */
 export async function findByUserIdWithWallet(userId: string) {
   return prisma.mobilePermission.findMany({
@@ -121,16 +120,45 @@ export async function findByUserIdWithWallet(userId: string) {
           name: true,
           type: true,
           network: true,
+          groupRole: true,
           users: {
             where: { userId },
             select: { role: true },
             take: 1,
+          },
+          group: {
+            select: { members: { where: { userId }, select: { userId: true }, take: 1 } },
           },
         },
       },
     },
     orderBy: { createdAt: 'desc' },
   });
+}
+
+/** List the wallet's effective members, giving direct grants precedence. */
+export async function findWalletAccessUsers(walletId: string) {
+  const wallet = await prisma.wallet.findUnique({
+    where: { id: walletId },
+    select: {
+      groupRole: true,
+      users: { select: { userId: true, role: true, user: { select: { username: true } } } },
+      group: {
+        select: {
+          members: { select: { userId: true, user: { select: { username: true } } } },
+        },
+      },
+    },
+  });
+  if (!wallet) return [];
+
+  const users = new Map(wallet.users.map((member) => [member.userId, member]));
+  for (const member of wallet.group?.members ?? []) {
+    if (!users.has(member.userId)) {
+      users.set(member.userId, { userId: member.userId, role: wallet.groupRole, user: member.user });
+    }
+  }
+  return [...users.values()];
 }
 
 /**
@@ -346,6 +374,7 @@ export const mobilePermissionRepository = {
   findByUserId,
   findByWalletId,
   findByUserIdWithWallet,
+  findWalletAccessUsers,
   findByWalletIdAndUserIds,
   create,
   upsert,

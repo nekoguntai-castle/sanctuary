@@ -41,3 +41,7 @@ Backout: revert the bounded PR; no data migration or repair is needed. Rebuild t
 - The isolated PostgreSQL regression failed on the original filter because the direct viewer matched the group signer branch; it passed after the fix. Both runs produced signed cleanup receipts with `cleanupState: cleaned`.
 - The real database test covers both network and single-wallet query shapes across direct and group roles. Repository contract tests verify both callers use the shared predicate; existing RBF, CPFP, and batch route success/403 tests now also assert the edit lookup path.
 - Focused server tests passed (229). Full server coverage passed 16,363 tests in 715 files with 100% reported coverage. Root coverage passed 8,714 tests in 649 files with 100% reported coverage. Typechecks, lint, architecture boundaries, signer inventory, large-file classification, integration-group manifest, adversarial review, and pre-commit checks passed.
+
+## Delivery evidence
+
+PR #1255 passed all six exact-head workflows at `c179c3832abf7f7e8bbd33e23894b612b7f74244` and merged as `8268726550e14ead6c7974a9fa81aa40d17e7884`. The merge is a real ancestor of `origin/main`; all five exact merge-SHA push workflows and the combined commit status passed. The next complete scrub begins at that SHA. The running-stack rebuild remains assigned to final loop closeout.
