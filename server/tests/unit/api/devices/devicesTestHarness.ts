@@ -102,6 +102,7 @@ export function setupDevicesApiTestHooks(): void {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
+    mockAssertHardwareWalletCapability.mockReset();
     mockAssertHardwareWalletCapability.mockReturnValue(undefined);
     mockPrismaClient.device.findUnique.mockResolvedValue({
       id: 'device-1',
@@ -109,6 +110,11 @@ export function setupDevicesApiTestHooks(): void {
       fingerprint: 'aabbccdd',
       model: null,
       accounts: [],
+    });
+    mockPrismaClient.device.findUniqueOrThrow.mockImplementation(async (args) => {
+      const device = await mockPrismaClient.device.findUnique(args);
+      if (!device) throw new Error('Record not found');
+      return device;
     });
   });
 }

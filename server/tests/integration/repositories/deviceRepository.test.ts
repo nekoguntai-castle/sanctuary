@@ -15,7 +15,91 @@ import {
   addUserToGroup,
   generateFingerprint,
   assertNotExists,
+  getTestPrisma,
 } from './setup';
+import { randomUUID } from 'node:crypto';
+import { deleteAccountPreservingOne, deleteDeviceIfUnused } from '../../../src/repositories/deviceRepository';
+import type { PrismaClient } from '../../../src/generated/prisma/client';
+
+async function waitForBlockedSessions(client: PrismaClient, blockerPid: number, count: number) {
+  // The guarded runner gives this file its own database; count direct and queued lock waiters there.
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const [row] = await client.$queryRaw<Array<{ count: bigint }>>`
+      SELECT count(*) AS count FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND pid <> ${blockerPid}
+        AND cardinality(pg_blocking_pids(pid)) > 0
+    `;
+    if (Number(row.count) >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Expected ${count} blocked database sessions while PID ${blockerPid} holds the device`);
+}
+
+function holdDeviceLock(client: PrismaClient, deviceId: string) {
+  let announce!: (pid: number) => void;
+  let release!: () => void;
+  const pid = new Promise<number>((resolve) => { announce = resolve; });
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  const finished = client.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM devices WHERE id = ${deviceId} FOR UPDATE`;
+    const [row] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    announce(row.pid);
+    await released;
+  }, { timeout: 15000 });
+  return { pid, release, finished };
+}
+
+function holdWalletLink(client: PrismaClient, walletId: string, deviceId: string, accountId?: string) {
+  let announce!: (pid: number) => void;
+  let release!: () => void;
+  const pid = new Promise<number>((resolve) => { announce = resolve; });
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  const finished = client.$transaction(async (tx) => {
+    await tx.walletDevice.create({ data: {
+      walletId, deviceId,
+      ...(accountId ? {
+        deviceAccountId: accountId,
+        signerIndex: 0,
+        signerBindingVersion: 1,
+        signerFingerprint: 'a1b2c3d4',
+        signerXpub: 'bound-account',
+        signerDerivationPath: "m/84'/0'/0'",
+        signerPurpose: 'single_sig',
+        signerScriptType: 'native_segwit',
+      } : {}),
+    } });
+    const [row] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    announce(row.pid);
+    await released;
+  }, { timeout: 15000 });
+  return { pid, release, finished };
+}
+
+async function createCommittedDeviceFixture(withWallet: boolean) {
+  const client = await getTestPrisma();
+  const suffix = randomUUID();
+  const user = await createTestUser(client, {
+    username: `device-race-${suffix}`,
+    email: `device-race-${suffix}@example.com`,
+  });
+  const device = await createTestDevice(client, user.id);
+  const wallet = withWallet
+    ? await createTestWallet(client, user.id, { name: `device-race-${suffix}` })
+    : null;
+  return {
+    client,
+    device,
+    wallet,
+    async cleanup() {
+      await client.walletDevice.deleteMany({ where: { deviceId: device.id } });
+      if (wallet) await client.wallet.delete({ where: { id: wallet.id } });
+      await client.device.deleteMany({ where: { id: device.id } });
+      await client.user.delete({ where: { id: user.id } });
+    },
+  };
+}
 
 describeIfDatabase('DeviceRepository Integration Tests', () => {
   setupRepositoryTests();
@@ -240,6 +324,70 @@ describeIfDatabase('DeviceRepository Integration Tests', () => {
   });
 
   describe('device accounts', () => {
+    it('serializes deletes of the final two accounts', async () => {
+      const fixture = await createCommittedDeviceFixture(false);
+      const { client, device } = fixture;
+      try {
+        const accounts = await Promise.all([
+          client.deviceAccount.create({ data: {
+            deviceId: device.id, purpose: 'single_sig', scriptType: 'native_segwit',
+            derivationPath: "m/84'/0'/0'", xpub: 'account-one',
+          } }),
+          client.deviceAccount.create({ data: {
+            deviceId: device.id, purpose: 'single_sig', scriptType: 'nested_segwit',
+            derivationPath: "m/49'/0'/0'", xpub: 'account-two',
+          } }),
+        ]);
+        const holder = holdDeviceLock(client, device.id);
+        const blockerPid = await holder.pid;
+        let attempts: ReturnType<typeof deleteAccountPreservingOne>[] = [];
+        try {
+          attempts = accounts.map((account) =>
+            deleteAccountPreservingOne(device.id, account.id, () => undefined)
+          );
+          await waitForBlockedSessions(client, blockerPid, 2);
+        } finally {
+          holder.release();
+          await holder.finished;
+        }
+        const results = await Promise.all(attempts);
+        expect(results.map((result) => result.kind).sort()).toEqual(['deleted', 'last-account']);
+        expect(await client.deviceAccount.count({ where: { deviceId: device.id } })).toBe(1);
+      } finally {
+        await fixture.cleanup();
+      }
+    }, 30000);
+
+    it('preserves an account when a wallet link commits before deletion', async () => {
+      const fixture = await createCommittedDeviceFixture(true);
+      const { client, device, wallet } = fixture;
+      if (!wallet) throw new Error('Expected wallet fixture');
+      try {
+        const account = await client.deviceAccount.create({ data: {
+          deviceId: device.id, purpose: 'single_sig', scriptType: 'native_segwit',
+          derivationPath: "m/84'/0'/0'", xpub: 'bound-account',
+        } });
+        await client.deviceAccount.create({ data: {
+          deviceId: device.id, purpose: 'multisig', scriptType: 'native_segwit',
+          derivationPath: "m/48'/0'/0'/2'", xpub: 'other-account',
+        } });
+        const link = holdWalletLink(client, wallet.id, device.id, account.id);
+        const blockerPid = await link.pid;
+        const deletion = deleteAccountPreservingOne(device.id, account.id, () => undefined);
+        try {
+          await waitForBlockedSessions(client, blockerPid, 1);
+        } finally {
+          link.release();
+          await link.finished;
+        }
+        expect(await deletion).toEqual({ kind: 'account-linked' });
+        expect(await client.deviceAccount.findUnique({ where: { id: account.id } })).not.toBeNull();
+        expect(await client.walletDevice.count({ where: { deviceAccountId: account.id } })).toBe(1);
+      } finally {
+        await fixture.cleanup();
+      }
+    }, 30000);
+
     it('should create device with multiple accounts', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
@@ -434,6 +582,61 @@ describeIfDatabase('DeviceRepository Integration Tests', () => {
   });
 
   describe('wallet-device associations', () => {
+    it('keeps a wallet link that commits before device deletion', async () => {
+      const fixture = await createCommittedDeviceFixture(true);
+      const { client, device, wallet } = fixture;
+      if (!wallet) throw new Error('Expected wallet fixture');
+      const link = holdWalletLink(client, wallet.id, device.id);
+      let deletion: ReturnType<typeof deleteDeviceIfUnused> | undefined;
+      try {
+        const blockerPid = await link.pid;
+        deletion = deleteDeviceIfUnused(device.id);
+        try {
+          await waitForBlockedSessions(client, blockerPid, 1);
+        } finally {
+          link.release();
+          await link.finished;
+        }
+        expect(await deletion).toEqual({ kind: 'linked', walletNames: [wallet.name] });
+        expect(await client.walletDevice.count({ where: { deviceId: device.id } })).toBe(1);
+        expect(await client.device.findUnique({ where: { id: device.id } })).not.toBeNull();
+      } finally {
+        link.release();
+        await Promise.allSettled([link.finished, ...(deletion ? [deletion] : [])]);
+        await fixture.cleanup();
+      }
+    }, 30000);
+
+    it('rejects a wallet link queued after device deletion', async () => {
+      const fixture = await createCommittedDeviceFixture(true);
+      const { client, device, wallet } = fixture;
+      if (!wallet) throw new Error('Expected wallet fixture');
+      const holder = holdDeviceLock(client, device.id);
+      let deletion: ReturnType<typeof deleteDeviceIfUnused> | undefined;
+      let link: Promise<{ succeeded: boolean }> | undefined;
+      try {
+        const blockerPid = await holder.pid;
+        deletion = deleteDeviceIfUnused(device.id);
+        try {
+          await waitForBlockedSessions(client, blockerPid, 1);
+          link = Promise.resolve(client.walletDevice.create({ data: { walletId: wallet.id, deviceId: device.id } }))
+            .then(() => ({ succeeded: true }), () => ({ succeeded: false }));
+          await waitForBlockedSessions(client, blockerPid, 2);
+        } finally {
+          holder.release();
+          await holder.finished;
+        }
+        expect(await deletion).toEqual({ kind: 'deleted' });
+        expect(await link).toEqual({ succeeded: false });
+        expect(await client.device.findUnique({ where: { id: device.id } })).toBeNull();
+        expect(await client.walletDevice.count({ where: { deviceId: device.id } })).toBe(0);
+      } finally {
+        holder.release();
+        await Promise.allSettled([holder.finished, ...(deletion ? [deletion] : []), ...(link ? [link] : [])]);
+        await fixture.cleanup();
+      }
+    }, 30000);
+
     it('should link device to wallet', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);

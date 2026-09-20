@@ -92,7 +92,7 @@ const EXPORT_HANDLER_VENDORS = Object.freeze({
 export const REQUIRED_SERVER_CAPABILITY_BOUNDARIES = Object.freeze([
   ['server/src/api/bitcoin/transactions.ts', 'assertUnscopedRawTransactionBroadcastDisabled', 'broadcast', 1],
   ['server/src/api/bitcoin/transactions.ts', 'assertWalletHardwareCapabilityById', 'sign', 3],
-  ['server/src/api/devices/accounts.ts', 'assertHardwareWalletCapability', 'account_add', 1],
+  ['server/src/api/devices/accounts.ts', 'assertHardwareWalletCapability', 'account_add', 2],
   ['server/src/api/devices/crud.ts', 'assertHardwareWalletCapability', 'account_add', 2],
   ['server/src/api/transactions/addresses.ts', 'assertWalletHardwareCapabilityById', 'display', 2],
   ['server/src/api/transactions/drafting.ts', 'assertWalletHardwareCapabilityById', 'sign', 3],

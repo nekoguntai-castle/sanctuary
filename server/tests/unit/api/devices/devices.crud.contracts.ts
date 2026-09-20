@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
@@ -260,6 +260,10 @@ export function registerDeviceCrudTests(): void {
   });
 
   describe('DELETE /devices/:id - Delete Device', () => {
+    beforeEach(() => {
+      mockPrismaClient.$queryRaw.mockResolvedValue([{ id: 'device-1' }]);
+    });
+
     it('should delete device not in use', async () => {
       mockPrismaClient.device.findUnique.mockResolvedValue({
         id: 'device-1',
@@ -277,7 +281,7 @@ export function registerDeviceCrudTests(): void {
     });
 
     it('should return 404 when device not found', async () => {
-      mockPrismaClient.device.findUnique.mockResolvedValue(null);
+      mockPrismaClient.$queryRaw.mockResolvedValueOnce([]);
 
       const response = await request(app)
         .delete('/api/v1/devices/non-existent');
@@ -300,6 +304,25 @@ export function registerDeviceCrudTests(): void {
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('CONFLICT');
       expect(response.body.message).toContain('in use by wallet');
+    });
+
+    it('rejects deletion when a wallet link commits before the device lock', async () => {
+      let linkCommitted = false;
+      mockPrismaClient.$transaction.mockImplementation(async callback => {
+        linkCommitted = true;
+        return callback(mockPrismaClient);
+      });
+      mockPrismaClient.device.findUnique.mockImplementation(async () => ({
+        id: 'device-1',
+        wallets: linkCommitted ? [{ wallet: { id: 'wallet-1', name: 'My Wallet' } }] : [],
+      }));
+
+      const response = await request(app)
+        .delete('/api/v1/devices/device-1');
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('in use by wallet(s): My Wallet');
+      expect(mockPrismaClient.device.delete).not.toHaveBeenCalled();
     });
 
     it('should handle database errors gracefully', async () => {

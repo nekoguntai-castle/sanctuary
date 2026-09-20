@@ -106,26 +106,28 @@ router.delete('/:id/accounts/:accountId', requireDeviceAccess('owner'), asyncHan
   if (!device) {
     throw new NotFoundError('Device not found');
   }
+  // Preserve the existing preflight error order; the locked check below is authoritative.
   assertHardwareWalletCapability(device, 'account_add');
 
-  if (await deviceRepository.isAccountLinked(accountId)) {
+  const result = await deviceRepository.deleteAccountPreservingOne(
+    id,
+    accountId,
+    (lockedDevice) => assertHardwareWalletCapability(lockedDevice, 'account_add'),
+  );
+  if (result.kind === 'device-not-found') throw new NotFoundError('Device not found');
+  if (result.kind === 'account-not-found') throw new NotFoundError('Account not found');
+  if (result.kind === 'account-linked') {
     throw new ConflictError('Cannot delete an account that is bound to a wallet');
   }
-
-  // Check if this is the last account
-  const accountCount = await deviceRepository.countAccountsByDeviceId(id);
-
-  if (accountCount <= 1) {
+  if (result.kind === 'last-account') {
     throw new InvalidInputError('Cannot delete the last account of a device');
   }
-
-  await deviceRepository.deleteAccount(accountId);
 
   log.info('Device account deleted', {
     deviceId: id,
     accountId,
-    purpose: account.purpose,
-    scriptType: account.scriptType,
+    purpose: result.account.purpose,
+    scriptType: result.account.scriptType,
   });
 
   res.status(204).send();

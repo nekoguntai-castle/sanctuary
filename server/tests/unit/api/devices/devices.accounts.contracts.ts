@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
@@ -254,6 +254,10 @@ export function registerDeviceAccountTests(): void {
   });
 
   describe('DELETE /devices/:id/accounts/:accountId', () => {
+    beforeEach(() => {
+      mockPrismaClient.$queryRaw.mockResolvedValue([{ id: 'device-1' }]);
+    });
+
     it('should delete account from device', async () => {
       mockPrismaClient.deviceAccount.findFirst.mockResolvedValue({
         id: 'account-1',
@@ -285,6 +289,112 @@ export function registerDeviceAccountTests(): void {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('last account');
+    });
+
+    it('keeps one account when two requests delete the final two accounts together', async () => {
+      const remaining = new Set(['account-1', 'account-2']);
+      let releaseSecondCount: (() => void) | undefined;
+      const secondCount = new Promise<void>(resolve => {
+        releaseSecondCount = resolve;
+      });
+      let legacyCountCalls = 0;
+      let transactionTail = Promise.resolve();
+
+      mockPrismaClient.$transaction.mockImplementation(async callback => {
+        const previous = transactionTail;
+        let releaseTransaction: (() => void) | undefined;
+        transactionTail = new Promise<void>(resolve => {
+          releaseTransaction = resolve;
+        });
+        await previous;
+        try {
+          return await callback(mockPrismaClient);
+        } finally {
+          releaseTransaction?.();
+        }
+      });
+      mockPrismaClient.deviceAccount.findFirst.mockImplementation(async ({ where }) => (
+        remaining.has(where.id) ? { id: where.id, deviceId: 'device-1' } : null
+      ));
+      mockPrismaClient.deviceAccount.count.mockImplementation(async () => {
+        const count = remaining.size;
+        if (mockPrismaClient.$transaction.mock.calls.length === 0) {
+          legacyCountCalls += 1;
+          if (legacyCountCalls === 2) releaseSecondCount?.();
+          await secondCount;
+        }
+        return count;
+      });
+      mockPrismaClient.deviceAccount.delete.mockImplementation(async ({ where }) => {
+        remaining.delete(where.id);
+        return { id: where.id };
+      });
+
+      const [first, second] = await Promise.all([
+        request(app).delete('/api/v1/devices/device-1/accounts/account-1'),
+        request(app).delete('/api/v1/devices/device-1/accounts/account-2'),
+      ]);
+
+      expect([first.status, second.status].sort()).toEqual([204, 400]);
+      expect([first.body.message, second.body.message]).toContain(
+        'Cannot delete the last account of a device',
+      );
+      expect(remaining.size).toBe(1);
+    });
+
+    it('rechecks wallet binding after acquiring the device lock', async () => {
+      let lockAcquired = false;
+      mockPrismaClient.$transaction.mockImplementation(async callback => {
+        lockAcquired = true;
+        return callback(mockPrismaClient);
+      });
+      mockPrismaClient.deviceAccount.findFirst.mockResolvedValue({
+        id: 'account-1',
+        deviceId: 'device-1',
+      });
+      mockPrismaClient.walletDevice.findFirst.mockImplementation(async () => (
+        lockAcquired ? { id: 'wallet-link-1' } : null
+      ));
+      mockPrismaClient.deviceAccount.count.mockResolvedValue(2);
+
+      const response = await request(app)
+        .delete('/api/v1/devices/device-1/accounts/account-1');
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('bound to a wallet');
+      expect(mockPrismaClient.deviceAccount.delete).not.toHaveBeenCalled();
+    });
+
+    it('rechecks the hardware capability against the locked device snapshot', async () => {
+      const { ForbiddenError } = await import('../../../../src/errors');
+      let capabilityChecks = 0;
+      mockAssertHardwareWalletCapability.mockImplementation(() => {
+        capabilityChecks += 1;
+        if (capabilityChecks === 2) {
+          throw new ForbiddenError('blocked', undefined, {
+            vendor: 'ledger',
+            capability: 'account_add',
+          });
+        }
+      });
+      mockPrismaClient.deviceAccount.findFirst.mockResolvedValue({
+        id: 'account-1',
+        deviceId: 'device-1',
+      });
+      mockPrismaClient.device.findUnique
+        .mockResolvedValueOnce({ id: 'device-1', type: 'coldcard', model: null, accounts: [] })
+        .mockResolvedValueOnce({ id: 'device-1', type: 'ledger', model: null, accounts: [] });
+      mockPrismaClient.deviceAccount.count.mockResolvedValue(2);
+
+      const response = await request(app)
+        .delete('/api/v1/devices/device-1/accounts/account-1');
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({
+        vendor: 'ledger',
+        capability: 'account_add',
+      });
+      expect(mockPrismaClient.deviceAccount.delete).not.toHaveBeenCalled();
     });
 
     it('prevents deleting an account bound to a wallet before count or delete', async () => {
@@ -339,6 +449,18 @@ export function registerDeviceAccountTests(): void {
       expect(response.status).toBe(404);
     });
 
+    it('returns account not found when both account and device are missing', async () => {
+      mockPrismaClient.deviceAccount.findFirst.mockResolvedValue(null);
+      mockPrismaClient.device.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .delete('/api/v1/devices/missing/accounts/missing');
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Account not found');
+      expect(mockPrismaClient.device.findUnique).not.toHaveBeenCalled();
+    });
+
     it('returns 404 without checking bindings when the account device disappears', async () => {
       mockPrismaClient.deviceAccount.findFirst.mockResolvedValue({
         id: 'account-1',
@@ -353,6 +475,31 @@ export function registerDeviceAccountTests(): void {
       expect(response.body.message).toBe('Device not found');
       expect(mockPrismaClient.walletDevice.findFirst).not.toHaveBeenCalled();
       expect(mockPrismaClient.deviceAccount.count).not.toHaveBeenCalled();
+      expect(mockPrismaClient.deviceAccount.delete).not.toHaveBeenCalled();
+    });
+
+    it('returns device not found if the device disappears before the locked decision', async () => {
+      mockPrismaClient.deviceAccount.findFirst.mockResolvedValue({ id: 'account-1', deviceId: 'device-1' });
+      mockPrismaClient.$queryRaw.mockResolvedValueOnce([]);
+
+      const response = await request(app)
+        .delete('/api/v1/devices/device-1/accounts/account-1');
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Device not found');
+      expect(mockPrismaClient.deviceAccount.delete).not.toHaveBeenCalled();
+    });
+
+    it('returns account not found if the account disappears before the locked decision', async () => {
+      mockPrismaClient.deviceAccount.findFirst
+        .mockResolvedValueOnce({ id: 'account-1', deviceId: 'device-1' })
+        .mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .delete('/api/v1/devices/device-1/accounts/account-1');
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Account not found');
       expect(mockPrismaClient.deviceAccount.delete).not.toHaveBeenCalled();
     });
 

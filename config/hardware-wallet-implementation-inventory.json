@@ -37,7 +37,7 @@
       "source": "server/src/api/devices/accounts.ts",
       "assertion": "assertHardwareWalletCapability",
       "capability": "account_add",
-      "count": 1
+      "count": 2
     },
     {
       "source": "server/src/api/devices/crud.ts",
@@ -3931,6 +3931,21 @@
       "id": "server-capability-enforcement:server/src/api/devices/accounts.ts:assertHardwareWalletCapability:account_add:1",
       "kind": "server-capability-enforcement",
       "identity": "server/src/api/devices/accounts.ts:assertHardwareWalletCapability:account_add:1",
+      "vendor": "generic",
+      "source": "server/src/api/devices/accounts.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/devices/accounts.ts:assertHardwareWalletCapability:account_add:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/devices/accounts.ts:assertHardwareWalletCapability:account_add:2",
       "vendor": "generic",
       "source": "server/src/api/devices/accounts.ts",
       "capabilities": [

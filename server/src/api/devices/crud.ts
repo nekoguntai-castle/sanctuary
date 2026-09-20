@@ -187,19 +187,16 @@ router.delete('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res
   const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
-  const device = await deviceRepository.findByIdWithWallets(id);
+  const result = await deviceRepository.deleteDeviceIfUnused(id);
 
-  if (!device) {
+  if (result.kind === 'device-not-found') {
     throw new NotFoundError('Device not found');
   }
 
-  // Check if device is in use by any wallet
-  if (device.wallets && device.wallets.length > 0) {
-    const walletNames = device.wallets.map(w => w.wallet.name).join(', ');
+  if (result.kind === 'linked') {
+    const walletNames = result.walletNames.join(', ');
     throw new ConflictError(`Cannot delete device. It is in use by wallet(s): ${walletNames}`);
   }
-
-  await deviceRepository.delete(id);
 
   log.info('Device deleted', { deviceId: id, userId });
 

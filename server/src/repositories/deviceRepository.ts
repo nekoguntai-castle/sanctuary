@@ -4,8 +4,8 @@
  * Abstracts database operations for devices and device-user associations.
  */
 
-import prisma from '../models/prisma';
-import type { Device, DeviceUser, WalletDevice, Prisma } from '../generated/prisma/client';
+import prisma, { type PrismaTxClient } from '../models/prisma';
+import type { Device, DeviceAccount, DeviceUser, WalletDevice, Prisma } from '../generated/prisma/client';
 import { getSupportStats } from './deviceSupportStatsRepository';
 export { getSupportStats } from './deviceSupportStatsRepository';
 export type { DeviceSupportStats } from './deviceSupportStatsRepository';
@@ -201,12 +201,34 @@ export async function update(
   });
 }
 
-/**
- * Delete a device
- */
-export async function deleteDevice(deviceId: string): Promise<void> {
-  await prisma.device.delete({
-    where: { id: deviceId },
+/** The device row is the parent lock for account and signer-link mutations; keep it inside a transaction. */
+async function lockDeviceRow(tx: PrismaTxClient, deviceId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "devices" WHERE "id" = ${deviceId} FOR UPDATE
+  `;
+  return rows.length > 0;
+}
+
+export type DeleteDeviceIfUnusedResult =
+  | { kind: 'device-not-found' }
+  | { kind: 'linked'; walletNames: string[] }
+  | { kind: 'deleted' };
+
+/** Keep the link check and cascade-capable device deletion under one parent lock. */
+export async function deleteDeviceIfUnused(deviceId: string): Promise<DeleteDeviceIfUnusedResult> {
+  return prisma.$transaction(async (tx) => {
+    if (!await lockDeviceRow(tx, deviceId)) return { kind: 'device-not-found' };
+
+    const device = await tx.device.findUniqueOrThrow({
+      where: { id: deviceId },
+      include: { wallets: { include: { wallet: { select: { id: true, name: true } } } } },
+    });
+    if (device.wallets.length > 0) {
+      return { kind: 'linked', walletNames: device.wallets.map((link) => link.wallet.name) };
+    }
+
+    await tx.device.delete({ where: { id: deviceId } });
+    return { kind: 'deleted' };
   });
 }
 
@@ -294,27 +316,6 @@ export async function findByFingerprintWithAccounts(fingerprint: string) {
     include: {
       accounts: true,
       model: true,
-    },
-  });
-}
-
-/**
- * Find device by ID with wallets (for delete check)
- */
-export async function findByIdWithWallets(deviceId: string) {
-  return prisma.device.findUnique({
-    where: { id: deviceId },
-    include: {
-      wallets: {
-        include: {
-          wallet: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      },
     },
   });
 }
@@ -481,29 +482,46 @@ export async function createAccount(data: {
   return prisma.deviceAccount.create({ data });
 }
 
-/**
- * Count accounts for a device
- */
-export async function countAccountsByDeviceId(deviceId: string): Promise<number> {
-  return prisma.deviceAccount.count({
-    where: { deviceId },
-  });
-}
+type DeviceWithModelAndAccounts = NonNullable<Awaited<ReturnType<typeof findByIdWithModelAndAccounts>>>;
 
-export async function isAccountLinked(accountId: string): Promise<boolean> {
-  const link = await prisma.walletDevice.findFirst({
-    where: { deviceAccountId: accountId },
-    select: { id: true },
-  });
-  return link !== null;
-}
+export type DeleteAccountPreservingOneResult =
+  | { kind: 'device-not-found' }
+  | { kind: 'account-not-found' }
+  | { kind: 'account-linked' }
+  | { kind: 'last-account' }
+  | { kind: 'deleted'; account: DeviceAccount };
 
-/**
- * Delete a device account
+/** Serialize account deletion and recheck all mutable conditions under the device lock.
+ * assertCapability is synchronous and throws to abort the transaction when policy rejects the device.
  */
-export async function deleteAccount(accountId: string): Promise<void> {
-  await prisma.deviceAccount.delete({
-    where: { id: accountId },
+export async function deleteAccountPreservingOne(
+  deviceId: string,
+  accountId: string,
+  assertCapability: (device: DeviceWithModelAndAccounts) => void,
+): Promise<DeleteAccountPreservingOneResult> {
+  return prisma.$transaction(async (tx) => {
+    if (!await lockDeviceRow(tx, deviceId)) return { kind: 'device-not-found' };
+
+    const account = await tx.deviceAccount.findFirst({ where: { id: accountId, deviceId } });
+    if (!account) return { kind: 'account-not-found' };
+
+    const device = await tx.device.findUniqueOrThrow({
+      where: { id: deviceId },
+      include: { model: true, accounts: true },
+    });
+    assertCapability(device);
+
+    const linked = await tx.walletDevice.findFirst({
+      where: { deviceAccountId: accountId },
+      select: { id: true },
+    });
+    if (linked) return { kind: 'account-linked' };
+
+    const count = await tx.deviceAccount.count({ where: { deviceId } });
+    if (count <= 1) return { kind: 'last-account' };
+
+    await tx.deviceAccount.delete({ where: { id: accountId } });
+    return { kind: 'deleted', account };
   });
 }
 
@@ -767,14 +785,13 @@ export const deviceRepository = {
   isShared,
   create,
   update,
-  delete: deleteDevice,
+  deleteDeviceIfUnused,
   addUser,
   removeUser,
   getSharedUserCount,
   findByIdFull,
   findByIdWithModelAndAccounts,
   findByFingerprintWithAccounts,
-  findByIdWithWallets,
   createWithOwnerAndAccounts,
   mergeAccounts,
   updateWithModel,
@@ -782,9 +799,7 @@ export const deviceRepository = {
   findAccountByIdAndDevice,
   findDuplicateAccount,
   createAccount,
-  countAccountsByDeviceId,
-  isAccountLinked,
-  deleteAccount,
+  deleteAccountPreservingOne,
   findHardwareModel,
   findHardwareModels,
   findManufacturers,

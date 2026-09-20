@@ -368,24 +368,6 @@ describe('Device Repository', () => {
     });
   });
 
-  describe('delete', () => {
-    it('should delete device', async () => {
-      (prisma.device.delete as Mock).mockResolvedValue(mockDevice);
-
-      await deviceRepository.delete('device-123');
-
-      expect(prisma.device.delete).toHaveBeenCalledWith({
-        where: { id: 'device-123' },
-      });
-    });
-
-    it('should propagate errors on delete failure', async () => {
-      (prisma.device.delete as Mock).mockRejectedValue(new Error('Foreign key constraint'));
-
-      await expect(deviceRepository.delete('device-123')).rejects.toThrow('Foreign key constraint');
-    });
-  });
-
   describe('addUser', () => {
     it('should create device user association', async () => {
       const deviceUser = { id: 'du-1', deviceId: 'device-123', userId: 'user-789' };
