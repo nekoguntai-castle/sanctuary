@@ -44,19 +44,32 @@ export function isRBFSignaled(txHex: string): boolean {
 }
 
 /**
- * Check if a transaction can be replaced (RBF)
+ * Check whether RBF is allowed and report its minimum creation fee rate.
+ * A replaceable result always includes current and minimum rates; a rejected
+ * result distinguishes a transaction rule violation from an upstream failure.
  */
 export async function canReplaceTransaction(
   txid: string,
   network: BitcoinNetwork = 'mainnet'
-): Promise<{
-  replaceable: boolean;
-  reason?: string;
-  currentFeeRate?: number;
-  minNewFeeRate?: number;
-  /** True when replaceable=false was caused by an upstream/node failure, not a business rule. */
-  upstreamError?: boolean;
-}> {
+): Promise<
+  // Keep the opposite fields optional-never so callers can inspect the public
+  // response shape while `replaceable` narrows the guaranteed fee fields.
+  | {
+    replaceable: true;
+    currentFeeRate: number;
+    minNewFeeRate: number;
+    reason?: never;
+    upstreamError?: never;
+  }
+  | {
+    replaceable: false;
+    currentFeeRate?: never;
+    minNewFeeRate?: never;
+    reason?: string;
+    /** True when failure came from an upstream/node problem, not a business rule. */
+    upstreamError?: boolean;
+  }
+> {
   try {
     // Use nodeClient which respects poolEnabled setting from node_configs
     const client = await getNodeClient(network);
@@ -179,9 +192,10 @@ export async function createRBFTransaction(
     throw new InvalidInputError(reason, 'txid');
   }
 
-  if (newFeeRate <= (rbfCheck.currentFeeRate || 0)) {
+  // The check response and the create path must enforce the same fee contract.
+  if (newFeeRate < rbfCheck.minNewFeeRate) {
     throw new InvalidInputError(
-      `New fee rate must be higher than current rate (${rbfCheck.currentFeeRate} sat/vB). Minimum: ${rbfCheck.minNewFeeRate} sat/vB`, 'newFeeRate'
+      `New fee rate must be at least ${rbfCheck.minNewFeeRate} sat/vB (current: ${rbfCheck.currentFeeRate} sat/vB)`, 'newFeeRate'
     );
   }
 
@@ -214,7 +228,7 @@ export async function createRBFTransaction(
     logPrefix: '[RBF] ',
   });
 
-  const newFee = feeForRate(estimateTransactionWeight({
+  const replacementVsize = estimateTransactionWeight({
     inputs: rbfInputs.psbtUtxos.map(utxo => ({
       ...resolveTransactionSpendPolicy(
         signingInfo,
@@ -224,7 +238,8 @@ export async function createRBFTransaction(
       prevoutScript: Buffer.from(utxo.scriptPubKey, 'hex'),
     })),
     outputs: tx.outs.map(output => ({ scriptPubKey: output.script })),
-  }).vsize, newFeeRate);
+  }).vsize;
+  const newFee = feeForRate(replacementVsize, newFeeRate);
 
   // Get wallet addresses to identify change output
   const originalOutputAddresses = tx.outs.map(output =>
@@ -244,7 +259,7 @@ export async function createRBFTransaction(
   const feeDelta = newFee - oldFee;
 
   // Adjust change output to account for fee increase
-  adjustChangeOutputForFeeDelta(outputs, changeOutputIndex, feeDelta, dustThreshold);
+  adjustChangeOutputForFeeDelta(outputs, changeOutputIndex, feeDelta, dustThreshold, replacementVsize);
 
   // Add adjusted outputs to PSBT
   addRbfOutputs(psbt, outputs);
@@ -356,11 +371,22 @@ function adjustChangeOutputForFeeDelta(
   outputs: RbfOutput[],
   changeOutputIndex: number,
   feeDelta: number,
-  dustThreshold: number
+  dustThreshold: number,
+  replacementVsize: number
 ): void {
   if (feeDelta <= 0) {
     throw new InvalidInputError(
       `New fee must exceed the original fee by at least 1 sat (BIP-125 rule 3); calculated fee delta was ${feeDelta} sat(s).`,
+      'newFeeRate'
+    );
+  }
+
+  // Match the local 1 sat/vB minimum used by canReplaceTransaction. A node with
+  // a higher incremental relay fee can still reject this replacement.
+  const requiredRelayBump = feeForRate(replacementVsize, MIN_RBF_FEE_BUMP);
+  if (feeDelta < requiredRelayBump) {
+    throw new InvalidInputError(
+      `New fee must exceed the original fee by at least ${requiredRelayBump} sats for the incremental relay fee (BIP-125 rule 4); calculated fee delta was ${feeDelta} sat(s).`,
       'newFeeRate'
     );
   }

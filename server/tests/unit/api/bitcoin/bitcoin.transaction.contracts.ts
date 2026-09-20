@@ -351,7 +351,7 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.body.code).toBe('INVALID_INPUT');
       });
 
-      it('should return 400 INVALID_INPUT when the new fee rate is not higher than the current rate', async () => {
+      it('should return 400 INVALID_INPUT when the new fee rate is below the reported minimum', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',
           name: 'Test Wallet',
@@ -360,17 +360,18 @@ export const registerBitcoinTransactionRouteTests = () => {
         mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
         mockAdvancedTx.createRBFTransaction.mockRejectedValue(
           new InvalidInputError(
-            'New fee rate must be higher than current rate (10 sat/vB). Minimum: 11 sat/vB',
+            'New fee rate must be at least 6 sat/vB (current: 5 sat/vB)',
             'newFeeRate'
           )
         );
 
         const response = await request(app)
           .post('/bitcoin/transaction/abc123/rbf')
-          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+          .send({ newFeeRate: 5.1, walletId: 'wallet-1' });
 
         expect(response.status).toBe(400);
         expect(response.body.code).toBe('INVALID_INPUT');
+        expect(response.body.message).toContain('6 sat/vB');
       });
 
       it('should return 400 INVALID_INPUT when the replacement fee is not raised (BIP-125 rule 3)', async () => {

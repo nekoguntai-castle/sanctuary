@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
 import bip32 from '../../../../../src/services/bitcoin/bip32';
 
 import { mockPrismaClient } from '../../../../mocks/prisma';
@@ -13,6 +14,7 @@ import {
   TEST_ACCOUNT_XPUB,
 } from './advancedTxTestHarness';
 import {
+  canReplaceTransaction,
   createRBFTransaction,
   RBF_SEQUENCE,
 } from '../../../../../src/services/bitcoin/advancedTx';
@@ -46,6 +48,39 @@ export function registerRbfTransactionCreationContracts() {
       fingerprint: 'aabbccdd',
       devices: [immutableSignerLink()],
     });
+
+    const mockSignableReplacement = (currentFeeRate: number) => {
+      const spendAddress = testnetAddresses.nativeSegwit[0];
+      const changeAddress = testnetAddresses.nativeSegwit[1];
+      const spendScriptHex = Buffer.from(bitcoin.address.toOutputScript(
+        spendAddress, bitcoin.networks.testnet,
+      )).toString('hex');
+      const inputHash = Buffer.from('51'.repeat(32), 'hex');
+      const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      tx.addInput(inputHash, 0, RBF_SEQUENCE);
+      tx.addOutput(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet), 40_000n);
+      tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), 1n);
+      const feeSats = Math.round(currentFeeRate * tx.virtualSize());
+      tx.outs[1].value = BigInt(100_000 - 40_000 - feeSats);
+
+      mockPrismaClient.address.findMany
+        .mockResolvedValueOnce([
+          { address: spendAddress, derivationPath: "m/84'/1'/0'/0/0" },
+          { address: changeAddress, derivationPath: "m/84'/1'/0'/1/0" },
+        ])
+        .mockResolvedValueOnce([{ address: changeAddress, branch: 1 }]);
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+        if (txid === originalTxid) {
+          return { txid, confirmations: 0, hex: tx.toHex(), vin: [], vout: [] } as any;
+        }
+        if (txid === inputTxid) {
+          return prevoutResponse(txid, spendScriptHex, spendAddress) as any;
+        }
+        throw new Error(`Unexpected transaction lookup: ${txid}`);
+      });
+    };
 
     beforeEach(() => {
       // Mock wallet lookup
@@ -113,7 +148,7 @@ export function registerRbfTransactionCreationContracts() {
       ).rejects.toThrow('RBF');
     });
 
-    it('should throw error if new fee rate is not higher', async () => {
+    it('should throw error if new fee rate is below the reported minimum', async () => {
       const mockTx = createMockTransaction({
         txid: originalTxid,
         confirmations: 0,
@@ -128,8 +163,102 @@ export function registerRbfTransactionCreationContracts() {
 
       // Try to create with same or lower fee rate
       const result = createRBFTransaction(originalTxid, 1, walletId, 'testnet3');
-      await expect(result).rejects.toThrow('must be higher');
+      await expect(result).rejects.toThrow('must be at least');
       await expect(result).rejects.toBeInstanceOf(InvalidInputError);
+    });
+
+    it('rejects 5.1 sat/vB before PSBT construction when the reported minimum is 6', async () => {
+      mockSignableReplacement(5);
+
+      const check = await canReplaceTransaction(originalTxid, 'testnet3');
+      expect(check).toMatchObject({ replaceable: true, currentFeeRate: 5, minNewFeeRate: 6 });
+      mockElectrumClient.getTransaction.mockClear();
+
+      const error: unknown = await createRBFTransaction(originalTxid, 5.1, walletId, 'testnet3')
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as InvalidInputError).message).toContain('6 sat/vB');
+      expect((error as InvalidInputError).details?.field).toBe('newFeeRate');
+      expect(mockElectrumClient.getTransaction).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
+    });
+
+    it('accepts equality at the advertised 6 sat/vB minimum with a signable PSBT', async () => {
+      mockSignableReplacement(5);
+
+      const result = await createRBFTransaction(originalTxid, 6, walletId, 'testnet3');
+      expect(result.feeRate).toBe(6);
+      expect(result.feeDelta).toBeGreaterThan(0);
+      expect(result.psbt.data.inputs).toHaveLength(1);
+      expect(result.psbt.data.outputs).toHaveLength(2);
+    });
+
+    it('uses the rounded advertised minimum for a fractional current fee rate', async () => {
+      mockSignableReplacement(5.01);
+
+      const check = await canReplaceTransaction(originalTxid, 'testnet3');
+      expect(check).toMatchObject({ replaceable: true, currentFeeRate: 5.01, minNewFeeRate: 6.01 });
+      await expect(createRBFTransaction(originalTxid, 6, walletId, 'testnet3'))
+        .rejects.toThrow('6.01 sat/vB');
+      expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
+      const replacement = await createRBFTransaction(originalTxid, 6.01, walletId, 'testnet3');
+      expect(replacement.feeRate).toBe(6.01);
+      expect(replacement.psbt.data.inputs).toHaveLength(1);
+    });
+
+    it('rejects a rounded 6 sat/vB rate when the absolute bump misses incremental relay by one sat', async () => {
+      const privateKey = Buffer.alloc(32, 1);
+      const pubkey = Buffer.from(ecc.pointFromScalar(privateKey, true)!);
+      const spendPayment = bitcoin.payments.p2wpkh({ pubkey, network: bitcoin.networks.testnet });
+      const spendAddress = spendPayment.address!;
+      const changeAddress = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 0x33), network: bitcoin.networks.testnet }).address!;
+      const spendScript = spendPayment.output!;
+      const scriptCode = bitcoin.payments.p2pkh({ pubkey, network: bitcoin.networks.testnet }).output!;
+      const inputHashes = [Buffer.alloc(32, 3), Buffer.alloc(32, 0)];
+      const inputTxids = inputHashes.map(hash => Buffer.from(hash).reverse().toString('hex'));
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      inputHashes.forEach(hash => tx.addInput(hash, 0, RBF_SEQUENCE));
+      tx.addOutput(spendScript, 40_000n);
+      tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), 158_954n);
+      for (let index = 0; index < inputHashes.length; index++) {
+        const digest = tx.hashForWitnessV0(index, scriptCode, 100_000n, bitcoin.Transaction.SIGHASH_ALL);
+        const signature = bitcoin.script.signature.encode(Buffer.from(ecc.sign(digest, privateKey)), bitcoin.Transaction.SIGHASH_ALL);
+        expect(signature).toHaveLength(72);
+        tx.setWitness(index, [signature, pubkey]);
+      }
+      expect(tx.virtualSize()).toBe(209);
+      const addressPaths = [
+        { address: spendAddress, derivationPath: "m/84'/1'/0'/0/0" },
+        { address: changeAddress, derivationPath: "m/84'/1'/0'/1/0" },
+      ];
+      const changeEvidence = [{ address: changeAddress, branch: 1 }];
+      mockPrismaClient.address.findMany
+        .mockResolvedValueOnce(addressPaths)
+        .mockResolvedValueOnce(changeEvidence)
+        .mockResolvedValueOnce(addressPaths)
+        .mockResolvedValueOnce(changeEvidence);
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+        if (txid === originalTxid) {
+          return { txid, confirmations: 0, hex: tx.toHex(), vin: [], vout: [] } as any;
+        }
+        if (inputTxids.includes(txid)) {
+          return prevoutResponse(txid, Buffer.from(spendScript).toString('hex'), spendAddress) as any;
+        }
+        throw new Error(`Unexpected transaction lookup: ${txid}`);
+      });
+      const check = await canReplaceTransaction(originalTxid, 'testnet3');
+      expect(check).toMatchObject({ replaceable: true, currentFeeRate: 5, minNewFeeRate: 6 });
+      const error: unknown = await createRBFTransaction(originalTxid, 6, walletId, 'testnet3')
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as InvalidInputError).message).toContain('incremental relay fee');
+      expect((error as InvalidInputError).details?.field).toBe('newFeeRate');
+      expect(mockPrismaClient.address.findMany).toHaveBeenCalledTimes(2);
+      const replacement = await createRBFTransaction(originalTxid, 6.01, walletId, 'testnet3');
+      expect(replacement.fee).toBe(1_257);
+      expect(replacement.feeDelta).toBe(211);
+      expect(replacement.psbt.data.inputs).toHaveLength(2);
     });
 
     it('should throw error when wallet is missing', async () => {
@@ -714,7 +843,7 @@ export function registerRbfTransactionCreationContracts() {
       // the original tx's witnesses are padded to inflate its vsize (and thus its
       // apparent fee rate), so the *realistic* re-estimated replacement fee comes
       // out well below the original fee even though newFeeRate clears the
-      // "must be higher" gate. Today this silently returns a fee/outputs mismatch
+      // advertised minimum. Today this silently returns a fee/outputs mismatch
       // (via the downstream PSBT-fee-consistency check); after the fix it must
       // throw the BIP-125 rule-3 error itself, before that mismatch can occur.
       const spendAddress = testnetAddresses.nativeSegwit[0];
@@ -770,7 +899,7 @@ export function registerRbfTransactionCreationContracts() {
       });
 
       await expect(
-        createRBFTransaction(originalTxid, 10.001, walletId, 'testnet3'),
+        createRBFTransaction(originalTxid, 11, walletId, 'testnet3'),
       ).rejects.toThrow('New fee must exceed the original fee by at least');
     });
 

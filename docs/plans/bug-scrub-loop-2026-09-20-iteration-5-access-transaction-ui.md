@@ -1,6 +1,6 @@
 # Bug scrub loop iteration 5: align access, transaction, and UI state contracts
 
-Source target: `8268726550e14ead6c7974a9fa81aa40d17e7884` (`origin/main`). Scope: whole repository. The iteration 4 merge is the only change from the prior scrub target. Six P2 findings remain after source and caller review; all five exact merge-SHA target workflows passed before acceptance into the durable coverage pass.
+Source target: `8268726550e14ead6c7974a9fa81aa40d17e7884` (`origin/main`). Scope: whole repository. The iteration 4 merge is the only change from the prior scrub target. Six P2 findings remained after the initial source and caller review; a seventh was confirmed during phase 2 adversarial review. All five exact merge-SHA target workflows passed before acceptance into the durable coverage pass.
 
 ## Goal and evidence
 
@@ -10,13 +10,14 @@ Source target: `8268726550e14ead6c7974a9fa81aa40d17e7884` (`origin/main`). Scope
 4. **RBF creation accepts less than its advertised fee bump.** `canReplaceTransaction` reports `minNewFeeRate` from the current rate plus at least 1 sat/vB or 10% (`server/src/services/bitcoin/advancedTx/rbf.ts:123-129`), but `createRBFTransaction` checks only `newFeeRate > currentFeeRate` (`:182-186`). The RBF UI treats the reported minimum as a hard bound. An API client can create a replacement PSBT that fails relay policy.
 5. **The dashboard can show another network's status and explorer.** `useBitcoinStatus` retains previous data during a network switch; `useDashboardData` filters fee and mempool placeholders but passes raw Bitcoin status to MempoolSection and recent transaction presenters (`src/components/Dashboard/hooks/useDashboardData.ts:85-100,194,401-402`). The NodeStatusCard path already filters network identity.
 6. **Overlapping wallet renames can restore an obsolete name.** `useWalletMutations.handleUpdateWallet` permits same-wallet requests to overlap and an older failure rolls back to its captured `wallet.name` (`src/components/WalletDetail/hooks/useWalletMutations.ts:65-84`). A newer successful rename can therefore be hidden by the old failure; reversed server completion can also leave server and UI names divergent.
+7. **RBF creation can miss the absolute incremental relay floor.** Phase 2 adversarial review generated a signed 209-vbyte two-input transaction with an original fee of 1,046 sats. `canReplaceTransaction` reports current 5 and minimum 6 sat/vB, but creation at 6 calculates 1,254 sats: the 208-sat increase is one satoshi short of the 209-sat incremental relay floor. `adjustChangeOutputForFeeDelta` only checks `feeDelta > 0`. This is a separate P2 finding tracked in the durable run state and addressed in phase 2.
 
 ## Assumptions and limits
 
 - Preserve direct-first wallet role precedence, existing mobile owner maximum and self-restriction behavior, and group sharing policy. Resolve roles from durable relationships at authorization points.
 - Preserve exact existing-account reuse during wallet import for a user who still has device access. Recheck effective access inside the import transaction before every existing-device reuse, and require ownership immediately before adding a new account. Keep import atomic and do not alter descriptor validation. A transaction-time check closes stale pre-resolution access; it does not by itself serialize a concurrent revocation after that check.
 - Preserve unfiltered wallet notification audiences. Apply direct-first precedence when a role filter is requested; keep agent draft formatting and per-user Telegram preferences.
-- Keep the existing RBF minimum formula and message, but enforce the advertised bound at creation. Do not change CPFP or transaction signing semantics.
+- Keep the existing RBF minimum formula and message, but enforce the advertised bound at creation and the absolute incremental relay fee implied by its local 1 sat/vB bump. A node configured with a higher incremental relay fee can still reject a replacement. Do not change CPFP or transaction signing semantics.
 - Keep dashboard cached results for the selected network and the existing node card freshness rules; only withhold foreign-network or placeholder status from presenters.
 - Preserve immediate optimistic rename display and route ownership fencing. Serialize same-wallet writes so server order matches user order, and roll back only the newest failed edit to the last confirmed name without replacing unrelated wallet fields.
 
@@ -33,11 +34,11 @@ Acceptance: group-only mobile users receive actions allowed by their wallet role
 
 ## Phase 2 — RBF contract PR
 
-- [ ] Add a red service/API regression with an original 5 sat/vB transaction and requested 5.1 sat/vB where the check reports a 6 sat/vB minimum. The create path must reject before building a PSBT. Cover equality at the reported minimum, decimal rounding, and an eligible higher rate with a signable fixture.
-- [ ] Enforce `minNewFeeRate` from the same check result used by the UI, retain useful `InvalidInputError` details, and review absolute fee delta handling for any narrower relay-policy boundary.
-- [ ] Run focused transaction tests, typechecks, full required coverage/lint/architecture gates, adversarial review, and pre-commit checks.
+- [x] Add a red service/API regression with an original 5 sat/vB transaction and requested 5.1 sat/vB where the check reports a 6 sat/vB minimum. The create path must reject before building a PSBT. With a one-input signable fixture whose absolute bump meets the relay floor, equality at 6 must succeed. Cover decimal rounding and an eligible higher rate.
+- [x] Enforce `minNewFeeRate` from the same check result used by the UI, retain useful `InvalidInputError` details, and reject an absolute fee increase below the replacement vsize times the 1 sat/vB incremental relay floor. Add a signed two-input rounding regression: the advertised 6 sat/vB rate must fail because 208 < 209 sats, and 6.01 must succeed. Retain the existing nonpositive-delta rule-3 guard.
+- [x] Run focused transaction tests, typechecks, full required coverage/lint/architecture gates, adversarial review, and pre-commit checks.
 
-Acceptance: the public create route rejects rates below the minimum it reports and accepts valid rates at or above it, subject to existing transaction constraints.
+Acceptance: the public create route rejects rates below the minimum it reports and rejects an absolute fee bump below the incremental relay floor; a valid rate at or above both bounds creates a replacement PSBT. The unit fixtures prove construction and fee policy, while wallet-level signing and node relay remain outside this phase's test scope.
 
 ## Phase 3 — client state PR
 
@@ -59,3 +60,15 @@ Backout: revert the affected phase PR. No schema migration or data repair is pla
 - Mobile permission unit and real PostgreSQL tests cover direct-first group access across gateway actions, saved restrictions, owner listings, caps, and revoked access. Import tests cover viewer denial with no writes, owner account creation, authorized viewer exact reuse, group roles, and access revoked after resolution. The import role query was also verified against real PostgreSQL.
 - Each of the three disposable PostgreSQL runs ended with signed `cleanupState: cleaned` evidence. The full server suite passed 16,389 tests with 100% statements, branches, functions, and lines after a serial rerun; root coverage passed 8,714 tests at 100%. All app/root/server test typechecks, server lint, architecture boundaries, signer inventory, large-file classification, and integration-manifest checks passed. Independent adversarial review found no actionable P0–P2 issue.
 - A simultaneous revocation after import's final transaction-time role check can still race because the sharing mutation path uses no common lock. The fix closes stale pre-resolution access and enforces owner role before each new account insert; no stronger serializable claim is made.
+
+## Phase 1 delivery
+
+PR #1256 merged as `e03a8bdb47fc7c18453d5c124927b1885d28778e`. The merge commit is reachable from `origin/main`. All six exact-head PR workflows (18149–18154), the combined commit status, and all five exact-merge target push workflows (18156–18160) passed. The three access findings are resolved in the durable run state.
+
+## Phase 2 implementation evidence before PR
+
+- The 5.1 sat/vB service regression returned a PSBT before the minimum-rate guard and now fails with `InvalidInputError` before PSBT construction; the API contract maps the error to HTTP 400. A one-input fixture accepts the reported 6 sat/vB minimum, and a fractional 5.01 → 6.01 minimum is enforced exactly.
+- Adversarial review generated a valid signed 209-vbyte two-input original with a 1,046-sat fee. Before the absolute guard, creation at 6 sat/vB returned a PSBT with only a 208-sat increase. The new guard rejects it against the 209-sat incremental relay floor; 6.01 sat/vB constructs a replacement with a 211-sat increase. The existing nonpositive fee-delta guard remains covered.
+- Focused service/API tests passed 253 cases before the rule-4 addition, and focused RBF tests passed 105 cases afterward. Full server serial coverage passed 16,393 tests at 100% for statements, branches, functions, and lines; root coverage passed 8,714 tests at 100%. Typechecks, server lint, architecture boundaries, signer inventory, large-file classification, integration manifest, and diff checks passed. A final independent adversarial review found no P0–P2 issue. The signed fixture proves the fee boundary and PSBT construction, not wallet-level signing or node relay.
+- Pre-commit review highlighted the replaceable-result type invariant and the configured-node relay-fee assumption. The result is now a discriminated union, and the local 1 sat/vB floor plus higher-node-policy limit are stated at the guard and in this plan.
+- The RBF weight refactor moved a source-coordinate mutation canary. Its Stryker range and wallet-safety map pin were updated together. The full fee-policy mutation profile passed at 90.07% overall and 100% for RBF; the generated report contains exactly one matching RBF canary, killed by its required named test.
