@@ -19,6 +19,11 @@ RUN npm prune --production
 
 # --- Production image ---
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runner
+# Runtime entrypoints use Node or the locally installed Prisma CLI, never npm.
+# Exclude the base image's unused package manager and its vulnerable bundle.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# Apply the supported Alpine OpenSSL security patches without moving the base tag.
+RUN apk add --no-cache --upgrade libcrypto3 libssl3
 ARG SANCTUARY_SOURCE_COMMIT
 ARG SANCTUARY_IMAGE_LOCK_SHA256
 ARG SANCTUARY_BUILD_VERSION

@@ -28,14 +28,14 @@ function fixture() {
       reference: 'example.invalid/proof:1.0.0', digest: DIGEST,
       parentReference: 'example.invalid/proof:1.0.0', parentDigest: DIGEST,
     },
-    runtimes: { node: '24.19.0', npm: '11.19.0', python: '3.10.12', go: '1.25.12' },
+    runtimes: { node: '24.21.0', npm: '11.19.1', python: '3.10.12', go: '1.25.12' },
     artifacts: {
       nodeLinuxX64: {
-        url: 'https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz',
+        url: 'https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz',
         sha256: 'b'.repeat(64),
       },
       npm: {
-        url: 'https://registry.npmjs.org/npm/-/npm-11.19.0.tgz',
+        url: 'https://registry.npmjs.org/npm/-/npm-11.19.1.tgz',
         sha512: 'c'.repeat(128),
       },
     },
@@ -45,14 +45,14 @@ function fixture() {
     }],
   });
   write(root, 'docker/proof/Dockerfile', `FROM example.invalid/proof:1.0.0@${DIGEST}\n`);
-  write(root, 'scripts/ci/images/go-runner.Dockerfile', `FROM example.invalid/proof:1.0.0@${DIGEST}\nARG NODE_VERSION=24.19.0\nARG NODE_SHA256=${'b'.repeat(64)}\nARG NPM_VERSION=11.19.0\nARG NPM_SHA512=${'c'.repeat(128)}\nARG GO_VERSION=1.25.12\nENV GOTOOLCHAIN="local"\n`);
+  write(root, 'scripts/ci/images/go-runner.Dockerfile', `FROM example.invalid/proof:1.0.0@${DIGEST}\nARG NODE_VERSION=24.21.0\nARG NODE_SHA256=${'b'.repeat(64)}\nARG NPM_VERSION=11.19.1\nARG NPM_SHA512=${'c'.repeat(128)}\nARG GO_VERSION=1.25.12\nENV GOTOOLCHAIN="local"\n`);
   write(root, '.github/actions/setup-node-toolchain/action.yml', 'runs:\n  using: composite\n  steps:\n    - run: bash scripts/ci/bootstrap-node.sh\n');
   write(root, 'scripts/verify-addresses/implementations/go.mod', 'module proof\n\ngo 1.25.0\ntoolchain go1.25.12\n');
-  write(root, '.nvmrc', '24.19.0\n');
+  write(root, '.nvmrc', '24.21.0\n');
   for (const workflow of ['architecture.yml', 'test.yml', 'verify-vectors.yml']) {
-    write(root, `.github/workflows/${workflow}`, "env:\n  NODE_VERSION: '24.19.0'\n");
+    write(root, `.github/workflows/${workflow}`, "env:\n  NODE_VERSION: '24.21.0'\n");
   }
-  write(root, '.github/workflows/quality.yml', "env:\n  NODE_VERSION: '24.19.0'\n  PYTHON_VERSION: '3.10.12'\n");
+  write(root, '.github/workflows/quality.yml', "env:\n  NODE_VERSION: '24.21.0'\n  PYTHON_VERSION: '3.10.12'\n");
   write(root, 'package.json', { dependencies: { 'bitcoinjs-lib': '7.0.1' } });
   write(root, 'package-lock.json', { packages: { 'node_modules/bitcoinjs-lib': { version: '7.0.1', integrity: INTEGRITY } } });
   return root;
@@ -116,7 +116,7 @@ test('emits no funds-critical remediation hint when locks are clean', () => {
 
 test('rejects runner parent and exact Go toolchain drift', () => {
   withFixture((root) => {
-    write(root, 'scripts/ci/images/go-runner.Dockerfile', `FROM example.invalid/proof:1.0.0\nARG NODE_VERSION=24.19.0\nARG NPM_VERSION=11.19.0\nARG GO_VERSION=1.25.13\n`);
+    write(root, 'scripts/ci/images/go-runner.Dockerfile', `FROM example.invalid/proof:1.0.0\nARG NODE_VERSION=24.21.0\nARG NPM_VERSION=11.19.1\nARG GO_VERSION=1.25.13\n`);
     write(root, 'scripts/verify-addresses/implementations/go.mod', 'module proof\n\ngo 1.25.0\ntoolchain go1.25.13\n');
     const errors = inspectSupplyChainLocks(root).join('\n');
     assert.match(errors, /Go runner parent must be/);

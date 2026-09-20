@@ -167,8 +167,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  NODE_VERSION: '24.19.0'
-  NPM_VERSION: '11.19.0'
+  NODE_VERSION: '24.21.0'
+  NPM_VERSION: '11.19.1'
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main

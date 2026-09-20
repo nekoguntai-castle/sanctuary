@@ -10,7 +10,7 @@ protocol proof, or physical-device proof. Those tiers are never interchangeable.
 
 | Implementation | Independent input |
 | --- | --- |
-| Bitcoin Core 29.0 | Root private key plus the complete hardened and unhardened path in a descriptor |
+| Bitcoin Core 29.4 | Root private key plus the complete hardened and unhardened path in a descriptor |
 | bitcoinjs-lib | BIP-39 mnemonic seed |
 | bip_utils (Python) | BIP-39 mnemonic seed |
 | btcd/btcutil (Go) | BIP-39 mnemonic seed |
@@ -62,8 +62,8 @@ result.
 
 ## Repeatable verification
 
-Prerequisites are a Node.js 24 bootstrap, Go 1.25.13, Docker Compose, and curl.
-The verifier installs its exact Node 24.19.0 runtime from the npm lock and runs
+Prerequisites are a Node.js 24 bootstrap, Go 1.27.1, Docker Compose, and curl.
+The verifier installs its exact Node 24.21.0 runtime from the npm lock and runs
 Python 3.13.5 inside a digest-pinned, network-isolated local image. Run:
 
 ```bash
@@ -78,7 +78,7 @@ per-run RPC credentials and a separate private identity nonce from this exact
 multi-architecture image:
 
 ```text
-bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78
+bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe
 ```
 
 It checks that every RPC reports the expected chain before starting the

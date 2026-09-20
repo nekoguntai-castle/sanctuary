@@ -103,7 +103,7 @@ CI uploads the exact current attempt paths and never uploads partial proof as a
 successful result.
 The proof provenance records the checked-out commit, CI run and attempt, capture
 time, package-lock hash, and hashes of every proof-critical adapter, fixture,
-test, workflow, and toolchain-control source. Node 24.19.0 and npm 11.19.0 are
+test, workflow, and toolchain-control source. Node 24.21.0 and npm 11.19.1 are
 archive-checksum/version-pinned in `scripts/ci/images/go-runner.Dockerfile` and verified
 exactly against `.nvmrc`, `package.json`, and the proof manifest. The proof
 workflow disables the setup action's npm download fallback, so a stale runner

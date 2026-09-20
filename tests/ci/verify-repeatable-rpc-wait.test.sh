@@ -72,10 +72,10 @@ else
   bad 'RPC readiness can accept a node from the wrong chain'
 fi
 
-if grep -q -- 'bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' "$WAIT_SCRIPT"; then
-  ok 'repeatable provenance names the exact Bitcoin Core 29.0 image digest'
+if grep -q -- 'bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' "$WAIT_SCRIPT"; then
+  ok 'repeatable provenance names the exact Bitcoin Core 29.4 image digest'
 else
-  bad 'repeatable provenance does not pin the required Bitcoin Core 29.0 digest'
+  bad 'repeatable provenance does not pin the required Bitcoin Core 29.4 digest'
 fi
 
 # ----- 3. those flags actually bound a black-hole endpoint ------------------

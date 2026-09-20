@@ -43,7 +43,7 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "env" ] && [ "${2:-}" = "GOVERSION" ] && [ "$#" -eq 2 ]; then
-  printf '%s\n' "${VERIFY_STUB_GO_VERSION:-go1.25.13}"
+  printf '%s\n' "${VERIFY_STUB_GO_VERSION:-go1.27.1}"
   exit 0
 fi
 exit 2
@@ -63,7 +63,7 @@ if [ "${1:-}" = "--prefix" ] && [ "${3:-}" = "ci" ]; then
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "-p" ] && [ "${2:-}" = "process.versions.node" ]; then
-  printf '%s\n' "${VERIFY_STUB_LOCKED_NODE_VERSION:-24.19.0}"
+  printf '%s\n' "${VERIFY_STUB_LOCKED_NODE_VERSION:-24.21.0}"
   exit 0
 fi
 if [ "${1:-}" = "-e" ]; then
@@ -91,7 +91,7 @@ fi
 if [ "${1:-}" = "run" ] && { [ "${2:-}" = "verify" ] || [ "${2:-}" = "generate" ]; }; then
   [[ "${VERIFY_ADDRESSES_PYTHON_IMAGE_ID:?}" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
   [ "${VERIFY_ADDRESSES_PYTHON_PROVENANCE_MODE:?}" = 'local-iid' ] || exit 1
-  [ "$(node -p 'process.versions.node')" = '24.19.0' ] || exit 1
+  [ "$(node -p 'process.versions.node')" = '24.21.0' ] || exit 1
   if [ -n "${VERIFY_STUB_DOCKER_STATE_DIR:-}" ]; then
     if [ -n "${VERIFY_STUB_NPM_READY_FILE:-}" ]; then
       touch "$VERIFY_STUB_NPM_READY_FILE"
@@ -282,7 +282,7 @@ if [ "$1" = "image" ] && [ "${2:-}" = "ls" ]; then
 fi
 if [ "$1" = "inspect" ] && [ "$2" = "--format" ]; then
   if [ "$3" = '{{.Config.Image}}' ]; then
-    printf '%s\n' "${VERIFY_STUB_CORE_CONFIG_IMAGE:-bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78}"
+    printf '%s\n' "${VERIFY_STUB_CORE_CONFIG_IMAGE:-bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe}"
   else
     if [[ -v VERIFY_STUB_INSPECTED_CORE_IDENTITY ]]; then
       printf '["-uacomment=%s"]\n' "$VERIFY_STUB_INSPECTED_CORE_IDENTITY"
@@ -340,9 +340,9 @@ done
 [ "$actual_auth" = "$expected_auth" ] || exit 1
 if [[ "$payload" == *getnetworkinfo* ]]; then
   if [[ "$url" == http://203.0.113.10:* ]]; then
-    printf '{"result":{"subversion":"/Satoshi:29.0.0(fake-external)/"}}\n'
+    printf '{"result":{"subversion":"/Satoshi:29.4.0(fake-external)/"}}\n'
   else
-    printf '{"result":{"subversion":"/Satoshi:29.0.0(%s)/"}}\n' "$(cat "${VERIFY_STUB_CORE_LAUNCH_ID:?}")"
+    printf '{"result":{"subversion":"/Satoshi:29.4.0(%s)/"}}\n' "$(cat "${VERIFY_STUB_CORE_LAUNCH_ID:?}")"
   fi
   exit 0
 fi
@@ -434,7 +434,7 @@ main() {
     : > "$lane_root/docker-cleanup-log"
     PATH="$TEST_TEMP_DIR/bin:$PATH" \
       RUNNER_TEMP="$TEST_TEMP_DIR/runner" \
-      VERIFY_STUB_CORE_CONFIG_IMAGE='docker.io/bitcoin/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+      VERIFY_STUB_CORE_CONFIG_IMAGE='docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
       VERIFY_STUB_DOCKER_BUILD_LOG="$lane_root/docker-build-log" \
       VERIFY_STUB_DOCKER_CLEANUP_LOG="$lane_root/docker-cleanup-log" \
       VERIFY_STUB_LEGACY_BUILD_USED="$lane_root/legacy-build-used" \
@@ -496,7 +496,7 @@ main() {
   : > "$TEST_TEMP_DIR/docker-build-log"
   if failure_output="$(VERIFY_STUB_DATE_EPOCH=invalid \
     run_with_core_image \
-      'docker.io/bitcoin/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+      'docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
       "$TEST_TEMP_DIR/invalid-epoch-endpoint-log" 2>&1)"; then
     fail 'expected an invalid image creation epoch to fail before Buildx'
   fi
@@ -510,7 +510,7 @@ main() {
   cp "$TEST_TEMP_DIR/docker-cleanup-log" "$TEST_TEMP_DIR/docker-cleanup-log.before-stale"
   if failure_output="$(VERIFY_STUB_IMAGE_CREATED_EPOCH=1 \
     run_with_core_image \
-      'docker.io/bitcoin/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+      'docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
       "$TEST_TEMP_DIR/stale-image-epoch-endpoint-log" 2>&1)"; then
     fail 'expected a stale loaded image creation epoch to fail before startup'
   fi
@@ -525,11 +525,11 @@ main() {
     grep -F -- ":$port/" "$TEST_TEMP_DIR/curl-log" >/dev/null ||
       fail "expected readiness check on port $port"
   done
-  grep -F -- 'image=bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+  grep -F -- 'image=bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
     "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
     fail 'expected the exact Core image provenance to reach the verifier'
-  grep -F -- 'runtime_node=24.19.0' "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
-    fail 'expected Node 24 bootstrap to hand off to locked verifier Node 24.19.0'
+  grep -F -- 'runtime_node=24.21.0' "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
+    fail 'expected Node 24 bootstrap to hand off to locked verifier Node 24.21.0'
   grep -F -- 'python_image_id=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' \
     "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
     fail 'expected the immutable Python image ID to reach the verifier'
@@ -539,7 +539,7 @@ main() {
     fail 'expected a separate per-run Core identity nonce'
 
   : > "$TEST_TEMP_DIR/curl-log"
-  canonical_image='docker.io/bitcoin/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78'
+  canonical_image='docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe'
   run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/canonical-endpoint-log" >/dev/null
   [ -s "$TEST_TEMP_DIR/canonical-endpoint-log" ] ||
     fail 'expected Docker Hub canonical image rendering to be accepted'
@@ -652,8 +652,8 @@ main() {
     fail 'expected missing Buildx to report the immutable-image requirement'
 
   for rejected_image in \
-    'docker.io/example/bitcoin@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
-    'bitcoin/bitcoin:28.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' \
+    'docker.io/example/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
+    'bitcoin/bitcoin:28.0@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
     'docker.io/bitcoin/bitcoin@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; do
     if failure_output="$(run_with_core_image "$rejected_image" "$TEST_TEMP_DIR/rejected-endpoint-log" 2>&1)"; then
       fail "expected Core image identity rejection for $rejected_image"
@@ -685,7 +685,7 @@ main() {
     bash "$SCRIPT" verify 2>&1)"; then
     fail 'expected a wrong Go runtime version to fail closed'
   fi
-  grep -F -- 'Go runtime is go1.25.11, expected go1.25.13' <<<"$failure_output" >/dev/null ||
+  grep -F -- 'Go runtime is go1.25.11, expected go1.27.1' <<<"$failure_output" >/dev/null ||
     fail 'expected the wrong Go runtime guard to report its exact cause'
   mv "$fixture_root/scripts/verify-addresses/node_modules/.bin/node" \
     "$fixture_root/scripts/verify-addresses/node.modules-node.saved"
@@ -704,7 +704,7 @@ main() {
     bash "$SCRIPT" verify 2>&1)"; then
     fail 'expected a wrong locked verifier Node version to fail closed'
   fi
-  grep -F -- 'Locked verifier Node runtime does not match 24.19.0' <<<"$failure_output" >/dev/null ||
+  grep -F -- 'Locked verifier Node runtime does not match 24.21.0' <<<"$failure_output" >/dev/null ||
     fail 'expected the wrong locked runtime guard to report its exact cause'
 
   : > "$TEST_TEMP_DIR/curl-log"

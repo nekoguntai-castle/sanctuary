@@ -1,6 +1,6 @@
 /** Low-cardinality Prometheus metrics for wallet-sync execution and recovery. */
 
-import { Counter, Gauge, Histogram } from 'prom-client';
+import { Counter, Gauge, Histogram } from '@prometheus-io/client';
 import {
   SYNC_EXECUTION_STAGES,
   type SyncExecutionStage,

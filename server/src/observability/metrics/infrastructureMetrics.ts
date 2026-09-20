@@ -4,7 +4,7 @@
  * Prometheus metrics for circuit breakers, rate limiting, caching, and job queues.
  */
 
-import { Counter, Gauge, Histogram } from 'prom-client';
+import { Counter, Gauge, Histogram } from '@prometheus-io/client';
 import { registry } from './registry';
 
 /**

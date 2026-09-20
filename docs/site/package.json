@@ -15,37 +15,38 @@
     "clear": "docusaurus clear"
   },
   "dependencies": {
-    "@docusaurus/core": "~3.10.1",
-    "@docusaurus/preset-classic": "~3.10.1",
-    "@docusaurus/theme-mermaid": "~3.10.1",
+    "@docusaurus/core": "~3.10.2",
+    "@docusaurus/preset-classic": "~3.10.2",
+    "@docusaurus/theme-mermaid": "~3.10.2",
     "@mermaid-js/layout-elk": "0.1.9",
-    "@mdx-js/react": "^3.0.0",
-    "clsx": "^2.0.0",
+    "@mdx-js/react": "^3.1.1",
+    "clsx": "^2.1.1",
     "prism-react-renderer": "^2.4.1",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "svg-pan-zoom": "^3.6.2"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "~3.10.1",
-    "@docusaurus/tsconfig": "~3.10.1",
-    "@docusaurus/types": "~3.10.1",
+    "@docusaurus/module-type-aliases": "~3.10.2",
+    "@docusaurus/tsconfig": "~3.10.2",
+    "@docusaurus/types": "~3.10.2",
     "@types/react": "^18.0.0",
-    "typescript": "~5.6.0"
+    "typescript": "~5.9.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24 <25"
   },
   "overrides": {
     "js-yaml": "3.15.2",
-    "nanoid": "3.3.18",
-    "serialize-javascript": "7.0.5",
+    "nanoid": "3.3.19",
+    "serialize-javascript": "7.1.1",
     "svgo": "3.3.5",
-    "uuid": "14.0.0",
-    "webpack": "5.106.2",
+    "uuid": "14.0.2",
+    "webpack": "5.110.3",
     "image-size": "2.0.4",
-    "colord": "2.9.4",
-    "joi": "17.13.6",
-    "qs": "6.16.0"
+    "colord": "2.10.0",
+    "joi": "17.13.8",
+    "qs": "6.16.0",
+    "minimizer-webpack-plugin": "5.10.1"
   }
 }

@@ -260,7 +260,10 @@ test("database startup proves readiness before running migration exactly once", 
   assert.equal(events[5][2], "inspect");
   assert.deepEqual(events[6], ["readiness-proven"]);
   assert.equal(events[7][1], "create");
-  assert.equal(events[7].filter((value) => value === "migrate").length, 1);
+  // Runtime migration images deliberately exclude the global npm/npx bundle.
+  assert.deepEqual(events[7].slice(events[7].indexOf("subject-image") + 1), [
+    "./node_modules/.bin/prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma",
+  ]);
   assert.equal(events[8][2], "ls");
   assert.equal(events[9][2], "inspect");
   assert.deepEqual(events[10], ["docker", "start", "--attach", "c".repeat(64)]);

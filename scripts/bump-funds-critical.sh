@@ -163,7 +163,11 @@ NODE
 
 # Fails loudly (leaving the tree untouched for inspection) unless every
 # packages[] entry that changed between the before/after lockfile snapshots
-# belongs to $PACKAGE (its own node_modules entry, at any nesting depth).
+# belongs to the target's dependency closure. npm legitimately updates the
+# workspace root dependency metadata and may re-resolve nested transitive
+# dependencies when an exact package pin moves; unrelated lockfile churn must
+# still fail closed. Resolution is path-aware: package names alone are not
+# sufficient because an unrelated nested copy may share the same name.
 assert_lockfile_scope() {
   local before=$1 after=$2
   node - "$before" "$after" "$PACKAGE" <<'NODE'
@@ -171,13 +175,86 @@ const fs = require('node:fs');
 const [, , beforeFile, afterFile, name] = process.argv;
 const before = JSON.parse(fs.readFileSync(beforeFile, 'utf8')).packages || {};
 const after = JSON.parse(fs.readFileSync(afterFile, 'utf8')).packages || {};
-const isTarget = (key) => key === `node_modules/${name}` || key.endsWith(`/node_modules/${name}`);
+const packageName = (key) => {
+  const marker = '/node_modules/';
+  const start = key.lastIndexOf(marker);
+  if (start >= 0) return key.slice(start + marker.length).startsWith('@')
+    ? key.slice(start + marker.length).split('/').slice(0, 2).join('/')
+    : key.slice(start + marker.length).split('/')[0];
+  if (key.startsWith('node_modules/')) return key.slice('node_modules/'.length).startsWith('@')
+    ? key.slice('node_modules/'.length).split('/').slice(0, 2).join('/')
+    : key.slice('node_modules/'.length).split('/')[0];
+  return null;
+};
+const packageKeysByName = (lock, packageToFind) => Object.keys(lock)
+  .filter((key) => packageName(key) === packageToFind);
+const resolveDependency = (lock, fromKey, dependency) => {
+  let directory = fromKey;
+  while (true) {
+    const candidate = `${directory}/node_modules/${dependency}`.replace(/^\//, '');
+    if (lock[candidate] !== undefined) return candidate;
+    const marker = directory.lastIndexOf('/node_modules/');
+    if (marker < 0) {
+      const rootCandidate = `node_modules/${dependency}`;
+      return lock[rootCandidate] === undefined ? null : rootCandidate;
+    }
+    directory = directory.slice(0, marker);
+  }
+};
+const allowedPackagePaths = new Set();
+const pending = [];
+for (const lock of [before, after]) {
+  for (const targetPath of packageKeysByName(lock, name)) {
+    allowedPackagePaths.add(targetPath);
+    pending.push([lock, targetPath]);
+  }
+}
+const visited = new Set();
+while (pending.length) {
+  const [lock, currentPath] = pending.pop();
+  const lockId = lock === before ? 'before' : 'after';
+  const visitKey = `${lockId}:${currentPath}`;
+  if (visited.has(visitKey)) continue;
+  visited.add(visitKey);
+  const entry = lock[currentPath];
+  for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+    for (const dependency of Object.keys(entry?.[section] ?? {})) {
+      const resolvedPath = resolveDependency(lock, currentPath, dependency);
+      if (!resolvedPath) continue;
+      allowedPackagePaths.add(resolvedPath);
+      const dependencyLockId = lock === before ? 'before' : 'after';
+      const dependencyVisitKey = `${dependencyLockId}:${resolvedPath}`;
+      if (!visited.has(dependencyVisitKey)) pending.push([lock, resolvedPath]);
+    }
+  }
+}
+const targetOnlyMetadata = (beforeEntry, afterEntry) => {
+  const withoutTarget = (entry) => {
+    const copy = structuredClone(entry ?? {});
+    for (const section of ['dependencies', 'optionalDependencies', 'devDependencies', 'peerDependencies', 'overrides']) {
+      if (copy[section] && Object.prototype.hasOwnProperty.call(copy[section], name)) delete copy[section][name];
+    }
+    return copy;
+  };
+  return JSON.stringify(withoutTarget(beforeEntry)) === JSON.stringify(withoutTarget(afterEntry));
+};
+const manifestPackageKeys = new Set(['']);
+try {
+  const policy = JSON.parse(fs.readFileSync('config/ci-toolchain-lock.json', 'utf8'));
+  for (const entry of policy.fundsCriticalPackages ?? []) {
+    if (entry.name !== name) continue;
+    for (const manifest of entry.manifests ?? []) {
+      manifestPackageKeys.add(manifest === 'package.json' ? '' : manifest.replace(/\/package\.json$/, ''));
+    }
+  }
+} catch {}
 const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
 const offenders = [];
 for (const key of keys) {
-  if (JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null) && !isTarget(key)) {
-    offenders.push(key);
-  }
+  if (JSON.stringify(before[key] ?? null) === JSON.stringify(after[key] ?? null)) continue;
+  if (manifestPackageKeys.has(key) && targetOnlyMetadata(before[key], after[key])) continue;
+  if (key !== '' && allowedPackagePaths.has(key)) continue;
+  offenders.push(key === '' ? '<workspace-root>' : key);
 }
 if (offenders.length) { process.stderr.write(offenders.join('\n')); process.exit(1); }
 NODE

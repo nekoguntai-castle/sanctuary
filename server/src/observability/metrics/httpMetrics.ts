@@ -4,7 +4,7 @@
  * Prometheus metrics for HTTP request tracking.
  */
 
-import { Counter, Histogram } from 'prom-client';
+import { Counter, Histogram } from '@prometheus-io/client';
 import { registry } from './registry';
 
 /**

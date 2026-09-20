@@ -4,7 +4,7 @@
  * Prometheus metrics for WebSocket connection tracking.
  */
 
-import { Counter, Gauge, Histogram } from 'prom-client';
+import { Counter, Gauge, Histogram } from '@prometheus-io/client';
 import { registry } from './registry';
 
 /**

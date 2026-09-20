@@ -106,7 +106,7 @@ function queryLabelNames(expression: string): Set<string> {
 
 describe('wallet-sync operational observability', () => {
   it('uses the root-pinned YAML parser to validate alert rules', () => {
-    expect(rootPackage.devDependencies?.yaml).toBe('^2.9.0');
+    expect(rootPackage.devDependencies?.yaml).toBe('^2.9.1');
     expect(alertRules.groups.length).toBeGreaterThan(0);
   });
 

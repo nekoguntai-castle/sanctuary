@@ -71,21 +71,21 @@ export const VERIFIER_PROVENANCE = {
   "schemaVersion": 2,
   "matrixId": "sanctuary-seed-to-address-v2",
   "exactCaseCount": 480,
-  "sourceSha256": "4e042525438157c3dc3f0c5ca1c3e13ce1ac103b74dbb1f3020e6548a027ced6",
-  "coreImage": "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
+  "sourceSha256": "9209139dab020ce6235f0ebfc5aa3393a3a8b13a42d5b2188c15be755c16ab79",
+  "coreImage": "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe",
   "runtimes": {
-    "node": "24.19.0",
+    "node": "24.21.0",
     "python": "3.13.5",
     "pythonEffectiveUid": 65532,
     "pythonImage": "sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1",
-    "go": "go1.25.13",
+    "go": "go1.27.1",
     "pythonRequirementsSha256": "acf87b4fadb8e4ade6968c4dde800c17ea27bd4b4b01f2a23d52fb1f7ac65356",
     "pythonDependencyFingerprint": "57052b64dabea0afb4ccadf9004b6512705e0975c4e90b2a32ad981500e9cda0",
     "pythonVerifierSourceSha256": "4e88240123b18514373e20ce2bc1781ab9b6f357b47b930cd7347fd72f86c1cc"
   },
   "evidenceScopes": [
     {
-      "implementation": "Bitcoin Core 29.0.0",
+      "implementation": "Bitcoin Core 29.4.0",
       "scope": "root-private-descriptor-to-output"
     },
     {
@@ -106,7 +106,7 @@ export const VERIFIER_PROVENANCE = {
       "id": "reversed-sortedmulti",
       "scope": "four-way-core-derived-output",
       "verifiedBy": [
-        "Bitcoin Core 29.0.0",
+        "Bitcoin Core 29.4.0",
         "bitcoinjs-lib 7.0.2",
         "bip_utils (Python) 2.12.1",
         "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -116,7 +116,7 @@ export const VERIFIER_PROVENANCE = {
       "id": "duplicate-key-rejection",
       "scope": "adapter-input-validation",
       "verifiedBy": [
-        "Bitcoin Core 29.0.0 adapter",
+        "Bitcoin Core 29.4.0 adapter",
         "bitcoinjs-lib 7.0.2 adapter",
         "bip_utils (Python) 2.12.1 adapter",
         "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0 adapter"
@@ -126,7 +126,7 @@ export const VERIFIER_PROVENANCE = {
       "id": "invalid-seed-rejection",
       "scope": "adapter-input-validation",
       "verifiedBy": [
-        "Bitcoin Core 29.0.0 adapter",
+        "Bitcoin Core 29.4.0 adapter",
         "bitcoinjs-lib 7.0.2 adapter",
         "bip_utils (Python) 2.12.1 adapter",
         "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0 adapter"
@@ -144,7 +144,7 @@ export const VERIFIER_PROVENANCE = {
     {
       "id": "bitcoin-core",
       "name": "Bitcoin Core",
-      "version": "29.0.0"
+      "version": "29.4.0"
     },
     {
       "id": "bitcoinjs-lib",
@@ -166,27 +166,27 @@ export const VERIFIER_PROVENANCE = {
     {
       "environment": "mainnet",
       "reportedChain": "main",
-      "version": "29.0.0"
+      "version": "29.4.0"
     },
     {
       "environment": "testnet3",
       "reportedChain": "test",
-      "version": "29.0.0"
+      "version": "29.4.0"
     },
     {
       "environment": "testnet4",
       "reportedChain": "testnet4",
-      "version": "29.0.0"
+      "version": "29.4.0"
     },
     {
       "environment": "signet",
       "reportedChain": "signet",
-      "version": "29.0.0"
+      "version": "29.4.0"
     },
     {
       "environment": "regtest",
       "reportedChain": "regtest",
-      "version": "29.0.0"
+      "version": "29.4.0"
     }
   ]
 } as const;
@@ -220,7 +220,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -259,7 +259,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -298,7 +298,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -337,7 +337,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -376,7 +376,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -415,7 +415,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -454,7 +454,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -493,7 +493,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -532,7 +532,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -571,7 +571,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -610,7 +610,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -649,7 +649,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -688,7 +688,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -727,7 +727,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -766,7 +766,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -805,7 +805,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -844,7 +844,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -883,7 +883,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -922,7 +922,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -961,7 +961,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1000,7 +1000,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1039,7 +1039,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1078,7 +1078,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1117,7 +1117,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1156,7 +1156,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1195,7 +1195,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1234,7 +1234,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1273,7 +1273,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1312,7 +1312,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1351,7 +1351,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1390,7 +1390,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1429,7 +1429,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1468,7 +1468,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1507,7 +1507,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1546,7 +1546,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1585,7 +1585,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1624,7 +1624,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1663,7 +1663,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1702,7 +1702,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1741,7 +1741,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1780,7 +1780,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1819,7 +1819,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1858,7 +1858,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1897,7 +1897,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1936,7 +1936,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -1975,7 +1975,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2014,7 +2014,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2053,7 +2053,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2092,7 +2092,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2131,7 +2131,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2170,7 +2170,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2209,7 +2209,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2248,7 +2248,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2287,7 +2287,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2326,7 +2326,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2365,7 +2365,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2404,7 +2404,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2443,7 +2443,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2482,7 +2482,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2521,7 +2521,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2560,7 +2560,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2599,7 +2599,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2638,7 +2638,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2677,7 +2677,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2716,7 +2716,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2755,7 +2755,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2794,7 +2794,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2833,7 +2833,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2872,7 +2872,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2911,7 +2911,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2950,7 +2950,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -2989,7 +2989,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3028,7 +3028,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3067,7 +3067,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3106,7 +3106,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3145,7 +3145,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3184,7 +3184,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3223,7 +3223,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3262,7 +3262,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3301,7 +3301,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3340,7 +3340,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3379,7 +3379,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3418,7 +3418,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3457,7 +3457,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3496,7 +3496,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3535,7 +3535,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3574,7 +3574,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3613,7 +3613,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3652,7 +3652,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3691,7 +3691,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3730,7 +3730,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3769,7 +3769,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3808,7 +3808,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3847,7 +3847,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3886,7 +3886,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3925,7 +3925,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -3964,7 +3964,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4003,7 +4003,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4042,7 +4042,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4081,7 +4081,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4120,7 +4120,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4159,7 +4159,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4198,7 +4198,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4237,7 +4237,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4276,7 +4276,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4315,7 +4315,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4354,7 +4354,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4393,7 +4393,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4432,7 +4432,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4471,7 +4471,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4510,7 +4510,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4549,7 +4549,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4588,7 +4588,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4627,7 +4627,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4666,7 +4666,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4705,7 +4705,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4744,7 +4744,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4783,7 +4783,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4822,7 +4822,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4861,7 +4861,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4900,7 +4900,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4939,7 +4939,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -4978,7 +4978,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5017,7 +5017,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5056,7 +5056,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5095,7 +5095,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5134,7 +5134,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5173,7 +5173,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5212,7 +5212,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5251,7 +5251,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5290,7 +5290,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5329,7 +5329,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5368,7 +5368,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5407,7 +5407,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5446,7 +5446,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5485,7 +5485,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5524,7 +5524,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5563,7 +5563,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5602,7 +5602,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5641,7 +5641,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5680,7 +5680,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5719,7 +5719,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5758,7 +5758,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5797,7 +5797,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5836,7 +5836,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5875,7 +5875,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5914,7 +5914,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5953,7 +5953,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5992,7 +5992,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6031,7 +6031,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6070,7 +6070,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6109,7 +6109,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6148,7 +6148,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6187,7 +6187,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6226,7 +6226,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6265,7 +6265,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6304,7 +6304,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6343,7 +6343,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6382,7 +6382,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6421,7 +6421,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6460,7 +6460,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6499,7 +6499,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6538,7 +6538,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6577,7 +6577,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6616,7 +6616,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6655,7 +6655,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6694,7 +6694,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6733,7 +6733,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6772,7 +6772,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6811,7 +6811,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6850,7 +6850,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6889,7 +6889,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6928,7 +6928,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -6967,7 +6967,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7006,7 +7006,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7045,7 +7045,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7084,7 +7084,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7123,7 +7123,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7162,7 +7162,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7201,7 +7201,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7240,7 +7240,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7279,7 +7279,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7318,7 +7318,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7357,7 +7357,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7396,7 +7396,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7435,7 +7435,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7474,7 +7474,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7513,7 +7513,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7552,7 +7552,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7591,7 +7591,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7630,7 +7630,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7669,7 +7669,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7708,7 +7708,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7747,7 +7747,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7786,7 +7786,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7825,7 +7825,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7864,7 +7864,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7903,7 +7903,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7942,7 +7942,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -7981,7 +7981,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8020,7 +8020,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8059,7 +8059,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8098,7 +8098,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8137,7 +8137,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8176,7 +8176,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8215,7 +8215,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8254,7 +8254,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8293,7 +8293,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8332,7 +8332,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8371,7 +8371,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8410,7 +8410,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8449,7 +8449,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8488,7 +8488,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8527,7 +8527,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8566,7 +8566,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8605,7 +8605,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8644,7 +8644,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8683,7 +8683,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8722,7 +8722,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8761,7 +8761,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8800,7 +8800,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8839,7 +8839,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8878,7 +8878,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8917,7 +8917,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8956,7 +8956,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -8995,7 +8995,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9034,7 +9034,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9073,7 +9073,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9112,7 +9112,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9151,7 +9151,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9190,7 +9190,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9229,7 +9229,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9268,7 +9268,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9307,7 +9307,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9346,7 +9346,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9385,7 +9385,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9424,7 +9424,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9463,7 +9463,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9502,7 +9502,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9541,7 +9541,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9609,7 +9609,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9683,7 +9683,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9757,7 +9757,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9831,7 +9831,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9905,7 +9905,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -9979,7 +9979,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10079,7 +10079,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10183,7 +10183,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10287,7 +10287,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10391,7 +10391,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10495,7 +10495,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10599,7 +10599,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10677,7 +10677,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10751,7 +10751,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10825,7 +10825,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10899,7 +10899,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -10973,7 +10973,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11047,7 +11047,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11147,7 +11147,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11251,7 +11251,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11355,7 +11355,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11459,7 +11459,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11563,7 +11563,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11667,7 +11667,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11745,7 +11745,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11819,7 +11819,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11893,7 +11893,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -11967,7 +11967,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12041,7 +12041,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12115,7 +12115,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12215,7 +12215,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12319,7 +12319,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12423,7 +12423,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12527,7 +12527,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12631,7 +12631,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12735,7 +12735,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12813,7 +12813,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12887,7 +12887,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -12961,7 +12961,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13035,7 +13035,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13109,7 +13109,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13183,7 +13183,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13283,7 +13283,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13387,7 +13387,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13491,7 +13491,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13595,7 +13595,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13699,7 +13699,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13803,7 +13803,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13881,7 +13881,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -13955,7 +13955,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14029,7 +14029,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14103,7 +14103,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14177,7 +14177,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14251,7 +14251,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14351,7 +14351,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14455,7 +14455,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14559,7 +14559,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14663,7 +14663,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14767,7 +14767,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14871,7 +14871,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -14949,7 +14949,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15023,7 +15023,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15097,7 +15097,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15171,7 +15171,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15245,7 +15245,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15319,7 +15319,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15419,7 +15419,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15523,7 +15523,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15627,7 +15627,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15731,7 +15731,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15835,7 +15835,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -15939,7 +15939,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16017,7 +16017,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16091,7 +16091,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16165,7 +16165,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16239,7 +16239,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16313,7 +16313,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16387,7 +16387,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16487,7 +16487,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16591,7 +16591,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16695,7 +16695,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16799,7 +16799,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -16903,7 +16903,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17007,7 +17007,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17085,7 +17085,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17159,7 +17159,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17233,7 +17233,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17307,7 +17307,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17381,7 +17381,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17455,7 +17455,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17555,7 +17555,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17659,7 +17659,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17763,7 +17763,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17867,7 +17867,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -17971,7 +17971,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18075,7 +18075,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18153,7 +18153,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18227,7 +18227,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18301,7 +18301,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18375,7 +18375,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18449,7 +18449,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18523,7 +18523,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18623,7 +18623,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18727,7 +18727,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18831,7 +18831,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -18935,7 +18935,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19039,7 +19039,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19143,7 +19143,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19221,7 +19221,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19295,7 +19295,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19369,7 +19369,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19443,7 +19443,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19517,7 +19517,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19591,7 +19591,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19691,7 +19691,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19795,7 +19795,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -19899,7 +19899,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20003,7 +20003,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20107,7 +20107,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20211,7 +20211,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20289,7 +20289,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20363,7 +20363,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20437,7 +20437,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20511,7 +20511,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20585,7 +20585,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20659,7 +20659,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20759,7 +20759,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20863,7 +20863,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -20967,7 +20967,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21071,7 +21071,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21175,7 +21175,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21279,7 +21279,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21357,7 +21357,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21431,7 +21431,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21505,7 +21505,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21579,7 +21579,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21653,7 +21653,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21727,7 +21727,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21827,7 +21827,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -21931,7 +21931,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22035,7 +22035,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22139,7 +22139,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22243,7 +22243,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22347,7 +22347,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22425,7 +22425,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22499,7 +22499,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22573,7 +22573,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22647,7 +22647,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22721,7 +22721,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22795,7 +22795,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22895,7 +22895,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -22999,7 +22999,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23103,7 +23103,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23207,7 +23207,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23311,7 +23311,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23415,7 +23415,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23493,7 +23493,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23567,7 +23567,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23641,7 +23641,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23715,7 +23715,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23789,7 +23789,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23863,7 +23863,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -23963,7 +23963,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24067,7 +24067,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24171,7 +24171,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24275,7 +24275,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24379,7 +24379,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24483,7 +24483,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24561,7 +24561,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24635,7 +24635,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24709,7 +24709,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24783,7 +24783,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24857,7 +24857,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -24931,7 +24931,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25031,7 +25031,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25135,7 +25135,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25239,7 +25239,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25343,7 +25343,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25447,7 +25447,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25551,7 +25551,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25629,7 +25629,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25703,7 +25703,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25777,7 +25777,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25851,7 +25851,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25925,7 +25925,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -25999,7 +25999,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26099,7 +26099,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26203,7 +26203,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26307,7 +26307,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26411,7 +26411,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26515,7 +26515,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26619,7 +26619,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26697,7 +26697,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26771,7 +26771,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26845,7 +26845,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26919,7 +26919,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -26993,7 +26993,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27067,7 +27067,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27167,7 +27167,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27271,7 +27271,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27375,7 +27375,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27479,7 +27479,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27583,7 +27583,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27687,7 +27687,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27765,7 +27765,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27839,7 +27839,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27913,7 +27913,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -27987,7 +27987,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28061,7 +28061,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28135,7 +28135,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28235,7 +28235,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28339,7 +28339,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28443,7 +28443,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28547,7 +28547,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28651,7 +28651,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28755,7 +28755,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28833,7 +28833,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28907,7 +28907,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -28981,7 +28981,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29055,7 +29055,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29129,7 +29129,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29203,7 +29203,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29303,7 +29303,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29407,7 +29407,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29511,7 +29511,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29615,7 +29615,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29719,7 +29719,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29823,7 +29823,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29901,7 +29901,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -29975,7 +29975,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30049,7 +30049,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30123,7 +30123,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30197,7 +30197,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30271,7 +30271,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30371,7 +30371,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30475,7 +30475,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30579,7 +30579,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30683,7 +30683,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30787,7 +30787,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -30891,7 +30891,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.0.0",
+      "Bitcoin Core 29.4.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
       "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"

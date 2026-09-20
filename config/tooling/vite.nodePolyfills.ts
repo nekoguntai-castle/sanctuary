@@ -11,18 +11,17 @@ const withoutDeprecatedEsbuildConfig = (config: UserConfig | null | undefined): 
   return nextConfig;
 };
 
-export function nodePolyfillsWithoutDeprecatedEsbuild(options: PolyfillOptions): Plugin {
-  const plugin = nodePolyfills(options);
+function withoutDeprecatedEsbuild(plugin: Plugin): Plugin {
   const originalConfig = plugin.config;
+
+  if (typeof originalConfig !== 'function') {
+    return plugin;
+  }
 
   return {
     ...plugin,
     name: `${plugin.name}:without-deprecated-esbuild`,
     config(config, env) {
-      if (typeof originalConfig !== 'function') {
-        return undefined;
-      }
-
       const result = originalConfig.call(this, config, env);
 
       if (result && typeof (result as Promise<UserConfig>).then === 'function') {
@@ -32,4 +31,8 @@ export function nodePolyfillsWithoutDeprecatedEsbuild(options: PolyfillOptions):
       return withoutDeprecatedEsbuildConfig(result as UserConfig | null | undefined);
     },
   };
+}
+
+export function nodePolyfillsWithoutDeprecatedEsbuild(options: PolyfillOptions): Plugin[] {
+  return nodePolyfills(options).map(withoutDeprecatedEsbuild);
 }

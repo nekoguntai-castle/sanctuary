@@ -680,7 +680,7 @@ export async function startDatabase(names, password, image, mode, runtime = {}) 
     'docker', 'create', '--rm', '--name', migrationName,
     ...replayOwnershipLabels('compose_container'), '--network', names.network,
     '--env', `DATABASE_URL=${url}`, image,
-    'npx', 'prisma', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma',
+    './node_modules/.bin/prisma', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma',
   ], { operation, onCreated, startOptions: { stdio: 'inherit' } });
   return url;
 }

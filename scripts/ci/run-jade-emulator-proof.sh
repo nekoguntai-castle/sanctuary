@@ -247,7 +247,7 @@ jq -e '
   and .qemu.machine == "esp32"
   and .qemu.serialPort == 30121
   and .qemu.webDisplayPort == 30122
-  and .sdk.cborX == "1.6.4"
+  and .sdk.cborX == "1.6.6"
   and (.sdk.cborXIntegrity | test("^sha512-[A-Za-z0-9+/]+={0,2}$"))
 ' "$manifest" >/dev/null
 

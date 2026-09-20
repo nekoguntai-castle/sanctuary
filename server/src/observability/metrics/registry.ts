@@ -8,12 +8,12 @@ import {
   Registry,
   collectDefaultMetrics,
   register as defaultRegister,
-} from 'prom-client';
+} from '@prometheus-io/client';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('INFRA:METRICS');
 
-// Use default registry for compatibility with prom-client ecosystem
+// Use the default registry for compatibility with the Prometheus client ecosystem.
 export const registry = defaultRegister;
 
 // Collect default Node.js metrics

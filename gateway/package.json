@@ -18,7 +18,7 @@
     "lint": "cd .. && npm run lint:gateway"
   },
   "dependencies": {
-    "@parse/node-apn": "^8.0.0",
+    "@parse/node-apn": "^8.1.0",
     "@sanctuary/shared": "*",
     "cors": "^2.8.6",
     "express": "^5.2.1",
@@ -31,7 +31,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.12.2",
@@ -39,7 +39,7 @@
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.11",
     "supertest": "^7.2.2",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.13",
     "typescript": "~6.0.3",
     "vitest": "^4.1.11"
   }

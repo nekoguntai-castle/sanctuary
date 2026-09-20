@@ -63,9 +63,9 @@ export interface GeneratedSignedPsbtVector {
 }
 
 export const GENERATED_SIGNED_PSBT_PROVENANCE = {
-  "coreImage": "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
-  "coreVersion": 290000,
-  "coreSubversion": "/Satoshi:29.0.0/"
+  "coreImage": "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe",
+  "coreVersion": 290400,
+  "coreSubversion": "/Satoshi:29.4.0/"
 } as const;
 
 export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
@@ -260,7 +260,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
       }
     },
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:29.0.0/",
+      "Bitcoin Core /Satoshi:29.4.0/",
       "Sanctuary software signer (bitcoinjs-lib)",
       "bitcoinjs-lib finalizer"
     ]
@@ -429,7 +429,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
       }
     },
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:29.0.0/",
+      "Bitcoin Core /Satoshi:29.4.0/",
       "Sanctuary software signer (bitcoinjs-lib)",
       "bitcoinjs-lib finalizer"
     ]
@@ -603,7 +603,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
       }
     },
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:29.0.0/",
+      "Bitcoin Core /Satoshi:29.4.0/",
       "Sanctuary software signer (bitcoinjs-lib)",
       "bitcoinjs-lib finalizer"
     ]
@@ -769,7 +769,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
       }
     },
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:29.0.0/",
+      "Bitcoin Core /Satoshi:29.4.0/",
       "Sanctuary software signer (bitcoinjs-lib)",
       "bitcoinjs-lib finalizer"
     ]
@@ -951,7 +951,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
       }
     },
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:29.0.0/",
+      "Bitcoin Core /Satoshi:29.4.0/",
       "Sanctuary software signer (bitcoinjs-lib)",
       "Sanctuary multisig finalizer"
     ]
@@ -1138,7 +1138,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
       }
     },
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:29.0.0/",
+      "Bitcoin Core /Satoshi:29.4.0/",
       "Sanctuary software signer (bitcoinjs-lib)",
       "Sanctuary multisig finalizer"
     ]

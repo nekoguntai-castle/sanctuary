@@ -927,14 +927,26 @@ describe('confirmationUpdater', () => {
       confirmationUpdates: [],
     });
     mockUpdateTransactionConfirmations.mockReset();
+    let notifyFirstUpdateStarted!: () => void;
+    const firstUpdateStarted = new Promise<void>((resolve) => {
+      notifyFirstUpdateStarted = resolve;
+    });
     let resolveUpdate!: (updates: ConfirmationUpdate[]) => void;
     mockUpdateTransactionConfirmations
-      .mockImplementationOnce(() => new Promise(resolve => { resolveUpdate = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => {
+        resolveUpdate = resolve;
+        notifyFirstUpdateStarted();
+      }))
       .mockResolvedValueOnce([]);
 
     const first = refreshWalletConfirmations('wallet-1');
     const second = refreshWalletConfirmations('wallet-1');
-    await vi.waitFor(() => expect(mockUpdateTransactionConfirmations).toHaveBeenCalledTimes(1));
+    // Observe the writer entering directly, without a polling timer keeping
+    // both refreshes blocked while the test owns their release signal.
+    await firstUpdateStarted;
+    expect(mockAcquireLock).toHaveBeenCalledTimes(2);
+    expect(mockUpdateTransactionConfirmations).toHaveBeenCalledTimes(1);
+    expect(mockReleaseLock).not.toHaveBeenCalled();
     resolveUpdate([{ txid: 'tx-once', oldConfirmations: 0, newConfirmations: 1 }]);
     await Promise.all([first, second]);
 

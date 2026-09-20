@@ -302,9 +302,9 @@ function physicalEvidence(
           ? [
               {
                 package: "cbor-x" as const,
-                version: "1.6.4",
+                version: "1.6.6",
                 integrity:
-                  "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q==",
+                  "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg==",
               },
             ]
           : [
@@ -316,9 +316,9 @@ function physicalEvidence(
               },
               {
                 package: "@ledgerhq/hw-transport-webusb" as const,
-                version: "6.34.4",
+                version: "6.35.0",
                 integrity:
-                  "sha512-asBy3Uu8Cl/leyEAY5M27S/oAZwCpYuRPi9Sz6fgEgF2clX8Sold0iSI+MD0sne3PqcLK1K8V6H4MxviHH7sVw==",
+                  "sha512-8fBNqzQnyR3pKLE2AVxCAc54nHMEKz9/eAYLDENVRuDp+A23lBJYWErxSyoZ6riCM19jIhRvtHjB0o4PXpa2tg==",
               },
             ];
   const tx = bitcoin.Transaction.fromHex(finalTxHex);
@@ -363,9 +363,9 @@ function physicalEvidence(
     unsignedPsbtSha256: hash(Buffer.from(unsignedPsbtBase64, "base64")),
     signedArtifactSha256: artifactHash(artifact),
     changeRecognizedOnDevice: true as const,
-    bitcoinCoreVersion: "/Satoshi:29.0.0/",
+    bitcoinCoreVersion: "/Satoshi:29.4.0/",
     bitcoinCoreImageDigest:
-      "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
+      "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe",
     coreAcceptance: {
       invocationId,
       requestJson: JSON.stringify({
@@ -495,7 +495,7 @@ function physicalDeviceForVendor(
     firmwareVersion: "2.4.1",
     bitcoinAppVersion: "2.4.2",
     transport: "webusb",
-    transportVersion: "6.34.4",
+    transportVersion: "6.35.0",
     emulated: false,
   };
 }

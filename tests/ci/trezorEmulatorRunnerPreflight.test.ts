@@ -43,10 +43,10 @@ const createWorkspace = (): void => {
     path.join(repoRoot, "scripts/ci/resolve-trezor-publish-binding.sh"),
     path.join(workspace, "scripts/ci/resolve-trezor-publish-binding.sh"),
   );
-  writeFileSync(path.join(workspace, ".nvmrc"), "24.19.0\n");
+  writeFileSync(path.join(workspace, ".nvmrc"), "24.21.0\n");
   writeFileSync(
     path.join(workspace, "package.json"),
-    JSON.stringify({ packageManager: "npm@11.19.0" }),
+    JSON.stringify({ packageManager: "npm@11.19.1" }),
   );
 };
 
@@ -54,13 +54,13 @@ const installCommandMocks = (): void => {
   writeExecutable(
     "node",
     `#!/usr/bin/env bash
-printf 'v%s\\n' "\${MOCK_NODE_VERSION:-24.19.0}"
+printf 'v%s\\n' "\${MOCK_NODE_VERSION:-24.21.0}"
 `,
   );
   writeExecutable(
     "npm",
     `#!/usr/bin/env bash
-printf '%s\\n' "\${MOCK_NPM_VERSION:-11.19.0}"
+printf '%s\\n' "\${MOCK_NPM_VERSION:-11.19.1}"
 `,
   );
   writeExecutable(
@@ -202,7 +202,7 @@ describe("Trezor emulator proof runner preflight", () => {
   });
 
   it("fails closed on npm drift before contacting Docker", () => {
-    const result = runProof("npm-drift", { MOCK_NPM_VERSION: "11.19.1" });
+    const result = runProof("npm-drift", { MOCK_NPM_VERSION: "11.19.0" });
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Trezor proof npm drift");

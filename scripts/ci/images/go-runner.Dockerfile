@@ -22,20 +22,20 @@
 #   scripts/ops/build-runner-image.sh --image sanctuary-ci-go --repo ~/sanctuary \
 #     --push --registry nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go
 #
-# That prints the digest-pinned label mapping; add it to runner-infra's
-# config/runner-images.env and re-render each host. See
-# runner-infra/docs/how-to/runner-job-images.md.
+# Publish first, then update the digest-pinned workflow container images and
+# config/ci-toolchain-lock.json. No runner label or host restart is needed.
+# See runner-infra/docs/how-to/runner-job-images.md.
 FROM ghcr.io/catthehacker/ubuntu:act-22.04@sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f
 
 # Pinned by version and checksum: this image is a supply-chain surface for a
 # tool whose entire purpose is independent verification, so the toolchain it
 # verifies with must not float.
-ARG NODE_VERSION=24.19.0
-ARG NODE_SHA256=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647
-ARG NPM_VERSION=11.19.0
-ARG NPM_SHA512=48377f8478372aa1c4e47b763475b135836da82436a5700f2e5e8eb5084fc840f93c7b117eb3ad3b5f7d3194c81b6710a10d59448f6ddbcb21ac3fb672bdc003
-ARG GO_VERSION=1.25.13
-ARG GO_SHA256=39042a078ea9ceebe3ecda4a7188f0f5b96e14a071d27923ba7f40b456e85ae3
+ARG NODE_VERSION=24.21.0
+ARG NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+ARG NPM_VERSION=11.19.1
+ARG NPM_SHA512=cedb312b1b7f92421a02cfb68b4194e88f8346651dacd6acc5364a25ef5309d4a32b19616a1ff8aff865e7280c0fa5c0835a99f5cd93368991e2a80ec9da75d2
+ARG GO_VERSION=1.27.1
+ARG GO_SHA256=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
 
 # The act base prepends its own toolcache. Put the checksum-pinned toolchain
 # first so both the build verification and every job use the baked binaries.

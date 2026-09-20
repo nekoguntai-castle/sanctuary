@@ -132,7 +132,7 @@ describe("Trezor emulator proof test configuration", () => {
     ) as { packageManager: string };
 
     expect(manifest.runtimeCompatibility.node).toBe(nvmrc);
-    expect(manifest.runtimeCompatibility.npm).toBe("11.19.0");
+    expect(manifest.runtimeCompatibility.npm).toBe("11.19.1");
     expect(packageJson.packageManager).toBe(
       `npm@${manifest.runtimeCompatibility.npm}`,
     );

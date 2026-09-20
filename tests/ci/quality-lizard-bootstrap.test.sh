@@ -74,7 +74,7 @@ VENVEOF
 set -euo pipefail
 
 if [ "${1:-}" = "--version" ]; then
-  echo 'lizard 1.21.2'
+  echo 'lizard 1.24.0'
   exit 0
 fi
 

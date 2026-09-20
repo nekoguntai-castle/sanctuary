@@ -5,17 +5,17 @@
   "revision": null,
   "source": {
     "applicationVersion": "0.8.73",
-    "signingDependencySha256": "8964db0d7302d40231cc41f6184a16a8e12602ff7b210f7fc3ef6fc9d15c0e74",
+    "signingDependencySha256": "7a63be5ff134f15b8df169a127ac887536f48882789a5916d2f1f35c8e668c1e",
     "signingDependencyPackages": [
       "@bitcoinerlab/secp256k1@1.2.0",
-      "@keystonehq/bc-ur-registry@0.7.1",
-      "@ledgerhq/devices@8.15.1",
+      "@keystonehq/bc-ur-registry@0.8.0",
+      "@ledgerhq/devices@8.16.0",
       "@ledgerhq/devices@8.17.0",
-      "@ledgerhq/errors@6.36.0",
+      "@ledgerhq/errors@6.37.0",
       "@ledgerhq/errors@7.0.0",
       "@ledgerhq/hw-transport-node-speculos@6.34.7",
-      "@ledgerhq/hw-transport-webusb@6.34.4",
-      "@ledgerhq/hw-transport@6.35.4",
+      "@ledgerhq/hw-transport-webusb@6.35.0",
+      "@ledgerhq/hw-transport@6.35.5",
       "@ledgerhq/hw-transport@6.35.7",
       "@ledgerhq/ledger-bitcoin@0.3.1",
       "@ledgerhq/logs@6.17.0",
@@ -47,7 +47,7 @@
       "bitcoinjs-lib@7.0.2",
       "bs58check@2.1.2",
       "bs58check@4.0.0",
-      "cbor-x@1.6.4",
+      "cbor-x@1.6.6",
       "ecpair@3.0.2",
       "tiny-secp256k1@1.1.7",
       "tiny-secp256k1@2.2.4"
@@ -5115,7 +5115,7 @@
       "draftPsbtVectorCount": 5,
       "signedPsbtVectorCount": 6,
       "independentImplementations": [
-        "Bitcoin Core 29.0.0",
+        "Bitcoin Core 29.4.0",
         "bitcoinjs-lib 7.0.2",
         "bip_utils (Python) 2.12.1",
         "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
@@ -5130,7 +5130,7 @@
           "firmwareOrApp": "Bitcoin app 2.4.2",
           "sdk": {
             "ledgerBitcoin": "0.3.1",
-            "webUsbTransport": "6.34.4"
+            "webUsbTransport": "6.35.0"
           }
         },
         {
@@ -5146,8 +5146,8 @@
           "emulator": "Jade QEMU",
           "firmwareOrApp": "firmware 1.0.40",
           "sdk": {
-            "cborX": "1.6.4",
-            "cborXIntegrity": "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q=="
+            "cborX": "1.6.6",
+            "cborXIntegrity": "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg=="
           }
         }
       ]

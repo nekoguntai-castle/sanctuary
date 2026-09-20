@@ -53,12 +53,12 @@
     "webDisplayPort": 30122
   },
   "sdk": {
-    "cborX": "1.6.4",
-    "cborXIntegrity": "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q=="
+    "cborX": "1.6.6",
+    "cborXIntegrity": "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg=="
   },
   "runtimeCompatibility": {
-    "node": "24.19.0",
-    "npm": "11.19.0",
+    "node": "24.21.0",
+    "npm": "11.19.1",
     "runnerOs": "Linux",
     "runnerArchitecture": "x86_64",
     "dockerServerOs": "linux",

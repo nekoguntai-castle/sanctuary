@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   histograms: [] as Array<{ options: unknown; observe: ReturnType<typeof vi.fn> }>,
 }));
 
-vi.mock('prom-client', () => ({
+vi.mock('@prometheus-io/client', () => ({
   Counter: vi.fn(function Counter(this: unknown, options: unknown) {
     const instance = { options, inc: vi.fn() };
     mocks.counters.push(instance);

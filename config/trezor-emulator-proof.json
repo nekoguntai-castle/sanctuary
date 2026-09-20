@@ -12,8 +12,8 @@
   "connectIntegrity": "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
   "connectWebIntegrity": "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
   "runtimeCompatibility": {
-    "node": "24.19.0",
-    "npm": "11.19.0",
+    "node": "24.21.0",
+    "npm": "11.19.1",
     "runnerOs": "Linux",
     "runnerArchitecture": "x86_64",
     "dockerClientMinimumApiVersion": "1.40",

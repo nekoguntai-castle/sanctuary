@@ -2761,7 +2761,7 @@ assert_contains_in_order "$VV" \
 
 assert_occurrence_count "$VV" \
   "verify-vectors pins the live Bitcoin Core proof image by digest" \
-  "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78" \
+  "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe" \
   1
 
 assert_named_job_step_contains "$VV" \
@@ -3561,21 +3561,21 @@ for node_workflow in architecture quality release-candidate test; do
   assert_contains_in_order \
     "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
     "${node_workflow} pins an allowScripts-capable npm" \
-    "NODE_VERSION: '24.19.0'" \
-    "NPM_VERSION: '11.19.0'"
+    "NODE_VERSION: '24.21.0'" \
+    "NPM_VERSION: '11.19.1'"
 done
 
 assert_contains_in_order \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors pins its funds-safety Node and npm runtime exactly" \
-  "NODE_VERSION: '24.19.0'" \
-  "NPM_VERSION: '11.19.0'" \
+  "NODE_VERSION: '24.21.0'" \
+  "NPM_VERSION: '11.19.1'" \
   "uses: ./.github/actions/setup-node-toolchain" \
   "install-npm: 'false'"
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a" 5
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:5d2ffaef8be0c0e62e8ac522d2cccc9fbbe0494cc307264559025ba5ac130197" 5
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
@@ -3584,10 +3584,10 @@ assert_occurrence_count \
 GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins Node exactly" \
-  "ARG NODE_VERSION=24.19.0" 1
+  "ARG NODE_VERSION=24.21.0" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins the official Node archive checksum" \
-  "ARG NODE_SHA256=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647" 1
+  "ARG NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner verifies the Node archive checksum" \
   'echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -' 1
@@ -3596,7 +3596,7 @@ assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   'npm install --global --audit=false --fund=false /tmp/npm.tgz' 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins the npm tarball checksum" \
-  "ARG NPM_SHA512=48377f8478372aa1c4e47b763475b135836da82436a5700f2e5e8eb5084fc840f93c7b117eb3ad3b5f7d3194c81b6710a10d59448f6ddbcb21ac3fb672bdc003" 1
+  "ARG NPM_SHA512=cedb312b1b7f92421a02cfb68b4194e88f8346651dacd6acc5364a25ef5309d4a32b19616a1ff8aff865e7280c0fa5c0835a99f5cd93368991e2a80ec9da75d2" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner verifies the npm tarball checksum" \
   'echo "${NPM_SHA512}  /tmp/npm.tgz" | sha512sum -c -' 1
@@ -3678,7 +3678,7 @@ for dockerfile in docker/frontend/Dockerfile gateway/Dockerfile; do
     "$REPO_ROOT/$dockerfile" \
     "$dockerfile pins an allowScripts-capable npm" \
     "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
-    "ARG NPM_VERSION=11.19.0" \
+    "ARG NPM_VERSION=11.19.1" \
     'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
     "FROM node-toolchain AS deps" \
     "FROM node-toolchain AS builder"
@@ -3688,7 +3688,7 @@ assert_contains_in_order \
   "$REPO_ROOT/server/Dockerfile" \
   "server/Dockerfile pins an allowScripts-capable npm on a digest-locked Node base" \
   "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
-  "ARG NPM_VERSION=11.19.0" \
+  "ARG NPM_VERSION=11.19.1" \
   'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
   "FROM node-toolchain AS deps" \
   "FROM node-toolchain AS builder"

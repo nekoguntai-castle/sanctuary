@@ -21,17 +21,17 @@ export const STANDARD_POLICY_ORACLE = Object.freeze([
 
 export type StandardPolicy = (typeof STANDARD_POLICY_ORACLE)[number];
 
-export const PINNED_CORE_IMAGE = 'bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' as const;
-export const PINNED_CORE_VERSION = '29.0.0' as const;
-export const PINNED_NODE_VERSION = '24.19.0' as const;
+export const PINNED_CORE_IMAGE = 'bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' as const;
+export const PINNED_CORE_VERSION = '29.4.0' as const;
+export const PINNED_NODE_VERSION = '24.21.0' as const;
 export const PINNED_PYTHON_VERSION = '3.13.5' as const;
 export const PINNED_PYTHON_EFFECTIVE_UID = 65532 as const;
 export const PINNED_PYTHON_BASE_IMAGE = 'python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419' as const;
 export const PYTHON_VERIFIER_IMAGE = 'sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1' as const;
-export const PINNED_GO_VERSION = 'go1.25.13' as const;
+export const PINNED_GO_VERSION = 'go1.27.1' as const;
 
 /**
- * Observed with Bitcoin Core 29.0 `getdescriptorinfo`. Core removes the private
+ * Observed with Bitcoin Core 29.4 `getdescriptorinfo`. Core removes the private
  * root but retains the root tpub plus hardened suffix; it does not return an
  * account-level tpub whose BIP32 payload could be compared independently.
  */

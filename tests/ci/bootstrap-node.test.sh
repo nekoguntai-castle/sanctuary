@@ -2,16 +2,16 @@
 set -euo pipefail
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-node-test.XXXXXX")"
-fixture_root="$test_root/fixture/node-v24.19.0-linux-x64"
+fixture_root="$test_root/fixture/node-v24.21.0-linux-x64"
 mkdir -p "$fixture_root/bin" "$test_root/mock-bin"
-printf '#!/usr/bin/env bash\nprintf "v24.19.0\\n"\n' > "$fixture_root/bin/node"
+printf '#!/usr/bin/env bash\nprintf "v24.21.0\\n"\n' > "$fixture_root/bin/node"
 chmod +x "$fixture_root/bin/node"
 cat > "$fixture_root/bin/npm" <<'FAKE_NPM'
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = '--version' ]; then printf '0.0.0\n'; exit 0; fi
 if [ "${1:-}" = 'install' ]; then
-  printf '#!/usr/bin/env bash\nprintf "11.19.0\\n"\n' > "$0.next"
+  printf '#!/usr/bin/env bash\nprintf "11.19.1\\n"\n' > "$0.next"
   chmod +x "$0.next"
   mv "$0.next" "$0"
   exit 0
@@ -19,7 +19,7 @@ fi
 exit 1
 FAKE_NPM
 chmod +x "$fixture_root/bin/npm"
-tar -cJf "$test_root/node.tar.xz" -C "$test_root/fixture" node-v24.19.0-linux-x64
+tar -cJf "$test_root/node.tar.xz" -C "$test_root/fixture" node-v24.21.0-linux-x64
 fixture_sha="$(sha256sum "$test_root/node.tar.xz" | awk '{print $1}')"
 printf 'reviewed npm archive\n' > "$test_root/npm.tgz"
 npm_fixture_sha="$(sha512sum "$test_root/npm.tgz" | awk '{print $1}')"
@@ -45,7 +45,7 @@ chmod +x "$test_root/mock-bin/curl"
 
 write_lock() {
   local node_digest="$1"
-  printf '{"runtimes":{"node":"24.19.0","npm":"11.19.0"},"artifacts":{"nodeLinuxX64":{"url":"https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz","sha256":"%s"},"npm":{"url":"https://registry.npmjs.org/npm/-/npm-11.19.0.tgz","sha512":"%s"}}}\n' "$node_digest" "$npm_fixture_sha" > "$test_root/toolchain-lock.json"
+  printf '{"runtimes":{"node":"24.21.0","npm":"11.19.1"},"artifacts":{"nodeLinuxX64":{"url":"https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz","sha256":"%s"},"npm":{"url":"https://registry.npmjs.org/npm/-/npm-11.19.1.tgz","sha512":"%s"}}}\n' "$node_digest" "$npm_fixture_sha" > "$test_root/toolchain-lock.json"
 }
 
 write_lock "$fixture_sha"
@@ -60,8 +60,8 @@ export SANCTUARY_INSTALL_NPM=true
 
 scripts/ci/bootstrap-node.sh >/dev/null
 selected_bin="$(tail -1 "$GITHUB_PATH")"
-[ "$($selected_bin/node --version)" = 'v24.19.0' ]
-[ "$($selected_bin/npm --version)" = '11.19.0' ]
+[ "$($selected_bin/node --version)" = 'v24.21.0' ]
+[ "$($selected_bin/npm --version)" = '11.19.1' ]
 [ -f "$FAKE_CURL_MARKER" ]
 [ "$(wc -l < "$FAKE_CURL_MARKER")" -eq 2 ]
 mv "$FAKE_CURL_MARKER" "$FAKE_CURL_MARKER.first"

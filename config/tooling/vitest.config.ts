@@ -13,8 +13,11 @@ export default defineConfig({
     nodePolyfillsWithoutDeprecatedEsbuild({
       include: ['buffer', 'process', 'stream', 'util'],
       globals: {
-        Buffer: true,
-        process: true,
+        // Vitest executes in Node: preserve its globals for filesystem and
+        // crypto helpers instead of injecting browser shims into test modules.
+        Buffer: false,
+        process: false,
+        global: false,
       },
     }),
   ],

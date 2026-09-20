@@ -65,7 +65,7 @@ describe('generated address vector provenance', () => {
       CORE_CHAIN_ORACLE.map(item => ({ ...item, version: PINNED_CORE_VERSION })),
     );
     expect(VERIFIER_PROVENANCE.evidenceScopes).toEqual([
-      { implementation: 'Bitcoin Core 29.0.0', scope: 'root-private-descriptor-to-output' },
+      { implementation: 'Bitcoin Core 29.4.0', scope: 'root-private-descriptor-to-output' },
       { implementation: 'bitcoinjs-lib 7.0.2', scope: 'seed-to-account-and-output' },
       { implementation: 'bip_utils (Python) 2.12.1', scope: 'seed-to-account-and-output' },
       { implementation: 'btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0', scope: 'seed-to-account-and-output' },
@@ -75,7 +75,7 @@ describe('generated address vector provenance', () => {
       'invalid-extended-public-key-rejection',
     ]);
     expect(VERIFIER_PROVENANCE.adversarialProofs).toEqual([
-      expect.objectContaining({ scope: 'four-way-core-derived-output', verifiedBy: expect.arrayContaining(['Bitcoin Core 29.0.0']) }),
+      expect.objectContaining({ scope: 'four-way-core-derived-output', verifiedBy: expect.arrayContaining(['Bitcoin Core 29.4.0']) }),
       expect.objectContaining({ scope: 'adapter-input-validation' }),
       expect.objectContaining({ scope: 'adapter-input-validation' }),
       expect.objectContaining({ scope: 'verifier-xpub-boundary', verifiedBy: ['SLIP-132/BIP32 verifier decoder'] }),
@@ -94,9 +94,9 @@ describe('generated address vector provenance', () => {
   it('locks the exact local Node runtime used after the CI bootstrap', () => {
     const packageJson = readFileSync('scripts/verify-addresses/package.json', 'utf8');
     const packageLock = readFileSync('scripts/verify-addresses/package-lock.json', 'utf8');
-    expect(packageJson).toContain('"node-linux-x64": "24.19.0"');
+    expect(packageJson).toContain('"node-linux-x64": "24.21.0"');
     expect(packageLock).toContain('"node_modules/node-linux-x64"');
-    expect(packageLock).toContain('sha512-vRk8mXc3mi3oveQf8wNrLKMuJWK7mBEi2ASQ8+Tv/0QjebLcsdodqVzE0xvCKPZ3575pG2jfWsKnfCVkoeIKTw==');
+    expect(packageLock).toContain('sha512-3nULszZ5X0fciYpG0t6TrdApJzAn8+FlINP6OiMX7V8HrvpATPN936U1LlReOJriLRa4e8yEqQBYCnLyPNAs7Q==');
   });
 
   it('locks the exact isolated Python runtime and hash-verified dependencies', () => {
@@ -128,7 +128,7 @@ describe('generated address vector provenance', () => {
       delete process.env.VERIFY_ADDRESSES_CORE_IMAGE;
       expect(() => assertPinnedCoreExecution()).toThrow('digest-pinned');
       process.env.VERIFY_ADDRESSES_CORE_PROVENANCE_MODE = 'pinned-compose';
-      process.env.VERIFY_ADDRESSES_CORE_IMAGE = 'bitcoin/bitcoin:29.0';
+      process.env.VERIFY_ADDRESSES_CORE_IMAGE = 'bitcoin/bitcoin:29.4';
       expect(() => assertPinnedCoreExecution()).toThrow('digest-pinned');
       process.env.VERIFY_ADDRESSES_CORE_IMAGE = PINNED_CORE_IMAGE;
       expect(() => assertPinnedCoreExecution()).not.toThrow();

@@ -1,4 +1,4 @@
-import { Counter, Histogram } from 'prom-client';
+import { Counter, Histogram } from '@prometheus-io/client';
 import { registry } from '../observability/metrics/registry';
 import { assistantReadToolRegistry } from '../assistant/tools';
 import { MCP_PROMPT_NAME_VALUES } from './promptNames';

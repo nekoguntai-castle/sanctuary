@@ -22,6 +22,10 @@ const WIDGET_OLD_INTEGRITY = 'sha512-d2lkZ2V0LWxpYi0xLjAuMA==';
 const WIDGET_NEW_INTEGRITY = 'sha512-d2lkZ2V0LWxpYi0xLjAuMQ==';
 const GADGET_OLD_INTEGRITY = 'sha512-Z2FkZ2V0LWxpYi0yLjAuMA==';
 const GADGET_NEW_INTEGRITY = 'sha512-Z2FkZ2V0LWxpYi0yLjAuMQ==';
+const SHARED_OLD_INTEGRITY = 'sha512-c2hhcmVkLWxpYi0xLjAuMA==';
+const SHARED_NEW_INTEGRITY = 'sha512-c2hhcmVkLWxpYi0xLjAuMQ==';
+const DEEP_OLD_INTEGRITY = 'sha512-ZGVlcC1saWIxLjAuMA==';
+const DEEP_NEW_INTEGRITY = 'sha512-ZGVlcC1saWIxLjAuMQ==';
 
 function git(repo, args) {
   const result = spawnSync('git', [
@@ -37,6 +41,7 @@ function createFixture() {
   const repo = mkdtempSync(join(tmpdir(), 'sanctuary-bump-funds-critical-'));
   mkdirSync(join(repo, 'config'), { recursive: true });
   mkdirSync(join(repo, 'docs/reference/generated'), { recursive: true });
+  mkdirSync(join(repo, 'server'), { recursive: true });
   mkdirSync(join(repo, 'scripts'), { recursive: true });
 
   writeJson(join(repo, 'config/ci-toolchain-lock.json'), {
@@ -46,7 +51,7 @@ function createFixture() {
         name: 'widget-lib',
         version: '1.0.0',
         integrity: WIDGET_OLD_INTEGRITY,
-        manifests: ['package.json'],
+        manifests: ['package.json', 'server/package.json'],
         lockfiles: ['package-lock.json'],
       },
       {
@@ -68,14 +73,36 @@ function createFixture() {
     version: '1.0.0',
     dependencies: { 'widget-lib': '1.0.0', 'gadget-lib': '2.0.0' },
   });
+  writeJson(join(repo, 'server/package.json'), {
+    name: 'fixture-server',
+    version: '1.0.0',
+    dependencies: { 'widget-lib': '1.0.0' },
+  });
   writeJson(join(repo, 'package-lock.json'), {
     name: 'fixture',
     version: '1.0.0',
     lockfileVersion: 3,
     packages: {
-      '': { name: 'fixture', version: '1.0.0' },
-      'node_modules/widget-lib': { version: '1.0.0', resolved: 'https://registry.example/widget-lib', integrity: WIDGET_OLD_INTEGRITY },
+      '': {
+        name: 'fixture',
+        version: '1.0.0',
+        dependencies: { 'widget-lib': '1.0.0', 'gadget-lib': '2.0.0' },
+      },
+      server: { dependencies: { 'widget-lib': '1.0.0' } },
+      'node_modules/widget-lib': {
+        version: '1.0.0',
+        resolved: 'https://registry.example/widget-lib',
+        integrity: WIDGET_OLD_INTEGRITY,
+        dependencies: { 'shared-lib': '1.0.0' },
+      },
       'node_modules/gadget-lib': { version: '2.0.0', resolved: 'https://registry.example/gadget-lib', integrity: GADGET_OLD_INTEGRITY },
+      'node_modules/shared-lib': {
+        version: '1.0.0',
+        resolved: 'https://registry.example/shared-lib',
+        integrity: SHARED_OLD_INTEGRITY,
+        dependencies: { 'deep-lib': '1.0.0' },
+      },
+      'node_modules/deep-lib': { version: '1.0.0', resolved: 'https://registry.example/deep-lib', integrity: DEEP_OLD_INTEGRITY },
     },
   });
   writeJson(join(repo, 'docs/reference/generated/hardware-wallet-compatibility.json'), {
@@ -94,6 +121,10 @@ function createFixture() {
     'widget-lib@1.0.1': WIDGET_NEW_INTEGRITY,
     'gadget-lib@2.0.0': GADGET_OLD_INTEGRITY,
     'gadget-lib@2.1.0': GADGET_NEW_INTEGRITY,
+    'shared-lib@1.0.0': SHARED_OLD_INTEGRITY,
+    'shared-lib@1.1.0': SHARED_NEW_INTEGRITY,
+    'deep-lib@1.0.0': DEEP_OLD_INTEGRITY,
+    'deep-lib@1.1.0': DEEP_NEW_INTEGRITY,
   };
   const npmStub = join(repo, 'stub-npm.mjs');
   writeFileSync(npmStub, `#!/usr/bin/env node
@@ -118,10 +149,43 @@ if (command === 'install') {
   for (const [name, version] of Object.entries(declared)) {
     const spec = \`\${name}@\${version}\`;
     if (!(spec in REGISTRY)) continue;
-    lock.packages[\`node_modules/\${name}\`] = { version, resolved: \`https://registry.example/\${name}\`, integrity: REGISTRY[spec] };
+    if (lock.packages[''].dependencies?.[name] !== undefined) {
+      lock.packages[''].dependencies[name] = version;
+    }
+    if (lock.packages.server?.dependencies?.[name] !== undefined) {
+      lock.packages.server.dependencies[name] = version;
+    }
+    lock.packages[\`node_modules/\${name}\`] = {
+      ...lock.packages[\`node_modules/\${name}\`],
+      version,
+      resolved: \`https://registry.example/\${name}\`,
+      integrity: REGISTRY[spec],
+    };
   }
   if (process.env.STUB_NPM_TOUCH_EXTRA === '1') {
     lock.packages['node_modules/gadget-lib'] = { version: '9.9.9', resolved: 'https://registry.example/gadget-lib', integrity: 'sha512-dHJhc2hlZA==' };
+  }
+  if (process.env.STUB_NPM_TOUCH_TRANSITIVE === '1') {
+    lock.packages['node_modules/shared-lib'] = { version: '1.1.0', resolved: 'https://registry.example/shared-lib', integrity: REGISTRY['shared-lib@1.1.0'] };
+  }
+  if (process.env.STUB_NPM_TOUCH_TRANSITIVE_DIVERGENT === '1') {
+    lock.packages['node_modules/shared-lib'] = {
+      ...lock.packages['node_modules/shared-lib'],
+      version: '1.1.0',
+      resolved: 'https://registry.example/shared-lib',
+      integrity: REGISTRY['shared-lib@1.1.0'],
+      dependencies: { 'deep-lib': '1.1.0' },
+    };
+      lock.packages['node_modules/deep-lib'] = { version: '1.1.0', resolved: 'https://registry.example/deep-lib', integrity: REGISTRY['deep-lib@1.1.0'] };
+  }
+  if (process.env.STUB_NPM_TOUCH_UNRELATED_SAME_NAME === '1') {
+    lock.packages['node_modules/gadget-lib/node_modules/shared-lib'] = { version: '9.9.9', resolved: 'https://registry.example/shared-lib', integrity: 'sha512-dW5yZWxhdGVk' };
+  }
+  if (process.env.STUB_NPM_TOUCH_ROOT_EXTRA === '1') {
+    lock.packages[''].packageManager = 'npm@999.0.0';
+  }
+  if (process.env.STUB_NPM_TOUCH_SERVER_EXTRA === '1') {
+    lock.packages.server.packageManager = 'npm@999.0.0';
   }
   writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\\n');
   process.exit(0);
@@ -286,6 +350,51 @@ test('lockfile-sprawl assertion fires when the lockfile update touches another p
     // Manifest edits happen before the lockfile step, so the tree is left
     // exactly as the failure found it rather than rolled back.
     assert.equal(readJson(join(fixture.repo, 'package.json')).dependencies['widget-lib'], '1.0.1');
+  } finally { cleanup(fixture); }
+});
+
+test('allows a resolved transitive dependency update', () => {
+  const fixture = createFixture();
+  try {
+    const { result } = run(fixture, ['widget-lib', '1.0.1'], { STUB_NPM_TOUCH_TRANSITIVE: '1' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readJson(join(fixture.repo, 'package-lock.json')).packages['node_modules/shared-lib'].version, '1.1.0');
+  } finally { cleanup(fixture); }
+});
+
+test('retains closure for dependencies that differ between lockfile snapshots', () => {
+  const fixture = createFixture();
+  try {
+    const { result } = run(fixture, ['widget-lib', '1.0.1'], { STUB_NPM_TOUCH_TRANSITIVE_DIVERGENT: '1' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readJson(join(fixture.repo, 'package-lock.json')).packages['node_modules/deep-lib'].version, '1.1.0');
+  } finally { cleanup(fixture); }
+});
+
+test('rejects an unrelated nested copy with the same package name', () => {
+  const fixture = createFixture();
+  try {
+    const { result } = run(fixture, ['widget-lib', '1.0.1'], { STUB_NPM_TOUCH_UNRELATED_SAME_NAME: '1' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /gadget-lib\/node_modules\/shared-lib/);
+  } finally { cleanup(fixture); }
+});
+
+test('rejects unrelated workspace-root metadata', () => {
+  const fixture = createFixture();
+  try {
+    const { result } = run(fixture, ['widget-lib', '1.0.1'], { STUB_NPM_TOUCH_ROOT_EXTRA: '1' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /<workspace-root>/);
+  } finally { cleanup(fixture); }
+});
+
+test('rejects unrelated metadata in a listed workspace package', () => {
+  const fixture = createFixture();
+  try {
+    const { result } = run(fixture, ['widget-lib', '1.0.1'], { STUB_NPM_TOUCH_SERVER_EXTRA: '1' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /server/);
   } finally { cleanup(fixture); }
 });
 

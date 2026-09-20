@@ -53,7 +53,7 @@ jq -e '
   and ([.bitcoinApp.sourceTarballSha256, .bitcoinApp.mainnetElfSha256,
         .bitcoinApp.testnetElfSha256] | all(test("^[0-9a-f]{64}$")))
   and .sdk.ledgerBitcoin == "0.3.1"
-  and .sdk.webUsbTransport == "6.34.4"
+  and .sdk.webUsbTransport == "6.35.0"
 ' "$manifest" >/dev/null
 
 cleanup_container=''

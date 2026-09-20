@@ -23,7 +23,7 @@ scripts/ci/cleanup-ci-callsite.sh auto-run \
   scripts/ci/run-psbt-core-subject.sh live
 ```
 
-The subject pins Bitcoin Core 29.0 by the digest in `proof-manifest.json`,
+The subject pins Bitcoin Core 29.4 by the digest in `proof-manifest.json`,
 attests the exact runtime image, and publishes signed cleanup evidence. It also
 runs generation, verification, and the server replay tests described below.
 
