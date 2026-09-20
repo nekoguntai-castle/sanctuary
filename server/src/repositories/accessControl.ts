@@ -37,14 +37,20 @@ export function buildWalletAccessWhere(userId: string): Prisma.WalletWhereInput 
 
 /**
  * Build the WHERE clause for wallets where the user has edit-or-above
- * (owner/signer) access, direct or via group. Used to scope destructive
- * batch operations (e.g. a network resync) away from view-only wallets.
+ * (owner/signer) access. A direct wallet role takes precedence over the
+ * group role, including when the direct role is view-only. Used to scope
+ * destructive batch operations (e.g. network resync) away from view-only wallets.
  */
 export function buildWalletEditAccessWhere(userId: string): Prisma.WalletWhereInput {
   return {
     OR: [
       { users: { some: { userId, role: { in: [...WALLET_EDIT_ROLE_VALUES] } } } },
-      { group: { members: { some: { userId } } }, groupRole: { in: [...WALLET_EDIT_ROLE_VALUES] } },
+      {
+        // Any direct grant suppresses the group role, even a viewer grant.
+        users: { none: { userId } },
+        group: { members: { some: { userId } } },
+        groupRole: { in: [...WALLET_EDIT_ROLE_VALUES] },
+      },
     ],
   };
 }

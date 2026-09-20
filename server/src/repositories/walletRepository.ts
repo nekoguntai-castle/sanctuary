@@ -8,7 +8,6 @@
 import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Wallet, Prisma } from '../generated/prisma/client';
 import { BITCOIN_NETWORKS, isNetworkType } from '@sanctuary/shared/constants/bitcoin';
-import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import type {
   NetworkType,
   WalletWithAddresses,
@@ -394,18 +393,14 @@ export async function findAccessibleWithSelect<T extends Prisma.WalletSelect>(
 }
 
 /**
- * Find a wallet by ID with sign/edit access check (owner or signer role)
+ * Find a wallet by ID with sign/edit access, via a direct or group role.
+ * A direct role takes precedence over a group role.
  */
 export async function findByIdWithEditAccess(walletId: string, userId: string): Promise<Wallet | null> {
   return prisma.wallet.findFirst({
     where: {
       id: walletId,
-      users: {
-        some: {
-          userId,
-          role: { in: [...WALLET_EDIT_ROLE_VALUES] },
-        },
-      },
+      ...buildWalletEditAccessWhere(userId),
     },
   });
 }

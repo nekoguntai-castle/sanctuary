@@ -85,6 +85,7 @@ list_group_specs() {
         tests/integration/repositories/systemSettingRepository.test.ts \
         tests/integration/repositories/userRepository.test.ts \
         tests/integration/repositories/walletDeviceSignerBinding.test.ts \
+        tests/integration/repositories/walletEditAccess.test.ts \
         tests/integration/repositories/walletSharingRepository.test.ts
       ;;
     "$GROUP_OPS_WORKERS")

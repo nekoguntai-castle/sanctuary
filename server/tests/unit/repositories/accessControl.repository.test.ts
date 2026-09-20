@@ -20,7 +20,11 @@ describe('repository accessControl helpers', () => {
     expect(buildWalletEditAccessWhere('user-1')).toEqual({
       OR: [
         { users: { some: { userId: 'user-1', role: { in: ['owner', 'signer'] } } } },
-        { group: { members: { some: { userId: 'user-1' } } }, groupRole: { in: ['owner', 'signer'] } },
+        {
+          users: { none: { userId: 'user-1' } },
+          group: { members: { some: { userId: 'user-1' } } },
+          groupRole: { in: ['owner', 'signer'] },
+        },
       ],
     });
   });

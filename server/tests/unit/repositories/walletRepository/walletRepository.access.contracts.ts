@@ -172,12 +172,21 @@ export const registerWalletRepositoryAccessContracts = () => {
       expect(prisma.wallet.findFirst).toHaveBeenCalledWith({
         where: {
           id: 'wallet-123',
-          users: {
-            some: {
-              userId: mockUserId,
-              role: { in: ['owner', 'signer'] },
+          OR: [
+            {
+              users: {
+                some: {
+                  userId: mockUserId,
+                  role: { in: ['owner', 'signer'] },
+                },
+              },
             },
-          },
+            {
+              users: { none: { userId: mockUserId } },
+              group: { members: { some: { userId: mockUserId } } },
+              groupRole: { in: ['owner', 'signer'] },
+            },
+          ],
         },
       });
     });
@@ -203,6 +212,7 @@ export const registerWalletRepositoryAccessContracts = () => {
               },
             },
             {
+              users: { none: { userId: mockUserId } },
               group: { members: { some: { userId: mockUserId } } },
               groupRole: { in: ['owner', 'signer'] },
             },

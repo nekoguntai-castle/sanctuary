@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { InvalidInputError } from '../../../../src/errors/ApiError';
+import { buildWalletEditAccessWhere } from '../../../../src/repositories/accessControl';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import { mockElectrumClient, mockElectrumPool } from '../../../mocks/electrum';
 import {
@@ -12,6 +13,12 @@ import {
   mockAssertWalletHardwareCapabilityById,
   request,
 } from './bitcoinTestHarness';
+
+function expectGroupAwareEditLookup(): void {
+  expect(mockPrismaClient.wallet.findFirst).toHaveBeenCalledWith({
+    where: { id: 'wallet-1', ...buildWalletEditAccessWhere('test-user-id') },
+  });
+}
 
 export const registerBitcoinTransactionRouteTests = () => {
   describe('Transaction Routes', () => {
@@ -228,6 +235,7 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'base64psbt');
+        expectGroupAwareEditLookup();
         expect(mockAdvancedTx.createRBFTransaction).toHaveBeenCalledWith(
           normalizedTxid,
           24,
@@ -485,6 +493,7 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'cpfppsbt');
         expect(response.body).toHaveProperty('effectiveFeeRate', 20);
+        expectGroupAwareEditLookup();
         expect(mockAdvancedTx.createCPFPTransaction).toHaveBeenCalledWith(
           'parent123',
           0,
@@ -671,6 +680,7 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'batchpsbt');
         expect(response.body).toHaveProperty('recipientCount', 2);
+        expectGroupAwareEditLookup();
         expect(mockAdvancedTx.createBatchTransaction).toHaveBeenCalledWith(
           [
             { address: 'bc1qtest1', amount: 250000 },
