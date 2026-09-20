@@ -67,6 +67,12 @@ describe('server worker architecture boundary', () => {
       "void import('./services/workerSyncQueue');\n",
       'server/src/services/workerSyncQueue.ts',
     ],
+    [
+      'an API dynamic repository import with an emitted extension',
+      'server/src/api/intelligence.ts',
+      "void import('../repositories/intelligenceRepository.js');\n",
+      'server/src/repositories/intelligenceRepository.ts',
+    ],
   ])('rejects %s', (_label, sourcePath, source, targetPath) => {
     const result = runFixture({
       [sourcePath]: source,
@@ -75,5 +81,36 @@ describe('server worker architecture boundary', () => {
 
     expect(result.ok).toBe(false);
     expect(result.output).toContain('architecture-boundaries: failed');
+  });
+
+  it('matches extensionless exceptions against emitted .js specifiers', () => {
+    const result = runFixture({
+      'server/src/api/intelligence.ts': "void import('../repositories/intelligenceRepository.js');\n",
+      'server/src/repositories/intelligenceRepository.ts': 'export const intelligenceRepository = {} as const;\n',
+      'server/src/api/notifications.ts': "import { notifyNewTransactions } from '../infrastructure/notificationDispatcher.js';\nvoid notifyNewTransactions;\n",
+      'server/src/infrastructure/notificationDispatcher.ts': 'export const notifyNewTransactions = () => undefined;\n',
+      'scripts/quality/architecture-boundary-exceptions.json': JSON.stringify([
+        {
+          rule: 'server-api-runtime-repositories',
+          file: 'server/src/api/intelligence.ts',
+          target: 'server/src/repositories/intelligenceRepository.ts',
+          specifier: '../repositories/intelligenceRepository',
+          owner: 'test',
+          reason: 'Fixture exception.',
+          removeWhen: 'The route delegates repository access through a service.',
+        },
+        {
+          rule: 'server-notification-dispatch-only',
+          file: 'server/src/api/notifications.ts',
+          target: 'server/src/infrastructure/notificationDispatcher.ts',
+          specifier: '../infrastructure/notificationDispatcher :: notifyNewTransactions',
+          owner: 'test',
+          reason: 'Fixture exception.',
+          removeWhen: 'The route delegates notification dispatch through the dispatch service.',
+        },
+      ]),
+    });
+
+    expect(result.ok, result.output).toBe(true);
   });
 });

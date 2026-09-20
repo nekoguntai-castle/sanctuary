@@ -309,7 +309,7 @@ export async function broadcastAndSave(
     // Send notifications for the broadcast transaction (Telegram + Push)
     // This is async and fire-and-forget to not block the response.
     /* v8 ignore start -- fire-and-forget post-broadcast hook; integration-tested end-to-end, not unit-testable from here */
-    import('../../notifications/dispatch').then(({ dispatchTransactionNotifications }) => {
+    import('../../notifications/dispatch.js').then(({ dispatchTransactionNotifications }) => {
       dispatchTransactionNotifications(walletId, [{
         txid,
         type: persisted.txType,
@@ -354,7 +354,7 @@ export async function broadcastAndSave(
 
     // Send notifications for the receiving wallet.
     /* v8 ignore start -- fire-and-forget post-broadcast hook; integration-tested end-to-end, not unit-testable from here */
-    import('../../notifications/dispatch').then(({ dispatchTransactionNotifications }) => {
+    import('../../notifications/dispatch.js').then(({ dispatchTransactionNotifications }) => {
       dispatchTransactionNotifications(receivingTx.walletId, [{
         txid,
         type: 'received',

@@ -71,8 +71,8 @@ export const VERIFIER_PROVENANCE = {
   "schemaVersion": 2,
   "matrixId": "sanctuary-seed-to-address-v2",
   "exactCaseCount": 480,
-  "sourceSha256": "9209139dab020ce6235f0ebfc5aa3393a3a8b13a42d5b2188c15be755c16ab79",
-  "coreImage": "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe",
+  "sourceSha256": "96eb97deec4e0ddd57179d64d3b2e0d66ed5c09202c48bbae0b61c679bf98925",
+  "coreImage": "bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63",
   "runtimes": {
     "node": "24.21.0",
     "python": "3.13.5",
@@ -85,7 +85,7 @@ export const VERIFIER_PROVENANCE = {
   },
   "evidenceScopes": [
     {
-      "implementation": "Bitcoin Core 29.4.0",
+      "implementation": "Bitcoin Core 31.1.0",
       "scope": "root-private-descriptor-to-output"
     },
     {
@@ -97,7 +97,7 @@ export const VERIFIER_PROVENANCE = {
       "scope": "seed-to-account-and-output"
     },
     {
-      "implementation": "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0",
+      "implementation": "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0",
       "scope": "seed-to-account-and-output"
     }
   ],
@@ -106,30 +106,30 @@ export const VERIFIER_PROVENANCE = {
       "id": "reversed-sortedmulti",
       "scope": "four-way-core-derived-output",
       "verifiedBy": [
-        "Bitcoin Core 29.4.0",
+        "Bitcoin Core 31.1.0",
         "bitcoinjs-lib 7.0.2",
         "bip_utils (Python) 2.12.1",
-        "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+        "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
       ]
     },
     {
       "id": "duplicate-key-rejection",
       "scope": "adapter-input-validation",
       "verifiedBy": [
-        "Bitcoin Core 29.4.0 adapter",
+        "Bitcoin Core 31.1.0 adapter",
         "bitcoinjs-lib 7.0.2 adapter",
         "bip_utils (Python) 2.12.1 adapter",
-        "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0 adapter"
+        "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0 adapter"
       ]
     },
     {
       "id": "invalid-seed-rejection",
       "scope": "adapter-input-validation",
       "verifiedBy": [
-        "Bitcoin Core 29.4.0 adapter",
+        "Bitcoin Core 31.1.0 adapter",
         "bitcoinjs-lib 7.0.2 adapter",
         "bip_utils (Python) 2.12.1 adapter",
-        "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0 adapter"
+        "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0 adapter"
       ]
     },
     {
@@ -144,7 +144,7 @@ export const VERIFIER_PROVENANCE = {
     {
       "id": "bitcoin-core",
       "name": "Bitcoin Core",
-      "version": "29.4.0"
+      "version": "31.1.0"
     },
     {
       "id": "bitcoinjs-lib",
@@ -159,34 +159,34 @@ export const VERIFIER_PROVENANCE = {
     {
       "id": "btcd-go",
       "name": "btcd/btcutil (Go)",
-      "version": "btcd 0.25.0 + go-bip39 1.1.0"
+      "version": "btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     }
   ],
   "coreChains": [
     {
       "environment": "mainnet",
       "reportedChain": "main",
-      "version": "29.4.0"
+      "version": "31.1.0"
     },
     {
       "environment": "testnet3",
       "reportedChain": "test",
-      "version": "29.4.0"
+      "version": "31.1.0"
     },
     {
       "environment": "testnet4",
       "reportedChain": "testnet4",
-      "version": "29.4.0"
+      "version": "31.1.0"
     },
     {
       "environment": "signet",
       "reportedChain": "signet",
-      "version": "29.4.0"
+      "version": "31.1.0"
     },
     {
       "environment": "regtest",
       "reportedChain": "regtest",
-      "version": "29.4.0"
+      "version": "31.1.0"
     }
   ]
 } as const;
@@ -220,10 +220,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -259,10 +259,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -298,10 +298,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -337,10 +337,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -376,10 +376,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -415,10 +415,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -454,10 +454,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -493,10 +493,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -532,10 +532,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -571,10 +571,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -610,10 +610,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -649,10 +649,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -688,10 +688,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -727,10 +727,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -766,10 +766,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -805,10 +805,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -844,10 +844,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -883,10 +883,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -922,10 +922,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -961,10 +961,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1000,10 +1000,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1039,10 +1039,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1078,10 +1078,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1117,10 +1117,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1156,10 +1156,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1195,10 +1195,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1234,10 +1234,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1273,10 +1273,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1312,10 +1312,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1351,10 +1351,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1390,10 +1390,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1429,10 +1429,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1468,10 +1468,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1507,10 +1507,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1546,10 +1546,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1585,10 +1585,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1624,10 +1624,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1663,10 +1663,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1702,10 +1702,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1741,10 +1741,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1780,10 +1780,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1819,10 +1819,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1858,10 +1858,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1897,10 +1897,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1936,10 +1936,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -1975,10 +1975,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2014,10 +2014,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2053,10 +2053,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2092,10 +2092,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2131,10 +2131,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2170,10 +2170,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2209,10 +2209,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2248,10 +2248,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2287,10 +2287,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2326,10 +2326,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2365,10 +2365,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2404,10 +2404,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2443,10 +2443,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2482,10 +2482,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2521,10 +2521,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2560,10 +2560,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2599,10 +2599,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2638,10 +2638,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2677,10 +2677,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2716,10 +2716,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2755,10 +2755,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2794,10 +2794,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2833,10 +2833,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2872,10 +2872,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2911,10 +2911,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2950,10 +2950,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -2989,10 +2989,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3028,10 +3028,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3067,10 +3067,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3106,10 +3106,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3145,10 +3145,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3184,10 +3184,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3223,10 +3223,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3262,10 +3262,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3301,10 +3301,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3340,10 +3340,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3379,10 +3379,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3418,10 +3418,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3457,10 +3457,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3496,10 +3496,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3535,10 +3535,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3574,10 +3574,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3613,10 +3613,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3652,10 +3652,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3691,10 +3691,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3730,10 +3730,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3769,10 +3769,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3808,10 +3808,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3847,10 +3847,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3886,10 +3886,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3925,10 +3925,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -3964,10 +3964,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4003,10 +4003,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4042,10 +4042,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4081,10 +4081,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4120,10 +4120,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4159,10 +4159,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4198,10 +4198,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4237,10 +4237,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4276,10 +4276,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4315,10 +4315,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4354,10 +4354,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4393,10 +4393,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4432,10 +4432,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4471,10 +4471,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4510,10 +4510,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4549,10 +4549,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4588,10 +4588,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4627,10 +4627,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4666,10 +4666,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4705,10 +4705,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4744,10 +4744,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4783,10 +4783,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4822,10 +4822,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4861,10 +4861,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4900,10 +4900,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4939,10 +4939,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -4978,10 +4978,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5017,10 +5017,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5056,10 +5056,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5095,10 +5095,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5134,10 +5134,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5173,10 +5173,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5212,10 +5212,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5251,10 +5251,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5290,10 +5290,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5329,10 +5329,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5368,10 +5368,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5407,10 +5407,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5446,10 +5446,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5485,10 +5485,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5524,10 +5524,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5563,10 +5563,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5602,10 +5602,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5641,10 +5641,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5680,10 +5680,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5719,10 +5719,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5758,10 +5758,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5797,10 +5797,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5836,10 +5836,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5875,10 +5875,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5914,10 +5914,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5953,10 +5953,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -5992,10 +5992,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6031,10 +6031,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6070,10 +6070,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6109,10 +6109,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6148,10 +6148,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6187,10 +6187,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6226,10 +6226,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6265,10 +6265,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6304,10 +6304,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6343,10 +6343,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6382,10 +6382,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6421,10 +6421,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6460,10 +6460,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6499,10 +6499,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6538,10 +6538,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6577,10 +6577,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6616,10 +6616,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6655,10 +6655,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6694,10 +6694,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6733,10 +6733,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6772,10 +6772,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6811,10 +6811,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6850,10 +6850,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6889,10 +6889,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6928,10 +6928,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -6967,10 +6967,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7006,10 +7006,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7045,10 +7045,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7084,10 +7084,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7123,10 +7123,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7162,10 +7162,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7201,10 +7201,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7240,10 +7240,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7279,10 +7279,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7318,10 +7318,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7357,10 +7357,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7396,10 +7396,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7435,10 +7435,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7474,10 +7474,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7513,10 +7513,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7552,10 +7552,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7591,10 +7591,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7630,10 +7630,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7669,10 +7669,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7708,10 +7708,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7747,10 +7747,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7786,10 +7786,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7825,10 +7825,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7864,10 +7864,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7903,10 +7903,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7942,10 +7942,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -7981,10 +7981,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8020,10 +8020,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8059,10 +8059,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8098,10 +8098,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8137,10 +8137,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8176,10 +8176,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8215,10 +8215,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8254,10 +8254,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8293,10 +8293,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8332,10 +8332,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8371,10 +8371,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8410,10 +8410,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8449,10 +8449,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8488,10 +8488,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8527,10 +8527,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8566,10 +8566,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8605,10 +8605,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8644,10 +8644,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8683,10 +8683,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8722,10 +8722,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8761,10 +8761,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8800,10 +8800,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8839,10 +8839,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8878,10 +8878,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8917,10 +8917,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8956,10 +8956,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -8995,10 +8995,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9034,10 +9034,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9073,10 +9073,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9112,10 +9112,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9151,10 +9151,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9190,10 +9190,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9229,10 +9229,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9268,10 +9268,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9307,10 +9307,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9346,10 +9346,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9385,10 +9385,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9424,10 +9424,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9463,10 +9463,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9502,10 +9502,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9541,10 +9541,10 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedId": "bip39-abandon",
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -9609,10 +9609,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -9683,10 +9683,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -9757,10 +9757,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -9831,10 +9831,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -9905,10 +9905,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -9979,10 +9979,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10079,10 +10079,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10183,10 +10183,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10287,10 +10287,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10391,10 +10391,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10495,10 +10495,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10599,10 +10599,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10677,10 +10677,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10751,10 +10751,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10825,10 +10825,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10899,10 +10899,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -10973,10 +10973,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11047,10 +11047,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11147,10 +11147,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11251,10 +11251,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11355,10 +11355,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11459,10 +11459,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11563,10 +11563,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11667,10 +11667,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11745,10 +11745,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11819,10 +11819,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11893,10 +11893,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -11967,10 +11967,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12041,10 +12041,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12115,10 +12115,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12215,10 +12215,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12319,10 +12319,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12423,10 +12423,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12527,10 +12527,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12631,10 +12631,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12735,10 +12735,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12813,10 +12813,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12887,10 +12887,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -12961,10 +12961,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13035,10 +13035,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13109,10 +13109,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13183,10 +13183,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13283,10 +13283,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13387,10 +13387,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13491,10 +13491,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13595,10 +13595,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13699,10 +13699,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13803,10 +13803,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13881,10 +13881,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -13955,10 +13955,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14029,10 +14029,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14103,10 +14103,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14177,10 +14177,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14251,10 +14251,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14351,10 +14351,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14455,10 +14455,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14559,10 +14559,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14663,10 +14663,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14767,10 +14767,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14871,10 +14871,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -14949,10 +14949,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15023,10 +15023,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15097,10 +15097,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15171,10 +15171,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15245,10 +15245,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15319,10 +15319,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15419,10 +15419,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15523,10 +15523,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15627,10 +15627,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15731,10 +15731,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15835,10 +15835,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -15939,10 +15939,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16017,10 +16017,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16091,10 +16091,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16165,10 +16165,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16239,10 +16239,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16313,10 +16313,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16387,10 +16387,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16487,10 +16487,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16591,10 +16591,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16695,10 +16695,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16799,10 +16799,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -16903,10 +16903,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17007,10 +17007,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17085,10 +17085,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17159,10 +17159,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17233,10 +17233,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17307,10 +17307,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17381,10 +17381,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17455,10 +17455,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17555,10 +17555,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17659,10 +17659,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17763,10 +17763,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17867,10 +17867,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -17971,10 +17971,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18075,10 +18075,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18153,10 +18153,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18227,10 +18227,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18301,10 +18301,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18375,10 +18375,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18449,10 +18449,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18523,10 +18523,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18623,10 +18623,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18727,10 +18727,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18831,10 +18831,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -18935,10 +18935,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19039,10 +19039,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19143,10 +19143,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19221,10 +19221,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19295,10 +19295,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19369,10 +19369,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19443,10 +19443,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19517,10 +19517,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19591,10 +19591,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19691,10 +19691,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19795,10 +19795,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -19899,10 +19899,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20003,10 +20003,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20107,10 +20107,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20211,10 +20211,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20289,10 +20289,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20363,10 +20363,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20437,10 +20437,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20511,10 +20511,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20585,10 +20585,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20659,10 +20659,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20759,10 +20759,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20863,10 +20863,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -20967,10 +20967,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21071,10 +21071,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21175,10 +21175,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21279,10 +21279,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21357,10 +21357,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21431,10 +21431,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21505,10 +21505,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21579,10 +21579,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21653,10 +21653,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21727,10 +21727,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21827,10 +21827,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -21931,10 +21931,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22035,10 +22035,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22139,10 +22139,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22243,10 +22243,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22347,10 +22347,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22425,10 +22425,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22499,10 +22499,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22573,10 +22573,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22647,10 +22647,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22721,10 +22721,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22795,10 +22795,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22895,10 +22895,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -22999,10 +22999,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23103,10 +23103,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23207,10 +23207,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23311,10 +23311,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23415,10 +23415,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23493,10 +23493,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23567,10 +23567,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23641,10 +23641,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23715,10 +23715,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23789,10 +23789,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23863,10 +23863,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -23963,10 +23963,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24067,10 +24067,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24171,10 +24171,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24275,10 +24275,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24379,10 +24379,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24483,10 +24483,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24561,10 +24561,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24635,10 +24635,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24709,10 +24709,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24783,10 +24783,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24857,10 +24857,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -24931,10 +24931,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25031,10 +25031,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25135,10 +25135,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25239,10 +25239,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25343,10 +25343,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25447,10 +25447,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25551,10 +25551,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25629,10 +25629,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25703,10 +25703,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25777,10 +25777,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25851,10 +25851,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25925,10 +25925,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -25999,10 +25999,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26099,10 +26099,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26203,10 +26203,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26307,10 +26307,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26411,10 +26411,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26515,10 +26515,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26619,10 +26619,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26697,10 +26697,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26771,10 +26771,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26845,10 +26845,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26919,10 +26919,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -26993,10 +26993,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27067,10 +27067,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27167,10 +27167,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27271,10 +27271,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27375,10 +27375,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27479,10 +27479,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27583,10 +27583,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27687,10 +27687,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27765,10 +27765,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27839,10 +27839,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27913,10 +27913,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -27987,10 +27987,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28061,10 +28061,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28135,10 +28135,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28235,10 +28235,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28339,10 +28339,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28443,10 +28443,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28547,10 +28547,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28651,10 +28651,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28755,10 +28755,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28833,10 +28833,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28907,10 +28907,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -28981,10 +28981,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29055,10 +29055,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29129,10 +29129,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29203,10 +29203,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29303,10 +29303,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29407,10 +29407,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29511,10 +29511,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29615,10 +29615,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29719,10 +29719,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29823,10 +29823,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29901,10 +29901,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -29975,10 +29975,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30049,10 +30049,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30123,10 +30123,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30197,10 +30197,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30271,10 +30271,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30371,10 +30371,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30475,10 +30475,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30579,10 +30579,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30683,10 +30683,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30787,10 +30787,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",
@@ -30891,10 +30891,10 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
       }
     ],
     "verifiedBy": [
-      "Bitcoin Core 29.4.0",
+      "Bitcoin Core 31.1.0",
       "bitcoinjs-lib 7.0.2",
       "bip_utils (Python) 2.12.1",
-      "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
     ],
     "seedIds": [
       "bip39-abandon",

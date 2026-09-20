@@ -5,9 +5,10 @@
   "revision": null,
   "source": {
     "applicationVersion": "0.8.73",
-    "signingDependencySha256": "7a63be5ff134f15b8df169a127ac887536f48882789a5916d2f1f35c8e668c1e",
+    "signingDependencySha256": "eec5f3a01af4d6a0e0236a07adcc89dbcaa909f29f65fc033a8dce765a1632a2",
     "signingDependencyPackages": [
       "@bitcoinerlab/secp256k1@1.2.0",
+      "@bitcoinerlab/secp256k1@2.0.0",
       "@keystonehq/bc-ur-registry@0.8.0",
       "@ledgerhq/devices@8.16.0",
       "@ledgerhq/devices@8.17.0",
@@ -5115,10 +5116,10 @@
       "draftPsbtVectorCount": 5,
       "signedPsbtVectorCount": 6,
       "independentImplementations": [
-        "Bitcoin Core 29.4.0",
+        "Bitcoin Core 31.1.0",
         "bitcoinjs-lib 7.0.2",
         "bip_utils (Python) 2.12.1",
-        "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+        "btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
       ]
     },
     "tier2": {

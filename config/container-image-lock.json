@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "lockedImages": [
     { "reference": "ghcr.io/catthehacker/ubuntu:act-22.04", "digest": "sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f", "scope": "wallet-proof-runner-parent" },
-    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go", "digest": "sha256:5d2ffaef8be0c0e62e8ac522d2cccc9fbbe0494cc307264559025ba5ac130197", "scope": "wallet-proof-runner" },
+    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go", "digest": "sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0", "scope": "wallet-proof-runner" },
     { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright", "digest": "sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4", "scope": "playwright-e2e-runner" },
     { "reference": "nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node", "digest": "sha256:9a9cf26dae68eb81e0446f91f81427b0c65c380371225b47ece9ddb407a68891", "scope": "playwright-e2e-runner-parent" },
     { "reference": "node:24-alpine", "digest": "sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43", "scope": "production-build-and-runtime" },
     { "reference": "docker.io/aquasec/trivy:0.74.0", "digest": "sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969", "scope": "release-candidate-vulnerability-observer" },
     { "reference": "nginx:alpine", "digest": "sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752", "scope": "production-runtime" },
-    { "reference": "grafana/grafana:10.4.19-security-01", "digest": "sha256:5584505cb75be8cb14c19d7473a87e2675c68b34b546bc1923ef74300c337111", "scope": "production-monitoring" },
+    { "reference": "grafana/grafana:13.2.2", "digest": "sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0", "scope": "production-monitoring" },
     { "reference": "debian:bookworm-slim", "digest": "sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241", "scope": "bitcoin-core-build-and-runtime" },
     { "reference": "postgres:16-alpine", "digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777", "scope": "production-and-ci-service" },
     { "reference": "redis:7-alpine", "digest": "sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2", "scope": "production-and-ci-service" },
@@ -23,7 +23,7 @@
     { "reference": "prom/alertmanager:v0.26.0", "digest": "sha256:361db356b33041437517f1cd298462055580585f26555c317df1a3caf2868552", "scope": "production-monitoring" },
     { "reference": "docker.io/curlimages/curl:8.10.1", "digest": "sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b", "scope": "runner-canary" },
     { "reference": "docker.io/library/nginx:1.27-alpine", "digest": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10", "scope": "runner-canary" },
-    { "reference": "bitcoin/bitcoin:29.4", "digest": "sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe", "scope": "wallet-proof-oracle" },
+    { "reference": "bitcoin/bitcoin:31.1", "digest": "sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63", "scope": "wallet-proof-oracle" },
     { "reference": "python:3.13.5-slim-bookworm", "digest": "sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419", "scope": "wallet-proof-oracle" },
     { "reference": "ghcr.io/trezor/trezor-user-env", "digest": "sha256:de72f49d7db85f27d51c9f7a516363a701a0c4b5e554efa632ac89fe776f8db6", "scope": "trezor-emulator" },
     { "reference": "ghcr.io/ledgerhq/speculos", "digest": "sha256:455d81fb8c6143e1413b5ac724887f8ca4cd887d54db5893758b12377df3d46c", "scope": "ledger-emulator" },
@@ -32,10 +32,10 @@
   ],
   "localImagePrefixes": ["sanctuary-", "sanctuary/verify-addresses-python:"],
   "reviewedOsPackageAcquisition": [
-    {"file": "llm-egress-proxy/Dockerfile", "sha256": "264efda51459a881fa6ff5dba981ea0517fc7f3cecba5397d04897e83780b7bb", "review": "Stable Alpine repositories selected by the digest-locked Node base supply same-line OpenSSL security updates; any Dockerfile change requires an explicit lock review"},
-    { "file": "docker/frontend/Dockerfile", "sha256": "767f8a4122c94fc559f696e05aea70246b05ca46ee73f974b69dfa5779b4aee1", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
-    { "file": "gateway/Dockerfile", "sha256": "2802fe1c5c06d11c981c3150c1fad5d54b075e0750f2fefb853f15bdef33fa7a", "review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },
+    {"file": "llm-egress-proxy/Dockerfile", "sha256": "e678d88ca7f42e2d0efeb64eb05aced43c925ab4212fb0480be5210fda8eb7be", "review": "Stable Alpine repositories selected by the digest-locked Node base supply same-line OpenSSL security updates; any Dockerfile change requires an explicit lock review"},
+    { "file": "docker/frontend/Dockerfile", "sha256": "37c6b935987f7836328dbc9439ee60731ee1c93b9fa213ac78e9fc209c14720b", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
+    { "file": "gateway/Dockerfile", "sha256": "8a6e5e064687f8c8c47beed5c2ab22a2324174109689752de5b224f3f7795ccb", "review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },
     { "file": "scripts/bitcoin-core-docker/Dockerfile", "sha256": "54ee66000aa25a1b76beef6fc522b550b92cfb8054bf2c74441350254d320687", "review": "apt repositories are transitively fixed by the digest-locked Debian base and Core source is separately checksum-verified; any Dockerfile change requires an explicit lock review" },
-    { "file": "server/Dockerfile", "sha256": "ced454a5e7cf82d70ad82cf9f43f72d90add2a218813df4d4624bfb9d00da867", "review": "apk repositories are transitively fixed by digest-locked Node Alpine bases; any Dockerfile change requires an explicit lock review" }
+    { "file": "server/Dockerfile", "sha256": "d14356688e7f222ce81f0988e8168fd6bd947c3e208f44509dcffc54445acf79", "review": "apk repositories are transitively fixed by digest-locked Node Alpine bases; any Dockerfile change requires an explicit lock review" }
   ]
 }

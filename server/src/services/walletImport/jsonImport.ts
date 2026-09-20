@@ -27,7 +27,7 @@ export async function importFromJson(
   }
 ): Promise<ImportWalletResult> {
   // Parse and validate JSON with Zod schema
-  const { JsonImportConfigSchema } = await import('../import/schemas');
+  const { JsonImportConfigSchema } = await import('../import/schemas.js');
   const parsedJson = safeJsonParseUntyped<unknown>(input.json, null, 'wallet import JSON');
   if (parsedJson === null) {
     throw new Error('Invalid JSON format in wallet import data');

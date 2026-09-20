@@ -282,7 +282,7 @@ if [ "$1" = "image" ] && [ "${2:-}" = "ls" ]; then
 fi
 if [ "$1" = "inspect" ] && [ "$2" = "--format" ]; then
   if [ "$3" = '{{.Config.Image}}' ]; then
-    printf '%s\n' "${VERIFY_STUB_CORE_CONFIG_IMAGE:-bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe}"
+    printf '%s\n' "${VERIFY_STUB_CORE_CONFIG_IMAGE:-bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63}"
   else
     if [[ -v VERIFY_STUB_INSPECTED_CORE_IDENTITY ]]; then
       printf '["-uacomment=%s"]\n' "$VERIFY_STUB_INSPECTED_CORE_IDENTITY"
@@ -340,9 +340,9 @@ done
 [ "$actual_auth" = "$expected_auth" ] || exit 1
 if [[ "$payload" == *getnetworkinfo* ]]; then
   if [[ "$url" == http://203.0.113.10:* ]]; then
-    printf '{"result":{"subversion":"/Satoshi:29.4.0(fake-external)/"}}\n'
+    printf '{"result":{"subversion":"/Satoshi:31.1.0(fake-external)/"}}\n'
   else
-    printf '{"result":{"subversion":"/Satoshi:29.4.0(%s)/"}}\n' "$(cat "${VERIFY_STUB_CORE_LAUNCH_ID:?}")"
+    printf '{"result":{"subversion":"/Satoshi:31.1.0(%s)/"}}\n' "$(cat "${VERIFY_STUB_CORE_LAUNCH_ID:?}")"
   fi
   exit 0
 fi
@@ -434,7 +434,7 @@ main() {
     : > "$lane_root/docker-cleanup-log"
     PATH="$TEST_TEMP_DIR/bin:$PATH" \
       RUNNER_TEMP="$TEST_TEMP_DIR/runner" \
-      VERIFY_STUB_CORE_CONFIG_IMAGE='docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
+      VERIFY_STUB_CORE_CONFIG_IMAGE='docker.io/bitcoin/bitcoin@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
       VERIFY_STUB_DOCKER_BUILD_LOG="$lane_root/docker-build-log" \
       VERIFY_STUB_DOCKER_CLEANUP_LOG="$lane_root/docker-cleanup-log" \
       VERIFY_STUB_LEGACY_BUILD_USED="$lane_root/legacy-build-used" \
@@ -496,7 +496,7 @@ main() {
   : > "$TEST_TEMP_DIR/docker-build-log"
   if failure_output="$(VERIFY_STUB_DATE_EPOCH=invalid \
     run_with_core_image \
-      'docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
+      'docker.io/bitcoin/bitcoin@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
       "$TEST_TEMP_DIR/invalid-epoch-endpoint-log" 2>&1)"; then
     fail 'expected an invalid image creation epoch to fail before Buildx'
   fi
@@ -510,7 +510,7 @@ main() {
   cp "$TEST_TEMP_DIR/docker-cleanup-log" "$TEST_TEMP_DIR/docker-cleanup-log.before-stale"
   if failure_output="$(VERIFY_STUB_IMAGE_CREATED_EPOCH=1 \
     run_with_core_image \
-      'docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
+      'docker.io/bitcoin/bitcoin@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
       "$TEST_TEMP_DIR/stale-image-epoch-endpoint-log" 2>&1)"; then
     fail 'expected a stale loaded image creation epoch to fail before startup'
   fi
@@ -525,7 +525,7 @@ main() {
     grep -F -- ":$port/" "$TEST_TEMP_DIR/curl-log" >/dev/null ||
       fail "expected readiness check on port $port"
   done
-  grep -F -- 'image=bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
+  grep -F -- 'image=bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
     "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
     fail 'expected the exact Core image provenance to reach the verifier'
   grep -F -- 'runtime_node=24.21.0' "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
@@ -539,7 +539,7 @@ main() {
     fail 'expected a separate per-run Core identity nonce'
 
   : > "$TEST_TEMP_DIR/curl-log"
-  canonical_image='docker.io/bitcoin/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe'
+  canonical_image='docker.io/bitcoin/bitcoin@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63'
   run_with_core_image "$canonical_image" "$TEST_TEMP_DIR/canonical-endpoint-log" >/dev/null
   [ -s "$TEST_TEMP_DIR/canonical-endpoint-log" ] ||
     fail 'expected Docker Hub canonical image rendering to be accepted'
@@ -652,8 +652,8 @@ main() {
     fail 'expected missing Buildx to report the immutable-image requirement'
 
   for rejected_image in \
-    'docker.io/example/bitcoin@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
-    'bitcoin/bitcoin:28.0@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe' \
+    'docker.io/example/bitcoin@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
+    'bitcoin/bitcoin:28.0@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
     'docker.io/bitcoin/bitcoin@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; do
     if failure_output="$(run_with_core_image "$rejected_image" "$TEST_TEMP_DIR/rejected-endpoint-log" 2>&1)"; then
       fail "expected Core image identity rejection for $rejected_image"

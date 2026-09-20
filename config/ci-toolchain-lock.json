@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "runnerImage": {
     "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go",
-    "digest": "sha256:5d2ffaef8be0c0e62e8ac522d2cccc9fbbe0494cc307264559025ba5ac130197",
+    "digest": "sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0",
     "parentReference": "ghcr.io/catthehacker/ubuntu:act-22.04",
     "parentDigest": "sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f"
   },
   "runtimes": {
     "node": "24.21.0",
-    "npm": "11.19.1",
+    "npm": "12.0.2",
     "python": "3.10.12",
     "go": "1.27.1"
   },
@@ -18,8 +18,8 @@
       "sha256": "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
     },
     "npm": {
-      "url": "https://registry.npmjs.org/npm/-/npm-11.19.1.tgz",
-      "sha512": "cedb312b1b7f92421a02cfb68b4194e88f8346651dacd6acc5364a25ef5309d4a32b19616a1ff8aff865e7280c0fa5c0835a99f5cd93368991e2a80ec9da75d2"
+      "url": "https://registry.npmjs.org/npm/-/npm-12.0.2.tgz",
+      "sha512": "b885e890b9418fa1693544d05f53e64f9a73ec194837d4258b15fecdd692347b1dd2a517b1b0cbaf9d31cd8e92c3b70956bd2ecc72833a57b4b3098f5bfa7943"
     }
   },
   "fundsCriticalPackages": [

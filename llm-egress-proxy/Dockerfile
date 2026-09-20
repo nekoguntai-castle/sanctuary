@@ -2,6 +2,8 @@
 # Security-focused proxy that owns external LLM provider egress
 
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
+ARG NPM_VERSION=12.0.2
+RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
 WORKDIR /app
 
@@ -15,7 +17,7 @@ COPY src ./src
 RUN npm run build
 
 # Prune dev dependencies
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # --- Production image ---
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runner

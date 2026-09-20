@@ -10,7 +10,7 @@ protocol proof, or physical-device proof. Those tiers are never interchangeable.
 
 | Implementation | Independent input |
 | --- | --- |
-| Bitcoin Core 29.4 | Root private key plus the complete hardened and unhardened path in a descriptor |
+| Bitcoin Core 31.1 | Root private key plus the complete hardened and unhardened path in a descriptor |
 | bitcoinjs-lib | BIP-39 mnemonic seed |
 | bip_utils (Python) | BIP-39 mnemonic seed |
 | btcd/btcutil (Go) | BIP-39 mnemonic seed |
@@ -78,7 +78,7 @@ per-run RPC credentials and a separate private identity nonce from this exact
 multi-architecture image:
 
 ```text
-bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe
+bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63
 ```
 
 It checks that every RPC reports the expected chain before starting the

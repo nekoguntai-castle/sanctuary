@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { assertLockedResolutions } = require('../../server/scripts/project-runtime-dependencies.cjs');
-const { checkRuntimePrismaDependencies } = require('../../server/scripts/check-runtime-prisma-deps.cjs');
+const {
+  checkRuntimePrismaClient,
+  checkRuntimePrismaDependencies,
+} = require('../../server/scripts/check-runtime-prisma-deps.cjs');
 
 test('runtime projection preserves reviewed resolutions even when npm hoists them', () => {
   const record = { version: '1.0.0', resolved: 'https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz', integrity: 'sha512-reviewed' };
@@ -29,4 +32,22 @@ test('image check rejects nested and scoped CLI dependencies but permits Prisma 
     fs.writeFileSync(path.join(nested, 'package.json'), JSON.stringify({ name }));
     assert.throws(() => checkRuntimePrismaDependencies(root), /Migration-only dependency/);
   }
+});
+
+test('runtime image loads the generated Prisma client through Node native CommonJS resolution', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-prisma-client-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'internal'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'internal/class.js'), 'module.exports = { PrismaClient: class PrismaClient {} };\n');
+  const client = path.join(root, 'client.js');
+  fs.writeFileSync(client, 'const { PrismaClient } = require("./internal/class.js"); module.exports = { PrismaClient };\n');
+
+  assert.doesNotThrow(() => checkRuntimePrismaClient(client));
+
+  const hybrid = path.join(root, 'hybrid.js');
+  fs.writeFileSync(hybrid, 'module.exports = {}; void import.meta.url;\n');
+  assert.throws(() => checkRuntimePrismaClient(hybrid), /cannot be loaded/);
+
+  const schema = fs.readFileSync(path.join(__dirname, '../../server/prisma/schema.prisma'), 'utf8');
+  assert.match(schema, /moduleFormat\s*=\s*"cjs"/);
 });

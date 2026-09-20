@@ -65,17 +65,17 @@ describe('generated address vector provenance', () => {
       CORE_CHAIN_ORACLE.map(item => ({ ...item, version: PINNED_CORE_VERSION })),
     );
     expect(VERIFIER_PROVENANCE.evidenceScopes).toEqual([
-      { implementation: 'Bitcoin Core 29.4.0', scope: 'root-private-descriptor-to-output' },
+      { implementation: 'Bitcoin Core 31.1.0', scope: 'root-private-descriptor-to-output' },
       { implementation: 'bitcoinjs-lib 7.0.2', scope: 'seed-to-account-and-output' },
       { implementation: 'bip_utils (Python) 2.12.1', scope: 'seed-to-account-and-output' },
-      { implementation: 'btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0', scope: 'seed-to-account-and-output' },
+      { implementation: 'btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0', scope: 'seed-to-account-and-output' },
     ]);
     expect(VERIFIER_PROVENANCE.adversarialProofs.map(proof => proof.id)).toEqual([
       'reversed-sortedmulti', 'duplicate-key-rejection', 'invalid-seed-rejection',
       'invalid-extended-public-key-rejection',
     ]);
     expect(VERIFIER_PROVENANCE.adversarialProofs).toEqual([
-      expect.objectContaining({ scope: 'four-way-core-derived-output', verifiedBy: expect.arrayContaining(['Bitcoin Core 29.4.0']) }),
+      expect.objectContaining({ scope: 'four-way-core-derived-output', verifiedBy: expect.arrayContaining(['Bitcoin Core 31.1.0']) }),
       expect.objectContaining({ scope: 'adapter-input-validation' }),
       expect.objectContaining({ scope: 'adapter-input-validation' }),
       expect.objectContaining({ scope: 'verifier-xpub-boundary', verifiedBy: ['SLIP-132/BIP32 verifier decoder'] }),
@@ -128,7 +128,7 @@ describe('generated address vector provenance', () => {
       delete process.env.VERIFY_ADDRESSES_CORE_IMAGE;
       expect(() => assertPinnedCoreExecution()).toThrow('digest-pinned');
       process.env.VERIFY_ADDRESSES_CORE_PROVENANCE_MODE = 'pinned-compose';
-      process.env.VERIFY_ADDRESSES_CORE_IMAGE = 'bitcoin/bitcoin:29.4';
+      process.env.VERIFY_ADDRESSES_CORE_IMAGE = 'bitcoin/bitcoin:31.1';
       expect(() => assertPinnedCoreExecution()).toThrow('digest-pinned');
       process.env.VERIFY_ADDRESSES_CORE_IMAGE = PINNED_CORE_IMAGE;
       expect(() => assertPinnedCoreExecution()).not.toThrow();

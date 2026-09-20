@@ -102,10 +102,10 @@ router.get('/insights', asyncHandler(async (req, res) => {
     throw new NotFoundError('Wallet not found');
   }
 
-  const filters: Omit<import('../repositories/intelligenceRepository').InsightFilter, 'walletId'> = {};
-  if (typeof status === 'string') filters.status = status as import('../services/intelligence/types').InsightStatus;
-  if (typeof type === 'string') filters.type = type as import('../services/intelligence/types').InsightType;
-  if (typeof severity === 'string') filters.severity = severity as import('../services/intelligence/types').InsightSeverity;
+  const filters: Omit<import('../repositories/intelligenceRepository.js').InsightFilter, 'walletId'> = {};
+  if (typeof status === 'string') filters.status = status as import('../services/intelligence/types.js').InsightStatus;
+  if (typeof type === 'string') filters.type = type as import('../services/intelligence/types.js').InsightType;
+  if (typeof severity === 'string') filters.severity = severity as import('../services/intelligence/types.js').InsightSeverity;
 
   /* v8 ignore next -- pagination schema catch provides defaults for malformed query input */
   const { limit: parsedLimit, offset: parsedOffset } = InsightPaginationSchema.safeParse({ limit, offset }).data

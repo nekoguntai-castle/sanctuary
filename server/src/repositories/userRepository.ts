@@ -55,8 +55,8 @@ export async function findById(id: string): Promise<User | null> {
 export async function findByIdWithSelect<T extends Prisma.UserSelect>(
   id: string,
   select: T
-) {
-  return prisma.user.findUnique({
+): Promise<Prisma.UserGetPayload<{ select: T }> | null> {
+  return prisma.user.findUnique<{ select: T; where: Prisma.UserWhereUniqueInput }>({
     where: { id },
     select,
   });
@@ -141,7 +141,7 @@ export async function createWithSelect<T extends Prisma.UserSelect>(
   data: Prisma.UserCreateInput,
   select: T
 ) {
-  return prisma.user.create({ data, select });
+  return prisma.user.create<{ data: Prisma.UserCreateInput; select: T }>({ data, select });
 }
 
 /**
@@ -165,7 +165,7 @@ export async function updateWithSelect<T extends Prisma.UserSelect>(
   data: Prisma.UserUpdateInput,
   select: T
 ) {
-  return prisma.user.update({
+  return prisma.user.update<{ where: Prisma.UserWhereUniqueInput; data: Prisma.UserUpdateInput; select: T }>({
     where: { id },
     data,
     select,
@@ -456,7 +456,7 @@ export async function findAllWithSelect<T extends Prisma.UserSelect>(
   select: T,
   where?: Prisma.UserWhereInput,
 ) {
-  return prisma.user.findMany({ where, select });
+  return prisma.user.findMany<{ where?: Prisma.UserWhereInput; select: T }>({ where, select });
 }
 
 // Export as namespace

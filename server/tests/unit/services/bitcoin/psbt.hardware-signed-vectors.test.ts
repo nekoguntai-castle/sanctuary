@@ -4,6 +4,7 @@ import { entropyToMnemonic, wordlists } from "bip39";
 import * as bitcoin from "bitcoinjs-lib";
 import * as ecc from "tiny-secp256k1";
 import { describe, expect, it } from "vitest";
+import coreProofManifest from "../../../../../scripts/verify-psbt/proof-manifest.json";
 import {
   BLOCKED_HARDWARE_SIGNED_ROWS,
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
@@ -363,9 +364,8 @@ function physicalEvidence(
     unsignedPsbtSha256: hash(Buffer.from(unsignedPsbtBase64, "base64")),
     signedArtifactSha256: artifactHash(artifact),
     changeRecognizedOnDevice: true as const,
-    bitcoinCoreVersion: "/Satoshi:29.4.0/",
-    bitcoinCoreImageDigest:
-      "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe",
+    bitcoinCoreVersion: coreProofManifest.coreSubversion,
+    bitcoinCoreImageDigest: coreProofManifest.coreImage,
     coreAcceptance: {
       invocationId,
       requestJson: JSON.stringify({

@@ -52,7 +52,7 @@ export async function warmCaches(
     warmingTasks.push(
       (async () => {
         try {
-          const { featureFlagService } = await import('../featureFlagService');
+          const { featureFlagService } = await import('../featureFlagService.js');
           const flags = await featureFlagService.getAllFlags();
           if (flags.length > 0) {
             warmed.push('featureFlags');
@@ -71,7 +71,7 @@ export async function warmCaches(
     warmingTasks.push(
       (async () => {
         try {
-          const { getBlockHeight } = await import('../bitcoin/utils/blockHeight');
+          const { getBlockHeight } = await import('../bitcoin/utils/blockHeight.js');
           const height = await getBlockHeight();
           if (height > 0) {
             warmed.push('blockHeight');
@@ -90,7 +90,7 @@ export async function warmCaches(
     warmingTasks.push(
       (async () => {
         try {
-          const { getPriceService } = await import('../price');
+          const { getPriceService } = await import('../price/index.js');
           const price = await getPriceService().getPrice();
           if (price) {
             warmed.push('priceData');

@@ -197,7 +197,7 @@ async function findWalletsExcludedFromSync(userId: string): Promise<ExcludedWall
 }
 
 async function getSyncServiceInstance() {
-  const { getSyncService } = await import('./syncService');
+  const { getSyncService } = await import('./syncService.js');
   return getSyncService();
 }
 
@@ -377,7 +377,7 @@ export class SyncCoordinator {
   async getWalletSyncLogs(userId: string, walletId: string): Promise<{ logs: unknown[] }> {
     await requireWalletAccess(walletId, userId);
 
-    const { walletLogBuffer } = await import('../walletLogBuffer');
+    const { walletLogBuffer } = await import('../walletLogBuffer.js');
 
     return {
       logs: walletLogBuffer.get(walletId),

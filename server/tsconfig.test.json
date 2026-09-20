@@ -5,7 +5,9 @@
     "lib": ["ES2023"],
     "types": ["node", "vitest/globals"],
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
   },
   "files": [
     "tests/setup.ts",

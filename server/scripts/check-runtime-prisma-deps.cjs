@@ -27,5 +27,27 @@ function checkRuntimePrismaDependencies(root) {
   visit(root);
 }
 
-if (require.main === module) checkRuntimePrismaDependencies(process.argv[2] || '/app/node_modules');
-module.exports = { checkRuntimePrismaDependencies };
+function checkRuntimePrismaClient(clientPath) {
+  const resolved = path.resolve(clientPath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Generated Prisma client is missing: ${resolved}`);
+  }
+  let client;
+  try {
+    // Exercise the emitted file through Node's native CommonJS loader. A
+    // transformed test import can hide a Prisma generator module-format
+    // mismatch that only breaks the production image at process startup.
+    client = require(resolved);
+  } catch (error) {
+    throw new Error(`Generated Prisma client cannot be loaded: ${resolved}: ${error.message}`, { cause: error });
+  }
+  if (typeof client.PrismaClient !== 'function') {
+    throw new Error(`Generated Prisma client has no PrismaClient export: ${resolved}`);
+  }
+}
+
+if (require.main === module) {
+  checkRuntimePrismaDependencies(process.argv[2] || '/app/node_modules');
+  checkRuntimePrismaClient(process.argv[3] || '/app/dist/server/src/generated/prisma/client.js');
+}
+module.exports = { checkRuntimePrismaClient, checkRuntimePrismaDependencies };

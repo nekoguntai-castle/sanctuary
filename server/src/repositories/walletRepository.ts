@@ -369,8 +369,8 @@ export async function findByIdWithDevices(walletId: string) {
 export async function findByIdWithSelect<T extends Prisma.WalletSelect>(
   walletId: string,
   select: T
-) {
-  return prisma.wallet.findUnique({
+): Promise<Prisma.WalletGetPayload<{ select: T }> | null> {
+  return prisma.wallet.findUnique<{ select: T; where: Prisma.WalletWhereUniqueInput }>({
     where: { id: walletId },
     select,
   });
@@ -383,8 +383,8 @@ export async function findAccessibleWithSelect<T extends Prisma.WalletSelect>(
   userId: string,
   select: T,
   additionalWhere?: Prisma.WalletWhereInput
-) {
-  return prisma.wallet.findMany({
+): Promise<Prisma.WalletGetPayload<{ select: T }>[]> {
+  return prisma.wallet.findMany<{ select: T; where: Prisma.WalletWhereInput }>({
     where: {
       ...buildWalletAccessWhere(userId),
       ...additionalWhere,
@@ -666,7 +666,7 @@ export async function findAllWithSelect<T extends Prisma.WalletSelect>(
   select: T,
   where?: Prisma.WalletWhereInput
 ) {
-  return prisma.wallet.findMany({
+  return prisma.wallet.findMany<{ where?: Prisma.WalletWhereInput; select: T }>({
     where,
     select,
   });
@@ -680,7 +680,7 @@ export async function findByIdWithAccessAndInclude(
   userId: string,
   include: Prisma.WalletInclude
 ) {
-  return prisma.wallet.findFirst({
+  return prisma.wallet.findFirst<{ where: Prisma.WalletWhereInput; include: Prisma.WalletInclude }>({
     where: {
       id: walletId,
       ...buildWalletAccessWhere(userId),
@@ -706,7 +706,7 @@ export async function findByIdWithFullAccess(
   userId: string,
   include: Prisma.WalletInclude
 ) {
-  return prisma.wallet.findFirst({
+  return prisma.wallet.findFirst<{ where: Prisma.WalletWhereInput; include: Prisma.WalletInclude }>({
     where: {
       id: walletId,
       OR: [
@@ -726,7 +726,7 @@ export async function findByUserIdWithInclude(
   include: Prisma.WalletInclude,
   orderBy?: Prisma.WalletOrderByWithRelationInput
 ) {
-  return prisma.wallet.findMany({
+  return prisma.wallet.findMany<{ where: Prisma.WalletWhereInput; include: Prisma.WalletInclude; orderBy?: Prisma.WalletOrderByWithRelationInput }>({
     where: {
       OR: [
         { users: { some: { userId } } },

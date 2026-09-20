@@ -27,7 +27,7 @@ bad() { FAIL=$((FAIL + 1)); FAILURES+=("$1"); echo "FAIL: $1" >&2; }
 bash -n "$ENSURE_GO" || bad 'ensure-go.sh does not parse'
 
 # ----- 1. the requirement tracks go.mod, not a hardcoded number --------------
-required="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$GO_MOD")"
+required="$(awk '$1 == "go" { minimum = $2 } $1 == "toolchain" { explicit = $2; sub(/^go/, "", explicit) } END { print explicit ? explicit : minimum }' "$GO_MOD")"
 if [ -n "$required" ] && grep -q 'go\.mod' "$ENSURE_GO"; then
   ok "requirement is read from go.mod (currently ${required})"
 else
@@ -80,6 +80,26 @@ for drift in 1.25.11 1.25.14; do
     ok "Go ${drift} drift is rejected"
   else
     bad "Go ${drift} drift did not fail with the exact-version message: ${out}"
+  fi
+done
+
+# Canonical go-only modules and explicit toolchain overrides both pin exactly.
+fixture="$TEST_TEMP_DIR/go.mod"
+for directives in $'go 1.27.1' $'go 1.26.0\ntoolchain go1.27.1'; do
+  printf 'module example.test/verifier\n%s\n' "$directives" > "$fixture"
+  if SANCTUARY_GO_MOD="$fixture" PATH="$stub_bin" STUB_GO_VERSION=1.27.1 bash "$ENSURE_GO" >/dev/null; then
+    ok "exact Go selection accepted: ${directives}"
+  else
+    bad "exact Go selection rejected: ${directives}"
+  fi
+done
+for directives in '' 'go 1.27' $'go 1.27.1\ntoolchain default' $'go 1.27.1\ntoolchain go1.27' $'go 1.27.1\ngo 1.26.0' $'go 1.27.1\ntoolchain go1.27.1\ntoolchain go1.28.0'; do
+  printf 'module example.test/verifier\n%s\n' "$directives" > "$fixture"
+  out="$(SANCTUARY_GO_MOD="$fixture" PATH="$stub_bin" STUB_GO_VERSION=1.27.1 bash "$ENSURE_GO" 2>&1)"
+  if [ "$?" -ne 0 ] && printf '%s' "$out" | grep -q 'could not read an exact Go version'; then
+    ok "invalid or ambiguous Go selection rejected: ${directives}"
+  else
+    bad "invalid Go selection did not fail clearly: ${directives}: ${out}"
   fi
 done
 

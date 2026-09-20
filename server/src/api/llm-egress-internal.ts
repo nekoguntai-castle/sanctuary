@@ -214,7 +214,7 @@ router.get('/wallet/:id/utxo-health', asyncHandler(async (req, res) => {
   }
 
   try {
-    const { getUtxoHealthProfile } = await import('../services/autopilot/utxoHealth');
+    const { getUtxoHealthProfile } = await import('../services/autopilot/utxoHealth.js');
     const health = await getUtxoHealthProfile(id, 10_000); // default dust threshold
 
     res.json({
@@ -257,7 +257,7 @@ router.get('/wallet/:id/fee-history', asyncHandler(async (req, res) => {
   }
 
   try {
-    const { getRecentFees, getLatestFeeSnapshot } = await import('../services/autopilot/feeMonitor');
+    const { getRecentFees, getLatestFeeSnapshot } = await import('../services/autopilot/feeMonitor.js');
     const snapshots = await getRecentFees(1440); // 24 hours
     const latest = await getLatestFeeSnapshot();
 
@@ -360,7 +360,7 @@ router.get('/wallet/:id/utxo-age-profile', asyncHandler(async (req, res) => {
     throw new NotFoundError('Wallet not found');
   }
 
-  const { intelligenceRepository } = await import('../repositories/intelligenceRepository');
+  const { intelligenceRepository } = await import('../repositories/intelligenceRepository.js');
   const distribution = await intelligenceRepository.getUtxoAgeDistribution(id);
 
   // Find UTXOs approaching long-term threshold

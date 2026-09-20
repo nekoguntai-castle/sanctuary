@@ -14,7 +14,7 @@ export const recordFeesJob: WorkerJobHandler = {
   name: 'autopilot:record-fees',
   queue: 'maintenance',
   handler: async () => {
-    const { recordFeeSnapshot } = await import('../../services/autopilot/feeMonitor');
+    const { recordFeeSnapshot } = await import('../../services/autopilot/feeMonitor.js');
     await recordFeeSnapshot();
   },
   options: { attempts: 2 },
@@ -24,7 +24,7 @@ export const evaluateJob: WorkerJobHandler = {
   name: 'autopilot:evaluate',
   queue: 'maintenance',
   handler: async (_job, execution) => {
-    const { evaluateAllWallets } = await import('../../services/autopilot/evaluator');
+    const { evaluateAllWallets } = await import('../../services/autopilot/evaluator.js');
     execution?.throwIfAborted();
     await evaluateAllWallets(execution?.signal);
   },

@@ -11,7 +11,7 @@ cat > "$fixture_root/bin/npm" <<'FAKE_NPM'
 set -euo pipefail
 if [ "${1:-}" = '--version' ]; then printf '0.0.0\n'; exit 0; fi
 if [ "${1:-}" = 'install' ]; then
-  printf '#!/usr/bin/env bash\nprintf "11.19.1\\n"\n' > "$0.next"
+  printf '#!/usr/bin/env bash\nprintf "12.0.2\\n"\n' > "$0.next"
   chmod +x "$0.next"
   mv "$0.next" "$0"
   exit 0
@@ -45,7 +45,7 @@ chmod +x "$test_root/mock-bin/curl"
 
 write_lock() {
   local node_digest="$1"
-  printf '{"runtimes":{"node":"24.21.0","npm":"11.19.1"},"artifacts":{"nodeLinuxX64":{"url":"https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz","sha256":"%s"},"npm":{"url":"https://registry.npmjs.org/npm/-/npm-11.19.1.tgz","sha512":"%s"}}}\n' "$node_digest" "$npm_fixture_sha" > "$test_root/toolchain-lock.json"
+  printf '{"runtimes":{"node":"24.21.0","npm":"12.0.2"},"artifacts":{"nodeLinuxX64":{"url":"https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz","sha256":"%s"},"npm":{"url":"https://registry.npmjs.org/npm/-/npm-12.0.2.tgz","sha512":"%s"}}}\n' "$node_digest" "$npm_fixture_sha" > "$test_root/toolchain-lock.json"
 }
 
 write_lock "$fixture_sha"
@@ -61,7 +61,7 @@ export SANCTUARY_INSTALL_NPM=true
 scripts/ci/bootstrap-node.sh >/dev/null
 selected_bin="$(tail -1 "$GITHUB_PATH")"
 [ "$($selected_bin/node --version)" = 'v24.21.0' ]
-[ "$($selected_bin/npm --version)" = '11.19.1' ]
+[ "$($selected_bin/npm --version)" = '12.0.2' ]
 [ -f "$FAKE_CURL_MARKER" ]
 [ "$(wc -l < "$FAKE_CURL_MARKER")" -eq 2 ]
 mv "$FAKE_CURL_MARKER" "$FAKE_CURL_MARKER.first"

@@ -98,7 +98,7 @@ const hardwareSignedHelperFiles = (): string[] => {
     .map((name) => resolve(directory, name));
 };
 
-const resolveTypeScriptImport = (
+export const resolveTypeScriptImport = (
   sourcePath: string,
   specifier: string,
 ): string | undefined => {
@@ -124,12 +124,18 @@ const resolveTypeScriptImport = (
     throw new Error(`Repository import escapes the source tree: ${specifier}`);
   }
 
-  for (const candidate of [
-    importedPath,
-    `${importedPath}.ts`,
-    `${importedPath}.tsx`,
-    resolve(importedPath, "index.ts"),
-  ]) {
+  // Node-style emitted extensions still refer to TypeScript source. Preserve
+  // TypeScript's substitution order rather than binding stale emitted JS.
+  const extension = importedPath.match(/\.(?:jsx?|mjs|cjs)$/)?.[0];
+  const sourceExtensions = extension === ".mjs"
+    ? [".mts", ".d.mts", ".mjs"]
+    : extension === ".cjs"
+      ? [".cts", ".d.cts", ".cjs"]
+      : [".ts", ".tsx", ".d.ts", ".js", ".jsx"];
+  const candidates = extension
+    ? sourceExtensions.map((suffix) => importedPath.slice(0, -extension.length) + suffix)
+    : [importedPath, `${importedPath}.ts`, `${importedPath}.tsx`, resolve(importedPath, "index.ts")];
+  for (const candidate of candidates) {
     if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
   }
   throw new Error(
@@ -184,11 +190,23 @@ const staticRepositoryDependencies = (
 ): string[] => {
   return staticModuleSpecifiers(sourcePath, contents).flatMap((specifier) => {
     const dependency = resolveTypeScriptImport(sourcePath, specifier);
-    return dependency ? [dependency] : [];
+    if (!dependency) return [];
+    // A declaration may describe a local JS implementation. Bind both: a
+    // declaration hash alone cannot attest the code that executes at runtime.
+    const declaration = dependency.match(/\.d\.(ts|mts|cts)$/);
+    const runtimeExtensions = declaration?.[1] === "mts"
+      ? [".mjs"]
+      : declaration?.[1] === "cts" ? [".cjs"] : [".js", ".jsx"];
+    const runtimeDependencies = declaration
+      ? runtimeExtensions
+        .map((extension) => dependency.slice(0, -declaration[0].length) + extension)
+        .filter((candidate) => existsSync(candidate) && statSync(candidate).isFile())
+      : [];
+    return [dependency, ...runtimeDependencies];
   });
 };
 
-const repositoryDependencyClosure = (
+export const repositoryDependencyClosure = (
   sourcePaths: readonly string[],
 ): string[] => {
   const discovered = new Set(sourcePaths.map((path) => resolve(path)));

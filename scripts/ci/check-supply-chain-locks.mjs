@@ -218,7 +218,12 @@ function verifyToolchainSources(root, config, errors) {
   if (!setupAction.includes('scripts/ci/bootstrap-node.sh')) errors.push('shared Node setup must bootstrap the checksum-locked runtime');
 
   const goMod = readFileSync(path.join(root, 'scripts/verify-addresses/implementations/go.mod'), 'utf8');
-  if (!goMod.split(/\r?\n/).includes(`toolchain go${config.runtimes.go}`)) errors.push(`go.mod toolchain must be go${config.runtimes.go}`);
+  // Go removes a redundant toolchain directive when the language minimum is
+  // the same version. Both canonical forms must still select the exact pin.
+  const explicitGoToolchain = goMod.match(/^toolchain (\S+)$/m)?.[1];
+  const goMinimum = goMod.match(/^go (\S+)$/m)?.[1];
+  const selectedGoToolchain = explicitGoToolchain ?? `go${goMinimum}`;
+  if (selectedGoToolchain !== `go${config.runtimes.go}`) errors.push(`go.mod toolchain must be go${config.runtimes.go}`);
   if (readFileSync(path.join(root, '.nvmrc'), 'utf8').trim() !== config.runtimes.node) errors.push(`.nvmrc must be ${config.runtimes.node}`);
   for (const workflow of ['architecture.yml', 'quality.yml', 'test.yml', 'verify-vectors.yml']) {
     const contents = readFileSync(path.join(root, '.github/workflows', workflow), 'utf8');

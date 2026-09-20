@@ -4,9 +4,9 @@
   "description": "Cross-implementation address verification for Sanctuary",
   "allowScripts": {
     "core-js": false,
-    "esbuild@0.28.1": true,
     "fsevents": false,
-    "tiny-secp256k1": false
+    "tiny-secp256k1": false,
+    "esbuild@0.28.2": true
   },
   "type": "module",
   "scripts": {
@@ -24,13 +24,14 @@
     "tiny-secp256k1": "^2.2.4"
   },
   "devDependencies": {
-    "@types/node": "^24.12.2",
+    "@types/node": "24.13.5",
     "node-linux-x64": "24.21.0",
     "tsx": "^4.23.13",
-    "typescript": "~6.0.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2"
   },
   "overrides": {
-    "esbuild": "0.28.1",
+    "esbuild": "0.28.2",
     "valibot": "1.5.0"
   }
 }

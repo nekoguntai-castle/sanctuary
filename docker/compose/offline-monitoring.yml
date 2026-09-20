@@ -19,5 +19,5 @@ services:
   grafana-password-migration:
     pull_policy: never
   grafana:
-    image: grafana/grafana:10.4.19-security-01
+    image: grafana/grafana:13.2.2
     pull_policy: never

@@ -14,7 +14,7 @@ export const analyzeJob: WorkerJobHandler = {
   name: 'intelligence:analyze',
   queue: 'maintenance',
   handler: async (_job, execution) => {
-    const { runAnalysisPipelines } = await import('../../services/intelligence/analysisService');
+    const { runAnalysisPipelines } = await import('../../services/intelligence/analysisService.js');
     execution?.throwIfAborted();
     await runAnalysisPipelines(execution?.signal);
   },
@@ -29,7 +29,7 @@ export const cleanupJob: WorkerJobHandler = {
   name: 'intelligence:cleanup',
   queue: 'maintenance',
   handler: async () => {
-    const { cleanupExpiredInsights } = await import('../../services/intelligence/insightService');
+    const { cleanupExpiredInsights } = await import('../../services/intelligence/insightService.js');
     await cleanupExpiredInsights();
   },
   options: { attempts: 2 },

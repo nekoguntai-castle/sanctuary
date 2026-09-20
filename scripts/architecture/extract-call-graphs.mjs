@@ -270,19 +270,34 @@ function collectImports(sourceFile, file) {
   return map;
 }
 
-function resolveRelativeImport(fromFile, specifier) {
-  const baseDir = path.dirname(path.join(repoRoot, fromFile));
-  const candidates = [
-    `${specifier}.ts`,
-    `${specifier}.tsx`,
-    path.join(specifier, 'index.ts'),
-    path.join(specifier, 'index.tsx'),
-    specifier,
-  ];
+export function resolveRelativeImport(fromFile, specifier) {
+  if (!specifier.startsWith('.')) return null;
+
+  const importedPath = path.resolve(path.dirname(path.join(repoRoot, fromFile)), specifier);
+  // Node-style emitted extensions still refer to TypeScript source. Preserve
+  // TypeScript's substitution order so an explicit `.js` specifier resolves
+  // to its `.ts` source when both files are present.
+  const extension = importedPath.match(/\.(?:jsx?|mjs|cjs)$/)?.[0];
+  const sourceExtensions = extension === '.mjs'
+    ? ['.mts', '.d.mts', '.mjs']
+    : extension === '.cjs'
+      ? ['.cts', '.d.cts', '.cjs']
+      : ['.ts', '.tsx', '.d.ts', '.js', '.jsx'];
+  const candidates = extension
+    ? sourceExtensions.map((suffix) => importedPath.slice(0, -extension.length) + suffix)
+    : [
+      `${importedPath}.ts`,
+      `${importedPath}.tsx`,
+      path.join(importedPath, 'index.ts'),
+      path.join(importedPath, 'index.tsx'),
+      importedPath,
+      `${importedPath}.js`,
+      `${importedPath}.jsx`,
+      path.join(importedPath, 'index.js'),
+    ];
   for (const c of candidates) {
-    const abs = path.resolve(baseDir, c);
-    if (existsSync(abs)) {
-      return path.posix.normalize(path.relative(repoRoot, abs).split(path.sep).join('/'));
+    if (existsSync(c) && statSync(c).isFile()) {
+      return path.posix.normalize(path.relative(repoRoot, c).split(path.sep).join('/'));
     }
   }
   return null;

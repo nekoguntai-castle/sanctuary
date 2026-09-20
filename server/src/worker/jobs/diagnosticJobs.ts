@@ -56,7 +56,7 @@ async function maybeDelay(delayMs: number, signal?: AbortSignal): Promise<void> 
 
 async function runDiagnosticPing(
   job: Job<DiagnosticPingJobData>,
-  execution?: import('../../jobs/types').JobExecutionContext,
+  execution?: import('../../jobs/types.js').JobExecutionContext,
 ): Promise<DiagnosticPingJobResult> {
   const startedAt = Date.now();
   await maybeDelay(normalizeDelayMs(job.data?.delayMs), execution?.signal);

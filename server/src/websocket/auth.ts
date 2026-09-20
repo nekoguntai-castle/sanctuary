@@ -17,7 +17,7 @@
  */
 
 import { IncomingMessage } from 'http';
-import { parse as parseCookieHeader } from 'cookie';
+import { parseCookie as parseCookieHeader } from 'cookie';
 import { verifyToken, TokenAudience, type JWTPayload } from '../utils/jwt';
 import { createLogger } from '../utils/logger';
 import { resolveCurrentAccessTokenPayload } from '../services/accessTokenSessionService';

@@ -29,7 +29,7 @@ function required(name: string): string {
   return value;
 }
 
-describe.runIf(RUN_PROOF).sequential('pinned Ledger Speculos conformance', () => {
+describe.runIf(RUN_PROOF)('pinned Ledger Speculos conformance', { concurrent: false }, () => {
   let transport: SpeculosTransport;
   let adapter: LedgerAdapter;
   let fingerprint: string;

@@ -293,7 +293,7 @@ export async function exportWalletRemediationProposal(
   walletId: string,
   proposalId: string,
   proposalDigest: string,
-): Promise<import('./types').WalletRemediationExport> {
+): Promise<import('./types.js').WalletRemediationExport> {
   const proposal = await walletRemediationRepository.findExactProposal(walletId, proposalId, proposalDigest);
   if (!proposal) {
     throw new NotFoundError('Remediation proposal not found');

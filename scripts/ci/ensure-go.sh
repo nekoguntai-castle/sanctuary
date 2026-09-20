@@ -16,13 +16,27 @@ fail() {
   exit 1
 }
 
-# The funds-safety verifier uses the exact toolchain directive. Accepting a newer
+# The funds-safety verifier uses the exact toolchain directive, or the go directive
+# when Go removes a redundant toolchain directive. Accepting a newer
 # compiler would make the proof depend on whichever runner image happened to
 # execute it and could silently change generated evidence.
 read_required_version() {
   local go_mod="${SANCTUARY_GO_MOD:-$SCRIPT_DIR/../verify-addresses/implementations/go.mod}"
   [ -f "$go_mod" ] || fail "go.mod not found at ${go_mod}"
-  awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$go_mod"
+  awk '
+    $1 == "go" { minimum = $2; minimum_count++ }
+    $1 == "toolchain" { explicit = $2; explicit_count++ }
+    END {
+      if (minimum_count != 1 || explicit_count > 1) exit 1
+      selected = minimum
+      if (explicit_count) {
+        if (explicit !~ /^go[0-9]+[.][0-9]+[.][0-9]+$/) exit 1
+        selected = substr(explicit, 3)
+      }
+      if (selected !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) exit 1
+      print selected
+    }
+  ' "$go_mod" || fail 'could not read an exact Go version from go.mod'
 }
 
 main() {
@@ -32,7 +46,7 @@ main() {
 
   local required
   required="$(read_required_version)"
-  [ -n "$required" ] || fail 'could not read the exact toolchain directive from go.mod'
+  [ -n "$required" ] || fail 'could not read an exact Go version from go.mod'
 
   local go_bin
   go_bin="$(command -v go)" || fail 'go executable not found; the runner image is missing the Go toolchain'

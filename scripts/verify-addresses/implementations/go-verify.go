@@ -14,17 +14,17 @@ import (
 	"strconv"
 	"strings"
 
+	btcaddress "github.com/btcsuite/btcd/address/v2"
+	"github.com/btcsuite/btcd/address/v2/base58"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/btcsuite/btcd/btcutil"
-	"github.com/btcsuite/btcd/btcutil/base58"
-	"github.com/btcsuite/btcd/btcutil/hdkeychain"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/btcutil/v2/hdkeychain"
+	"github.com/btcsuite/btcd/chaincfg/v2"
+	"github.com/btcsuite/btcd/txscript/v2"
 	"github.com/tyler-smith/go-bip39"
 )
 
-const implementationVersion = "btcd 0.25.0 + go-bip39 1.1.0"
+const implementationVersion = "btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0"
 
 var slip132Versions = map[string][]byte{
 	"xpub": {0x04, 0x88, 0xb2, 0x1e}, "ypub": {0x04, 0x9d, 0x7c, 0xb2},
@@ -252,7 +252,7 @@ func makeAccountEvidence(seedID string, root, account *hdkeychain.ExtendedKey, t
 	}
 	payload := raw[4:78]
 	return accountEvidence{
-		SeedID: seedID, MasterFingerprint: hex.EncodeToString(btcutil.Hash160(rootPub.SerializeCompressed())[:4]),
+		SeedID: seedID, MasterFingerprint: hex.EncodeToString(btcaddress.Hash160(rootPub.SerializeCompressed())[:4]),
 		OriginPath: testCase.AccountPath, Encoded: base58.Encode(raw), VersionHex: hex.EncodeToString(version),
 		Depth: payload[0], ParentFingerprint: hex.EncodeToString(payload[1:5]),
 		ChildNumber: binary.BigEndian.Uint32(payload[5:9]), ChainCodeHex: hex.EncodeToString(payload[9:41]),
@@ -294,7 +294,7 @@ func deriveOutput(pubKeys [][]byte, testCase derivationCase) (string, []byte, er
 	if err != nil {
 		return "", nil, err
 	}
-	var address btcutil.Address
+	var address btcaddress.Address
 	if testCase.Kind == "single_sig" {
 		address, err = singleAddress(pubKeys[0], testCase.ScriptType, net)
 	} else {
@@ -310,15 +310,15 @@ func deriveOutput(pubKeys [][]byte, testCase derivationCase) (string, []byte, er
 	return address.EncodeAddress(), script, nil
 }
 
-func singleAddress(pubKey []byte, scriptType string, net *chaincfg.Params) (btcutil.Address, error) {
-	keyHash := btcutil.Hash160(pubKey)
+func singleAddress(pubKey []byte, scriptType string, net *chaincfg.Params) (btcaddress.Address, error) {
+	keyHash := btcaddress.Hash160(pubKey)
 	switch scriptType {
 	case "legacy":
-		return btcutil.NewAddressPubKeyHash(keyHash, net)
+		return btcaddress.NewAddressPubKeyHash(keyHash, net)
 	case "native_segwit":
-		return btcutil.NewAddressWitnessPubKeyHash(keyHash, net)
+		return btcaddress.NewAddressWitnessPubKeyHash(keyHash, net)
 	case "nested_segwit":
-		witness, err := btcutil.NewAddressWitnessPubKeyHash(keyHash, net)
+		witness, err := btcaddress.NewAddressWitnessPubKeyHash(keyHash, net)
 		if err != nil {
 			return nil, err
 		}
@@ -326,20 +326,20 @@ func singleAddress(pubKey []byte, scriptType string, net *chaincfg.Params) (btcu
 		if err != nil {
 			return nil, err
 		}
-		return btcutil.NewAddressScriptHash(redeem, net)
+		return btcaddress.NewAddressScriptHash(redeem, net)
 	case "taproot":
 		internal, err := btcec.ParsePubKey(pubKey)
 		if err != nil {
 			return nil, err
 		}
 		output := txscript.ComputeTaprootKeyNoScript(internal)
-		return btcutil.NewAddressTaproot(schnorr.SerializePubKey(output), net)
+		return btcaddress.NewAddressTaproot(schnorr.SerializePubKey(output), net)
 	default:
 		return nil, fmt.Errorf("unsupported single-sig script type: %s", scriptType)
 	}
 }
 
-func multisigAddress(pubKeys [][]byte, threshold int, scriptType string, net *chaincfg.Params) (btcutil.Address, error) {
+func multisigAddress(pubKeys [][]byte, threshold int, scriptType string, net *chaincfg.Params) (btcaddress.Address, error) {
 	if threshold < 1 || threshold > len(pubKeys) || len(pubKeys) > 16 {
 		return nil, fmt.Errorf("invalid multisig quorum")
 	}
@@ -353,7 +353,7 @@ func multisigAddress(pubKeys [][]byte, threshold int, scriptType string, net *ch
 		return nil, fmt.Errorf("build multisig witness script: %w", err)
 	}
 	witnessHash := sha256.Sum256(witnessScript)
-	witness, err := btcutil.NewAddressWitnessScriptHash(witnessHash[:], net)
+	witness, err := btcaddress.NewAddressWitnessScriptHash(witnessHash[:], net)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +365,7 @@ func multisigAddress(pubKeys [][]byte, threshold int, scriptType string, net *ch
 		if err != nil {
 			return nil, err
 		}
-		return btcutil.NewAddressScriptHash(redeem, net)
+		return btcaddress.NewAddressScriptHash(redeem, net)
 	}
 	return nil, fmt.Errorf("unsupported multisig script type: %s", scriptType)
 }

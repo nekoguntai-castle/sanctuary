@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { validateConfig } from '../../scripts/architecture/extract-call-graphs.mjs';
+import {
+  resolveRelativeImport,
+  validateConfig,
+} from '../../scripts/architecture/extract-call-graphs.mjs';
 
 describe('extract-call-graphs config validation', () => {
+  it('resolves emitted .js imports to TypeScript sources', () => {
+    expect(resolveRelativeImport(
+      'server/src/api/intelligence.ts',
+      '../repositories/intelligenceRepository.js',
+    )).toBe('server/src/repositories/intelligenceRepository.ts');
+  });
+
   it('accepts the supported call graph config shape', () => {
     const config = {
       $schema: './calls.config.schema.json',

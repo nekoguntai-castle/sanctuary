@@ -126,7 +126,7 @@ export interface WalletSigningInfo {
   masterFingerprint?: Buffer;
   accountXpub?: string;
   accountPath?: string;
-  multisigKeys?: import('../addressDerivation').MultisigKeyInfo[];
+  multisigKeys?: import('../addressDerivation.js').MultisigKeyInfo[];
   multisigQuorum?: number;
   multisigScriptType?: 'wsh-sortedmulti' | 'sh-wsh-sortedmulti';
   isMultisig: boolean;

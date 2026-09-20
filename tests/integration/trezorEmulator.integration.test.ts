@@ -279,9 +279,10 @@ async function loadAccounts(): Promise<EmulatorAccounts> {
   };
 }
 
-describe
-  .runIf(RUN_PROOF)
-  .sequential("pinned Trezor User Env conformance", () => {
+describe.runIf(RUN_PROOF)(
+  "pinned Trezor User Env conformance",
+  { concurrent: false },
+  () => {
     beforeAll(async () => {
       expect(requiredEnvironment("TREZOR_EMULATOR_IMAGE")).toBe(
         TREZOR_EMULATOR_PROOF_CONTRACT.image,
@@ -682,4 +683,5 @@ describe
         proof: proofState,
       });
     });
-  });
+  },
+);

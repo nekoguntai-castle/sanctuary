@@ -22,7 +22,7 @@ export async function sendNotifications(
     // to inline" pattern so every notification path has the same retry
     // semantics regardless of caller.
     if (newTransactions.length > 0) {
-      const { dispatchTransactionNotifications } = await import('../../../../notifications/dispatch');
+      const { dispatchTransactionNotifications } = await import('../../../../notifications/dispatch.js');
       dispatchTransactionNotifications(walletId, newTransactions.map(tx => ({
         txid: tx.txid,
         type: tx.type,
@@ -34,7 +34,7 @@ export async function sendNotifications(
     }
 
     // WebSocket events (always inline — they're cheap and real-time)
-    const { getNotificationService } = await import('../../../../../websocket/notifications');
+    const { getNotificationService } = await import('../../../../../websocket/notifications/index.js');
     const notificationService = getNotificationService();
     for (const tx of newTransactions) {
       notificationService.broadcastTransactionNotification({

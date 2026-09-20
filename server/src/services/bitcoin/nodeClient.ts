@@ -402,7 +402,7 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
   };
   let testClient: CapabilityProbeClient | null = null;
   try {
-    const ElectrumClientClass = (await import('./electrum')).ElectrumClient;
+    const ElectrumClientClass = (await import('./electrum/index.js')).ElectrumClient;
     testClient = new ElectrumClientClass({
       host: config.host,
       port: config.port,

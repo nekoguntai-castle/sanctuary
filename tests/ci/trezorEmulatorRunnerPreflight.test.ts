@@ -46,7 +46,7 @@ const createWorkspace = (): void => {
   writeFileSync(path.join(workspace, ".nvmrc"), "24.21.0\n");
   writeFileSync(
     path.join(workspace, "package.json"),
-    JSON.stringify({ packageManager: "npm@11.19.1" }),
+    JSON.stringify({ packageManager: "npm@12.0.2" }),
   );
 };
 
@@ -60,7 +60,7 @@ printf 'v%s\\n' "\${MOCK_NODE_VERSION:-24.21.0}"
   writeExecutable(
     "npm",
     `#!/usr/bin/env bash
-printf '%s\\n' "\${MOCK_NPM_VERSION:-11.19.1}"
+printf '%s\\n' "\${MOCK_NPM_VERSION:-12.0.2}"
 `,
   );
   writeExecutable(

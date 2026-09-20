@@ -6,8 +6,8 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "paths": {
-      "@/*": ["src/*"],
-      "@fixtures/*": ["tests/fixtures/*"],
+      "@/*": ["./src/*"],
+      "@fixtures/*": ["./tests/fixtures/*"],
       "@sanctuary/shared/*": ["../shared/dist/*"]
     }
   },

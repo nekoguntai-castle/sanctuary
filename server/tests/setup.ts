@@ -124,8 +124,8 @@ expect.extend({
 });
 
 // Type declarations for custom matchers
-declare module '@vitest/expect' {
-  interface Assertion<T> {
+declare module 'vitest' {
+  interface Assertion<T = any> {
     toBeValidBitcoinAddress(): T;
     toBeValidTxid(): T;
     toBeValidPsbt(): T;

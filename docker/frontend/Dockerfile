@@ -3,10 +3,10 @@
 # Optimized for fast builds with better layer caching
 # =============================================
 
-# Shared Node/npm toolchain. npm 11.16+ is required for package.json's
+# Shared Node/npm toolchain. npm 12.0.2+ is required for package.json's
 # allowScripts policy; both dependency and build stages inherit this layer.
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain
-ARG NPM_VERSION=11.19.1
+ARG NPM_VERSION=12.0.2
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
 # Stage 1: Dependencies

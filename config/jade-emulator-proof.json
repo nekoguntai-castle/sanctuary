@@ -58,7 +58,7 @@
   },
   "runtimeCompatibility": {
     "node": "24.21.0",
-    "npm": "11.19.1",
+    "npm": "12.0.2",
     "runnerOs": "Linux",
     "runnerArchitecture": "x86_64",
     "dockerServerOs": "linux",

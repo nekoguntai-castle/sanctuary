@@ -644,8 +644,8 @@ export async function findByWalletIdAndTxids<T extends Prisma.TransactionSelect>
   txids: string[],
   select: T,
   client: PrismaTxClient = prisma
-) {
-  return client.transaction.findMany({
+): Promise<Prisma.TransactionGetPayload<{ select: T }>[]> {
+  return client.transaction.findMany<{ select: T; where: Prisma.TransactionWhereInput }>({
     where: { walletId, txid: { in: txids } },
     select,
   });

@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { readdirSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,8 @@ import {
   coreReceiptPayload,
   currentHardwareEvidenceSourceManifest,
   defaultCommitReachability,
+  repositoryDependencyClosure,
+  resolveTypeScriptImport,
   sourceManifestMatches,
   validateCoreReceipt,
 } from "../../../helpers/hardwareSignedEvidenceProvenance";
@@ -24,6 +26,42 @@ const JADE_DEDICATED_PROOF_SOURCES = [
   "server/src/services/jadePinRelay.ts",
   "src/api/authPolicy.ts",
 ] as const;
+
+describe("hardware evidence source import resolution", () => {
+  it("resolves emitted extensions to the corresponding source and retains runtime code beside declarations", () => {
+    const tempRoot = resolve(REPO_ROOT, ".tmp");
+    mkdirSync(tempRoot, { recursive: true });
+    const directory = mkdtempSync(resolve(tempRoot, "hardware-source-imports-"));
+    const source = resolve(directory, "entry.ts");
+    const write = (name: string, contents = "export const value = 1;") => writeFileSync(resolve(directory, name), contents);
+    try {
+      write("entry.ts", 'export * from "./enums.js"; export * from "./esm.mjs"; export * from "./common.cjs";');
+      write("enums.ts"); write("enums.js", "export const stale = true;");
+      write("esm.mts"); write("esm.ts");
+      write("common.cts"); write("common.ts");
+      expect(resolveTypeScriptImport(source, "./enums.js")).toBe(resolve(directory, "enums.ts"));
+      expect(resolveTypeScriptImport(source, "./esm.mjs")).toBe(resolve(directory, "esm.mts"));
+      expect(resolveTypeScriptImport(source, "./common.cjs")).toBe(resolve(directory, "common.cts"));
+      expect(repositoryDependencyClosure([source])).not.toContain(resolve(directory, "enums.js"));
+      for (const [runtime, declaration] of [["plain.js", "plain.d.ts"], ["view.jsx", "view.d.ts"], ["module.mjs", "module.d.mts"], ["legacy.cjs", "legacy.d.cts"]]) {
+        write(runtime); write(declaration, "export declare const value: number;");
+        write("entry.ts", `export * from "./${runtime}";`);
+        expect(resolveTypeScriptImport(source, `./${runtime}`)).toBe(resolve(directory, declaration));
+        expect(repositoryDependencyClosure([source])).toEqual(expect.arrayContaining([resolve(directory, declaration), resolve(directory, runtime)]));
+      }
+      write("native.js");
+      write("wrong.ts");
+      expect(resolveTypeScriptImport(source, "./native.js")).toBe(resolve(directory, "native.js"));
+      expect(() => resolveTypeScriptImport(source, "./wrong.mjs")).toThrow("Cannot resolve repository import");
+      expect(() => resolveTypeScriptImport(source, "./wrong.cjs")).toThrow("Cannot resolve repository import");
+      expect(() => resolveTypeScriptImport(source, "./missing.js")).toThrow("Cannot resolve repository import");
+      expect(() => resolveTypeScriptImport(source, "../../../../outside.js")).toThrow("escapes the source tree");
+      expect(resolveTypeScriptImport(source, "node:fs")).toBeUndefined();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 function receiptVector(): HardwareSignedPsbtVector {
   return {
@@ -59,6 +97,17 @@ function recursiveTypeScriptPaths(directory: string): string[] {
 }
 
 describe("hardware evidence source inventory", () => {
+  it("binds generated Prisma source and rejects altered generated-source hashes", () => {
+    const sourceManifest = currentHardwareEvidenceSourceManifest("trezor");
+    for (const path of ["server/src/generated/prisma/client.ts", "server/src/generated/prisma/enums.ts", "server/src/generated/prisma/internal/class.ts"]) {
+      expect(sourceManifest.map((entry) => entry.path)).toContain(path);
+      const vector = {
+        vendor: "trezor",
+        evidence: { sourceManifest: sourceManifest.map((entry) => entry.path === path ? { ...entry, sha256: "0".repeat(64) } : entry) },
+      } as HardwareSignedPsbtVector;
+      expect(sourceManifestMatches(vector), path).toBe(false);
+    }
+  });
   it("recursively binds every selected-vendor adapter module and proof helper", () => {
     const paths = new Set(
       currentHardwareEvidenceSourceManifest("trezor").map(

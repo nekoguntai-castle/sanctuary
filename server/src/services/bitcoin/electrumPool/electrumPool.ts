@@ -92,7 +92,7 @@ export class ElectrumPool extends EventEmitter {
   private isShuttingDown = false;
   private isInitialized = false;
   private subscriptionConnectionId: { value: string | null } = { value: null };
-  private subscriptionConnectionPromise: Promise<import('../electrum').ElectrumClient> | null = null;
+  private subscriptionConnectionPromise: Promise<import('../electrum/index.js').ElectrumClient> | null = null;
   // Lock to prevent concurrent initialization
   private initializePromise: Promise<void> | null = null;
   private pendingAcquisitionConnections = 0;
@@ -535,7 +535,7 @@ export class ElectrumPool extends EventEmitter {
    * Get the dedicated subscription connection
    * This connection is reserved for real-time subscriptions and events
    */
-  async getSubscriptionConnection(): Promise<import('../electrum').ElectrumClient> {
+  async getSubscriptionConnection(): Promise<import('../electrum/index.js').ElectrumClient> {
     if (!this.isInitialized) {
       await this.initialize();
     }

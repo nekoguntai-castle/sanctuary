@@ -34,7 +34,7 @@ function required(name: string): string {
   return value;
 }
 
-describe.runIf(RUN_PROOF).sequential('pinned Jade QEMU conformance', () => {
+describe.runIf(RUN_PROOF)('pinned Jade QEMU conformance', { concurrent: false }, () => {
   let transport: JadeTcpTransport;
   let session: JadeProtocolSession;
   const family = RUN_PROOF ? required('JADE_EMULATOR_NETWORK') : 'mainnet';

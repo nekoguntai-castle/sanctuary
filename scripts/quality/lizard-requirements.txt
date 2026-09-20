@@ -1,2 +1,2 @@
 lizard==1.24.0
-Pygments==2.20.0
+Pygments==2.21.0

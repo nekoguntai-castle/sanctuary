@@ -50,7 +50,8 @@ export function convertToStandardXpub(extendedPubKey: string): string {
     const data = bs58check.decode(extendedPubKey);
 
     // First 4 bytes are version
-    const versionHex = data.slice(0, 4).toString('hex');
+    // bs58check 4 returns Uint8Array; normalize before using Buffer's hex formatter.
+    const versionHex = Buffer.from(data.slice(0, 4)).toString('hex');
     const slip132Info = SLIP132_VERSIONS[versionHex];
 
     if (slip132Info) {

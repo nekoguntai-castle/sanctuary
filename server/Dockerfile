@@ -3,9 +3,9 @@
 # Phase G: workspace-aware build (@sanctuary/shared via npm workspaces)
 # =============================================
 
-# Shared Node/npm toolchain. npm 11.16+ is required by the root package policy.
+# Shared Node/npm toolchain. npm 12.0.2+ is required by the root package policy.
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain
-ARG NPM_VERSION=11.19.1
+ARG NPM_VERSION=12.0.2
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
 # Stage 1: Dependencies — install at the workspace root
@@ -188,7 +188,7 @@ RUN rm -rf /app/node_modules/@sanctuary/shared && \
     install -d -o sanctuary -g nodejs /app/node_modules/@sanctuary/shared
 COPY --chown=sanctuary:nodejs --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
 COPY --chown=sanctuary:nodejs --from=builder /repo/shared/dist /app/node_modules/@sanctuary/shared/dist
-RUN node scripts/check-runtime-prisma-deps.cjs
+RUN node scripts/check-runtime-prisma-deps.cjs /app/node_modules /app/dist/server/src/generated/prisma/client.js
 USER sanctuary
 ENTRYPOINT ["dumb-init", "--"]
 EXPOSE 3001

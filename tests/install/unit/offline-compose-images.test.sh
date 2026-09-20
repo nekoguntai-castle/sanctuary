@@ -79,7 +79,7 @@ test_online_compose_remains_digest_pinned() {
     && assert_image_line "$CORE_BASE" \
       'tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459' \
     && assert_image_line "$MONITORING_BASE" \
-      'grafana/grafana:10.4.19-security-01@sha256:5584505cb75be8cb14c19d7473a87e2675c68b34b546bc1923ef74300c337111' \
+      'grafana/grafana:13.2.2@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0' \
     && assert_image_line "$TOR_BASE" \
       'dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53'
 }
@@ -101,7 +101,7 @@ test_monitoring_offline_override_cannot_materialize_other_profiles() {
     && assert_image_line "$MONITORING_OFFLINE" 'grafana/promtail:3.5.0' \
     && assert_image_line "$MONITORING_OFFLINE" 'prom/prometheus:v2.47.0' \
     && assert_image_line "$MONITORING_OFFLINE" 'prom/alertmanager:v0.26.0' \
-    && assert_image_line "$MONITORING_OFFLINE" 'grafana/grafana:10.4.19-security-01' \
+    && assert_image_line "$MONITORING_OFFLINE" 'grafana/grafana:13.2.2' \
     && ! grep -Fq '@sha256:' "$MONITORING_OFFLINE"
 }
 

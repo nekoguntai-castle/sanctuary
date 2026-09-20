@@ -1,8 +1,9 @@
 {
   "extends": "@docusaurus/tsconfig",
   "compilerOptions": {
-    "baseUrl": ".",
-    "resolveJsonModule": true
+    "baseUrl": null,
+    "resolveJsonModule": true,
+    "paths": { "@site/*": ["./*"] }
   },
   "include": ["src/", "*.ts"]
 }

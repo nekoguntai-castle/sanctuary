@@ -387,7 +387,7 @@ export async function findByWalletIdWithSelect<T extends Prisma.UTXOSelect>(
   select: T,
   client: PrismaTxClient = prisma
 ) {
-  return client.uTXO.findMany({
+  return client.uTXO.findMany<{ where: Prisma.UTXOWhereInput; select: T }>({
     where: { walletId },
     select,
   });

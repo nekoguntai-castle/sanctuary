@@ -2761,7 +2761,7 @@ assert_contains_in_order "$VV" \
 
 assert_occurrence_count "$VV" \
   "verify-vectors pins the live Bitcoin Core proof image by digest" \
-  "bitcoin/bitcoin:29.4@sha256:96b6aae8a8efa8985b8aa64b40b5eeaac42c09f81acbc9da70e3634fe9274dfe" \
+  "bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63" \
   1
 
 assert_named_job_step_contains "$VV" \
@@ -3562,20 +3562,20 @@ for node_workflow in architecture quality release-candidate test; do
     "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
     "${node_workflow} pins an allowScripts-capable npm" \
     "NODE_VERSION: '24.21.0'" \
-    "NPM_VERSION: '11.19.1'"
+    "NPM_VERSION: '12.0.2'"
 done
 
 assert_contains_in_order \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors pins its funds-safety Node and npm runtime exactly" \
   "NODE_VERSION: '24.21.0'" \
-  "NPM_VERSION: '11.19.1'" \
+  "NPM_VERSION: '12.0.2'" \
   "uses: ./.github/actions/setup-node-toolchain" \
   "install-npm: 'false'"
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:5d2ffaef8be0c0e62e8ac522d2cccc9fbbe0494cc307264559025ba5ac130197" 5
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0" 5
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
@@ -3596,7 +3596,7 @@ assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   'npm install --global --audit=false --fund=false /tmp/npm.tgz' 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins the npm tarball checksum" \
-  "ARG NPM_SHA512=cedb312b1b7f92421a02cfb68b4194e88f8346651dacd6acc5364a25ef5309d4a32b19616a1ff8aff865e7280c0fa5c0835a99f5cd93368991e2a80ec9da75d2" 1
+  "ARG NPM_SHA512=b885e890b9418fa1693544d05f53e64f9a73ec194837d4258b15fecdd692347b1dd2a517b1b0cbaf9d31cd8e92c3b70956bd2ecc72833a57b4b3098f5bfa7943" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner verifies the npm tarball checksum" \
   'echo "${NPM_SHA512}  /tmp/npm.tgz" | sha512sum -c -' 1
@@ -3678,7 +3678,7 @@ for dockerfile in docker/frontend/Dockerfile gateway/Dockerfile; do
     "$REPO_ROOT/$dockerfile" \
     "$dockerfile pins an allowScripts-capable npm" \
     "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
-    "ARG NPM_VERSION=11.19.1" \
+    "ARG NPM_VERSION=12.0.2" \
     'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
     "FROM node-toolchain AS deps" \
     "FROM node-toolchain AS builder"
@@ -3688,7 +3688,7 @@ assert_contains_in_order \
   "$REPO_ROOT/server/Dockerfile" \
   "server/Dockerfile pins an allowScripts-capable npm on a digest-locked Node base" \
   "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
-  "ARG NPM_VERSION=11.19.1" \
+  "ARG NPM_VERSION=12.0.2" \
   'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
   "FROM node-toolchain AS deps" \
   "FROM node-toolchain AS builder"

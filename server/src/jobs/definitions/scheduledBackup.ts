@@ -154,7 +154,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
     await fs.mkdir(backupDir, { recursive: true });
     execution?.throwIfAborted();
 
-    const { BackupService } = await import('../../services/backupService/backupService');
+    const { BackupService } = await import('../../services/backupService/backupService.js');
     const backupService = new BackupService();
     const backup = await backupService.createBackup('system-scheduled', {
       description: 'Automated daily backup',

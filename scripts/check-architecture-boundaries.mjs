@@ -108,19 +108,30 @@ function resolveRelativeImport(fromFile, specifier) {
   }
 
   const basePath = path.resolve(root, path.dirname(fromFile), specifier);
-  const candidates = [
-    basePath,
-    `${basePath}.ts`,
-    `${basePath}.tsx`,
-    `${basePath}.js`,
-    `${basePath}.jsx`,
-    `${basePath}.mjs`,
-    `${basePath}.cjs`,
-    path.join(basePath, 'index.ts'),
-    path.join(basePath, 'index.tsx'),
-    path.join(basePath, 'index.js'),
-    path.join(basePath, 'index.mjs'),
-  ];
+  // Node-style emitted extensions still refer to TypeScript source. Preserve
+  // TypeScript's substitution order so an explicit `.js` specifier resolves
+  // to its `.ts` source when both files are present.
+  const extension = basePath.match(/\.(?:jsx?|mjs|cjs)$/)?.[0];
+  const sourceExtensions = extension === '.mjs'
+    ? ['.mts', '.d.mts', '.mjs']
+    : extension === '.cjs'
+      ? ['.cts', '.d.cts', '.cjs']
+      : ['.ts', '.tsx', '.d.ts', '.js', '.jsx'];
+  const candidates = extension
+    ? sourceExtensions.map((suffix) => basePath.slice(0, -extension.length) + suffix)
+    : [
+      basePath,
+      `${basePath}.ts`,
+      `${basePath}.tsx`,
+      `${basePath}.js`,
+      `${basePath}.jsx`,
+      `${basePath}.mjs`,
+      `${basePath}.cjs`,
+      path.join(basePath, 'index.ts'),
+      path.join(basePath, 'index.tsx'),
+      path.join(basePath, 'index.js'),
+      path.join(basePath, 'index.mjs'),
+    ];
 
   for (const candidate of candidates) {
     if (existsSync(candidate) && statSync(candidate).isFile()) {
@@ -371,12 +382,22 @@ function exceptionKey(exception) {
   ].join('\u0000');
 }
 
+function canonicalSpecifier(specifier) {
+  if (!specifier.startsWith('.')) {
+    return specifier;
+  }
+  return specifier.replace(/\.(?:jsx?|mjs|cjs)(?= :: |$)/, '');
+}
+
 function matchingException(violation) {
   return exceptions.find((exception) => (
     exception.rule === violation.rule.id &&
     exception.file === violation.file &&
     exception.target === violation.target &&
-    (exception.specifier === undefined || exception.specifier === violation.specifier)
+    (exception.specifier === undefined || (
+      exception.specifier === violation.specifier ||
+      canonicalSpecifier(exception.specifier) === canonicalSpecifier(violation.specifier)
+    ))
   ));
 }
 

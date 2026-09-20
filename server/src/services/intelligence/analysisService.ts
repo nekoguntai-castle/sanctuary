@@ -199,7 +199,7 @@ async function gatherContext(
 async function gatherUtxoHealthContext(
   walletId: string,
 ): Promise<AnalysisContext | null> {
-  const { getUtxoHealthProfile } = await import("../autopilot/utxoHealth");
+  const { getUtxoHealthProfile } = await import("../autopilot/utxoHealth.js");
   const health = await getUtxoHealthProfile(walletId, 10_000);
   if (health.totalUtxos === 0) {
     return null;
@@ -230,7 +230,7 @@ function averageEconomy(snapshots: Array<{ economy: number }>): number | null {
 
 async function gatherFeeTimingContext(): Promise<AnalysisContext | null> {
   const { getRecentFees, getLatestFeeSnapshot } =
-    await import("../autopilot/feeMonitor");
+    await import("../autopilot/feeMonitor.js");
   const snapshots = await getRecentFees(1440);
   const latest = await getLatestFeeSnapshot();
   if (!latest || snapshots.length < 6) {
@@ -313,9 +313,9 @@ async function gatherTaxContext(
 async function gatherConsolidationContext(
   walletId: string,
 ): Promise<AnalysisContext | null> {
-  const { getUtxoHealthProfile } = await import("../autopilot/utxoHealth");
+  const { getUtxoHealthProfile } = await import("../autopilot/utxoHealth.js");
   const { getLatestFeeSnapshot, getRecentFees } =
-    await import("../autopilot/feeMonitor");
+    await import("../autopilot/feeMonitor.js");
 
   const [health, latest, snapshots] = await Promise.all([
     getUtxoHealthProfile(walletId, 10_000),
