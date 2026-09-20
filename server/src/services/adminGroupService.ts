@@ -1,11 +1,9 @@
 import { NotFoundError, ConflictError } from '../errors/ApiError';
-import { clearAccessCacheStrict, invalidateUserAccessCacheStrict } from './accessControl';
 import * as groupRepo from '../repositories/groupRepository';
 import { findById as findUserById } from '../repositories/userRepository';
 import { invalidateWebSocketWalletAccess } from './websocketAuthorizationInvalidation';
 
 type GroupWithMembers = NonNullable<Awaited<ReturnType<typeof groupRepo.findByIdWithMembers>>>;
-type SetMembersResult = groupRepo.SetMembersResult;
 
 export type AdminGroupInput = {
   name?: string;
@@ -51,14 +49,13 @@ export async function listAdminGroups(): Promise<AdminGroupResponse[]> {
 }
 
 export async function createAdminGroup(input: CreateAdminGroupInput): Promise<AdminGroupResponse> {
-  const result = await groupRepo.createWithMembers({
+  const { group } = await groupRepo.createWithMembers({
     name: input.name,
     description: input.description || null,
     purpose: input.purpose || null,
     memberIds: input.memberIds ?? [],
   });
-  await invalidateChangedGroupMemberAccessCaches(result.membershipChanges);
-  return formatGroup(result.group);
+  return formatGroup(group);
 }
 
 export async function updateAdminGroup(
@@ -75,10 +72,6 @@ export async function updateAdminGroup(
   }
   if (input.memberIds !== undefined) {
     await invalidateWebSocketWalletAccess(result.affectedWalletIds);
-    // The transaction may already have committed when cache invalidation fails.
-    // Clear the complete cache even for an idempotent retry so a retry can repair
-    // stale decisions for users removed by the first committed attempt.
-    await clearAccessCacheStrict();
   }
   return formatGroup(result.group);
 }
@@ -91,10 +84,6 @@ export async function deleteAdminGroup(groupId: string): Promise<DeletedAdminGro
 
   await invalidateWebSocketWalletAccess(
     deletedGroup.wallets.map(({ id }) => id),
-  );
-
-  await Promise.all(
-    deletedGroup.members.map((member) => invalidateUserAccessCacheStrict(member.userId)),
   );
 
   return {
@@ -124,7 +113,6 @@ export async function addAdminGroupMember(
   }
 
   const membership = await groupRepo.addMember(groupId, userId, role);
-  await invalidateUserAccessCacheStrict(userId);
 
   return {
     userId,
@@ -140,7 +128,6 @@ export async function removeAdminGroupMember(groupId: string, userId: string): P
   }
 
   await invalidateWebSocketWalletAccess(result.affectedWalletIds);
-  await invalidateUserAccessCacheStrict(userId);
 }
 
 function formatGroup(group: GroupWithMembers): AdminGroupResponse {
@@ -157,17 +144,4 @@ function formatGroup(group: GroupWithMembers): AdminGroupResponse {
       role: member.role,
     })),
   };
-}
-
-async function invalidateChangedGroupMemberAccessCaches(
-  membershipChanges: SetMembersResult,
-): Promise<void> {
-  const affectedUserIds = new Set([
-    ...membershipChanges.removedUserIds,
-    ...membershipChanges.addedUserIds,
-  ]);
-
-  await Promise.all(
-    [...affectedUserIds].map((userId) => invalidateUserAccessCacheStrict(userId)),
-  );
 }

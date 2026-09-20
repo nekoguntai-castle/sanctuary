@@ -141,7 +141,7 @@ export const adminIdentityPolicyPaths = {
     delete: {
       tags: ['Admin'],
       summary: 'Delete group',
-      description: 'Delete an administrative group and invalidate access caches for former members.',
+      description: 'Delete an administrative group and refresh WebSocket wallet access for former members.',
       security: bearerAuth,
       parameters: [adminGroupIdParameter],
       responses: {

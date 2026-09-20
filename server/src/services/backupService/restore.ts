@@ -8,8 +8,6 @@
 import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
-import { withTimeout } from '../../utils/async';
-import { clearAccessCacheStrict } from '../../infrastructure/accessCache';
 import { migrationService } from '../migrationService';
 import { camelToSnakeCase } from './serialization';
 import { migrateBackup } from './migration';
@@ -54,7 +52,6 @@ import { acquireWalletSyncRetirementLock } from '../../repositories/walletSyncRe
 import type { Prisma } from '../../generated/prisma/client';
 
 const log = createLogger('BACKUP:SVC');
-const RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS = 5_000;
 
 async function readOperationalSettings(
   tx: PrismaTxClient,
@@ -292,24 +289,21 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
     };
   }
 
-  const [cacheError, featureRuntimeError] = await Promise.all([
-    clearAccessCacheAfterCommittedRestore(),
-    featureFlagService.reconcileAfterRestore(restoredRuntimeState).then(
-      () => null,
-      (error) => `Restore committed but feature runtime reconciliation failed: ${getErrorMessage(error)}`,
-    ),
-  ]);
-  if (cacheError || featureRuntimeError) {
+  const featureRuntimeError = await featureFlagService.reconcileAfterRestore(restoredRuntimeState).then(
+    () => null,
+    (error) => `Restore committed but feature runtime reconciliation failed: ${getErrorMessage(error)}`,
+  );
+  if (featureRuntimeError) {
     return {
       success: false,
       tablesRestored,
       recordsRestored,
       warnings,
       committed: true,
-      cacheInvalidated: !cacheError,
-      accessCacheReconciled: !cacheError,
-      featureRuntimeReconciled: !featureRuntimeError,
-      error: [cacheError, featureRuntimeError].filter(Boolean).join('; '),
+      cacheInvalidated: true,
+      accessCacheReconciled: true,
+      featureRuntimeReconciled: false,
+      error: featureRuntimeError,
     };
   }
 
@@ -407,26 +401,6 @@ async function mergeImmutableEvidenceRecords(
       continue;
     }
     await client.create({ data: record });
-  }
-}
-
-async function clearAccessCacheAfterCommittedRestore(): Promise<string | null> {
-  try {
-    await withTimeout(
-      clearAccessCacheStrict(),
-      RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS,
-      `Access cache invalidation timed out after ${RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS}ms`,
-      (lateError) => {
-        log.warn('[BACKUP] Access cache invalidation failed after restore timeout', {
-          error: getErrorMessage(lateError),
-        });
-      }
-    );
-    return null;
-  } catch (error) {
-    const errorMessage = `Restore committed but access cache invalidation failed: ${getErrorMessage(error)}`;
-    log.error('[BACKUP] ' + errorMessage);
-    return errorMessage;
   }
 }
 

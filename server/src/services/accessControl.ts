@@ -7,15 +7,6 @@
 
 import { walletSharingRepository, walletRepository, transactionRepository, addressRepository } from '../repositories';
 import { NotFoundError, ForbiddenError, WalletNotFoundError } from '../errors';
-import { createLogger } from '../utils/logger';
-import { getErrorMessage } from '../utils/errors';
-import {
-  clearAccessCache,
-  getAccessCache,
-  invalidateUserAccessCache,
-  invalidateUserAccessCacheStrict,
-  invalidateWalletAccessCache,
-} from '../infrastructure/accessCache';
 import {
   canWalletRoleApprove,
   canWalletRoleEdit,
@@ -23,21 +14,6 @@ import {
   parseWalletRole,
   type WalletRole,
 } from '@sanctuary/shared/constants/walletRoles';
-
-export {
-  clearAccessCache,
-  clearAccessCacheStrict,
-  invalidateUserAccessCache,
-  invalidateUserAccessCacheStrict,
-  invalidateWalletAccessCache,
-} from '../infrastructure/accessCache';
-
-const log = createLogger('ACCESS_CONTROL:SVC');
-
-/**
- * Cache TTL for wallet access checks (30 seconds - short for security)
- */
-const ACCESS_CACHE_TTL_SECONDS = 30;
 
 /**
  * Access check result for a wallet
@@ -70,42 +46,13 @@ export function buildWalletAccessWhere(userId: string) {
 }
 
 /**
- * Cache entry wrapper to distinguish "no access" from "cache miss"
- */
-interface CachedRole {
-  role: WalletRole;
-}
-
-/**
  * Get user's role for a specific wallet
- * Returns the highest privilege role if user has multiple access paths
- * Uses distributed cache (Redis or in-memory fallback) with 30s TTL
+ * A direct wallet role takes precedence over group membership.
+ * Reads durable relationships for every authorization decision. A cached role
+ * can outlive a committed transfer when an in-flight fill races invalidation.
  */
 export async function getUserWalletRole(walletId: string, userId: string): Promise<WalletRole> {
-  const cacheKey = `${userId}:${walletId}`;
-  const cache = getAccessCache();
-
-  // Check cache first
-  try {
-    const cached = await cache.get<CachedRole>(cacheKey);
-    if (cached !== null && typeof cached === 'object' && 'role' in cached) {
-      return parseWalletRole(cached.role);
-    }
-  } catch (error) {
-    log.debug('Access cache lookup failed, continuing to DB', { error: getErrorMessage(error) });
-  }
-
-  const role = await getUserWalletRoleUncached(walletId, userId);
-
-  // Cache the result (including null for no access)
-  // Wrap in object to distinguish from cache miss
-  try {
-    await cache.set<CachedRole>(cacheKey, { role }, ACCESS_CACHE_TTL_SECONDS);
-  } catch (error) {
-    log.debug('Failed to cache access role', { error: getErrorMessage(error) });
-  }
-
-  return role;
+  return getUserWalletRoleUncached(walletId, userId);
 }
 
 /** Resolve current wallet access directly from durable relationships. */
@@ -143,7 +90,7 @@ export async function checkWalletAccess(walletId: string, userId: string): Promi
   };
 }
 
-/** Check durable wallet relationships without trusting an access cache entry. */
+/** Legacy name for the same durable check as checkWalletAccess. */
 export async function checkWalletAccessUncached(
   walletId: string,
   userId: string,
@@ -371,11 +318,6 @@ export const accessControlService = {
   checkAddressAccess,
   requireAddressAccess,
   requireAddressEditAccess,
-  // Cache management
-  invalidateWalletAccessCache,
-  invalidateUserAccessCache,
-  invalidateUserAccessCacheStrict,
-  clearAccessCache,
 };
 
 export default accessControlService;

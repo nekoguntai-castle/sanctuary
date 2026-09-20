@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   mockAssertWalletHardwareCapabilityById,
   mockBuildDescriptorFromDevices,
+  mockCache,
   mockHookExecuteAfter,
   mockLogError,
   mockLogWarn,
@@ -251,6 +252,15 @@ export function registerWalletMutationMaintenanceTests(): void {
     it('rejects delete for non-owner users', async () => {
       mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce(null);
       await expect(deleteWallet('wallet-1', 'viewer-1')).rejects.toThrow('Only wallet owners can delete wallet');
+    });
+
+    it('rejects a former owner despite a stale cached owner grant', async () => {
+      mockCache.get.mockResolvedValue({ role: 'owner' });
+      mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'viewer' });
+
+      await expect(deleteWallet('wallet-1', 'former-owner-1')).rejects.toThrow('Only wallet owners can delete wallet');
+      expect(mockPrismaClient.wallet.delete).not.toHaveBeenCalled();
+      expect(mockCache.get).not.toHaveBeenCalled();
     });
 
     it('rejects delete for signer-only users', async () => {

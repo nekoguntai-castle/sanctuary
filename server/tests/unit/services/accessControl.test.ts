@@ -54,7 +54,6 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 import prisma from '../../../src/models/prisma';
-import { clearAccessCacheStrict } from '../../../src/infrastructure/accessCache';
 import {
   getUserWalletRole,
   getUserWalletRoleUncached,
@@ -67,10 +66,6 @@ import {
   requireWalletAccess,
   requireWalletEditAccess,
   requireWalletOwnerAccess,
-  invalidateWalletAccessCache,
-  invalidateUserAccessCache,
-  invalidateUserAccessCacheStrict,
-  clearAccessCache,
   checkTransactionAccess,
   requireTransactionAccess,
   buildWalletAccessWhere,
@@ -115,6 +110,35 @@ describe('Access Control Service', () => {
   });
 
   describe('getUserWalletRole', () => {
+    it('does not restore a former owner grant after transfer invalidates an in-flight lookup', async () => {
+      let releaseOldRead!: (value: WalletUser) => void;
+      const oldRead = new Promise<WalletUser>((resolve) => {
+        releaseOldRead = resolve;
+      });
+      let cachedRole: { role: string } | null = null;
+      mockCache.get.mockImplementation(async () => cachedRole);
+      mockCache.set.mockImplementation(async (_key, value) => {
+        cachedRole = value;
+      });
+      mockCache.deletePattern.mockImplementation(async () => {
+        cachedRole = null;
+      });
+      vi.mocked(prisma.walletUser.findFirst)
+        .mockImplementationOnce(() => oldRead as never)
+        .mockResolvedValue(makeWalletUser(walletId, userId, 'viewer'));
+
+      const inFlightLookup = getUserWalletRole(walletId, userId);
+      await vi.waitFor(() => expect(prisma.walletUser.findFirst).toHaveBeenCalledTimes(1));
+
+      // The transfer commits the downgrade while the old lookup is in flight.
+      cachedRole = null; // Transfer invalidated the old grant before this read completed.
+      releaseOldRead(makeWalletUser(walletId, userId, 'owner'));
+      await expect(inFlightLookup).resolves.toBe('owner');
+
+      // A new owner-only request must see the durable viewer role.
+      await expect(checkWalletOwnerAccess(walletId, userId)).resolves.toBe(false);
+    });
+
     it('can bypass a stale cached grant for security-sensitive revalidation', async () => {
       mockCache.get.mockResolvedValue({ role: 'owner' });
       vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(null);
@@ -199,44 +223,22 @@ describe('Access Control Service', () => {
       expect(role).toBeNull();
     });
 
-    it('should return cached role without querying database', async () => {
-      mockCache.get.mockResolvedValueOnce({ role: 'owner' });
-
-      const role = await getUserWalletRole(walletId, userId);
-
-      expect(role).toBe('owner');
-      expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
-      expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('should fail closed for malformed cached wallet roles', async () => {
-      mockCache.get.mockResolvedValueOnce({ role: 'admin' });
-
-      const role = await getUserWalletRole(walletId, userId);
-
-      expect(role).toBeNull();
-      expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
-      expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('continues through database lookup when access cache read or write fails', async () => {
-      mockCache.get.mockRejectedValueOnce(new Error('cache read failed'));
-      mockCache.set.mockRejectedValueOnce(new Error('cache write failed'));
+    it('ignores a stale cached owner role after a durable downgrade', async () => {
+      mockCache.get.mockResolvedValue({ role: 'owner' });
       vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
-        makeWalletUser(walletId, userId, 'owner')
+        makeWalletUser(walletId, userId, 'viewer'),
       );
 
-      const role = await getUserWalletRole(walletId, userId);
+      await expect(checkWalletOwnerAccess(walletId, userId)).resolves.toBe(false);
+      expect(mockCache.get).not.toHaveBeenCalled();
+    });
 
-      expect(role).toBe('owner');
-      expect(mockLog.debug).toHaveBeenCalledWith(
-        'Access cache lookup failed, continuing to DB',
-        { error: 'cache read failed' }
-      );
-      expect(mockLog.debug).toHaveBeenCalledWith(
-        'Failed to cache access role',
-        { error: 'cache write failed' }
-      );
+    it('propagates repository failures instead of granting cached access', async () => {
+      mockCache.get.mockResolvedValue({ role: 'owner' });
+      vi.mocked(prisma.walletUser.findFirst).mockRejectedValue(new Error('database unavailable'));
+
+      await expect(getUserWalletRole(walletId, userId)).rejects.toThrow('database unavailable');
+      expect(mockCache.get).not.toHaveBeenCalled();
     });
   });
 
@@ -539,154 +541,4 @@ describe('Access Control Service', () => {
     });
   });
 
-  describe('Cache Management', () => {
-    describe('invalidateWalletAccessCache', () => {
-      it('should delete cache pattern for wallet', async () => {
-        await invalidateWalletAccessCache(walletId);
-        // Should complete without throwing
-      });
-
-      it('should swallow cache errors when invalidating wallet cache', async () => {
-        mockCache.deletePattern.mockRejectedValueOnce(new Error('cache down'));
-
-        await expect(invalidateWalletAccessCache(walletId)).resolves.toBeUndefined();
-      });
-    });
-
-    describe('invalidateUserAccessCache', () => {
-      it('should delete cache pattern for user', async () => {
-        await invalidateUserAccessCache(userId);
-        // Should complete without throwing
-      });
-
-      it('should swallow cache errors when invalidating user cache', async () => {
-        mockCache.deletePattern.mockRejectedValueOnce(new Error('cache down'));
-
-        await expect(invalidateUserAccessCache(userId)).resolves.toBeUndefined();
-      });
-
-      it('should propagate cache errors from strict user invalidation', async () => {
-        mockCache.deletePattern.mockRejectedValueOnce(new Error('cache down'));
-
-        await expect(invalidateUserAccessCacheStrict(userId)).rejects.toThrow('cache down');
-      });
-
-      it('should strictly invalidate a user cache and record completion', async () => {
-        await invalidateUserAccessCacheStrict(userId);
-
-        expect(mockCache.deletePattern).toHaveBeenCalledWith(`${userId}:*`);
-        expect(mockLog.debug).toHaveBeenCalledWith(
-          'Invalidated access cache for user',
-          { userId: userId.substring(0, 8) },
-        );
-      });
-    });
-
-    describe('clearAccessCache', () => {
-      it('should clear entire cache', async () => {
-        await clearAccessCache();
-        // Should complete without throwing
-      });
-
-      it('should swallow cache errors when clearing cache', async () => {
-        mockCache.clear.mockRejectedValueOnce(new Error('cache down'));
-
-        await expect(clearAccessCache()).resolves.toBeUndefined();
-      });
-    });
-
-    describe('clearAccessCacheStrict', () => {
-      it('should clear entire cache', async () => {
-        await clearAccessCacheStrict();
-
-        expect(mockCache.clear).toHaveBeenCalled();
-      });
-
-      it('should propagate cache errors when clearing cache', async () => {
-        mockCache.clear.mockRejectedValueOnce(new Error('cache down'));
-
-        await expect(clearAccessCacheStrict()).rejects.toThrow('cache down');
-      });
-    });
-
-    describe('cache invalidation causes DB re-query', () => {
-      it('should use cached role without hitting DB', async () => {
-        mockCache.get.mockResolvedValueOnce({ role: 'owner' });
-
-        const role = await getUserWalletRole(walletId, userId);
-
-        expect(role).toBe('owner');
-        expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
-        expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
-      });
-
-      it('should query DB after cache returns null (cache miss)', async () => {
-        mockCache.get.mockResolvedValueOnce(null);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
-        makeWalletUser(walletId, userId, 'signer')
-      );
-
-        const role = await getUserWalletRole(walletId, userId);
-
-        expect(role).toBe('signer');
-        expect(prisma.walletUser.findFirst).toHaveBeenCalledWith({
-          where: { walletId, userId },
-        });
-        // Should cache the result for next lookup
-        expect(mockCache.set).toHaveBeenCalled();
-      });
-
-      it('should re-query DB after wallet cache invalidation', async () => {
-        // First call: cache hit
-        mockCache.get.mockResolvedValueOnce({ role: 'viewer' });
-        const role1 = await getUserWalletRole(walletId, userId);
-        expect(role1).toBe('viewer');
-        expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
-
-        // Invalidate cache
-        await invalidateWalletAccessCache(walletId);
-
-        // Second call: cache miss, should query DB
-        mockCache.get.mockResolvedValueOnce(null);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
-        makeWalletUser(walletId, userId, 'owner')
-      );
-
-        const role2 = await getUserWalletRole(walletId, userId);
-        expect(role2).toBe('owner');
-        expect(prisma.walletUser.findFirst).toHaveBeenCalled();
-      });
-
-      it('should re-query DB after user cache invalidation', async () => {
-        // First call: cache hit
-        mockCache.get.mockResolvedValueOnce({ role: 'viewer' });
-        const role1 = await getUserWalletRole(walletId, userId);
-        expect(role1).toBe('viewer');
-        expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
-
-        // Invalidate user cache (simulating group membership change)
-        await invalidateUserAccessCache(userId);
-
-        // Second call: cache miss, should query DB
-        mockCache.get.mockResolvedValueOnce(null);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(null);
-        vi.mocked(prisma.wallet.findFirst).mockResolvedValue({
-          id: walletId,
-          groupRole: 'signer',
-        } as never);
-
-        const role2 = await getUserWalletRole(walletId, userId);
-        expect(role2).toBe('signer');
-        expect(prisma.wallet.findFirst).toHaveBeenCalled();
-      });
-
-      it('should handle consecutive invalidations without errors', async () => {
-        await invalidateWalletAccessCache(walletId);
-        await invalidateWalletAccessCache(walletId);
-        await invalidateUserAccessCache(userId);
-        await invalidateUserAccessCache(userId);
-        // Should complete without errors
-      });
-    });
-  });
 });

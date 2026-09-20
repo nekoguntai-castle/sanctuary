@@ -5,7 +5,7 @@
  * Thin wrapper around the generic resource access middleware factory.
  *
  * The middleware performs exactly one role lookup per request
- * (`getUserWalletRole`, which is cached for 30s) and derives each access
+ * (`getUserWalletRole`, which reads durable membership) and derives each access
  * level synchronously from the returned role.
  */
 

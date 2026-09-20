@@ -412,17 +412,17 @@ describe('Admin Backup Routes', () => {
     );
   });
 
-  it('reports committed restore cache invalidation failures distinctly', async () => {
+  it('reports committed restore feature runtime failures distinctly', async () => {
     mockRestoreFromBackup.mockResolvedValue({
       success: false,
       tablesRestored: 5,
       recordsRestored: 100,
       warnings: [],
       committed: true,
-      cacheInvalidated: false,
-      accessCacheReconciled: false,
-      featureRuntimeReconciled: true,
-      error: 'Restore committed but access cache invalidation failed: cache down',
+      cacheInvalidated: true,
+      accessCacheReconciled: true,
+      featureRuntimeReconciled: false,
+      error: 'Restore committed but feature runtime reconciliation failed: worker acknowledgement missing',
     });
 
     const response = await request(app)
@@ -432,12 +432,12 @@ describe('Admin Backup Routes', () => {
     expect(response.status).toBe(500);
     expect(response.body).toMatchObject({
       error: 'Restore Failed',
-      message: 'Restore committed but access cache invalidation failed: cache down',
+      message: 'Restore committed but feature runtime reconciliation failed: worker acknowledgement missing',
       warnings: [],
-      accessCacheReconciled: false,
-      featureRuntimeReconciled: true,
+      accessCacheReconciled: true,
+      featureRuntimeReconciled: false,
       committed: true,
-      cacheInvalidated: false,
+      cacheInvalidated: true,
     });
   });
 

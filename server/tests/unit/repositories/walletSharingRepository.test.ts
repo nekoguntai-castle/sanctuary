@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-const { mockInvalidateWalletAccessCache, mockInvalidateUserAccessCache } = vi.hoisted(() => ({
-  mockInvalidateWalletAccessCache: vi.fn(),
-  mockInvalidateUserAccessCache: vi.fn(),
-}));
-
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
@@ -25,11 +20,6 @@ vi.mock('../../../src/models/prisma', () => ({
       findMany: vi.fn(),
     },
   },
-}));
-
-vi.mock('../../../src/infrastructure/accessCache', () => ({
-  invalidateWalletAccessCache: mockInvalidateWalletAccessCache,
-  invalidateUserAccessCache: mockInvalidateUserAccessCache,
 }));
 
 import prisma from '../../../src/models/prisma';
@@ -74,7 +64,7 @@ describe('walletSharingRepository', () => {
     });
   });
 
-  it('addUserToWallet and updateUserRole invalidate wallet access cache', async () => {
+  it('addUserToWallet and updateUserRole persist the requested grants', async () => {
     (prisma.walletUser.create as Mock).mockResolvedValue({ id: 'wu-1', walletId: 'wallet-1' });
     (prisma.walletUser.update as Mock).mockResolvedValue({ id: 'wu-1', walletId: 'wallet-2', role: 'signer' });
 
@@ -95,36 +85,17 @@ describe('walletSharingRepository', () => {
       where: { id: 'wu-1' },
       data: { role: 'signer' },
     });
-    expect(mockInvalidateWalletAccessCache).toHaveBeenNthCalledWith(1, 'wallet-1');
-    expect(mockInvalidateWalletAccessCache).toHaveBeenNthCalledWith(2, 'wallet-2');
   });
 
-  it('removeUserFromWallet invalidates cache when user record exists', async () => {
-    (prisma.walletUser.findUnique as Mock).mockResolvedValue({
-      walletId: 'wallet-1',
-      userId: 'user-1',
-    });
+  it('removeUserFromWallet deletes the grant directly', async () => {
     (prisma.walletUser.delete as Mock).mockResolvedValue(undefined);
 
     await removeUserFromWallet('wu-1');
 
-    expect(prisma.walletUser.findUnique).toHaveBeenCalledWith({
-      where: { id: 'wu-1' },
-      select: { walletId: true, userId: true },
-    });
+    expect(prisma.walletUser.findUnique).not.toHaveBeenCalled();
     expect(prisma.walletUser.delete).toHaveBeenCalledWith({
       where: { id: 'wu-1' },
     });
-    expect(mockInvalidateWalletAccessCache).toHaveBeenCalledWith('wallet-1');
-  });
-
-  it('removeUserFromWallet skips cache invalidation when relation does not exist', async () => {
-    (prisma.walletUser.findUnique as Mock).mockResolvedValue(null);
-    (prisma.walletUser.delete as Mock).mockResolvedValue(undefined);
-
-    await removeUserFromWallet('wu-missing');
-
-    expect(mockInvalidateWalletAccessCache).not.toHaveBeenCalled();
   });
 
   it('updateWalletGroup sets role semantics correctly for assign/remove', async () => {
@@ -147,7 +118,6 @@ describe('walletSharingRepository', () => {
         groupRole: 'viewer',
       },
     });
-    expect(mockInvalidateWalletAccessCache).toHaveBeenCalledTimes(2);
   });
 
   it('updateWalletGroupWithResult includes group and returns wallet', async () => {
@@ -165,7 +135,6 @@ describe('walletSharingRepository', () => {
         group: true,
       },
     });
-    expect(mockInvalidateWalletAccessCache).toHaveBeenCalledWith('wallet-1');
   });
 
   it('updateWalletGroupWithResult clears groupId and resets role when group is removed', async () => {
@@ -183,7 +152,6 @@ describe('walletSharingRepository', () => {
         group: true,
       },
     });
-    expect(mockInvalidateWalletAccessCache).toHaveBeenCalledWith('wallet-2');
   });
 
   it('getWalletSharingInfo requests group and users with selected user fields', async () => {
@@ -284,6 +252,5 @@ describe('walletSharingRepository', () => {
     expect(walletSharingRepository.addUserToWallet).toBe(addUserToWallet);
     expect(walletSharingRepository.updateWalletGroup).toBe(updateWalletGroup);
     expect(walletSharingRepository.getWalletSharingInfo).toBe(getWalletSharingInfo);
-    expect(mockInvalidateUserAccessCache).toBeDefined();
   });
 });

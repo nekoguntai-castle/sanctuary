@@ -1,8 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   getBackupOnlyModelMock,
-  getMockBackupLogger,
-  getMockClearAccessCacheStrict,
   getMockFeatureRuntimeReconcile,
   mockAllBackupTablesExist,
 } from './backupServiceTestHarness';
@@ -29,8 +27,6 @@ import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../../src/constants/wall
 export function registerBackupRestoreTests(): void {
 describe('restoreFromBackup', () => {
   let backupService: BackupService;
-  const mockClearAccessCacheStrict = getMockClearAccessCacheStrict();
-  const mockBackupLogger = getMockBackupLogger();
   const mockFeatureRuntimeReconcile = getMockFeatureRuntimeReconcile();
   const activationValue = (
     activatedAt: string,
@@ -115,11 +111,8 @@ describe('restoreFromBackup', () => {
   beforeEach(() => {
     backupService = new BackupService();
     resetPrismaMocks();
-    mockClearAccessCacheStrict.mockReset();
-    mockClearAccessCacheStrict.mockResolvedValue(undefined);
     mockFeatureRuntimeReconcile.mockReset();
     mockFeatureRuntimeReconcile.mockResolvedValue(undefined);
-    Object.values(mockBackupLogger).forEach((loggerMethod) => loggerMethod.mockClear());
 
     // Mock getExistingTables to return common tables
     mockPrismaClient.$queryRaw.mockResolvedValue([
@@ -283,7 +276,7 @@ describe('restoreFromBackup', () => {
       });
     });
 
-    it('should clear access cache only after the restore transaction commits', async () => {
+    it('reconciles feature runtime only after the restore transaction commits', async () => {
       const backup = createValidBackup();
       const events: string[] = [];
 
@@ -293,9 +286,6 @@ describe('restoreFromBackup', () => {
         events.push('transaction-commit');
         return result;
       });
-      mockClearAccessCacheStrict.mockImplementation(async () => {
-        events.push('access-cache-clear');
-      });
       mockFeatureRuntimeReconcile.mockImplementation(async () => {
         events.push('feature-runtime-reconcile');
       });
@@ -304,11 +294,9 @@ describe('restoreFromBackup', () => {
       const result = await backupService.restoreFromBackup(backup);
 
       expect(result.success).toBe(true);
-      expect(mockClearAccessCacheStrict).toHaveBeenCalledTimes(1);
       expect(events).toEqual([
         'transaction-start',
         'transaction-commit',
-        'access-cache-clear',
         'feature-runtime-reconcile',
       ]);
       expect(mockFeatureRuntimeReconcile).toHaveBeenCalledWith({
@@ -462,7 +450,6 @@ describe('restoreFromBackup', () => {
           error: expect.stringContaining('Invalid durable wallet-sync activation policy'),
         });
         expect(mockPrismaClient.systemSetting.deleteMany).not.toHaveBeenCalled();
-        expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
       },
     );
 
@@ -485,7 +472,6 @@ describe('restoreFromBackup', () => {
         error: expect.stringContaining('Wallet-sync activation requires mutation-fence floor'),
       });
       expect(mockPrismaClient.systemSetting.deleteMany).not.toHaveBeenCalled();
-      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
     });
 
     it('fails closed and rolls back an invalid backup activation marker', async () => {
@@ -504,7 +490,6 @@ describe('restoreFromBackup', () => {
         committed: false,
         error: expect.stringContaining('Invalid durable wallet-sync activation policy'),
       });
-      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
     });
 
     it('refuses and rolls back a backup activation above the current binary floor', async () => {
@@ -526,10 +511,9 @@ describe('restoreFromBackup', () => {
         committed: false,
         error: expect.stringContaining('Wallet-sync activation requires mutation-fence floor'),
       });
-      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
     });
 
-    it('should not clear access cache when validation fails before the transaction', async () => {
+    it('keeps reconciliation fields false when validation fails before the transaction', async () => {
       const backup = createValidBackup() as any;
       delete backup.data.wallet;
 
@@ -538,11 +522,12 @@ describe('restoreFromBackup', () => {
       expect(result.success).toBe(false);
       expect(result.committed).toBe(false);
       expect(result.cacheInvalidated).toBe(false);
+      expect(result.accessCacheReconciled).toBe(false);
+      expect(result.featureRuntimeReconciled).toBe(false);
       expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
-      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
     });
 
-    it('should not clear access cache when restore preflight fails before the transaction', async () => {
+    it('keeps reconciliation fields false when restore preflight fails before the transaction', async () => {
       const backup = createValidBackup();
       mockPrismaClient.$queryRaw.mockResolvedValue([{ tablename: 'users' }]);
 
@@ -550,26 +535,28 @@ describe('restoreFromBackup', () => {
 
       expect(result.success).toBe(false);
       expect(result.committed).toBe(false);
+      expect(result.cacheInvalidated).toBe(false);
+      expect(result.accessCacheReconciled).toBe(false);
+      expect(result.featureRuntimeReconciled).toBe(false);
       expect(result.error).toContain('Restore preflight failed: missing live database tables');
       expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
-      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
     });
 
-    it('should surface post-commit access cache invalidation failures', async () => {
+    it('reports a committed restore as reconciled', async () => {
       const backup = createValidBackup();
 
       mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
       mockAllTableWrites();
-      mockClearAccessCacheStrict.mockRejectedValueOnce(new Error('cache down'));
 
       const result = await backupService.restoreFromBackup(backup);
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
       expect(result.committed).toBe(true);
-      expect(result.cacheInvalidated).toBe(false);
+      expect(result.cacheInvalidated).toBe(true);
+      expect(result.accessCacheReconciled).toBe(true);
       expect(result.tablesRestored).toBeGreaterThan(0);
       expect(result.recordsRestored).toBeGreaterThan(0);
-      expect(result.error).toContain('Restore committed but access cache invalidation failed: cache down');
+      expect(result.error).toBeUndefined();
       expect(result.featureRuntimeReconciled).toBe(true);
       expect(mockFeatureRuntimeReconcile).toHaveBeenCalledTimes(1);
     });
@@ -591,62 +578,6 @@ describe('restoreFromBackup', () => {
       });
       expect(result.error).toContain('worker acknowledgement missing');
       expect(result.error).toContain('Restore committed but feature runtime reconciliation failed');
-      expect(mockClearAccessCacheStrict).toHaveBeenCalledTimes(1);
-    });
-
-    it('should time out hung post-commit access cache invalidation', async () => {
-      vi.useFakeTimers();
-      const backup = createValidBackup();
-
-      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
-      mockAllTableWrites();
-      mockClearAccessCacheStrict.mockImplementation(() => new Promise<void>(() => undefined));
-
-      const resultPromise = backupService.restoreFromBackup(backup);
-      let result!: Awaited<ReturnType<BackupService['restoreFromBackup']>>;
-      try {
-        await vi.advanceTimersByTimeAsync(5_000);
-        result = await resultPromise;
-      } finally {
-        vi.useRealTimers();
-      }
-
-      expect(result.success).toBe(false);
-      expect(result.committed).toBe(true);
-      expect(result.cacheInvalidated).toBe(false);
-      expect(result.error).toContain('Access cache invalidation timed out after 5000ms');
-    });
-
-    it('should observe late access cache rejection after a timeout', async () => {
-      vi.useFakeTimers();
-      const backup = createValidBackup();
-      let rejectCacheClear!: (error: Error) => void;
-
-      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
-      mockAllTableWrites();
-      mockClearAccessCacheStrict.mockImplementation(() => new Promise<void>((_, reject) => {
-        rejectCacheClear = reject;
-      }));
-
-      const resultPromise = backupService.restoreFromBackup(backup);
-      try {
-        await vi.advanceTimersByTimeAsync(5_000);
-        rejectCacheClear(new Error('late redis failure'));
-        await Promise.resolve();
-
-        const result = await resultPromise;
-
-        expect(result.success).toBe(false);
-        expect(result.committed).toBe(true);
-        expect(result.cacheInvalidated).toBe(false);
-        expect(result.error).toContain('Access cache invalidation timed out after 5000ms');
-        expect(mockBackupLogger.warn).toHaveBeenCalledWith(
-          '[BACKUP] Access cache invalidation failed after restore timeout',
-          { error: 'late redis failure' }
-        );
-      } finally {
-        vi.useRealTimers();
-      }
     });
 
     it('should restore with correct record counts', async () => {

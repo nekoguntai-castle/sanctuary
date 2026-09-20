@@ -151,12 +151,6 @@ vi.mock('../../../../src/config', () => ({
   }),
 }));
 
-// Mock access control
-vi.mock('../../../../src/services/accessControl', () => ({
-  clearAccessCacheStrict: vi.fn().mockResolvedValue(undefined),
-  invalidateUserAccessCacheStrict: vi.fn().mockResolvedValue(undefined),
-}));
-
 // Mock token revocation (called on admin password reset)
 vi.mock('../../../../src/services/tokenRevocation', () => ({
   revokeAllUserTokens: vi.fn().mockResolvedValue(0),

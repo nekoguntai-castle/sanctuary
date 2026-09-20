@@ -71,9 +71,9 @@ export interface RestoreResult {
   warnings: string[];
   /** Required on every return path; true only after the destructive restore transaction has committed. */
   committed: boolean;
-  /** Required on every return path; true only when post-commit access-cache invalidation completed. */
+  /** Legacy API response field: false before commit, true after commit; retained for backup clients. */
   cacheInvalidated: boolean;
-  /** Access-control cache reconciliation outcome, independent from feature runtime recovery. */
+  /** Legacy API response field: false before commit, true after commit, independent of feature runtime recovery. */
   accessCacheReconciled: boolean;
   /** Feature snapshot installation, publication, and live-participant acknowledgement outcome. */
   featureRuntimeReconciled: boolean;

@@ -328,7 +328,7 @@ vi.mock('../../../../src/services/bitcoin/addressDerivation', () => ({
   })),
 }));
 
-// Mock Redis cache (access control uses cached getUserWalletRole)
+// Keep a Redis mock so wallet mutation tests can prove stale grants are ignored.
 vi.mock('../../../../src/infrastructure/redis', () => ({
   getNamespacedCache: () => mockCache,
 }));
@@ -375,6 +375,7 @@ export function setupWalletServiceTestHooks(): void {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
+    mockCache.get.mockResolvedValue(null);
     mockBuildDescriptorFromDevices.mockReturnValue({
       descriptor: MAINNET_BIP84_DESCRIPTORS.receive,
       changeDescriptor: MAINNET_BIP84_DESCRIPTORS.change,
@@ -390,6 +391,7 @@ export function setupWalletServiceTestHooks(): void {
 }
 
 export {
+  mockCache,
   mockBuildDescriptorFromDevices,
   mockAssertHardwareWalletCapability,
   mockAssertWalletHardwareCapability,

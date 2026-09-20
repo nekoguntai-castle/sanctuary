@@ -4,14 +4,8 @@ import request from 'supertest';
 import { errorHandler } from '../../../src/errors/errorHandler';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
-const {
-  mockAuditLogFromRequest,
-  mockClearAccessCache,
-  mockInvalidateUserAccessCache,
-} = vi.hoisted(() => ({
+const { mockAuditLogFromRequest } = vi.hoisted(() => ({
   mockAuditLogFromRequest: vi.fn(),
-  mockClearAccessCache: vi.fn(),
-  mockInvalidateUserAccessCache: vi.fn(),
 }));
 
 vi.mock('../../../src/models/prisma', async () => {
@@ -46,11 +40,6 @@ vi.mock('../../../src/services/auditService', () => ({
   },
 }));
 
-vi.mock('../../../src/services/accessControl', () => ({
-  clearAccessCacheStrict: mockClearAccessCache,
-  invalidateUserAccessCacheStrict: mockInvalidateUserAccessCache,
-}));
-
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
@@ -77,8 +66,6 @@ describe('Admin Groups Routes', () => {
     vi.clearAllMocks();
 
     mockAuditLogFromRequest.mockResolvedValue(undefined);
-    mockClearAccessCache.mockResolvedValue(undefined);
-    mockInvalidateUserAccessCache.mockResolvedValue(undefined);
     mockPrismaClient.group.updateMany.mockResolvedValue({ count: 1 });
   });
 
@@ -305,7 +292,6 @@ describe('Admin Groups Routes', () => {
       data: [{ groupId: 'group-1', userId: 'u3', role: 'member' }],
       skipDuplicates: false,
     });
-    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
   });
 
   it('updates explicit description/purpose and skips member mutations when memberIds unchanged', async () => {
@@ -347,7 +333,6 @@ describe('Admin Groups Routes', () => {
     });
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
-    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
   });
 
   it('updates with empty memberIds removes all members', async () => {
@@ -378,7 +363,6 @@ describe('Admin Groups Routes', () => {
       where: { groupId: 'group-1', userId: { in: ['u1', 'u2'] } },
     });
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
-    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
     expect(response.body.members).toHaveLength(0);
   });
 
@@ -412,7 +396,6 @@ describe('Admin Groups Routes', () => {
     expect(response.status).toBe(200);
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
-    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
     expect(response.body.members).toHaveLength(2);
   });
 
@@ -449,7 +432,6 @@ describe('Admin Groups Routes', () => {
       data: [{ groupId: 'group-1', userId: 'u1', role: 'member' }],
       skipDuplicates: false,
     });
-    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
     expect(response.body.members).toHaveLength(1);
   });
 
@@ -492,7 +474,6 @@ describe('Admin Groups Routes', () => {
       expect.objectContaining({ details: { groupName: 'Team A', groupId: 'group-1' } })
     );
     expect(response.body).toEqual({ message: 'Group deleted successfully' });
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
   });
 
   it('returns 500 when group deletion fails', async () => {
@@ -581,7 +562,6 @@ describe('Admin Groups Routes', () => {
 
     expect(explicitRole.status).toBe(201);
     expect(explicitRole.body).toEqual({ userId: 'u1', username: 'alice', role: 'admin' });
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
     expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
       expect.any(Object),
       'group_member_add',
@@ -613,7 +593,7 @@ describe('Admin Groups Routes', () => {
     expect(response.body.message).toBe('Member not found in this group');
   });
 
-  it('removes a member and invalidates cache', async () => {
+  it('removes a member', async () => {
     mockPrismaClient.groupMember.findUnique.mockResolvedValue({ groupId: 'group-1', userId: 'u1' } as any);
 
     const response = await request(app)
@@ -623,7 +603,6 @@ describe('Admin Groups Routes', () => {
     expect(mockPrismaClient.groupMember.delete).toHaveBeenCalledWith({
       where: { userId_groupId: { userId: 'u1', groupId: 'group-1' } },
     });
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
     expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
       expect.any(Object),
       'group_member_remove',
