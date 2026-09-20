@@ -41,6 +41,7 @@ export PROJECT_ROOT
 
 readonly -a compose_registration_args=(
   --expected-image sanctuary-backend
+  --expected-image sanctuary-migrate
   --expected-image sanctuary-frontend
   --expected-image sanctuary-gateway
   --expected-image sanctuary-llm-egress-proxy

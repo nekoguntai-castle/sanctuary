@@ -107,6 +107,7 @@ if [ "$1 $2" = 'image inspect' ]; then
   image="${!#}"
   role="${image#sanctuary-}"
   role="${role%%:*}"
+  [ "$role" = migrate ] && role=prisma-migration
   [ "${FAKE_SCENARIO:-}" != missing-all ] || exit 1
   [ "${FAKE_SCENARIO:-}" != missing-gateway ] || [ "$role" != gateway ] || exit 1
   case "$role" in
@@ -114,6 +115,7 @@ if [ "$1 $2" = 'image inspect' ]; then
     frontend) digit=f ;;
     gateway) digit=c ;;
     llm-egress-proxy) digit=d ;;
+    prisma-migration) digit=e ;;
     *) exit 9 ;;
   esac
   revision="$EXPECTED_CANDIDATE"
@@ -183,18 +185,20 @@ test_observed_contract() {
   install_fake_docker "$root"
   run_observer "$root"
 
-  assert_eq 'all four candidate images produce observed status' observed "$(jq -r .status "$root/output/status.json")"
-  assert_eq 'exactly four immutable image reports are written' 4 "$(find "$root/output" -maxdepth 1 -name '*.json' ! -name status.json ! -name cache-volume-cleanup.json | wc -l | tr -d ' ')"
+  assert_eq 'all five candidate images produce observed status' observed "$(jq -r .status "$root/output/status.json")"
+  assert_eq 'exactly five immutable image reports are written' 5 "$(find "$root/output" -maxdepth 1 -name '*.json' ! -name status.json ! -name cache-volume-cleanup.json | wc -l | tr -d ' ')"
   assert_eq 'database downloads exactly once' 1 "$(grep -c -- '--download-db-only' "$root/docker.calls")"
-  assert_eq 'four scans reuse the downloaded database' 4 "$(grep -c -- '--skip-db-update' "$root/docker.calls")"
-  assert_eq 'each scan uses immutable image IDs' 4 "$(grep -- '--skip-db-update' "$root/docker.calls" | grep -c 'sha256:[bcdf]')"
-  assert_eq 'exactly four candidate tags are inspected' 4 "$(grep -c '^image inspect ' "$root/docker.calls")"
+  assert_eq 'five scans reuse the downloaded database' 5 "$(grep -c -- '--skip-db-update' "$root/docker.calls")"
+  assert_eq 'each scan uses immutable image IDs' 5 "$(grep -- '--skip-db-update' "$root/docker.calls" | grep -c 'sha256:[bcdef]')"
+  assert_eq 'exactly five candidate tags are inspected' 5 "$(grep -c '^image inspect ' "$root/docker.calls")"
   local role
-  for role in backend frontend gateway llm-egress-proxy; do
-    assert_file_contains "$role candidate tag is inspected" "$root/docker.calls" "sanctuary-$role:$PROJECT"
+  for role in backend frontend gateway llm-egress-proxy prisma-migration; do
+    candidate_image="sanctuary-$role:$PROJECT"
+    [ "$role" = prisma-migration ] && candidate_image="sanctuary-migrate:$PROJECT"
+    assert_file_contains "$role candidate tag is inspected" "$root/docker.calls" "$candidate_image"
   done
   assert_file_contains 'scanner is digest pinned' "$root/docker.calls" 'docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
-  assert_eq 'all scans receive the discovered default socket' 4 \
+  assert_eq 'all scans receive the discovered default socket' 5 \
     "$(grep -- '--skip-db-update' "$root/docker.calls" | grep -c '/var/run/docker.sock:/var/run/docker.sock:ro')"
   assert_file_contains 'default discovery probes the rootless candidate first' "$root/docker.calls" \
     'type=bind\,source=/run/user/1001/podman/podman.sock'
@@ -209,10 +213,10 @@ test_observed_contract() {
   if grep -Eq 'postgres|redis|docker-proxy|grafana' "$root/docker.calls"; then
     bad 'observer attempted to scan an external or non-RC image'
   else
-    ok 'observer scans only the exact four RC application images'
+    ok 'observer scans only the exact five RC application images'
   fi
-  assert_eq 'critical findings are evidence, not execution failure' 4 "$(jq '[.roles[].findings.critical] | add' "$root/output/status.json")"
-  assert_eq 'unfixed findings remain visible' 4 "$(jq '[.roles[].findings.unfixable] | add' "$root/output/status.json")"
+  assert_eq 'critical findings are evidence, not execution failure' 5 "$(jq '[.roles[].findings.critical] | add' "$root/output/status.json")"
+  assert_eq 'unfixed findings remain visible' 5 "$(jq '[.roles[].findings.unfixable] | add' "$root/output/status.json")"
   if grep -Rqs -- 'observer-test-secret' "$root/output" "$root/docker.calls"; then
     bad 'observer exposed an unrelated environment secret'
   else
@@ -228,7 +232,7 @@ test_socket_selection() {
   run_observer "$root" observed "$mode" "$override"
 
   assert_eq "$name produces observed evidence" observed "$(jq -r .status "$root/output/status.json")"
-  assert_eq "$name mounts its exact discovered source in all scans" 4 \
+  assert_eq "$name mounts its exact discovered source in all scans" 5 \
     "$(grep -- '--skip-db-update' "$root/docker.calls" | grep -F -c -- "$expected:/var/run/docker.sock:ro")"
   if [ "$mode" = override ]; then
     assert_eq 'an override suppresses default candidate probes' 1 \
@@ -247,7 +251,7 @@ test_socket_unavailable() {
     ok "$name exits nonzero"
   fi
   assert_eq "$name records unavailable status" unavailable "$(jq -r .status "$root/output/status.json")"
-  assert_eq "$name records all four socket failures" 4 \
+  assert_eq "$name records all five socket failures" 5 \
     "$(jq '[.roles[] | select(.reason == "Docker daemon socket unavailable or ambiguous")] | length' "$root/output/status.json")"
   assert_eq "$name does not start a vulnerability DB download" 0 \
     "$(grep -c -- '--download-db-only' "$root/docker.calls" || true)"
@@ -270,7 +274,7 @@ test_partial_contract() {
     ok "$scenario exits nonzero"
   fi
   assert_eq "$scenario records partial status" partial "$(jq -r .status "$root/output/status.json")"
-  assert_eq "$scenario retains three valid reports" 3 "$(find "$root/output" -maxdepth 1 -name '*.json' ! -name status.json ! -name cache-volume-cleanup.json | wc -l | tr -d ' ')"
+  assert_eq "$scenario retains four valid reports" 4 "$(find "$root/output" -maxdepth 1 -name '*.json' ! -name status.json ! -name cache-volume-cleanup.json | wc -l | tr -d ' ')"
   assert_eq "$scenario records its unavailable reason" "$expected_reason" \
     "$(jq -r '.roles[] | select(.status == "unavailable") | .reason' "$root/output/status.json")"
   assert_file_contains "$scenario still removes its cache volume" "$root/docker.calls" \
@@ -289,7 +293,7 @@ test_unavailable_contract() {
   fi
   assert_eq "$scenario records unavailable status" unavailable "$(jq -r .status "$root/output/status.json")"
   assert_eq "$scenario writes no image reports" 0 "$(find "$root/output" -maxdepth 1 -name '*.json' ! -name status.json ! -name cache-volume-cleanup.json | wc -l | tr -d ' ')"
-  assert_eq "$scenario records all four role failures" 4 \
+  assert_eq "$scenario records all five role failures" 5 \
     "$(jq --arg reason "$expected_reason" '[.roles[] | select(.reason == $reason)] | length' "$root/output/status.json")"
 }
 

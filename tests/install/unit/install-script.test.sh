@@ -1314,7 +1314,7 @@ EOF
     cat > "$fixture_dir/bin/docker" << 'EOF'
 #!/bin/sh
 case "$*" in
-  "info"|"compose version"|"image inspect sanctuary-backend:local"|"image inspect sanctuary-frontend:local"|"image inspect sanctuary-gateway:local")
+  "info"|"compose version"|"image inspect sanctuary-backend:local"|"image inspect sanctuary-migrate:local"|"image inspect sanctuary-frontend:local"|"image inspect sanctuary-gateway:local")
     exit 0
     ;;
   *)
@@ -2533,7 +2533,7 @@ test_install_e2e_entrypoints_use_cleanup_auto_run() {
     assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
         'registration_args=(--interrupt-fallback "${registration_args[@]}")' \
         "fresh-install interruption fallback should fit the coordinator grace" || return 1
-    for entrypoint in sanctuary-backend sanctuary-frontend sanctuary-gateway sanctuary-llm-egress-proxy; do
+    for entrypoint in sanctuary-backend sanctuary-migrate sanctuary-frontend sanctuary-gateway sanctuary-llm-egress-proxy; do
         assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh")" \
             "--expected-image $entrypoint" \
             "fresh-install should register its $entrypoint image" || return 1
@@ -2570,7 +2570,7 @@ test_install_e2e_entrypoints_use_cleanup_auto_run() {
     assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
         'registration_args=(--interrupt-fallback "${registration_args[@]}")' \
         "install-script interruption fallback should fit the coordinator grace" || return 1
-    for entrypoint in sanctuary-backend sanctuary-frontend sanctuary-gateway sanctuary-llm-egress-proxy; do
+    for entrypoint in sanctuary-backend sanctuary-migrate sanctuary-frontend sanctuary-gateway sanctuary-llm-egress-proxy; do
         assert_contains "$(cat "$PROJECT_ROOT/tests/install/e2e/install-script.test.sh")" \
             "--expected-image $entrypoint" \
             "install-script should register its $entrypoint image" || return 1

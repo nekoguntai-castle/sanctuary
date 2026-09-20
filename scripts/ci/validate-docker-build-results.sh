@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "$#" -ne 11 ]; then
-  echo "Usage: $0 DETECT_RESULT and five REQUESTED RESULT pairs" >&2
+if [ "$#" -ne 13 ]; then
+  echo "Usage: $0 DETECT_RESULT and six REQUESTED RESULT pairs" >&2
   exit 2
 fi
 
@@ -34,3 +34,4 @@ validate_result "$3" "$4" "Backend image"
 validate_result "$5" "$6" "Gateway image"
 validate_result "$7" "$8" "LLM egress proxy image"
 validate_result "$9" "${10}" "Grafana migration image"
+validate_result "${11}" "${12}" "Prisma migration image"

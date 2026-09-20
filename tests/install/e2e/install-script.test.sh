@@ -88,6 +88,7 @@ declare -a FAILED_TESTS
 compose_registered=false
 readonly -a COMPOSE_REGISTRATION_ARGS=(
     --expected-image sanctuary-backend
+    --expected-image sanctuary-migrate
     --expected-image sanctuary-frontend
     --expected-image sanctuary-gateway
     --expected-image sanctuary-llm-egress-proxy

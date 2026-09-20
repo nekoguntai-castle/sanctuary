@@ -203,6 +203,11 @@ assert_true 'BuildKit cache is never pruned, removed, or registered as disposabl
   bash -c '! grep -Eq "buildx (rm|prune)|builder (rm|prune)|--class buildkit_cache" "$1" "$2"' _ "$DOCKER_CALLS" "$NODE_CALLS"
 
 reset_case
+(cd "$REPO_ROOT" && "$SCRIPT" prisma-migration server/Dockerfile . sanctuary-ci/migrate migration)
+assert_true 'optional Docker build target is forwarded for migration images' \
+  grep -Fq -- '--target migration' "$DOCKER_CALLS"
+
+reset_case
 export FAKE_PODMAN_NORMALIZE=1
 export FAKE_PODMAN_IMAGE_ID=1
 export FAKE_REPO_DIGEST="localhost/sanctuary-ci/backend@sha256:$(printf 'c%.0s' {1..64})"

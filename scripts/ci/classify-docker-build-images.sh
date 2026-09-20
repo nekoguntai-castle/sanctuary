@@ -14,6 +14,7 @@ backend_image=false
 gateway_image=false
 llm_egress_proxy_image=false
 grafana_migration_image=false
+prisma_migration_image=false
 reason='No image-impacting files changed'
 
 emit_outputs() {
@@ -23,6 +24,7 @@ emit_outputs() {
     "gateway_image=$gateway_image" \
     "llm_egress_proxy_image=$llm_egress_proxy_image" \
     "grafana_migration_image=$grafana_migration_image" \
+    "prisma_migration_image=$prisma_migration_image" \
     "reason=$reason"
 }
 
@@ -32,6 +34,7 @@ mark_all_images() {
   gateway_image=true
   llm_egress_proxy_image=true
   grafana_migration_image=true
+  prisma_migration_image=true
 }
 
 if [ "$event_name" = "workflow_dispatch" ]; then
@@ -146,6 +149,17 @@ is_backend_image_file() {
   return 1
 }
 
+is_prisma_migration_image_file() {
+  # Both targets compile the same server artifacts and workspace manifests.
+  if is_backend_image_file "$1"; then return 0; fi
+  case "$1" in
+    .github/workflows/docker-build.yml|.dockerignore|scripts/ci/classify-docker-build-images.sh|scripts/ci/validate-docker-build-results.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 is_gateway_image_file() {
   case "$1" in
     gateway/*|shared/*|package.json|package-lock.json|.dockerignore|docker-compose.yml|docker/compose/*)
@@ -182,6 +196,7 @@ while IFS= read -r file; do
   if is_both_image_file "$file"; then
     frontend_image=true
     backend_image=true
+    prisma_migration_image=true
     reason="Shared image input changed: $file"
   fi
 
@@ -193,6 +208,11 @@ while IFS= read -r file; do
   if is_backend_image_file "$file"; then
     backend_image=true
     reason="Image input changed"
+  fi
+
+  if is_prisma_migration_image_file "$file"; then
+    prisma_migration_image=true
+    reason="Prisma migration image input changed: $file"
   fi
 
   if is_gateway_image_file "$file"; then

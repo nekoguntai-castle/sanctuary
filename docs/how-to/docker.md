@@ -38,6 +38,7 @@ This guide explains how to deploy Sanctuary using Docker and Docker Compose.
 |------------|--------------|-----------|-------|
 | PostgreSQL | 1GB          | 2 cores   | Performance tuned with custom config |
 | Backend    | 2GB          | 2 cores   | Handles sync, WebSocket, API |
+| Migration  | one-shot     | build-time | Applies Prisma migrations before API and worker startup |
 | Frontend   | 256MB        | 0.5 core  | Nginx + static files |
 | Gateway    | 256MB        | 0.5 core  | Mobile API gateway |
 | Redis      | 192MB        | 0.5 core  | Cache and pub/sub |
@@ -148,6 +149,11 @@ their names alone are not deletion authority.
 ```
 
 ### Database Operations
+
+The API and worker wait for the dedicated migration image to finish
+successfully before they start. The migration image is built from the same
+source and provenance inputs as the backend image, while keeping Prisma CLI
+dependencies out of long-lived application containers.
 
 ```bash
 # Run migrations manually

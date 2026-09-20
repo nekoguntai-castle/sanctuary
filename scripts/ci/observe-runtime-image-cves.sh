@@ -6,7 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../ownership/producer-hooks.sh"
 
 readonly TRIVY_IMAGE='docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
-readonly -a IMAGE_ROLES=(backend frontend gateway llm-egress-proxy)
+readonly -a IMAGE_ROLES=(backend frontend gateway llm-egress-proxy prisma-migration)
+
+candidate_image() {
+  local role="$1" project_name="$2" image_role
+  image_role="$role"
+  [ "$role" = prisma-migration ] && image_role=migrate
+  printf 'sanctuary-%s:%s\n' "$image_role" "$project_name"
+}
 
 usage() {
   cat >&2 <<'EOF'
@@ -384,7 +391,7 @@ scan_image() {
 mark_all_unavailable() {
   local reason="$1" role image
   for role in "${IMAGE_ROLES[@]}"; do
-    image="sanctuary-$role:$project"
+    image="$(candidate_image "$role" "$project")"
     write_role_status "$role" unavailable "$image" '' 0 0 0 0 "$reason"
   done
 }
@@ -475,7 +482,7 @@ main() {
       else
         local role image image_id
         for role in "${IMAGE_ROLES[@]}"; do
-          image="sanctuary-$role:$project"
+          image="$(candidate_image "$role" "$project")"
           if image_id="$(inspect_candidate_image "$role" "$image")"; then
             scan_image "$role" "$image" "$image_id" || true
           fi
@@ -488,7 +495,7 @@ main() {
     else
       local role image image_id
       for role in "${IMAGE_ROLES[@]}"; do
-        image="sanctuary-$role:$project"
+        image="$(candidate_image "$role" "$project")"
         if image_id="$(inspect_candidate_image "$role" "$image")"; then
           scan_image "$role" "$image" "$image_id" || true
         fi

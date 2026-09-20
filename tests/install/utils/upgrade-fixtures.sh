@@ -18,6 +18,7 @@ UPGRADE_EXPECT_OPTIONAL_PROFILES="${UPGRADE_EXPECT_OPTIONAL_PROFILES:-false}"
 upgrade_compose_registration_args() {
     COMPOSE_REGISTRATION_ARGS=(
         --expected-image sanctuary-backend
+        --expected-image sanctuary-migrate
         --expected-image sanctuary-frontend
         --expected-image sanctuary-gateway
         --expected-image sanctuary-llm-egress-proxy

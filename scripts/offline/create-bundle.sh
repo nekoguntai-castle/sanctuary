@@ -169,7 +169,7 @@ build_sanctuary_images() {
     WORKER_DIAGNOSTICS_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
     LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
     docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build \
-      backend frontend gateway llm-egress-proxy
+      backend migrate frontend gateway llm-egress-proxy
 
   if [ "$CORE_ONLY" != "true" ]; then
     DOCKER_DEFAULT_PLATFORM="$PLATFORM" \

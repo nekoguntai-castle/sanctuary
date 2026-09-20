@@ -529,8 +529,17 @@ services:
   # ============================================
   migrate:
     labels: *sanctuary-container-ownership
-    image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
-    pull_policy: never # Reuse image built by backend service
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      target: migration
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:?SANCTUARY_SOURCE_COMMIT is required}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:?SANCTUARY_IMAGE_LOCK_SHA256 is required}
+        SANCTUARY_BUILD_VERSION: ${SANCTUARY_VERSION:?SANCTUARY_VERSION is required}
+        SANCTUARY_BUILD_ID: ${SANCTUARY_BUILD_ID:?SANCTUARY_BUILD_ID is required}
+    image: sanctuary-migrate:${SANCTUARY_IMAGE_TAG:-local}
+    pull_policy: build # Always build the migration image locally
     depends_on:
       postgres:
         condition: service_healthy

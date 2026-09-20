@@ -20,11 +20,11 @@ test('Docker-producing phase smoke package commands always select signed cleanup
     let lifecycle = `-- node ${subject}`;
     if (name === 'ops:gateway-audit:phase2') {
       lifecycle = '-- scripts/ci/run-ci-compose-subject.sh '
-        + '--expected-image sanctuary-backend --expected-image sanctuary-gateway '
+        + '--expected-image sanctuary-backend --expected-image sanctuary-migrate --expected-image sanctuary-gateway '
         + `-- node ${subject}`;
     } else if (name === 'perf:phase3:compose-smoke') {
       lifecycle = '-- scripts/ci/run-ci-compose-subject.sh '
-        + '--expected-image sanctuary-backend --expected-image sanctuary-frontend '
+        + '--expected-image sanctuary-backend --expected-image sanctuary-migrate --expected-image sanctuary-frontend '
         + `--expected-image sanctuary-gateway -- node ${subject}`;
     }
     assert.ok(command.endsWith(lifecycle));

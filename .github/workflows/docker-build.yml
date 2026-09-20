@@ -114,6 +114,7 @@ jobs:
       gateway_image: ${{ steps.classify.outputs.gateway_image }}
       llm_egress_proxy_image: ${{ steps.classify.outputs.llm_egress_proxy_image }}
       grafana_migration_image: ${{ steps.classify.outputs.grafana_migration_image }}
+      prisma_migration_image: ${{ steps.classify.outputs.prisma_migration_image }}
       reason: ${{ steps.classify.outputs.reason }}
     steps:
       - name: Checkout repository
@@ -411,11 +412,68 @@ jobs:
           include-hidden-files: true
           retention-days: 90
 
+  build-prisma-migration:
+    name: Validate Prisma migration image
+    if: |
+      always() &&
+      needs.detect-image-scope.result == 'success' &&
+      needs.detect-image-scope.outputs.prisma_migration_image == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    needs: [detect-image-scope]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-prisma-migration
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Resolve Docker host
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          scripts/ci/wait-for-docker.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Build, smoke, and attest Prisma migration helper
+        run: >
+          scripts/ci/cleanup-ci-callsite.sh run
+          --lane runtime-image-prisma-migration
+          --runtime "$RUNNER_TEMP/sanctuary-cleanup/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/runtime-image-prisma-migration"
+          --artifact-dir "$RUNNER_TEMP/sanctuary-cleanup-artifacts/runtime-image-prisma-migration"
+          -- scripts/ci/build-runtime-image.sh prisma-migration server/Dockerfile . sanctuary-ci/migrate migration
+
+      - name: Upload Prisma migration image evidence
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: runtime-image-evidence-prisma-migration
+          path: .tmp/runtime-image-evidence/prisma-migration/
+
+      - name: Require Prisma migration final cleanup evidence
+        id: verify_cleanup_receipt
+        if: always()
+        uses: ./.github/actions/verify-cleanup-receipt
+        with:
+          root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-prisma-migration
+
+      - name: Upload Prisma migration cleanup evidence
+        if: always() && steps.verify_cleanup_receipt.outcome == 'success'
+        uses: ./.github/actions/upload-cleanup-evidence
+        with:
+          name: cleanup-runtime-image-prisma-migration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-prisma-migration/
+          cleanup-root: ${{ runner.temp }}/sanctuary-cleanup-artifacts/runtime-image-prisma-migration
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
   summary:
     name: Docker image validation summary
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    needs: [detect-image-scope, build-frontend, build-backend, build-gateway, build-llm-egress-proxy, build-grafana-migration]
+    needs: [detect-image-scope, build-frontend, build-backend, build-gateway, build-llm-egress-proxy, build-grafana-migration, build-prisma-migration]
     if: always()
     steps:
       - name: Checkout repository
@@ -427,6 +485,7 @@ jobs:
           FRONTEND_REQUESTED: ${{ needs.detect-image-scope.outputs.frontend_image }}
           BACKEND_REQUESTED: ${{ needs.detect-image-scope.outputs.backend_image }}
           GRAFANA_MIGRATION_REQUESTED: ${{ needs.detect-image-scope.outputs.grafana_migration_image }}
+          PRISMA_MIGRATION_REQUESTED: ${{ needs.detect-image-scope.outputs.prisma_migration_image }}
           FRONTEND_RESULT: ${{ needs.build-frontend.result }}
           BACKEND_RESULT: ${{ needs.build-backend.result }}
           GATEWAY_REQUESTED: ${{ needs.detect-image-scope.outputs.gateway_image }}
@@ -434,6 +493,7 @@ jobs:
           LLM_EGRESS_PROXY_REQUESTED: ${{ needs.detect-image-scope.outputs.llm_egress_proxy_image }}
           LLM_EGRESS_PROXY_RESULT: ${{ needs.build-llm-egress-proxy.result }}
           GRAFANA_MIGRATION_RESULT: ${{ needs.build-grafana-migration.result }}
+          PRISMA_MIGRATION_RESULT: ${{ needs.build-prisma-migration.result }}
         run: |
           echo "## Docker Image Validation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -445,6 +505,7 @@ jobs:
           echo "- Gateway image: ${{ needs.build-gateway.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- LLM egress proxy image: ${{ needs.build-llm-egress-proxy.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Grafana migration image: ${{ needs.build-grafana-migration.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Prisma migration image: ${{ needs.build-prisma-migration.result }}" >> "$GITHUB_STEP_SUMMARY"
 
           scripts/ci/validate-docker-build-results.sh \
             "$DETECT_RESULT" \
@@ -452,4 +513,5 @@ jobs:
             "$BACKEND_REQUESTED" "$BACKEND_RESULT" \
             "$GATEWAY_REQUESTED" "$GATEWAY_RESULT" \
             "$LLM_EGRESS_PROXY_REQUESTED" "$LLM_EGRESS_PROXY_RESULT" \
-            "$GRAFANA_MIGRATION_REQUESTED" "$GRAFANA_MIGRATION_RESULT"
+            "$GRAFANA_MIGRATION_REQUESTED" "$GRAFANA_MIGRATION_RESULT" \
+            "$PRISMA_MIGRATION_REQUESTED" "$PRISMA_MIGRATION_RESULT"

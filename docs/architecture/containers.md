@@ -10,6 +10,7 @@ graph TD
     Gateway["Gateway<br/>Express :4000<br/><i>JWT, rate limit, push fan-out</i>"]
     Backend["Backend API<br/>Express :3000<br/><i>routes, services, repositories</i>"]
     Worker["Worker<br/>BullMQ consumer<br/><i>notifications, sync jobs, DLQ</i>"]
+    Migrate["Migration job<br/>Prisma CLI<br/><i>one-shot schema deployment</i>"]
     AiProxy["LLM Egress Proxy<br/><i>LLM gateway for intelligence features</i>"]
 
     Postgres[(Postgres<br/>via Prisma)]
@@ -26,6 +27,7 @@ graph TD
     Gateway <-. "WebSocket events (HMAC)" .-> Backend
 
     Backend --> Postgres
+    Migrate --> Postgres
     Backend --> Redis
     Backend --> Electrum
     Backend -- "enqueue" --> Redis
@@ -43,6 +45,7 @@ graph TD
     click Gateway href "../../gateway/ARCHITECTURE.md" "Gateway architecture"
     click Backend href "../../server/ARCHITECTURE.md" "Backend architecture"
     click Worker href "../../server/src/worker.ts" "Worker entry point"
+    click Migrate href "../adr/0006-prisma-migration-image.md" "Prisma migration image decision"
     click AiProxy href "../../llm-egress-proxy/ARCHITECTURE.md" "LLM egress proxy architecture"
     click Telegram href "notification-pipeline.md" "Notification component view"
 ```

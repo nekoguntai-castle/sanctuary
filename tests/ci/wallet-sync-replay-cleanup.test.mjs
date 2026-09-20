@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -693,6 +693,25 @@ test('build stamps provenance labels so a historical source tree yields a cleana
   const source = readFileSync(helper, 'utf8');
   assert.match(source, /docker buildx build \\\n(?:.*\\\n)*?\s+"\$\{provenance_label_args\[@\]\}" \\\n/,
     'build_image must pass the provenance labels to docker buildx build');
+  assert.match(source, /replay_target_args[\s\S]*?--target migration/,
+    'current replay images must select the migration target so migrations remain available');
+});
+
+test('replay target selection preserves migrations for current images and legacy defaults', () => {
+  const helper = new URL('../../scripts/ci/wallet-sync-replay-image.sh', import.meta.url).pathname;
+  const root = mkdtempSync(join(tmpdir(), 'sanctuary-replay-target-'));
+  try {
+    const server = join(root, 'server');
+    mkdirSync(server);
+    writeFileSync(join(server, 'Dockerfile'), 'FROM runtime-base AS migration\n');
+    const current = execFileSync('bash', ['-c', 'set -euo pipefail; source "$1"; replay_target_args "$2"', '_', helper, root], { encoding: 'utf8' });
+    assert.equal(current, '--target\nmigration\n');
+    writeFileSync(join(server, 'Dockerfile'), 'FROM node:24 AS runner\n');
+    const legacy = execFileSync('bash', ['-c', 'set -euo pipefail; source "$1"; replay_target_args "$2"', '_', helper, root], { encoding: 'utf8' });
+    assert.equal(legacy, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('replay cleanup records the daemon error behind a query failure and retries transient ones', () => {

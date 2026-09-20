@@ -31,9 +31,10 @@ assert_compose_contract() {
     local rendered
     rendered="$(docker compose -f "$compose_file" --profile mcp config --format json)"
 
-    COMPOSE_JSON="$rendered" node <<'NODE'
+    COMPOSE_JSON="$rendered" EXPECTED_IMAGE_TAG="${SANCTUARY_IMAGE_TAG:-local}" node <<'NODE'
 const config = JSON.parse(process.env.COMPOSE_JSON);
 const services = config.services;
+const expectedMigrationImage = `sanctuary-migrate:${process.env.EXPECTED_IMAGE_TAG}`;
 for (const consumer of ['backend', 'worker']) {
   const dependency = services[consumer]?.depends_on?.migrate;
   if (dependency?.condition !== 'service_completed_successfully') {
@@ -50,12 +51,23 @@ if (command !== JSON.stringify(['sh', '/app/scripts/migrate.sh'])) {
 if (!services.backend?.build) {
   throw new Error('local backend must remain the shared image build owner');
 }
-for (const consumer of ['worker', 'migrate']) {
-  if (services[consumer]?.build) {
-    throw new Error(`${consumer} must reuse rather than rebuild the backend image`);
-  }
-  if (services[consumer]?.image !== services.backend.image) {
-    throw new Error(`${consumer} must reuse the backend image`);
+if (services.worker?.build) {
+  throw new Error('worker must reuse rather than rebuild the backend image');
+}
+if (services.worker?.image !== services.backend.image) {
+  throw new Error('worker must reuse the backend image');
+}
+if (!services.migrate?.build || services.migrate.build.target !== 'migration') {
+  throw new Error('migrate must build the dedicated migration target');
+}
+if (services.migrate?.image !== expectedMigrationImage) {
+  throw new Error('migrate must use the dedicated migration image');
+}
+const backendArgs = services.backend.build.args ?? {};
+const migrationArgs = services.migrate.build.args ?? {};
+for (const key of ['SANCTUARY_SOURCE_COMMIT', 'SANCTUARY_IMAGE_LOCK_SHA256', 'SANCTUARY_BUILD_VERSION', 'SANCTUARY_BUILD_ID']) {
+  if (migrationArgs[key] !== backendArgs[key]) {
+    throw new Error(`migration and backend builds must share ${key}`);
   }
 }
 if (services.mcp?.environment?.WORKER_DIAGNOSTICS_SECRET !== process.env.WORKER_DIAGNOSTICS_SECRET) {
@@ -170,19 +182,37 @@ if grep -Fq 'stop grafana >/dev/null 2>&1 || true' "$PROJECT_ROOT/scripts/setup.
     exit 1
 fi
 
-grep -Fq 'COPY --chown=sanctuary:nodejs --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
 grep -Fq 'COPY --chown=sanctuary:nodejs --from=builder /repo/server/scripts ./scripts' "$PROJECT_ROOT/server/Dockerfile"
-grep -Fq 'npm prune --omit=dev --include-workspace-root --ignore-scripts --audit=false --fund=false' \
-    "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'FROM runtime-manifests AS application-deps' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'FROM runtime-manifests AS migration-deps' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'project-runtime-dependencies.cjs /runtime application' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'project-runtime-dependencies.cjs /runtime migration' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq "['install', '--package-lock-only', '--offline'" \
+    "$PROJECT_ROOT/server/scripts/project-runtime-dependencies.cjs"
+grep -Fq 'fs.copyFileSync(path.join(sourceRoot, '\''package-lock.json'\''), path.join(destination, '\''package-lock.json'\''))' \
+    "$PROJECT_ROOT/server/scripts/project-runtime-dependencies.cjs"
+grep -Fq 'manifest.dependencies.prisma = manifest.devDependencies.prisma' \
+    "$PROJECT_ROOT/server/scripts/project-runtime-dependencies.cjs"
+grep -Fq 'RUN node scripts/check-runtime-prisma-deps.cjs' "$PROJECT_ROOT/server/Dockerfile"
+if grep -Fq 'npm prune' "$PROJECT_ROOT/server/Dockerfile"; then
+    echo "runtime images must use the reviewed dependency projection, not builder pruning" >&2
+    exit 1
+fi
 if grep -Fq 'chown -R sanctuary:nodejs /app' "$PROJECT_ROOT/server/Dockerfile"; then
     echo "backend image must assign runtime ownership during COPY, not rescan /app" >&2
     exit 1
 fi
-runtime_owned_copy_count="$(grep -c '^COPY --chown=sanctuary:nodejs --from=builder' "$PROJECT_ROOT/server/Dockerfile")"
-if [ "$runtime_owned_copy_count" -ne 9 ]; then
-    echo "expected all 9 backend runtime copies to set sanctuary ownership, found $runtime_owned_copy_count" >&2
+if awk '/^FROM runtime-base AS runner/{runner=1} runner && /^COPY .*--from=/ && $0 !~ /^COPY --chown=sanctuary:nodejs / {bad=1} END{exit bad}' \
+    "$PROJECT_ROOT/server/Dockerfile"; then :; else
+    echo "application runtime copies must set sanctuary ownership" >&2
     exit 1
 fi
+runner_body="$(awk '/^FROM runtime-base AS runner/{seen=1} seen{print}' "$PROJECT_ROOT/server/Dockerfile")"
+if printf '%s\n' "$runner_body" | grep -Eq '/repo/server/prisma|/repo/server/prisma.config.ts'; then
+    echo "application target must not copy Prisma migration sources" >&2
+    exit 1
+fi
+grep -Fq 'COPY --chown=sanctuary:nodejs --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
 
 if grep -Fq "migrationService" "$PROJECT_ROOT/server/src/index.ts"; then
     echo "backend startup must not own or inspect migrations" >&2

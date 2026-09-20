@@ -2130,6 +2130,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/runtime-prisma-dependencies.test.cjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/ci/sanctuary-backup.test.sh",
       "resourceClass": "collector_process",
       "operation": "cleanup",

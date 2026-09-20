@@ -505,9 +505,10 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
       failures=1
     fi
     assert_contains "$list" "./images/core/sanctuary-backend-local.tar" "bundle should include backend image" || failures=1
+    assert_contains "$list" "./images/core/sanctuary-migrate-local.tar" "bundle should include migration image" || failures=1
     assert_contains "$list" "./images/core/sanctuary-gateway-local.tar" "bundle should include gateway image" || failures=1
     assert_contains "$list" "./images/core/sanctuary-llm-egress-proxy-local.tar" "bundle should include LLM egress proxy image" || failures=1
-    assert_contains "$(cat "$DOCKER_LOG")" "compose -f $PROJECT_ROOT/docker-compose.yml build backend frontend gateway llm-egress-proxy" \
+    assert_contains "$(cat "$DOCKER_LOG")" "compose -f $PROJECT_ROOT/docker-compose.yml build backend migrate frontend gateway llm-egress-proxy" \
       "bundle creation should build Sanctuary images with the release Compose file" || failures=1
     manifest="$(tar -xOf "$output" ./manifest.env)" || failures=1
     assert_contains "$manifest" "SANCTUARY_BUNDLE_FLAVOR=core-dev" "dev core-only bundle should be marked" || failures=1

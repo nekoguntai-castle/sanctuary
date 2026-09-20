@@ -10,6 +10,7 @@ OFFLINE_DEFAULT_PUBLIC_KEY="$OFFLINE_COMMON_DIR/keys/sanctuary-offline-release-p
 
 CORE_IMAGES=(
   "sanctuary-backend:local"
+  "sanctuary-migrate:local"
   "sanctuary-frontend:local"
   "sanctuary-gateway:local"
   "sanctuary-llm-egress-proxy:local"

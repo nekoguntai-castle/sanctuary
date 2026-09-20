@@ -66,12 +66,14 @@ assert_images() {
   local grafana_migration="${4:-false}"
   local gateway="${5:-false}"
   local llm_egress_proxy="${6:-false}"
+  local prisma_migration="${7:-false}"
 
   assert_exact_output "$output_file" "frontend_image" "$frontend"
   assert_exact_output "$output_file" "backend_image" "$backend"
   assert_exact_output "$output_file" "gateway_image" "$gateway"
   assert_exact_output "$output_file" "llm_egress_proxy_image" "$llm_egress_proxy"
   assert_exact_output "$output_file" "grafana_migration_image" "$grafana_migration"
+  assert_exact_output "$output_file" "prisma_migration_image" "$prisma_migration"
 }
 
 main() {
@@ -97,13 +99,13 @@ main() {
   commit_file "$repo_dir" "server/src/index.ts" "export const server = true;" "backend source"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "false" "true"
+  assert_images "$output_file" "false" "true" "false" "false" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "shared/schemas/wallet.ts" "export const wallet = true;" "shared schema"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "false" "true"
+  assert_images "$output_file" "true" "true" "false" "true" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/grafana-migration/Dockerfile" "FROM grafana/grafana:10.2.0" "Grafana migration dockerfile"
@@ -121,13 +123,13 @@ main() {
   commit_file "$repo_dir" "config/container-image-lock.json" '{"schemaVersion":1}' "Runtime image lock"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ci/validate-docker-build-results.sh" "#!/bin/bash" "Docker result validator"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "false" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ops/migrate-grafana-password.sh" "#!/bin/sh" "Grafana migration payload"
@@ -145,7 +147,7 @@ main() {
   commit_file "$repo_dir" "docker/compose/monitoring.yml" "services: {}" "monitoring compose"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/offline/bundle-common.sh" "MIGRATION_IMAGE=local" "offline migration inventory"
@@ -169,19 +171,19 @@ main() {
   commit_file "$repo_dir" "package.json" '{"scripts":{"check:quality":"node scripts/check.js"}}' "root package script"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "false" "true"
+  assert_images "$output_file" "true" "true" "false" "true" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "package-lock.json" '{"lockfileVersion":3}' "root package lock"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "false" "true"
+  assert_images "$output_file" "true" "true" "false" "true" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/compose/prod.yml" "services: {}" "compose overlay"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "false" "true" "true"
+  assert_images "$output_file" "true" "true" "false" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "src/public/favicon.svg" "<svg />" "public asset"
@@ -217,7 +219,7 @@ main() {
   commit_file "$repo_dir" "shared/types/ambient-modules.d.ts" "declare const __BUILD__: string;" "shared ambient types"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "false" "true"
+  assert_images "$output_file" "true" "true" "false" "true" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "config/tooling/vite.nodePolyfills.ts" "export const polyfills = [];" "vite helper"
@@ -229,19 +231,19 @@ main() {
   commit_file "$repo_dir" "server/Dockerfile" "FROM scratch" "backend dockerfile"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "false" "true"
+  assert_images "$output_file" "false" "true" "false" "false" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "gateway/package.json" '{"type":"module"}' "gateway package metadata"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "false" "true" "false" "true"
+  assert_images "$output_file" "false" "true" "false" "true" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" ".dockerignore" "node_modules" "dockerignore"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/monitoring/prometheus.yml" "global: {}" "monitoring config"
@@ -275,7 +277,7 @@ main() {
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
-  assert_images "$output_file" "true" "true" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "server/src/renamed.ts" "export const renamed = true;" "backend source before rename"
@@ -287,7 +289,7 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "false" "true"
+  assert_images "$output_file" "false" "true" "false" "false" "false" "true"
 
   echo "docker image scope classifier regression checks passed"
 }

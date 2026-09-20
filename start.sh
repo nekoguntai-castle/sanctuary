@@ -281,6 +281,9 @@ NEED_BUILD="no"
 if ! docker image inspect sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
     NEED_BUILD="yes"
 fi
+if ! docker image inspect sanctuary-migrate:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
+    NEED_BUILD="yes"
+fi
 if ! docker image inspect sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
     NEED_BUILD="yes"
 fi

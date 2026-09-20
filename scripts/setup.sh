@@ -905,6 +905,7 @@ export_runtime_environment() {
 required_runtime_images() {
     local required_images=(
         "sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}"
+        "sanctuary-migrate:${SANCTUARY_IMAGE_TAG:-local}"
         "sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}"
         "sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local}"
         "sanctuary-llm-egress-proxy:${SANCTUARY_IMAGE_TAG:-local}"

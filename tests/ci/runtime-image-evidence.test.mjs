@@ -35,9 +35,10 @@ esac
 }
 
 function run(fx, overrides = {}) {
+  const role = overrides.role ?? 'grafana-migration';
   return spawnSync(process.execPath, [
     script,
-    '--role', 'grafana-migration',
+    '--role', role,
     '--image', 'example/image:test',
     '--commit', commit,
     '--image-lock', fx.lock,
@@ -110,6 +111,7 @@ test('smokes the backend at its emitted TypeScript entry path', () => {
   const source = readFileSync(script, 'utf8');
   assert.match(source, /backend: \['package-lock[.]json'\]/);
   assert.match(source, /test -f dist\/server\/src\/index[.]js/);
+  assert.match(source, /node scripts\/check-runtime-prisma-deps[.]cjs/);
 });
 
 test('smokes the frontend through its non-root generated nginx configuration', () => {
@@ -117,4 +119,17 @@ test('smokes the frontend through its non-root generated nginx configuration', (
   assert.match(source, /'--env', 'ENABLE_SSL=false'/);
   assert.match(source, /'--env', 'BACKEND_HOST=127[.]0[.]0[.]1'/);
   assert.match(source, /options[.]image, 'nginx', '-t'/);
+});
+
+test('smokes the Prisma migration image through its CLI, seed, schema, and client artifacts', () => {
+  const fx = fixture();
+  const result = run(fx, { role: 'prisma-migration' });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(fx.dockerLog, 'utf8');
+  assert.match(calls, /--network none/);
+  assert.match(calls, /node_modules\/.bin\/prisma --version/);
+  assert.match(calls, /dist\/prisma\/prisma\/seed\.js/);
+  assert.match(calls, /dist\/server\/src\/generated\/prisma\/client\.js/);
+  assert.match(calls, /prisma\/schema\.prisma/);
+  assert.match(calls, /node_modules\/@prisma\/client/);
 });

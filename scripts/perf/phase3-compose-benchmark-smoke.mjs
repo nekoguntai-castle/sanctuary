@@ -121,7 +121,7 @@ function registerComposeResources() {
   const script = [
     'source scripts/ownership/producer-hooks.sh',
     'register_ci_compose_resources --defer-image-reference-retirement',
-    '--expected-image sanctuary-backend --expected-image sanctuary-frontend',
+    '--expected-image sanctuary-backend --expected-image sanctuary-migrate --expected-image sanctuary-frontend',
     '--expected-image sanctuary-gateway',
   ].join(' ');
   execFileSync('bash', ['-euo', 'pipefail', '-c', script], {

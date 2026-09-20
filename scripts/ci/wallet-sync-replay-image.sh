@@ -35,6 +35,17 @@ replay_source_version() {
   ' "$1"
 }
 
+# Current server images keep Prisma migrations and the migration CLI in the
+# dedicated target. Historical replay Dockerfiles predate that target and
+# already include their migration payload in the default image, so retain the
+# default target for those source trees.
+replay_target_args() {
+  local source_root="$1"
+  if grep -Eq '^FROM[[:space:]].+[[:space:]]AS[[:space:]]migration[[:space:]]*$' "$source_root/server/Dockerfile"; then
+    printf '%s\n' --target migration
+  fi
+}
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -193,8 +204,9 @@ build_image() {
   image_lock_sha256="$(sha256sum "$image_lock" | cut -d ' ' -f 1)"
   build_version="$(replay_source_version "$source_root")"
   build_id="${SANCTUARY_OPERATION_RUN_ID:-replay-${revision:0:12}}"
-  local -a provenance_label_args
+  local -a provenance_label_args target_args=()
   mapfile -t provenance_label_args < <(replay_provenance_label_args "$revision" "$image_lock_sha256" "$build_version" "$build_id")
+  mapfile -t target_args < <(replay_target_args "$source_root")
   temporary_archive="$output_dir/.wallet-sync-replay-$revision.oci.tar"
   # The Docker exporter emits an OCI layout (oci-layout/index.json/blobs) plus
   # manifest.json, allowing the exact archived bytes to be loaded by the
@@ -207,6 +219,7 @@ build_image() {
     --build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha256" \
     --build-arg "SANCTUARY_BUILD_VERSION=$build_version" \
     --build-arg "SANCTUARY_BUILD_ID=$build_id" \
+    ${target_args[@]+"${target_args[@]}"} \
     "${provenance_label_args[@]}" \
     --provenance=false \
     --sbom=false \

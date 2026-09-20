@@ -11,6 +11,7 @@ const ROLE_LOCKFILES = {
   gateway: ['package-lock.json'],
   'llm-egress-proxy': ['llm-egress-proxy/package-lock.json'],
   'grafana-migration': [],
+  'prisma-migration': ['package-lock.json'],
 };
 
 const OWNERSHIP_ENV = {
@@ -110,12 +111,18 @@ function smokeImage(options) {
     return;
   }
   const checks = {
-    backend: ['sh', '-c', 'node --version && test -f dist/server/src/index.js'],
+    backend: ['sh', '-c', 'node --version && test -f dist/server/src/index.js && node scripts/check-runtime-prisma-deps.cjs'],
     gateway: ['sh', '-c', 'node --version && test -f dist/gateway/src/index.js'],
     'llm-egress-proxy': ['sh', '-c', 'node --version && test -f dist/index.js'],
     'grafana-migration': ['sh', '-c', 'test -x /opt/sanctuary/migrate-grafana-password.sh'],
+    'prisma-migration': [
+      'sh', '-c',
+      'test -x node_modules/.bin/prisma && node_modules/.bin/prisma --version && test -f dist/prisma/prisma/seed.js && test -f dist/server/src/generated/prisma/client.js && test -f prisma/schema.prisma && test -d node_modules/@prisma/client && node -e "require.resolve(\'@prisma/client\')"',
+    ],
   };
-  runTransientContainer(['--entrypoint', checks[options.role][0], options.image, ...checks[options.role].slice(1)]);
+  // The migration CLI must already carry its engines, even on offline installs.
+  const networkArgs = options.role === 'prisma-migration' ? ['--network', 'none'] : [];
+  runTransientContainer([...networkArgs, '--entrypoint', checks[options.role][0], options.image, ...checks[options.role].slice(1)]);
 }
 
 function imagePackages(image) {

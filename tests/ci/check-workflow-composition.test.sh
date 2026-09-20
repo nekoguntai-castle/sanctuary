@@ -2929,7 +2929,7 @@ assert_contains_in_order "$PSBT_SUBJECT" \
 DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build binds every cleanup evidence upload to its verification root" \
-  'cleanup-root:' 5
+  'cleanup-root:' 6
 
 for docker_input in \
   "'src/**'" \
@@ -3318,7 +3318,7 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   'cleanup-runtime-image-backend-${{ github.run_id }}-${{ github.run_attempt }}'
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
-  "docker-build all five shipped images emit evidence" \
+  "docker-build all six shipped images emit evidence" \
   "build-gateway:" \
   "runtime-image-evidence-gateway" \
   "build-llm-egress-proxy:" \
@@ -3344,34 +3344,35 @@ assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build runtime evidence invocation count" \
   "-- scripts/ci/build-runtime-image.sh " \
-  5
+  6
 
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build cleanup coordinator invocation count" \
   "scripts/ci/cleanup-ci-callsite.sh run" \
-  5
+  6
 
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build signed cleanup evidence upload count" \
   "name: cleanup-runtime-image-" \
-  5
+  6
 
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build final signed cleanup evidence gate count" \
   "name: Require " \
-  5
+  6
 
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build final cleanup evidence file contract count" \
   "uses: ./.github/actions/verify-cleanup-receipt" \
-  5
+  6
 
 for runtime_cleanup_upload in \
   'build-frontend|Upload frontend cleanup evidence' \
   'build-backend|Upload backend cleanup evidence' \
   'build-gateway|Upload gateway cleanup evidence' \
   'build-llm-egress-proxy|Upload LLM egress proxy cleanup evidence' \
-  'build-grafana-migration|Upload Grafana migration cleanup evidence'; do
+  'build-grafana-migration|Upload Grafana migration cleanup evidence' \
+  'build-prisma-migration|Upload Prisma migration cleanup evidence'; do
   IFS='|' read -r runtime_job runtime_step <<< "$runtime_cleanup_upload"
   assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
     "$runtime_job" "$runtime_step" \
@@ -3401,6 +3402,7 @@ for docker_timeout_contract in \
   "build-gateway:|timeout-minutes: 30" \
   "build-llm-egress-proxy:|timeout-minutes: 30" \
   "build-grafana-migration:|timeout-minutes: 30" \
+  "build-prisma-migration:|timeout-minutes: 45" \
   "summary:|timeout-minutes: 10"; do
   IFS='|' read -r docker_job docker_timeout <<< "$docker_timeout_contract"
   assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
@@ -3412,7 +3414,7 @@ done
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "every docker-build job has a timeout" \
   "timeout-minutes:" \
-  7
+  8
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build classifier and summary use short timeouts" \
   "timeout-minutes: 10" \
@@ -3424,7 +3426,7 @@ assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
 assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build application images use long timeouts" \
   "timeout-minutes: 45" \
-  2
+  3
 
 for grafana_image_path in \
   "'scripts/ops/migrate-grafana-password.sh'" \

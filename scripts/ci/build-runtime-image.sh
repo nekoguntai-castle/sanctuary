@@ -11,7 +11,7 @@ fail() {
 }
 
 usage() {
-  echo "Usage: $0 ROLE DOCKERFILE CONTEXT IMAGE_REPOSITORY" >&2
+  echo "Usage: $0 ROLE DOCKERFILE CONTEXT IMAGE_REPOSITORY [TARGET]" >&2
   exit 2
 }
 
@@ -153,11 +153,12 @@ retire_on_exit() {
   exit "$subject_status"
 }
 
-[ "$#" -eq 4 ] || usage
+[ "$#" -ge 4 ] && [ "$#" -le 5 ] || usage
 role="$1"
 dockerfile="$2"
 context="$3"
 image_repository="$4"
+target="${5:-}"
 validate_inputs "$role" "$image_repository"
 image_repository="$(canonical_image_repository "$image_repository")"
 
@@ -170,6 +171,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 cache_args=()
+target_args=()
+if [ -n "$target" ]; then
+  target_args+=(--target "$target")
+fi
 if [ "${SANCTUARY_IMAGE_CACHE:-true}" = true ]; then
   # The provider cache is deliberately stable across runs and therefore shared.
   # It has no exact run-owned identity and must never be pruned by this lane.
@@ -186,6 +191,7 @@ docker buildx build \
   --build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$SANCTUARY_IMAGE_LOCK_SHA256" \
   --build-arg "SANCTUARY_BUILD_VERSION=$SANCTUARY_VERSION" \
   --build-arg "SANCTUARY_BUILD_ID=$SANCTUARY_BUILD_ID" \
+  ${target_args[@]+"${target_args[@]}"} \
   "${cache_args[@]}" \
   "$context" || build_status=$?
 

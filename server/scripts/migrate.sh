@@ -81,7 +81,7 @@ resolve_legacy_migrations() {
   for migration in $LEGACY_MIGRATIONS; do
     if [ -n "$migration" ]; then
       echo "  Resolving: $migration"
-      npx prisma migrate resolve --applied "$migration" 2>/dev/null || true
+      ./node_modules/.bin/prisma migrate resolve --applied "$migration" 2>/dev/null || true
     fi
   done
 
@@ -117,7 +117,7 @@ main() {
 
   # Run migrations.
   echo "Applying migrations..."
-  npx prisma migrate deploy
+  ./node_modules/.bin/prisma migrate deploy
 
   # Run seed (use compiled JS in production, bypasses prisma.config.ts which needs tsx).
   echo "Running database seed..."
