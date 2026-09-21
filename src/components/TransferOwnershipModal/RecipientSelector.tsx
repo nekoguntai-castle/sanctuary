@@ -23,6 +23,7 @@ const SelectedRecipient: React.FC<SelectedRecipientProps> = ({
     </div>
     <button
       type="button"
+      aria-label="Clear selected recipient"
       onClick={onClearSelection}
       className="text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300 p-1"
     >

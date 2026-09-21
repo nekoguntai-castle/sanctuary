@@ -2,13 +2,15 @@
  * Tests for TransferOwnershipModal component
  */
 
-import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act,fireEvent,render,renderHook,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { FormEvent } from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { TransferOwnershipModal } from '../../src/components/TransferOwnershipModal';
 import * as authApi from '../../src/api/auth';
 import { ApiError } from '../../src/api/client';
 import * as transfersApi from '../../src/api/transfers';
+import { useTransferOwnershipModal } from '../../src/components/TransferOwnershipModal/useTransferOwnershipModal';
 
 vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -27,6 +29,16 @@ vi.mock('../../src/api/auth', () => ({
 vi.mock('../../src/api/transfers', () => ({
   initiateTransfer: vi.fn(),
 }));
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('TransferOwnershipModal', () => {
   const defaultProps = {
@@ -166,6 +178,116 @@ describe('TransferOwnershipModal', () => {
       });
       expect(screen.queryByText('alice')).not.toBeInTheDocument();
     });
+
+    it('keeps the latest results when searches resolve in reverse order', async () => {
+      const first = createDeferred<authApi.SearchUser[]>();
+      const second = createDeferred<authApi.SearchUser[]>();
+      vi.mocked(authApi.searchUsers).mockImplementation((query) => (
+        query === 'al' ? first.promise : second.promise
+      ));
+      render(<TransferOwnershipModal {...defaultProps} />);
+      const input = screen.getByPlaceholderText('Search users by username...');
+
+      fireEvent.change(input, { target: { value: 'al' } });
+      fireEvent.change(input, { target: { value: 'alice' } });
+      await act(async () => {
+        second.resolve([{ id: 'latest', username: 'alice-current' }]);
+        await second.promise;
+      });
+      expect(screen.getByText('alice-current')).toBeInTheDocument();
+
+      await act(async () => {
+        first.resolve([{ id: 'stale', username: 'al-stale' }]);
+        await first.promise;
+      });
+      expect(screen.getByText('alice-current')).toBeInTheDocument();
+      expect(screen.queryByText('al-stale')).not.toBeInTheDocument();
+    });
+
+    it('invalidates a pending search when the query becomes too short', async () => {
+      const pending = createDeferred<authApi.SearchUser[]>();
+      vi.mocked(authApi.searchUsers).mockReturnValue(pending.promise);
+      render(<TransferOwnershipModal {...defaultProps} />);
+      const input = screen.getByPlaceholderText('Search users by username...');
+
+      fireEvent.change(input, { target: { value: 'al' } });
+      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+      fireEvent.change(input, { target: { value: 'a' } });
+      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+
+      await act(async () => {
+        pending.resolve([{ id: 'stale', username: 'late-alice' }]);
+        await pending.promise;
+      });
+      expect(screen.queryByText('late-alice')).not.toBeInTheDocument();
+    });
+
+    it('keeps the current spinner when a stale request settles', async () => {
+      const first = createDeferred<authApi.SearchUser[]>();
+      const second = createDeferred<authApi.SearchUser[]>();
+      vi.mocked(authApi.searchUsers)
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      render(<TransferOwnershipModal {...defaultProps} />);
+      const input = screen.getByPlaceholderText('Search users by username...');
+
+      fireEvent.change(input, { target: { value: 'al' } });
+      fireEvent.change(input, { target: { value: 'alice' } });
+      await act(async () => {
+        first.resolve([]);
+        await first.promise;
+      });
+      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+
+      await act(async () => {
+        second.resolve([]);
+        await second.promise;
+      });
+      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+    });
+
+    it('keeps the current spinner when a stale request rejects', async () => {
+      const first = createDeferred<authApi.SearchUser[]>();
+      const second = createDeferred<authApi.SearchUser[]>();
+      vi.mocked(authApi.searchUsers)
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      render(<TransferOwnershipModal {...defaultProps} />);
+      const input = screen.getByPlaceholderText('Search users by username...');
+
+      fireEvent.change(input, { target: { value: 'al' } });
+      fireEvent.change(input, { target: { value: 'alice' } });
+      await act(async () => {
+        first.reject(new Error('stale failure'));
+        await first.promise.catch(() => undefined);
+      });
+      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+
+      await act(async () => {
+        second.resolve([]);
+        await second.promise;
+      });
+      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+    });
+
+    it('removes completed results while the next query is pending', async () => {
+      const pending = createDeferred<authApi.SearchUser[]>();
+      vi.mocked(authApi.searchUsers)
+        .mockResolvedValueOnce([{ id: 'old', username: 'old-result' }])
+        .mockReturnValueOnce(pending.promise);
+      render(<TransferOwnershipModal {...defaultProps} />);
+      const input = screen.getByPlaceholderText('Search users by username...');
+
+      fireEvent.change(input, { target: { value: 'al' } });
+      await waitFor(() => expect(screen.getByText('old-result')).toBeInTheDocument());
+      fireEvent.change(input, { target: { value: 'bob' } });
+
+      expect(screen.queryByText('old-result')).not.toBeInTheDocument();
+      await act(async () => {
+        pending.resolve([]);
+        await pending.promise;
+      });
+    });
   });
 
   describe('user selection', () => {
@@ -223,16 +345,65 @@ describe('TransferOwnershipModal', () => {
         expect(screen.getByText('Will receive ownership')).toBeInTheDocument();
       });
 
-      // Find the X button to clear selection
-      const clearButtons = screen.getAllByRole('button');
-      const clearButton = clearButtons.find(btn => btn.querySelector('svg[class*="w-4"]'));
-      if (clearButton) {
-        await user.click(clearButton);
-      }
+      await user.click(screen.getByRole('button', { name: 'Clear selected recipient' }));
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Search users by username...')).toBeInTheDocument();
       });
+    });
+
+    it('ignores an older search after selecting and clearing a current result', async () => {
+      const stale = createDeferred<authApi.SearchUser[]>();
+      vi.mocked(authApi.searchUsers)
+        .mockReturnValueOnce(stale.promise)
+        .mockResolvedValueOnce([{ id: 'current', username: 'current-user' }]);
+      const user = userEvent.setup();
+      render(<TransferOwnershipModal {...defaultProps} />);
+      const input = screen.getByPlaceholderText('Search users by username...');
+
+      fireEvent.change(input, { target: { value: 'al' } });
+      fireEvent.change(input, { target: { value: 'alice' } });
+      await waitFor(() => expect(screen.getByText('current-user')).toBeInTheDocument());
+      await user.click(screen.getByText('current-user'));
+      await user.click(screen.getByRole('button', { name: 'Clear selected recipient' }));
+
+      await act(async () => {
+        stale.resolve([{ id: 'stale', username: 'stale-user' }]);
+        await stale.promise;
+      });
+      expect(screen.getByPlaceholderText('Search users by username...')).toHaveValue('');
+      expect(screen.queryByText('stale-user')).not.toBeInTheDocument();
+      expect(screen.queryByText('Will receive ownership')).not.toBeInTheDocument();
+    });
+
+    it('rejects a stale recipient ID but accepts the visible ID after rerender', async () => {
+      const currentUser = { id: 'current', username: 'current-user' };
+      vi.mocked(authApi.searchUsers).mockResolvedValueOnce([currentUser]);
+      const { result, rerender } = renderHook(() => useTransferOwnershipModal({
+        resourceType: defaultProps.resourceType,
+        resourceId: defaultProps.resourceId,
+        onTransferInitiated: defaultProps.onTransferInitiated,
+      }));
+
+      await act(async () => {
+        await result.current.handleSearch('current');
+      });
+      act(() => {
+        result.current.handleSelectUser({ id: 'stale', username: 'stale-user' });
+      });
+      expect(result.current.selectedUser).toBeNull();
+      expect(result.current.searchResults).toEqual([currentUser]);
+
+      await act(async () => {
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as FormEvent);
+      });
+      expect(transfersApi.initiateTransfer).not.toHaveBeenCalled();
+
+      rerender();
+      act(() => {
+        result.current.handleSelectUser({ ...currentUser });
+      });
+      expect(result.current.selectedUser).toBe(currentUser);
     });
   });
 

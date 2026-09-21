@@ -1,4 +1,4 @@
-import { useCallback,useState } from 'react';
+import { useCallback,useRef,useState } from 'react';
 import type { FormEvent } from 'react';
 import * as authApi from '../../api/auth';
 import { ApiError } from '../../api/client';
@@ -21,37 +21,60 @@ export function useTransferOwnershipModal({
   const [keepExistingUsers, setKeepExistingUsers] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Every input or selection transition invalidates older async completions.
+  const searchGenerationRef = useRef(0);
+  const visibleResultsRef = useRef<authApi.SearchUser[]>([]);
+
+  const clearSearchResults = useCallback(() => {
+    visibleResultsRef.current = [];
+    setSearchResults([]);
+  }, []);
 
   const handleSearch = useCallback(async (query: string) => {
+    const generation = searchGenerationRef.current + 1;
+    searchGenerationRef.current = generation;
+    const ownsSearch = () => searchGenerationRef.current === generation;
     setSearchQuery(query);
+    clearSearchResults();
 
     if (query.length < 2) {
-      setSearchResults([]);
+      setSearching(false);
       return;
     }
 
     setSearching(true);
     try {
       const results = await authApi.searchUsers(query);
+      if (!ownsSearch()) return;
+      visibleResultsRef.current = results;
       setSearchResults(results);
     } catch (err) {
-      log.error('Failed to search users', { err });
+      if (ownsSearch()) log.error('Failed to search users', { err });
     } finally {
-      setSearching(false);
+      if (ownsSearch()) setSearching(false);
     }
-  }, []);
+  }, [clearSearchResults]);
 
   const handleSelectUser = useCallback((user: authApi.SearchUser) => {
-    setSelectedUser(user);
+    // Only IDs in the currently visible result set may become transfer recipients.
+    const visibleUser = visibleResultsRef.current.find(result => result.id === user.id);
+    if (!visibleUser) return;
+    searchGenerationRef.current += 1;
+    setSelectedUser(visibleUser);
     setSearchQuery('');
-    setSearchResults([]);
+    clearSearchResults();
+    setSearching(false);
     setError(null);
-  }, []);
+  }, [clearSearchResults]);
 
   const handleClearSelection = useCallback(() => {
+    searchGenerationRef.current += 1;
     setSelectedUser(null);
+    setSearchQuery('');
+    clearSearchResults();
+    setSearching(false);
     setError(null);
-  }, []);
+  }, [clearSearchResults]);
 
   const handleSubmit = useCallback(async (event: FormEvent) => {
     event.preventDefault();
