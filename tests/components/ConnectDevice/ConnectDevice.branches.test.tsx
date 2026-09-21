@@ -416,6 +416,7 @@ describe('ConnectDevice branch coverage', () => {
 
     await user.click(screen.getByRole('button', { name: 'select-model' }));
     hookState.usb.connectionResult = {
+      modelId: hookState.model.id,
       fingerprint: '00000000',
       accounts: [{
         purpose: 'single_sig',

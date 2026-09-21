@@ -157,6 +157,7 @@ export const REQUIRED_FUNDS_EXECUTION_POINTS = Object.freeze([
   ['src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts', 'signPSBT', 'sign', 'callable', 1],
   ['src/services/hardwareWallet/service.ts', 'broadcastSignedTransaction', 'broadcast', 'callable', 1],
   ['src/services/hardwareWallet/service.ts', 'signPSBT', 'sign', 'callable', 1],
+  ['src/services/hardwareWallet/service.ts', 'signPSBTForLease', 'sign', 'callable', 1],
 ]);
 
 const readRepositoryFile = (path) => readFileSync(resolve(REPOSITORY_ROOT, path), 'utf8');

@@ -89,7 +89,16 @@ vi.mock('../../../src/services/hardwareWallet/environment', () => ({
 vi.mock('../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: deviceDetailMocks.hardwareConnect,
+    connectWithLease: async (...args: unknown[]) => ({
+      device: await deviceDetailMocks.hardwareConnect(...args),
+      lease: {},
+    }),
+    releaseConnection: deviceDetailMocks.hardwareDisconnect,
     getAllXpubs: deviceDetailMocks.hardwareGetAllXpubs,
+    getAllXpubsWithFailuresForLease: async (_lease: unknown, callback: unknown) => {
+      const results = await deviceDetailMocks.hardwareGetAllXpubs(callback);
+      return { results, failures: [], totalPaths: results.length };
+    },
     disconnect: deviceDetailMocks.hardwareDisconnect,
   },
 }));

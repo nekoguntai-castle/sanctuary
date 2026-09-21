@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -275,6 +275,53 @@ export const registerConnectDeviceImportUsbContracts = () => {
         expect(mocks.hardwareWalletService.connect).toHaveBeenCalled();
         expect(screen.getByText(/Device Connected/i)).toBeInTheDocument();
       });
+    });
+
+    it('cannot save model B with identity evidence resolved late from model A', async () => {
+      const user = userEvent.setup();
+      let resolveModelAXpubs!: (value: unknown[]) => void;
+
+      mocks.isSecureContext.mockReturnValue(true);
+      mocks.hardwareWalletService.connect.mockResolvedValue({
+        connected: true,
+        fingerprint: 'c0ffeebb',
+      } as any);
+      mocks.hardwareWalletService.getAllXpubs.mockImplementation(
+        () => new Promise((resolve) => {
+          resolveModelAXpubs = resolve;
+        }),
+      );
+
+      await renderConnectDevice();
+      await waitFor(() => expect(screen.getByText('Ledger Nano S')).toBeInTheDocument());
+
+      await user.click(screen.getByText('Ledger Nano S'));
+      await user.click(await screen.findByText('USB'));
+      await user.click(screen.getByRole('button', { name: /Connect Device/i }));
+      await waitFor(() => expect(mocks.hardwareWalletService.getAllXpubs).toHaveBeenCalled());
+
+      await user.click(screen.getByText('Trezor Model T'));
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/my trezor model t/i)).toHaveValue('My Trezor Model T');
+      });
+      await user.click(screen.getByText('USB'));
+
+      await act(async () => {
+        resolveModelAXpubs([{
+          purpose: 'single_sig',
+          scriptType: 'native_segwit',
+          path: "m/84'/0'/0'",
+          xpub: 'xpub-model-a',
+          fingerprint: 'c0ffeebb',
+        }]);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const saveButton = screen.getByRole('button', { name: /Save Device/i });
+      await waitFor(() => expect(saveButton).toBeDisabled());
+      await user.click(saveButton);
+      expect(mocks.createDeviceWithConflictHandling).not.toHaveBeenCalled();
     });
   });
 };

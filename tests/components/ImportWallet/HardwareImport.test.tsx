@@ -11,18 +11,31 @@ HardwareImport,
 
 const mockConnect = vi.fn();
 const mockGetXpub = vi.fn();
+const mockReleaseConnection = vi.fn();
+const mockLease = {};
 const mockIsSecureContext = vi.fn();
+const mockLoadHardwareWalletRuntime = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (...args: unknown[]) => mockConnect(...args),
+    connectWithLease: async (...args: unknown[]) => ({
+      device: await mockConnect(...args),
+      lease: mockLease,
+    }),
+    releaseConnection: (...args: unknown[]) => mockReleaseConnection(...args),
     getXpub: (...args: unknown[]) => mockGetXpub(...args),
+    getXpubForLease: (_lease: unknown, ...args: unknown[]) => mockGetXpub(...args),
   },
   DeviceType: {},
 }));
 
 vi.mock('../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => mockIsSecureContext(),
+}));
+
+vi.mock('../../../src/services/hardwareWallet/loader', () => ({
+  loadHardwareWalletRuntime: () => mockLoadHardwareWalletRuntime(),
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -86,14 +99,43 @@ function renderHardwareImport(overrides: HardwareImportOverrides = {}) {
     isNetworkOwnerCurrent: overrides.isNetworkOwnerCurrent ?? (() => true),
   };
 
-  render(<HardwareImport {...props} />);
-  return props;
+  const view = render(<HardwareImport {...props} />);
+  return {
+    ...props,
+    unmount: view.unmount,
+    rerenderHardwareImport(next: HardwareImportOverrides) {
+      view.rerender(<HardwareImport {...props} {...next} />);
+    },
+  };
+}
+
+async function connectAndRerender(
+  rendered: ReturnType<typeof renderHardwareImport>,
+  user: ReturnType<typeof userEvent.setup>,
+  overrides: HardwareImportOverrides = {},
+) {
+  mockConnect.mockResolvedValueOnce({ name: 'Ledger Nano S Plus' });
+  await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+  await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+  rendered.rerenderHardwareImport({
+    ...overrides,
+    deviceConnected: true,
+    deviceLabel: 'Ledger Nano S Plus',
+  });
+  await screen.findByRole('button', { name: 'Fetch Xpub from Device' });
 }
 
 describe('HardwareImport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConnect.mockReset();
+    mockGetXpub.mockReset();
+    mockReleaseConnection.mockReset();
     mockIsSecureContext.mockReturnValue(true);
+    mockReleaseConnection.mockResolvedValue(undefined);
+    mockLoadHardwareWalletRuntime.mockImplementation(
+      () => import('../../../src/services/hardwareWallet/runtime'),
+    );
   });
 
   it('disables Ledger path when secure context is unavailable', async () => {
@@ -200,10 +242,11 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
     await waitFor(() => expect(mockConnect).toHaveBeenCalled());
     activeOwner = { network: 'mainnet', generation: 2 };
+    mockReleaseConnection.mockRejectedValueOnce(new Error('stale release failed'));
     resolveConnect({ name: 'Stale Ledger' });
 
-    await waitFor(() => expect(props.setDeviceConnected).not.toHaveBeenCalled());
-    expect(props.setDeviceLabel).not.toHaveBeenCalled();
+    await waitFor(() => expect(props.setDeviceConnected).toHaveBeenCalledWith(false));
+    expect(props.setDeviceLabel).toHaveBeenCalledWith(null);
     expect(props.setHardwareError).toHaveBeenCalledTimes(1);
     expect(props.setIsConnecting).toHaveBeenCalledTimes(1);
   });
@@ -230,6 +273,20 @@ describe('HardwareImport', () => {
     const user = userEvent.setup();
     let checks = 0;
     const props = renderHardwareImport({
+      isNetworkOwnerCurrent: () => ++checks < 3,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => expect(props.setIsConnecting).toHaveBeenCalledWith(true));
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(props.setIsConnecting).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops connect work when ownership changes while prior release settles', async () => {
+    const user = userEvent.setup();
+    let checks = 0;
+    const props = renderHardwareImport({
       isNetworkOwnerCurrent: () => ++checks === 1,
     });
 
@@ -240,19 +297,120 @@ describe('HardwareImport', () => {
     expect(props.setIsConnecting).toHaveBeenCalledTimes(1);
   });
 
-  it('stops xpub work after the hardware runtime loads if ownership changed', async () => {
+  it('lets the latest same-owner connect win while an earlier runtime load is pending', async () => {
     const user = userEvent.setup();
-    let checks = 0;
-    const props = renderHardwareImport({
-      deviceConnected: true,
-      isNetworkOwnerCurrent: () => ++checks === 1,
+    const runtime = await import('../../../src/services/hardwareWallet/runtime');
+    let resolveRuntime!: (value: typeof runtime) => void;
+    mockLoadHardwareWalletRuntime
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRuntime = resolve;
+      }))
+      .mockResolvedValue(runtime);
+    mockConnect.mockResolvedValue({ name: 'Current Ledger' });
+    const props = renderHardwareImport();
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockLoadHardwareWalletRuntime).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalledTimes(1));
+    resolveRuntime(runtime);
+
+    await waitFor(() => expect(props.setDeviceLabel).toHaveBeenCalledWith('Current Ledger'));
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(props.setIsConnecting.mock.calls.filter(([value]) => value === false)).toHaveLength(1);
+  });
+
+  it('suppresses a late same-owner connect rejection after a newer connect succeeds', async () => {
+    const user = userEvent.setup();
+    let rejectFirst!: (error: Error) => void;
+    mockConnect
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        rejectFirst = reject;
+      }))
+      .mockResolvedValueOnce({ name: 'Current Ledger' });
+    const props = renderHardwareImport();
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(props.setDeviceLabel).toHaveBeenCalledWith('Current Ledger'));
+    rejectFirst(new Error('late stale connect'));
+
+    await waitFor(() => {
+      expect(props.setHardwareError).not.toHaveBeenCalledWith('late stale connect');
     });
+    expect(props.setIsConnecting.mock.calls.filter(([value]) => value === false)).toHaveLength(1);
+  });
+
+  it('clears pending connection state when the selected model changes', async () => {
+    const user = userEvent.setup();
+    let resolveConnect!: (device: { name: string }) => void;
+    mockConnect.mockReturnValue(new Promise((resolve) => {
+      resolveConnect = resolve;
+    }));
+    const props = renderHardwareImport();
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Hardware model' }),
+      'Ledger Nano X',
+    );
+    resolveConnect({ name: 'Stale Ledger' });
+
+    await waitFor(() => expect(props.setIsConnecting).toHaveBeenLastCalledWith(false));
+    expect(props.setDeviceConnected).not.toHaveBeenCalledWith(true);
+  });
+
+  it('clears pending connection state when the device type changes', async () => {
+    const user = userEvent.setup();
+    let resolveConnect!: (device: { name: string }) => void;
+    mockConnect.mockReturnValue(new Promise((resolve) => {
+      resolveConnect = resolve;
+    }));
+    const props = renderHardwareImport();
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: /Trezor/i }));
+    resolveConnect({ name: 'Stale Ledger' });
+
+    await waitFor(() => expect(props.setIsConnecting).toHaveBeenLastCalledWith(false));
+    expect(props.setDeviceConnected).not.toHaveBeenCalledWith(true);
+  });
+
+  it('does not start xpub work for a stale rendered network owner', async () => {
+    const user = userEvent.setup();
+    let current = true;
+    const props = renderHardwareImport({
+      isNetworkOwnerCurrent: () => current,
+    });
+    await connectAndRerender(props, user, {
+      isNetworkOwnerCurrent: () => current,
+    });
+    props.setIsFetchingXpub.mockClear();
+    current = false;
 
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
 
-    await waitFor(() => expect(props.setIsFetchingXpub).toHaveBeenCalledWith(true));
     expect(mockGetXpub).not.toHaveBeenCalled();
-    expect(props.setIsFetchingXpub).toHaveBeenCalledTimes(1);
+    expect(props.setIsFetchingXpub).not.toHaveBeenCalled();
+  });
+
+  it('releases the connected lease when the network owner changes', async () => {
+    const user = userEvent.setup();
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    mockReleaseConnection.mockClear();
+
+    props.rerenderHardwareImport({
+      deviceConnected: true,
+      deviceLabel: 'Ledger Nano S Plus',
+      network: 'testnet3',
+      networkOwner: { network: 'testnet3', generation: 1 },
+    });
+
+    await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease));
   });
 
   it('suppresses a stale hardware connection rejection and finally commit', async () => {
@@ -283,9 +441,12 @@ describe('HardwareImport', () => {
     }));
     let mounted = true;
     const props = renderHardwareImport({
-      deviceConnected: true,
       isNetworkOwnerCurrent: () => mounted,
     });
+    await connectAndRerender(props, user);
+    props.setXpubData.mockClear();
+    props.setHardwareError.mockClear();
+    props.setIsFetchingXpub.mockClear();
 
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
     await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
@@ -305,9 +466,11 @@ describe('HardwareImport', () => {
     }));
     let current = true;
     const props = renderHardwareImport({
-      deviceConnected: true,
       isNetworkOwnerCurrent: () => current,
     });
+    await connectAndRerender(props, user);
+    props.setXpubData.mockClear();
+    props.setIsFetchingXpub.mockClear();
 
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
     await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
@@ -316,6 +479,148 @@ describe('HardwareImport', () => {
 
     await waitFor(() => expect(props.setXpubData).not.toHaveBeenCalled());
     expect(props.setIsFetchingXpub).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the latest same-owner xpub fetch win and suppresses the earlier rejection', async () => {
+    const user = userEvent.setup();
+    let rejectFirst!: (error: Error) => void;
+    mockGetXpub
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        rejectFirst = reject;
+      }))
+      .mockResolvedValueOnce({ xpub: 'current-xpub', fingerprint: 'a1b2c3d4' });
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    props.setXpubData.mockClear();
+    props.setHardwareError.mockClear();
+    props.setIsFetchingXpub.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(props.setXpubData).toHaveBeenCalledWith(expect.objectContaining({
+      xpub: 'current-xpub',
+    })));
+    rejectFirst(new Error('late stale xpub'));
+
+    await waitFor(() => {
+      expect(props.setHardwareError).not.toHaveBeenCalledWith('late stale xpub');
+    });
+    expect(props.setIsFetchingXpub.mock.calls.filter(([value]) => value === false)).toHaveLength(1);
+  });
+
+  it('clears and invalidates a pending xpub fetch when reconnect starts', async () => {
+    const user = userEvent.setup();
+    let resolveXpub!: (result: { xpub: string; fingerprint: string }) => void;
+    mockGetXpub.mockReturnValue(new Promise((resolve) => {
+      resolveXpub = resolve;
+    }));
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    props.setXpubData.mockClear();
+    props.setIsFetchingXpub.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
+    props.rerenderHardwareImport({ deviceConnected: false, deviceLabel: null });
+    mockConnect.mockResolvedValueOnce({ name: 'Reconnected Ledger' });
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    resolveXpub({ xpub: 'stale-before-reconnect', fingerprint: 'a1b2c3d4' });
+
+    await waitFor(() => expect(props.setIsFetchingXpub).toHaveBeenLastCalledWith(false));
+    expect(props.setXpubData).not.toHaveBeenCalledWith(expect.objectContaining({
+      xpub: 'stale-before-reconnect',
+    }));
+  });
+
+  it('invalidates a pending xpub fetch when the derivation script changes', async () => {
+    const user = userEvent.setup();
+    let resolveXpub!: (result: { xpub: string; fingerprint: string }) => void;
+    mockGetXpub.mockReturnValue(new Promise((resolve) => {
+      resolveXpub = resolve;
+    }));
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    props.setXpubData.mockClear();
+    props.setIsFetchingXpub.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: /Taproot/i }));
+    resolveXpub({ xpub: 'old-script-xpub', fingerprint: 'a1b2c3d4' });
+
+    await waitFor(() => expect(props.setScriptType).toHaveBeenCalledWith('taproot'));
+    expect(props.setXpubData).not.toHaveBeenCalledWith(expect.objectContaining({
+      xpub: 'old-script-xpub',
+    }));
+    expect(props.setIsFetchingXpub).toHaveBeenLastCalledWith(false);
+  });
+
+  it('suppresses a pending xpub error when the account index changes', async () => {
+    const user = userEvent.setup();
+    let rejectXpub!: (error: Error) => void;
+    mockGetXpub.mockReturnValue(new Promise((_, reject) => {
+      rejectXpub = reject;
+    }));
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    props.setHardwareError.mockClear();
+    props.setIsFetchingXpub.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '2' } });
+    rejectXpub(new Error('old-account failure'));
+
+    await waitFor(() => expect(props.setAccountIndex).toHaveBeenCalledWith(2));
+    expect(props.setHardwareError).not.toHaveBeenCalledWith('old-account failure');
+    expect(props.setIsFetchingXpub).toHaveBeenLastCalledWith(false);
+  });
+
+  it('releases model A lease and suppresses its xpub after selecting model B', async () => {
+    const user = userEvent.setup();
+    let resolveXpub!: (result: { xpub: string; fingerprint: string }) => void;
+    mockGetXpub.mockReturnValue(new Promise((resolve) => {
+      resolveXpub = resolve;
+    }));
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    props.setXpubData.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Hardware model' }),
+      'Ledger Nano X',
+    );
+    await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease));
+
+    resolveXpub({ xpub: 'model-a-xpub', fingerprint: 'a1b2c3d4' });
+    await waitFor(() => expect(props.setDeviceConnected).toHaveBeenCalledWith(false));
+    expect(props.setXpubData).not.toHaveBeenCalledWith(expect.objectContaining({
+      xpub: 'model-a-xpub',
+    }));
+  });
+
+  it('can connect model B after releasing model A fails', async () => {
+    const user = userEvent.setup();
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    mockReleaseConnection.mockRejectedValueOnce(new Error('release A failed'));
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Hardware model' }),
+      'Ledger Nano X',
+    );
+    await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease));
+    props.rerenderHardwareImport({ deviceConnected: false, deviceLabel: null });
+
+    mockConnect.mockResolvedValueOnce({ name: 'Ledger Nano X' });
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => expect(mockConnect).toHaveBeenCalledTimes(2));
+    expect(props.setDeviceConnected).toHaveBeenLastCalledWith(true);
+    expect(props.setDeviceLabel).toHaveBeenLastCalledWith('Ledger Nano X');
   });
 
   it('uses trezor fallback label when connected device has no name', async () => {
@@ -394,9 +699,11 @@ describe('HardwareImport', () => {
     await waitFor(() => {
       expect(connectProps.setHardwareError).toHaveBeenCalledWith('Device not found');
     });
+    connectProps.unmount();
 
     mockGetXpub.mockRejectedValueOnce('boom');
-    const fetchProps = renderHardwareImport({ deviceConnected: true });
+    const fetchProps = renderHardwareImport();
+    await connectAndRerender(fetchProps, user);
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
     await waitFor(() => {
       expect(fetchProps.setHardwareError).toHaveBeenCalledWith('Failed to fetch xpub');
@@ -418,7 +725,8 @@ describe('HardwareImport', () => {
   it('handles Error-based xpub fetch failures by surfacing error message', async () => {
     const user = userEvent.setup();
     mockGetXpub.mockRejectedValueOnce(new Error('xpub fetch failed'));
-    const props = renderHardwareImport({ deviceConnected: true });
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
 
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
 
@@ -458,10 +766,11 @@ describe('HardwareImport', () => {
       fingerprint: 'a1b2c3d4',
     });
     const props = renderHardwareImport({
-      deviceConnected: true,
       scriptType: 'taproot',
       accountIndex: 2,
     });
+    await connectAndRerender(props, user, { scriptType: 'taproot', accountIndex: 2 });
+    props.setIsFetchingXpub.mockClear();
 
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
 
@@ -481,7 +790,8 @@ describe('HardwareImport', () => {
   it('shows retrieve error when xpub response is incomplete', async () => {
     const user = userEvent.setup();
     mockGetXpub.mockResolvedValue({ xpub: '', fingerprint: '' });
-    const props = renderHardwareImport({ deviceConnected: true });
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
 
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
 
@@ -490,6 +800,19 @@ describe('HardwareImport', () => {
         'Failed to retrieve xpub from device',
       );
     });
+  });
+
+  it('requires an owned hardware lease even if rendered state says connected', async () => {
+    const user = userEvent.setup();
+    const props = renderHardwareImport({ deviceConnected: true });
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+
+    await waitFor(() => expect(props.setHardwareError).toHaveBeenCalledWith(
+      'Connect a hardware device before fetching its xpub',
+    ));
+    expect(mockGetXpub).not.toHaveBeenCalled();
+    expect(props.setIsFetchingXpub).toHaveBeenLastCalledWith(false);
   });
 
   it('renders fetched xpub summary, fetch-again state, and inline error', () => {

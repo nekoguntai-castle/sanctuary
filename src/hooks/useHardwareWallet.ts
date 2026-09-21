@@ -10,6 +10,7 @@ import type {
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { loadHardwareWalletRuntime } from '../services/hardwareWallet/loader';
 import { createLogger } from '../utils/logger';
+import type { HardwareWalletConnectionLease } from '../services/hardwareWallet/service';
 
 const log = createLogger('useHardwareWallet');
 
@@ -67,14 +68,8 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
   // apply loading/error state, and must tear down the service-level
   // session it just created so nothing is left connected underneath.
   const connectGenerationRef = useRef(0);
-  // The most recent action that bumped connectGenerationRef. The service
-  // holds a single session, so a stale connect must only tear it down when
-  // nothing newer has claimed it: if the last action was 'disconnect', no
-  // newer connect owns the session and the stale connect's own session is
-  // the one still live underneath, so it must be closed. If the last action
-  // was 'connect', a newer connect now owns the session — tearing it down
-  // would kill that newer connect's session instead of the stale one.
-  const lastActionRef = useRef<'connect' | 'disconnect'>('disconnect');
+  const signGenerationRef = useRef(0);
+  const connectionLeaseRef = useRef<HardwareWalletConnectionLease | null>(null);
 
   /**
    * Refresh list of connected devices
@@ -103,44 +98,45 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
     async (type?: DeviceType, options?: HardwareWalletConnectionOptions) => {
     connectGenerationRef.current += 1;
     const myGeneration = connectGenerationRef.current;
-    lastActionRef.current = 'connect';
     const isCurrent = () => connectGenerationRef.current === myGeneration;
-    // Read through `string` so TypeScript doesn't narrow this to the
-    // 'connect' literal just assigned above — disconnect() can reassign the
-    // ref from another closure during the awaits below, which TS's static
-    // control-flow analysis cannot see.
-    const wasSupersededByDisconnect = (): boolean =>
-      (lastActionRef.current as string) === 'disconnect';
 
     // No await has happened yet, so this generation is trivially current —
     // always apply the starting loading/error state unconditionally.
     setConnecting(true);
+    setSigning(false);
     setError(null);
+    setDevice(null);
 
     try {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      const connectedDevice = await hardwareWalletService.connect(type, options);
+      if (!isCurrent()) return;
+      const previousLease = connectionLeaseRef.current;
+      connectionLeaseRef.current = null;
+      if (previousLease) {
+        try {
+          await hardwareWalletService.releaseConnection(previousLease);
+        } catch (releaseError) {
+          log.warn('Failed to release prior hardware wallet session before reconnect', {
+            error: releaseError,
+          });
+        }
+        if (!isCurrent()) return;
+      }
+      const connection = await hardwareWalletService.connectWithLease(type, options);
 
       if (!isCurrent()) {
-        // Superseded by a newer connect or a disconnect while we were
-        // awaiting: don't resurrect `device`. Only tear down the
-        // service-level session we just created if nothing newer has
-        // claimed it — if a newer connect is now the last action, it owns
-        // the single service session and disconnecting here would kill
-        // that connect's session instead of this stale one.
-        if (wasSupersededByDisconnect()) {
-          try {
-            await hardwareWalletService.disconnect();
-          } catch (disconnectErr) {
-            log.warn('Failed to disconnect superseded hardware wallet session', {
-              error: disconnectErr,
-            });
-          }
+        try {
+          await hardwareWalletService.releaseConnection(connection.lease);
+        } catch (disconnectErr) {
+          log.warn('Failed to disconnect superseded hardware wallet session', {
+            error: disconnectErr,
+          });
         }
         return;
       }
 
-      setDevice(connectedDevice);
+      connectionLeaseRef.current = connection.lease;
+      setDevice(connection.device);
 
       // Refresh device list
       await refreshDevices();
@@ -164,14 +160,19 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    */
   const disconnect = useCallback(() => {
     connectGenerationRef.current += 1;
-    lastActionRef.current = 'disconnect';
-    void (async () => {
-      const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      await hardwareWalletService.disconnect();
-    })().catch((err) => {
-      log.warn('Failed to disconnect hardware wallet service', { error: err });
-    });
+    const lease = connectionLeaseRef.current;
+    connectionLeaseRef.current = null;
+    if (lease) {
+      void (async () => {
+        const { hardwareWalletService } = await loadHardwareWalletRuntime();
+        await hardwareWalletService.releaseConnection(lease);
+      })().catch((err) => {
+        log.warn('Failed to disconnect hardware wallet service', { error: err });
+      });
+    }
     setDevice(null);
+    setConnecting(false);
+    setSigning(false);
     setError(null);
   }, []);
 
@@ -180,23 +181,34 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    */
   const signTransaction = useCallback(
     async (tx: TransactionForSigning): Promise<string> => {
+    const connectionGeneration = connectGenerationRef.current;
+    const signGeneration = ++signGenerationRef.current;
+    const lease = connectionLeaseRef.current;
+    const ownsOperation = () => (
+      connectGenerationRef.current === connectionGeneration
+      && signGenerationRef.current === signGeneration
+      && connectionLeaseRef.current === lease
+    );
     try {
       setSigning(true);
       setError(null);
 
-      if (!device) {
+      if (!device || !lease) {
         throw new Error('No device connected');
       }
 
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      const txid = await hardwareWalletService.signTransaction(tx);
+      if (!ownsOperation()) throw new Error('Hardware wallet connection changed');
+      const txid = await hardwareWalletService.signTransactionForLease(lease, tx);
       return txid;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sign transaction';
-      setError(message);
+      if (ownsOperation()) {
+        const message = err instanceof Error ? err.message : 'Failed to sign transaction';
+        setError(message);
+      }
       throw err;
     } finally {
-      setSigning(false);
+      if (ownsOperation()) setSigning(false);
     }
     },
     [device]
@@ -220,21 +232,28 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
       rawTx?: string;
       trezorArtifact?: TrezorConnectSignedArtifact;
     }> => {
-    const { hardwareWalletService } = await loadHardwareWalletRuntime();
-
-    // Check the service's connection state directly (not React state which updates async)
-    if (!hardwareWalletService.isConnected()) {
-      throw new Error('No device connected');
-    }
+    const connectionGeneration = connectGenerationRef.current;
+    const signGeneration = ++signGenerationRef.current;
+    const lease = connectionLeaseRef.current;
+    const ownsOperation = () => (
+      connectGenerationRef.current === connectionGeneration
+      && signGenerationRef.current === signGeneration
+      && connectionLeaseRef.current === lease
+    );
 
     try {
       setSigning(true);
       setError(null);
+      if (!lease) throw new Error('No device connected');
+
+      const { hardwareWalletService } = await loadHardwareWalletRuntime();
+      if (!ownsOperation()) throw new Error('Hardware wallet connection changed');
+      if (!hardwareWalletService.isConnected()) throw new Error('No device connected');
 
       const signingContext = Array.isArray(signingContextOrLegacyPaths)
         ? undefined
         : signingContextOrLegacyPaths;
-      const result = await hardwareWalletService.signPSBT({
+      const result = await hardwareWalletService.signPSBTForLease(lease, {
         walletId: signingContext?.walletId ?? legacyWalletId,
         psbt: psbtBase64,
         signingContext,
@@ -251,11 +270,13 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
           trezorArtifact: result.trezorArtifact,
         };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sign PSBT';
-      setError(message);
+      if (ownsOperation()) {
+        const message = err instanceof Error ? err.message : 'Failed to sign PSBT';
+        setError(message);
+      }
       throw err;
     } finally {
-      setSigning(false);
+      if (ownsOperation()) setSigning(false);
     }
     },
     []

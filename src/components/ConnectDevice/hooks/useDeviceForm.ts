@@ -76,6 +76,7 @@ export interface QrExtractedFields {
 
 /** Result from a USB device connection */
 export interface ConnectionResult {
+  modelId: string;
   fingerprint: string;
   accounts: DeviceAccount[];
   warning?: string | null;
@@ -233,7 +234,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
 
   // Apply USB connection result to form
   useEffect(() => {
-    if (connectionResult) {
+    if (connectionResult && connectionResult.modelId === selectedModel?.id) {
       if (hasValidImportIdentity(connectionResult)) {
         setFormData(prev => ({
           ...prev,
@@ -247,7 +248,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
         rejectImport(USB_IDENTITY_WARNING);
       }
     }
-  }, [connectionResult, rejectImport]);
+  }, [connectionResult, selectedModel?.id, rejectImport]);
 
   /**
    * Handle file upload for SD card / QR file mode

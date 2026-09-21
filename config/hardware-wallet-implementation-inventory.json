@@ -444,6 +444,13 @@
       "capability": "sign",
       "kind": "callable",
       "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/service.ts",
+      "name": "signPSBTForLease",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
     }
   ],
   "capabilityRows": [
@@ -3585,6 +3592,22 @@
       ],
       "enabled": false,
       "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/service.ts:signPSBTForLease:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/service.ts:signPSBTForLease:callable:1",
+      "vendor": "generic",
+      "source": "src/services/hardwareWallet/service.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBTForLease",
       "executionKind": "callable",
       "capabilityRowIds": [
         "generic.generic-unresolved.sign"

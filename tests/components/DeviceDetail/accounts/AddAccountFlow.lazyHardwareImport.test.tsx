@@ -14,7 +14,10 @@ vi.mock('../../../../src/services/hardwareWallet/runtime', () => {
   return {
     hardwareWalletService: {
       connect: vi.fn().mockRejectedValue(new Error('hardware runtime unavailable')),
+      connectWithLease: vi.fn().mockRejectedValue(new Error('hardware runtime unavailable')),
+      releaseConnection: vi.fn().mockResolvedValue(undefined),
       getAllXpubs: vi.fn(),
+      getAllXpubsWithFailuresForLease: vi.fn(),
       disconnect: vi.fn().mockResolvedValue(undefined),
     },
     DeviceType: {},

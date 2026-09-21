@@ -552,19 +552,10 @@
     },
     {
       "file": "src/services/hardwareWallet/service.ts",
-      "functionName": "connect",
+      "functionName": "fetchAllXpubsWithFailures",
       "issue": "non-terminal-catch",
       "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
-      "file": "src/services/hardwareWallet/service.ts",
-      "functionName": "getAllXpubsWithFailures",
-      "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "reason": "Existing per-path hardware discovery catch moved into the lease-aware batch helper; unsupported derivation paths are recorded and skipped while identity and lease errors still fail closed.",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },

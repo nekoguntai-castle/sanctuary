@@ -118,8 +118,19 @@ vi.mock('../../../../src/services/hardwareWallet/environment', () => ({
 vi.mock('../../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: connectMock,
+    connectWithLease: async (...args: unknown[]) => ({
+      device: await connectMock(...args),
+      lease: {},
+    }),
+    releaseConnection: disconnectMock,
     getAllXpubs: getAllXpubsMock,
     getAllXpubsWithFailures: async (callback: unknown) => {
+      const value = await getAllXpubsMock(callback);
+      return Array.isArray(value)
+        ? { results: value, failures: [], totalPaths: value.length }
+        : value;
+    },
+    getAllXpubsWithFailuresForLease: async (_lease: unknown, callback: unknown) => {
       const value = await getAllXpubsMock(callback);
       return Array.isArray(value)
         ? { results: value, failures: [], totalPaths: value.length }
@@ -504,6 +515,18 @@ describe('AddAccountFlow branch coverage', () => {
     expect(await screen.findByText('usb connect failed')).toBeInTheDocument();
     await waitFor(() => expect(disconnectMock).toHaveBeenCalled());
     view3.unmount();
+
+    getAllXpubsMock.mockResolvedValueOnce([
+      { purpose: 'single_sig', scriptType: 'native_segwit', path: "m/84'/0'/0'", xpub: 'xpub-existing', fingerprint: 'abcd1234' },
+    ]);
+    disconnectMock.mockRejectedValueOnce(new Error('disconnect failed after import'));
+    const releaseCallsBeforeImport = disconnectMock.mock.calls.length;
+    const view4 = renderFlow({ type: 'ledger', accounts: [{ derivationPath: "m/84'/0'/0'", xpub: 'xpub-existing' }] });
+    await user.click(screen.getByText('Connect via USB'));
+    await user.click(screen.getByText('Connect Device'));
+    expect(await screen.findByText(/No new accounts to add/i)).toBeInTheDocument();
+    await waitFor(() => expect(disconnectMock).toHaveBeenCalledTimes(releaseCallsBeforeImport + 1));
+    view4.unmount();
   });
 
   it('does not offer unverifiable manual account entry and resets modal close/back state', async () => {

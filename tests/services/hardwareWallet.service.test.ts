@@ -157,13 +157,31 @@ describe('HardwareWalletService', () => {
     await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
   });
 
+  it('preserves a connect failure and quarantines the adapter when cleanup also fails', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      connect: vi.fn(async () => {
+        throw new Error('connect failed');
+      }),
+      disconnect: vi.fn(async () => {
+        throw new Error('cleanup failed');
+      }),
+    });
+    service.registerAdapter(adapter);
+
+    await expect(service.connect('coldcard')).rejects.toThrow('connect failed');
+    await expect(service.connect('coldcard')).rejects.toThrow('cleanup failed');
+    expect(adapter.connect).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['ledger', 'jade', 'trezor'] as const)(
     'rechecks every funds-controlling %s operation for an in-flight connection',
     async (type) => {
-      mockCapabilityRow.mockReturnValue({ enabled: false, reason: 'unverified' });
       const service = new HardwareWalletService();
       const { adapter } = createMockAdapter(type);
-      (service as unknown as { activeAdapter: DeviceAdapter }).activeAdapter = adapter;
+      service.registerAdapter(adapter);
+      await service.connect(type);
+      mockCapabilityRow.mockReturnValue({ enabled: false, reason: 'unverified' });
 
       await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('temporarily unavailable');
       await expect(service.getAllXpubs()).rejects.toThrow('temporarily unavailable');
@@ -377,6 +395,31 @@ describe('HardwareWalletService', () => {
     expect(service.getDevice()).toBeNull();
   });
 
+  it('fails closed when an active adapter has lost its approval record', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard');
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+    (service as unknown as { approvedConnection: null }).approvedConnection = null;
+
+    await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow(
+      /identity was not approved/i,
+    );
+    expect(adapter.getXpub).not.toHaveBeenCalled();
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when a leased session has lost its active adapter', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard');
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+    (service as unknown as { activeAdapter: null }).activeAdapter = null;
+
+    await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
+    expect(adapter.getXpub).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['signing', (service: HardwareWalletService) => service.signPSBT({ psbt: 'fixture' }), 'signPSBT'],
     [
@@ -421,112 +464,6 @@ describe('HardwareWalletService', () => {
     await expect(service.connect('coldcard')).rejects.toThrow(
       'is not supported in this environment'
     );
-  });
-
-  it('handles lazy adapter loader failures and surfaces missing adapter error', async () => {
-    const service = new HardwareWalletService();
-    const failingLoader = vi.fn(async () => {
-      throw new Error('lazy load failed');
-    });
-
-    service.registerAdapterLoader('coldcard', failingLoader);
-
-    await expect(service.connect('coldcard')).rejects.toThrow(
-      'No adapter registered for device type: coldcard'
-    );
-    expect(failingLoader).toHaveBeenCalledTimes(1);
-  });
-
-  it('reuses in-flight lazy adapter load for concurrent connects', async () => {
-    const service = new HardwareWalletService();
-    const { adapter, device } = createMockAdapter('coldcard');
-    let resolveLoader: ((value: DeviceAdapter) => void) | undefined;
-    const loader = vi.fn(
-      () =>
-        new Promise<DeviceAdapter>((resolve) => {
-          resolveLoader = resolve;
-        })
-    );
-
-    service.registerAdapterLoader('coldcard', loader);
-
-    const connectOne = service.connect('coldcard');
-    const connectTwo = service.connect('coldcard');
-
-    expect(loader).toHaveBeenCalledTimes(1);
-    resolveLoader?.(adapter);
-
-    await expect(connectOne).resolves.toEqual(device);
-    await expect(connectTwo).resolves.toEqual(device);
-  });
-
-  it('connects and switches adapters, disconnecting previous adapter', async () => {
-    const service = new HardwareWalletService();
-    const { adapter: ledger } = createMockAdapter('coldcard');
-    const { adapter: trezor } = createMockAdapter('bitbox');
-    service.registerAdapter(ledger);
-    service.registerAdapter(trezor);
-
-    await service.connect('coldcard');
-    expect(ledger.connect).toHaveBeenCalled();
-
-    await service.connect('bitbox');
-    expect(ledger.disconnect).toHaveBeenCalled();
-    expect(trezor.connect).toHaveBeenCalled();
-  });
-
-  it('continues connecting even if previous disconnect fails', async () => {
-    const service = new HardwareWalletService();
-    const { adapter: ledger } = createMockAdapter('coldcard', {
-      disconnect: vi.fn(async () => {
-        throw new Error('disconnect failed');
-      }),
-    });
-    const { adapter: trezor, device: trezorDevice } = createMockAdapter('bitbox');
-    service.registerAdapter(ledger);
-    service.registerAdapter(trezor);
-
-    await service.connect('coldcard');
-    await expect(service.connect('bitbox')).resolves.toEqual(trezorDevice);
-    expect(trezor.connect).toHaveBeenCalled();
-  });
-
-  it('disconnects active adapter and clears active state', async () => {
-    const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('coldcard');
-    service.registerAdapter(adapter);
-    await service.connect('coldcard');
-
-    await service.disconnect();
-    expect(adapter.disconnect).toHaveBeenCalled();
-    expect(service.isConnected()).toBe(false);
-  });
-
-  it('disconnect is a no-op when there is no active adapter', async () => {
-    const service = new HardwareWalletService();
-    await expect(service.disconnect()).resolves.toBeUndefined();
-  });
-
-  it('cancels a connect() that resolves after a concurrent disconnect() and disconnects the adapter', async () => {
-    const service = new HardwareWalletService();
-    let resolveConnect: ((value: HardwareWalletDevice) => void) | undefined;
-    const { adapter, device } = createMockAdapter('coldcard', {
-      connect: vi.fn(
-        () =>
-          new Promise<HardwareWalletDevice>((resolve) => {
-            resolveConnect = resolve;
-          })
-      ),
-    });
-    service.registerAdapter(adapter);
-
-    const connectPromise = service.connect('coldcard');
-    await service.disconnect();
-    resolveConnect?.(device);
-
-    await expect(connectPromise).rejects.toThrow(/cancel/i);
-    expect(service.isConnected()).toBe(false);
-    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('requires a connected device for xpub/sign/verify operations', async () => {

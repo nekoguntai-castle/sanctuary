@@ -7,17 +7,20 @@
  * - Error handling
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { HardwareDeviceModel } from '../api/devices';
 import { DeviceAccount } from '../services/deviceParsers';
 import { loadHardwareWalletRuntime } from '../services/hardwareWallet/loader';
-import { fetchStandardXpubBatch } from '../services/hardwareWallet/xpubBatch';
 import { buildSkippedXpubWarning } from '../services/hardwareWallet/xpubImportWarnings';
 import { validateXpubBatch } from '../services/hardwareWallet/identity';
 import { getDeviceTypeFromModel } from '../utils/deviceConnection';
 import { createLogger } from '../utils/logger';
 import type { TabNetwork } from '../app/networks';
 import type { DeviceType, HardwareWalletConnectionOptions } from '../services/hardwareWallet/types';
+import type {
+  HardwareWalletConnectionLease,
+  HardwareWalletService,
+} from '../services/hardwareWallet/service';
 
 const log = createLogger('useDeviceConnection');
 
@@ -44,12 +47,25 @@ export interface UsbProgress {
 
 /** Result of a successful USB connection */
 export interface DeviceConnectionResult {
+  /** Model that owned the USB operation */
+  modelId: string;
   /** Master fingerprint from device */
   fingerprint: string;
   /** All accounts fetched from device */
   accounts: DeviceAccount[];
   /** Warning from paths that were skipped during a partial import */
   warning?: string | null;
+}
+
+async function releaseStaleConnection(
+  service: HardwareWalletService,
+  lease: HardwareWalletConnectionLease,
+): Promise<void> {
+  try {
+    await service.releaseConnection(lease);
+  } catch (error) {
+    log.warn('Failed to release stale device connection', { error });
+  }
 }
 
 export interface UseDeviceConnectionState {
@@ -93,8 +109,11 @@ export function useDeviceConnection(): UseDeviceConnectionState {
   const [usbProgress, setUsbProgress] = useState<UsbProgress | null>(null);
   const [connectionResult, setConnectionResult] = useState<DeviceConnectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const ownershipGeneration = useRef(0);
+  const connectionQueue = useRef<Promise<void>>(Promise.resolve());
 
   const reset = useCallback(() => {
+    ownershipGeneration.current += 1;
     setScanning(false);
     setUsbProgress(null);
     setConnectionResult(null);
@@ -109,72 +128,101 @@ export function useDeviceConnection(): UseDeviceConnectionState {
     model: HardwareDeviceModel,
     chainEnvironment?: TabNetwork,
   ) => {
+    const generation = ++ownershipGeneration.current;
     setScanning(true);
     setError(null);
     setUsbProgress(null);
     setConnectionResult(null);
 
-    try {
-      const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      // Determine device type from model
-      const deviceType = getDeviceTypeFromModel(model);
+    const runConnection = async () => {
+      let service: HardwareWalletService | null = null;
+      let lease: HardwareWalletConnectionLease | null = null;
+      const ownsOperation = () => ownershipGeneration.current === generation;
 
-      log.info('Connecting to device', {
-        model: model.name,
-        deviceType,
-      });
+      try {
+        const { hardwareWalletService } = await loadHardwareWalletRuntime();
+        service = hardwareWalletService;
+        if (!ownsOperation()) return;
+        // Determine device type from model
+        const deviceType = getDeviceTypeFromModel(model);
 
-      // Connect to the hardware wallet
-      const device = await hardwareWalletService.connect(
-        deviceType,
-        connectionOptions(deviceType, model, chainEnvironment),
-      );
+        log.info('Connecting to device', {
+          model: model.name,
+          deviceType,
+        });
 
-      if (!device || !device.connected) {
-        throw new Error('Failed to connect to device');
+        // Connect to the hardware wallet
+        const connection = await hardwareWalletService.connectWithLease(
+          deviceType,
+          connectionOptions(deviceType, model, chainEnvironment),
+        );
+        const device = connection.device;
+        lease = connection.lease;
+
+        if (!ownsOperation()) {
+          return;
+        }
+
+        if (!device || !device.connected) {
+          throw new Error('Failed to connect to device');
+        }
+
+        // Fetch all standard derivation paths
+        log.info('Fetching all derivation paths from device');
+        const xpubBatch = await hardwareWalletService.getAllXpubsWithFailuresForLease(
+          lease,
+          (current, total, name) => {
+            if (!ownsOperation()) throw new Error('USB operation is no longer active');
+            setUsbProgress({ current, total, name });
+          },
+        );
+        if (!ownsOperation()) {
+          return;
+        }
+        const validatedBatch = validateXpubBatch(xpubBatch.results, device.fingerprint);
+        const allXpubs = validatedBatch.results;
+
+        // Convert to DeviceAccount format
+        const accounts: DeviceAccount[] = allXpubs.map((result) => ({
+          purpose: result.purpose,
+          scriptType: result.scriptType,
+          derivationPath: result.path,
+          xpub: result.xpub,
+        }));
+
+        const fingerprint = validatedBatch.fingerprint;
+
+        setConnectionResult({
+          modelId: model.id,
+          fingerprint,
+          accounts,
+          warning: buildSkippedXpubWarning(xpubBatch.failures),
+        });
+
+        log.info('Device connected successfully', {
+          fingerprint,
+          accountCount: accounts.length,
+          deviceType,
+        });
+      } catch (err) {
+        if (!ownsOperation()) {
+          return;
+        }
+        log.error('Failed to connect to device', { error: err });
+        const message = err instanceof Error ? err.message : 'Failed to connect to device';
+        setError(message);
+      } finally {
+        if (ownsOperation()) {
+          setScanning(false);
+          setUsbProgress(null);
+        }
+        if (service && lease) await releaseStaleConnection(service, lease);
       }
+    };
 
-      // Fetch all standard derivation paths
-      log.info('Fetching all derivation paths from device');
-      const xpubBatch = await fetchStandardXpubBatch(
-        hardwareWalletService,
-        (current, total, name) => {
-          setUsbProgress({ current, total, name });
-        },
-        { connectedFingerprint: device.fingerprint }
-      );
-      const validatedBatch = validateXpubBatch(xpubBatch.results, device.fingerprint);
-      const allXpubs = validatedBatch.results;
-
-      // Convert to DeviceAccount format
-      const accounts: DeviceAccount[] = allXpubs.map((result) => ({
-        purpose: result.purpose,
-        scriptType: result.scriptType,
-        derivationPath: result.path,
-        xpub: result.xpub,
-      }));
-
-      const fingerprint = validatedBatch.fingerprint;
-
-      setConnectionResult({
-        fingerprint,
-        accounts,
-        warning: buildSkippedXpubWarning(xpubBatch.failures),
-      });
-
-      log.info('Device connected successfully', {
-        fingerprint,
-        accountCount: accounts.length,
-        deviceType,
-      });
-    } catch (err) {
-      log.error('Failed to connect to device', { error: err });
-      const message = err instanceof Error ? err.message : 'Failed to connect to device';
-      setError(message);
-    } finally {
-      setScanning(false);
-      setUsbProgress(null);
-    }
+    const operation = connectionQueue.current.then(runConnection, runConnection);
+    connectionQueue.current = operation;
+    await operation;
   }, []);
 
   return {

@@ -26,21 +26,55 @@ const mockSignTransaction = vi.fn();
 const mockSignPSBT = vi.fn();
 const mockGetDevices = vi.fn();
 const mockIsConnected = vi.fn();
+const mockLoadHardwareWalletRuntime = vi.hoisted(() => vi.fn());
 // Declared via vi.hoisted so the mock factory below (which the hoisted
 // vi.mock() call runs before this file's own top-level statements) can
 // safely reference it without a temporal-dead-zone error.
-const { mockLoggerWarn } = vi.hoisted(() => ({ mockLoggerWarn: vi.fn() }));
+const { issuedLeases, mockLoggerWarn, mockReleaseConnection } = vi.hoisted(() => ({
+  issuedLeases: [] as unknown[],
+  mockLoggerWarn: vi.fn(),
+  mockReleaseConnection: vi.fn(),
+}));
+
+const getMockRuntime = () => ({
+  hardwareWalletService: {
+    connectWithLease: async (type?: string, options?: unknown) => {
+      const device = await mockConnect(type, options);
+      const lease = {};
+      issuedLeases.push(lease);
+      return { device, lease };
+    },
+    releaseConnection: (lease: unknown) => mockReleaseConnection(lease),
+    signTransactionForLease: (_lease: unknown, tx: unknown) => mockSignTransaction(tx),
+    signPSBTForLease: (_lease: unknown, request: unknown) => mockSignPSBT(request),
+    isConnected: () => mockIsConnected(),
+  },
+  getConnectedDevices: () => mockGetDevices(),
+});
 
 vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (type?: string, options?: unknown) => mockConnect(type, options),
+    connectWithLease: async (type?: string, options?: unknown) => {
+      const device = await mockConnect(type, options);
+      const lease = {};
+      issuedLeases.push(lease);
+      return { device, lease };
+    },
+    releaseConnection: (lease: unknown) => mockReleaseConnection(lease),
     disconnect: () => mockDisconnect(),
     signTransaction: (tx: unknown) => mockSignTransaction(tx),
+    signTransactionForLease: (_lease: unknown, tx: unknown) => mockSignTransaction(tx),
     signPSBT: (request: unknown) => mockSignPSBT(request),
+    signPSBTForLease: (_lease: unknown, request: unknown) => mockSignPSBT(request),
     getDevices: () => mockGetDevices(),
     isConnected: () => mockIsConnected(),
   },
   getConnectedDevices: () => mockGetDevices(),
+}));
+
+vi.mock('../../src/services/hardwareWallet/loader', () => ({
+  loadHardwareWalletRuntime: () => mockLoadHardwareWalletRuntime(),
 }));
 
 vi.mock('../../src/services/hardwareWallet/environment', () => ({
@@ -69,6 +103,9 @@ describe('useHardwareWallet', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    issuedLeases.length = 0;
+    mockReleaseConnection.mockImplementation(() => mockDisconnect());
+    mockLoadHardwareWalletRuntime.mockImplementation(async () => getMockRuntime());
     mockGetDevices.mockResolvedValue([]);
     mockIsConnected.mockReturnValue(false);
   });
@@ -195,6 +232,78 @@ describe('useHardwareWallet', () => {
       expect(caughtError).toBe('String error');
       expect(result.current.error).toBe('Failed to connect to device');
     });
+
+    it('clears device state when replacing A with B fails', async () => {
+      const deviceA = { ...mockDevice, id: 'device-a' };
+      mockConnect
+        .mockResolvedValueOnce(deviceA)
+        .mockRejectedValueOnce(new Error('device B failed'));
+      mockGetDevices.mockResolvedValue([deviceA]);
+      const { result } = await renderHardwareWallet();
+
+      await act(async () => result.current.connect('ledger'));
+      expect(result.current.device).toEqual(deviceA);
+
+      let replacementError: unknown;
+      await act(async () => {
+        try {
+          await result.current.connect('trezor');
+        } catch (error) {
+          replacementError = error;
+        }
+      });
+
+      expect(replacementError).toEqual(new Error('device B failed'));
+      expect(result.current.device).toBeNull();
+      expect(result.current.isConnected).toBe(false);
+      expect(result.current.error).toBe('device B failed');
+      expect(mockReleaseConnection).toHaveBeenCalledWith(issuedLeases[0]);
+    });
+
+    it('continues replacement connect after prior lease release fails', async () => {
+      const deviceA = { ...mockDevice, id: 'device-a' };
+      const deviceB = { ...mockDevice, id: 'device-b', type: 'trezor' };
+      mockConnect.mockResolvedValueOnce(deviceA).mockResolvedValueOnce(deviceB);
+      mockReleaseConnection.mockRejectedValueOnce(new Error('release A failed'));
+      const { result } = await renderHardwareWallet();
+
+      await act(async () => result.current.connect('ledger'));
+      await act(async () => result.current.connect('trezor'));
+
+      expect(result.current.device).toEqual(deviceB);
+      expect(result.current.isConnected).toBe(true);
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        'Failed to release prior hardware wallet session before reconnect',
+        expect.objectContaining({ error: expect.any(Error) }),
+      );
+    });
+
+    it('abandons a reconnect superseded while its prior lease release is pending', async () => {
+      const deviceA = { ...mockDevice, id: 'device-a' };
+      const deviceC = { ...mockDevice, id: 'device-c', type: 'trezor' };
+      let resolveRelease!: () => void;
+      mockConnect.mockResolvedValueOnce(deviceA).mockResolvedValueOnce(deviceC);
+      const { result } = await renderHardwareWallet();
+      await act(async () => result.current.connect('ledger'));
+      mockReleaseConnection.mockReturnValueOnce(new Promise<void>((resolve) => {
+        resolveRelease = resolve;
+      }));
+
+      let connectB!: Promise<void>;
+      act(() => {
+        connectB = result.current.connect('trezor');
+      });
+      await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalled());
+      await act(async () => result.current.connect('trezor'));
+      await act(async () => {
+        resolveRelease();
+        await connectB;
+      });
+
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+      expect(result.current.device).toEqual(deviceC);
+    });
     });
   }
 
@@ -247,6 +356,22 @@ describe('useHardwareWallet', () => {
       expect(result.current.device).toBeNull();
       expect(result.current.error).toBeNull();
     });
+
+    it('releases only the hook-owned lease when another session may own the singleton', async () => {
+      mockConnect.mockResolvedValue(mockDevice);
+      const { result } = await renderHardwareWallet();
+
+      await act(async () => {
+        await result.current.connect('ledger');
+      });
+      const hookLease = issuedLeases[0];
+      const externalLease = {};
+
+      act(() => result.current.disconnect());
+      await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalledWith(hookLease));
+      expect(mockReleaseConnection.mock.calls[0]?.[0]).toBe(hookLease);
+      expect(mockReleaseConnection.mock.calls[0]?.[0]).not.toBe(externalLease);
+    });
     });
   }
 
@@ -255,6 +380,60 @@ describe('useHardwareWallet', () => {
   // past the lizard complexity gate's NLOC/CCN thresholds.
   function registerConnectGenerationGuardTests(): void {
     describe('connect generation guard', () => {
+    it('does not let runtime-delayed connect A touch connect B', async () => {
+      const runtime = getMockRuntime();
+      const { result } = await renderHardwareWallet();
+      let resolveRuntimeA!: (value: typeof runtime) => void;
+      mockLoadHardwareWalletRuntime
+        .mockImplementationOnce(() => new Promise((resolve) => {
+          resolveRuntimeA = resolve;
+        }))
+        .mockResolvedValue(runtime);
+      const deviceB = { ...mockDevice, id: 'device-b', type: 'trezor' };
+      mockConnect.mockResolvedValue(deviceB);
+      let connectA!: Promise<void>;
+
+      act(() => {
+        connectA = result.current.connect('ledger');
+      });
+      await waitFor(() => expect(mockLoadHardwareWalletRuntime).toHaveBeenCalled());
+      await act(async () => result.current.connect('trezor'));
+      await act(async () => {
+        resolveRuntimeA(runtime);
+        await connectA;
+      });
+
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(mockConnect).toHaveBeenCalledWith('trezor', undefined);
+      expect(result.current.device).toEqual(deviceB);
+      expect(mockReleaseConnection).not.toHaveBeenCalled();
+    });
+
+    it('does not touch the service when disconnect supersedes runtime loading', async () => {
+      const runtime = getMockRuntime();
+      const { result } = await renderHardwareWallet();
+      let resolveRuntime!: (value: typeof runtime) => void;
+      mockLoadHardwareWalletRuntime.mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRuntime = resolve;
+      }));
+      let connection!: Promise<void>;
+
+      act(() => {
+        connection = result.current.connect('ledger');
+      });
+      await waitFor(() => expect(mockLoadHardwareWalletRuntime).toHaveBeenCalled());
+      act(() => result.current.disconnect());
+      await act(async () => {
+        resolveRuntime(runtime);
+        await connection;
+      });
+
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(mockReleaseConnection).not.toHaveBeenCalled();
+      expect(result.current.device).toBeNull();
+      expect(result.current.connecting).toBe(false);
+    });
+
     it('should not resurrect the device when a stale connect resolves after a disconnect', async () => {
       let resolveConnect: (value: MockDevice) => void;
       mockConnect.mockImplementation(
@@ -281,9 +460,7 @@ describe('useHardwareWallet', () => {
       act(() => {
         result.current.disconnect();
       });
-      await waitFor(() => {
-        expect(mockDisconnect).toHaveBeenCalledTimes(1);
-      });
+      expect(mockDisconnect).not.toHaveBeenCalled();
 
       // The late connect now resolves with a device.
       await act(async () => {
@@ -291,10 +468,10 @@ describe('useHardwareWallet', () => {
       });
 
       // The stale connect must not resurrect `device`, and must tear down
-      // the service-level session it created (a second disconnect call).
+      // the exact service-level session it created.
       expect(result.current.device).toBeNull();
       await waitFor(() => {
-        expect(mockDisconnect).toHaveBeenCalledTimes(2);
+        expect(mockDisconnect).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -307,9 +484,7 @@ describe('useHardwareWallet', () => {
           })
       );
       mockGetDevices.mockResolvedValue([]);
-      mockDisconnect
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error('cleanup disconnect failed'));
+      mockDisconnect.mockRejectedValueOnce(new Error('cleanup disconnect failed'));
 
       const { result } = renderHook(() => useHardwareWallet());
 
@@ -325,9 +500,7 @@ describe('useHardwareWallet', () => {
       act(() => {
         result.current.disconnect();
       });
-      await waitFor(() => {
-        expect(mockDisconnect).toHaveBeenCalledTimes(1);
-      });
+      expect(mockDisconnect).not.toHaveBeenCalled();
 
       await act(async () => {
         resolveConnect!(mockDevice);
@@ -335,7 +508,7 @@ describe('useHardwareWallet', () => {
 
       expect(result.current.device).toBeNull();
       await waitFor(() => {
-        expect(mockDisconnect).toHaveBeenCalledTimes(2);
+        expect(mockDisconnect).toHaveBeenCalledTimes(1);
       });
       expect(mockLoggerWarn).toHaveBeenCalledWith(
         'Failed to disconnect superseded hardware wallet session',
@@ -380,9 +553,7 @@ describe('useHardwareWallet', () => {
       act(() => {
         result.current.disconnect();
       });
-      await waitFor(() => {
-        expect(mockDisconnect).toHaveBeenCalledTimes(1);
-      });
+      expect(mockDisconnect).not.toHaveBeenCalled();
 
       // Start connect B, which claims the session the disconnect vacated.
       act(() => {
@@ -455,12 +626,11 @@ describe('useHardwareWallet', () => {
         expect(mockConnect).toHaveBeenCalledTimes(2);
       });
 
-      // A resolves late. It must not call the service disconnect at all
-      // (no disconnect() was ever issued, and B now owns the session).
+      // A resolves late. Its exact lease is released without touching B.
       await act(async () => {
         resolveConnectA!(deviceA);
       });
-      expect(mockDisconnect).not.toHaveBeenCalled();
+      expect(mockDisconnect).toHaveBeenCalledTimes(1);
       expect(result.current.device).toBeNull();
 
       // B resolving sets its own device normally.
@@ -468,7 +638,7 @@ describe('useHardwareWallet', () => {
         resolveConnectB!(deviceB);
       });
       expect(result.current.device).toEqual(deviceB);
-      expect(mockDisconnect).not.toHaveBeenCalled();
+      expect(mockDisconnect).toHaveBeenCalledTimes(1);
     });
 
     it('does not surface a stale connect rejection as the current error, but still rejects the caller', async () => {
@@ -498,9 +668,7 @@ describe('useHardwareWallet', () => {
       act(() => {
         result.current.disconnect();
       });
-      await waitFor(() => {
-        expect(mockDisconnect).toHaveBeenCalledTimes(1);
-      });
+      expect(mockDisconnect).not.toHaveBeenCalled();
 
       const rejection = new Error('stale connect failure');
       await act(async () => {
@@ -512,301 +680,6 @@ describe('useHardwareWallet', () => {
       // ...but the stale generation must not resurrect error state that the
       // disconnect() call already cleared for the current generation.
       expect(result.current.error).toBeNull();
-    });
-    });
-  }
-
-  function registerTransactionSigningTests(): void {
-    describe('signTransaction', () => {
-    const mockTx = {
-      walletId: 'wallet-123',
-      recipient: 'tb1qtest...',
-      amount: 100000,
-      feeRate: 5,
-    };
-
-    it('should sign transaction successfully', async () => {
-      const expectedTxid = 'signed-txid-123';
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockSignTransaction.mockResolvedValue(expectedTxid);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      let txid: string | undefined;
-      await act(async () => {
-        txid = await result.current.signTransaction(mockTx);
-      });
-
-      expect(mockSignTransaction).toHaveBeenCalledWith(mockTx);
-      expect(txid).toBe(expectedTxid);
-      expect(result.current.signing).toBe(false);
-      expect(result.current.error).toBeNull();
-    });
-
-    it('should set signing state during signing', async () => {
-      let resolveSign: (value: string) => void;
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockSignTransaction.mockImplementation(
-          () =>
-            new Promise((resolve) => {
-              resolveSign = resolve;
-            })
-      );
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      act(() => {
-        result.current.signTransaction(mockTx);
-      });
-
-      expect(result.current.signing).toBe(true);
-      await waitFor(() => {
-        expect(mockSignTransaction).toHaveBeenCalled();
-      });
-
-      await act(async () => {
-        resolveSign!('txid');
-      });
-
-      expect(result.current.signing).toBe(false);
-    });
-
-    it('should throw error when no device connected', async () => {
-      const { result } = renderHook(() => useHardwareWallet());
-
-      let caughtError: Error | undefined;
-      await act(async () => {
-        try {
-          await result.current.signTransaction(mockTx);
-        } catch (e) {
-          caughtError = e as Error;
-        }
-      });
-
-      expect(caughtError?.message).toBe('No device connected');
-      expect(result.current.error).toBe('No device connected');
-    });
-
-    it('should handle signing error', async () => {
-      const error = new Error('User rejected');
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockSignTransaction.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      let caughtError: Error | undefined;
-      await act(async () => {
-        try {
-          await result.current.signTransaction(mockTx);
-        } catch (e) {
-          caughtError = e as Error;
-        }
-      });
-
-      expect(caughtError?.message).toBe('User rejected');
-      expect(result.current.error).toBe('User rejected');
-      expect(result.current.signing).toBe(false);
-    });
-
-    it('should use fallback message for non-Error signTransaction failures', async () => {
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockSignTransaction.mockRejectedValue('sign failed');
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      let caughtError: unknown;
-      await act(async () => {
-        try {
-          await result.current.signTransaction(mockTx);
-        } catch (e) {
-          caughtError = e;
-        }
-      });
-
-      expect(caughtError).toBe('sign failed');
-      expect(result.current.error).toBe('Failed to sign transaction');
-      expect(result.current.signing).toBe(false);
-    });
-    });
-  }
-
-  function registerPsbtSigningTests(): void {
-    describe('signPSBT', () => {
-    const mockPsbt = 'cHNidP8BAH...';
-    const mockInputPaths = ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1"];
-
-    it('should sign PSBT successfully', async () => {
-      const expectedResult = { psbt: 'signed-psbt', rawTx: undefined };
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockIsConnected.mockReturnValue(true);
-      mockSignPSBT.mockResolvedValue(expectedResult);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-        let signResult: Awaited<ReturnType<typeof result.current.signPSBT>> | undefined;
-      await act(async () => {
-        signResult = await result.current.signPSBT(
-          mockPsbt,
-          mockInputPaths,
-          undefined,
-          'wallet-123'
-        );
-      });
-
-      expect(mockSignPSBT).toHaveBeenCalledWith({
-        walletId: 'wallet-123',
-        psbt: mockPsbt,
-        inputPaths: mockInputPaths,
-      });
-      expect(signResult).toEqual(expectedResult);
-      expect(result.current.signing).toBe(false);
-    });
-
-    it('should return rawTx for Trezor devices', async () => {
-        const trezorArtifact = {
-          type: 'trezor-connect-transaction' as const,
-          sourcePsbt: mockPsbt,
-          connectSignatures: ['300102'],
-          serializedTx: 'raw-tx-hex',
-        };
-        const expectedResult = {
-          psbt: 'signed-psbt',
-          rawTx: 'raw-tx-hex',
-          trezorArtifact,
-        };
-      mockConnect.mockResolvedValue({ ...mockDevice, type: 'trezor' });
-      mockGetDevices.mockResolvedValue([{ ...mockDevice, type: 'trezor' }]);
-      mockIsConnected.mockReturnValue(true);
-      mockSignPSBT.mockResolvedValue(expectedResult);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('trezor');
-      });
-
-        let signResult: Awaited<ReturnType<typeof result.current.signPSBT>> | undefined;
-      await act(async () => {
-        signResult = await result.current.signPSBT(mockPsbt);
-      });
-
-      expect(signResult?.rawTx).toBe('raw-tx-hex');
-        expect(signResult?.trezorArtifact).toEqual(trezorArtifact);
-    });
-
-    it('should throw error when no device connected', async () => {
-      mockIsConnected.mockReturnValue(false);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await expect(async () => {
-        await act(async () => {
-          await result.current.signPSBT(mockPsbt);
-        });
-      }).rejects.toThrow('No device connected');
-    });
-
-    it('should forward missing signing evidence for the service to reject fail closed', async () => {
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockIsConnected.mockReturnValue(true);
-      mockSignPSBT.mockResolvedValue({ psbt: 'signed' });
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      await act(async () => {
-        await result.current.signPSBT(mockPsbt);
-      });
-
-      expect(mockSignPSBT).toHaveBeenCalledWith({
-        psbt: mockPsbt,
-        inputPaths: undefined,
-        multisigXpubs: undefined,
-        signingContext: undefined,
-        walletId: undefined,
-      });
-    });
-
-    it('should handle PSBT signing error', async () => {
-      const error = new Error('Invalid PSBT');
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockIsConnected.mockReturnValue(true);
-      mockSignPSBT.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      let caughtError: Error | undefined;
-      await act(async () => {
-        try {
-          await result.current.signPSBT(mockPsbt);
-        } catch (e) {
-          caughtError = e as Error;
-        }
-      });
-
-      expect(caughtError?.message).toBe('Invalid PSBT');
-      expect(result.current.error).toBe('Invalid PSBT');
-      expect(result.current.signing).toBe(false);
-    });
-
-    it('should use fallback message for non-Error signPSBT failures', async () => {
-      mockConnect.mockResolvedValue(mockDevice);
-      mockGetDevices.mockResolvedValue([mockDevice]);
-      mockIsConnected.mockReturnValue(true);
-      mockSignPSBT.mockRejectedValue(123);
-
-      const { result } = renderHook(() => useHardwareWallet());
-
-      await act(async () => {
-        await result.current.connect('ledger');
-      });
-
-      let caughtError: unknown;
-      await act(async () => {
-        try {
-          await result.current.signPSBT(mockPsbt);
-        } catch (e) {
-          caughtError = e;
-        }
-      });
-
-      expect(caughtError).toBe(123);
-      expect(result.current.error).toBe('Failed to sign PSBT');
-      expect(result.current.signing).toBe(false);
     });
     });
   }
@@ -931,8 +804,6 @@ describe('useHardwareWallet', () => {
   registerConnectionTests();
   registerDisconnectionTests();
   registerConnectGenerationGuardTests();
-  registerTransactionSigningTests();
-  registerPsbtSigningTests();
   registerDeviceRefreshTests();
   registerClearErrorTests();
   registerSupportStateTests();

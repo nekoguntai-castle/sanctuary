@@ -11,6 +11,7 @@ const parseDeviceJsonMock = vi.hoisted(() => vi.fn());
 const connectMock = vi.hoisted(() => vi.fn());
 const getAllXpubsMock = vi.hoisted(() => vi.fn());
 const disconnectMock = vi.hoisted(() => vi.fn());
+const connectionLease = vi.hoisted(() => ({}));
 const getDeviceMock = vi.hoisted(() => vi.fn());
 const addDeviceAccountMock = vi.hoisted(() => vi.fn());
 const extractFromUrResultMock = vi.hoisted(() => vi.fn());
@@ -128,8 +129,19 @@ vi.mock("../../../../../src/services/deviceParsers", () => ({
 vi.mock("../../../../../src/services/hardwareWallet/runtime", () => ({
   hardwareWalletService: {
     connect: connectMock,
+    connectWithLease: async (...args: unknown[]) => ({
+      device: await connectMock(...args),
+      lease: connectionLease,
+    }),
+    releaseConnection: disconnectMock,
     getAllXpubs: getAllXpubsMock,
     getAllXpubsWithFailures: async (callback: unknown) => {
+      const value = await getAllXpubsMock(callback);
+      return Array.isArray(value)
+        ? { results: value, failures: [], totalPaths: value.length }
+        : value;
+    },
+    getAllXpubsWithFailuresForLease: async (_lease: unknown, callback: unknown) => {
       const value = await getAllXpubsMock(callback);
       return Array.isArray(value)
         ? { results: value, failures: [], totalPaths: value.length }
@@ -561,6 +573,9 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(onDeviceUpdatedMock).toHaveBeenCalled();
     expect(onCloseMock).toHaveBeenCalled();
     expect(disconnectMock).toHaveBeenCalled();
+    const externalLease = {};
+    expect(disconnectMock.mock.calls.at(-1)?.[0]).toBe(connectionLease);
+    expect(disconnectMock.mock.calls.at(-1)?.[0]).not.toBe(externalLease);
     success.unmount();
 
     connectMock.mockRejectedValueOnce("usb-string-error");

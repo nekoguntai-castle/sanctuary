@@ -40,8 +40,9 @@ vi.mock('../../src/api/wallets', () => ({
 
 vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
-    connect: vi.fn(),
-    getXpub: vi.fn(),
+    connectWithLease: vi.fn(),
+    releaseConnection: vi.fn(),
+    getXpubForLease: vi.fn(),
   },
 }));
 
@@ -303,8 +304,9 @@ describe('ImportWallet', () => {
 
     it('connects to hardware device', async () => {
       const user = userEvent.setup();
-      vi.mocked(hardwareWallet.hardwareWalletService.connect).mockResolvedValue({
-        name: 'Test Ledger',
+      vi.mocked(hardwareWallet.hardwareWalletService.connectWithLease).mockResolvedValue({
+        device: { name: 'Test Ledger' },
+        lease: {},
       } as any);
 
       renderImportWallet();
@@ -315,12 +317,12 @@ describe('ImportWallet', () => {
       const connectButton = screen.getByRole('button', { name: 'Connect Device' });
       await user.click(connectButton);
 
-      expect(hardwareWallet.hardwareWalletService.connect).toHaveBeenCalled();
+      expect(hardwareWallet.hardwareWalletService.connectWithLease).toHaveBeenCalled();
     });
 
     it('shows error on connection failure', async () => {
       const user = userEvent.setup();
-      vi.mocked(hardwareWallet.hardwareWalletService.connect).mockRejectedValue(
+      vi.mocked(hardwareWallet.hardwareWalletService.connectWithLease).mockRejectedValue(
         new Error('Device not found')
       );
 
@@ -338,8 +340,9 @@ describe('ImportWallet', () => {
 
     it('renders script type options after device connection', async () => {
       const user = userEvent.setup();
-      vi.mocked(hardwareWallet.hardwareWalletService.connect).mockResolvedValue({
-        name: 'Test Ledger',
+      vi.mocked(hardwareWallet.hardwareWalletService.connectWithLease).mockResolvedValue({
+        device: { name: 'Test Ledger' },
+        lease: {},
       } as any);
 
       renderImportWallet();

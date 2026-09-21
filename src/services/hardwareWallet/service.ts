@@ -70,6 +70,15 @@ type ApprovedConnection = {
   modelFamily: string;
   fingerprint: string;
 };
+declare const connectionLeaseBrand: unique symbol;
+export type HardwareWalletConnectionLease = {
+  readonly [connectionLeaseBrand]: true;
+};
+export type HardwareWalletLeasedConnection = {
+  device: HardwareWalletDevice;
+  lease: HardwareWalletConnectionLease;
+};
+class HardwareWalletLeaseError extends Error {}
 export type StandardXpubResult = XpubResult & {
   purpose: DeviceAccountPurposeValue;
   scriptType: WalletScriptTypeValue;
@@ -129,12 +138,13 @@ function buildAllXpubsFailedMessage(failures: XpubFetchFailure[], totalPaths: nu
 export class HardwareWalletService {
   private adapters: Map<DeviceType, DeviceAdapter> = new Map();
   private adapterLoaders: Map<DeviceType, AdapterLoader> = new Map();
-  private adapterLoadPromises: Map<DeviceType, Promise<DeviceAdapter | undefined>> = new Map();
   private activeAdapter: DeviceAdapter | null = null;
   private approvedConnection: ApprovedConnection | null = null;
-  // Bumped by disconnect() so a connect() attempt still in flight can detect
-  // it was superseded and cancel instead of committing a stale adapter.
+  private activeLease: HardwareWalletConnectionLease | null = null;
+  private revokedLeases = new WeakSet<object>();
+  private pendingCleanupAdapter: DeviceAdapter | null = null;
   private connectGeneration = 0;
+  private connectionQueue: Promise<void> = Promise.resolve();
 
   /**
    * Register a device adapter
@@ -162,25 +172,14 @@ export class HardwareWalletService {
     const loader = this.adapterLoaders.get(type);
     if (!loader) return undefined;
 
-    if (!this.adapterLoadPromises.has(type)) {
-      this.adapterLoadPromises.set(
-        type,
-        (async () => {
-          try {
-            const adapter = await loader();
-            this.registerAdapter(adapter);
-            return adapter;
-          } catch (error) {
-            log.error(`Failed to lazy-load adapter: ${type}`, { error });
-            return undefined;
-          } finally {
-            this.adapterLoadPromises.delete(type);
-          }
-        })()
-      );
+    try {
+      const adapter = await loader();
+      this.registerAdapter(adapter);
+      return adapter;
+    } catch (error) {
+      log.error(`Failed to lazy-load adapter: ${type}`, { error });
+      return undefined;
     }
-
-    return this.adapterLoadPromises.get(type);
   }
 
   /**
@@ -263,7 +262,9 @@ export class HardwareWalletService {
       if (!(error instanceof HardwareWalletIdentityError)) throw error;
       this.activeAdapter = null;
       this.approvedConnection = null;
+      this.activeLease = null;
       await adapter.disconnect().catch((disconnectError) => {
+        this.pendingCleanupAdapter = adapter;
         log.warn('Error disconnecting hardware wallet after identity drift', {
           disconnectError,
         });
@@ -294,17 +295,48 @@ export class HardwareWalletService {
     return allDevices;
   }
 
-  /**
-   * Connect to a device
-   * @param type Device type to connect to
-   */
-  async connect(
+  private enqueueConnectionOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.connectionQueue.then(operation, operation);
+    this.connectionQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async cleanupAdapterForOwnership(
+    adapter: DeviceAdapter,
+    message: string,
+  ): Promise<void> {
+    try {
+      await adapter.disconnect();
+      if (this.pendingCleanupAdapter === adapter) this.pendingCleanupAdapter = null;
+    } catch (error) {
+      this.pendingCleanupAdapter = adapter;
+      log.warn(message, { error });
+      throw error;
+    }
+  }
+
+  private clearActiveConnection(): DeviceAdapter | null {
+    const adapter = this.activeAdapter;
+    this.activeAdapter = null;
+    this.approvedConnection = null;
+    this.activeLease = null;
+    return adapter;
+  }
+
+  private async performConnect(
+    generation: number,
     type?: DeviceType,
     options?: HardwareWalletConnectionOptions,
-  ): Promise<HardwareWalletDevice> {
-    // Captured before any await so a disconnect() that lands during this
-    // attempt (including during adapter loading) is detected below.
-    const myGeneration = this.connectGeneration;
+  ): Promise<HardwareWalletLeasedConnection> {
+    if (this.pendingCleanupAdapter) {
+      await this.cleanupAdapterForOwnership(
+        this.pendingCleanupAdapter,
+        'Error retrying pending hardware wallet cleanup',
+      );
+    }
     let resolvedType = type;
 
     // If no type specified and only one adapter, use it
@@ -323,6 +355,9 @@ export class HardwareWalletService {
     );
 
     await this.ensureAdapter(resolvedType);
+    if (this.connectGeneration !== generation) {
+      throw new Error('Hardware wallet connect superseded by a newer session operation');
+    }
     const adapter = this.adapters.get(resolvedType);
     if (!adapter) {
       throw new Error(`No adapter registered for device type: ${resolvedType}`);
@@ -332,26 +367,32 @@ export class HardwareWalletService {
       throw new Error(`${adapter.displayName} is not supported in this environment`);
     }
 
-    // Clear the active identity before reconnecting so a failed same-adapter
-    // attempt cannot leave a stale device session addressable through the service.
-    const previousAdapter = this.activeAdapter;
-    this.activeAdapter = null;
-    this.approvedConnection = null;
-    if (previousAdapter && previousAdapter !== adapter) {
-      try {
-        await previousAdapter.disconnect();
-      } catch (error) {
-        log.warn('Error disconnecting previous adapter', { error });
+    const previousAdapter = this.clearActiveConnection();
+    if (previousAdapter) {
+      await this.cleanupAdapterForOwnership(
+        previousAdapter,
+        'Error disconnecting previous adapter',
+      );
+      if (this.connectGeneration !== generation) {
+        throw new Error('Hardware wallet connect superseded by a newer session operation');
       }
     }
 
-    // Connect with the new adapter
-    const device = await adapter.connect(options);
+    let device: HardwareWalletDevice;
+    try {
+      device = await adapter.connect(options);
+    } catch (error) {
+      await this.cleanupAdapterForOwnership(
+        adapter,
+        'Error cleaning up failed hardware wallet connect',
+      ).catch(() => undefined);
+      throw error;
+    }
     let fingerprint: string;
     let connectedRow: CapabilityRow;
     try {
-      if (this.connectGeneration !== myGeneration) {
-        throw new Error('Hardware wallet connect cancelled by a concurrent disconnect');
+      if (this.connectGeneration !== generation) {
+        throw new Error('Hardware wallet connect superseded by a newer session operation');
       }
       fingerprint = normalizeMasterFingerprint(
         device.fingerprint,
@@ -367,13 +408,13 @@ export class HardwareWalletService {
         );
       }
     } catch (error) {
-      await adapter.disconnect().catch((disconnectError) => {
-        log.warn('Error disconnecting device with invalid identity evidence', {
-          disconnectError,
-        });
-      });
+      await this.cleanupAdapterForOwnership(
+        adapter,
+        'Error disconnecting device with invalid identity evidence',
+      ).catch(() => undefined);
       throw error;
     }
+    const lease = Object.freeze({}) as HardwareWalletConnectionLease;
     this.activeAdapter = adapter;
     this.approvedConnection = {
       type: adapter.type,
@@ -382,6 +423,7 @@ export class HardwareWalletService {
       modelFamily: connectedRow.modelFamily,
       fingerprint,
     };
+    this.activeLease = lease;
     const validatedDevice = { ...device, fingerprint };
 
     log.info(`Connected to ${adapter.displayName}`, {
@@ -389,29 +431,116 @@ export class HardwareWalletService {
       model: device.model,
     });
 
-    return validatedDevice;
+    return { device: validatedDevice, lease };
+  }
+
+  /** Connect to a device and return an opaque lease for conditional release. */
+  connectWithLease(
+    type?: DeviceType,
+    options?: HardwareWalletConnectionOptions,
+  ): Promise<HardwareWalletLeasedConnection> {
+    const generation = ++this.connectGeneration;
+    return this.enqueueConnectionOperation(() => this.performConnect(generation, type, options));
+  }
+
+  /**
+   * Connect to a device while preserving the original device-only contract.
+   */
+  async connect(
+    type?: DeviceType,
+    options?: HardwareWalletConnectionOptions,
+  ): Promise<HardwareWalletDevice> {
+    const connection = await this.connectWithLease(type, options);
+    return connection.device;
+  }
+
+  /** Disconnect only when the supplied lease still owns the active session. */
+  releaseConnection(lease: HardwareWalletConnectionLease): Promise<void> {
+    this.revokedLeases.add(lease);
+    return this.enqueueConnectionOperation(async () => {
+      if (lease !== this.activeLease) return;
+      const adapter = this.clearActiveConnection() as DeviceAdapter;
+      await this.cleanupAdapterForOwnership(
+        adapter,
+        'Error releasing hardware wallet connection',
+      );
+      log.info(`Disconnected from ${adapter.displayName}`);
+    });
   }
 
   /**
    * Disconnect from the current device
    */
-  async disconnect(): Promise<void> {
-    this.connectGeneration++;
-    const adapter = this.activeAdapter;
-    this.activeAdapter = null;
-    this.approvedConnection = null;
-    if (!adapter) return;
-    await adapter.disconnect();
-    log.info(`Disconnected from ${adapter.displayName}`);
+  disconnect(): Promise<void> {
+    ++this.connectGeneration;
+    if (!this.activeAdapter && !this.pendingCleanupAdapter) return Promise.resolve();
+    return this.enqueueConnectionOperation(async () => {
+      const adapter = this.clearActiveConnection() ?? this.pendingCleanupAdapter;
+      if (!adapter) return;
+      await this.cleanupAdapterForOwnership(
+        adapter,
+        'Error disconnecting hardware wallet',
+      );
+      log.info(`Disconnected from ${adapter.displayName}`);
+    });
+  }
+
+  private enqueueLeaseOperation<T>(
+    lease: HardwareWalletConnectionLease | null,
+    operation: (assertOwnership: () => void) => Promise<T>,
+  ): Promise<T> {
+    const generation = this.connectGeneration;
+    return this.enqueueConnectionOperation(async () => {
+      if (!lease) throw new Error('No device connected');
+      const assertOwnership = () => this.assertLeaseOwnership(lease, generation);
+      assertOwnership();
+      const result = await operation(assertOwnership);
+      assertOwnership();
+      return result;
+    });
+  }
+
+  private assertLeaseOwnership(
+    lease: HardwareWalletConnectionLease,
+    generation: number,
+  ): void {
+    if (this.revokedLeases.has(lease)) {
+      throw new HardwareWalletLeaseError('Hardware wallet connection lease was released');
+    }
+    if (lease !== this.activeLease) {
+      throw new HardwareWalletLeaseError('Hardware wallet connection lease is no longer active');
+    }
+    if (generation !== this.connectGeneration) {
+      throw new HardwareWalletLeaseError('Hardware wallet connection lease was superseded');
+    }
   }
 
   /**
    * Get extended public key from the connected device
    * @param path BIP32 derivation path
    */
-  async getXpub(path: string): Promise<XpubResult> {
+  getXpub(path: string): Promise<XpubResult> {
+    return this.getXpubForLease(this.activeLease as HardwareWalletConnectionLease, path);
+  }
+
+  /** Get one xpub only while the supplied lease owns the serialized session. */
+  getXpubForLease(
+    lease: HardwareWalletConnectionLease,
+    path: string,
+  ): Promise<XpubResult> {
+    return this.enqueueLeaseOperation(lease, async (assertOwnership) => {
+      return this.fetchXpub(path, assertOwnership);
+    });
+  }
+
+  private async fetchXpub(
+    path: string,
+    assertOwnership: () => void,
+  ): Promise<XpubResult> {
     const { adapter, fingerprint } = await this.requireApprovedAdapter('account_add');
+    assertOwnership();
     const result = await adapter.getXpub(path);
+    assertOwnership();
     return validateXpubResult(result, path, fingerprint);
   }
 
@@ -460,7 +589,28 @@ export class HardwareWalletService {
   async getAllXpubsWithFailures(
     onProgress?: (current: number, total: number, path: string) => void
   ): Promise<XpubBatchResult> {
+    return this.getAllXpubsWithFailuresForLease(
+      this.activeLease as HardwareWalletConnectionLease,
+      onProgress,
+    );
+  }
+
+  /** Fetch a complete standard-path batch while the exact lease owns the session queue. */
+  getAllXpubsWithFailuresForLease(
+    lease: HardwareWalletConnectionLease,
+    onProgress?: (current: number, total: number, path: string) => void,
+  ): Promise<XpubBatchResult> {
+    return this.enqueueLeaseOperation(lease, async (assertOwnership) => {
+      return this.fetchAllXpubsWithFailures(onProgress, assertOwnership);
+    });
+  }
+
+  private async fetchAllXpubsWithFailures(
+    onProgress: ((current: number, total: number, path: string) => void) | undefined,
+    assertOwnership: () => void,
+  ): Promise<XpubBatchResult> {
     const approved = await this.requireApprovedAdapter('account_add');
+    assertOwnership();
 
     const results: StandardXpubResult[] = [];
     const failures: XpubFetchFailure[] = [];
@@ -468,6 +618,7 @@ export class HardwareWalletService {
     const connectedFingerprint = approved.fingerprint;
 
     for (let i = 0; i < paths.length; i++) {
+      assertOwnership();
       const { path, purpose, scriptType, name } = paths[i];
 
       if (onProgress) {
@@ -477,14 +628,16 @@ export class HardwareWalletService {
       try {
         log.info(`Fetching xpub for ${name}`, { path });
         const { adapter } = await this.requireApprovedAdapter('account_add');
+        assertOwnership();
         const xpubResult = await adapter.getXpub(path);
+        assertOwnership();
         const validated = validateXpubResult(xpubResult, path, connectedFingerprint);
         results.push({ ...validated, purpose, scriptType });
         log.info(`Successfully fetched ${name}`, {
           fingerprint: validated.fingerprint,
         });
       } catch (error) {
-        if (error instanceof HardwareWalletIdentityError) {
+        if (error instanceof HardwareWalletIdentityError || error instanceof HardwareWalletLeaseError) {
           throw error;
         }
         const message = getXpubFetchErrorMessage(error);
@@ -513,10 +666,29 @@ export class HardwareWalletService {
    * Sign a PSBT with the connected device
    * @param request PSBT signing request
    */
-  async signPSBT(request: PSBTSignRequest): Promise<PSBTSignResponse> {
+  signPSBT(request: PSBTSignRequest): Promise<PSBTSignResponse> {
+    return this.signPSBTForLease(this.activeLease as HardwareWalletConnectionLease, request);
+  }
+
+  /** Sign only while the supplied lease owns the serialized session. */
+  signPSBTForLease(
+    lease: HardwareWalletConnectionLease,
+    request: PSBTSignRequest,
+  ): Promise<PSBTSignResponse> {
+    return this.enqueueLeaseOperation(lease, async (assertOwnership) => {
+      return this.performSignPSBT(request, assertOwnership);
+    });
+  }
+
+  private async performSignPSBT(
+    request: PSBTSignRequest,
+    assertOwnership: () => void,
+  ): Promise<PSBTSignResponse> {
     const { adapter, fingerprint } = await this.requireApprovedAdapter('sign');
+    assertOwnership();
     validatePsbtSigningRequest(request, fingerprint);
     const result = await adapter.signPSBT(request);
+    assertOwnership();
     if (!result.psbt && !result.rawTx) {
       throw new Error('Hardware signing did not produce an applicable signed PSBT or transaction');
     }
@@ -531,32 +703,81 @@ export class HardwareWalletService {
    * @param path Derivation path
    * @param address Address to verify
    */
-  async verifyAddress(path: string, address: string): Promise<boolean> {
+  verifyAddress(path: string, address: string): Promise<boolean> {
+    return this.verifyAddressForLease(
+      this.activeLease as HardwareWalletConnectionLease,
+      path,
+      address,
+    );
+  }
+
+  /** Verify only while the supplied lease owns the serialized session. */
+  verifyAddressForLease(
+    lease: HardwareWalletConnectionLease,
+    path: string,
+    address: string,
+  ): Promise<boolean> {
+    return this.enqueueLeaseOperation(lease, async (assertOwnership) => {
+      return this.performVerifyAddress(path, address, assertOwnership);
+    });
+  }
+
+  private async performVerifyAddress(
+    path: string,
+    address: string,
+    assertOwnership: () => void,
+  ): Promise<boolean> {
     const { adapter } = await this.requireApprovedAdapter('display');
+    assertOwnership();
     if (!adapter.verifyAddress) {
       throw new Error(`${adapter.displayName} does not support address verification`);
     }
-    return adapter.verifyAddress(path, address);
+    const verified = await adapter.verifyAddress(path, address);
+    assertOwnership();
+    return verified;
   }
 
   /**
    * Full transaction signing flow
    * Creates PSBT, signs with device, and broadcasts
    */
-  async signTransaction(tx: TransactionForSigning): Promise<string> {
-    if (!this.isConnected()) {
-      throw new Error('No device connected');
-    }
+  signTransaction(tx: TransactionForSigning): Promise<string> {
+    return this.signTransactionForLease(
+      this.activeLease as HardwareWalletConnectionLease,
+      tx,
+    );
+  }
+
+  /** Run the complete create/sign/broadcast flow under one connection lease. */
+  signTransactionForLease(
+    lease: HardwareWalletConnectionLease,
+    tx: TransactionForSigning,
+  ): Promise<string> {
+    return this.enqueueLeaseOperation(lease, async (assertOwnership) => {
+      const result = await this.performSignTransaction(tx, assertOwnership);
+      assertOwnership();
+      return result;
+    });
+  }
+
+  private async performSignTransaction(
+    tx: TransactionForSigning,
+    assertOwnership: () => void,
+  ): Promise<string> {
 
     // Create PSBT via backend
     const { psbt, signingContext, intentId, intentDigest } = await createPSBTForSigning(tx);
+    assertOwnership();
 
     // Sign with connected device
-    const signed = await this.signPSBT({
-      walletId: tx.walletId,
-      psbt,
-      signingContext,
-    });
+    const signed = await this.performSignPSBT(
+      {
+        walletId: tx.walletId,
+        psbt,
+        signingContext,
+      },
+      assertOwnership,
+    );
     if (!signed.psbt) {
       throw new Error('Hardware signer did not return a signed PSBT for this broadcast path');
     }
@@ -569,6 +790,7 @@ export class HardwareWalletService {
       intentDigest,
       signed.rawTx
     );
+    assertOwnership();
 
     return result.txid;
   }

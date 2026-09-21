@@ -12,18 +12,37 @@ import type { HardwareDeviceModel } from '../../src/types';
 // Mock hardware wallet service
 const mockConnect = vi.fn();
 const mockGetAllXpubs = vi.fn();
+const mockReleaseConnection = vi.fn();
+const mockLoadHardwareWalletRuntime = vi.fn();
+const mockLease = {};
+const mockHardwareWalletService = {
+  connect: (type: unknown, options?: unknown) => mockConnect(type, options),
+  connectWithLease: async (type: unknown, options?: unknown) => ({
+    device: await mockConnect(type, options),
+    lease: mockLease,
+  }),
+  releaseConnection: (lease: unknown) => mockReleaseConnection(lease),
+  getAllXpubsWithFailuresForLease: async (_lease: unknown, callback: unknown) => {
+    const value = await mockGetAllXpubs(callback);
+    return Array.isArray(value)
+      ? { results: value, failures: [], totalPaths: value.length }
+      : value;
+  },
+  getAllXpubs: (callback: unknown) => mockGetAllXpubs(callback),
+  getAllXpubsWithFailures: async (callback: unknown) => {
+    const value = await mockGetAllXpubs(callback);
+    return Array.isArray(value)
+      ? { results: value, failures: [], totalPaths: value.length }
+      : value;
+  },
+};
 
 vi.mock('../../src/services/hardwareWallet/runtime', () => ({
-  hardwareWalletService: {
-    connect: (type: unknown, options?: unknown) => mockConnect(type, options),
-    getAllXpubs: (callback: unknown) => mockGetAllXpubs(callback),
-    getAllXpubsWithFailures: async (callback: unknown) => {
-      const value = await mockGetAllXpubs(callback);
-      return Array.isArray(value)
-        ? { results: value, failures: [], totalPaths: value.length }
-        : value;
-    },
-  },
+  hardwareWalletService: mockHardwareWalletService,
+}));
+
+vi.mock('../../src/services/hardwareWallet/loader', () => ({
+  loadHardwareWalletRuntime: () => mockLoadHardwareWalletRuntime(),
 }));
 
 // Mock device type helper
@@ -100,6 +119,10 @@ describe('useDeviceConnection', () => {
     vi.clearAllMocks();
     mockConnect.mockResolvedValue({ connected: true, fingerprint: 'abcd1234' });
     mockGetAllXpubs.mockResolvedValue(mockXpubResults);
+    mockReleaseConnection.mockResolvedValue(undefined);
+    mockLoadHardwareWalletRuntime.mockResolvedValue({
+      hardwareWalletService: mockHardwareWalletService,
+    });
   });
 
   describe('Initial State', () => {
@@ -218,6 +241,28 @@ describe('useDeviceConnection', () => {
       });
 
       expect(mockGetAllXpubs).toHaveBeenCalled();
+      expect(mockReleaseConnection).toHaveBeenCalledOnce();
+      expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease);
+    });
+
+    it('clears scanning state before a slow successful release settles', async () => {
+      let resolveRelease!: () => void;
+      mockReleaseConnection.mockReturnValue(new Promise<void>((resolve) => {
+        resolveRelease = resolve;
+      }));
+      const { result } = renderHook(() => useDeviceConnection());
+
+      let connectPromise!: Promise<void>;
+      act(() => {
+        connectPromise = result.current.connectUsb(mockModel);
+      });
+
+      await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease));
+      expect(result.current.scanning).toBe(false);
+      await act(async () => {
+        resolveRelease();
+        await connectPromise;
+      });
     });
 
     it('should set connection result with fingerprint and accounts', async () => {
@@ -228,6 +273,7 @@ describe('useDeviceConnection', () => {
       });
 
       expect(result.current.connectionResult).toEqual({
+        modelId: mockModel.id,
         fingerprint: 'abcd1234',
         warning: null,
         accounts: [
@@ -329,6 +375,40 @@ describe('useDeviceConnection', () => {
       await act(async () => {
         resolveConnect!({ connected: true, fingerprint: 'abcd1234' });
       });
+    });
+
+    it('waits for superseded connect and xpub work to settle before starting its replacement', async () => {
+      let resolveModelAXpubs!: (value: typeof mockXpubResults) => void;
+      mockGetAllXpubs
+        .mockImplementationOnce(() => new Promise((resolve) => {
+          resolveModelAXpubs = resolve;
+        }))
+        .mockResolvedValueOnce(mockXpubResults);
+      const modelB = { ...mockModel, id: '2', name: 'Trezor Model T', slug: 'trezor-model-t' };
+      const { result } = renderHook(() => useDeviceConnection());
+      let modelAConnection!: Promise<void>;
+      let modelBConnection!: Promise<void>;
+
+      act(() => {
+        modelAConnection = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => expect(mockGetAllXpubs).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        modelBConnection = result.current.connectUsb(modelB);
+      });
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveModelAXpubs(mockXpubResults);
+        await modelAConnection;
+      });
+      await waitFor(() => expect(mockConnect).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        await modelBConnection;
+      });
+      expect(result.current.connectionResult?.modelId).toBe(modelB.id);
     });
   });
 
@@ -461,6 +541,8 @@ describe('useDeviceConnection', () => {
       });
 
       expect(result.current.error).toBe('Failed to read xpubs');
+      expect(mockReleaseConnection).toHaveBeenCalledOnce();
+      expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease);
     });
   });
 
@@ -514,6 +596,159 @@ describe('useDeviceConnection', () => {
   });
 
   describe('reset', () => {
+    it('does not enter the service when reset wins during runtime loading', async () => {
+      let resolveRuntime!: (value: unknown) => void;
+      mockLoadHardwareWalletRuntime.mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRuntime = resolve;
+      }));
+      const { result } = renderHook(() => useDeviceConnection());
+      let connection!: Promise<void>;
+
+      act(() => {
+        connection = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => expect(mockLoadHardwareWalletRuntime).toHaveBeenCalled());
+      act(() => result.current.reset());
+
+      await act(async () => {
+        resolveRuntime({ hardwareWalletService: mockHardwareWalletService });
+        await connection;
+      });
+
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(result.current.scanning).toBe(false);
+    });
+
+    it('contains release failure when a connection resolves after reset without starting xpub reads', async () => {
+      let resolveConnect!: (value: unknown) => void;
+      mockConnect.mockImplementationOnce(() => new Promise((resolve) => {
+        resolveConnect = resolve;
+      }));
+      mockReleaseConnection.mockRejectedValueOnce(new Error('release failed'));
+      const { result } = renderHook(() => useDeviceConnection());
+      let connection!: Promise<void>;
+
+      act(() => {
+        connection = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+      act(() => result.current.reset());
+
+      await act(async () => {
+        resolveConnect({ connected: true, fingerprint: 'abcd1234' });
+        await connection;
+      });
+
+      expect(mockReleaseConnection).toHaveBeenCalledOnce();
+      expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease);
+      expect(mockGetAllXpubs).not.toHaveBeenCalled();
+      expect(result.current).toMatchObject({
+        scanning: false,
+        usbProgress: null,
+        connectionResult: null,
+        error: null,
+      });
+    });
+
+    it('suppresses late connection rejection and finally writers after reset', async () => {
+      let rejectConnect!: (reason: unknown) => void;
+      mockConnect.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectConnect = reject;
+      }));
+      const { result } = renderHook(() => useDeviceConnection());
+      let connection!: Promise<void>;
+
+      act(() => {
+        connection = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+      act(() => result.current.reset());
+
+      await act(async () => {
+        rejectConnect(new Error('late model A failure'));
+        await connection;
+      });
+
+      expect(result.current).toMatchObject({
+        scanning: false,
+        usbProgress: null,
+        connectionResult: null,
+        error: null,
+      });
+    });
+
+    it('releases the exact lease when xpub discovery rejects after reset', async () => {
+      let rejectXpubs!: (reason: unknown) => void;
+      mockGetAllXpubs.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectXpubs = reject;
+      }));
+      const { result } = renderHook(() => useDeviceConnection());
+      let connection!: Promise<void>;
+
+      act(() => {
+        connection = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => expect(mockGetAllXpubs).toHaveBeenCalled());
+      act(() => result.current.reset());
+
+      await act(async () => {
+        rejectXpubs(new Error('late xpub failure'));
+        await connection;
+      });
+
+      expect(mockReleaseConnection).toHaveBeenCalledOnce();
+      expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease);
+      expect(result.current.error).toBeNull();
+    });
+
+    it('permanently invalidates late progress and xpub results from the reset operation', async () => {
+      let reportProgress!: (current: number, total: number, name: string) => void;
+      let resolveXpubs!: (value: typeof mockXpubResults) => void;
+      mockGetAllXpubs.mockImplementationOnce(
+        (progressCallback: typeof reportProgress) => new Promise((resolve) => {
+          reportProgress = progressCallback;
+          resolveXpubs = resolve;
+        }),
+      );
+
+      const { result } = renderHook(() => useDeviceConnection());
+      let connection!: Promise<void>;
+
+      act(() => {
+        connection = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => expect(mockGetAllXpubs).toHaveBeenCalled());
+
+      act(() => {
+        result.current.reset();
+      });
+      expect(result.current).toMatchObject({
+        scanning: false,
+        usbProgress: null,
+        connectionResult: null,
+        error: null,
+      });
+
+      expect(() => reportProgress(1, 3, 'Late model A path')).toThrow(
+        'USB operation is no longer active',
+      );
+      expect(result.current.usbProgress).toBeNull();
+
+      await act(async () => {
+        resolveXpubs(mockXpubResults);
+        await connection;
+      });
+
+      expect(mockReleaseConnection).toHaveBeenCalledOnce();
+      expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease);
+      expect(result.current).toMatchObject({
+        scanning: false,
+        usbProgress: null,
+        connectionResult: null,
+        error: null,
+      });
+    });
+
     it('should reset all state', async () => {
       const { result } = renderHook(() => useDeviceConnection());
 

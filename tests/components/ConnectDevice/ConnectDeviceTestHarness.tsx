@@ -13,6 +13,9 @@ const connectDeviceMocks = vi.hoisted(() => ({
   isSecureContext: vi.fn(),
   hardwareWalletService: {
     connect: vi.fn(),
+    connectWithLease: vi.fn(),
+    releaseConnection: vi.fn(),
+    getAllXpubsWithFailuresForLease: vi.fn(),
     getAllXpubs: vi.fn(),
   },
 }));
@@ -196,9 +199,22 @@ export const setupConnectDeviceHarness = () => {
     mocks.parseDeviceJson.mockReset();
     mocks.isSecureContext.mockReset();
     mocks.hardwareWalletService.connect.mockReset();
+    mocks.hardwareWalletService.connectWithLease.mockReset();
+    mocks.hardwareWalletService.releaseConnection.mockReset();
+    mocks.hardwareWalletService.getAllXpubsWithFailuresForLease.mockReset();
     mocks.hardwareWalletService.getAllXpubs.mockReset();
 
     mocks.getDeviceModels.mockResolvedValue(mockDeviceModels);
     mocks.isSecureContext.mockReturnValue(false);
+    mocks.hardwareWalletService.connectWithLease.mockImplementation(async (...args) => ({
+      device: await mocks.hardwareWalletService.connect(...args),
+      lease: {},
+    }));
+    mocks.hardwareWalletService.getAllXpubsWithFailuresForLease.mockImplementation(
+      async (_lease, callback) => {
+        const results = await mocks.hardwareWalletService.getAllXpubs(callback);
+        return { results, failures: [], totalPaths: results.length };
+      },
+    );
   });
 };

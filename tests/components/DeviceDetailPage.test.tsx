@@ -552,7 +552,7 @@ describe('DeviceDetail page', () => {
     await user.click(screen.getByText('Connect Device'));
 
     expect(await screen.findByText('usb connect failed')).toBeInTheDocument();
-    expect(mockHardwareDisconnect).toHaveBeenCalled();
+    expect(mockHardwareDisconnect).not.toHaveBeenCalled();
   });
 
   it('imports a single-account SD payload and creates selectable account entry', async () => {

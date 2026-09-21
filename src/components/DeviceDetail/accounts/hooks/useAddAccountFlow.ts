@@ -17,7 +17,6 @@ import {
   buildNoNewUsbAccountsMessage,
   buildSkippedXpubWarning,
 } from "../../../../services/hardwareWallet/xpubImportWarnings";
-import { fetchStandardXpubBatch } from "../../../../services/hardwareWallet/xpubBatch";
 import {
   requireMatchingMasterFingerprint,
   validateXpubBatch,
@@ -528,36 +527,28 @@ export function useAddAccountFlow({
     setAddAccountLoading(true);
     setAddAccountError(null);
     setUsbProgress(null);
-    let disconnectFromDevice: () => Promise<void> = Promise.resolve.bind(
-      Promise,
-    ) as () => Promise<void>;
+    let releaseConnection = async (): Promise<void> => undefined;
 
     try {
       // Defer hardware runtime import until USB flow is actually used.
       const { hardwareWalletService } =
         await import("../../../../services/hardwareWallet/runtime");
-      disconnectFromDevice = hardwareWalletService.disconnect.bind(
-        hardwareWalletService,
-      );
-
       // Connect to the device
-      const connectedDevice = await hardwareWalletService.connect(
+      const connection = await hardwareWalletService.connectWithLease(
         deviceType,
         {
           chainEnvironment,
           expectedModel: device.model?.name,
         },
       );
+      const connectedDevice = connection.device;
+      releaseConnection = () => hardwareWalletService.releaseConnection(connection.lease);
 
       // Fetch all xpubs
-      const xpubBatch = await fetchStandardXpubBatch(
-        hardwareWalletService,
+      const xpubBatch = await hardwareWalletService.getAllXpubsWithFailuresForLease(
+        connection.lease,
         (current, total, name) => {
           setUsbProgress({ current, total, name });
-        },
-        {
-          connectedFingerprint: connectedDevice?.fingerprint,
-          storedFingerprint: device.fingerprint,
         },
       );
       const validatedBatch = validateXpubBatch(
@@ -618,7 +609,7 @@ export function useAddAccountFlow({
       setAddAccountLoading(false);
       setUsbProgress(null);
       try {
-        await disconnectFromDevice();
+        await releaseConnection();
       } catch (error) {
         log.debug("Device disconnect failed after add-account flow", { error });
         // Ignore disconnect errors

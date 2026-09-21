@@ -127,6 +127,7 @@ describe('useDeviceForm remaining behavioral branches', () => {
 
   it('saves only selected imported accounts and falls back to top-level evidence', async () => {
     const connectionResult = {
+      modelId: selectedModel.id,
       fingerprint: 'A1B2C3D4',
       accounts: [account(0), account(1)],
     };
@@ -163,5 +164,40 @@ describe('useDeviceForm remaining behavioral branches', () => {
       xpub: 'xpub-primary',
       derivationPath: "m/84'/0'/8'",
     }));
+  });
+
+  it('cannot construct model B save data from a late model A USB result', async () => {
+    const modelB = {
+      ...selectedModel,
+      id: 'model-2',
+      slug: 'trezor-model-t',
+      name: 'Trezor Model T',
+    };
+    const hook = renderDeviceForm();
+
+    hook.rerender({
+      selectedModel: modelB,
+      scanResult: null,
+      connectionResult: null,
+      ...callbacks,
+    });
+    await waitFor(() => expect(hook.result.current.formData.label).toBe('My Trezor Model T'));
+
+    hook.rerender({
+      selectedModel: modelB,
+      scanResult: null,
+      connectionResult: {
+        modelId: selectedModel.id,
+        fingerprint: 'A1B2C3D4',
+        accounts: [account(0)],
+      },
+      ...callbacks,
+    });
+    await act(async () => {
+      await hook.result.current.handleSave();
+    });
+
+    expect(hook.result.current.scanned).toBe(false);
+    expect(callbacks.saveDevice).not.toHaveBeenCalled();
   });
 });
