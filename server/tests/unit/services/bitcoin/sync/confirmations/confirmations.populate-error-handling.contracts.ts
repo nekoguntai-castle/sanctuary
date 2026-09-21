@@ -1,7 +1,11 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetNodeClient, mockWalletLog } from './confirmationsTestHarness';
+import {
+  getTransactionFieldPatches,
+  mockGetNodeClient,
+  mockWalletLog,
+} from './confirmationsTestHarness';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsErrorHandlingContracts() {
@@ -38,7 +42,7 @@ export function registerPopulateMissingTransactionFieldsErrorHandlingContracts()
     const result = await populateMissingTransactionFields('wallet-1');
 
     expect(result).toEqual({ updated: 0, confirmationUpdates: [] });
-    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).toEqual([]);
     expect(mockWalletLog).toHaveBeenCalledWith(
       'wallet-1',
       'info',
@@ -113,7 +117,7 @@ export function registerPopulateMissingTransactionFieldsErrorHandlingContracts()
 
     expect(result.confirmationUpdates).toEqual([]);
     expect(result.updated).toBeGreaterThanOrEqual(1);
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).not.toEqual([]);
     expect(mockWalletLog).toHaveBeenCalledWith(
       'wallet-1',
       'warn',

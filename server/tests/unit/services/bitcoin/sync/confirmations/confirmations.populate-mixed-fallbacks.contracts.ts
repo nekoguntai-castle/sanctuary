@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetNodeClient } from './confirmationsTestHarness';
+import { getTransactionFieldPatch, mockGetNodeClient } from './confirmationsTestHarness';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsMixedFallbacksContracts() {
@@ -132,23 +132,23 @@ export function registerPopulateMissingTransactionFieldsMixedFallbacksContracts(
     expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-ok', true);
     expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-fail', true);
 
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-prevout-fee' },
+    expect(getTransactionFieldPatch('t-prevout-fee')).toEqual({
+      id: 't-prevout-fee',
       data: expect.objectContaining({
         fee: BigInt(10000),
         counterpartyAddress: 'external-3',
         addressId: 'addr-1',
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-consolidation' },
+    expect(getTransactionFieldPatch('t-consolidation')).toEqual({
+      id: 't-consolidation',
       data: expect.objectContaining({
         fee: BigInt(5000),
         amount: BigInt(-5000),
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-recv-prev-ok' },
+    expect(getTransactionFieldPatch('t-recv-prev-ok')).toEqual({
+      id: 't-recv-prev-ok',
       data: expect.objectContaining({
         counterpartyAddress: 'sender-prev-ok',
         addressId: 'addr-1',

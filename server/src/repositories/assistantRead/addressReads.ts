@@ -1,5 +1,6 @@
 import type { Prisma } from '../../generated/prisma/client';
 import prisma from '../../models/prisma';
+import { LIVE_TRANSACTION_WHERE } from '../transactions/visibility';
 
 export async function searchAddresses(where: Prisma.AddressWhereInput, limit: number) {
   return prisma.address.findMany({
@@ -43,7 +44,9 @@ export async function findAddressDetail(
     },
     include: {
       addressLabels: { include: { label: true } },
-      _count: { select: { transactions: true } },
+      _count: {
+        select: { transactions: { where: LIVE_TRANSACTION_WHERE } },
+      },
     },
   });
 

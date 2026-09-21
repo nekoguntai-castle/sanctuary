@@ -1,7 +1,11 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetBlockTimestamp, mockGetNodeClient } from './confirmationsTestHarness';
+import {
+  getTransactionFieldPatches,
+  mockGetBlockTimestamp,
+  mockGetNodeClient,
+} from './confirmationsTestHarness';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts() {
@@ -74,7 +78,7 @@ export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts(
       'mainnet',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).toEqual([]);
   });
 
   it('ignores non-positive heights from address history during block-height extraction', async () => {
@@ -107,6 +111,6 @@ export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts(
 
     expect(result).toEqual({ updated: 0, confirmationUpdates: [] });
     expect(mockClient.getAddressHistory).toHaveBeenCalledWith('wallet-addr');
-    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).toEqual([]);
   });
 }

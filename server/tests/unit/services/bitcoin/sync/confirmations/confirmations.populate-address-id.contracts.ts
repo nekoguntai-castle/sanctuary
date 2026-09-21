@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetNodeClient } from './confirmationsTestHarness';
+import { getTransactionFieldPatch, getTransactionFieldPatches, mockGetNodeClient } from './confirmationsTestHarness';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
@@ -43,8 +43,8 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     const result = await populateMissingTransactionFields('wallet-1');
 
     expect(result.updated).toBe(1);
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-sent-addressid' },
+    expect(getTransactionFieldPatch('t-sent-addressid')).toEqual({
+      id: 't-sent-addressid',
       data: expect.objectContaining({
         addressId: 'addr-1',
       }),
@@ -83,7 +83,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     const result = await populateMissingTransactionFields('wallet-1');
 
     expect(result.updated).toBe(0);
-    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).toEqual([]);
   });
 
   it('does not set received addressId when wallet lookup returns no id', async () => {
@@ -119,7 +119,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     const result = await populateMissingTransactionFields('wallet-1');
 
     expect(result.updated).toBe(0);
-    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).toEqual([]);
   });
 
   it('handles sent addressId fallback branches when vin is missing or lookup id is missing', async () => {
@@ -185,6 +185,6 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     const result = await populateMissingTransactionFields('wallet-1');
 
     expect(result.updated).toBe(0);
-    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(getTransactionFieldPatches()).toEqual([]);
   });
 }

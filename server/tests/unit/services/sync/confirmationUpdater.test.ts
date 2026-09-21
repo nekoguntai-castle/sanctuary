@@ -208,6 +208,7 @@ describe('confirmationUpdater', () => {
     expect(mockFindMany).toHaveBeenCalledWith({
       where: {
         confirmations: { lt: 6 },
+        rbfStatus: { not: 'replaced' },
         wallet: { network: { in: ['testnet4'] } },
       },
       select: { walletId: true },
@@ -982,7 +983,7 @@ describe('confirmationUpdater', () => {
     const result = await refreshAllPendingConfirmations();
 
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { confirmations: { lt: 6 } },
+      where: { confirmations: { lt: 6 }, rbfStatus: { not: 'replaced' } },
       select: { walletId: true },
       distinct: ['walletId'],
     });

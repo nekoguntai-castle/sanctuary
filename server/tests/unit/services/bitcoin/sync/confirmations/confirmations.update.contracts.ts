@@ -16,6 +16,8 @@ import {
 
 function committedTransactionPatches(): Array<{ id: string; data: Record<string, unknown> }> {
   return mockPrismaClient.$executeRaw.mock.calls.flatMap(([query]) => {
+    const sql = (query as { strings?: string[] }).strings?.join('') ?? '';
+    if (!sql.includes('UPDATE "transactions" AS transaction')) return [];
     const values = (query as { values?: unknown[] }).values ?? [];
     const serialized = values.find(value => (
       typeof value === 'string' && value.startsWith('[{"id"')
@@ -223,6 +225,7 @@ export function registerUpdateTransactionConfirmationsContracts() {
       where: {
         walletId: 'wallet-1',
         blockHeight: { not: null },
+        rbfStatus: { not: 'replaced' },
         OR: [
           { confirmations: { lt: 6 } },
           { blockHeight: { gt: 95 } },

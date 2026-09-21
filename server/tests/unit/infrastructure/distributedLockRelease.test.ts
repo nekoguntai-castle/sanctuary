@@ -280,6 +280,7 @@ describe('reclaim sweep hardening', () => {
   });
 
   it('prunes an expired entry even while the client is absent', async () => {
+    vi.useFakeTimers();
     // `return` here would abandon later entries for as long as the client is
     // null, growing the map every time a release fails.
     mockEval.mockRejectedValueOnce(new Error('down'));
@@ -288,11 +289,12 @@ describe('reclaim sweep hardening', () => {
     await releaseLock({ ...remoteLock('expiring'), expiresAt: Date.now() + 30 });
     expect(pendingUnconfirmedLockCount()).toBe(2);
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.advanceTimersByTimeAsync(50);
     mockGetRedisClient.mockReturnValue(null);
     await reclaimUnconfirmedLocks();
 
     expect(pendingUnconfirmedLockCount()).toBe(1);
+    vi.useRealTimers();
   });
 
   it('bounds one reclaim attempt so a stalled key cannot stall the sweep', async () => {

@@ -227,6 +227,7 @@ describe('resolveReplacementLinkAfterBroadcast', () => {
     expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'original-id',
+        walletId,
         rbfStatus: { not: 'replaced' },
         replacedByTxid: null,
       },

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetNodeClient } from './confirmationsTestHarness';
+import { getTransactionFieldPatch, mockGetNodeClient } from './confirmationsTestHarness';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsCounterpartyFallbacksContracts() {
@@ -160,27 +160,27 @@ export function registerPopulateMissingTransactionFieldsCounterpartyFallbacksCon
     expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-missing', true);
     expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-none', true);
     expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-array', true);
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-sent-fallbacks' },
+    expect(getTransactionFieldPatch('t-sent-fallbacks')).toEqual({
+      id: 't-sent-fallbacks',
       data: expect.objectContaining({
         counterpartyAddress: 'external-by-array',
         addressId: 'addr-1',
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-consolidation-nonzero' },
+    expect(getTransactionFieldPatch('t-consolidation-nonzero')).toEqual({
+      id: 't-consolidation-nonzero',
       data: expect.objectContaining({
         fee: BigInt(1000),
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-recv-prevout-mix' },
+    expect(getTransactionFieldPatch('t-recv-prevout-mix')).toEqual({
+      id: 't-recv-prevout-mix',
       data: expect.objectContaining({
         counterpartyAddress: 'sender-array',
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-recv-prevtx-mix' },
+    expect(getTransactionFieldPatch('t-recv-prevtx-mix')).toEqual({
+      id: 't-recv-prevtx-mix',
       data: expect.objectContaining({
         counterpartyAddress: 'sender-prev-array',
       }),

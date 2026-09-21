@@ -6,6 +6,7 @@
  */
 
 import prisma from '../models/prisma';
+import { LIVE_TRANSACTION_WHERE } from './transactions/visibility';
 import type { AIInsight, AIConversation, AIMessage, Prisma } from '../generated/prisma/client';
 import type { InsightType, InsightSeverity, InsightStatus } from '../services/intelligence/types';
 
@@ -265,6 +266,7 @@ async function getTransactionVelocity(
       walletId,
       blockTime: { gte: cutoff },
       type: 'sent',
+      ...LIVE_TRANSACTION_WHERE,
     },
     _count: { _all: true },
     _sum: { amount: true },

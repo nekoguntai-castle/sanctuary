@@ -22,6 +22,38 @@ export const mockGetBlockHeight = confirmationMocks.mockGetBlockHeight;
 export const mockGetBlockTimestamp = confirmationMocks.mockGetBlockTimestamp;
 export const mockRecalculateWalletBalances = confirmationMocks.mockRecalculateWalletBalances;
 
+type TransactionFieldPatch = {
+  id: string;
+  data: Record<string, unknown>;
+};
+
+function reviveTransactionPatchData(data: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).map(([field, value]) => [
+    field,
+    (field === 'amount' || field === 'fee') && typeof value === 'string'
+      ? BigInt(value)
+      : value,
+  ]));
+}
+
+/** Decode the JSON payloads sent through the heterogeneous raw batch writer. */
+export function getTransactionFieldPatches(): TransactionFieldPatch[] {
+  return mockPrismaClient.$executeRaw.mock.calls.flatMap(([query]) => {
+    const sql = query?.strings?.join('') ?? '';
+    if (!sql.includes('UPDATE "transactions" AS transaction')) return [];
+    const serialized = query.values?.[0];
+    if (typeof serialized !== 'string') return [];
+    return (JSON.parse(serialized) as TransactionFieldPatch[]).map(patch => ({
+      id: patch.id,
+      data: reviveTransactionPatchData(patch.data),
+    }));
+  });
+}
+
+export function getTransactionFieldPatch(id: string): TransactionFieldPatch | undefined {
+  return getTransactionFieldPatches().find(patch => patch.id === id);
+}
+
 vi.mock('../../../../../../src/models/prisma', () => ({
   __esModule: true,
   default: mockPrismaClient,

@@ -11,6 +11,9 @@ import { vi, Mock } from 'vitest';
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
+    $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
     transaction: {
       deleteMany: vi.fn(),
       findMany: vi.fn(),
@@ -28,8 +31,27 @@ vi.mock('../../../src/models/prisma', () => ({
 
 import prisma from '../../../src/models/prisma';
 import { transactionRepository } from '../../../src/repositories/transactionRepository';
+import { withLiveTransactionWhere } from '../../../src/repositories/transactions/visibility';
 
 describe('Transaction Repository', () => {
+  it('preserves an existing scope conjunction in the live transaction fence', () => {
+    expect(withLiveTransactionWhere(
+      { type: 'sent' },
+      { walletId: 'wallet-1', AND: { confirmations: { gt: 0 } } },
+    )).toEqual({
+      walletId: 'wallet-1',
+      rbfStatus: { not: 'replaced' },
+      AND: [{ confirmations: { gt: 0 } }, { type: 'sent' }],
+    });
+    expect(withLiveTransactionWhere(
+      { type: 'received' },
+      { AND: [{ walletId: 'wallet-1' }, { confirmations: 0 }] },
+    )).toEqual({
+      rbfStatus: { not: 'replaced' },
+      AND: [{ walletId: 'wallet-1' }, { confirmations: 0 }, { type: 'received' }],
+    });
+  });
+
   const mockTransaction = {
     id: 'tx-123',
     txid: 'abc123def456',
@@ -49,6 +71,9 @@ describe('Transaction Repository', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.$transaction as Mock).mockImplementation(
+      (callback: (client: typeof prisma) => unknown) => callback(prisma),
+    );
   });
 
   describe('deleteByWalletId', () => {
@@ -85,6 +110,46 @@ describe('Transaction Repository', () => {
     });
   });
 
+  describe('cross-wallet live activity', () => {
+    it('excludes replaced rows from grouped activity', async () => {
+      (prisma.transaction.groupBy as Mock).mockResolvedValue([]);
+      const startDate = new Date('2026-01-01T00:00:00.000Z');
+
+      await transactionRepository.groupActivityByType(['wallet-1'], startDate);
+
+      expect(prisma.transaction.groupBy).toHaveBeenCalledWith({
+        by: ['type'],
+        where: {
+          walletId: { in: ['wallet-1'] },
+          blockTime: { not: null, gte: startDate },
+          rbfStatus: { not: 'replaced' },
+        },
+        _count: { id: true },
+        _sum: { amount: true },
+        _max: { blockTime: true },
+      });
+    });
+
+    it.each(['hour', 'day', 'week', 'month'] as const)(
+      'excludes replaced rows from %s balance buckets',
+      async bucketUnit => {
+        (prisma.$queryRaw as Mock).mockResolvedValue([]);
+
+        await transactionRepository.getBucketedBalanceDeltas(
+          ['wallet-1'],
+          new Date('2026-01-01T00:00:00.000Z'),
+          bucketUnit,
+        );
+
+        const call = (prisma.$queryRaw as Mock).mock.calls.at(-1) ?? [];
+        const livePredicate = call.find(
+          value => typeof value === 'object' && value !== null && 'strings' in value,
+        ) as { strings?: string[] } | undefined;
+        expect(livePredicate?.strings?.join('')).toContain('"rbfStatus" <> \'replaced\'');
+      },
+    );
+  });
+
   describe('findByWalletId', () => {
     it('should find transactions for wallet', async () => {
       const transactions = [mockTransaction, { ...mockTransaction, id: 'tx-456' }];
@@ -94,7 +159,7 @@ describe('Transaction Repository', () => {
 
       expect(result).toHaveLength(2);
       expect(prisma.transaction.findMany).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-456' },
+        where: { walletId: 'wallet-456', rbfStatus: { not: 'replaced' } },
         skip: undefined,
         take: undefined,
         orderBy: { blockTime: 'desc' },
@@ -110,7 +175,7 @@ describe('Transaction Repository', () => {
       });
 
       expect(prisma.transaction.findMany).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-456' },
+        where: { walletId: 'wallet-456', rbfStatus: { not: 'replaced' } },
         skip: 10,
         take: 20,
         orderBy: { blockTime: 'desc' },
@@ -133,6 +198,20 @@ describe('Transaction Repository', () => {
   });
 
   describe('findByWalletIdWithDetails', () => {
+    it('applies the live scope when no optional filters are supplied', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([]);
+
+      await transactionRepository.findByWalletIdWithDetails('wallet-456');
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          walletId: 'wallet-456',
+          rbfStatus: { not: 'replaced' },
+          AND: {},
+        },
+      }));
+    });
+
     it('should merge filters while keeping the scoped wallet id authoritative', async () => {
       (prisma.transaction.findMany as Mock).mockResolvedValue([mockTransaction]);
 
@@ -148,8 +227,9 @@ describe('Transaction Repository', () => {
 
       expect(prisma.transaction.findMany).toHaveBeenCalledWith({
         where: {
-          rbfStatus: { not: 'replaced' },
           walletId: 'wallet-456',
+          rbfStatus: { not: 'replaced' },
+          AND: { walletId: 'attacker-wallet', rbfStatus: { not: 'replaced' } },
         },
         include: {
           transactionLabels: true,
@@ -162,6 +242,20 @@ describe('Transaction Repository', () => {
   });
 
   describe('findByWalletIdsWithDetails', () => {
+    it('applies the live scope when no optional filters are supplied', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([]);
+
+      await transactionRepository.findByWalletIdsWithDetails(['wallet-1', 'wallet-2']);
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          walletId: { in: ['wallet-1', 'wallet-2'] },
+          rbfStatus: { not: 'replaced' },
+          AND: {},
+        },
+      }));
+    });
+
     it('should merge filters while keeping the scoped wallet id list authoritative', async () => {
       (prisma.transaction.findMany as Mock).mockResolvedValue([mockTransaction]);
 
@@ -175,8 +269,9 @@ describe('Transaction Repository', () => {
 
       expect(prisma.transaction.findMany).toHaveBeenCalledWith({
         where: {
-          type: 'sent',
           walletId: { in: ['wallet-1', 'wallet-2'] },
+          rbfStatus: { not: 'replaced' },
+          AND: { walletId: 'attacker-wallet', type: 'sent' },
         },
         orderBy: { blockTime: 'desc' },
         take: 5,
@@ -192,7 +287,25 @@ describe('Transaction Repository', () => {
 
       expect(count).toBe(42);
       expect(prisma.transaction.count).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-456' },
+        where: { walletId: 'wallet-456', rbfStatus: { not: 'replaced' } },
+      });
+    });
+  });
+
+  describe('confirmation refresh candidates', () => {
+    it('excludes replaced rows from the wallet-scoped shallow selector', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([]);
+
+      await transactionRepository.findBelowConfirmationThreshold('wallet-456', 6);
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-456',
+          confirmations: { lt: 6 },
+          blockHeight: { not: null },
+          rbfStatus: { not: 'replaced' },
+        },
+        select: { id: true, txid: true, blockHeight: true, confirmations: true },
       });
     });
   });
@@ -216,6 +329,15 @@ describe('Transaction Repository', () => {
       expect(result.items).toHaveLength(50);
       expect(result.hasMore).toBe(true);
       expect(result.totalCount).toBe(100);
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          walletId: 'wallet-456',
+          rbfStatus: { not: 'replaced' },
+        }),
+      }));
+      expect(prisma.transaction.count).toHaveBeenCalledWith({
+        where: { walletId: 'wallet-456', rbfStatus: { not: 'replaced' } },
+      });
     });
 
     it('should use cursor-based pagination with forward direction', async () => {
@@ -457,6 +579,7 @@ describe('Transaction Repository', () => {
           walletId: 'wallet-456',
           blockTime: { gte: startDate },
           type: { not: 'consolidation' },
+          rbfStatus: { not: 'replaced' },
         },
         select: {
           blockTime: true,
@@ -550,6 +673,7 @@ describe('Transaction Repository', () => {
       expect(prisma.transaction.findMany).toHaveBeenCalledWith({
         where: {
           confirmations: { lt: 6 },
+          rbfStatus: { not: 'replaced' },
           wallet: { network: { in: ['testnet3', 'testnet'] } },
         },
         select: { walletId: true },
@@ -563,7 +687,7 @@ describe('Transaction Repository', () => {
       await transactionRepository.findWalletIdsWithPendingConfirmations(6);
 
       expect(prisma.transaction.findMany).toHaveBeenCalledWith({
-        where: { confirmations: { lt: 6 } },
+        where: { confirmations: { lt: 6 }, rbfStatus: { not: 'replaced' } },
         select: { walletId: true },
         distinct: ['walletId'],
       });
@@ -618,12 +742,14 @@ describe('Transaction Repository', () => {
 
       await expect(transactionRepository.linkReplacementIfUnreplaced(
         'original-id',
+        'wallet-1',
         'new-txid',
       )).resolves.toBe(true);
 
       expect(prisma.transaction.updateMany).toHaveBeenCalledWith({
         where: {
           id: 'original-id',
+          walletId: 'wallet-1',
           rbfStatus: { not: 'replaced' },
           replacedByTxid: null,
         },
@@ -632,6 +758,7 @@ describe('Transaction Repository', () => {
           replacedByTxid: 'new-txid',
         },
       });
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     });
 
     it('resolves to false when zero rows update (a concurrent broadcast already linked it)', async () => {
@@ -639,8 +766,10 @@ describe('Transaction Repository', () => {
 
       await expect(transactionRepository.linkReplacementIfUnreplaced(
         'original-id',
+        'wallet-1',
         'new-txid',
       )).resolves.toBe(false);
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
     });
   });
 

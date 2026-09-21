@@ -2,6 +2,9 @@ import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { Prisma } from '../../generated/prisma/client';
 import { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } from '../../constants/transactionClassification';
 import { ADDRESS_SYNC_IO_UPSERT_MAX_ROWS } from '../../constants/addressSyncPersistence';
+import { LIVE_TRANSACTION_WHERE } from './visibility';
+import { queueWalletBalanceRepair } from './balanceRepair';
+import { executeTransactionFieldPatch } from './fieldPatches';
 
 export {
   ADDRESS_SYNC_INPUT_UPSERT_BIND_COLUMNS,
@@ -64,7 +67,10 @@ const lockTransactionSyncKeys = async (
   `);
 };
 
-const getAuthoritativeClassificationData = (data: AddressSyncTransactionInput) => ({
+const getAuthoritativeClassificationData = (
+  data: AddressSyncTransactionInput,
+  existingRbfStatus: string,
+) => ({
   // The migration trigger queues wallet_balance_repairs whenever these
   // balance-affecting fields change; application writes must not bypass it.
   type: data.type,
@@ -78,7 +84,16 @@ const getAuthoritativeClassificationData = (data: AddressSyncTransactionInput) =
   blockHeight: data.blockHeight,
   blockTime: data.blockTime,
   addressId: data.addressId,
-  rbfStatus: data.rbfStatus,
+  // Unconfirmed history may repair classification evidence but cannot undo a
+  // recorded replacement. Confirmed chain evidence may revive the mined row,
+  // and clearing its stale replacement pointer keeps the revived row internally
+  // consistent with its authoritative confirmed status.
+  rbfStatus: existingRbfStatus === 'replaced' && data.rbfStatus === 'active'
+    ? 'replaced'
+    : data.rbfStatus,
+  ...(existingRbfStatus === 'replaced' && data.rbfStatus === 'confirmed'
+    ? { replacedByTxid: null }
+    : {}),
 });
 
 /**
@@ -161,18 +176,26 @@ export async function findOwnershipRepairTargets(
 }
 
 /**
- * Detects the trigger-maintained durable wallet balance-repair marker.
- * Recalculation deletes existing markers before its read so racing mutations
- * append a marker that survives the in-flight pass.
+ * Detects a durable repair marker or a legacy replaced row whose persisted
+ * running balance predates replacement-aware accounting. Recalculation clears
+ * both conditions by deleting markers and nulling replaced-row balances.
  */
 export async function hasPendingBalanceRecalculation(
   walletId: string,
   client: PrismaTxClient = prisma
 ): Promise<boolean> {
   const pending = await client.$queryRaw<Array<{ pending: boolean }>>(Prisma.sql`
-    SELECT true AS "pending"
-    FROM "wallet_balance_repairs"
-    WHERE "walletId" = ${walletId}
+    SELECT true AS "pending" FROM (
+      SELECT 1
+      FROM "wallet_balance_repairs"
+      WHERE "walletId" = ${walletId}
+      UNION ALL
+      SELECT 1
+      FROM "transactions"
+      WHERE "walletId" = ${walletId}
+        AND "rbfStatus" = 'replaced'
+        AND "balanceAfter" IS NOT NULL
+    ) pending_repairs
     LIMIT 1
   `);
   return pending.length > 0;
@@ -413,6 +436,8 @@ type OwnershipRepairRow = {
 
 type ExistingClassificationRow = {
   id: string;
+  rbfStatus: string;
+  replacedByTxid: string | null;
   classificationInputsComplete: boolean;
   classificationVersion: number;
   classificationAddressCount: number;
@@ -438,7 +463,8 @@ const lockExistingClassification = async (
 ): Promise<ExistingClassificationRow | undefined> => {
   const [existing] = await tx.$queryRaw<ExistingClassificationRow[]>(Prisma.sql`
     /* address-sync-classification-lock */
-    SELECT "id", "classificationInputsComplete", "classificationVersion",
+    SELECT "id", "rbfStatus", "replacedByTxid",
+           "classificationInputsComplete", "classificationVersion",
            "classificationAddressCount"
     FROM "transactions"
     WHERE "walletId" = ${data.walletId}
@@ -461,13 +487,43 @@ const isAtLeastAsAuthoritative = (
   data: AddressSyncTransactionInput,
   candidateAddressCount: number
 ): boolean => (
-  // Complete input evidence at the current algorithm and at least the same
-  // wallet-address horizon is authoritative; older/weaker observations cannot
-  // overwrite it.
+  // Complete input evidence at the same algorithm and at least the same
+  // wallet-address horizon is authoritative. A confirmed observation means
+  // the transaction is mined in the authoritative chain and may revive a row
+  // previously hidden by BIP 125 replacement detection. An unconfirmed
+  // mempool/history echo does not prove that reversal and cannot revive it.
   existing.classificationInputsComplete
-  && existing.classificationVersion >= data.classificationVersion
+  && existing.classificationVersion === data.classificationVersion
   && existing.classificationAddressCount >= candidateAddressCount
+  && (existing.rbfStatus !== 'replaced' || data.rbfStatus !== 'confirmed')
 );
+
+/** A rollback worker cannot reinterpret evidence written by a newer algorithm. */
+const hasNewerCompleteClassification = (
+  existing: ExistingClassificationRow,
+  data: AddressSyncTransactionInput,
+): boolean => (
+  existing.classificationInputsComplete
+  && existing.classificationVersion > data.classificationVersion
+);
+
+/** Hide the linked loser when fresh confirmed evidence proves its original won. */
+const retireLosingReplacement = async (
+  tx: PrismaTxClient,
+  walletId: string,
+  winnerTxid: string,
+  replacementTxid: string | null,
+): Promise<void> => {
+  if (!replacementTxid) return;
+  await tx.transaction.updateMany({
+    where: {
+      walletId,
+      txid: replacementTxid,
+      rbfStatus: { not: 'replaced' },
+    },
+    data: { rbfStatus: 'replaced', replacedByTxid: winnerTxid },
+  });
+};
 
 /**
  * Inserts a missing address-sync transaction or promotes an existing weaker
@@ -497,6 +553,9 @@ export async function reconcileAddressSyncTransaction(
 
     const existing = await lockExistingClassification(tx, data);
     if (!existing) return 'unchanged';
+    // A rollback worker cannot safely reinterpret or clear a wider-horizon
+    // repair target written for a newer classification algorithm.
+    if (hasNewerCompleteClassification(existing, data)) return 'unchanged';
     if (candidateAddressCount < existing.classificationAddressCount) return 'unchanged';
     if (isAtLeastAsAuthoritative(existing, data, candidateAddressCount)) {
       await clearOwnershipRepair(tx, ownershipRepair);
@@ -505,8 +564,17 @@ export async function reconcileAddressSyncTransaction(
 
     await tx.transaction.update({
       where: { id: existing.id },
-      data: getAuthoritativeClassificationData(data),
+      data: getAuthoritativeClassificationData(data, existing.rbfStatus),
     });
+    if (existing.rbfStatus === 'replaced' && data.rbfStatus === 'confirmed') {
+      await retireLosingReplacement(
+        tx,
+        data.walletId,
+        data.txid,
+        existing.replacedByTxid,
+      );
+      await queueWalletBalanceRepair(data.walletId, tx);
+    }
     await reconcileClassificationOutputTypes(tx, data);
     await clearOwnershipRepair(tx, ownershipRepair);
     return 'repaired';
@@ -567,7 +635,11 @@ const repairExistingBatchCandidate = async (
 ): Promise<AddressSyncReconcileOutcome> => {
   const { transaction, ownershipRepair, candidateAddressCount } = candidate;
   const existing = await lockExistingClassification(tx, transaction);
-  if (!existing || candidateAddressCount < existing.classificationAddressCount) {
+  if (
+    !existing
+    || hasNewerCompleteClassification(existing, transaction)
+    || candidateAddressCount < existing.classificationAddressCount
+  ) {
     return 'unchanged';
   }
   if (isAtLeastAsAuthoritative(existing, transaction, candidateAddressCount)) {
@@ -576,8 +648,17 @@ const repairExistingBatchCandidate = async (
   }
   await tx.transaction.update({
     where: { id: existing.id },
-    data: getAuthoritativeClassificationData(transaction),
+    data: getAuthoritativeClassificationData(transaction, existing.rbfStatus),
   });
+  if (existing.rbfStatus === 'replaced' && transaction.rbfStatus === 'confirmed') {
+    await retireLosingReplacement(
+      tx,
+      transaction.walletId,
+      transaction.txid,
+      existing.replacedByTxid,
+    );
+    await queueWalletBalanceRepair(transaction.walletId, tx);
+  }
   await reconcileClassificationOutputTypes(tx, transaction);
   await clearOwnershipRepair(tx, ownershipRepair);
   return 'repaired';
@@ -727,10 +808,17 @@ export async function recalculateBalancesAtomically(
     return tx.$executeRaw(Prisma.sql`
       WITH running_balances AS (
         SELECT "id",
-               SUM("amount") OVER (
-                 ORDER BY "blockTime" ASC, "createdAt" ASC, "id" ASC
-                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-               ) AS "balanceAfter"
+               -- The outer CASE writes the NULL sentinel consumed by
+               -- hasPendingBalanceRecalculation; the inner CASE also removes
+               -- replaced value from every subsequent live sum.
+               CASE WHEN "rbfStatus" = 'replaced' THEN NULL
+                    ELSE SUM(
+                      CASE WHEN "rbfStatus" = 'replaced' THEN 0 ELSE "amount" END
+                    ) OVER (
+                      ORDER BY "blockTime" ASC, "createdAt" ASC, "id" ASC
+                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    )
+               END AS "balanceAfter"
         FROM "transactions"
         WHERE "walletId" = ${walletId}
       )
@@ -755,6 +843,7 @@ export async function findBelowConfirmationThreshold(
       walletId,
       confirmations: { lt: threshold },
       blockHeight: { not: null },
+      ...LIVE_TRANSACTION_WHERE,
     },
     select: { id: true, txid: true, blockHeight: true, confirmations: true },
   });
@@ -775,6 +864,7 @@ export async function findRequiringConfirmationUpdateAtHeight(
     where: {
       walletId,
       blockHeight: { not: null },
+      ...LIVE_TRANSACTION_WHERE,
       OR: [
         { confirmations: { lt: threshold } },
         { blockHeight: { gt: authoritativeHeight - threshold + 1 } },
@@ -823,84 +913,41 @@ export async function findWithMissingFields(
   });
 }
 
+/**
+ * Applies heterogeneous patches in bounded chunks. Each clientless chunk gets
+ * its own 60-second transaction so an RBF membership change and its balance
+ * repair marker commit atomically without making all chunks one long unit.
+ */
 export async function batchUpdateByIds(
   updates: Array<{ id: string; data: Record<string, unknown> }>,
   batchSize: number,
   client?: PrismaTxClient
 ): Promise<void> {
   for (let i = 0; i < updates.length; i += batchSize) {
-    const chunk = updates.slice(i, i + batchSize);
+    const chunk = mergeTransactionFieldPatches(updates.slice(i, i + batchSize));
     if (client) {
       await executeTransactionFieldPatch(chunk, client);
       continue;
     }
     await prisma.$transaction(
-      chunk.map(u =>
-        prisma.transaction.update({
-          where: { id: u.id },
-          data: u.data,
-        })
-      )
+      tx => executeTransactionFieldPatch(chunk, tx),
+      { timeout: 60_000 },
     );
   }
 }
 
-const TRANSACTION_PATCH_FIELDS = new Set([
-  'addressId',
-  'amount',
-  'blockHeight',
-  'blockTime',
-  'confirmations',
-  'counterpartyAddress',
-  'fee',
-  'rbfStatus',
-]);
-
-function serializeTransactionFieldPatches(
+/** Merge duplicate ids in input order, preserving sequential last-write wins. */
+function mergeTransactionFieldPatches(
   updates: Array<{ id: string; data: Record<string, unknown> }>,
-): string {
+): Array<{ id: string; data: Record<string, unknown> }> {
+  const merged = new Map<string, { id: string; data: Record<string, unknown> }>();
   for (const update of updates) {
-    for (const field of Object.keys(update.data)) {
-      if (!TRANSACTION_PATCH_FIELDS.has(field)) {
-        throw new Error(`Unsupported transaction batch-update field: ${field}`);
-      }
-    }
+    const prior = merged.get(update.id);
+    merged.set(update.id, {
+      ...prior,
+      ...update,
+      data: { ...prior?.data, ...update.data },
+    });
   }
-  return JSON.stringify(updates, (_key, value) => (
-    typeof value === 'bigint' ? value.toString() : value
-  ));
-}
-
-/** Apply one heterogeneous field-update chunk with one PostgreSQL round trip. */
-async function executeTransactionFieldPatch(
-  updates: Array<{ id: string; data: Record<string, unknown> }>,
-  client: PrismaTxClient,
-): Promise<void> {
-  const patches = serializeTransactionFieldPatches(updates);
-  await client.$executeRaw(Prisma.sql`
-    WITH patches AS (
-      SELECT "id", "data"
-      FROM jsonb_to_recordset(${patches}::JSONB) AS patch("id" TEXT, "data" JSONB)
-    )
-    UPDATE "transactions" AS transaction
-    SET "addressId" = CASE WHEN patches."data" ? 'addressId'
-          THEN patches."data" ->> 'addressId' ELSE transaction."addressId" END,
-        "amount" = CASE WHEN patches."data" ? 'amount'
-          THEN (patches."data" ->> 'amount')::BIGINT ELSE transaction."amount" END,
-        "blockHeight" = CASE WHEN patches."data" ? 'blockHeight'
-          THEN (patches."data" ->> 'blockHeight')::INTEGER ELSE transaction."blockHeight" END,
-        "blockTime" = CASE WHEN patches."data" ? 'blockTime'
-          THEN (patches."data" ->> 'blockTime')::TIMESTAMP(3) ELSE transaction."blockTime" END,
-        "confirmations" = CASE WHEN patches."data" ? 'confirmations'
-          THEN (patches."data" ->> 'confirmations')::INTEGER ELSE transaction."confirmations" END,
-        "counterpartyAddress" = CASE WHEN patches."data" ? 'counterpartyAddress'
-          THEN patches."data" ->> 'counterpartyAddress' ELSE transaction."counterpartyAddress" END,
-        "fee" = CASE WHEN patches."data" ? 'fee'
-          THEN (patches."data" ->> 'fee')::BIGINT ELSE transaction."fee" END,
-        "rbfStatus" = CASE WHEN patches."data" ? 'rbfStatus'
-          THEN patches."data" ->> 'rbfStatus' ELSE transaction."rbfStatus" END,
-        "updatedAt" = CURRENT_TIMESTAMP
-    FROM patches
-    WHERE transaction."id" = patches."id"
-  `);
+  return [...merged.values()];
 }

@@ -49,7 +49,11 @@ async function attemptAdminRoleUpdate<T extends Prisma.UserSelect>(
       throw new ConflictError('Cannot demote the final administrator');
     }
 
-    const user = await tx.user.update({
+    const user = await tx.user.update<{
+      where: Prisma.UserWhereUniqueInput;
+      data: Prisma.UserUpdateInput;
+      select: T;
+    }>({
       where: { id },
       data: data as Prisma.UserUpdateInput,
       select,
@@ -149,7 +153,11 @@ export async function executeAdminUserUpdate<T extends Prisma.UserSelect>(
     );
   }
 
-  const user = await prisma.user.update({
+  const user = await prisma.user.update<{
+    where: Prisma.UserWhereUniqueInput;
+    data: Prisma.UserUpdateInput;
+    select: T;
+  }>({
     where: { id },
     data: data as Prisma.UserUpdateInput,
     select,

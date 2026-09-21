@@ -24,6 +24,12 @@ export function registerBlockchainBalanceTests(): void {
         { timeout: 60_000 },
       );
       expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(3);
+      const balanceStatement = mockPrismaClient.$executeRaw.mock.calls[2]?.[0] as {
+        strings?: readonly string[];
+      };
+      const balanceSql = balanceStatement.strings?.join('') ?? '';
+      expect(balanceSql).toContain(`"rbfStatus" = 'replaced'`);
+      expect(balanceSql).toContain('THEN NULL');
       expect(mockPrismaClient.transaction.findMany).not.toHaveBeenCalled();
       expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
     });

@@ -103,11 +103,13 @@ export function registerTransactionHttpReadTests(): void {
         where: expect.objectContaining({
           walletId,
           rbfStatus: { not: "replaced" },
-          type: "received",
-          blockTime: {
-            gte: new Date("2020-02-01T00:00:00.000Z"),
-            lte: new Date("2020-06-30T23:59:59.999Z"),
-          },
+          AND: expect.objectContaining({
+            type: "received",
+            blockTime: {
+              gte: new Date("2020-02-01T00:00:00.000Z"),
+              lte: new Date("2020-06-30T23:59:59.999Z"),
+            },
+          }),
         }),
         take: 25,
       }),
@@ -130,7 +132,11 @@ export function registerTransactionHttpReadTests(): void {
         where: {
           walletId,
           rbfStatus: { not: "replaced" },
-          blockTime: { lte: new Date("2020-06-30T23:59:59.999Z") },
+          AND: {
+            walletId,
+            rbfStatus: { not: "replaced" },
+            blockTime: { lte: new Date("2020-06-30T23:59:59.999Z") },
+          },
         },
       }),
     );
@@ -148,7 +154,11 @@ export function registerTransactionHttpReadTests(): void {
         where: {
           walletId,
           rbfStatus: { not: "replaced" },
-          blockTime: { gte: new Date("2020-02-01T00:00:00.000Z") },
+          AND: {
+            walletId,
+            rbfStatus: { not: "replaced" },
+            blockTime: { gte: new Date("2020-02-01T00:00:00.000Z") },
+          },
         },
       }),
     );
@@ -171,7 +181,10 @@ export function registerTransactionHttpReadTests(): void {
       expect(response.status).toBe(200);
       expect(mockPrismaClient.transaction.findMany).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ walletId, type }),
+          where: expect.objectContaining({
+            walletId,
+            AND: expect.objectContaining({ type }),
+          }),
         }),
       );
     }
@@ -183,7 +196,7 @@ export function registerTransactionHttpReadTests(): void {
     expect(aliasResponse.status).toBe(200);
     const aliasWhere = mockPrismaClient.transaction.findMany.mock.lastCall?.[0]
       ?.where as Record<string, unknown>;
-    expect(aliasWhere).not.toHaveProperty("type");
+    expect(aliasWhere.AND).not.toHaveProperty("type");
   });
 
   it("returns internal server error when transaction listing fails", async () => {

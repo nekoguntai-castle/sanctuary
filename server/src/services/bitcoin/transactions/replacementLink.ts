@@ -166,7 +166,7 @@ export async function resolveReplacementLinkAfterBroadcast(
   // still unreplaced at write time; a zero-row result means another
   // broadcast won the race, so this transaction must persist unlinked
   // rather than clobber the other link.
-  const linked = await linkReplacementIfUnreplaced(original.id, newTxid, client);
+  const linked = await linkReplacementIfUnreplaced(original.id, walletId, newTxid, client);
   if (!linked) {
     log.warn('Skipping RBF replacement link: original was already replaced by a concurrent broadcast', {
       txid: newTxid,

@@ -35,6 +35,11 @@ describeIfDatabase('transactionRepository.getBucketedBalanceDeltas Integration T
         amount: BigInt(-25),
         blockTime: new Date('2026-04-25T18:00:00.000Z'),
       });
+      await createTestTransaction(client, wallet.id, {
+        amount: BigInt(1_000),
+        blockTime,
+        rbfStatus: 'replaced',
+      });
 
       const rows = await transactionRepository.getBucketedBalanceDeltas(
         [wallet.id],

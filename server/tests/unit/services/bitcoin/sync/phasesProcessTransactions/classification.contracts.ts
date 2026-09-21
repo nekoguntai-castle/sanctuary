@@ -202,7 +202,7 @@ export function registerProcessTransactionClassificationTests(walletId: string):
       expect(recalculateWalletBalances).not.toHaveBeenCalled();
     });
 
-    it('retries balance recalculation after a post-commit failure', async () => {
+    it('retries and consumes a durable repair marker during an otherwise unchanged sync', async () => {
       const ctx = createTestContext({
         walletId,
         newTxids: [],
@@ -217,6 +217,7 @@ export function registerProcessTransactionClassificationTests(walletId: string):
       await expect(processTransactionsPhase(ctx)).resolves.toBe(ctx);
 
       expect(recalculateWalletBalances).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.$queryRaw).toHaveBeenCalled();
       expect(recalculateWalletBalances).toHaveBeenNthCalledWith(
         2,
         walletId,

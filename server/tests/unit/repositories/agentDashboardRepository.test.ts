@@ -130,6 +130,14 @@ describe('agentDashboardRepository', () => {
       }),
     }));
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+    const spendQueryParts = prisma.$queryRaw.mock.calls[1] ?? [];
+    const livePredicate = spendQueryParts.find(part => (
+      typeof part === 'object'
+      && part !== null
+      && 'sql' in part
+      && String((part as { sql: unknown }).sql).includes('rbfStatus')
+    )) as { sql: string } | undefined;
+    expect(livePredicate?.sql).toBe(`"rbfStatus" <> 'replaced'`);
   });
 
   it('short-circuits dashboard aggregation when no agents are registered', async () => {

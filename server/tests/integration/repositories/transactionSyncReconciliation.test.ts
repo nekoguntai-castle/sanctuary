@@ -1,9 +1,16 @@
 import prisma from '../../../src/models/prisma';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
-import { transactionRepository } from '../../../src/repositories';
+import {
+  assistantReadRepository,
+  intelligenceRepository,
+  transactionRepository,
+} from '../../../src/repositories';
 import { storeTransactionIO } from '../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
+import { processTransactionsPhase } from '../../../src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase';
+import { rbfCleanupPhase } from '../../../src/services/bitcoin/sync/phases/rbfCleanup';
 import { recalculateWalletBalances } from '../../../src/services/bitcoin/utils/balanceCalculation';
 import type { SyncContext } from '../../../src/services/bitcoin/sync/types';
+import { findDashboardRows } from '../../../src/repositories/agentDashboardRepository';
 import {
   createTestAddress,
   createTestUser,
@@ -56,7 +63,46 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     userIds.push(user.id);
     const wallet = await createTestWallet(factoryClient, user.id);
     const address = await createTestAddress(factoryClient, wallet.id);
-    return { wallet, address };
+    return { user, wallet, address };
+  }
+
+  function minimalSyncContext(walletId: string): SyncContext {
+    return { walletId, newTxids: [] } as unknown as SyncContext;
+  }
+
+  async function balanceRepairMarkerCount(walletId: string): Promise<bigint> {
+    const [row] = await prisma.$queryRaw<Array<{ markerCount: bigint }>>`
+      SELECT COUNT(*) AS "markerCount"
+      FROM "wallet_balance_repairs"
+      WHERE "walletId" = ${walletId}
+    `;
+    return row?.markerCount ?? BigInt(0);
+  }
+
+  async function allConfirmationRepairWalletIds(
+    threshold: number,
+    network: 'testnet3',
+    height: number,
+  ): Promise<Set<string>> {
+    const walletIds = new Set<string>();
+    let cursor: string | null = null;
+    for (;;) {
+      // The repository returns limit + 1 rows; 101 is the continuation signal.
+      const page = await transactionRepository.findWalletIdsRequiringConfirmationUpdateAtHeight(
+        threshold,
+        network,
+        height,
+        cursor,
+        100,
+      );
+      page.forEach(walletId => walletIds.add(walletId));
+      if (page.length <= 100) return walletIds;
+      const nextCursor = page.at(-1);
+      if (!nextCursor || nextCursor === cursor) {
+        throw new Error('Confirmation-repair wallet pagination did not advance');
+      }
+      cursor = nextCursor;
+    }
   }
 
   async function waitForAddressSyncIOLock(): Promise<void> {
@@ -170,6 +216,470 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     await prisma.transaction.delete({ where: { id: transaction.id } });
     await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id))
       .resolves.toBe(true);
+  });
+
+  it('keeps replaced RBF rows out of running balances and repairs membership changes', async () => {
+    const { user, wallet, address } = await createWalletFixture();
+    const recentConfirmedAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
+    const originalTxid = generateTxid();
+    const replacementTxid = generateTxid();
+    const credit = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+        amount: BigInt(10_000),
+        blockTime: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    });
+    const original = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, originalTxid, 'sent'),
+        amount: BigInt(-4_000),
+        confirmations: 0,
+        blockHeight: null,
+        blockTime: null,
+        rbfStatus: 'replaced',
+        replacedByTxid: replacementTxid,
+      },
+    });
+    const replacement = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, replacementTxid, 'sent'),
+        amount: BigInt(-4_500),
+        confirmations: 0,
+        blockHeight: null,
+        blockTime: null,
+        rbfStatus: 'active',
+        replacementForTxid: originalTxid,
+      },
+    });
+    const confirmedHistory = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'sent'),
+        amount: BigInt(-500),
+        blockTime: recentConfirmedAt,
+      },
+    });
+    await prisma.uTXO.create({
+      data: {
+        walletId: wallet.id,
+        txid: generateTxid(),
+        vout: 0,
+        address: address.address,
+        amount: BigInt(5_000),
+        scriptPubKey: address.scriptPubKey ?? '',
+        confirmations: 1,
+      },
+    });
+
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(prisma.transaction.findMany({
+      where: { id: { in: [credit.id, original.id, replacement.id, confirmedHistory.id] } },
+      orderBy: [{ blockTime: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, balanceAfter: true, replacedByTxid: true, replacementForTxid: true },
+    })).resolves.toEqual([
+      { id: credit.id, balanceAfter: BigInt(10_000), replacedByTxid: null, replacementForTxid: null },
+      { id: confirmedHistory.id, balanceAfter: BigInt(9_500), replacedByTxid: null, replacementForTxid: null },
+      { id: original.id, balanceAfter: null, replacedByTxid: replacementTxid, replacementForTxid: null },
+      { id: replacement.id, balanceAfter: BigInt(5_000), replacedByTxid: null, replacementForTxid: originalTxid },
+    ]);
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id)).resolves.toBe(false);
+
+    await expect(transactionRepository.countByWalletId(wallet.id)).resolves.toBe(3);
+    await expect(transactionRepository.groupByType(wallet.id)).resolves.toEqual([
+      expect.objectContaining({ type: 'received', _count: { id: 1 }, _sum: { amount: BigInt(10_000) } }),
+      expect.objectContaining({ type: 'sent', _count: { id: 2 }, _sum: { amount: BigInt(-5_000) } }),
+    ]);
+    await expect(transactionRepository.aggregateFees(wallet.id)).resolves.toMatchObject({
+      _sum: { fee: BigInt(2_000) },
+    });
+    await expect(transactionRepository.findLastByWalletId(wallet.id, {
+      select: { balanceAfter: true },
+    })).resolves.toEqual({ balanceAfter: BigInt(5_000) });
+    await expect(transactionRepository.aggregateSpending(
+      wallet.id,
+      new Date('2026-01-01T00:00:00.000Z'),
+    )).resolves.toMatchObject({
+      _count: { _all: 1 },
+      _sum: { amount: BigInt(-500) },
+    });
+
+    await expect(assistantReadRepository.getTransactionStats(wallet.id)).resolves.toMatchObject({
+      typeStats: expect.arrayContaining([
+        expect.objectContaining({ type: 'sent', _count: { id: 2 } }),
+      ]),
+      feeStats: { _count: { id: 2 }, _sum: { fee: BigInt(2_000) } },
+      lastTransaction: { balanceAfter: BigInt(5_000) },
+    });
+    await expect(assistantReadRepository.aggregateFees(
+      wallet.id,
+      new Date('2026-01-01T00:00:00.000Z'),
+    )).resolves.toMatchObject({ _count: { id: 1 }, _sum: { fee: BigInt(1_000) } });
+    await expect(assistantReadRepository.findWalletTransactions(wallet.id, { limit: 10 }))
+      .resolves.toHaveLength(3);
+    await expect(assistantReadRepository.queryTransactions({
+      walletId: wallet.id,
+      rbfStatus: 'replaced',
+    }, 10)).resolves.toEqual([]);
+    await expect(assistantReadRepository.getDashboardSummary(user.id, { limit: 10 }))
+      .resolves.toMatchObject({
+        transactionCounts: [{ walletId: wallet.id, _count: { id: 3 } }],
+      });
+    await expect(assistantReadRepository.findWalletDetailSummary(wallet.id, user.id))
+      .resolves.toMatchObject({ _count: { transactions: 3 } });
+    await expect(intelligenceRepository.getTransactionVelocity(wallet.id, 365))
+      .resolves.toEqual([{ period: '365d', count: 1, totalSats: BigInt(-500) }]);
+
+    const [{ utxoBalance }] = await prisma.$queryRaw<Array<{ utxoBalance: bigint }>>`
+      SELECT COALESCE(SUM("amount"), 0)::bigint AS "utxoBalance"
+      FROM "utxos"
+      WHERE "walletId" = ${wallet.id} AND "spent" = false
+    `;
+    expect(utxoBalance).toBe(BigInt(5_000));
+
+    const fundingWallet = await createTestWallet(factoryClient, user.id, {
+      name: 'agent-funding-wallet',
+      network: 'testnet3',
+    });
+    await prisma.walletAgent.create({
+      data: {
+        userId: user.id,
+        name: 'live-transaction-dashboard-agent',
+        fundingWalletId: fundingWallet.id,
+        operationalWalletId: wallet.id,
+      },
+    });
+    const activeDashboardTxid = generateTxid();
+    await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, activeDashboardTxid, 'sent'),
+        blockTime: new Date(Date.now() - 24 * 60 * 60 * 1_000),
+        rbfStatus: 'active',
+      },
+    });
+    for (let day = 2; day <= 4; day += 1) {
+      await prisma.transaction.create({
+        data: {
+          ...candidate(wallet.id, address.id, generateTxid(), 'sent'),
+          blockTime: new Date(Date.now() + day * 24 * 60 * 60 * 1_000),
+          rbfStatus: 'replaced',
+        },
+      });
+    }
+    const dashboardRows = await findDashboardRows();
+    const dashboardRow = dashboardRows.find(row => row.agent.operationalWalletId === wallet.id);
+    expect(dashboardRow?.lastOperationalSpend?.txid).toBe(replacementTxid);
+    expect(dashboardRow?.recentOperationalSpends.map(transaction => transaction.txid))
+      .toContain(activeDashboardTxid);
+
+    const replacedOnlyWallet = await createTestWallet(factoryClient, user.id, {
+      name: 'replaced-only-confirmation-candidate',
+      network: 'testnet3',
+    });
+    const replacedOnlyAddress = await createTestAddress(factoryClient, replacedOnlyWallet.id);
+    await prisma.transaction.createMany({
+      data: [
+        {
+          ...candidate(replacedOnlyWallet.id, replacedOnlyAddress.id, generateTxid(), 'sent'),
+          confirmations: 0,
+          blockHeight: 90,
+          rbfStatus: 'replaced',
+        },
+        {
+          ...candidate(replacedOnlyWallet.id, replacedOnlyAddress.id, generateTxid(), 'sent'),
+          confirmations: 10,
+          blockHeight: 99,
+          rbfStatus: 'replaced',
+        },
+      ],
+    });
+
+    await expect(transactionRepository.findBelowConfirmationThreshold(
+      replacedOnlyWallet.id,
+      6,
+    )).resolves.toEqual([]);
+    await expect(transactionRepository.findRequiringConfirmationUpdateAtHeight(
+      replacedOnlyWallet.id,
+      6,
+      100,
+    )).resolves.toEqual([]);
+    const shallowWallets = await transactionRepository.findWalletIdsWithPendingConfirmations(
+      6,
+      'testnet3',
+    );
+    expect(shallowWallets).toContain(wallet.id);
+    expect(shallowWallets).not.toContain(replacedOnlyWallet.id);
+    const lowerTipWallets = await allConfirmationRepairWalletIds(
+      6,
+      'testnet3',
+      100,
+    );
+    expect(lowerTipWallets.has(wallet.id)).toBe(true);
+    expect(lowerTipWallets.has(replacedOnlyWallet.id)).toBe(false);
+
+    // Clear markers from the dashboard/confirmation fixtures before checking
+    // that a live-to-live status transition does not enqueue another repair.
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+
+    await prisma.transaction.update({
+      where: { id: replacement.id },
+      data: { rbfStatus: 'confirmed' },
+    });
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id)).resolves.toBe(false);
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: original.id },
+      select: { balanceAfter: true, replacedByTxid: true },
+    })).resolves.toEqual({ balanceAfter: null, replacedByTxid: replacementTxid });
+  });
+
+  it('uses the same id tie-breaker for recalculation and last-balance reads', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const timestamp = new Date('2026-09-01T00:00:00.000Z');
+    const suffix = generateTxid();
+    await prisma.transaction.createMany({
+      data: [
+        {
+          ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+          id: `tie-a-${suffix}`,
+          amount: BigInt(100),
+          blockTime: timestamp,
+          createdAt: timestamp,
+        },
+        {
+          ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+          id: `tie-b-${suffix}`,
+          amount: BigInt(200),
+          blockTime: timestamp,
+          createdAt: timestamp,
+        },
+      ],
+    });
+
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+
+    await expect(transactionRepository.findLastByWalletId(wallet.id, {
+      select: { id: true, balanceAfter: true },
+    })).resolves.toEqual({ id: `tie-b-${suffix}`, balanceAfter: BigInt(300) });
+    await expect(assistantReadRepository.getTransactionStats(wallet.id)).resolves.toMatchObject({
+      lastTransaction: { balanceAfter: BigInt(300) },
+    });
+  });
+
+  it('runs RBF cleanup against PostgreSQL and queues the status-only balance repair', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const sharedInputTxid = generateTxid();
+    const confirmed = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'sent'),
+    });
+    const active = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    await prisma.transactionInput.createMany({
+      data: [confirmed, active].map((transaction, inputIndex) => ({
+        transactionId: transaction.id,
+        inputIndex,
+        txid: sharedInputTxid,
+        vout: 11,
+        address: `phase-cleanup-input-${inputIndex}`,
+        amount: BigInt(10_000),
+      })),
+    });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
+
+    await rbfCleanupPhase(minimalSyncContext(wallet.id));
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: active.id },
+      select: { rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual({ rbfStatus: 'replaced', replacedByTxid: confirmed.txid });
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
+  });
+
+  it('links a replacement through the clientless transaction and queues its repair atomically', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
+    const replacementTxid = generateTxid();
+
+    await expect(transactionRepository.linkReplacementIfUnreplaced(
+      transaction.id,
+      wallet.id,
+      replacementTxid,
+    )).resolves.toBe(true);
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual({ rbfStatus: 'replaced', replacedByTxid: replacementTxid });
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
+  });
+
+  it('rejects cross-wallet replacement linkage without queuing a repair', async () => {
+    const { user, wallet, address } = await createWalletFixture();
+    const otherWallet = await createTestWallet(factoryClient, user.id);
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+
+    await expect(transactionRepository.linkReplacementIfUnreplaced(
+      transaction.id,
+      otherWallet.id,
+      generateTxid(),
+    )).resolves.toBe(false);
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual({ rbfStatus: 'active', replacedByTxid: null });
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
+    await expect(balanceRepairMarkerCount(otherWallet.id)).resolves.toBe(BigInt(0));
+  });
+
+  it('runs an unchanged sync and repairs a legacy replaced row without a marker', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: { rbfStatus: 'replaced' },
+    });
+    await prisma.$executeRaw`
+      DELETE FROM "wallet_balance_repairs" WHERE "walletId" = ${wallet.id}
+    `;
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id)).resolves.toBe(true);
+
+    await processTransactionsPhase(minimalSyncContext(wallet.id));
+
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id)).resolves.toBe(false);
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { balanceAfter: true },
+    })).resolves.toEqual({ balanceAfter: null });
+  });
+
+  it('queues balance repair when current authoritative classification revives a replaced row', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    const replacementTxid = generateTxid();
+    await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, txid, 'sent'),
+        rbfStatus: 'replaced',
+        replacedByTxid: replacementTxid,
+        classificationVersion: 2,
+      },
+    });
+    const replacement = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, replacementTxid, 'sent'),
+    });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
+
+    await expect(transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'sent'),
+      classificationVersion: 2,
+    })).resolves.toBe('repaired');
+
+    await expect(prisma.transaction.findFirstOrThrow({
+      where: { walletId: wallet.id, txid },
+      select: { rbfStatus: true, replacedByTxid: true, balanceAfter: true },
+    })).resolves.toEqual({
+      rbfStatus: 'confirmed',
+      replacedByTxid: null,
+      balanceAfter: null,
+    });
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: replacement.id },
+      select: { rbfStatus: true, replacedByTxid: true },
+    })).resolves.toEqual({ rbfStatus: 'replaced', replacedByTxid: txid });
+  });
+
+  it('queues balance repair when a raw batch patch revives a replaced row', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+        rbfStatus: 'replaced',
+      },
+    });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
+
+    await transactionRepository.batchUpdateByIds(
+      [{ id: transaction.id, data: { rbfStatus: 'active' } }],
+      100,
+    );
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { rbfStatus: true, balanceAfter: true },
+    })).resolves.toEqual({ rbfStatus: 'active', balanceAfter: null });
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
+
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await prisma.$transaction(tx => transactionRepository.batchUpdateByIds(
+      [{ id: transaction.id, data: { rbfStatus: 'confirmed' } }],
+      100,
+      tx,
+    ));
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
+
+    await prisma.$transaction(tx => transactionRepository.batchUpdateByIds(
+      [{ id: transaction.id, data: { rbfStatus: 'replaced' } }],
+      100,
+      tx,
+    ));
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
+  });
+
+  it('rolls back a raw batch patch when any target row is missing', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+
+    await expect(transactionRepository.batchUpdateByIds([
+      { id: transaction.id, data: { confirmations: 1 } },
+      { id: 'missing-transaction', data: { confirmations: 1 } },
+    ], 100)).rejects.toThrow(/transaction patch target count mismatch/);
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { confirmations: true },
+    })).resolves.toEqual({ confirmations: 0 });
+  });
+
+  it('merges duplicate raw patches and restores the caller lock timeout', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+
+    await prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '5s'");
+      await transactionRepository.batchUpdateByIds([
+        { id: transaction.id, data: { confirmations: 1, fee: BigInt(2) } },
+        { id: transaction.id, data: { confirmations: 3, rbfStatus: 'replaced' } },
+      ], 100, tx);
+      const [setting] = await tx.$queryRaw<Array<{ value: string }>>`
+        SELECT current_setting('lock_timeout') AS value
+      `;
+      expect(setting?.value).toBe('5s');
+    });
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { confirmations: true, fee: true, rbfStatus: true },
+    })).resolves.toEqual({ confirmations: 3, fee: BigInt(2), rbfStatus: 'replaced' });
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
   });
 
   it('keeps the first complete current-version classification under concurrency', async () => {
@@ -448,6 +958,8 @@ describeWithDatabase('address sync transaction reconciliation', () => {
         amount: BigInt(10_000),
       })),
     });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id)).resolves.toBe(false);
 
     const rollback = new Error('rollback RBF reconciliation');
     await expect(prisma.$transaction(async tx => {
@@ -514,6 +1026,8 @@ describeWithDatabase('address sync transaction reconciliation', () => {
         amount: BigInt(5_000),
       })),
     });
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id)).resolves.toBe(false);
 
     await expect(transactionRepository.findWalletRbfReplacements(
       wallet.id,
@@ -537,12 +1051,16 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       confirmed.txid,
       'active',
     )).resolves.toBe(true);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(1));
+    await transactionRepository.recalculateBalancesAtomically(wallet.id);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
     await expect(transactionRepository.reconcileWalletRbfReplacement(
       wallet.id,
       unlinked.id,
       confirmed.txid,
       'unlinked',
     )).resolves.toBe(true);
+    await expect(balanceRepairMarkerCount(wallet.id)).resolves.toBe(BigInt(0));
   });
 
   it('rejects stale RBF cleanup decisions after target or replacement state changes', async () => {
@@ -1039,6 +1557,93 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     });
   });
 
+  it('serializes raw field patches behind the wallet balance advisory lock', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    let releaseLock = (): void => {};
+    let signalAcquired = (): void => {};
+    const lockReleased = new Promise<void>(resolve => {
+      releaseLock = resolve;
+    });
+    const lockAcquired = new Promise<void>(resolve => {
+      signalAcquired = resolve;
+    });
+    const blocker = prisma.$transaction(async tx => {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${wallet.id}, 0))
+      `;
+      signalAcquired();
+      await lockReleased;
+    }, { timeout: 30_000 });
+    await lockAcquired;
+
+    try {
+      await expect(transactionRepository.batchUpdateByIds([
+        { id: transaction.id, data: { confirmations: 1 } },
+      ], 100)).resolves.toBeUndefined();
+
+      let patchFinished = false;
+      const patch = transactionRepository.batchUpdateByIds([
+        { id: transaction.id, data: { rbfStatus: 'replaced' } },
+      ], 100).then(() => {
+        patchFinished = true;
+      });
+      await waitForAdvisoryLockQuery('target_wallets');
+      expect(patchFinished).toBe(false);
+      releaseLock();
+      await blocker;
+      await patch;
+    } finally {
+      releaseLock();
+      await blocker;
+    }
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { rbfStatus: true },
+    })).resolves.toEqual({ rbfStatus: 'replaced' });
+  });
+
+  it('serializes multirow routine patches before taking row locks', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transactions = await Promise.all([0, 1].map(() => prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    })));
+    let releaseLock = (): void => {};
+    let signalAcquired = (): void => {};
+    const lockReleased = new Promise<void>(resolve => { releaseLock = resolve; });
+    const lockAcquired = new Promise<void>(resolve => { signalAcquired = resolve; });
+    const blocker = prisma.$transaction(async tx => {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${wallet.id}, 0))
+      `;
+      signalAcquired();
+      await lockReleased;
+    }, { timeout: 30_000 });
+    await lockAcquired;
+
+    try {
+      let patchFinished = false;
+      const patch = transactionRepository.batchUpdateByIds(
+        transactions.map(transaction => ({
+          id: transaction.id,
+          data: { confirmations: 1 },
+        })),
+        100,
+      ).then(() => { patchFinished = true; });
+      await waitForAdvisoryLockQuery('target_wallets');
+      expect(patchFinished).toBe(false);
+      releaseLock();
+      await blocker;
+      await patch;
+    } finally {
+      releaseLock();
+      await blocker;
+    }
+  });
+
   it('lets the repaired recalculation win after a stale reader resumes', async () => {
     const { wallet, address } = await createWalletFixture();
     const first = await prisma.transaction.create({
@@ -1100,7 +1705,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
 
     await expect(prisma.transaction.findMany({
       where: { walletId: wallet.id },
-      orderBy: [{ blockTime: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ blockTime: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       select: { amount: true, balanceAfter: true },
     })).resolves.toEqual([
       { amount: BigInt(10_000), balanceAfter: BigInt(10_000) },

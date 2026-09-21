@@ -1,7 +1,12 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetNodeClient, mockRecalculateWalletBalances } from './confirmationsTestHarness';
+import {
+  getTransactionFieldPatch,
+  getTransactionFieldPatches,
+  mockGetNodeClient,
+  mockRecalculateWalletBalances,
+} from './confirmationsTestHarness';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
@@ -152,8 +157,8 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
       true,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't1' },
+    expect(getTransactionFieldPatch('t1')).toEqual({
+      id: 't1',
       data: expect.objectContaining({
         blockHeight: 999,
         confirmations: 2,
@@ -161,22 +166,22 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
         counterpartyAddress: 'external-addr',
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't2' },
+    expect(getTransactionFieldPatch('t2')).toEqual({
+      id: 't2',
       data: expect.objectContaining({
         blockHeight: 995,
         confirmations: 6,
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't3' },
+    expect(getTransactionFieldPatch('t3')).toEqual({
+      id: 't3',
       data: expect.objectContaining({
         counterpartyAddress: 'sender-addr',
         addressId: 'addr-1',
       }),
     });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't4' },
+    expect(getTransactionFieldPatch('t4')).toEqual({
+      id: 't4',
       data: expect.objectContaining({
         fee: BigInt(2000),
         amount: BigInt(-2000),
@@ -215,9 +220,11 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     mockPrismaClient.transaction.findMany.mockResolvedValue(transactions);
     mockPrismaClient.address.findMany.mockResolvedValue([]);
     mockGetNodeClient.mockResolvedValue(mockClient);
-    mockPrismaClient.transaction.update.mockImplementation((update) => {
+    mockPrismaClient.$executeRaw.mockImplementation((query) => {
+      const sql = query?.strings?.join('') ?? '';
+      if (!sql.includes('jsonb_to_recordset')) return Promise.resolve(0);
       controller.abort(new Error('cancel population after current chunk'));
-      return Promise.resolve({ id: update.where.id, ...update.data });
+      return Promise.resolve(0);
     });
 
     await expect(populateMissingTransactionFields(
@@ -227,8 +234,8 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
 
     expect(mockClient.getTransaction).toHaveBeenCalledTimes(50);
     // Cancellation is checked between database batches, so only the first
-    // configured two-row transaction commits before the abort is observed.
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledTimes(2);
+    // configured two-row transaction batch commits before the abort is observed.
+    expect(getTransactionFieldPatches()).toHaveLength(2);
     expect(mockClient.getTransaction).not.toHaveBeenCalledWith('txid-50', true);
   });
 }

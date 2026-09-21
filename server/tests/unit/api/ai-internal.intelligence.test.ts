@@ -392,6 +392,16 @@ describe('AI Internal Intelligence Endpoints', () => {
       expect(body['90d']).toEqual({ count: 90, totalSats: 9000000 });
       expect(body.averageDailySpend90d).toBe(Math.round(9000000 / 90));
       expect(body.currentDayVsAverage).toBeDefined();
+      expect(mockTxAggregate).toHaveBeenCalledTimes(4);
+      for (const [query] of mockTxAggregate.mock.calls) {
+        expect(query).toEqual(expect.objectContaining({
+          where: expect.objectContaining({
+            walletId: 'wallet-1',
+            type: 'sent',
+            rbfStatus: { not: 'replaced' },
+          }),
+        }));
+      }
 
       // Verify no sensitive data
       expect(JSON.stringify(body)).not.toContain('address');

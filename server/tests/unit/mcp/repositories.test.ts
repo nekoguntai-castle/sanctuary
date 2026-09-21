@@ -115,7 +115,7 @@ describe('MCP repositories', () => {
 
     await readRepository.findWalletTransactions('wallet-1', { limit: 20, offset: 5 });
     expect(prisma.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { walletId: 'wallet-1' },
+      where: { walletId: 'wallet-1', rbfStatus: { not: 'replaced' } },
       include: { transactionLabels: { include: { label: true } } },
       take: 20,
       skip: 5,
@@ -132,7 +132,10 @@ describe('MCP repositories', () => {
 
     await readRepository.queryTransactions({ walletId: 'wallet-1' }, 10);
     expect(prisma.transaction.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: { walletId: 'wallet-1' },
+      where: {
+        rbfStatus: { not: 'replaced' },
+        AND: { walletId: 'wallet-1' },
+      },
       take: 10,
     }));
 
@@ -158,11 +161,28 @@ describe('MCP repositories', () => {
     const cutoff = new Date('2026-04-01T00:00:00.000Z');
     await readRepository.aggregateFees('wallet-1', cutoff);
     expect(prisma.transaction.aggregate).toHaveBeenCalledWith({
-      where: { walletId: 'wallet-1', fee: { gt: 0 }, blockTime: { gte: cutoff } },
+      where: {
+        walletId: 'wallet-1',
+        fee: { gt: 0 },
+        blockTime: { gte: cutoff },
+        rbfStatus: { not: 'replaced' },
+      },
       _count: { id: true },
       _sum: { fee: true },
       _avg: { fee: true },
     });
+  });
+
+  it('keeps replaced transaction history available through direct audit lookup', async () => {
+    const replacedTransaction = { txid: 'replaced-txid', rbfStatus: 'replaced' };
+    prisma.transaction.findFirst.mockResolvedValue(replacedTransaction);
+
+    await expect(
+      readRepository.findWalletTransactionDetail('wallet-1', 'replaced-txid')
+    ).resolves.toBe(replacedTransaction);
+    expect(prisma.transaction.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { walletId: 'wallet-1', txid: 'replaced-txid' },
+    }));
   });
 
   it('wraps expanded assistant read queries with scope filters and aggregate boundaries', async () => {
@@ -219,6 +239,14 @@ describe('MCP repositories', () => {
       _count: { id: true },
       _sum: { amount: true },
     });
+    expect(prisma.transaction.groupBy).toHaveBeenNthCalledWith(1, {
+      by: ['walletId'],
+      where: {
+        walletId: { in: ['wallet-1'] },
+        rbfStatus: { not: 'replaced' },
+      },
+      _count: { id: true },
+    });
     expect(prisma.transaction.groupBy).toHaveBeenNthCalledWith(2, {
       by: ['walletId'],
       where: {
@@ -241,6 +269,11 @@ describe('MCP repositories', () => {
       include: expect.objectContaining({
         devices: expect.objectContaining({ orderBy: { signerIndex: 'asc' } }),
         users: { select: { role: true } },
+        _count: expect.objectContaining({
+          select: expect.objectContaining({
+            transactions: { where: { rbfStatus: { not: 'replaced' } } },
+          }),
+        }),
       }),
     }));
   });
@@ -256,15 +289,27 @@ describe('MCP repositories', () => {
     });
     expect(prisma.transaction.groupBy).toHaveBeenCalledWith({
       by: ['type'],
-      where: { walletId: 'wallet-1' },
+      where: { walletId: 'wallet-1', rbfStatus: { not: 'replaced' } },
       _count: { id: true },
       _sum: { amount: true },
     });
     expect(prisma.transaction.aggregate).toHaveBeenCalledWith({
-      where: { walletId: 'wallet-1', type: { in: ['sent', 'consolidation'] }, fee: { gt: 0 } },
+      where: {
+        walletId: 'wallet-1',
+        type: { in: ['sent', 'consolidation'] },
+        fee: { gt: 0 },
+        rbfStatus: { not: 'replaced' },
+      },
       _count: { id: true },
       _sum: { fee: true },
     });
+    expect(prisma.transaction.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [
+        { blockTime: { sort: 'desc', nulls: 'first' } },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+    }));
 
     await readRepository.findPendingTransactions('wallet-1', 5);
     expect(prisma.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -315,6 +360,13 @@ describe('MCP repositories', () => {
     });
     expect(prisma.address.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({
       where: { walletId: 'wallet-1', id: 'addr-1' },
+      include: expect.objectContaining({
+        _count: {
+          select: {
+            transactions: { where: { rbfStatus: { not: 'replaced' } } },
+          },
+        },
+      }),
     }));
     expect(prisma.uTXO.aggregate).toHaveBeenLastCalledWith({
       where: { walletId: 'wallet-1', address: 'bc1qfound', spent: false },

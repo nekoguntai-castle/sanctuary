@@ -603,6 +603,7 @@ describe('Intelligence Repository', () => {
           walletId: 'wallet-1',
           blockTime: { gte: expect.any(Date) },
           type: 'sent',
+          rbfStatus: { not: 'replaced' },
         },
         _count: { _all: true },
         _sum: { amount: true },

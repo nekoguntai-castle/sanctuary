@@ -1,6 +1,7 @@
 import type { Prisma } from '../../generated/prisma/client';
 import prisma from '../../models/prisma';
 import { buildWalletAccessWhere } from '../accessControl';
+import { LIVE_TRANSACTION_WHERE } from '../transactions/visibility';
 
 type WalletScopeFilter = {
   walletIds?: string[];
@@ -94,14 +95,14 @@ export async function getDashboardSummary(userId: string, options: DashboardSumm
     }),
     prisma.transaction.groupBy({
       by: ['walletId'],
-      where: { walletId: { in: ids } },
+      where: { walletId: { in: ids }, ...LIVE_TRANSACTION_WHERE },
       _count: { id: true },
     }),
     prisma.transaction.groupBy({
       by: ['walletId'],
       where: {
         walletId: { in: ids },
-        rbfStatus: { not: 'replaced' },
+        ...LIVE_TRANSACTION_WHERE,
         OR: [{ blockHeight: 0 }, { blockHeight: null }],
       },
       _count: { id: true },
@@ -137,7 +138,7 @@ export async function findWalletDetailSummary(walletId: string, userId: string) 
       _count: {
         select: {
           addresses: true,
-          transactions: true,
+          transactions: { where: LIVE_TRANSACTION_WHERE },
           utxos: true,
           draftTransactions: true,
           vaultPolicies: true,

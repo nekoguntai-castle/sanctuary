@@ -6,6 +6,12 @@ import type {
   TransactionPaginatedResult,
   TransactionCursor,
 } from '../types';
+import {
+  LIVE_TRANSACTION_WHERE,
+  liveTransactionSql,
+  withLiveTransactionWhere,
+} from './visibility';
+import { queueWalletBalanceRepair } from './balanceRepair';
 
 /**
  * Spent outpoints recorded for a transaction's own inputs, keyed by the
@@ -101,24 +107,39 @@ export async function findUnconfirmedTransactionForReplacement(
  * broadcast could have linked a different replacement to the same
  * original in between. A `false` result means the caller must not treat
  * the new transaction as linked; it must persist unlinked instead.
+ * The wallet fence prevents a cross-wallet id mix-up, and a successful
+ * live-to-replaced transition queues balance repair in the same transaction.
+ * Without an injected client, the helper opens the same bounded 60-second
+ * transaction used by wallet reconciliation so those writes remain atomic.
+ * @param originalTransactionId Internal id of the row being replaced.
+ * @param walletId Wallet fence applied to the compare-and-swap update.
+ * @param newTxid Transaction id recorded as the replacement pointer.
+ * @param client Optional caller-owned transaction client.
  */
 export async function linkReplacementIfUnreplaced(
   originalTransactionId: string,
+  walletId: string,
   newTxid: string,
-  client: PrismaTxClient = prisma,
+  client?: PrismaTxClient,
 ): Promise<boolean> {
-  const result = await client.transaction.updateMany({
-    where: {
-      id: originalTransactionId,
-      rbfStatus: { not: 'replaced' },
-      replacedByTxid: null,
-    },
-    data: {
-      rbfStatus: 'replaced',
-      replacedByTxid: newTxid,
-    },
-  });
-  return result.count > 0;
+  const link = async (tx: PrismaTxClient): Promise<boolean> => {
+    const result = await tx.transaction.updateMany({
+      where: {
+        id: originalTransactionId,
+        walletId,
+        rbfStatus: { not: 'replaced' },
+        replacedByTxid: null,
+      },
+      data: {
+        rbfStatus: 'replaced',
+        replacedByTxid: newTxid,
+      },
+    });
+    if (result.count > 0) await queueWalletBalanceRepair(walletId, tx);
+    return result.count > 0;
+  };
+  if (client) return link(client);
+  return prisma.$transaction(link, { timeout: 60_000 });
 }
 
 export async function deleteByWalletId(walletId: string): Promise<number> {
@@ -144,7 +165,7 @@ export async function findByWalletId(
   }
 ): Promise<Transaction[]> {
   return prisma.transaction.findMany({
-    where: { walletId },
+    where: { walletId, ...LIVE_TRANSACTION_WHERE },
     skip: options?.skip,
     take: options?.take,
     orderBy: options?.orderBy || { blockTime: 'desc' },
@@ -153,7 +174,7 @@ export async function findByWalletId(
 
 export async function countByWalletId(walletId: string): Promise<number> {
   return prisma.transaction.count({
-    where: { walletId },
+    where: { walletId, ...LIVE_TRANSACTION_WHERE },
   });
 }
 
@@ -193,6 +214,7 @@ export async function findByWalletIdPaginated(
     prisma.transaction.findMany({
       where: {
         walletId,
+        ...LIVE_TRANSACTION_WHERE,
         ...cursorCondition,
       },
       take,
@@ -200,7 +222,9 @@ export async function findByWalletIdPaginated(
         ? [{ blockTime: 'desc' }, { id: 'desc' }]
         : [{ blockTime: 'asc' }, { id: 'asc' }],
     }),
-    includeCount ? prisma.transaction.count({ where: { walletId } }) : Promise.resolve(undefined),
+    includeCount
+      ? prisma.transaction.count({ where: { walletId, ...LIVE_TRANSACTION_WHERE } })
+      : Promise.resolve(undefined),
   ]);
 
   const hasMore = transactions.length > limit;
@@ -273,6 +297,7 @@ export async function findForBalanceHistory(
       walletId,
       blockTime: { gte: startDate },
       type: { not: 'consolidation' },
+      ...LIVE_TRANSACTION_WHERE,
     },
     select: {
       blockTime: true,
@@ -316,6 +341,7 @@ export async function getBucketedBalanceDeltas(
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
           AND "blockTime" >= ${startDate}
+          AND ${liveTransactionSql(Prisma.raw('"rbfStatus"'))}
         GROUP BY bucket
         ORDER BY bucket ASC
       `;
@@ -327,6 +353,7 @@ export async function getBucketedBalanceDeltas(
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
           AND "blockTime" >= ${startDate}
+          AND ${liveTransactionSql(Prisma.raw('"rbfStatus"'))}
         GROUP BY bucket
         ORDER BY bucket ASC
       `;
@@ -338,6 +365,7 @@ export async function getBucketedBalanceDeltas(
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
           AND "blockTime" >= ${startDate}
+          AND ${liveTransactionSql(Prisma.raw('"rbfStatus"'))}
         GROUP BY bucket
         ORDER BY bucket ASC
       `;
@@ -349,6 +377,7 @@ export async function getBucketedBalanceDeltas(
         WHERE "walletId" = ANY(${walletIds}::text[])
           AND "blockTime" IS NOT NULL
           AND "blockTime" >= ${startDate}
+          AND ${liveTransactionSql(Prisma.raw('"rbfStatus"'))}
         GROUP BY bucket
         ORDER BY bucket ASC
       `;
@@ -360,10 +389,12 @@ export async function findLastByWalletId(
   options?: { select?: Prisma.TransactionSelect }
 ) {
   return prisma.transaction.findFirst({
-    where: { walletId },
+    where: { walletId, ...LIVE_TRANSACTION_WHERE },
     orderBy: [
       { blockTime: { sort: 'desc', nulls: 'first' } },
       { createdAt: 'desc' },
+      // Match recalculation's final chronological row when timestamps tie.
+      { id: 'desc' },
     ],
     select: options?.select,
   });
@@ -432,7 +463,7 @@ export async function findAccessibleByTxidMatches(
 export async function groupByType(walletId: string) {
   return prisma.transaction.groupBy({
     by: ['type'],
-    where: { walletId },
+    where: { walletId, ...LIVE_TRANSACTION_WHERE },
     _count: { id: true },
     _sum: { amount: true },
   });
@@ -453,6 +484,7 @@ export async function groupActivityByType(walletIds: string[], startDate: Date) 
     where: {
       walletId: { in: walletIds },
       blockTime: { not: null, gte: startDate },
+      ...LIVE_TRANSACTION_WHERE,
     },
     _count: { id: true },
     _sum: { amount: true },
@@ -466,6 +498,7 @@ export async function aggregateFees(walletId: string) {
       walletId,
       type: { in: ['sent', 'consolidation'] },
       fee: { gt: 0 },
+      ...LIVE_TRANSACTION_WHERE,
     },
     _sum: { fee: true },
   });
@@ -487,11 +520,7 @@ export async function findByWalletIdWithDetails(
   options?: FindByWalletIdWithDetailsOptions
 ) {
   return prisma.transaction.findMany({
-    where: {
-      ...options?.where,
-      // Keep the scoped wallet constraint last so caller filters cannot override it.
-      walletId,
-    },
+    where: withLiveTransactionWhere(options?.where ?? {}, { walletId }),
     include: options?.include,
     orderBy: options?.orderBy ?? { blockTime: 'desc' },
     take: options?.take,
@@ -511,11 +540,7 @@ export async function findByWalletIdsWithDetails(
   }
 ) {
   const query: Prisma.TransactionFindManyArgs = {
-    where: {
-      ...options?.where,
-      // Keep the scoped wallet constraint last so caller filters cannot override it.
-      walletId: { in: walletIds },
-    },
+    where: withLiveTransactionWhere(options?.where ?? {}, { walletId: { in: walletIds } }),
     orderBy: options?.orderBy ?? { blockTime: 'desc' },
     take: options?.take,
     skip: options?.skip,
@@ -530,7 +555,12 @@ export async function aggregateSpending(
   cutoff: Date
 ) {
   return prisma.transaction.aggregate({
-    where: { walletId, type: 'sent', blockTime: { gte: cutoff } },
+    where: {
+      walletId,
+      type: 'sent',
+      blockTime: { gte: cutoff },
+      ...LIVE_TRANSACTION_WHERE,
+    },
     _count: { _all: true },
     _sum: { amount: true },
   });
@@ -560,6 +590,7 @@ export async function findWalletIdsWithPendingConfirmations(
   const results = await prisma.transaction.findMany({
     where: {
       confirmations: { lt: threshold },
+      ...LIVE_TRANSACTION_WHERE,
       ...(network === undefined
         ? {}
         : {
@@ -614,6 +645,7 @@ export async function findWalletIdsRequiringConfirmationUpdateAtHeight(
         INNER JOIN "wallets" AS wallet ON wallet."id" = transaction."walletId"
         WHERE ${walletNetworkPredicate}
           AND transaction."confirmations" < ${threshold}
+          AND ${liveTransactionSql(Prisma.sql`transaction."rbfStatus"`)}
           ${cursorPredicate}
         UNION
         SELECT transaction."walletId"
@@ -621,6 +653,7 @@ export async function findWalletIdsRequiringConfirmationUpdateAtHeight(
         INNER JOIN "wallets" AS wallet ON wallet."id" = transaction."walletId"
         WHERE ${walletNetworkPredicate}
           AND transaction."blockHeight" > ${authoritativeHeight - threshold + 1}
+          AND ${liveTransactionSql(Prisma.sql`transaction."rbfStatus"`)}
           ${cursorPredicate}
       )
       SELECT candidates."walletId"

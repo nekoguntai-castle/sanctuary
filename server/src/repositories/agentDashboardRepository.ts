@@ -5,6 +5,7 @@ import {
 } from '../generated/prisma/client';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import type { WalletAgentWithDetails } from './agentRepository';
+import { liveTransactionSql } from './transactions/visibility';
 
 const DASHBOARD_DRAFT_SELECT = {
   id: true,
@@ -280,6 +281,7 @@ export async function findDashboardRows(options?: { limit?: number }): Promise<A
         FROM "transactions"
         WHERE "walletId" = ANY(${operationalWalletIds}::text[])
           AND type = 'sent'
+          AND ${liveTransactionSql(Prisma.sql`"rbfStatus"`)}
       ) ranked
       WHERE rn <= ${DASHBOARD_RECENT_LIMIT}
       ORDER BY "blockTime" DESC NULLS FIRST, "createdAt" DESC

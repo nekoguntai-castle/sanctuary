@@ -1,6 +1,7 @@
 import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { Prisma } from '../../generated/prisma/client';
 import { ADDRESS_SYNC_IO_UPSERT_MAX_ROWS } from '../../constants/addressSyncPersistence';
+import { queueWalletBalanceRepair } from './balanceRepair';
 
 const deduplicateTransactions = (
   transactions: Array<{ id: string; txid: string }>,
@@ -8,15 +9,72 @@ const deduplicateTransactions = (
   [...new Map(transactions.map(transaction => [transaction.id, transaction])).values()]
 );
 
+const lockWalletBalanceWrites = async (
+  walletId: string,
+  client: PrismaTxClient,
+): Promise<void> => {
+  // Salt 0 is shared with recalculateBalancesAtomically and raw membership patches.
+  await client.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${walletId}, 0))
+  `);
+};
+
+const reconcilePendingRbfChunk = async (
+  walletId: string,
+  authenticatedValues: Prisma.Sql[],
+  client: PrismaTxClient,
+): Promise<number> => {
+  const rows = await client.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+    WITH replacement_candidates AS (
+      SELECT DISTINCT ON (pending."id")
+        pending."id",
+        authenticated."txid" AS "replacementTxid"
+      FROM (VALUES ${Prisma.join(authenticatedValues)}) AS authenticated("id", "txid")
+      INNER JOIN "transactions" AS confirmed
+        ON confirmed."id" = authenticated."id"
+        AND confirmed."txid" = authenticated."txid"
+      INNER JOIN "transaction_inputs" AS confirmed_input
+        ON confirmed_input."transactionId" = confirmed."id"
+      INNER JOIN "transaction_inputs" AS pending_input
+        ON pending_input."txid" = confirmed_input."txid"
+        AND pending_input."vout" = confirmed_input."vout"
+      INNER JOIN "transactions" AS pending
+        ON pending."id" = pending_input."transactionId"
+      WHERE confirmed."walletId" = ${walletId}
+        AND pending."walletId" = ${walletId}
+        AND pending."confirmations" = 0
+        AND pending."rbfStatus" = 'active'
+        AND pending."id" <> confirmed."id"
+        AND pending."txid" <> confirmed."txid"
+      ORDER BY pending."id", authenticated."txid"
+      LIMIT ${ADDRESS_SYNC_IO_UPSERT_MAX_ROWS}
+    ), updated AS (
+      UPDATE "transactions" AS pending
+      SET "rbfStatus" = 'replaced',
+          "replacedByTxid" = replacement_candidates."replacementTxid",
+          "updatedAt" = CURRENT_TIMESTAMP
+      FROM replacement_candidates
+      WHERE pending."id" = replacement_candidates."id"
+      RETURNING pending."id"
+    )
+    SELECT COUNT(*)::integer AS "count" FROM updated
+  `);
+  const chunkCount = Number(rows[0]?.count ?? 0);
+  // Moving active rows out of the live ledger invalidates stored running balances.
+  if (chunkCount > 0) await queueWalletBalanceRepair(walletId, client);
+  return chunkCount;
+};
+
 /**
- * Reconcile pending replacements entirely inside PostgreSQL. Each statement
- * updates at most one persistence chunk, so a maximum-input transaction never
- * returns or clones its input graph in the worker isolate.
+ * Reconcile pending replacements entirely inside PostgreSQL. Clientless calls
+ * commit each bounded chunk in its own 60-second transaction so large wallets
+ * make durable progress while every update remains covered by the wallet
+ * balance advisory lock. Caller-owned transactions acquire that lock once.
  */
 export async function reconcilePendingRbfForConfirmedTransactions(
   walletId: string,
   confirmedTransactions: Array<{ id: string; txid: string }>,
-  client: PrismaTxClient = prisma,
+  client?: PrismaTxClient,
   assertActive: () => void = () => undefined,
 ): Promise<number> {
   const confirmed = deduplicateTransactions(confirmedTransactions);
@@ -25,49 +83,21 @@ export async function reconcilePendingRbfForConfirmedTransactions(
     ${transaction.id}::text,
     ${transaction.txid}::text
   )`);
+  if (client) await lockWalletBalanceWrites(walletId, client);
 
   let updatedCount = 0;
   for (;;) {
     assertActive();
-    const rows = await client.$queryRaw<Array<{ count: number }>>(Prisma.sql`
-      WITH replacement_candidates AS (
-        SELECT DISTINCT ON (pending."id")
-          pending."id",
-          authenticated."txid" AS "replacementTxid"
-        FROM (VALUES ${Prisma.join(authenticatedValues)}) AS authenticated("id", "txid")
-        INNER JOIN "transactions" AS confirmed
-          ON confirmed."id" = authenticated."id"
-          AND confirmed."txid" = authenticated."txid"
-        INNER JOIN "transaction_inputs" AS confirmed_input
-          ON confirmed_input."transactionId" = confirmed."id"
-        INNER JOIN "transaction_inputs" AS pending_input
-          ON pending_input."txid" = confirmed_input."txid"
-          AND pending_input."vout" = confirmed_input."vout"
-        INNER JOIN "transactions" AS pending
-          ON pending."id" = pending_input."transactionId"
-        WHERE confirmed."walletId" = ${walletId}
-          AND pending."walletId" = ${walletId}
-          AND pending."confirmations" = 0
-          AND pending."rbfStatus" = 'active'
-          AND pending."id" <> confirmed."id"
-          AND pending."txid" <> confirmed."txid"
-        ORDER BY pending."id", authenticated."txid"
-        LIMIT ${ADDRESS_SYNC_IO_UPSERT_MAX_ROWS}
-      ), updated AS (
-        UPDATE "transactions" AS pending
-        SET "rbfStatus" = 'replaced',
-            "replacedByTxid" = replacement_candidates."replacementTxid",
-            "updatedAt" = CURRENT_TIMESTAMP
-        FROM replacement_candidates
-        WHERE pending."id" = replacement_candidates."id"
-        RETURNING pending."id"
-      )
-      SELECT COUNT(*)::integer AS "count" FROM updated
-    `);
+    const chunkCount = client
+      ? await reconcilePendingRbfChunk(walletId, authenticatedValues, client)
+      : await prisma.$transaction(async tx => {
+        await lockWalletBalanceWrites(walletId, tx);
+        return reconcilePendingRbfChunk(walletId, authenticatedValues, tx);
+      }, { timeout: 60_000 });
     assertActive();
-    const chunkCount = Number(rows[0]?.count ?? 0);
     updatedCount += chunkCount;
-    if (chunkCount < ADDRESS_SYNC_IO_UPSERT_MAX_ROWS) return updatedCount;
+    if (chunkCount === ADDRESS_SYNC_IO_UPSERT_MAX_ROWS) continue;
+    return updatedCount;
   }
 }
 
@@ -114,6 +144,11 @@ export async function reconcileWalletRbfReplacement(
       )
     RETURNING target."id"
   `);
+  // The unlinked path only fills replacedByTxid on an already replaced row;
+  // it does not change whether the row belongs to the live ledger.
+  if (target === 'active' && updated.length === 1) {
+    await queueWalletBalanceRepair(walletId, client);
+  }
   return updated.length === 1;
 }
 

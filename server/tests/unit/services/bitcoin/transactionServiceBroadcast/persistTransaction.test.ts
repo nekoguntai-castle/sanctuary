@@ -156,6 +156,7 @@ describe('persistTransaction — RBF replacement linkage', () => {
     expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'original-db-id',
+        walletId,
         rbfStatus: { not: 'replaced' },
         replacedByTxid: null,
       },
