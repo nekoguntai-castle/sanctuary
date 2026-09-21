@@ -236,6 +236,12 @@ export default function AISettings() {
               showModelDropdown={settings.showModelDropdown}
               availableModels={settings.availableModels}
               isLoadingModels={settings.isLoadingModels}
+              configuredModelRefreshAvailable={
+                settings.configuredModelRefreshAvailable
+              }
+              configuredModelRefreshUnavailableReason={
+                settings.configuredModelRefreshUnavailableReason
+              }
               aiStatus={aiStatus}
               aiStatusMessage={aiStatusMessage}
               saveSuccess={settings.saveSuccess}
@@ -292,6 +298,12 @@ export default function AISettings() {
               aiModel={settings.aiModel}
               availableModels={settings.availableModels}
               isLoadingModels={settings.isLoadingModels}
+              configuredModelRefreshAvailable={
+                settings.configuredModelRefreshAvailable
+              }
+              configuredModelRefreshUnavailableReason={
+                settings.configuredModelRefreshUnavailableReason
+              }
               onModelChange={settings.setAiModel}
               onSelectModel={settings.handleSelectModel}
               onRefreshModels={settings.loadModels}

@@ -212,6 +212,70 @@ describe("aiService model operations", () => {
     expect(result.models[0].name).toBe("llama3.2");
   });
 
+  it("lists models with only the persisted active profile and credential", async () => {
+    mocks.decrypt.mockReturnValueOnce("active-api-key");
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiActiveProviderProfileId", "active-provider"),
+      setting("aiProviderProfiles", [
+        {
+          id: "inactive-provider",
+          name: "Inactive Ollama",
+          providerType: "ollama",
+          endpoint: "http://inactive.local:11434",
+          model: "inactive-model",
+          capabilities: { chat: true, toolCalls: false, strictJson: true },
+        },
+        {
+          id: "active-provider",
+          name: "Active OpenAI",
+          providerType: "openai-compatible",
+          endpoint: " https://active.example.test/v1 ",
+          model: "active-model",
+          capabilities: { chat: true, toolCalls: true, strictJson: true },
+        },
+      ]),
+      setting("aiProviderCredentials", {
+        "active-provider": {
+          type: "api-key",
+          encryptedApiKey: "encrypted-active",
+        },
+        "inactive-provider": {
+          type: "api-key",
+          encryptedApiKey: "encrypted-inactive",
+        },
+      }),
+    ] as any);
+    mocks.fetch
+      .mockResolvedValueOnce(okJson({ success: true }))
+      .mockResolvedValueOnce(okJson({ models: [] }));
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(mod.listModels()).resolves.toEqual({ models: [] });
+
+    expect(mocks.decrypt).toHaveBeenCalledWith("encrypted-active");
+    expect(mocks.decrypt).not.toHaveBeenCalledWith("encrypted-inactive");
+    expect(mocks.fetch).toHaveBeenNthCalledWith(
+      1,
+      "http://llm-egress-proxy:3100/config",
+      expect.objectContaining({
+        body: JSON.stringify({
+          enabled: true,
+          endpoint: "https://active.example.test/v1",
+          model: "active-model",
+          providerProfileId: "active-provider",
+          providerType: "openai-compatible",
+          apiKey: "active-api-key",
+        }),
+      }),
+    );
+    expect(mocks.fetch).toHaveBeenNthCalledWith(
+      2,
+      "http://llm-egress-proxy:3100/list-models",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("returns list-models fallback error when response body is not readable", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),

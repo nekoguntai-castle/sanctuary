@@ -949,6 +949,7 @@ export function registerOpenApiGatewayTests() {
     expect(querySchema.properties.aggregation.enum).toEqual([...AI_QUERY_AGGREGATION_VALUES]);
 
     expect(openApiSpec.components.schemas.AIQueryRequest.required).toEqual(['query', 'walletId']);
+    expect(openApiSpec.paths['/ai/models'].get.responses).toHaveProperty('403');
     expect(openApiSpec.paths['/ai/models'].get.responses).toHaveProperty('502');
     expect(openApiSpec.paths).not.toHaveProperty('/ai/pull-model');
     expect(openApiSpec.paths).not.toHaveProperty('/ai/delete-model');

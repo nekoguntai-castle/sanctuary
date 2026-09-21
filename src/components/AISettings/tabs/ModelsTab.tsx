@@ -6,6 +6,8 @@ export function ModelsTab({
   aiModel,
   availableModels,
   isLoadingModels,
+  configuredModelRefreshAvailable,
+  configuredModelRefreshUnavailableReason,
   onModelChange,
   onSelectModel,
   onRefreshModels,
@@ -24,6 +26,8 @@ export function ModelsTab({
         aiModel={aiModel}
         availableModels={availableModels}
         isLoadingModels={isLoadingModels}
+        configuredModelRefreshAvailable={configuredModelRefreshAvailable}
+        configuredModelRefreshUnavailableReason={configuredModelRefreshUnavailableReason}
         onRefreshModels={onRefreshModels}
         onSelectModel={onSelectModel}
         formatBytes={formatBytes}

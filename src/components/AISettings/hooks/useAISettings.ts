@@ -8,7 +8,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as adminApi from "../../../api/admin";
 import * as aiApi from "../../../api/ai";
-import { ApiError } from "../../../api/client";
 import { createLogger } from "../../../utils/logger";
 import type {
   AIProviderCapabilities,
@@ -17,73 +16,26 @@ import type {
 import {
   createProviderProfile,
   normalizeProviderProfiles,
-  replaceProviderProfile,
-  stripProviderCredentialState,
   type EditableProviderProfile,
 } from "../providerProfileModel";
+import {
+  buildActiveProviderProfile,
+  buildCredentialUpdate,
+  buildProviderSettingsUpdate,
+  providerLabel,
+} from "../providerSettingsUpdate";
+import {
+  getApiDisplayMessage,
+  modelSourceFromProfile,
+  useConfiguredModelDiscovery,
+} from "./useConfiguredModelDiscovery";
+import type { AISettingsController } from "../types";
+import { useAISettingsBootstrap } from "./useAISettingsBootstrap";
+import { useOrderedSettingsMutation } from "./useOrderedSettingsMutation";
 
 const log = createLogger("AISettings:useAISettings");
 
-function getApiDisplayMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const responseMessage = error.response?.message;
-    if (typeof responseMessage === "string" && responseMessage.trim()) {
-      return responseMessage;
-    }
-    if (error.message.trim()) return error.message;
-  }
-
-  return fallback;
-}
-
-interface UseAISettingsReturn {
-  // State
-  featureUnavailable: boolean;
-  providerProfiles: EditableProviderProfile[];
-  activeProviderProfileId: string;
-  providerName: string;
-  setProviderName: (value: string) => void;
-  providerType: AIProviderType;
-  setProviderType: (value: AIProviderType) => void;
-  providerCapabilities: AIProviderCapabilities;
-  credentialApiKey: string;
-  setCredentialApiKey: (value: string) => void;
-  clearCredential: boolean;
-  setClearCredential: (value: boolean) => void;
-  aiEnabled: boolean;
-  setAiEnabled: (value: boolean) => void;
-  aiEndpoint: string;
-  setAiEndpoint: (value: string) => void;
-  aiModel: string;
-  setAiModel: (value: string) => void;
-  loading: boolean;
-  isSaving: boolean;
-  saveError: string | null;
-  saveSuccess: boolean;
-  isDetecting: boolean;
-  detectMessage: string;
-
-  // Handlers
-  handleSaveConfig: () => Promise<void>;
-  handleDetectOllama: () => Promise<void>;
-  loadModels: () => Promise<void>;
-  handleSelectProviderProfile: (profileId: string) => void;
-  handleAddProviderProfile: () => void;
-  handleRemoveActiveProviderProfile: () => void;
-  handleProviderCapabilityChange: (
-    capability: keyof AIProviderCapabilities,
-    value: boolean,
-  ) => void;
-
-  // Model list (loaded alongside settings)
-  availableModels: aiApi.ProviderModel[];
-  isLoadingModels: boolean;
-  showModelDropdown: boolean;
-  setShowModelDropdown: (value: boolean) => void;
-  handleSelectModel: (modelName: string) => void;
-}
-
-export function useAISettings(): UseAISettingsReturn {
+export function useAISettings(): AISettingsController {
   // Feature flag state
   const [featureUnavailable, setFeatureUnavailable] = useState(false);
 
@@ -92,21 +44,22 @@ export function useAISettings(): UseAISettingsReturn {
   >([]);
   const [activeProviderProfileId, setActiveProviderProfileId] =
     useState("default-ollama");
-  const [providerName, setProviderName] = useState("Default Ollama");
-  const [providerType, setProviderType] = useState<AIProviderType>("ollama");
+  const [providerName, setProviderNameState] = useState("Default Ollama");
+  const [providerType, setProviderTypeState] =
+    useState<AIProviderType>("ollama");
   const [providerCapabilities, setProviderCapabilities] =
     useState<AIProviderCapabilities>({
       chat: true,
       toolCalls: false,
       strictJson: true,
     });
-  const [credentialApiKey, setCredentialApiKey] = useState("");
-  const [clearCredential, setClearCredential] = useState(false);
+  const [credentialApiKey, setCredentialApiKeyState] = useState("");
+  const [clearCredential, setClearCredentialState] = useState(false);
 
   // AI settings state
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiEndpoint, setAiEndpoint] = useState("");
-  const [aiModel, setAiModel] = useState("");
+  const [aiEndpoint, setAiEndpointState] = useState("");
+  const [aiModel, setAiModelState] = useState("");
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -118,18 +71,20 @@ export function useAISettings(): UseAISettingsReturn {
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectMessage, setDetectMessage] = useState("");
 
-  // Models state
-  const [availableModels, setAvailableModels] = useState<aiApi.ProviderModel[]>(
+  const handleModelLoadError = useCallback(
+    (message: string) => setDetectMessage(message),
     [],
   );
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const modelDiscovery = useConfiguredModelDiscovery(handleModelLoadError);
+  const updateSystemSettings = useOrderedSettingsMutation();
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const detectMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const detectionGenerationRef = useRef(0);
+  const saveGenerationRef = useRef(0);
 
   const clearSaveSuccessTimeout = useCallback(() => {
     if (saveSuccessTimeoutRef.current) {
@@ -145,18 +100,31 @@ export function useAISettings(): UseAISettingsReturn {
     }
   }, []);
 
+  const invalidateDetection = useCallback(() => {
+    detectionGenerationRef.current += 1;
+    setIsDetecting(false);
+    setDetectMessage("");
+    clearDetectMessageTimeout();
+  }, [clearDetectMessageTimeout]);
+
+  const invalidateSave = useCallback(() => {
+    saveGenerationRef.current += 1;
+    setIsSaving(false);
+  }, []);
+
   const applyProviderProfile = useCallback(
     (profile: EditableProviderProfile) => {
       setActiveProviderProfileId(profile.id);
-      setProviderName(profile.name);
-      setProviderType(profile.providerType);
+      setProviderNameState(profile.name);
+      setProviderTypeState(profile.providerType);
       setProviderCapabilities(profile.capabilities);
-      setAiEndpoint(profile.endpoint);
-      setAiModel(profile.model);
-      setCredentialApiKey("");
-      setClearCredential(false);
+      setAiEndpointState(profile.endpoint);
+      setAiModelState(profile.model);
+      setCredentialApiKeyState("");
+      setClearCredentialState(false);
+      modelDiscovery.updateVisibleSource(modelSourceFromProfile(profile));
     },
-    [],
+    [modelDiscovery.updateVisibleSource],
   );
 
   const applySettingsResponse = useCallback(
@@ -165,157 +133,151 @@ export function useAISettings(): UseAISettingsReturn {
       setProviderProfiles(providerState.profiles);
       applyProviderProfile(providerState.activeProfile);
       setAiEnabled(settings.aiEnabled || false);
+      return modelDiscovery.bindPersistedSource(
+        modelSourceFromProfile(providerState.activeProfile),
+      );
     },
-    [applyProviderProfile],
+    [applyProviderProfile, modelDiscovery.bindPersistedSource],
   );
 
-  const loadModels = useCallback(async () => {
-    if (!aiEndpoint) return;
-
-    setIsLoadingModels(true);
-    try {
-      const result = await aiApi.listModels();
-      setAvailableModels(result.models || []);
-    } catch (error) {
-      log.error("Failed to load models", { error });
-      setAvailableModels([]);
-      setDetectMessage(
-        getApiDisplayMessage(error, "Failed to load provider models."),
-      );
-    } finally {
-      setIsLoadingModels(false);
-    }
-  }, [aiEndpoint]);
-
-  const buildActiveProviderProfile = (overrides?: {
-    endpoint?: string;
-    model?: string;
-  }): EditableProviderProfile => ({
+  const currentProviderFields = () => ({
     id: activeProviderProfileId,
-    name: providerName.trim() || "Unnamed provider",
+    name: providerName,
     providerType,
-    endpoint: overrides?.endpoint ?? aiEndpoint.trim(),
-    model: overrides?.model ?? aiModel.trim(),
+    endpoint: aiEndpoint,
+    model: aiModel,
     capabilities: providerCapabilities,
   });
 
-  const buildProviderSettingsUpdate = (
-    activeProfile: EditableProviderProfile,
-    credentialUpdate?: adminApi.AIProviderCredentialUpdate[],
-  ): adminApi.SystemSettingsUpdate => {
-    const nextProfiles = replaceProviderProfile(
-      providerProfiles,
-      activeProfile,
-    ).map(stripProviderCredentialState);
-
-    return {
-      aiEndpoint: activeProfile.endpoint,
-      aiModel: activeProfile.model,
-      aiProviderProfiles: nextProfiles,
-      aiActiveProviderProfileId: activeProfile.id,
-      ...(credentialUpdate
-        ? { aiProviderCredentialUpdates: credentialUpdate }
-        : {}),
-    };
-  };
-
-  const buildCredentialUpdate = (
-    profileId: string,
-  ): adminApi.AIProviderCredentialUpdate[] | undefined =>
-    credentialApiKey || clearCredential
-      ? [
-          {
-            profileId,
-            type: "api-key" as const,
-            apiKey: credentialApiKey,
-            clear: clearCredential,
-          },
-        ]
-      : undefined;
-
-  const providerLabel = (type: AIProviderType) =>
-    type === "openai-compatible" ? "OpenAI-compatible" : "Ollama";
-
-  // Load settings on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        // Check if the aiAssistant feature flag is enabled
-        const flags = await adminApi.getFeatureFlags();
-        const aiFlag = flags.find((f) => f.key === "aiAssistant");
-        if (aiFlag && !aiFlag.enabled) {
-          setFeatureUnavailable(true);
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        // If we get a 403, the feature flags endpoint itself is gated
-        if (err instanceof ApiError && err.status === 403) {
-          setFeatureUnavailable(true);
-          setLoading(false);
-          return;
-        }
-        // Otherwise continue — flag check is best-effort
-      }
-
-      try {
-        const settings = await adminApi.getSystemSettings();
-        applySettingsResponse(settings);
-      } catch (error) {
-        log.error("Failed to load AI settings", { error });
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadSettings();
-  }, [applySettingsResponse]);
-
-  // Load models when endpoint changes
-  useEffect(() => {
-    if (aiEndpoint && aiEnabled) {
-      loadModels();
-    }
-  }, [aiEndpoint, aiEnabled, loadModels]);
+  useAISettingsBootstrap({
+    applySettingsResponse,
+    loadModelsFromSource: modelDiscovery.loadModelsFromSource,
+    setFeatureUnavailable,
+    setLoading,
+  });
 
   useEffect(
     () => () => {
+      detectionGenerationRef.current += 1;
+      saveGenerationRef.current += 1;
       clearSaveSuccessTimeout();
       clearDetectMessageTimeout();
     },
     [clearDetectMessageTimeout, clearSaveSuccessTimeout],
   );
 
+  const setProviderType = (value: AIProviderType) => {
+    invalidateDetection();
+    invalidateSave();
+    setProviderTypeState(value);
+    modelDiscovery.updateVisibleSource({ providerType: value });
+  };
+
+  const setProviderName = (value: string) => {
+    invalidateDetection();
+    invalidateSave();
+    setProviderNameState(value);
+  };
+
+  const setAiEndpoint = (value: string) => {
+    invalidateDetection();
+    invalidateSave();
+    setAiEndpointState(value);
+    modelDiscovery.updateVisibleSource({ endpoint: value });
+  };
+
+  const setAiModel = (value: string) => {
+    invalidateDetection();
+    invalidateSave();
+    setAiModelState(value);
+  };
+
+  const setCredentialApiKey = (value: string) => {
+    invalidateDetection();
+    invalidateSave();
+    setCredentialApiKeyState(value);
+    modelDiscovery.updateVisibleSource({
+      credentialEdited: Boolean(value) || clearCredential,
+    });
+  };
+
+  const setClearCredential = (value: boolean) => {
+    invalidateDetection();
+    invalidateSave();
+    setClearCredentialState(value);
+    modelDiscovery.updateVisibleSource({
+      credentialEdited: value || Boolean(credentialApiKey),
+    });
+  };
+
   const handleSaveConfig = async () => {
+    invalidateDetection();
+    invalidateSave();
+    const generation = saveGenerationRef.current;
+    modelDiscovery.clearDiscovery();
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
 
     try {
-      const activeProfile = buildActiveProviderProfile();
-      const nextSettings = await adminApi.updateSystemSettings(
+      const activeProfile = buildActiveProviderProfile(currentProviderFields());
+      const nextSettings = await updateSystemSettings(
         buildProviderSettingsUpdate(
+          providerProfiles,
           activeProfile,
-          buildCredentialUpdate(activeProfile.id),
+          buildCredentialUpdate(
+            activeProfile.id,
+            credentialApiKey,
+            clearCredential,
+          ),
         ),
       );
-      applySettingsResponse(nextSettings);
+      if (saveGenerationRef.current !== generation) return;
+      const source = applySettingsResponse(nextSettings);
       setSaveSuccess(true);
       clearSaveSuccessTimeout();
       saveSuccessTimeoutRef.current = setTimeout(() => {
         setSaveSuccess(false);
         saveSuccessTimeoutRef.current = null;
       }, 3000);
-      // Reload models after saving
-      loadModels();
+      await modelDiscovery.loadModelsFromSource(source);
     } catch (error) {
+      if (saveGenerationRef.current !== generation) return;
       log.error("Failed to save AI configuration", { error });
       setSaveError("Failed to save AI configuration");
     } finally {
-      setIsSaving(false);
+      if (saveGenerationRef.current === generation) setIsSaving(false);
     }
   };
 
-  const handleDetectTypedProvider = async () => {
+  const persistTypedDetection = async (
+    generation: number,
+    profile: EditableProviderProfile,
+    models: aiApi.ProviderModel[],
+    credentialUpdate?: adminApi.AIProviderCredentialUpdate[],
+  ) => {
+    const selectedModel = aiModel.trim() || models[0]?.name || "";
+    if (!aiModel.trim() && selectedModel) setAiModelState(selectedModel);
+    const nextSettings = await updateSystemSettings(
+      buildProviderSettingsUpdate(
+        providerProfiles,
+        { ...profile, model: selectedModel },
+        credentialUpdate,
+      ),
+    );
+    if (detectionGenerationRef.current !== generation) return;
+    const source = applySettingsResponse(nextSettings);
+    await modelDiscovery.loadModelsFromSource(source);
+    if (detectionGenerationRef.current !== generation) return;
+
+    setDetectMessage(
+      models.length === 0
+        ? "Connected to provider endpoint, but no models were reported. Enter the model name manually, then save."
+        : `Connected to ${providerLabel(profile.providerType)} endpoint with ${models.length} model(s) - saved!`,
+    );
+  };
+
+  const handleDetectTypedProvider = async (generation: number) => {
     const endpoint = aiEndpoint.trim();
     if (!endpoint) {
       setDetectMessage("Enter an AI endpoint URL first.");
@@ -327,60 +289,52 @@ export function useAISettings(): UseAISettingsReturn {
       preferredProviderType: providerType,
       ...(credentialApiKey ? { apiKey: credentialApiKey } : {}),
     });
+    if (detectionGenerationRef.current !== generation) return;
     if (!result.found) {
-      setAvailableModels([]);
+      modelDiscovery.setDetectedModels([]);
       setDetectMessage(result.message || "Provider endpoint not reachable.");
       return;
     }
 
-    const models = result.models || [];
-    setAvailableModels(models);
-
     const detectedProviderType = result.providerType ?? providerType;
     if (detectedProviderType !== providerType) {
-      setProviderType(detectedProviderType);
+      setProviderTypeState(detectedProviderType);
+      modelDiscovery.updateVisibleSource({
+        providerType: detectedProviderType,
+      });
     }
+    const models = result.models || [];
+    modelDiscovery.setDetectedModels(models);
 
     const detectedEndpoint = result.endpoint ?? endpoint;
-    const profile = buildActiveProviderProfile({ endpoint: detectedEndpoint });
+    const profile = buildActiveProviderProfile(currentProviderFields(), {
+      endpoint: detectedEndpoint,
+    });
     const profileToSave = {
       ...profile,
       providerType: detectedProviderType,
     };
     const credentialUpdate =
       credentialApiKey || clearCredential
-        ? buildCredentialUpdate(profileToSave.id)
+        ? buildCredentialUpdate(
+            profileToSave.id,
+            credentialApiKey,
+            clearCredential,
+          )
         : undefined;
-
-    if (models.length === 0) {
-      await adminApi.updateSystemSettings(
-        buildProviderSettingsUpdate(profileToSave, credentialUpdate),
-      );
-      setDetectMessage(
-        "Connected to provider endpoint, but no models were reported. Enter the model name manually, then save.",
-      );
-      return;
-    }
-
-    const firstModel = models[0].name;
-    const selectedModel = aiModel.trim() || firstModel;
-    if (!aiModel.trim()) {
-      setAiModel(firstModel);
-    }
-
-    await adminApi.updateSystemSettings(
-      buildProviderSettingsUpdate(
-        { ...profileToSave, model: selectedModel },
-        credentialUpdate,
-      ),
-    );
-
-    setDetectMessage(
-      `Connected to ${providerLabel(detectedProviderType)} endpoint with ${models.length} model(s) - saved!`,
+    await persistTypedDetection(
+      generation,
+      profileToSave,
+      models,
+      credentialUpdate,
     );
   };
 
   const handleDetectOllama = async () => {
+    invalidateDetection();
+    invalidateSave();
+    const generation = detectionGenerationRef.current;
+    modelDiscovery.clearDiscovery();
     setIsDetecting(true);
     clearDetectMessageTimeout();
     setDetectMessage(
@@ -391,36 +345,39 @@ export function useAISettings(): UseAISettingsReturn {
 
     try {
       if (providerType === "openai-compatible" || aiEndpoint.trim()) {
-        await handleDetectTypedProvider();
+        await handleDetectTypedProvider(generation);
         return;
       }
 
       const result = await aiApi.detectOllama();
+      if (detectionGenerationRef.current !== generation) return;
       if (result.found && result.endpoint) {
-        setAiEndpoint(result.endpoint);
+        const detectedModel = result.models?.[0];
+        const selectedModel = aiModel || detectedModel || "";
+        const detectedProfile = buildActiveProviderProfile(
+          currentProviderFields(),
+          { endpoint: result.endpoint, model: selectedModel },
+        );
+        const nextSettings = await updateSystemSettings(
+          buildProviderSettingsUpdate(providerProfiles, detectedProfile),
+        );
+        if (detectionGenerationRef.current !== generation) return;
+        const source = applySettingsResponse(nextSettings);
+        await modelDiscovery.loadModelsFromSource(source);
+        if (detectionGenerationRef.current !== generation) return;
 
-        // Auto-save the endpoint to database
-        await adminApi.updateSystemSettings({ aiEndpoint: result.endpoint });
-
-        // If models were detected, show them and auto-select first
-        if (result.models && result.models.length > 0) {
+        if (result.models?.length) {
           setDetectMessage(
             `Found Ollama with ${result.models.length} model(s) - saved!`,
           );
-          if (!aiModel && result.models.length > 0) {
-            const firstModel = result.models[0];
-            setAiModel(firstModel);
-            await adminApi.updateSystemSettings({ aiModel: firstModel });
-          }
         } else {
           setDetectMessage(`Found Ollama at ${result.endpoint} - saved!`);
         }
-        // Reload models list
-        setTimeout(loadModels, 500);
       } else {
         setDetectMessage(result.message || "Ollama not found. Is it running?");
       }
     } catch (error) {
+      if (detectionGenerationRef.current !== generation) return;
       log.error("AI provider detection failed", { error });
       setDetectMessage(
         getApiDisplayMessage(
@@ -431,6 +388,7 @@ export function useAISettings(): UseAISettingsReturn {
         ),
       );
     } finally {
+      if (detectionGenerationRef.current !== generation) return;
       setIsDetecting(false);
       detectMessageTimeoutRef.current = setTimeout(() => {
         setDetectMessage("");
@@ -441,7 +399,7 @@ export function useAISettings(): UseAISettingsReturn {
 
   const handleSelectModel = (modelName: string) => {
     setAiModel(modelName);
-    setShowModelDropdown(false);
+    modelDiscovery.setShowModelDropdown(false);
   };
 
   const handleSelectProviderProfile = (profileId: string) => {
@@ -449,11 +407,15 @@ export function useAISettings(): UseAISettingsReturn {
       (profile) => profile.id === profileId,
     );
     if (activeProfile) {
+      invalidateDetection();
+      invalidateSave();
       applyProviderProfile(activeProfile);
     }
   };
 
   const handleAddProviderProfile = () => {
+    invalidateDetection();
+    invalidateSave();
     const profile = createProviderProfile(
       `provider-${Date.now().toString(36)}`,
     );
@@ -463,6 +425,8 @@ export function useAISettings(): UseAISettingsReturn {
 
   const handleRemoveActiveProviderProfile = () => {
     if (providerProfiles.length <= 1) return;
+    invalidateDetection();
+    invalidateSave();
     const nextProfiles = providerProfiles.filter(
       (profile) => profile.id !== activeProviderProfileId,
     );
@@ -475,6 +439,8 @@ export function useAISettings(): UseAISettingsReturn {
     capability: keyof AIProviderCapabilities,
     value: boolean,
   ) => {
+    invalidateDetection();
+    invalidateSave();
     setProviderCapabilities((capabilities) => ({
       ...capabilities,
       [capability]: value,
@@ -508,15 +474,19 @@ export function useAISettings(): UseAISettingsReturn {
     detectMessage,
     handleSaveConfig,
     handleDetectOllama,
-    loadModels,
+    loadModels: modelDiscovery.loadModels,
     handleSelectProviderProfile,
     handleAddProviderProfile,
     handleRemoveActiveProviderProfile,
     handleProviderCapabilityChange,
-    availableModels,
-    isLoadingModels,
-    showModelDropdown,
-    setShowModelDropdown,
+    availableModels: modelDiscovery.availableModels,
+    isLoadingModels: modelDiscovery.isLoadingModels,
+    configuredModelRefreshAvailable:
+      modelDiscovery.configuredModelRefreshAvailable,
+    configuredModelRefreshUnavailableReason:
+      modelDiscovery.configuredModelRefreshUnavailableReason,
+    showModelDropdown: modelDiscovery.showModelDropdown,
+    setShowModelDropdown: modelDiscovery.setShowModelDropdown,
     handleSelectModel,
   };
 }

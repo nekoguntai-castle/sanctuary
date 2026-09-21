@@ -155,6 +155,7 @@ export const aiPaths = {
           "#/components/schemas/AIModelsResponse",
         ),
         401: apiErrorResponse,
+        403: apiErrorResponse,
         502: apiErrorResponse,
         500: apiErrorResponse,
       },

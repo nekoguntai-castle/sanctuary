@@ -68,6 +68,8 @@ describe("ModelsTab", () => {
     aiModel: "",
     availableModels: [] as any[],
     isLoadingModels: false,
+    configuredModelRefreshAvailable: true,
+    configuredModelRefreshUnavailableReason: null,
     onModelChange: vi.fn(),
     onSelectModel: vi.fn(),
     onRefreshModels: vi.fn(),
@@ -135,6 +137,29 @@ describe("ModelsTab", () => {
     ).toBeDisabled();
     expect(container.querySelector(".animate-spin")).not.toBeNull();
   });
+
+  it("disables configured refresh with save-or-detect guidance while manual entry stays enabled", async () => {
+    const user = userEvent.setup();
+    const onModelChange = vi.fn();
+    const onRefreshModels = vi.fn();
+    render(
+      <ModelsTab
+        {...baseProps}
+        configuredModelRefreshAvailable={false}
+        configuredModelRefreshUnavailableReason="Save or Detect for this endpoint/profile before refreshing configured models."
+        onModelChange={onModelChange}
+        onRefreshModels={onRefreshModels}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /refresh/i })).toBeDisabled();
+    expect(screen.getByText(/save or detect for this endpoint\/profile/i)).toBeInTheDocument();
+    const manualModel = screen.getByLabelText(/selected model/i);
+    expect(manualModel).toBeEnabled();
+    await user.type(manualModel, "manual-model");
+    expect(onModelChange).toHaveBeenCalled();
+    expect(onRefreshModels).not.toHaveBeenCalled();
+  });
 });
 
 describe("SettingsTab", () => {
@@ -164,6 +189,8 @@ describe("SettingsTab", () => {
     showModelDropdown: false,
     availableModels: [] as any[],
     isLoadingModels: false,
+    configuredModelRefreshAvailable: true,
+    configuredModelRefreshUnavailableReason: null,
     aiStatus: "idle" as const,
     aiStatusMessage: "",
     saveSuccess: false,
@@ -324,6 +351,8 @@ describe("SettingsTab", () => {
         showModelDropdown={false}
         availableModels={[]}
         isLoadingModels={true}
+        configuredModelRefreshAvailable={true}
+        configuredModelRefreshUnavailableReason={null}
         onModelChange={vi.fn()}
         onSelectModel={vi.fn()}
         onToggleModelDropdown={vi.fn()}
@@ -333,6 +362,30 @@ describe("SettingsTab", () => {
     );
 
     expect(container.querySelectorAll(".animate-spin")).toHaveLength(2);
+  });
+
+  it("disables configured refresh with guidance while settings model entry stays enabled", async () => {
+    const user = userEvent.setup();
+    const onModelChange = vi.fn();
+    const onRefreshModels = vi.fn();
+    render(
+      <SettingsTab
+        {...baseProps}
+        aiEndpoint="http://edited.local:11434"
+        configuredModelRefreshAvailable={false}
+        configuredModelRefreshUnavailableReason="Save or Detect for this endpoint/profile before refreshing configured models."
+        onModelChange={onModelChange}
+        onRefreshModels={onRefreshModels}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /refresh/i })).toBeDisabled();
+    expect(screen.getByText(/save or detect for this endpoint\/profile/i)).toBeInTheDocument();
+    const manualModel = screen.getByLabelText(/^model$/i);
+    expect(manualModel).toBeEnabled();
+    await user.type(manualModel, "manual-model");
+    expect(onModelChange).toHaveBeenCalled();
+    expect(onRefreshModels).not.toHaveBeenCalled();
   });
 });
 

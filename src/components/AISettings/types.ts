@@ -10,6 +10,50 @@ import type { EditableProviderProfile } from "./providerProfileModel";
 
 export type AISettingsTab = "status" | "settings" | "models" | "mcp";
 
+export interface AISettingsController {
+  featureUnavailable: boolean;
+  providerProfiles: EditableProviderProfile[];
+  activeProviderProfileId: string;
+  providerName: string;
+  setProviderName: (value: string) => void;
+  providerType: AIProviderType;
+  setProviderType: (value: AIProviderType) => void;
+  providerCapabilities: AIProviderCapabilities;
+  credentialApiKey: string;
+  setCredentialApiKey: (value: string) => void;
+  clearCredential: boolean;
+  setClearCredential: (value: boolean) => void;
+  aiEnabled: boolean;
+  setAiEnabled: (value: boolean) => void;
+  aiEndpoint: string;
+  setAiEndpoint: (value: string) => void;
+  aiModel: string;
+  setAiModel: (value: string) => void;
+  loading: boolean;
+  isSaving: boolean;
+  saveError: string | null;
+  saveSuccess: boolean;
+  isDetecting: boolean;
+  detectMessage: string;
+  handleSaveConfig: () => Promise<void>;
+  handleDetectOllama: () => Promise<void>;
+  loadModels: () => Promise<void>;
+  handleSelectProviderProfile: (profileId: string) => void;
+  handleAddProviderProfile: () => void;
+  handleRemoveActiveProviderProfile: () => void;
+  handleProviderCapabilityChange: (
+    capability: keyof AIProviderCapabilities,
+    value: boolean,
+  ) => void;
+  availableModels: ProviderModel[];
+  isLoadingModels: boolean;
+  configuredModelRefreshAvailable: boolean;
+  configuredModelRefreshUnavailableReason: string | null;
+  showModelDropdown: boolean;
+  setShowModelDropdown: (value: boolean) => void;
+  handleSelectModel: (modelName: string) => void;
+}
+
 export interface StatusTabProps {
   providerType: AIProviderType;
   aiEnabled: boolean;
@@ -38,6 +82,8 @@ export interface SettingsTabProps {
   showModelDropdown: boolean;
   availableModels: ProviderModel[];
   isLoadingModels: boolean;
+  configuredModelRefreshAvailable: boolean;
+  configuredModelRefreshUnavailableReason: string | null;
   aiStatus: "idle" | "checking" | "connected" | "error";
   aiStatusMessage: string;
   saveSuccess: boolean;
@@ -98,6 +144,8 @@ export interface ModelsTabProps {
   aiModel: string;
   availableModels: ProviderModel[];
   isLoadingModels: boolean;
+  configuredModelRefreshAvailable: boolean;
+  configuredModelRefreshUnavailableReason: string | null;
   onModelChange: (value: string) => void;
   onSelectModel: (modelName: string) => void;
   onRefreshModels: () => void;

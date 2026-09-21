@@ -127,6 +127,8 @@ type ModelSelectionControlsProps = Pick<
   | 'showModelDropdown'
   | 'availableModels'
   | 'isLoadingModels'
+  | 'configuredModelRefreshAvailable'
+  | 'configuredModelRefreshUnavailableReason'
   | 'onModelChange'
   | 'onSelectModel'
   | 'onToggleModelDropdown'
@@ -141,6 +143,8 @@ export function ModelSelectionControls({
   showModelDropdown,
   availableModels,
   isLoadingModels,
+  configuredModelRefreshAvailable,
+  configuredModelRefreshUnavailableReason,
   onModelChange,
   onSelectModel,
   onToggleModelDropdown,
@@ -195,8 +199,8 @@ export function ModelSelectionControls({
         {aiEndpoint && (
           <button
             onClick={onRefreshModels}
-            disabled={isLoadingModels}
-            className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center space-x-1"
+            disabled={isLoadingModels || !configuredModelRefreshAvailable}
+            className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center space-x-1 disabled:opacity-50 disabled:no-underline"
           >
             <RefreshCw
               className={`w-3 h-3 ${isLoadingModels ? 'animate-spin' : ''}`}
@@ -205,6 +209,12 @@ export function ModelSelectionControls({
           </button>
         )}
       </div>
+      {!configuredModelRefreshAvailable &&
+        configuredModelRefreshUnavailableReason && (
+          <p className="mt-2 text-xs text-sanctuary-500">
+            {configuredModelRefreshUnavailableReason}
+          </p>
+        )}
     </div>
   );
 }

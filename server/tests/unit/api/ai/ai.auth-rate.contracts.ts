@@ -47,6 +47,15 @@ export function registerAuthenticationContracts() {
     expect(response.status).toBe(401);
   });
 
+  it('should require admin access for configured model discovery', async () => {
+    const response = await request(app)
+      .get('/api/v1/ai/models')
+      .set('Authorization', 'Bearer test-token');
+
+    expect(response.status).toBe(403);
+    expect(aiService.listModels).not.toHaveBeenCalled();
+  });
+
 }
 
 export function registerRateLimitingContracts() {

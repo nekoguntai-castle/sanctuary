@@ -104,6 +104,7 @@ export function createModelsRouter(): Router {
     aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
+    requireAdmin,
     asyncHandler(async (_req, res) => {
       const result = await aiService.listModels();
 

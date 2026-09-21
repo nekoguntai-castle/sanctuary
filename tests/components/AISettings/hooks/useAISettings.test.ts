@@ -33,7 +33,13 @@ describe('useAISettings', () => {
       aiEndpoint: 'http://host.docker.internal:11434',
       aiModel: '',
     } as never);
-    vi.mocked(adminApi.updateSystemSettings).mockResolvedValue({} as never);
+    vi.mocked(adminApi.updateSystemSettings).mockImplementation(
+      async (update) =>
+        ({
+          aiEnabled: true,
+          ...update,
+        }) as never,
+    );
     vi.mocked(aiApi.listModels).mockResolvedValue({} as never); // covers `result.models || []`
   });
 
@@ -64,9 +70,9 @@ describe('useAISettings', () => {
       await result.current.handleDetectOllama();
     });
 
-    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({
-      aiEndpoint: 'http://detected:11434',
-    });
+    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ aiEndpoint: 'http://detected:11434' }),
+    );
     expect(result.current.detectMessage).toBe(
       'Found Ollama at http://detected:11434 - saved!',
     );
@@ -108,7 +114,7 @@ describe('useAISettings', () => {
           const callbacks = timeoutCallbacks.get(delay) ?? [];
           callbacks.push(() => callback(...args));
           timeoutCallbacks.set(delay, callbacks);
-          return 0 as unknown as ReturnType<typeof setTimeout>;
+          return 1 as unknown as ReturnType<typeof setTimeout>;
         }
 
         return originalSetTimeout(callback, delay, ...args);
@@ -141,6 +147,10 @@ describe('useAISettings', () => {
       );
       expect(result.current.saveSuccess).toBe(true);
       expect(timeoutCallbacks.get(3000)?.length).toBeGreaterThan(0);
+
+      await act(async () => {
+        await result.current.handleSaveConfig();
+      });
 
       act(() => {
         timeoutCallbacks.get(3000)?.forEach((cb) => cb());
@@ -197,6 +207,9 @@ describe('useAISettings', () => {
       endpoint: 'http://lmstudio.local:1234/v1',
       models: [{ name: 'lmstudio-community/model', size: 0, modifiedAt: '' }],
     } as never);
+    vi.mocked(aiApi.listModels).mockResolvedValue({
+      models: [{ name: 'lmstudio-community/model', size: 0, modifiedAt: '' }],
+    });
 
     await act(async () => {
       await result.current.handleDetectOllama();
@@ -402,7 +415,9 @@ describe('useAISettings', () => {
       await result.current.handleDetectOllama();
     });
 
-    expect(result.current.detectMessage).toBe('Enter an AI endpoint URL first.');
+    expect(result.current.detectMessage).toBe(
+      'Enter an AI endpoint URL first.',
+    );
     expect(aiApi.detectProvider).not.toHaveBeenCalled();
 
     vi.mocked(aiApi.detectProvider).mockResolvedValueOnce({
@@ -578,9 +593,9 @@ describe('useAISettings', () => {
     });
 
     expect(result.current.aiModel).toBe('llama3.2:3b');
-    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({
-      aiModel: 'llama3.2:3b',
-    });
+    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ aiModel: 'llama3.2:3b' }),
+    );
   });
 
   it('keeps an existing legacy Ollama model when detection returns models', async () => {

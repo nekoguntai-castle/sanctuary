@@ -104,7 +104,10 @@ export function registerAISettingsTestHarness() {
       },
     ]);
     mockGetSystemSettings.mockResolvedValue(defaultSettings);
-    mockUpdateSystemSettings.mockResolvedValue({});
+    mockUpdateSystemSettings.mockImplementation(async (update) => ({
+      ...enabledSettings,
+      ...update,
+    }));
     mockGetMcpServerStatus.mockResolvedValue({
       enabled: true,
       host: '0.0.0.0',

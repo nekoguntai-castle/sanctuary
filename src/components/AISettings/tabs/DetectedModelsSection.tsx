@@ -6,6 +6,8 @@ interface DetectedModelsSectionProps {
   aiModel: string;
   availableModels: ProviderModel[];
   isLoadingModels: boolean;
+  configuredModelRefreshAvailable: boolean;
+  configuredModelRefreshUnavailableReason: string | null;
   onRefreshModels: () => void;
   onSelectModel: (modelName: string) => void;
   formatBytes: (bytes: number) => string;
@@ -16,6 +18,8 @@ export function DetectedModelsSection({
   aiModel,
   availableModels,
   isLoadingModels,
+  configuredModelRefreshAvailable,
+  configuredModelRefreshUnavailableReason,
   onRefreshModels,
   onSelectModel,
   formatBytes,
@@ -35,7 +39,7 @@ export function DetectedModelsSection({
         </div>
         <button
           onClick={onRefreshModels}
-          disabled={isLoadingModels}
+          disabled={isLoadingModels || !configuredModelRefreshAvailable}
           className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center space-x-1 disabled:opacity-50"
         >
           <RefreshCw
@@ -44,6 +48,13 @@ export function DetectedModelsSection({
           <span>Refresh</span>
         </button>
       </div>
+
+      {!configuredModelRefreshAvailable &&
+        configuredModelRefreshUnavailableReason && (
+          <p className="mb-3 text-xs text-sanctuary-500">
+            {configuredModelRefreshUnavailableReason}
+          </p>
+        )}
 
       <DetectedModelsContent
         aiModel={aiModel}
@@ -64,7 +75,10 @@ function DetectedModelsContent({
   formatBytes,
 }: Omit<
   DetectedModelsSectionProps,
-  "isOllamaProvider" | "onRefreshModels"
+  | "isOllamaProvider"
+  | "onRefreshModels"
+  | "configuredModelRefreshAvailable"
+  | "configuredModelRefreshUnavailableReason"
 >) {
   if (isLoadingModels) {
     return (

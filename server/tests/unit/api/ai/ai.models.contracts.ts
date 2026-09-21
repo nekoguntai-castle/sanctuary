@@ -195,12 +195,14 @@ export function registerListModelsContracts() {
     });
 
     const response = await request(app)
-  .get('/api/v1/ai/models')
-  .set('Authorization', 'Bearer test-token');
+  .get('/api/v1/ai/models?endpoint=http%3A%2F%2Funtrusted.example.test%3A1234')
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-admin', 'true');
 
     expect(response.status).toBe(200);
     expect(response.body.models).toHaveLength(2);
     expect(response.body.models[0].name).toBe('llama2');
+    expect(aiService.listModels).toHaveBeenCalledWith();
   });
 
   it('should return 502 when models endpoint returns error', async () => {
@@ -211,7 +213,8 @@ export function registerListModelsContracts() {
 
     const response = await request(app)
   .get('/api/v1/ai/models')
-  .set('Authorization', 'Bearer test-token');
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-admin', 'true');
 
     expect(response.status).toBe(502);
     expect(response.body.error).toBe('Bad Gateway');
@@ -223,7 +226,8 @@ export function registerListModelsContracts() {
 
     const response = await request(app)
   .get('/api/v1/ai/models')
-  .set('Authorization', 'Bearer test-token');
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-admin', 'true');
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
