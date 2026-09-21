@@ -223,6 +223,8 @@ describe('useDashboardData', () => {
 
       expect(result.current.nodeStatusQuery.network).toBe('mainnet');
       expect(result.current.nodeStatusQuery.data).toEqual(state.bitcoinStatusData);
+      expect(result.current.bitcoinStatus).toEqual(state.bitcoinStatusData);
+      expect(result.current.nodeStatus).toBe('connected');
       expect(result.current.nodeStatusQuery.isPlaceholderData).toBe(false);
       expect(result.current.nodeStatusQuery.isLoading).toBe(false);
       expect(result.current.nodeStatusQuery.error).toBeNull();
@@ -245,6 +247,8 @@ describe('useDashboardData', () => {
       expect(result.current.nodeStatusQuery.network).toBe('testnet3');
       expect(result.current.nodeStatusQuery.data).toBeUndefined();
       expect(result.current.nodeStatusQuery.isPlaceholderData).toBe(true);
+      expect(result.current.bitcoinStatus).toBeUndefined();
+      expect(result.current.nodeStatus).toBe('checking');
     });
 
     it('rapid network switching never leaks the prior network server labels/strategy into the new network', async () => {
@@ -269,6 +273,8 @@ describe('useDashboardData', () => {
       expect(result.current.nodeStatusQuery.network).toBe('signet');
       expect(result.current.nodeStatusQuery.data).toBeUndefined();
       expect(result.current.nodeStatusQuery.isPlaceholderData).toBe(true);
+      expect(result.current.bitcoinStatus).toBeUndefined();
+      expect(result.current.nodeStatus).toBe('checking');
 
       // The signet query now resolves.
       act(() => {
@@ -279,6 +285,7 @@ describe('useDashboardData', () => {
       rerender();
 
       expect(result.current.nodeStatusQuery.data?.server).toBe('signet-primary');
+      expect(result.current.bitcoinStatus?.server).toBe('signet-primary');
     });
 
     it('preserves retained same-network data and surfaces the error on a transient refetch failure, then recovers', async () => {
@@ -300,6 +307,8 @@ describe('useDashboardData', () => {
       expect(result.current.nodeStatusQuery.data).toEqual(state.bitcoinStatusData);
       expect(result.current.nodeStatusQuery.error).toBeInstanceOf(Error);
       expect(result.current.nodeStatusQuery.isLastKnown).toBe(true);
+      expect(result.current.bitcoinStatus).toEqual(state.bitcoinStatusData);
+      expect(result.current.nodeStatus).toBe('connected');
 
       // Repeated failure: still last-known, data still retained.
       act(() => {
@@ -368,7 +377,11 @@ describe('useDashboardData', () => {
     rerender();
     expect(result.current.nodeStatus).toBe('unknown');
 
-    state.bitcoinStatusData = { connected: false };
+    state.bitcoinStatusData = { connected: false } as any;
+    rerender();
+    expect(result.current.nodeStatus).toBe('checking');
+
+    state.bitcoinStatusData = { connected: false, network: 'mainnet' };
     rerender();
     expect(result.current.nodeStatus).toBe('error');
   });

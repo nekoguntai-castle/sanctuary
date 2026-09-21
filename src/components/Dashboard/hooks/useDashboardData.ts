@@ -83,7 +83,6 @@ export function useDashboardData() {
   const { data: feeEstimatesRaw, isError: feesError, isPlaceholderData: feesArePlaceholder } =
     useFeeEstimates(selectedNetwork);
   const bitcoinStatusQuery = useBitcoinStatus(selectedNetwork);
-  const { data: bitcoinStatus, isLoading: statusLoading } = bitcoinStatusQuery;
   const { data: mempoolDataRaw, refetch: refetchMempool, isFetching: mempoolRefreshing, isError: mempoolFetchFailed, isPlaceholderData: mempoolIsPlaceholder } = useMempoolData(selectedNetwork);
 
   // `placeholderData: keepPreviousData` serves the *previous* network's payload
@@ -190,14 +189,17 @@ export function useDashboardData() {
   // Derive fees from React Query data
   const fees = toDashboardFeeEstimate(feeEstimates);
 
-  // Derive node status from Bitcoin status
-  const nodeStatus = getNodeStatus(statusLoading, bitcoinStatus);
-
   // Normalized data → presenter boundary for the node status card (PR B
   // interface contract). Query-derived fields first; the freshness verdict
   // (isLastKnown) is layered on separately because it needs a scheduled
   // re-evaluation React Query itself does not provide.
   const nodeStatusQueryData = buildNodeStatusQueryData(selectedNetwork, bitcoinStatusQuery);
+  // Share the network-aware result with every status presenter. React Query
+  // may retain the previous network's payload while the new query loads.
+  const bitcoinStatus = nodeStatusQueryData.data;
+  const statusPending = nodeStatusQueryData.isLoading ||
+    (bitcoinStatusQuery.data !== undefined && bitcoinStatus === undefined);
+  const nodeStatus = getNodeStatus(statusPending, bitcoinStatus);
   const { isLastKnown } = useNodeStatusFreshness({
     dataUpdatedAt: nodeStatusQueryData.dataUpdatedAt,
     error: nodeStatusQueryData.error,

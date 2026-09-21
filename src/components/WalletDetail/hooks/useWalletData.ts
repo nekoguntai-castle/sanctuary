@@ -36,7 +36,13 @@ import {
   type RouteToken,
 } from '../../../hooks/requestOwnership';
 import type { ListEpochToken } from '../../../hooks/usePaginatedList';
-import { mergeWalletHttpSyncState } from '../../../utils/walletSyncSnapshot';
+import { applyOwnedWalletRead, keepOwnedValue } from './walletDataOwnership';
+import {
+  captureWalletNameRead,
+  releaseWalletNameReads,
+  subscribeWalletRenameDrain,
+  type WalletNameRead,
+} from './walletRenameEpoch';
 
 export type { FetchDataResult, UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 
@@ -55,6 +61,7 @@ export function useWalletData({
     ownershipRef.current = createRequestOwnership(routeKey);
   }
   const ownership = ownershipRef.current;
+  const pendingNameReads = useRef(new Set<WalletNameRead>());
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -114,6 +121,7 @@ export function useWalletData({
   }, [routeKey]);
 
   useEffect(() => () => ownership.invalidate(), [ownership]);
+  useEffect(() => () => releaseWalletNameReads(pendingNameReads.current), []);
 
   const ownsRoute = (token: RouteToken, walletId: string): boolean => (
     ownership.isRouteOwner(token) && walletId === id
@@ -323,31 +331,45 @@ export function useWalletData({
       utxoList.failReplacement(replacements.utxos);
     };
 
-    if (!isRefresh) setLoading(true);
-    setError(null);
+    if (!isRefresh) setLoading(current => keepOwnedValue(current, true, ownsRequest));
+    setError(current => keepOwnedValue(current, null, ownsRequest));
 
     // 1. Fetch core wallet -- critical, fail-fast
+    const nameRead = captureWalletNameRead(routeKey);
     let apiWallet: Wallet;
     try {
       apiWallet = await fetchWalletCore(id);
     } catch (err) {
+      nameRead.release();
       log.error('Failed to fetch wallet', { error: err });
       if (!ownsRequest()) return 'superseded';
       failReplacements();
       if (err instanceof ApiError) {
         if (err.status === 404) { navigate('/wallets'); return 'failed'; }
-        setError(err.message);
+        setError(current => keepOwnedValue(current, err.message, ownsRequest));
       } else {
-        setError('Failed to load wallet');
+        setError(current => keepOwnedValue(current, 'Failed to load wallet', ownsRequest));
       }
-      setLoading(false);
+      setLoading(current => keepOwnedValue(current, false, ownsRequest));
       return 'failed';
     }
 
-    if (!ownsRequest()) return 'superseded';
+    if (!ownsRequest() || !nameRead.canCommit()) {
+      nameRead.release();
+      return 'superseded';
+    }
     const formattedWallet = formatWalletFromApi(apiWallet, user.id);
-    setWallet(current => mergeWalletHttpSyncState(current, formattedWallet));
-    setLoading(false);
+    pendingNameReads.current.add(nameRead);
+    setWallet(current => {
+      try {
+        return applyOwnedWalletRead(current, formattedWallet, nameRead, ownsRequest);
+      } finally {
+        // React may replay this updater; release is idempotent in either pass.
+        nameRead.release();
+        pendingNameReads.current.delete(nameRead);
+      }
+    });
+    setLoading(current => keepOwnedValue(current, false, ownsRequest));
 
     // 2. Fetch auxiliary data in parallel (non-critical)
     const aux: AuxiliaryData = await fetchAuxiliaryData(id, apiWallet, user.id, {
@@ -383,6 +405,14 @@ export function useWalletData({
     () => fetchDataWithResult(true),
     [fetchDataWithResult],
   );
+  const drainFetchRef = useRef(fetchData);
+  drainFetchRef.current = fetchData;
+  const userId = user?.id;
+
+  useEffect(() => {
+    if (!id || !userId) return;
+    return subscribeWalletRenameDrain(routeKey, () => { void drainFetchRef.current(true); });
+  }, [id, routeKey, userId]);
 
   useEffect(() => {
     void fetchData();

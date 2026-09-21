@@ -54,7 +54,6 @@ export function DashboardContent({ data }: DashboardContentProps) {
     feesError,
     formatFeeRate,
     nodeStatus,
-    bitcoinStatus,
     nodeStatusQuery,
     mempoolBlocks,
     queuedBlocksSummary,
@@ -71,6 +70,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
   // Balance card above it doesn't. Counted from the active network's wallets,
   // not every wallet the user owns.
   const showWallets = filteredWallets.length >= 2;
+  const bitcoinStatus = nodeStatusQuery.data;
 
   // Shared between the welcome and populated branches, which wrap it in
   // different stagger delays.

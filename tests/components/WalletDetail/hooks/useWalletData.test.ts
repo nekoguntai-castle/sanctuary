@@ -1,6 +1,9 @@
 import { act,renderHook,waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { useWalletData } from '../../../../src/components/WalletDetail/hooks/useWalletData';
+import { useWalletMutations } from '../../../../src/components/WalletDetail/hooks/useWalletMutations';
+import { beginWalletRenameWrite } from '../../../../src/components/WalletDetail/hooks/walletRenameEpoch';
 import { useAppNotifications } from '../../../../src/contexts/AppNotificationContext';
 import { useErrorHandler } from '../../../../src/hooks/useErrorHandler';
 import * as adminApi from '../../../../src/api/admin';
@@ -67,6 +70,7 @@ vi.mock('../../../../src/components/WalletDetail/mappers', () => ({
 vi.mock('../../../../src/api/wallets', () => ({
   getWallet: vi.fn(),
   getWalletShareInfo: vi.fn(),
+  updateWallet: vi.fn(),
 }));
 
 vi.mock('../../../../src/api/transactions', () => ({
@@ -241,6 +245,225 @@ describe('useWalletData', () => {
       'wallet-a',
       expect.anything(),
     );
+  });
+
+  it('keeps B loading and wallet state when A resolves before a batched route switch', async () => {
+    const walletA = createDeferred<typeof baseWallet>();
+    const walletB = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet).mockImplementation(id => (
+      id === 'wallet-a' ? walletA.promise : walletB.promise
+    ) as never);
+    const view = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledWith('wallet-a'));
+
+    await act(async () => {
+      walletA.resolve({ ...baseWallet, id: 'wallet-a', name: 'Wallet A' });
+      await Promise.resolve();
+      view.rerender({ id: 'wallet-b' });
+    });
+    expect(view.result.current.wallet).toBeNull();
+    expect(view.result.current.loading).toBe(true);
+
+    await act(async () => {
+      walletB.resolve({ ...baseWallet, id: 'wallet-b', name: 'Wallet B' });
+      await walletB.promise;
+    });
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Wallet B'));
+    expect(view.result.current.loading).toBe(false);
+  });
+
+  it.each([
+    ['an API error', new ApiError('A failed', 500)],
+    ['a generic error', new Error('A failed')],
+  ])('keeps B loading and error state when A rejects with %s before a batched route switch', async (_, failure) => {
+    const retryA = createDeferred<typeof baseWallet>();
+    const walletB = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet)
+      .mockResolvedValueOnce({ ...baseWallet, id: 'wallet-a', name: 'Wallet A' } as never)
+      .mockReturnValueOnce(retryA.promise as never)
+      .mockReturnValueOnce(walletB.promise as never);
+    const view = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Wallet A'));
+    expect(view.result.current.loading).toBe(false);
+
+    await act(async () => {
+      void view.result.current.fetchData(false);
+      retryA.reject(failure);
+      await Promise.resolve();
+      view.rerender({ id: 'wallet-b' });
+    });
+    expect(view.result.current.wallet).toBeNull();
+    expect(view.result.current.loading).toBe(true);
+    expect(view.result.current.error).toBeNull();
+
+    await act(async () => {
+      walletB.resolve({ ...baseWallet, id: 'wallet-b', name: 'Wallet B' });
+      await walletB.promise;
+    });
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Wallet B'));
+    expect(view.result.current.error).toBeNull();
+    expect(view.result.current.loading).toBe(false);
+  });
+
+  it('discards a GET started before a rename and refetches after the write drains', async () => {
+    const oldGet = createDeferred<typeof baseWallet>();
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Primary'));
+
+    vi.mocked(walletsApi.getWallet)
+      .mockReturnValueOnce(oldGet.promise as never)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'First' } as never);
+    let staleRefresh!: Promise<void>;
+    act(() => { staleRefresh = view.result.current.fetchData(true); });
+    const finishWrite = beginWalletRenameWrite('wallet-1:user-1');
+    act(() => view.result.current.setWallet(current => current && { ...current, name: 'First' }));
+    act(() => finishWrite());
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('First'));
+    await act(async () => {
+      oldGet.resolve({ ...baseWallet, name: 'Primary' });
+      await staleRefresh;
+    });
+    expect(view.result.current.wallet?.name).toBe('First');
+    expect(walletsApi.getWallet).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps a confirmed rename when a pre-PATCH GET returns after the PATCH', async () => {
+    const oldGet = createDeferred<typeof baseWallet>();
+    const patch = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.updateWallet).mockReturnValueOnce(patch.promise as never);
+    const view = renderHook(() => {
+      const data = useWalletData({ id: 'wallet-1', user: defaultUser });
+      const mutations = useWalletMutations({
+        wallet: data.wallet,
+        walletId: 'wallet-1',
+        ownershipKey: 'wallet-1:user-1:mainnet',
+        setWallet: data.setWallet,
+        handleError: mockHandleError,
+      });
+      return { ...data, ...mutations };
+    });
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Primary'));
+
+    vi.mocked(walletsApi.getWallet)
+      .mockReturnValueOnce(oldGet.promise as never)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'First' } as never);
+    let staleRefresh!: Promise<void>;
+    act(() => { staleRefresh = view.result.current.fetchData(true); });
+    let rename!: Promise<void>;
+    act(() => { rename = view.result.current.handleUpdateWallet({ name: 'First' }); });
+    expect(view.result.current.wallet?.name).toBe('First');
+
+    await act(async () => {
+      patch.resolve({ ...baseWallet, name: 'First' });
+      await rename;
+    });
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      oldGet.resolve({ ...baseWallet, name: 'Primary' });
+      await staleRefresh;
+    });
+    expect(view.result.current.wallet?.name).toBe('First');
+    expect(mockHandleError).not.toHaveBeenCalled();
+  });
+
+  it('shows an external return to the original name after queued renames drain', async () => {
+    const second = createDeferred<typeof baseWallet>();
+    const third = createDeferred<typeof baseWallet>();
+    const overlappingGet = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.updateWallet)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'First' } as never)
+      .mockReturnValueOnce(second.promise as never)
+      .mockReturnValueOnce(third.promise as never);
+    const view = renderHook(() => {
+      const data = useWalletData({ id: 'wallet-1', user: defaultUser });
+      const mutations = useWalletMutations({
+        wallet: data.wallet,
+        walletId: 'wallet-1',
+        ownershipKey: 'wallet-1:user-1:mainnet',
+        setWallet: data.setWallet,
+        handleError: mockHandleError,
+      });
+      return { ...data, ...mutations };
+    });
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Primary'));
+
+    vi.mocked(walletsApi.getWallet).mockResolvedValueOnce({ ...baseWallet, name: 'First' } as never);
+    await act(() => view.result.current.handleUpdateWallet({ name: 'First' }));
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('First'));
+
+    vi.mocked(walletsApi.getWallet)
+      .mockReturnValueOnce(overlappingGet.promise as never)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'Primary' } as never);
+    let secondPending!: Promise<void>;
+    let thirdPending!: Promise<void>;
+    act(() => {
+      secondPending = view.result.current.handleUpdateWallet({ name: 'Second' });
+      thirdPending = view.result.current.handleUpdateWallet({ name: 'Third' });
+    });
+    let overlappingRefresh!: Promise<void>;
+    act(() => { overlappingRefresh = view.result.current.fetchData(true); });
+    await act(async () => {
+      overlappingGet.resolve({ ...baseWallet, name: 'Primary' });
+      await overlappingRefresh;
+    });
+    expect(view.result.current.wallet?.name).toBe('Third');
+
+    await act(async () => {
+      second.reject(new Error('second failed'));
+      await secondPending;
+      third.reject(new Error('third failed'));
+      await thirdPending;
+    });
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Primary'));
+    expect(walletsApi.getWallet).toHaveBeenCalledTimes(4);
+    expect(mockHandleError).toHaveBeenCalledOnce();
+  });
+
+  it('commits a valid wallet GET under React StrictMode updater replay', async () => {
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }), {
+      wrapper: StrictMode,
+    });
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('Primary'));
+    expect(view.result.current.loading).toBe(false);
+  });
+
+  it('releases a GET read when the hook unmounts before its wallet update commits', async () => {
+    const deferredGet = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet).mockReturnValueOnce(deferredGet.promise as never);
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      // A queued local state change keeps the GET updater pending until React commits.
+      view.result.current.setWallet({ ...baseWallet, name: 'Local edit' });
+      deferredGet.resolve(baseWallet);
+      await Promise.resolve();
+      view.unmount();
+    });
+
+    // A new owner can read the same wallet after the abandoned updater is gone.
+    const remounted = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(remounted.result.current.wallet?.name).toBe('Primary'));
+  });
+
+  it('refetches after a pending rename drains when mounted during the write', async () => {
+    const finishWrite = beginWalletRenameWrite('wallet-1:user-1');
+    vi.mocked(walletsApi.getWallet)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'Old' } as never)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'First' } as never);
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledTimes(1));
+    expect(view.result.current.wallet).toBeNull();
+
+    act(() => finishWrite());
+    await waitFor(() => expect(view.result.current.wallet?.name).toBe('First'));
+    expect(walletsApi.getWallet).toHaveBeenCalledTimes(2);
   });
 
   it('keeps a newer WebSocket sync snapshot when an older HTTP refresh settles', async () => {

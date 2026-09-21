@@ -43,7 +43,7 @@ vi.mock('../../../src/components/Dashboard/NodeStatusCard', () => ({
 
 vi.mock('../../../src/components/Dashboard/MempoolSection', () => ({
   MempoolSection: (props: any) => (
-    <div data-testid="mempool-section">
+    <div data-testid="mempool-section" data-explorer-url={props.explorerUrl ?? ''} data-status-error={props.bitcoinStatus?.error ?? ''}>
       {props.selectedNetwork}:{props.wsState}:{props.nodeStatus}
       <button data-testid="open-node-config" onClick={props.onConfigureNode}>
         Open Node Config
@@ -209,6 +209,88 @@ describe('Dashboard render branches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.dashboardData = makeDashboardState();
+  });
+
+  it.each([
+    {
+      name: 'matching active-network response',
+      rawNetwork: 'mainnet',
+      queryData: { connected: true, network: 'testnet3', explorerUrl: 'https://testnet.example', confirmationThreshold: 3, deepConfirmationThreshold: 9 },
+      isPlaceholderData: false,
+      expectedExplorer: 'https://testnet.example',
+      expectedThresholds: '1:1:3:9',
+      expectedStatus: 'connected',
+    },
+    {
+      name: 'prior-network response',
+      rawNetwork: 'mainnet',
+      queryData: undefined,
+      isPlaceholderData: true,
+      expectedExplorer: '',
+      expectedThresholds: '1:1::',
+      expectedStatus: 'checking',
+    },
+    {
+      name: 'same-network placeholder',
+      rawNetwork: 'testnet3',
+      queryData: undefined,
+      isPlaceholderData: true,
+      expectedExplorer: '',
+      expectedThresholds: '1:1::',
+      expectedStatus: 'checking',
+    },
+    {
+      name: 'empty response',
+      rawNetwork: undefined,
+      queryData: undefined,
+      isPlaceholderData: false,
+      expectedExplorer: '',
+      expectedThresholds: '1:1::',
+      expectedStatus: 'unknown',
+    },
+    {
+      name: 'active-network error response',
+      rawNetwork: 'mainnet',
+      queryData: { connected: false, network: 'testnet3', error: 'Testnet node unavailable' },
+      isPlaceholderData: false,
+      expectedExplorer: '',
+      expectedThresholds: '1:1::',
+      expectedStatus: 'error',
+    },
+  ])('passes only $name status to activity and mempool presenters', ({
+    rawNetwork, queryData, isPlaceholderData, expectedExplorer, expectedThresholds, expectedStatus,
+  }) => {
+    mocks.dashboardData = makeDashboardState({
+      selectedNetwork: 'testnet3',
+      isMainnet: false,
+      // Raw cached status must not leak into any active-network presenter.
+      bitcoinStatus: rawNetwork && {
+        connected: true,
+        network: rawNetwork,
+        explorerUrl: 'https://mainnet.example',
+        confirmationThreshold: 2,
+        deepConfirmationThreshold: 6,
+        error: 'Mainnet error',
+      },
+      nodeStatus: expectedStatus,
+      nodeStatusQuery: {
+        network: 'testnet3',
+        data: queryData,
+        isPlaceholderData,
+        isLoading: false,
+        error: null,
+        dataUpdatedAt: queryData ? Date.now() : 0,
+        isLastKnown: false,
+      },
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByTestId('recent-transactions')).toHaveTextContent(expectedThresholds);
+    expect(screen.getByTestId('mempool-section')).toHaveAttribute('data-explorer-url', expectedExplorer);
+    expect(screen.getByTestId('mempool-section')).toHaveAttribute(
+      'data-status-error', queryData?.error ?? '',
+    );
+    expect(screen.getByTestId('mempool-section')).toHaveTextContent(`testnet3:connected:${expectedStatus}`);
   });
 
   it('renders loading spinner state', () => {

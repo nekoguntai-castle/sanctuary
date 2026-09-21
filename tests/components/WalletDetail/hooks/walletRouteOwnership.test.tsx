@@ -272,7 +272,7 @@ describe('Wallet Detail route ownership', () => {
     const revert = setWallet.mock.calls.at(-1)?.[0] as (current: any) => any;
     expect(revert({
       id: 'A',
-      name: 'Optimistic A',
+      name: 'Renamed A',
       syncStateVersion: 7,
       lastSyncStatus: 'success',
     })).toEqual({
