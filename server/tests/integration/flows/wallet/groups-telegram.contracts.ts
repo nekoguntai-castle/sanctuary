@@ -16,7 +16,7 @@ const CHANGE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/1/*)`;
 
 export function registerWalletGroupsTelegramTests(): void {
   describe('Create Wallet with Group', () => {
-    it('should create wallet with groupId and assign default viewer role', async () => {
+    it('denies a wallet group association when the owner is not a member', async () => {
       const { userId, token } = await createAndLoginUser(app, prisma);
 
       // Create a group
@@ -38,24 +38,33 @@ export function registerWalletGroupsTelegramTests(): void {
         .post('/api/v1/wallets')
         .set(authHeader(token))
         .send(walletData)
-        .expect(201);
+        .expect(403);
 
-      expect(response.body.id).toBeDefined();
-      expect(response.body.name).toBe(walletData.name);
+      expect(response.body.code).toBe('FORBIDDEN');
+      expect(await prisma.wallet.count({ where: { name: walletData.name } })).toBe(0);
+      expect(await prisma.walletUser.count({ where: { userId } })).toBe(0);
+    });
 
-      // Verify wallet is assigned to group with default viewer role
-      const wallet = await prisma.wallet.findUnique({
-        where: { id: response.body.id },
-      });
-      expect(wallet?.groupId).toBe(group.id);
-      expect(wallet?.groupRole).toBe('viewer');
-      expect(wallet?.changeDescriptor).toBe(CHANGE_DESCRIPTOR);
+    it('denies a wallet group association when the group does not exist', async () => {
+      const { token } = await createAndLoginUser(app, prisma);
+      const walletName = 'Missing Group Wallet';
 
-      // Creator should be owner
-      const walletUser = await prisma.walletUser.findFirst({
-        where: { walletId: response.body.id, userId },
-      });
-      expect(walletUser?.role).toBe('owner');
+      const response = await request(app)
+        .post('/api/v1/wallets')
+        .set(authHeader(token))
+        .send({
+          name: walletName,
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          network: 'testnet3',
+          descriptor: RECEIVE_DESCRIPTOR,
+          changeDescriptor: CHANGE_DESCRIPTOR,
+          groupId: '00000000-0000-0000-0000-000000000000',
+        })
+        .expect(403);
+
+      expect(response.body.code).toBe('FORBIDDEN');
+      expect(await prisma.wallet.count({ where: { name: walletName } })).toBe(0);
     });
 
     it('should give group members access to wallet created with groupId', async () => {
@@ -102,6 +111,16 @@ export function registerWalletGroupsTelegramTests(): void {
           groupId: group.id,
         })
         .expect(201);
+
+      const wallet = await prisma.wallet.findUnique({
+        where: { id: walletResponse.body.id },
+      });
+      expect(wallet?.groupId).toBe(group.id);
+      expect(wallet?.groupRole).toBe('viewer');
+      expect(wallet?.changeDescriptor).toBe(CHANGE_DESCRIPTOR);
+      expect(await prisma.walletUser.findFirst({
+        where: { walletId: walletResponse.body.id, userId: ownerId },
+      })).toMatchObject({ role: 'owner' });
 
       // Group member should have access to the wallet
       await request(app)

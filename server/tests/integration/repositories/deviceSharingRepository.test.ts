@@ -5,6 +5,8 @@
  * Covers group-based device access, user sharing, and access queries.
  */
 
+import { deviceRepository } from '../../../src/repositories';
+import { shareDeviceWithGroup } from '../../../src/services/deviceAccess';
 import {
   describeIfDatabase,
   setupRepositoryTests,
@@ -14,6 +16,7 @@ import {
   createTestGroup,
   addUserToGroup,
   createTestWallet,
+  getTestPrisma,
 } from './setup';
 
 describeIfDatabase('Device Sharing Repository Integration Tests', () => {
@@ -264,6 +267,53 @@ describeIfDatabase('Device Sharing Repository Integration Tests', () => {
   // =============================================
 
   describe('Device Access Queries', () => {
+    it('lists account xpubs only for members after authorized group sharing', async () => {
+      const db = await getTestPrisma();
+      const userIds: string[] = [];
+      let groupId: string | undefined;
+      let deviceId: string | undefined;
+      try {
+        const owner = await createTestUser(db);
+        userIds.push(owner.id);
+        const member = await createTestUser(db);
+        userIds.push(member.id);
+        const outsider = await createTestUser(db);
+        userIds.push(outsider.id);
+        const group = await createTestGroup(db);
+        groupId = group.id;
+        await addUserToGroup(db, owner.id, groupId);
+        await addUserToGroup(db, member.id, groupId);
+
+        const device = await createTestDevice(db, owner.id);
+        deviceId = device.id;
+        await db.deviceUser.create({
+          data: { deviceId, userId: owner.id, role: 'owner' },
+        });
+        const accountXpub = 'integration-account-xpub';
+        await db.deviceAccount.create({
+          data: {
+            deviceId,
+            purpose: 'single_sig',
+            scriptType: 'native_segwit',
+            derivationPath: "m/84'/1'/0'",
+            xpub: accountXpub,
+          },
+        });
+
+        expect(await shareDeviceWithGroup(deviceId, groupId, owner.id))
+          .toMatchObject({ success: true, groupName: group.name });
+        const memberDevices = await deviceRepository.findAccessibleByUser(member.id);
+        expect(memberDevices.find(item => item.id === deviceId)?.accounts)
+          .toEqual([expect.objectContaining({ xpub: accountXpub })]);
+        const outsiderDevices = await deviceRepository.findAccessibleByUser(outsider.id);
+        expect(outsiderDevices.some(item => item.id === deviceId)).toBe(false);
+      } finally {
+        if (deviceId) await db.device.deleteMany({ where: { id: deviceId } });
+        if (groupId) await db.group.deleteMany({ where: { id: groupId } });
+        if (userIds.length) await db.user.deleteMany({ where: { id: { in: userIds } } });
+      }
+    });
+
     it('should find all accessible devices for user (owned, shared, group-based)', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);

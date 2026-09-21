@@ -272,6 +272,9 @@ vi.mock('../../../../src/repositories', () => ({
   walletSharingRepository: {
     findByWalletId: vi.fn().mockResolvedValue([]),
     findByUserId: vi.fn().mockResolvedValue([]),
+    isGroupMember: (groupId: string, userId: string) =>
+      mockPrismaClient.groupMember.findFirst({ where: { groupId, userId } })
+        .then((member: unknown) => member !== null),
     findWalletUser: (walletId: string, userId: string) =>
       mockPrismaClient.walletUser.findFirst({ where: { walletId, userId } }),
   },

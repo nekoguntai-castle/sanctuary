@@ -4,6 +4,7 @@ import {
   mockHookExecuteAfter,
   mockLogWarn,
   mockPrismaClient,
+  mockWakeInitialWalletSync,
 } from "./walletTestHarness";
 import { createWallet } from "../../../../src/services/wallet";
 import * as addressDerivation from "../../../../src/services/bitcoin/addressDerivation";
@@ -421,6 +422,54 @@ export function registerWalletCreateAccountSelectionValidationTests({
 
       expect(created.id).toBe("wallet-no-devices");
       expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
+    });
+
+    it("denies a nonmember group association before wallet persistence or sync", async () => {
+      const { walletRepository: walletRepo } = await import("../../../../src/repositories");
+      await expect(createWallet(userId, {
+        name: "Unrelated Group Wallet",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        groupId: "unrelated-group",
+      })).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(mockPrismaClient.groupMember.findFirst).toHaveBeenCalledWith({
+        where: { groupId: "unrelated-group", userId },
+      });
+      expect(walletRepo.createWithDeviceLinks).not.toHaveBeenCalled();
+      expect(mockHookExecuteAfter).not.toHaveBeenCalled();
+      expect(mockWakeInitialWalletSync).not.toHaveBeenCalled();
+    });
+
+    it("lets a current group member create a wallet for that group", async () => {
+      const { walletRepository: walletRepo } = await import("../../../../src/repositories");
+      mockPrismaClient.groupMember.findFirst.mockResolvedValueOnce({
+        groupId: "owned-group",
+        userId,
+      });
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: "member-wallet",
+        name: "Member Wallet",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        network: "mainnet",
+        devices: [],
+        addresses: [],
+      });
+
+      await createWallet(userId, {
+        name: "Member Wallet",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        groupId: "owned-group",
+      });
+
+      expect(walletRepo.createWithDeviceLinks).toHaveBeenCalledWith(
+        expect.objectContaining({ group: { connect: { id: "owned-group" } } }),
+        [],
+        [],
+      );
+      expect(mockWakeInitialWalletSync).toHaveBeenCalledWith("member-wallet");
     });
 
     it("persists an imported descriptor pair with canonical identity and initial rows", async () => {

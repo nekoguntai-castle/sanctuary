@@ -12,6 +12,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { ForbiddenError } from '../../../src/errors/ApiError';
 
 const {
   mockGetDeviceShareInfo,
@@ -285,6 +286,20 @@ describe('Device Sharing Routes', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBe('Group not found');
+    });
+
+    it('returns 403 when the owner does not belong to the target group', async () => {
+      mockShareDeviceWithGroup.mockRejectedValue(
+        new ForbiddenError('You must be a member of the group to share with it')
+      );
+
+      const response = await request(app)
+        .post('/api/v1/devices/device-1/share/group')
+        .send({ groupId: 'group-1' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('FORBIDDEN');
+      expect(response.body.message).toBe('You must be a member of the group to share with it');
     });
 
     it('returns 400 when not device owner', async () => {

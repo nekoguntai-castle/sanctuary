@@ -4,7 +4,8 @@
  * Business logic for device access control and sharing
  */
 
-import { deviceRepository, userRepository } from '../repositories';
+import { deviceRepository, groupRepo, userRepository } from '../repositories';
+import { ForbiddenError } from '../errors/ApiError';
 import { createLogger } from '../utils/logger';
 import {
   parseDeviceRole,
@@ -272,12 +273,15 @@ export async function shareDeviceWithGroup(
     return { success: false, message: 'Only device owner can share', groupName: null };
   }
 
-  // If groupId provided, verify group exists
+  // If groupId provided, verify the owner belongs to the target group.
   let groupName: string | null = null;
   if (groupId) {
     groupName = await deviceRepository.findGroupName(groupId);
     if (!groupName) {
       return { success: false, message: 'Group not found', groupName: null };
+    }
+    if (!await groupRepo.findMembership(ownerId, groupId)) {
+      throw new ForbiddenError('You must be a member of the group to share with it');
     }
   }
 

@@ -8,13 +8,14 @@
 import {
   deviceRepository,
   walletRepository,
+  walletSharingRepository,
 } from "../../repositories";
 import * as descriptorBuilder from "../bitcoin/descriptorBuilder";
 import { parseDescriptorForImport } from "../bitcoin/descriptorParser";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { hookRegistry, Operations } from "../hooks";
-import { InvalidInputError, DeviceNotFoundError } from "../../errors";
+import { InvalidInputError, DeviceNotFoundError, ForbiddenError } from "../../errors";
 import { buildInitialAddressTemplates } from "./addressGeneration";
 import type {
   CreateWalletInput,
@@ -222,6 +223,13 @@ function executeWalletCreateHooks(
     );
 }
 
+async function requireWalletGroupMembership(userId: string, groupId?: string): Promise<void> {
+  if (!groupId) return;
+  if (!await walletSharingRepository.isGroupMember(groupId, userId)) {
+    throw new ForbiddenError('You must be a member of the group to share with it');
+  }
+}
+
 /**
  * Create a new wallet
  */
@@ -230,6 +238,7 @@ export async function createWallet(
   input: CreateWalletInput,
 ): Promise<WalletWithBalance> {
   validateWalletInput(input);
+  await requireWalletGroupMembership(userId, input.groupId);
   const devices = await loadWalletDevices(userId, input);
   for (const device of devices) {
     assertHardwareWalletCapability(device, "import");

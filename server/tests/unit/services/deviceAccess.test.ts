@@ -6,6 +6,7 @@ import { vi } from 'vitest';
  */
 
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
+import { ForbiddenError } from '../../../src/errors/ApiError';
 
 // Mock Prisma
 vi.mock('../../../src/models/prisma', () => ({
@@ -635,6 +636,9 @@ describe('Device Access Service', () => {
         id: groupId,
         name: 'Test Group',
       });
+      mockPrismaClient.groupMember.findUnique.mockResolvedValue({
+        id: 'membership-1', userId, groupId,
+      });
 
       mockPrismaClient.device.update.mockResolvedValue({
         id: deviceId,
@@ -649,6 +653,23 @@ describe('Device Access Service', () => {
       expect(mockPrismaClient.device.update).toHaveBeenCalled();
     });
 
+    it('rejects an owner outside the target group without updating the device', async () => {
+      mockPrismaClient.deviceUser.findFirst.mockResolvedValue({
+        id: 'du-1', deviceId, userId, role: 'owner',
+      });
+      mockPrismaClient.group.findUnique.mockResolvedValue({
+        id: groupId, name: 'Other Group',
+      });
+      mockPrismaClient.groupMember.findUnique.mockResolvedValue(null);
+
+      await expect(shareDeviceWithGroup(deviceId, groupId, userId))
+        .rejects.toThrow(ForbiddenError);
+      expect(mockPrismaClient.groupMember.findUnique).toHaveBeenCalledWith({
+        where: { userId_groupId: { userId, groupId } },
+      });
+      expect(mockPrismaClient.device.update).not.toHaveBeenCalled();
+    });
+
     it('should reject share when non-owner makes the request', async () => {
       // Mock owner check fails
       mockPrismaClient.deviceUser.findFirst.mockResolvedValue(null);
@@ -657,6 +678,9 @@ describe('Device Access Service', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('owner');
+      expect(mockPrismaClient.group.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaClient.groupMember.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaClient.device.update).not.toHaveBeenCalled();
     });
 
     it('should remove group when groupId is null', async () => {
@@ -678,6 +702,7 @@ describe('Device Access Service', () => {
 
       expect(result.success).toBe(true);
       expect(result.groupName).toBeNull();
+      expect(mockPrismaClient.groupMember.findUnique).not.toHaveBeenCalled();
     });
 
     it('returns not found when group does not exist', async () => {
@@ -696,6 +721,8 @@ describe('Device Access Service', () => {
         message: 'Group not found',
         groupName: null,
       });
+      expect(mockPrismaClient.groupMember.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaClient.device.update).not.toHaveBeenCalled();
     });
   });
 
