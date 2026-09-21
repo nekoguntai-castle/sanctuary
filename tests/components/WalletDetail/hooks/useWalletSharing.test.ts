@@ -52,6 +52,16 @@ vi.mock('../../../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 describe('useWalletSharing', () => {
   const handleError = vi.fn();
   const addNotification = vi.fn();
@@ -117,6 +127,32 @@ describe('useWalletSharing', () => {
 
     expect(authApi.searchUsers).not.toHaveBeenCalled();
     expect(result.current.userSearchResults).toEqual([]);
+  });
+
+  it('clears completed results while a replacement search is pending or fails', async () => {
+    const replacement = createDeferred<authApi.SearchUser[]>();
+    vi.mocked(authApi.searchUsers)
+      .mockResolvedValueOnce([{ id: 'user-a', username: 'alice' }])
+      .mockReturnValueOnce(replacement.promise);
+    const { result } = renderSharingHook();
+
+    await act(async () => result.current.handleSearchUsers('alice'));
+    expect(result.current.userSearchResults).toEqual([{ id: 'user-a', username: 'alice' }]);
+
+    let replacementPromise!: Promise<void>;
+    act(() => {
+      replacementPromise = result.current.handleSearchUsers('bob');
+    });
+    expect(result.current.userSearchQuery).toBe('bob');
+    expect(result.current.userSearchResults).toEqual([]);
+    expect(result.current.searchingUsers).toBe(true);
+
+    await act(async () => {
+      replacement.reject(new Error('replacement failed'));
+      await replacementPromise;
+    });
+    expect(result.current.userSearchResults).toEqual([]);
+    expect(result.current.searchingUsers).toBe(false);
   });
 
   it('adds a group and refreshes share info', async () => {

@@ -223,8 +223,9 @@ export function useDeviceData(id: string | undefined) {
     const ownsSearch = () => ownsRoute(token) && searchGenerationRef.current === generation;
     if (!ownsSearch()) return;
     setUserSearchQuery(query);
+    // Clear before every branch so a superseded recipient cannot stay shareable.
+    setUserSearchResults([]);
     if (query.length < 2) {
-      setUserSearchResults([]);
       setSearchingUsers(false);
       return;
     }

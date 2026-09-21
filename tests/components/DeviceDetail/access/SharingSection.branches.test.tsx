@@ -49,6 +49,44 @@ describe('SharingSection branch coverage', () => {
     expect(props.onShareWithUser).toHaveBeenCalledWith('user-2');
   });
 
+  it('unmounts prior search actions while a replacement search is pending or failed', () => {
+    const onShareWithUser = vi.fn();
+    const { rerender } = render(
+      <SharingSection
+        {...baseProps}
+        userSearchQuery="alice"
+        userSearchResults={[{ id: 'user-a', username: 'alice-result' }]}
+        onShareWithUser={onShareWithUser}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Add as Viewer' })).toBeInTheDocument();
+
+    rerender(
+      <SharingSection
+        {...baseProps}
+        userSearchQuery="bob"
+        userSearchResults={[]}
+        searchingUsers={true}
+        onShareWithUser={onShareWithUser}
+      />
+    );
+    expect(screen.queryByText('alice-result')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add as Viewer' })).not.toBeInTheDocument();
+    expect(onShareWithUser).not.toHaveBeenCalled();
+
+    rerender(
+      <SharingSection
+        {...baseProps}
+        userSearchQuery="bob"
+        userSearchResults={[]}
+        searchingUsers={false}
+        onShareWithUser={onShareWithUser}
+      />
+    );
+    expect(screen.queryByText('alice-result')).not.toBeInTheDocument();
+    expect(onShareWithUser).not.toHaveBeenCalled();
+  });
+
   it('renders shared group/users, filters owner rows, and removes access for owners', () => {
     const shareInfo: DeviceShareInfo = {
       group: { id: 'group-1', name: 'Ops' },

@@ -307,8 +307,9 @@ export function useWalletSharing({
     const token = ownership.beginFetch(ownershipKey);
     if (!ownership.isFetchOwner(token) || id !== walletId) return;
     setUserSearchQuery(query);
+    // Clear before every branch so a superseded recipient cannot stay shareable.
+    setUserSearchResults([]);
     if (query.length < 2) {
-      setUserSearchResults([]);
       setSearchingUsers(false);
       return;
     }

@@ -284,6 +284,34 @@ describe('useDeviceData route ownership', () => {
     expect(result.current.device?.id).toBe('B');
   });
 
+  it('clears completed search results while a replacement search is pending or fails', async () => {
+    vi.mocked(devicesApi.getDevice).mockImplementation(async (id) => device(id));
+    const replacement = createDeferred<authApi.SearchUser[]>();
+    vi.mocked(authApi.searchUsers)
+      .mockResolvedValueOnce([{ id: 'user-a', username: 'alice' }])
+      .mockReturnValueOnce(replacement.promise);
+    const { result } = renderHook(() => useDeviceData('A'));
+    await waitFor(() => expect(result.current.device?.id).toBe('A'));
+
+    await act(async () => result.current.handleSearchUsers('alice'));
+    expect(result.current.userSearchResults).toEqual([{ id: 'user-a', username: 'alice' }]);
+
+    let replacementPromise!: Promise<void>;
+    act(() => {
+      replacementPromise = result.current.handleSearchUsers('bob');
+    });
+    expect(result.current.userSearchQuery).toBe('bob');
+    expect(result.current.userSearchResults).toEqual([]);
+    expect(result.current.searchingUsers).toBe(true);
+
+    await act(async () => {
+      replacement.reject(new Error('replacement failed'));
+      await replacementPromise;
+    });
+    expect(result.current.userSearchResults).toEqual([]);
+    expect(result.current.searchingUsers).toBe(false);
+  });
+
   it('does not let an already-started route A save overwrite route B', async () => {
     vi.mocked(devicesApi.getDevice).mockImplementation(async (id) => device(id));
     const saveA = createDeferred<Device>();

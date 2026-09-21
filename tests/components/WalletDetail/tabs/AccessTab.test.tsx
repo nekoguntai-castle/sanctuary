@@ -134,6 +134,47 @@ describe('AccessTab', () => {
     expect(baseProps.onShareWithUser).toHaveBeenCalledWith('u9', 'approver');
   });
 
+  it('unmounts prior search actions while a replacement search is pending or failed', () => {
+    const onShareWithUser = vi.fn();
+    const { rerender } = render(
+      <AccessTab
+        {...baseProps}
+        accessSubTab="sharing"
+        userSearchQuery="alice"
+        userSearchResults={[{ id: 'user-a', username: 'alice-result' }]}
+        onShareWithUser={onShareWithUser}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument();
+
+    rerender(
+      <AccessTab
+        {...baseProps}
+        accessSubTab="sharing"
+        userSearchQuery="bob"
+        userSearchResults={[]}
+        searchingUsers={true}
+        onShareWithUser={onShareWithUser}
+      />
+    );
+    expect(screen.queryByText('alice-result')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument();
+    expect(onShareWithUser).not.toHaveBeenCalled();
+
+    rerender(
+      <AccessTab
+        {...baseProps}
+        accessSubTab="sharing"
+        userSearchQuery="bob"
+        userSearchResults={[]}
+        searchingUsers={false}
+        onShareWithUser={onShareWithUser}
+      />
+    );
+    expect(screen.queryByText('alice-result')).not.toBeInTheDocument();
+    expect(onShareWithUser).not.toHaveBeenCalled();
+  });
+
   it('handles existing shared group and users for owner role', () => {
     render(
       <AccessTab
