@@ -5,7 +5,7 @@ import type {
   Wallet, Transaction, UTXO, Device, User, Address,
 } from '../../../types';
 import type * as transactionsApi from '../../../api/transactions';
-import type * as walletsApi from '../../../api/wallets';
+import * as walletsApi from '../../../api/wallets';
 import type * as authApi from '../../../api/auth';
 import { ApiError } from '../../../api/client';
 import { useErrorHandler } from '../../../hooks/useErrorHandler';
@@ -17,7 +17,12 @@ import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/no
 import {
   TX_PAGE_SIZE, UTXO_PAGE_SIZE, ADDRESS_PAGE_SIZE,
 } from './walletDataTypes';
-import type { FetchDataResult, UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
+import type {
+  FetchDataResult,
+  UseWalletDataParams,
+  UseWalletDataReturn,
+  WalletShareInfoRefreshResult,
+} from './walletDataTypes';
 import {
   loadAddressSummary as loadAddressSummaryLoader,
   loadAddressPage,
@@ -27,7 +32,6 @@ import {
   fetchWalletCore,
   fetchAuxiliaryData,
   loadGroups,
-  loadWalletShareInfo,
 } from './walletDataLoaders';
 import type { AuxiliaryData } from './walletDataLoaders';
 import { formatWalletFromApi } from './walletDataFormatters';
@@ -44,7 +48,12 @@ import {
   type WalletNameRead,
 } from './walletRenameEpoch';
 
-export type { FetchDataResult, UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
+export type {
+  FetchDataResult,
+  UseWalletDataParams,
+  UseWalletDataReturn,
+  WalletShareInfoRefreshResult,
+} from './walletDataTypes';
 
 const log = createLogger('useWalletData');
 
@@ -95,8 +104,10 @@ export function useWalletData({
   const [users] = useState<User[]>([]);
   const [groups, setGroups] = useState<authApi.UserGroup[]>([]);
   const [walletShareInfo, setWalletShareInfo] = useState<walletsApi.WalletShareInfo | null>(null);
+  const shareInfoGenerationRef = useRef(0);
 
   useLayoutEffect(() => {
+    shareInfoGenerationRef.current += 1;
     ownership.setRoute(routeKey);
     setWallet(null);
     setDevices([]);
@@ -120,12 +131,44 @@ export function useWalletData({
     setWalletShareInfo(null);
   }, [routeKey]);
 
-  useEffect(() => () => ownership.invalidate(), [ownership]);
+  useEffect(() => () => {
+    shareInfoGenerationRef.current += 1;
+    ownership.invalidate();
+  }, [ownership]);
   useEffect(() => () => releaseWalletNameReads(pendingNameReads.current), []);
 
   const ownsRoute = (token: RouteToken, walletId: string): boolean => (
     ownership.isRouteOwner(token) && walletId === id
   );
+
+  const refreshWalletShareInfo = useCallback(async (): Promise<WalletShareInfoRefreshResult> => {
+    if (!id) return { status: 'superseded' };
+    const walletId = id;
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownership.isRouteOwner(routeToken)) return { status: 'superseded' };
+    const generation = ++shareInfoGenerationRef.current;
+    let shareInfo: walletsApi.WalletShareInfo;
+    try {
+      shareInfo = await walletsApi.getWalletShareInfo(walletId);
+    } catch (error) {
+      if (
+        generation !== shareInfoGenerationRef.current
+        || !ownership.isRouteOwner(routeToken)
+      ) {
+        return { status: 'superseded' };
+      }
+      setWalletShareInfo(null);
+      return { status: 'failed', error };
+    }
+    if (
+      generation !== shareInfoGenerationRef.current
+      || !ownership.isRouteOwner(routeToken)
+    ) {
+      return { status: 'superseded' };
+    }
+    setWalletShareInfo(shareInfo);
+    return { status: 'committed', shareInfo };
+  }, [id, ownership, routeKey]);
 
   const loadAddressSummaryFn = async (walletId: string) => {
     const routeToken = ownership.captureRoute(routeKey);
@@ -386,15 +429,18 @@ export function useWalletData({
     if (!ownsRequest()) return 'superseded';
     setGroups(fetchedGroups);
 
-    const shareInfo = await loadWalletShareInfo(id);
-    if (!ownsRequest()) return 'superseded';
-    setWalletShareInfo(shareInfo);
+    const shareResult = await refreshWalletShareInfo();
+    if (!ownsRequest() || shareResult.status === 'superseded') return 'superseded';
+    if (shareResult.status === 'failed') {
+      logError(log, shareResult.error, 'Failed to fetch wallet share info');
+    }
     return 'ok';
   }, [
     applyAuxiliaryData,
     id,
     navigate,
     ownership,
+    refreshWalletShareInfo,
     routeKey,
     user,
   ]);
@@ -495,7 +541,7 @@ export function useWalletData({
 
     // Share info
     walletShareInfo,
-    setWalletShareInfo,
+    refreshWalletShareInfo,
 
     // Refresh
     fetchData,

@@ -304,4 +304,29 @@ describe('useDeviceData branch coverage', () => {
     expect(loggerSpies.error).toHaveBeenCalledWith('Failed to remove group access', expect.any(Object));
     expect(loggerSpies.error).toHaveBeenCalledWith('Failed to reload device after transfer', expect.any(Object));
   });
+
+  it('reports owned share refresh failures through each mutation error path', async () => {
+    const refreshError = new Error('refresh failed');
+    const { result } = renderHook(() => useDeviceData('dev-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.deviceShareInfo).not.toBeNull());
+
+    vi.mocked(devicesApi.getDeviceShareInfo).mockRejectedValue(refreshError);
+    await act(async () => {
+      await result.current.handleShareWithUser('u-new');
+      await result.current.handleRemoveUserAccess('u-new');
+      result.current.setSelectedGroupToAdd('g-admin');
+    });
+    await act(async () => result.current.addGroup());
+
+    expect(loggerSpies.error).toHaveBeenCalledWith('Failed to share with user', {
+      err: refreshError,
+    });
+    expect(loggerSpies.error).toHaveBeenCalledWith('Failed to remove user access', {
+      err: refreshError,
+    });
+    expect(loggerSpies.error).toHaveBeenCalledWith('Failed to share with group', {
+      err: refreshError,
+    });
+  });
 });

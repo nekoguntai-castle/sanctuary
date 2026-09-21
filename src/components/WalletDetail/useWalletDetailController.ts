@@ -87,7 +87,7 @@ export const useWalletDetailController = () => {
     draftsCount, setDraftsCount,
     explorerUrl,
     groups,
-    walletShareInfo, setWalletShareInfo,
+    walletShareInfo, refreshWalletShareInfo,
     fetchData, refreshData,
   } = useWalletData({ id, user });
   const walletUserRole = wallet?.userRole || 'viewer';
@@ -205,8 +205,7 @@ export const useWalletDetailController = () => {
     devices,
     walletShareInfo,
     groups,
-    onDataRefresh: async () => { await fetchData(true); },
-    setWalletShareInfo,
+    refreshWalletShareInfo,
     setWallet,
   });
 

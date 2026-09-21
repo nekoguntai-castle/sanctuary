@@ -67,8 +67,10 @@ export function useDeviceData(id: string | undefined) {
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [sharingLoading, setSharingLoading] = useState(false);
   const searchGenerationRef = useRef(0);
+  const shareGenerationRef = useRef(0);
 
   const device = loadedOwnershipKey === ownershipKey ? deviceState : null;
+  const loadedDeviceOwnershipKey = deviceState?.id === id ? loadedOwnershipKey : null;
   const routeLoading = loadedOwnershipKey === ownershipKey ? loading : true;
   const isOwner = device?.isOwner ?? true;
   const userRole = device?.userRole ?? 'owner';
@@ -83,6 +85,7 @@ export function useDeviceData(id: string | undefined) {
   useLayoutEffect(() => {
     ownership.setRoute(ownershipKey);
     searchGenerationRef.current += 1;
+    shareGenerationRef.current += 1;
     setDeviceState(null);
     setLoadedOwnershipKey(null);
     setWallets([]);
@@ -101,7 +104,10 @@ export function useDeviceData(id: string | undefined) {
     setSharingLoading(false);
   }, [ownership, ownershipKey]);
 
-  useEffect(() => () => ownership.invalidate(), [ownership]);
+  useEffect(() => () => {
+    shareGenerationRef.current += 1;
+    ownership.invalidate();
+  }, [ownership]);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -181,17 +187,28 @@ export function useDeviceData(id: string | undefined) {
     setEditModelSlug(device?.model?.slug ?? '');
   };
 
-  const fetchShareInfo = useCallback(async (signal?: AbortSignal) => {
-    if (!id) return;
+  const fetchShareInfo = useCallback(async (signal?: AbortSignal): Promise<
+    | { status: 'committed'; shareInfo: DeviceShareInfo }
+    | { status: 'superseded' }
+    | { status: 'failed'; error: unknown }
+  > => {
+    if (!id) return { status: 'superseded' };
     const token = ownership.captureRoute(ownershipKey);
-    if (!ownsRoute(token)) return;
+    if (!ownsRoute(token)) return { status: 'superseded' };
+    const generation = shareGenerationRef.current + 1;
+    shareGenerationRef.current = generation;
+    const ownsShareRequest = () => (
+      ownsRoute(token) && shareGenerationRef.current === generation
+    );
     try {
       const info = await getDeviceShareInfo(id, signal);
-      if (ownsRoute(token)) setDeviceShareInfo(info);
+      if (!ownsShareRequest()) return { status: 'superseded' };
+      setDeviceShareInfo(info);
+      return { status: 'committed', shareInfo: info };
     } catch (error) {
-      if (ownsRoute(token) && !isAbortError(error)) {
-        log.error('Failed to fetch share info', { err: error });
-      }
+      if (!ownsShareRequest() || isAbortError(error)) return { status: 'superseded' };
+      log.error('Failed to fetch share info', { err: error });
+      return { status: 'failed', error };
     }
   }, [id, ownership, ownershipKey, ownsRoute]);
 
@@ -209,12 +226,12 @@ export function useDeviceData(id: string | undefined) {
   }, [currentUserIsAdmin, ownership, ownershipKey, ownsRoute]);
 
   useEffect(() => {
-    if (!device || !id) return;
+    if (!id || loadedDeviceOwnershipKey !== ownershipKey) return;
     const controller = new AbortController();
     void fetchShareInfo(controller.signal);
     void fetchGroups();
     return () => controller.abort();
-  }, [device, fetchGroups, fetchShareInfo, id]);
+  }, [fetchGroups, fetchShareInfo, id, loadedDeviceOwnershipKey, ownershipKey]);
 
   const handleSearchUsers = useCallback(async (query: string) => {
     const token = ownership.captureRoute(ownershipKey);
@@ -250,8 +267,9 @@ export function useDeviceData(id: string | undefined) {
     try {
       await shareDeviceWithUser(id, { targetUserId });
       if (!ownsRoute(token)) return;
-      await fetchShareInfo();
-      if (!ownsRoute(token)) return;
+      const refresh = await fetchShareInfo();
+      if (refresh.status === 'failed') throw refresh.error;
+      if (refresh.status !== 'committed') return;
       setUserSearchQuery('');
       setUserSearchResults([]);
     } catch (error) {
@@ -268,7 +286,10 @@ export function useDeviceData(id: string | undefined) {
     setSharingLoading(true);
     try {
       await removeUserFromDevice(id, targetUserId);
-      if (ownsRoute(token)) await fetchShareInfo();
+      if (ownsRoute(token)) {
+        const refresh = await fetchShareInfo();
+        if (refresh.status === 'failed') throw refresh.error;
+      }
     } catch (error) {
       if (ownsRoute(token)) log.error('Failed to remove user access', { err: error });
     } finally {
@@ -284,8 +305,11 @@ export function useDeviceData(id: string | undefined) {
     try {
       await shareDeviceWithGroup(id, { groupId });
       if (!ownsRoute(token)) return;
-      await fetchShareInfo();
-      if (groupId !== null && ownsRoute(token)) setSelectedGroupToAdd('');
+      const refresh = await fetchShareInfo();
+      if (refresh.status === 'failed') throw refresh.error;
+      if (refresh.status === 'committed' && groupId !== null && ownsRoute(token)) {
+        setSelectedGroupToAdd('');
+      }
     } catch (error) {
       if (ownsRoute(token)) {
         log.error(groupId === null ? 'Failed to remove group access' : 'Failed to share with group', {
@@ -304,14 +328,18 @@ export function useDeviceData(id: string | undefined) {
   const removeGroup = async () => updateGroup(null);
 
   const handleTransferComplete = async () => {
-    if (!id || !user) return;
+    if (!id || !user) return { status: 'superseded' } as const;
     const token = ownership.captureRoute(ownershipKey);
-    if (!ownsRoute(token)) return;
+    if (!ownsRoute(token)) return { status: 'superseded' } as const;
     try {
       const deviceData = await getDevice(id);
-      if (ownsRoute(token)) setDeviceState(deviceData);
+      if (!ownsRoute(token)) return { status: 'superseded' } as const;
+      setDeviceState(deviceData);
+      return await fetchShareInfo();
     } catch (error) {
-      if (ownsRoute(token)) log.error('Failed to reload device after transfer', { error });
+      if (!ownsRoute(token)) return { status: 'superseded' } as const;
+      log.error('Failed to reload device after transfer', { error });
+      return { status: 'failed', error } as const;
     }
   };
 

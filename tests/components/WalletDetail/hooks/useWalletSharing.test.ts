@@ -20,7 +20,6 @@ vi.mock('../../../../src/api/wallets', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
     ...actual,
-    getWalletShareInfo: vi.fn(),
     shareWalletWithGroup: vi.fn(),
     shareWalletWithUser: vi.fn(),
     removeUserFromWallet: vi.fn(),
@@ -65,9 +64,8 @@ function createDeferred<T>() {
 describe('useWalletSharing', () => {
   const handleError = vi.fn();
   const addNotification = vi.fn();
-  const setWalletShareInfo = vi.fn();
   const setWallet = vi.fn();
-  const onDataRefresh = vi.fn().mockResolvedValue(undefined);
+  const refreshWalletShareInfo = vi.fn();
 
   const baseShareInfo = {
     users: [{ id: 'owner-1', username: 'owner' }],
@@ -82,8 +80,7 @@ describe('useWalletSharing', () => {
         devices: [],
         walletShareInfo: baseShareInfo as any,
         groups: [],
-        onDataRefresh,
-        setWalletShareInfo,
+        refreshWalletShareInfo,
         setWallet,
         ...overrides,
       })
@@ -93,7 +90,7 @@ describe('useWalletSharing', () => {
     vi.clearAllMocks();
     vi.mocked(useErrorHandler).mockReturnValue({ handleError } as never);
     vi.mocked(useAppNotifications).mockReturnValue({ addNotification } as never);
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue(baseShareInfo as never);
+    refreshWalletShareInfo.mockResolvedValue({ status: 'committed', shareInfo: baseShareInfo });
     vi.mocked(walletsApi.shareWalletWithGroup).mockResolvedValue({ success: true } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({ devicesToShare: [] } as never);
     vi.mocked(walletsApi.removeUserFromWallet).mockResolvedValue(undefined as never);
@@ -170,8 +167,7 @@ describe('useWalletSharing', () => {
       groupId: 'group-1',
       role: 'signer',
     });
-    expect(walletsApi.getWalletShareInfo).toHaveBeenCalledWith('wallet-1');
-    expect(setWalletShareInfo).toHaveBeenCalled();
+    expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
     expect(result.current.selectedGroupToAdd).toBe('');
   });
 
@@ -250,10 +246,10 @@ describe('useWalletSharing', () => {
   });
 
   it('shares with user and opens device share prompt when needed', async () => {
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
+    refreshWalletShareInfo.mockResolvedValue({
+      status: 'committed',
+      shareInfo: { users: [{ id: 'user-2', username: 'alice' }], group: null },
+    });
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1', label: 'Ledger' }],
     } as never);
@@ -274,10 +270,10 @@ describe('useWalletSharing', () => {
 
   it('shares with user without device prompt when no devices require sharing', async () => {
     vi.mocked(authApi.searchUsers).mockResolvedValue([{ id: 'user-2', username: 'alice' }] as never);
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
+    refreshWalletShareInfo.mockResolvedValue({
+      status: 'committed',
+      shareInfo: { users: [{ id: 'user-2', username: 'alice' }], group: null },
+    });
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({ devicesToShare: [] } as never);
 
     const { result } = renderSharingHook();
@@ -296,9 +292,59 @@ describe('useWalletSharing', () => {
     expect(result.current.userSearchResults).toEqual([]);
   });
 
+  it('does not let a superseded share response drive the device prompt', async () => {
+    refreshWalletShareInfo.mockResolvedValue({ status: 'superseded' });
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1', label: 'Ledger' }],
+    } as never);
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+
+    expect(result.current.deviceSharePrompt).toEqual({
+      show: false,
+      targetUserId: '',
+      targetUsername: '',
+      devices: [],
+    });
+  });
+
+  it('does not use a committed refresh after the sharing route changes', async () => {
+    const refresh = createDeferred<{ status: 'committed'; shareInfo: typeof baseShareInfo }>();
+    refreshWalletShareInfo.mockReturnValue(refresh.promise);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1', label: 'Ledger' }],
+    } as never);
+    const { result, rerender } = renderHook(
+      ({ walletId }) => useWalletSharing({
+        walletId,
+        wallet: { id: walletId, name: 'Wallet' } as any,
+        devices: [],
+        walletShareInfo: baseShareInfo as any,
+        groups: [],
+        refreshWalletShareInfo,
+        setWallet,
+      }),
+      { initialProps: { walletId: 'wallet-1' } },
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.handleShareWithUser('user-2');
+    });
+    await act(async () => rerender({ walletId: 'wallet-2' }));
+    await act(async () => {
+      refresh.resolve({ status: 'committed', shareInfo: baseShareInfo });
+      await pending;
+    });
+
+    expect(result.current.deviceSharePrompt.show).toBe(false);
+  });
+
   it('resolves share target username from search results, then falls back to default text', async () => {
     vi.mocked(authApi.searchUsers).mockResolvedValue([{ id: 'user-9', username: 'bob' }] as never);
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({ users: [], group: null } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1', label: 'Coldcard' }],
     } as never);
@@ -335,11 +381,20 @@ describe('useWalletSharing', () => {
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Share Failed');
   });
 
+  it('reports a failed owned share-info refresh through the mutation error path', async () => {
+    const refreshError = new Error('share refresh failed');
+    refreshWalletShareInfo.mockResolvedValue({ status: 'failed', error: refreshError });
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+
+    expect(handleError).toHaveBeenCalledWith(refreshError, 'Share Failed');
+    expect(result.current.deviceSharePrompt.show).toBe(false);
+  });
+
   it('shares prompted devices and reports partial success', async () => {
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1' }, { id: 'device-2' }],
     } as never);
@@ -367,10 +422,6 @@ describe('useWalletSharing', () => {
   });
 
   it('shares prompted devices successfully without warning notifications', async () => {
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1' }, { id: 'device-2' }],
     } as never);
@@ -393,10 +444,6 @@ describe('useWalletSharing', () => {
   });
 
   it('reports complete device-share failure through error handler', async () => {
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1' }],
     } as never);
@@ -416,10 +463,6 @@ describe('useWalletSharing', () => {
   });
 
   it('falls back to unknown error text for device-share failures without a message', async () => {
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1' }],
     } as never);
@@ -445,10 +488,6 @@ describe('useWalletSharing', () => {
     });
     expect(devicesApi.shareDeviceWithUser).not.toHaveBeenCalled();
 
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1' }],
     } as never);
@@ -465,10 +504,6 @@ describe('useWalletSharing', () => {
   });
 
   it('handles unexpected device-share errors from Promise.allSettled', async () => {
-    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
-      users: [{ id: 'user-2', username: 'alice' }],
-      group: null,
-    } as never);
     vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
       devicesToShare: [{ id: 'device-1' }],
     } as never);
@@ -496,7 +531,7 @@ describe('useWalletSharing', () => {
     });
 
     expect(walletsApi.removeUserFromWallet).toHaveBeenCalledWith('wallet-1', 'user-2');
-    expect(walletsApi.getWalletShareInfo).toHaveBeenCalledWith('wallet-1');
+    expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
   });
 
   it('reports remove-user failures', async () => {
@@ -563,7 +598,30 @@ describe('useWalletSharing', () => {
       id: 'other-wallet',
       name: 'Other',
     });
-    expect(walletsApi.getWalletShareInfo).toHaveBeenCalledWith('wallet-1');
+    expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('awaits the single transfer share refresh through an explicit superseded result', async () => {
+    const refresh = createDeferred<{ status: 'superseded' }>();
+    refreshWalletShareInfo.mockReturnValue(refresh.promise);
+    const { result } = renderSharingHook();
+
+    let settled = false;
+    let transfer!: Promise<void>;
+    act(() => {
+      transfer = result.current.handleTransferComplete().then(() => { settled = true; });
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    await act(async () => {
+      refresh.resolve({ status: 'superseded' });
+      await transfer;
+    });
+    expect(settled).toBe(true);
+    expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
   });
 
   it('swallows transfer reload failures without invoking shared error handler', async () => {

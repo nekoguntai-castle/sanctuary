@@ -32,6 +32,11 @@ export const ADDRESS_PAGE_SIZE = 25;
  */
 export type FetchDataResult = 'ok' | 'superseded' | 'failed';
 
+export type WalletShareInfoRefreshResult =
+  | { status: 'committed'; shareInfo: walletsApi.WalletShareInfo }
+  | { status: 'superseded' }
+  | { status: 'failed'; error: unknown };
+
 export interface UseWalletDataParams {
   /** Wallet ID from route params */
   id: string | undefined;
@@ -103,7 +108,7 @@ export interface UseWalletDataReturn {
 
   // Share info
   walletShareInfo: walletsApi.WalletShareInfo | null;
-  setWalletShareInfo: (info: walletsApi.WalletShareInfo | null) => void;
+  refreshWalletShareInfo: () => Promise<WalletShareInfoRefreshResult>;
 
   // Refresh
   fetchData: (isRefresh?: boolean) => Promise<void>;

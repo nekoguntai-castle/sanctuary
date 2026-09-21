@@ -378,6 +378,34 @@ describe('useDeviceData route ownership', () => {
     expect(result.current.showTransferModal).toBe(false);
   });
 
+  it('does not let a stale route callback supersede the current route share read', async () => {
+    const routeBShare = createDeferred<DeviceShareInfo>();
+    const currentShare = {
+      users: [{ id: 'user-b', username: 'user-b' }],
+      group: null,
+    } as DeviceShareInfo;
+    vi.mocked(devicesApi.getDevice).mockImplementation(async id => device(id));
+    vi.mocked(devicesApi.getDeviceShareInfo)
+      .mockResolvedValueOnce({ users: [], group: null } as DeviceShareInfo)
+      .mockReturnValueOnce(routeBShare.promise);
+
+    const { result, rerender } = renderHook(({ id }) => useDeviceData(id), {
+      initialProps: { id: 'A' },
+    });
+    await waitFor(() => expect(result.current.deviceShareInfo).toEqual({ users: [], group: null }));
+    const staleFetchShareInfo = result.current.fetchShareInfo;
+
+    rerender({ id: 'B' });
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      expect(await staleFetchShareInfo()).toEqual({ status: 'superseded' });
+    });
+    await act(async () => routeBShare.resolve(currentShare));
+
+    expect(result.current.deviceShareInfo).toEqual(currentShare);
+    expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(2);
+  });
+
   it('fences stale rejection paths and transfer refresh completions', async () => {
     vi.mocked(devicesApi.getDevice).mockImplementation(async (id) => device(id));
     const saveA = createDeferred<Device>();
@@ -426,8 +454,8 @@ describe('useDeviceData route ownership', () => {
     vi.mocked(devicesApi.getDevice)
       .mockReturnValueOnce(transferSuccessA.promise)
       .mockReturnValueOnce(transferFailureA.promise);
-    let transferSuccessPromise!: Promise<void>;
-    let transferFailurePromise!: Promise<void>;
+    let transferSuccessPromise!: Promise<unknown>;
+    let transferFailurePromise!: Promise<unknown>;
     act(() => {
       transferSuccessPromise = result.current.handleTransferComplete();
       transferFailurePromise = result.current.handleTransferComplete();
@@ -460,9 +488,16 @@ describe('useDeviceData route ownership', () => {
 
     expect(result.current.device?.id).toBe('B');
     expect(result.current.sharingLoading).toBe(false);
+    await expect(transferSuccessPromise).resolves.toEqual({ status: 'superseded' });
+    await expect(transferFailurePromise).resolves.toEqual({ status: 'superseded' });
 
     vi.mocked(devicesApi.getDevice).mockRejectedValueOnce(new Error('current transfer failure'));
-    await act(async () => result.current.handleTransferComplete());
+    await act(async () => {
+      await expect(result.current.handleTransferComplete()).resolves.toEqual({
+        status: 'failed',
+        error: expect.any(Error),
+      });
+    });
     expect(result.current.device?.id).toBe('B');
   });
 
@@ -531,5 +566,148 @@ describe('useDeviceData route ownership', () => {
       await shareBPromise;
     });
     expect(result.current.sharingLoading).toBe(false);
+  });
+
+  it('keeps a user mutation refresh when the initial same-route read resolves last', async () => {
+    vi.mocked(devicesApi.getDevice).mockResolvedValue(device('A'));
+    const initialRead = createDeferred<DeviceShareInfo>();
+    const newestShareInfo = {
+      users: [{ id: 'target-b', username: 'target-b' }],
+      group: null,
+    } as DeviceShareInfo;
+    vi.mocked(devicesApi.getDeviceShareInfo)
+      .mockReturnValueOnce(initialRead.promise)
+      .mockResolvedValueOnce(newestShareInfo);
+    vi.mocked(devicesApi.shareDeviceWithUser).mockResolvedValue({ success: true, message: 'shared' });
+
+    const { result } = renderHook(() => useDeviceData('A'));
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(1));
+
+    await act(async () => result.current.handleShareWithUser('target-b'));
+    expect(result.current.deviceShareInfo).toEqual(newestShareInfo);
+
+    await act(async () => {
+      initialRead.resolve({ users: [], group: null } as DeviceShareInfo);
+    });
+
+    expect(result.current.deviceShareInfo).toEqual(newestShareInfo);
+  });
+
+  it('keeps a group mutation refresh when the initial same-route read resolves last', async () => {
+    vi.mocked(devicesApi.getDevice).mockResolvedValue(device('A'));
+    const initialRead = createDeferred<DeviceShareInfo>();
+    const newestShareInfo = {
+      users: [],
+      group: { id: 'group-b', name: 'Group B' },
+    } as DeviceShareInfo;
+    vi.mocked(devicesApi.getDeviceShareInfo)
+      .mockReturnValueOnce(initialRead.promise)
+      .mockResolvedValueOnce(newestShareInfo);
+    vi.mocked(devicesApi.shareDeviceWithGroup).mockResolvedValue({ success: true, message: 'shared' });
+
+    const { result } = renderHook(() => useDeviceData('A'));
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(1));
+
+    act(() => result.current.setSelectedGroupToAdd('group-b'));
+    await act(async () => result.current.addGroup());
+    expect(result.current.deviceShareInfo).toEqual(newestShareInfo);
+
+    await act(async () => {
+      initialRead.resolve({
+        users: [],
+        group: { id: 'group-a', name: 'Group A' },
+      } as DeviceShareInfo);
+    });
+
+    expect(result.current.deviceShareInfo).toEqual(newestShareInfo);
+  });
+
+  it('awaits exactly one share refresh after transfer without reloading groups', async () => {
+    const transferredDevice = device('A', 'transferred');
+    const transferShareInfo = {
+      users: [{ id: 'new-owner', username: 'new-owner' }],
+      group: null,
+    } as DeviceShareInfo;
+    const initialRead = createDeferred<DeviceShareInfo>();
+    const transferRefresh = createDeferred<DeviceShareInfo>();
+    vi.mocked(devicesApi.getDevice)
+      .mockResolvedValueOnce(device('A'))
+      .mockResolvedValueOnce(transferredDevice);
+    vi.mocked(devicesApi.getDeviceShareInfo)
+      .mockReturnValueOnce(initialRead.promise)
+      .mockReturnValueOnce(transferRefresh.promise);
+
+    const { result } = renderHook(() => useDeviceData('A'));
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(authApi.getUserGroups).toHaveBeenCalledTimes(1));
+
+    let completed = false;
+    let transferPromise!: Promise<unknown>;
+    act(() => {
+      transferPromise = result.current.handleTransferComplete().then(() => {
+        completed = true;
+      });
+    });
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(2));
+    expect(completed).toBe(false);
+
+    await act(async () => {
+      transferRefresh.resolve(transferShareInfo);
+      await transferPromise;
+    });
+
+    expect(result.current.device?.label).toBe('transferred');
+    expect(result.current.deviceShareInfo).toEqual(transferShareInfo);
+    expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(2);
+    expect(authApi.getUserGroups).toHaveBeenCalledTimes(1);
+    expect(completed).toBe(true);
+
+    await act(async () => {
+      initialRead.resolve({
+        users: [],
+        group: { id: 'old-group', name: 'Old Group' },
+      } as DeviceShareInfo);
+    });
+    expect(result.current.deviceShareInfo).toEqual(transferShareInfo);
+  });
+
+  it('explicitly reports when a newer share read supersedes transfer refresh', async () => {
+    const transferRefresh = createDeferred<DeviceShareInfo>();
+    const newerRefresh = createDeferred<DeviceShareInfo>();
+    const newestShareInfo = {
+      users: [{ id: 'latest-owner', username: 'latest-owner' }],
+      group: null,
+    } as DeviceShareInfo;
+    vi.mocked(devicesApi.getDevice)
+      .mockResolvedValueOnce(device('A'))
+      .mockResolvedValueOnce(device('A', 'transferred'));
+    vi.mocked(devicesApi.getDeviceShareInfo)
+      .mockResolvedValueOnce({ users: [], group: null } as DeviceShareInfo)
+      .mockReturnValueOnce(transferRefresh.promise)
+      .mockReturnValueOnce(newerRefresh.promise);
+
+    const { result } = renderHook(() => useDeviceData('A'));
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(1));
+
+    let transferPromise!: ReturnType<typeof result.current.handleTransferComplete>;
+    act(() => {
+      transferPromise = result.current.handleTransferComplete();
+    });
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(2));
+    let newerPromise!: ReturnType<typeof result.current.fetchShareInfo>;
+    act(() => {
+      newerPromise = result.current.fetchShareInfo();
+    });
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledTimes(3));
+
+    await act(async () => transferRefresh.resolve({ users: [], group: null } as DeviceShareInfo));
+    await expect(transferPromise).resolves.toEqual({ status: 'superseded' });
+
+    await act(async () => newerRefresh.resolve(newestShareInfo));
+    await expect(newerPromise).resolves.toEqual({
+      status: 'committed',
+      shareInfo: newestShareInfo,
+    });
+    expect(result.current.deviceShareInfo).toEqual(newestShareInfo);
   });
 });

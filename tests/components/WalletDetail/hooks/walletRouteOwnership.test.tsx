@@ -307,7 +307,7 @@ describe('Wallet Detail route ownership', () => {
     vi.mocked(walletsApi.getWallet).mockReturnValue(reload.promise);
     vi.mocked(walletsApi.shareWalletWithUser).mockReturnValue(share.promise as never);
     const setWallet = vi.fn();
-    const setWalletShareInfo = vi.fn();
+    const refreshWalletShareInfo = vi.fn();
     const view = renderHook(
       ({ walletId, ownershipKey }) => useWalletSharing({
         walletId,
@@ -316,9 +316,8 @@ describe('Wallet Detail route ownership', () => {
         devices: [],
         walletShareInfo: { users: [], group: null } as never,
         groups: [],
-        onDataRefresh: vi.fn(),
+        refreshWalletShareInfo,
         setWallet,
-        setWalletShareInfo,
       }),
       { initialProps: { walletId: 'A', ownershipKey: 'A:user:mainnet' } },
     );
@@ -342,7 +341,7 @@ describe('Wallet Detail route ownership', () => {
     expect(view.result.current.userSearchResults).toEqual([]);
     expect(view.result.current.searchingUsers).toBe(false);
     expect(setWallet).not.toHaveBeenCalled();
-    expect(setWalletShareInfo).not.toHaveBeenCalled();
+    expect(refreshWalletShareInfo).not.toHaveBeenCalled();
   });
 
   it('rejects stale A sharing controls before they start wallet B work', async () => {
@@ -357,9 +356,10 @@ describe('Wallet Detail route ownership', () => {
         devices: [],
         walletShareInfo: { users: [], group: { id: 'group-A' } } as never,
         groups: [],
-        onDataRefresh: vi.fn(),
+        refreshWalletShareInfo: vi.fn().mockResolvedValue({
+          status: 'committed', shareInfo: { users: [], group: null },
+        }),
         setWallet: vi.fn(),
-        setWalletShareInfo: vi.fn(),
       }),
       { initialProps: { walletId: 'A', ownershipKey: 'A:user:mainnet' } },
     );
@@ -415,9 +415,10 @@ describe('Wallet Detail route ownership', () => {
         devices: [],
         walletShareInfo: { users: [], group: { id: 'group-A' } } as never,
         groups: [],
-        onDataRefresh: vi.fn(),
+        refreshWalletShareInfo: vi.fn().mockResolvedValue({
+          status: 'committed', shareInfo: { users: [], group: null },
+        }),
         setWallet: vi.fn(),
-        setWalletShareInfo: vi.fn(),
       }),
       { initialProps: { walletId: 'A', ownershipKey: 'A:user:mainnet' } },
     );
@@ -458,9 +459,10 @@ describe('Wallet Detail route ownership', () => {
         devices: [],
         walletShareInfo: { users: [], group: null } as never,
         groups: [],
-        onDataRefresh: vi.fn(),
+        refreshWalletShareInfo: vi.fn().mockResolvedValue({
+          status: 'committed', shareInfo: { users: [], group: null },
+        }),
         setWallet: vi.fn(),
-        setWalletShareInfo: vi.fn(),
       }),
       { initialProps: { walletId: 'A', ownershipKey: 'A:user:mainnet' } },
     );
@@ -483,7 +485,7 @@ describe('Wallet Detail route ownership', () => {
     vi.mocked(walletsApi.shareWalletWithGroup).mockReturnValue(group.promise);
     vi.mocked(walletsApi.shareWalletWithUser).mockReturnValue(share.promise);
     vi.mocked(authApi.searchUsers).mockReturnValue(search.promise);
-    const setWalletShareInfo = vi.fn();
+    const refreshWalletShareInfo = vi.fn();
     const view = renderHook(
       ({ walletId, ownershipKey }) => useWalletSharing({
         walletId,
@@ -492,9 +494,8 @@ describe('Wallet Detail route ownership', () => {
         devices: [],
         walletShareInfo: { users: [], group: null } as never,
         groups: [],
-        onDataRefresh: vi.fn(),
+        refreshWalletShareInfo,
         setWallet: vi.fn(),
-        setWalletShareInfo,
       }),
       { initialProps: { walletId: 'A', ownershipKey: 'A:user:mainnet' } },
     );
@@ -514,7 +515,7 @@ describe('Wallet Detail route ownership', () => {
       search.reject(new Error('stale search'));
       await Promise.all(pending);
     });
-    expect(setWalletShareInfo).not.toHaveBeenCalled();
+    expect(refreshWalletShareInfo).not.toHaveBeenCalled();
     expect(handleError).not.toHaveBeenCalled();
   });
 

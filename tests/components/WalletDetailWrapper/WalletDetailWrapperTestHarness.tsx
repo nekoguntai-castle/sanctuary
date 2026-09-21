@@ -399,7 +399,10 @@ export function createWalletData(overrides: Partial<any> = {}) {
     users: [],
     groups: [],
     walletShareInfo: { users: [], group: null },
-    setWalletShareInfo: vi.fn(),
+    refreshWalletShareInfo: vi.fn().mockResolvedValue({
+      status: 'committed',
+      shareInfo: { users: [], group: null },
+    }),
     fetchData: mocks.fetchData,
     refreshData: async () => {
       await mocks.fetchData(true);

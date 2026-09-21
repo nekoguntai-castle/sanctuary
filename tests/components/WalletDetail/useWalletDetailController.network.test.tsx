@@ -127,7 +127,7 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletData', () => ({
     explorerUrl: null,
     groups: [],
     walletShareInfo: null,
-    setWalletShareInfo: vi.fn(),
+    refreshWalletShareInfo: vi.fn().mockResolvedValue({ status: 'superseded' }),
     fetchData: controllerState.fetchData,
     refreshData: controllerState.refreshData,
   }),

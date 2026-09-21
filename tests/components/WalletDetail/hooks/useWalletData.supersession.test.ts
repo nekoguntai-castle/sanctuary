@@ -14,6 +14,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWalletData } from '../../../../src/components/WalletDetail/hooks/useWalletData';
+import { useWalletSharing } from '../../../../src/components/WalletDetail/hooks/useWalletSharing';
 import { useAppNotifications } from '../../../../src/contexts/AppNotificationContext';
 import { useErrorHandler } from '../../../../src/hooks/useErrorHandler';
 import * as adminApi from '../../../../src/api/admin';
@@ -75,6 +76,9 @@ vi.mock('../../../../src/components/WalletDetail/mappers', () => ({
 vi.mock('../../../../src/api/wallets', () => ({
   getWallet: vi.fn(),
   getWalletShareInfo: vi.fn(),
+  shareWalletWithUser: vi.fn(),
+  shareWalletWithGroup: vi.fn(),
+  removeUserFromWallet: vi.fn(),
 }));
 
 vi.mock('../../../../src/api/transactions', () => ({
@@ -88,6 +92,7 @@ vi.mock('../../../../src/api/transactions', () => ({
 
 vi.mock('../../../../src/api/devices', () => ({
   getDevices: vi.fn(),
+  shareDeviceWithUser: vi.fn(),
 }));
 
 vi.mock('../../../../src/api/bitcoin', () => ({
@@ -100,6 +105,7 @@ vi.mock('../../../../src/api/drafts', () => ({
 
 vi.mock('../../../../src/api/auth', () => ({
   getUserGroups: vi.fn(),
+  searchUsers: vi.fn(),
 }));
 
 vi.mock('../../../../src/api/admin', () => ({
@@ -164,6 +170,7 @@ describe('useWalletData fetchDataWithResult supersession contract', () => {
 
     vi.mocked(walletsApi.getWallet).mockResolvedValue(baseWallet as never);
     vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({ users: [], group: null } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({ devicesToShare: [] } as never);
 
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({ explorerUrl: 'https://mempool.space' } as never);
 
@@ -186,6 +193,27 @@ describe('useWalletData fetchDataWithResult supersession contract', () => {
     vi.mocked(draftsApi.getDrafts).mockResolvedValue([] as never);
     vi.mocked(adminApi.getGroups).mockResolvedValue([] as never);
     vi.mocked(authApi.getUserGroups).mockResolvedValue([] as never);
+  });
+
+  it('reports missing and stale-route share refreshes as superseded without API work', async () => {
+    const missing = renderHook(() => useWalletData({ id: undefined, user: defaultUser }));
+    await act(async () => {
+      await expect(missing.result.current.refreshWalletShareInfo()).resolves.toEqual({
+        status: 'superseded',
+      });
+    });
+    missing.unmount();
+
+    const routed = renderHook(({ id }) => useWalletData({ id, user: defaultUser }), {
+      initialProps: { id: 'wallet-1' as string | undefined },
+    });
+    await waitFor(() => expect(routed.result.current.loading).toBe(false));
+    const staleRefresh = routed.result.current.refreshWalletShareInfo;
+    act(() => routed.rerender({ id: 'wallet-2' }));
+    await act(async () => {
+      await expect(staleRefresh()).resolves.toEqual({ status: 'superseded' });
+    });
+    routed.unmount();
   });
 
   afterEach(() => {
@@ -256,5 +284,126 @@ describe('useWalletData fetchDataWithResult supersession contract', () => {
     expect(staleOutcome).toBe('superseded');
     // The superseded fetch must not have overwritten anything or raised an error.
     expect(result.current.error).toBeNull();
+  });
+
+  it('keeps a completed sharing refresh when the same-route initial share read resolves last', async () => {
+    const initialShare = createDeferred<Awaited<ReturnType<typeof walletsApi.getWalletShareInfo>>>();
+    const currentShare = {
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    };
+    vi.mocked(walletsApi.getWalletShareInfo)
+      .mockReturnValueOnce(initialShare.promise)
+      .mockResolvedValueOnce(currentShare as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1', label: 'Ledger' }],
+    } as never);
+
+    const { result } = renderHook(() => {
+      const data = useWalletData({ id: 'wallet-1', user: defaultUser });
+      const sharing = useWalletSharing({
+        walletId: 'wallet-1',
+        wallet: data.wallet,
+        devices: data.devices,
+        walletShareInfo: data.walletShareInfo,
+        groups: data.groups,
+        refreshWalletShareInfo: data.refreshWalletShareInfo,
+        setWallet: data.setWallet,
+      });
+      return { data, sharing };
+    });
+
+    await waitFor(() => expect(walletsApi.getWalletShareInfo).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.sharing.handleShareWithUser('user-2');
+    });
+    expect(result.current.data.walletShareInfo).toEqual(currentShare);
+    expect(result.current.sharing.deviceSharePrompt.targetUsername).toBe('alice');
+
+    await act(async () => {
+      initialShare.resolve({
+        users: [{ id: 'user-old', username: 'stale' }],
+        group: { id: 'group-old', name: 'Old group' },
+      } as never);
+      await initialShare.promise;
+    });
+
+    expect(result.current.data.walletShareInfo).toEqual(currentShare);
+  });
+
+  it('ignores a rejected initial share read after a newer sharing refresh commits', async () => {
+    const initialShare = createDeferred<Awaited<ReturnType<typeof walletsApi.getWalletShareInfo>>>();
+    const currentShare = {
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    };
+    vi.mocked(walletsApi.getWalletShareInfo)
+      .mockReturnValueOnce(initialShare.promise)
+      .mockResolvedValueOnce(currentShare as never);
+
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(walletsApi.getWalletShareInfo).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      expect(await result.current.refreshWalletShareInfo()).toEqual({
+        status: 'committed',
+        shareInfo: currentShare,
+      });
+    });
+
+    await act(async () => {
+      initialShare.reject(new Error('stale share read failed'));
+      await expect(initialShare.promise).rejects.toThrow('stale share read failed');
+    });
+
+    expect(result.current.walletShareInfo).toEqual(currentShare);
+  });
+
+  it('keeps current group access and prevents stale group controls after an initial read resolves last', async () => {
+    const initialShare = createDeferred<Awaited<ReturnType<typeof walletsApi.getWalletShareInfo>>>();
+    const currentShare = {
+      users: [],
+      group: { id: 'group-current', name: 'Current group' },
+    };
+    vi.mocked(walletsApi.getWalletShareInfo)
+      .mockReturnValueOnce(initialShare.promise)
+      .mockResolvedValue(currentShare as never);
+    vi.mocked(walletsApi.shareWalletWithGroup).mockResolvedValue({ success: true } as never);
+
+    const { result } = renderHook(() => {
+      const data = useWalletData({ id: 'wallet-1', user: defaultUser });
+      const sharing = useWalletSharing({
+        walletId: 'wallet-1',
+        wallet: data.wallet,
+        devices: data.devices,
+        walletShareInfo: data.walletShareInfo,
+        groups: data.groups,
+        refreshWalletShareInfo: data.refreshWalletShareInfo,
+        setWallet: data.setWallet,
+      });
+      return { data, sharing };
+    });
+
+    await waitFor(() => expect(walletsApi.getWalletShareInfo).toHaveBeenCalledTimes(1));
+    act(() => result.current.sharing.setSelectedGroupToAdd('group-current'));
+    await act(async () => result.current.sharing.addGroup('viewer'));
+    expect(result.current.data.walletShareInfo).toEqual(currentShare);
+
+    await act(async () => {
+      initialShare.resolve({
+        users: [],
+        group: { id: 'group-obsolete', name: 'Obsolete group' },
+      } as never);
+      await initialShare.promise;
+    });
+    expect(result.current.data.walletShareInfo).toEqual(currentShare);
+
+    vi.mocked(walletsApi.shareWalletWithGroup).mockClear();
+    await act(async () => result.current.sharing.updateGroupRole('signer'));
+    expect(walletsApi.shareWalletWithGroup).toHaveBeenCalledWith('wallet-1', {
+      groupId: 'group-current',
+      role: 'signer',
+    });
   });
 });

@@ -20,6 +20,7 @@ import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 import type { RouteToken } from '../../../hooks/requestOwnership';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 import { mergeWalletHttpSyncState } from '../../../utils/walletSyncSnapshot';
+import type { WalletShareInfoRefreshResult } from './walletDataTypes';
 
 const log = createLogger('useWalletSharing');
 
@@ -39,10 +40,8 @@ export interface UseWalletSharingParams {
   walletShareInfo: walletsApi.WalletShareInfo | null;
   /** Available groups for sharing */
   groups: authApi.UserGroup[];
-  /** Callback to refresh wallet data after sharing changes */
-  onDataRefresh: () => Promise<void>;
-  /** Setter for walletShareInfo on parent (will be removed once state moves entirely here) */
-  setWalletShareInfo: (info: walletsApi.WalletShareInfo | null) => void;
+  /** Monotonic refresh owned by the wallet data hook. */
+  refreshWalletShareInfo: () => Promise<WalletShareInfoRefreshResult>;
   /** Setter for wallet on parent (for handleTransferComplete) */
   setWallet: Dispatch<SetStateAction<Wallet | null>>;
 }
@@ -91,7 +90,7 @@ export function useWalletSharing({
   ownershipKey = walletId ?? '',
   wallet,
   walletShareInfo,
-  setWalletShareInfo,
+  refreshWalletShareInfo,
   setWallet,
 }: UseWalletSharingParams): UseWalletSharingReturn {
   const { handleError } = useErrorHandler();
@@ -129,10 +128,14 @@ export function useWalletSharing({
     id === walletId && ownership.isRouteOwner(token)
   );
 
-  const refreshShareInfo = async (id: string, token: RouteToken) => {
-    const shareInfo = await walletsApi.getWalletShareInfo(id);
-    if (owns(token, id)) setWalletShareInfo(shareInfo);
-    return shareInfo;
+  const refreshShareInfo = async (
+    id: string,
+    token: RouteToken,
+  ): Promise<WalletShareInfoRefreshResult> => {
+    if (!owns(token, id)) return { status: 'superseded' };
+    const result = await refreshWalletShareInfo();
+    if (result.status === 'failed') throw result.error;
+    return owns(token, id) ? result : { status: 'superseded' };
   };
 
   // -----------------------------------------------------------------------
@@ -148,8 +151,8 @@ export function useWalletSharing({
     try {
       setSharingLoading(true);
       await walletsApi.shareWalletWithGroup(id, { groupId, role });
-      await refreshShareInfo(id, token);
-      if (owns(token, id)) setSelectedGroupToAdd('');
+      const refresh = await refreshShareInfo(id, token);
+      if (refresh.status === 'committed' && owns(token, id)) setSelectedGroupToAdd('');
     } catch (err) {
       log.error('Failed to share with group', { error: err });
       if (owns(token, id)) handleError(err, 'Share Failed');
@@ -208,13 +211,13 @@ export function useWalletSharing({
       const result = await walletsApi.shareWalletWithUser(id, { targetUserId, role });
 
       // Refresh share info
-      const shareInfo = await refreshShareInfo(id, token);
-      if (!owns(token, id)) return;
+      const refresh = await refreshShareInfo(id, token);
+      if (refresh.status !== 'committed' || !owns(token, id)) return;
 
       // If there are devices to share, show the prompt
       if (result.devicesToShare && result.devicesToShare.length > 0) {
         const targetUsername = userSearchResults.find(u => u.id === targetUserId)?.username
-          || shareInfo.users.find(u => u.id === targetUserId)?.username
+          || refresh.shareInfo.users.find(u => u.id === targetUserId)?.username
           || 'this user';
 
         setDeviceSharePrompt({

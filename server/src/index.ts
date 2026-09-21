@@ -67,6 +67,11 @@ import {
   shutdownNotificationTelemetry,
 } from './services/notifications/telemetry';
 import { shutdownNotificationDeadLetterAggregateWriter } from './services/notifications/deadLetterAggregates';
+import { createHttpServerDrain } from './utils/httpServerDrain';
+import {
+  createGracefulShutdownHandler,
+  registerGracefulShutdownHandlers,
+} from './utils/gracefulShutdown';
 
 const log = createLogger('SERVER');
 const COARSE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -209,6 +214,7 @@ const httpServer = createServer(app);
 // Initialize WebSocket servers
 const wsServer = initializeWebSocketServer();
 const gatewayWsServer = initializeGatewayWebSocketServer();
+const httpServerDrain = createHttpServerDrain(httpServer, [wsServer, gatewayWsServer]);
 
 // Handle WebSocket upgrades - route to correct server based on path
 httpServer.on('upgrade', (request, socket, head) => {
@@ -340,108 +346,41 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
 })();
 
 // Graceful shutdown configuration
-const SHUTDOWN_TIMEOUT_MS = 30000; // 30 seconds to drain connections
-let isShuttingDown = false;
-let shutdownExitCode: 0 | 1 = 0;
 let activeStatsTimer: NodeJS.Timeout | null = null;
 
-// Graceful shutdown handler with connection draining
-const handleShutdown = async (signal: string, exitCode: 0 | 1 = 0) => {
-  // Prevent multiple shutdown attempts
-  if (isShuttingDown) {
-    if (exitCode === 1) {
-      shutdownExitCode = 1;
-    }
-    log.warn(`${signal} received again, already shutting down...`);
-    return;
-  }
-  isShuttingDown = true;
-  shutdownExitCode = exitCode;
-
-  log.info(`${signal} received, starting graceful shutdown (${SHUTDOWN_TIMEOUT_MS / 1000}s timeout)...`);
-
-  // Set a hard timeout - force exit if graceful shutdown takes too long
-  const forceExitTimeout = setTimeout(() => {
-    log.error('Graceful shutdown timed out, forcing exit');
-    exitNow(1);
-  }, SHUTDOWN_TIMEOUT_MS);
-
-  // Don't let this timeout keep the process alive if everything else closes
-  forceExitTimeout.unref();
-
-  // Stop metrics timer
-  if (activeStatsTimer) {
-    clearInterval(activeStatsTimer);
+const handleShutdown = createGracefulShutdownHandler({
+  log,
+  httpServerDrain,
+  stopActiveStatsTimer: () => {
+    if (activeStatsTimer) clearInterval(activeStatsTimer);
     activeStatsTimer = null;
-  }
+  },
+  stopDatabaseHealthCheck,
+  stopRegisteredServices,
+  stopSynchronousServices: () => {
+    rateLimitService.shutdown();
+    cache.stop();
+    walletLogBuffer.stop();
+    deadLetterQueue.stop();
+  },
+  shutdownElectrumPool,
+  shutdownJobQueue: () => jobQueue.shutdown(),
+  shutdownRedisDependencies: async () => {
+    shutdownDistributedLock();
+    shutdownCacheInvalidation();
+    await shutdownRedisBridge();
+    await shutdownNotificationTelemetry();
+    shutdownNotificationDeadLetterAggregateWriter();
+    featureFlagService.shutdownRuntime();
+  },
+  shutdownRedis,
+  disconnect,
+  exitNow,
+});
 
-  // Close WebSocket servers first (stop accepting new connections)
-  wsServer.close();
-  gatewayWsServer.close();
-
-  // Stop background services
-  // Revoke monitor ownership now and drain it alongside the remaining services.
-  const databaseHealthStop = stopDatabaseHealthCheck();
-  await stopRegisteredServices();
-  rateLimitService.shutdown();
-
-  // Stop memory caches and buffers
-  cache.stop();
-  walletLogBuffer.stop();
-  deadLetterQueue.stop();
-
-  // Close Electrum connection pool
-  try {
-    await shutdownElectrumPool();
-    log.info('Electrum pool closed');
-  } catch (error) {
-    log.error('Error closing Electrum pool', {
-      error: getErrorMessage(error),
-    });
-  }
-
-  // Shutdown job queue
-  await jobQueue.shutdown();
-
-  // Shutdown distributed lock infrastructure
-  shutdownDistributedLock();
-
-  // Shutdown cache invalidation (before Redis shutdown)
-  shutdownCacheInvalidation();
-
-  // Shutdown Redis WebSocket bridge
-  await shutdownRedisBridge();
-
-  // Close the isolated best-effort telemetry connection before shared Redis.
-  await shutdownNotificationTelemetry();
-  shutdownNotificationDeadLetterAggregateWriter();
-
-  // Shutdown Redis infrastructure
-  featureFlagService.shutdownRuntime();
-  await shutdownRedis();
-
-  // Close database connection
-  try {
-    // The final disconnect must follow any health query or reconnect already in flight.
-    await databaseHealthStop;
-    await disconnect();
-  } catch (error) {
-    log.error('Error disconnecting from database', {
-      error: getErrorMessage(error),
-    });
-  }
-
-  // Close HTTP server and wait for active connections to drain
-  httpServer.close(() => {
-    clearTimeout(forceExitTimeout);
-    log.info('Server closed gracefully');
-    exitNow(shutdownExitCode);
-  });
-};
-
-// Graceful shutdown on SIGTERM and SIGINT
-process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-process.on('SIGINT', () => handleShutdown('SIGINT'));
-registerFatalProcessHandlers({ log, shutdown: handleShutdown, exitNow });
+registerGracefulShutdownHandlers(
+  handleShutdown,
+  shutdown => registerFatalProcessHandlers({ log, shutdown, exitNow }),
+);
 
 export default app;

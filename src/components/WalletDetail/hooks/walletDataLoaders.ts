@@ -269,17 +269,3 @@ export async function loadGroups(
     return [];
   }
 }
-
-/**
- * Fetch wallet share info (access tab).
- */
-export async function loadWalletShareInfo(
-  walletId: string,
-): Promise<walletsApi.WalletShareInfo | null> {
-  try {
-    return await walletsApi.getWalletShareInfo(walletId);
-  } catch (err) {
-    logError(log, err, 'Failed to fetch wallet share info');
-    return null;
-  }
-}

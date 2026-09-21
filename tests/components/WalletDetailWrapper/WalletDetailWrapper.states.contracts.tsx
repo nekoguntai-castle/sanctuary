@@ -124,21 +124,21 @@ export const registerWalletDetailWrapperStateContracts = () => {
       });
     });
 
-    it('runs hook onDataRefresh callbacks wired into sync and sharing hooks', async () => {
+    it('wires the full refresh to sync and the monotonic share refresh to sharing', async () => {
       render(<WalletDetail />);
 
       expect(mocks.walletSyncHookArgs?.onDataRefresh).toEqual(expect.any(Function));
-      expect(mocks.walletSharingHookArgs?.onDataRefresh).toEqual(expect.any(Function));
+      expect(mocks.walletSharingHookArgs?.refreshWalletShareInfo).toBe(
+        mocks.walletDataState.refreshWalletShareInfo,
+      );
 
       mocks.fetchData.mockClear();
 
       await mocks.walletSyncHookArgs.onDataRefresh();
       expect(mocks.fetchData).toHaveBeenCalledWith(true);
 
-      mocks.fetchData.mockClear();
-
-      await mocks.walletSharingHookArgs.onDataRefresh();
-      expect(mocks.fetchData).toHaveBeenCalledWith(true);
+      await mocks.walletSharingHookArgs.refreshWalletShareInfo();
+      expect(mocks.walletDataState.refreshWalletShareInfo).toHaveBeenCalledTimes(1);
     });
 
     it('rejects the sync refresh contract when the critical wallet refresh did not complete', async () => {
