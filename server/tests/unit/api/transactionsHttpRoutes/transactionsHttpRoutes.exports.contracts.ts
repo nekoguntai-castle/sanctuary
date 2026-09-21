@@ -1,7 +1,7 @@
 import { get as httpGet } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { expect, it } from "vitest";
+import { beforeEach, expect, it } from "vitest";
 import request from "supertest";
 
 import { mockPrismaClient } from "../../../mocks/prisma";
@@ -14,13 +14,19 @@ import { transactionExportPermits } from '../../../../src/services/transactionEx
 
 function mockExportRows(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   const normalized = rows.map((row, index) => ({ id: row.id ?? `export-${index}`, ...row }));
-  mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-    return normalized.slice(args.skip, args.skip + args.take);
+  mockPrismaClient.$queryRaw.mockImplementation(async (statement: any) => {
+    const take = Number(statement.values.at(-2));
+    const skip = Number(statement.values.at(-1));
+    return normalized.slice(skip, skip + take);
   });
   return normalized;
 }
 
 export function registerTransactionHttpExportTests(): void {
+  beforeEach(() => {
+    mockPrismaClient.$queryRaw.mockReset().mockResolvedValue([]);
+  });
+
   it("exports transactions in JSON format with sanitized filename", async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "My Wallet!",
@@ -59,9 +65,14 @@ export function registerTransactionHttpExportTests(): void {
       amountSats: 100000,
       balanceAfterSats: 100000,
     });
-    const findManyArg = mockPrismaClient.transaction.findMany.mock.calls[0][0];
-    expect(findManyArg.where.blockTime.gte).toBeInstanceOf(Date);
-    expect(findManyArg.where.blockTime.lte).toBeInstanceOf(Date);
+    const statement = mockPrismaClient.$queryRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(statement.strings.join('')).toContain('COALESCE(transaction."blockTime", transaction."createdAt")');
+    expect(statement.strings.join('')).toContain('transaction."rbfStatus" <> \'replaced\'');
+    expect(statement.values).toContainEqual(new Date('2025-01-01T00:00:00.000Z'));
+    expect(statement.values).toContainEqual(new Date('2025-01-31T23:59:59.999Z'));
   });
 
   it("exports transactions in CSV format and escapes commas", async () => {
@@ -226,7 +237,7 @@ export function registerTransactionHttpExportTests(): void {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "Err Wallet",
     });
-    mockPrismaClient.transaction.findMany.mockRejectedValue(
+    mockPrismaClient.$queryRaw.mockRejectedValue(
       new Error("export failed"),
     );
 
@@ -273,14 +284,9 @@ export function registerTransactionHttpExportTests(): void {
     expect(response.status).toBe(200);
     expect(Array.isArray(response.body)).toBe(true);
     expect(response.body.length).toBe(503);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(2);
     // Second call should page past the first 500 rows.
-    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].skip).toBe(
-      500,
-    );
-    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].take).toBe(
-      500,
-    );
+    expect(mockPrismaClient.$queryRaw.mock.calls[1][0].values.slice(-2)).toEqual([500, 500]);
   });
 
   it("pages through large CSV export result sets", async () => {
@@ -310,10 +316,8 @@ export function registerTransactionHttpExportTests(): void {
 
     expect(response.status).toBe(200);
     expect(response.text.split("\n").filter(Boolean).length).toBe(502);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
-    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].skip).toBe(
-      500,
-    );
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.$queryRaw.mock.calls[1][0].values.at(-1)).toBe(500);
   });
 
   it("fails before sending export headers when a later capture page fails", async () => {
@@ -335,9 +339,11 @@ export function registerTransactionHttpExportTests(): void {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "Broken Stream Wallet",
     });
-    mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-      if (args.skip === 500) throw new Error('page two failed');
-      return rows.slice(args.skip, args.skip + args.take);
+    mockPrismaClient.$queryRaw.mockImplementation(async (statement: any) => {
+      const take = Number(statement.values.at(-2));
+      const skip = Number(statement.values.at(-1));
+      if (skip === 500) throw new Error('page two failed');
+      return rows.slice(skip, skip + take);
     });
 
     const response = await request(app)
@@ -346,7 +352,7 @@ export function registerTransactionHttpExportTests(): void {
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(2);
     expect(transactionExportPermits.active).toBe(0);
   });
 
@@ -379,22 +385,72 @@ export function registerTransactionHttpExportTests(): void {
 
     expect(response.status).toBe(200);
     expect(response.body.length).toBe(1);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
-    // Ensure paginated query shape: deterministic orderBy + skip/take.
-    const call = mockPrismaClient.transaction.findMany.mock.calls[0][0];
-    expect(call.orderBy).toEqual([{ blockTime: "asc" }, { id: "asc" }]);
-    expect(call.skip).toBe(0);
-    expect(call.take).toBe(500);
-    // transactionLabels include must NOT appear - dead join was dropped.
-    expect(call.include).toBeUndefined();
-    expect(call.select).toBeDefined();
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(1);
+    const call = mockPrismaClient.$queryRaw.mock.calls[0][0];
+    expect(call.strings.join('')).toContain('ORDER BY COALESCE');
+    expect(call.values.slice(-2)).toEqual([500, 0]);
+    expect(call.strings.join('')).not.toContain('transaction_labels');
+  });
+
+  it.each([
+    ['malformed', { startDate: 'not-a-date' }],
+    ['non-calendar', { endDate: '2025-02-30' }],
+    ['reversed', { startDate: '2025-02-02', endDate: '2025-02-01' }],
+  ])('rejects %s transaction export dates before capture', async (_label, query) => {
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query(query);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_INPUT');
+    expect(mockPrismaClient.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['startDate', '2025-03-04', new Date('2025-03-04T00:00:00.000Z')],
+    ['endDate', '2025-03-04', new Date('2025-03-04T23:59:59.999Z')],
+  ])('constructs a UTC boundary for a lone %s under a non-UTC timezone', async (
+    field,
+    value,
+    expected,
+  ) => {
+    const priorTimezone = process.env.TZ;
+    process.env.TZ = 'Pacific/Honolulu';
+    mockExportRows([]);
+    try {
+      const response = await request(app)
+        .get(`/api/v1/wallets/${walletId}/transactions/export`)
+        .query({ [field]: value });
+
+      expect(response.status).toBe(200);
+      expect(mockPrismaClient.$queryRaw.mock.calls[0][0].values).toContainEqual(expected);
+    } finally {
+      if (priorTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = priorTimezone;
+      }
+    }
+  });
+
+  it("accepts an equal-bound single-day range with inclusive UTC limits", async () => {
+    mockExportRows([]);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ startDate: "2025-03-04", endDate: "2025-03-04" });
+
+    expect(response.status).toBe(200);
+    const values = mockPrismaClient.$queryRaw.mock.calls[0][0].values;
+    expect(values).toContainEqual(new Date("2025-03-04T00:00:00.000Z"));
+    expect(values).toContainEqual(new Date("2025-03-04T23:59:59.999Z"));
   });
 
   it("streams an empty JSON array for wallets with no transactions", async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "Empty Wallet",
     });
-    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+    mockPrismaClient.$queryRaw.mockResolvedValue([]);
 
     const response = await request(app)
       .get(`/api/v1/wallets/${walletId}/transactions/export`)
@@ -402,12 +458,12 @@ export function registerTransactionHttpExportTests(): void {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it("streams an empty CSV (headers only) for wallets with no transactions", async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: "Empty CSV" });
-    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+    mockPrismaClient.$queryRaw.mockResolvedValue([]);
 
     const response = await request(app).get(
       `/api/v1/wallets/${walletId}/transactions/export`,
@@ -417,6 +473,30 @@ export function registerTransactionHttpExportTests(): void {
     const lines = response.text.split("\n").filter(Boolean);
     expect(lines.length).toBe(1);
     expect(lines[0]).toContain("Transaction ID");
+  });
+
+  it("preserves the CSV fallback for an unknown format", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: "Fallback CSV" });
+    mockPrismaClient.$queryRaw.mockResolvedValue([]);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: "xml" });
+
+    expect(response.status).toBe(200);
+    expect(response.header["content-type"]).toContain("text/csv");
+    expect(response.text).toContain("Transaction ID");
+  });
+
+  it("preserves the CSV fallback for repeated format parameters", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: "Repeated CSV" });
+    mockPrismaClient.$queryRaw.mockResolvedValue([]);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export?format=csv&format=json`);
+
+    expect(response.status).toBe(200);
+    expect(response.header["content-type"]).toContain("text/csv");
   });
 
   it("wraps the complete row capture in a short REPEATABLE READ transaction", async () => {
@@ -539,7 +619,7 @@ export function registerTransactionHttpExportTests(): void {
       'c'.repeat(64),
     ]);
     expect(response.body.map((row: { amountSats: number }) => row.amountSats)).toEqual([1, 2, 3]);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('retains its permit when the client closes during a pending row capture', async () => {
@@ -552,7 +632,7 @@ export function registerTransactionHttpExportTests(): void {
     const pendingRows = new Promise<unknown[]>(resolve => {
       settleRows = resolve;
     });
-    mockPrismaClient.transaction.findMany.mockImplementation(async () => {
+    mockPrismaClient.$queryRaw.mockImplementation(async () => {
       markQueryStarted();
       return pendingRows;
     });
@@ -584,7 +664,7 @@ export function registerTransactionHttpExportTests(): void {
     const pendingIds = new Promise<unknown[]>(resolve => {
       settleIds = resolve;
     });
-    mockPrismaClient.transaction.findMany.mockImplementation(async () => {
+    mockPrismaClient.$queryRaw.mockImplementation(async () => {
       markQueryStarted();
       return pendingIds;
     });
@@ -664,7 +744,7 @@ export function registerTransactionHttpExportTests(): void {
 
   it('preserves the production 408 when timeout fires during pre-header capture', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Pre-header timeout' });
-    mockPrismaClient.transaction.findMany.mockImplementation(() => (
+    mockPrismaClient.$queryRaw.mockImplementation(() => (
       new Promise(resolve => setTimeout(() => resolve([]), 100))
     ));
     const timedApp = express();

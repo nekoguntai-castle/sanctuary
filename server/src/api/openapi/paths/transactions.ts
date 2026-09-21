@@ -657,7 +657,7 @@ export const transactionPaths = {
     get: {
       tags: ['Transactions'],
       summary: 'Export wallet transactions',
-      description: 'Export wallet transactions as CSV or JSON over an optional date range.',
+      description: 'Export live wallet transactions as CSV or JSON over an optional inclusive UTC effective-date range. Confirmed transactions use blockTime and pending transactions use createdAt.',
       security: bearerAuth,
       parameters: [
         walletIdParameter,
@@ -695,6 +695,7 @@ export const transactionPaths = {
             },
           },
         },
+        400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
         429: exportRateLimitedResponse,

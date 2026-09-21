@@ -65,6 +65,7 @@ list_group_specs() {
         tests/integration/repositories/syncMutationRecursion.test.ts \
         tests/integration/repositories/subscriptionCheckpointLifecycle.test.ts \
         tests/integration/repositories/subscriptionCoverageLifecycle.test.ts \
+        tests/integration/repositories/transactionExportEffectiveDate.test.ts \
         tests/integration/repositories/transactionExportPoolPressure.test.ts \
         tests/integration/repositories/transactionSigningIntentRepository.integration.test.ts \
         tests/integration/repositories/transactionRepository.getBucketedBalanceDeltas.test.ts \

@@ -1,10 +1,12 @@
 /** Backpressure-safe CSV/JSON wallet transaction export route. */
 
 import { Router, type Request, type Response } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../../middleware/walletAccess';
+import { validate } from '../../../middleware/validate';
 import { walletRepository, transactionRepository } from '../../../repositories';
 import { asyncHandler } from '../../../errors/errorHandler';
-import { RateLimitError } from '../../../errors/ApiError';
+import { ErrorCodes, RateLimitError } from '../../../errors/ApiError';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import {
@@ -33,14 +35,37 @@ const EXPORT_RETRY_AFTER_SECONDS = 5;
 
 type DateFilter = { gte?: Date; lte?: Date };
 
-function getDateFilter(query: Request['query']): DateFilter | undefined {
-  const dateFilter: DateFilter = {};
-  if (query.startDate) dateFilter.gte = new Date(query.startDate as string);
-  if (query.endDate) {
-    const end = new Date(query.endDate as string);
-    end.setHours(23, 59, 59, 999);
-    dateFilter.lte = end;
+// The round trip rejects rollover inputs such as 2026-02-31 that match the
+// textual shape but JavaScript would otherwise normalize into the next month.
+const calendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() + 1 === month
+    && parsed.getUTCDate() === day;
+}, 'Invalid calendar date');
+
+const transactionExportQuerySchema = z.object({
+  format: z.union([z.string(), z.array(z.string())]).optional(),
+  startDate: calendarDateSchema.optional(),
+  endDate: calendarDateSchema.optional(),
+}).superRefine((query, context) => {
+  if (query.startDate && query.endDate && query.startDate > query.endDate) {
+    context.addIssue({
+      code: 'custom',
+      path: ['endDate'],
+      message: 'End date must be on or after start date',
+    });
   }
+});
+
+type TransactionExportQuery = z.infer<typeof transactionExportQuerySchema>;
+
+function getDateFilter(query: TransactionExportQuery): DateFilter | undefined {
+  const dateFilter: DateFilter = {};
+  if (query.startDate) dateFilter.gte = new Date(`${query.startDate}T00:00:00.000Z`);
+  // Application timestamps originate as millisecond-precision JavaScript dates.
+  if (query.endDate) dateFilter.lte = new Date(`${query.endDate}T23:59:59.999Z`);
   return Object.keys(dateFilter).length > 0 ? dateFilter : undefined;
 }
 
@@ -143,7 +168,14 @@ function rejectSaturatedExport(res: Response): void {
 export function createExportRouter(): Router {
   const router = Router();
 
-  router.get('/wallets/:walletId/transactions/export', requireWalletAccess('view'), asyncHandler(async (req, res) => {
+  router.get(
+    '/wallets/:walletId/transactions/export',
+    requireWalletAccess('view'),
+    validate(
+      { query: transactionExportQuerySchema },
+      { message: 'Invalid transaction export query', code: ErrorCodes.INVALID_INPUT },
+    ),
+    asyncHandler(async (req, res) => {
     const release = transactionExportPermits.tryAcquire();
     if (!release) {
       rejectSaturatedExport(res);
@@ -156,8 +188,9 @@ export function createExportRouter(): Router {
     try {
       const walletId = req.walletId!;
       const wallet = await walletRepository.findByIdWithSelect(walletId, { name: true });
-      snapshot = await captureExportRows(walletId, getDateFilter(req.query), lifecycle.signal, ownership);
-      const isJson = req.query.format === 'json';
+      const query = req.query as TransactionExportQuery;
+      snapshot = await captureExportRows(walletId, getDateFilter(query), lifecycle.signal, ownership);
+      const isJson = typeof query.format === 'string' && query.format === 'json';
       setExportHeaders(res, wallet?.name, isJson);
       if (isJson) await streamJson(req, res, snapshot, lifecycle.signal);
       else await streamCsv(req, res, snapshot, lifecycle.signal);
@@ -179,7 +212,8 @@ export function createExportRouter(): Router {
       await snapshot?.cleanup();
       ownership.releaseWhenSettled(release);
     }
-  }));
+    }),
+  );
 
   return router;
 }

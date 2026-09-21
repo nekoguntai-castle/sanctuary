@@ -223,6 +223,13 @@ export function registerOpenApiWalletTests() {
     expect(openApiSpec.paths['/wallets/{walletId}/transactions/export'].get.responses[200].content['application/json'].schema.items).toEqual({
       $ref: '#/components/schemas/TransactionExportEntry',
     });
+    expect(openApiSpec.paths['/wallets/{walletId}/transactions/export'].get.responses[400]).toMatchObject({
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/ApiError' },
+        },
+      },
+    });
     expect(openApiSpec.paths['/wallets/{walletId}/transactions/export'].get.responses[429]).toMatchObject({
       headers: {
         'Retry-After': {

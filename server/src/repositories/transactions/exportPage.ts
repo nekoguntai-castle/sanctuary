@@ -1,5 +1,6 @@
 import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { Prisma } from '../../generated/prisma/client';
+import { liveTransactionSql } from './visibility';
 
 export interface ExportTransactionRow {
   id: string;
@@ -24,30 +25,35 @@ export async function findExportRowPage(
   take: number,
   client: PrismaTxClient | typeof prisma = prisma,
 ): Promise<ExportTransactionRow[]> {
-  return client.transaction.findMany({
-    where: {
-      walletId,
-      ...(dateFilter && Object.keys(dateFilter).length > 0 ? { blockTime: dateFilter } : {}),
-    },
-    select: {
-      id: true,
-      txid: true,
-      type: true,
-      amount: true,
-      balanceAfter: true,
-      fee: true,
-      confirmations: true,
-      label: true,
-      memo: true,
-      counterpartyAddress: true,
-      blockHeight: true,
-      blockTime: true,
-      createdAt: true,
-    },
-    orderBy: [{ blockTime: 'asc' }, { id: 'asc' }],
-    skip,
-    take,
-  });
+  // Export dates follow the UI's effective-date contract: confirmed rows use
+  // blockTime and pending rows fall back to createdAt. Replaced RBF records are
+  // durable audit history rather than live ledger entries and stay out of user
+  // exports. Prisma cannot filter or order by the computed date expression, so
+  // keep the projection explicit here.
+  const effectiveDate = Prisma.sql`COALESCE(transaction."blockTime", transaction."createdAt")`;
+  return client.$queryRaw<ExportTransactionRow[]>(Prisma.sql`
+    SELECT transaction."id",
+           transaction."txid",
+           transaction."type",
+           transaction."amount",
+           transaction."balanceAfter",
+           transaction."fee",
+           transaction."confirmations",
+           transaction."label",
+           transaction."memo",
+           transaction."counterpartyAddress",
+           transaction."blockHeight",
+           transaction."blockTime",
+           transaction."createdAt"
+    FROM "transactions" transaction
+    WHERE transaction."walletId" = ${walletId}
+      AND ${liveTransactionSql(Prisma.sql`transaction."rbfStatus"`)}
+      ${dateFilter?.gte ? Prisma.sql`AND ${effectiveDate} >= ${dateFilter.gte}` : Prisma.empty}
+      ${dateFilter?.lte ? Prisma.sql`AND ${effectiveDate} <= ${dateFilter.lte}` : Prisma.empty}
+    ORDER BY ${effectiveDate} ASC, transaction."id" ASC
+    LIMIT ${take}
+    OFFSET ${skip}
+  `);
 }
 
 export async function withExportCaptureTransaction<T>(
