@@ -34,7 +34,7 @@ async function startMcpServer(): Promise<void> {
   }
 
   await connectWithRetry();
-  startDatabaseHealthCheck();
+  await startDatabaseHealthCheck();
   await initializeRedis();
   initializeDistributedLock('redis-required');
   rateLimitService.initialize();
@@ -69,6 +69,9 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   }, SHUTDOWN_TIMEOUT_MS);
   forceExit.unref();
 
+  // Revoke monitor ownership now and drain it alongside HTTP and Redis teardown.
+  const databaseHealthStop = stopDatabaseHealthCheck();
+
   await new Promise<void>((resolve) => {
     if (!httpServer) {
       resolve();
@@ -77,10 +80,11 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     httpServer.close(() => resolve());
   });
 
-  stopDatabaseHealthCheck();
   rateLimitService.shutdown();
   shutdownDistributedLock();
   await shutdownRedis();
+  // The final disconnect must follow any health query or reconnect already in flight.
+  await databaseHealthStop;
   await disconnect();
 
   clearTimeout(forceExit);

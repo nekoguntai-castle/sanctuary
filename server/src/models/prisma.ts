@@ -148,11 +148,31 @@ export function summarizeDatabaseUrlParams(
   }
 }
 
+function waitForDatabaseRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    return new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 /**
- * Connect to database with retry logic
- * Implements exponential backoff for resilience during startup
+ * Connect to the database with exponential-backoff retries.
+ * When a signal is provided, aborting it cancels pending retry delays and
+ * prevents an in-flight connection result from publishing health state.
  */
-export async function connectWithRetry(): Promise<void> {
+export async function connectWithRetry(signal?: AbortSignal): Promise<void> {
   let lastError: Error | null = null;
 
   const poolParams = summarizeDatabaseUrlParams(process.env.DATABASE_URL);
@@ -164,13 +184,16 @@ export async function connectWithRetry(): Promise<void> {
   });
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    signal?.throwIfAborted();
     try {
       log.info(`Connecting to database (attempt ${attempt}/${MAX_RETRIES})...`);
       await prisma.$connect();
+      signal?.throwIfAborted();
       lastDatabaseHealth = true;
       log.info('Database connection established');
       return;
     } catch (error) {
+      signal?.throwIfAborted();
       lastDatabaseHealth = false;
       lastError = error as Error;
       const delay = Math.min(
@@ -184,7 +207,7 @@ export async function connectWithRetry(): Promise<void> {
           maxRetries: MAX_RETRIES,
           error: lastError.message,
         });
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitForDatabaseRetry(delay, signal);
       }
     }
   }
@@ -200,18 +223,31 @@ export async function connectWithRetry(): Promise<void> {
  * Check database health
  * Returns true if database is accessible
  */
-export async function checkDatabaseHealth(): Promise<boolean> {
+type DatabaseHealthProbe =
+  | { healthy: true }
+  | { healthy: false; error: unknown };
+
+async function probeDatabaseHealth(): Promise<DatabaseHealthProbe> {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    lastDatabaseHealth = true;
-    return true;
+    return { healthy: true };
   } catch (error) {
-    lastDatabaseHealth = false;
-    log.error('Database health check failed', {
-      error: getErrorMessage(error),
-    });
-    return false;
+    return { healthy: false, error };
   }
+}
+
+function publishDatabaseHealth(probe: DatabaseHealthProbe): boolean {
+  lastDatabaseHealth = probe.healthy;
+  if (!probe.healthy) {
+    log.error('Database health check failed', {
+      error: getErrorMessage(probe.error),
+    });
+  }
+  return probe.healthy;
+}
+
+export async function checkDatabaseHealth(): Promise<boolean> {
+  return publishDatabaseHealth(await probeDatabaseHealth());
 }
 
 /** Last connection/health fact observed by this process; null until observed. */
@@ -275,11 +311,18 @@ export async function disconnect(): Promise<void> {
 }
 
 // Database health check and reconnection
-let healthCheckTimeout: NodeJS.Timeout | null = null;
-// Promise-based guard: prevents concurrent reconnection attempts.
-// Concurrent callers see a non-null promise and skip, avoiding duplicate reconnects.
-let reconnectingPromise: Promise<void> | null = null;
-let consecutiveHealthFailures = 0;
+/** Per-run ownership keeps stopped work from mutating a replacement monitor. */
+interface DatabaseHealthMonitorRun {
+  intervalMs: number;
+  abortController: AbortController;
+  timeout: NodeJS.Timeout | null;
+  cyclePromise: Promise<void> | null;
+  stopPromise: Promise<void> | null;
+  stopping: boolean;
+  consecutiveFailures: number;
+}
+
+let databaseHealthMonitor: DatabaseHealthMonitorRun | null = null;
 const MAX_HEALTH_CHECK_INTERVAL_MS = 300_000; // 5 min cap
 
 // =============================================================================
@@ -357,87 +400,141 @@ export function configurePoolHealthThresholds(options: {
   }
 }
 
+function isActiveDatabaseHealthMonitor(run: DatabaseHealthMonitorRun): boolean {
+  return databaseHealthMonitor === run && !run.stopping;
+}
+
+function getNextDatabaseHealthCheckDelay(run: DatabaseHealthMonitorRun): number {
+  if (run.consecutiveFailures === 0) return run.intervalMs;
+  return Math.min(
+    run.intervalMs * Math.pow(2, run.consecutiveFailures),
+    MAX_HEALTH_CHECK_INTERVAL_MS,
+  );
+}
+
+async function runDatabaseHealthCheckCycle(run: DatabaseHealthMonitorRun): Promise<void> {
+  const probe = await probeDatabaseHealth();
+  // A stop or replacement revokes this run while any awaited I/O is pending.
+  // Publish state, log, reconnect, and reschedule only while this run still owns the monitor.
+  if (!isActiveDatabaseHealthMonitor(run)) return;
+  const isHealthy = publishDatabaseHealth(probe);
+
+  if (isHealthy) {
+    if (run.consecutiveFailures > 0) {
+      log.info(`Database health restored after ${run.consecutiveFailures} consecutive failures`);
+    }
+    run.consecutiveFailures = 0;
+    return;
+  }
+
+  run.consecutiveFailures++;
+  const nextDelay = getNextDatabaseHealthCheckDelay(run);
+  log.warn(`Database connection lost, attempting reconnect`, {
+    consecutiveFailures: run.consecutiveFailures,
+    nextCheckIn: `${Math.round(nextDelay / 1000)}s`,
+  });
+
+  try {
+    await prisma.$disconnect();
+    if (!isActiveDatabaseHealthMonitor(run)) return;
+    await connectWithRetry(run.abortController.signal);
+    log.info('Database reconnection successful');
+    run.consecutiveFailures = 0;
+  } catch (error) {
+    if (isActiveDatabaseHealthMonitor(run)) {
+      log.error('Database reconnection failed', {
+        error: getErrorMessage(error),
+      });
+    }
+  }
+}
+
+function scheduleDatabaseHealthCheck(run: DatabaseHealthMonitorRun): void {
+  if (!isActiveDatabaseHealthMonitor(run)) return;
+
+  run.timeout = setTimeout(async () => {
+    run.timeout = null;
+    const cyclePromise = runDatabaseHealthCheckCycle(run);
+    run.cyclePromise = cyclePromise;
+
+    try {
+      await cyclePromise;
+    } finally {
+      run.cyclePromise = null;
+    }
+
+    // Cycles are serialized: the next timer is armed only after this cycle settles.
+    scheduleDatabaseHealthCheck(run);
+  }, getNextDatabaseHealthCheckDelay(run));
+
+  run.timeout.unref();
+}
+
 /**
- * Start database health check monitoring
- * Periodically checks connection and reconnects if needed.
- * Uses exponential backoff on consecutive failures: base → 2x → 4x → ... → 300s max.
- * Resets to base interval on successful health check.
+ * Start database health check monitoring after any stopping run drains.
+ * Concurrent starts create one run. Health failures use exponential backoff,
+ * capped at five minutes, and a successful check resets the base interval.
  */
-export function startDatabaseHealthCheck(intervalMs: number = 30000): void {
-  if (healthCheckTimeout) {
-    return; // Already running
+export async function startDatabaseHealthCheck(intervalMs: number = 30000): Promise<void> {
+  const currentRun = databaseHealthMonitor;
+  if (currentRun) {
+    if (!currentRun.stopping) return;
+    await currentRun.stopPromise;
+    // Concurrent restart requests share the stop barrier; only the first creates a run.
+    if (databaseHealthMonitor) return;
   }
 
-  function getNextDelay(): number {
-    if (consecutiveHealthFailures === 0) return intervalMs;
-    return Math.min(
-      intervalMs * Math.pow(2, consecutiveHealthFailures),
-      MAX_HEALTH_CHECK_INTERVAL_MS,
-    );
-  }
-
-  function scheduleNext(): void {
-    const delay = getNextDelay();
-    healthCheckTimeout = setTimeout(async () => {
-      const isHealthy = await checkDatabaseHealth();
-
-      if (isHealthy) {
-        if (consecutiveHealthFailures > 0) {
-          log.info(`Database health restored after ${consecutiveHealthFailures} consecutive failures`);
-        }
-        consecutiveHealthFailures = 0;
-      } else if (!reconnectingPromise) {
-        consecutiveHealthFailures++;
-        const nextDelay = getNextDelay();
-        log.warn(`Database connection lost, attempting reconnect`, {
-          consecutiveFailures: consecutiveHealthFailures,
-          nextCheckIn: `${Math.round(nextDelay / 1000)}s`,
-        });
-
-        reconnectingPromise = (async () => {
-          try {
-            await prisma.$disconnect();
-            await connectWithRetry();
-            log.info('Database reconnection successful');
-            consecutiveHealthFailures = 0;
-          } catch (error) {
-            log.error('Database reconnection failed', {
-              error: getErrorMessage(error),
-            });
-          } finally {
-            reconnectingPromise = null;
-          }
-        })();
-
-        await reconnectingPromise;
-      }
-
-      scheduleNext();
-    }, delay);
-
-    healthCheckTimeout.unref();
-  }
-
-  scheduleNext();
+  const run: DatabaseHealthMonitorRun = {
+    intervalMs,
+    abortController: new AbortController(),
+    timeout: null,
+    cyclePromise: null,
+    stopPromise: null,
+    stopping: false,
+    consecutiveFailures: 0,
+  };
+  databaseHealthMonitor = run;
+  scheduleDatabaseHealthCheck(run);
   log.debug('Database health check monitoring started');
 }
 
 /**
- * Stop database health check monitoring
+ * Stop database health check monitoring.
+ *
+ * Invalidates scheduled and reconnect work synchronously. The returned promise
+ * resolves after the current cycle settles and must be awaited before the final
+ * database disconnect. Repeated stops share the same drain promise.
  */
-export function stopDatabaseHealthCheck(): void {
-  if (healthCheckTimeout) {
-    clearTimeout(healthCheckTimeout);
-    healthCheckTimeout = null;
-    consecutiveHealthFailures = 0;
-    log.debug('Database health check monitoring stopped');
+export function stopDatabaseHealthCheck(): Promise<void> {
+  const run = databaseHealthMonitor;
+  if (!run) return Promise.resolve();
+  if (run.stopPromise) return run.stopPromise;
+
+  run.stopping = true;
+  run.abortController.abort();
+  if (run.timeout) {
+    clearTimeout(run.timeout);
+    run.timeout = null;
   }
+
+  run.stopPromise = (async () => {
+    if (run.cyclePromise) {
+      await run.cyclePromise;
+    }
+    databaseHealthMonitor = null;
+    log.debug('Database health check monitoring stopped');
+  })();
+
+  return run.stopPromise;
 }
 
-// Handle cleanup on shutdown
+// Handle cleanup on shutdown. beforeExit may fire again if cleanup schedules work.
+let beforeExitCleanupStarted = false;
 process.on('beforeExit', async () => {
-  stopDatabaseHealthCheck();
-  await prisma.$disconnect();
+  if (beforeExitCleanupStarted) return;
+  beforeExitCleanupStarted = true;
+  await stopDatabaseHealthCheck();
+  await disconnect();
 });
 
 /**

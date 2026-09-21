@@ -433,7 +433,7 @@ describe('models/prisma behavior', () => {
     expect(disconnectMock).toHaveBeenCalled();
     expect(connectMock).toHaveBeenCalled();
 
-    mod.stopDatabaseHealthCheck();
+    await mod.stopDatabaseHealthCheck();
     const callsBefore = queryRawMock.mock.calls.length;
     await vi.advanceTimersByTimeAsync(1000);
     expect(queryRawMock.mock.calls.length).toBe(callsBefore);
@@ -458,12 +458,12 @@ describe('models/prisma behavior', () => {
       'Database health restored after 1 consecutive failures'
     );
 
-    mod.stopDatabaseHealthCheck();
+    await mod.stopDatabaseHealthCheck();
     processOnSpy.mockRestore();
   });
 
-  it('does not start a second reconnect while one reconnect attempt is in progress', async () => {
-    const { mod, queryRawMock, connectMock, disconnectMock, processOnSpy } = await loadPrismaModule();
+  it('stopDatabaseHealthCheck waits for an active reconnect and prevents another cycle', async () => {
+    const { mod, queryRawMock, connectMock, disconnectMock, logger, processOnSpy } = await loadPrismaModule();
     queryRawMock.mockRejectedValue(new Error('db still down'));
     disconnectMock.mockResolvedValue(undefined);
 
@@ -475,36 +475,222 @@ describe('models/prisma behavior', () => {
     );
 
     mod.startDatabaseHealthCheck(10);
-    await vi.advanceTimersByTimeAsync(20);
-    expect(disconnectMock).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(disconnectMock).toHaveBeenCalledTimes(1));
 
-    mod.stopDatabaseHealthCheck();
-    mod.startDatabaseHealthCheck(10);
-    await vi.advanceTimersByTimeAsync(20);
-    expect(disconnectMock).toHaveBeenCalledTimes(1);
+    let stopResolved = false;
+    const stopBarrier = mod.stopDatabaseHealthCheck();
+    expect(mod.stopDatabaseHealthCheck()).toBe(stopBarrier);
+    const stopPromise = stopBarrier.then(() => {
+      stopResolved = true;
+    });
+    await Promise.resolve();
+    expect(stopResolved).toBe(false);
 
     resolveConnect?.();
+    await stopPromise;
+    expect(stopResolved).toBe(true);
+
+    const callsBefore = queryRawMock.mock.calls.length;
     await vi.advanceTimersByTimeAsync(50);
-    mod.stopDatabaseHealthCheck();
+    expect(queryRawMock).toHaveBeenCalledTimes(callsBefore);
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+    expect(mod.getLastDatabaseHealth()).toBe(false);
+    expect(logger.info).not.toHaveBeenCalledWith('Database connection established');
+    expect(logger.info).not.toHaveBeenCalledWith('Database reconnection successful');
+    processOnSpy.mockRestore();
+  });
+
+  it('stopDatabaseHealthCheck prevents reconnect when disconnect is still pending', async () => {
+    const { mod, queryRawMock, connectMock, disconnectMock, processOnSpy } = await loadPrismaModule();
+    queryRawMock.mockRejectedValueOnce(new Error('db down'));
+
+    let resolveDisconnect: (() => void) | undefined;
+    disconnectMock.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolveDisconnect = resolve;
+      })
+    );
+
+    mod.startDatabaseHealthCheck(10);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(disconnectMock).toHaveBeenCalledTimes(1));
+
+    const stopPromise = mod.stopDatabaseHealthCheck();
+    resolveDisconnect?.();
+    await stopPromise;
+
+    expect(connectMock).not.toHaveBeenCalled();
+    processOnSpy.mockRestore();
+  });
+
+  it('suppresses obsolete reconnect failure after monitoring stops', async () => {
+    const { mod, queryRawMock, connectMock, disconnectMock, logger, processOnSpy } = await loadPrismaModule();
+    queryRawMock.mockRejectedValueOnce(new Error('db down'));
+    disconnectMock.mockResolvedValue(undefined);
+    connectMock.mockRejectedValue(new Error('reconnect failed'));
+
+    mod.startDatabaseHealthCheck(10);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(connectMock).toHaveBeenCalledTimes(1));
+
+    const stopPromise = mod.stopDatabaseHealthCheck();
+    await vi.runAllTimersAsync();
+    await stopPromise;
+
+    expect(logger.error).not.toHaveBeenCalledWith(
+      'Database reconnection failed',
+      expect.anything()
+    );
+    processOnSpy.mockRestore();
+  });
+
+  it('cancels reconnect retry backoff when monitoring stops', async () => {
+    const { mod, queryRawMock, connectMock, disconnectMock, processOnSpy } = await loadPrismaModule();
+    queryRawMock.mockRejectedValueOnce(new Error('db down'));
+    disconnectMock.mockResolvedValue(undefined);
+    connectMock.mockRejectedValue(new Error('reconnect failed'));
+
+    mod.startDatabaseHealthCheck(10);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(connectMock).toHaveBeenCalledTimes(1));
+
+    await mod.stopDatabaseHealthCheck();
+    expect(connectMock).toHaveBeenCalledTimes(1);
+    processOnSpy.mockRestore();
+  });
+
+  it('stopDatabaseHealthCheck fences a pending health query before reconnect', async () => {
+    const { mod, queryRawMock, connectMock, disconnectMock, logger, processOnSpy } = await loadPrismaModule();
+
+    let rejectHealth: ((reason: Error) => void) | undefined;
+    queryRawMock.mockImplementationOnce(
+      () => new Promise<never>((_resolve, reject) => {
+        rejectHealth = reject;
+      })
+    );
+
+    mod.startDatabaseHealthCheck(10);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(queryRawMock).toHaveBeenCalledTimes(1));
+
+    let stopResolved = false;
+    const stopPromise = mod.stopDatabaseHealthCheck().then(() => {
+      stopResolved = true;
+    });
+    await Promise.resolve();
+    expect(stopResolved).toBe(false);
+
+    rejectHealth?.(new Error('db down'));
+    await stopPromise;
+
+    expect(connectMock).not.toHaveBeenCalled();
+    expect(disconnectMock).not.toHaveBeenCalled();
+    expect(mod.getLastDatabaseHealth()).toBeNull();
+    expect(logger.error).not.toHaveBeenCalledWith(
+      'Database health check failed',
+      expect.anything()
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    processOnSpy.mockRestore();
+  });
+
+  it('starts exactly one fresh monitor after an in-flight monitor has stopped', async () => {
+    const { mod, queryRawMock, processOnSpy } = await loadPrismaModule();
+
+    let resolveHealth: ((value: number) => void) | undefined;
+    queryRawMock
+      .mockImplementationOnce(
+        () => new Promise<number>((resolve) => {
+          resolveHealth = resolve;
+        })
+      )
+      .mockResolvedValue(1);
+
+    mod.startDatabaseHealthCheck(10);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(queryRawMock).toHaveBeenCalledTimes(1));
+
+    const stopPromise = mod.stopDatabaseHealthCheck();
+    resolveHealth?.(1);
+    await stopPromise;
+
+    mod.startDatabaseHealthCheck(10);
+    mod.startDatabaseHealthCheck(10);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(queryRawMock).toHaveBeenCalledTimes(2);
+
+    await mod.stopDatabaseHealthCheck();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(queryRawMock).toHaveBeenCalledTimes(2);
+    processOnSpy.mockRestore();
+  });
+
+  it('queues exactly one restart requested while the prior monitor is stopping', async () => {
+    const { mod, queryRawMock, processOnSpy } = await loadPrismaModule();
+
+    let resolveHealth: ((value: number) => void) | undefined;
+    queryRawMock
+      .mockImplementationOnce(
+        () => new Promise<number>((resolve) => {
+          resolveHealth = resolve;
+        })
+      )
+      .mockResolvedValue(1);
+
+    await mod.startDatabaseHealthCheck(10);
+    vi.advanceTimersByTime(10);
+    await vi.waitFor(() => expect(queryRawMock).toHaveBeenCalledTimes(1));
+
+    const stopPromise = mod.stopDatabaseHealthCheck();
+    const firstRestart = mod.startDatabaseHealthCheck(10);
+    const duplicateRestart = mod.startDatabaseHealthCheck(10);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+
+    resolveHealth?.(1);
+    await stopPromise;
+    await Promise.all([firstRestart, duplicateRestart]);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(queryRawMock).toHaveBeenCalledTimes(2);
+
+    await mod.stopDatabaseHealthCheck();
     processOnSpy.mockRestore();
   });
 
   it('stopDatabaseHealthCheck is a no-op when monitoring was never started', async () => {
     const { mod, processOnSpy } = await loadPrismaModule();
 
-    expect(() => mod.stopDatabaseHealthCheck()).not.toThrow();
+    await expect(mod.stopDatabaseHealthCheck()).resolves.toBeUndefined();
 
     processOnSpy.mockRestore();
   });
 
-  it('beforeExit handler stops health checks and disconnects prisma', async () => {
-    const { mod, onHandlers, disconnectMock, processOnSpy } = await loadPrismaModule();
+  it('beforeExit handler waits for the health check to stop before disconnecting prisma', async () => {
+    const { mod, onHandlers, queryRawMock, disconnectMock, processOnSpy } = await loadPrismaModule();
     disconnectMock.mockResolvedValue(undefined);
 
+    let resolveHealth: ((value: number) => void) | undefined;
+    queryRawMock.mockImplementationOnce(
+      () => new Promise<number>((resolve) => {
+        resolveHealth = resolve;
+      })
+    );
+
     mod.startDatabaseHealthCheck(100);
+    vi.advanceTimersByTime(100);
+    await vi.waitFor(() => expect(queryRawMock).toHaveBeenCalledTimes(1));
+
+    const beforeExitPromise = (onHandlers.beforeExit as () => Promise<void>)?.();
+    await Promise.resolve();
+    expect(disconnectMock).not.toHaveBeenCalled();
+
+    resolveHealth?.(1);
+    await beforeExitPromise;
     await (onHandlers.beforeExit as () => Promise<void>)?.();
 
-    expect(disconnectMock).toHaveBeenCalled();
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
     processOnSpy.mockRestore();
   });
 });

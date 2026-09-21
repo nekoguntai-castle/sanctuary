@@ -1890,7 +1890,18 @@ describe('worker entrypoint', () => {
     mocks.shutdownRedis.mockRejectedValueOnce(new Error('redis shutdown failed'));
     mocks.disconnect.mockRejectedValueOnce(new Error('db disconnect failed'));
 
-    await handlers.SIGTERM?.[0]();
+    let resolveDatabaseHealthStop: (() => void) | undefined;
+    mocks.stopDatabaseHealthCheck.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolveDatabaseHealthStop = resolve;
+      })
+    );
+
+    const shutdownPromise = handlers.SIGTERM?.[0]();
+    await vi.waitFor(() => expect(mocks.shutdownRedis).toHaveBeenCalledOnce());
+    expect(mocks.disconnect).not.toHaveBeenCalled();
+    resolveDatabaseHealthStop?.();
+    await shutdownPromise;
     await handlers.SIGTERM?.[0]();
     await handlers.SIGINT?.[0]();
     await Promise.all(intervalCallbacks.map(async (callback) => callback()));

@@ -253,7 +253,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
     log.info('Initializing core services...');
     await Promise.all([
       // These run in parallel - no interdependencies
-      (async () => { startDatabaseHealthCheck(); })(),
+      startDatabaseHealthCheck(),
       (async () => { metricsService.initialize(); })(),
       initializeRedis(), // Redis init
     ]);
@@ -380,8 +380,9 @@ const handleShutdown = async (signal: string, exitCode: 0 | 1 = 0) => {
   gatewayWsServer.close();
 
   // Stop background services
+  // Revoke monitor ownership now and drain it alongside the remaining services.
+  const databaseHealthStop = stopDatabaseHealthCheck();
   await stopRegisteredServices();
-  stopDatabaseHealthCheck();
   rateLimitService.shutdown();
 
   // Stop memory caches and buffers
@@ -421,6 +422,8 @@ const handleShutdown = async (signal: string, exitCode: 0 | 1 = 0) => {
 
   // Close database connection
   try {
+    // The final disconnect must follow any health query or reconnect already in flight.
+    await databaseHealthStop;
     await disconnect();
   } catch (error) {
     log.error('Error disconnecting from database', {

@@ -375,7 +375,7 @@ async function startWorker(): Promise<void> {
   // Connect to database
   log.info('Connecting to database...');
   await connectWithRetry();
-  startDatabaseHealthCheck();
+  await startDatabaseHealthCheck();
   log.info('Database connected');
 
   // Initialize Redis (required for worker)
@@ -827,6 +827,9 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
 
   log.info(`${signal} received, shutting down worker...`);
 
+  // Revoke monitor ownership now and drain it alongside the remaining services.
+  const databaseHealthStop = stopDatabaseHealthCheck();
+
   // Stop timers
   if (reconciliationTimer) {
     clearInterval(reconciliationTimer);
@@ -951,7 +954,8 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
 
   // Close database
   try {
-    stopDatabaseHealthCheck();
+    // The final disconnect must follow any health query or reconnect already in flight.
+    await databaseHealthStop;
     await disconnect();
   } catch (err) {
     log.error('Error disconnecting database', { error: getErrorMessage(err) });
