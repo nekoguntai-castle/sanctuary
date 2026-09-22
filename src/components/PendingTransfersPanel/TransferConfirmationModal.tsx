@@ -57,7 +57,7 @@ export const TransferConfirmationModal: React.FC<TransferConfirmationModalProps>
               The current owner will be asked to confirm the transfer. You will become the owner once they confirm.
             </p>
             <div className="flex justify-end space-x-3">
-              <Button variant="secondary" onClick={onClose}>
+              <Button variant="secondary" onClick={onClose} disabled={isLoading}>
                 Cancel
               </Button>
               <Button
@@ -91,7 +91,11 @@ export const TransferConfirmationModal: React.FC<TransferConfirmationModalProps>
               />
             </div>
             <div className="flex justify-end space-x-3">
-              <Button variant="secondary" onClick={() => { onClose(); onDeclineReasonChange(''); }}>
+              <Button
+                variant="secondary"
+                onClick={() => { onClose(); onDeclineReasonChange(''); }}
+                disabled={isLoading}
+              >
                 Cancel
               </Button>
               <Button
@@ -114,7 +118,7 @@ export const TransferConfirmationModal: React.FC<TransferConfirmationModalProps>
               This transfer will be cancelled. You can initiate a new transfer later if needed.
             </p>
             <div className="flex justify-end space-x-3">
-              <Button variant="secondary" onClick={onClose}>
+              <Button variant="secondary" onClick={onClose} disabled={isLoading}>
                 Keep Transfer
               </Button>
               <Button
@@ -145,7 +149,7 @@ export const TransferConfirmationModal: React.FC<TransferConfirmationModalProps>
               </div>
             </div>
             <div className="flex justify-end space-x-3">
-              <Button variant="secondary" onClick={onClose}>
+              <Button variant="secondary" onClick={onClose} disabled={isLoading}>
                 Cancel
               </Button>
               <Button

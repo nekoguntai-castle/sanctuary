@@ -11,8 +11,19 @@ import * as transfersApi from '../../api/transfers';
 import { ApiError } from '../../api/client';
 import { useUser } from '../../contexts/UserContext';
 import type { Transfer } from '../../types';
+import type {
+  TransferCompletionCallback,
+  TransferCompletionResult,
+} from './transferCompletion';
 
 export type TransferAction = 'accept' | 'decline' | 'cancel' | 'confirm';
+
+const ACCESS_REFRESH_ERROR =
+  'Transfer action completed, but related access details could not be refreshed.';
+const TRANSFER_LIST_REFRESH_ERROR =
+  'Transfer action completed, but pending transfers could not be refreshed.';
+
+type TransferListRefreshResult = 'committed' | 'superseded' | 'failed';
 
 export interface ConfirmModalState {
   transferId: string;
@@ -40,7 +51,7 @@ export interface UseTransferActionsReturn {
 export function useTransferActions(
   resourceType: 'wallet' | 'device',
   resourceId: string,
-  onTransferComplete?: () => void,
+  onTransferComplete?: TransferCompletionCallback,
 ): UseTransferActionsReturn {
   const { user } = useUser();
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -60,18 +71,29 @@ export function useTransferActions(
   // detail page to another's) — any fetch or action started against the
   // previous resource must not be allowed to apply its result once the
   // resource has moved on.
+  const resourceKey = `${resourceType}:${resourceId}`;
   const currentResourceRef = useRef({ resourceType, resourceId });
+  const resourceEpochRef = useRef(0);
+  const previousResourceKeyRef = useRef(resourceKey);
+  if (previousResourceKeyRef.current !== resourceKey) {
+    previousResourceKeyRef.current = resourceKey;
+    resourceEpochRef.current += 1;
+  }
   currentResourceRef.current = { resourceType, resourceId };
-  const isCurrentResource = (requestResourceType: string, requestResourceId: string): boolean => (
+  const isCurrentResource = (
+    requestResourceType: string,
+    requestResourceId: string,
+    requestEpoch: number,
+  ): boolean => (
     currentResourceRef.current.resourceType === requestResourceType
     && currentResourceRef.current.resourceId === requestResourceId
+    && resourceEpochRef.current === requestEpoch
   );
 
   // Reset all resource-scoped state synchronously (during render, not in an
   // effect) the moment resourceType/resourceId changes, so stale data from
   // the previous resource is never visible even for a single paint.
   const [trackedResourceKey, setTrackedResourceKey] = useState(`${resourceType}:${resourceId}`);
-  const resourceKey = `${resourceType}:${resourceId}`;
   if (resourceKey !== trackedResourceKey) {
     setTrackedResourceKey(resourceKey);
     setTransfers([]);
@@ -82,9 +104,13 @@ export function useTransferActions(
     setDeclineReason('');
   }
 
-  const fetchTransfers = useCallback(async () => {
+  const fetchTransfers = useCallback(async (
+    failureMessage?: string,
+    excludedTransferId?: string,
+  ): Promise<TransferListRefreshResult> => {
     const requestResourceType = resourceType;
     const requestResourceId = resourceId;
+    const requestEpoch = resourceEpochRef.current;
     setLoading(true);
     setLoadError(null);
     try {
@@ -92,17 +118,24 @@ export function useTransferActions(
         status: 'active',
         resourceType: requestResourceType,
       });
-      if (!isCurrentResource(requestResourceType, requestResourceId)) return;
+      if (!isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) {
+        return 'superseded';
+      }
       const resourceTransfers = result.transfers.filter(
-        (t: Transfer) => t.resourceId === requestResourceId,
+        (t: Transfer) => (
+          t.resourceId === requestResourceId && t.id !== excludedTransferId
+        ),
       );
       setTransfers(resourceTransfers);
+      return 'committed';
     } catch (err) {
-      if (isCurrentResource(requestResourceType, requestResourceId)) {
-        setLoadError(getErrorMessage(err));
+      if (isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) {
+        setLoadError(failureMessage ?? getErrorMessage(err));
+        return 'failed';
       }
+      return 'superseded';
     } finally {
-      if (isCurrentResource(requestResourceType, requestResourceId)) {
+      if (isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) {
         setLoading(false);
       }
     }
@@ -116,28 +149,45 @@ export function useTransferActions(
     transferId: string,
     apiCall: () => Promise<unknown>,
     fallbackMessage: string,
-    afterSuccess?: () => void,
+    onCommitted?: () => void,
+    reconcile?: TransferCompletionCallback,
   ) => {
     const requestResourceType = resourceType;
     const requestResourceId = resourceId;
+    const requestEpoch = resourceEpochRef.current;
     setActionLoading(transferId);
     setActionError(null);
     try {
       await apiCall();
-      await fetchTransfers();
-      if (isCurrentResource(requestResourceType, requestResourceId)) {
-        setConfirmModal(null);
-        afterSuccess?.();
-      }
     } catch (err) {
-      if (isCurrentResource(requestResourceType, requestResourceId)) {
+      if (isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) {
         const message = err instanceof ApiError ? err.message : fallbackMessage;
         setActionError(message);
-      }
-    } finally {
-      if (isCurrentResource(requestResourceType, requestResourceId)) {
         setActionLoading(null);
       }
+      return;
+    }
+
+    if (!isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) return;
+
+    let completion: TransferCompletionResult | undefined;
+    if (reconcile) {
+      try {
+        completion = await reconcile();
+      } catch (error) {
+        completion = { status: 'failed', error };
+      }
+      if (!isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) return;
+    }
+
+    setTransfers(current => current.filter(transfer => transfer.id !== transferId));
+    setConfirmModal(null);
+    onCommitted?.();
+    if (completion?.status === 'failed') setActionError(ACCESS_REFRESH_ERROR);
+
+    await fetchTransfers(TRANSFER_LIST_REFRESH_ERROR, transferId);
+    if (isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) {
+      setActionLoading(null);
     }
   }, [fetchTransfers, resourceType, resourceId]);
 
@@ -172,7 +222,8 @@ export function useTransferActions(
       transferId,
       () => transfersApi.confirmTransfer(transferId),
       'Failed to confirm transfer',
-      () => onTransferComplete?.(),
+      undefined,
+      onTransferComplete,
     );
   }, [runAction, onTransferComplete]);
 

@@ -21,6 +21,10 @@ import type { RouteToken } from '../../../hooks/requestOwnership';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 import { mergeWalletHttpSyncState } from '../../../utils/walletSyncSnapshot';
 import type { WalletShareInfoRefreshResult } from './walletDataTypes';
+import type {
+  TransferCompletionCallback,
+  TransferCompletionResult,
+} from '../../PendingTransfersPanel/transferCompletion';
 
 const log = createLogger('useWalletSharing');
 
@@ -71,7 +75,7 @@ export interface UseWalletSharingReturn {
   dismissDeviceSharePrompt: () => void;
 
   // Transfer
-  handleTransferComplete: () => Promise<void>;
+  handleTransferComplete: TransferCompletionCallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -334,21 +338,22 @@ export function useWalletSharing({
   };
 
   // Reload wallet data after transfer actions
-  const handleTransferComplete = async () => {
-    if (!walletId) return;
+  const handleTransferComplete = async (): Promise<TransferCompletionResult> => {
+    if (!walletId) return { status: 'superseded' };
     const id = walletId;
     const token = ownership.captureRoute(ownershipKey);
-    if (!owns(token, id)) return;
+    if (!owns(token, id)) return { status: 'superseded' };
     try {
       const walletData = await walletsApi.getWallet(id);
-      if (owns(token, id)) {
-        setWallet(current => current?.id === id
-          ? mergeWalletHttpSyncState(current, walletData)
-          : current);
-      }
-      await refreshShareInfo(id, token);
+      if (!owns(token, id)) return { status: 'superseded' };
+      setWallet(current => current?.id === id
+        ? mergeWalletHttpSyncState(current, walletData)
+        : current);
+      return await refreshShareInfo(id, token);
     } catch (err) {
+      if (!owns(token, id)) return { status: 'superseded' };
       log.error('Failed to reload wallet after transfer', { error: err });
+      return { status: 'failed', error: err };
     }
   };
 

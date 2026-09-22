@@ -58,7 +58,7 @@ Make the latest valid MCP key state own the UI when reads and mutations overlap,
 - [x] `npm run typecheck:app`
 - [x] `npm run typecheck:tests`
 - [x] Phase 1 acceptance: reverse completion cannot overwrite a newer refresh or successful key mutation, and successful concurrent mutations still compose.
-- [ ] Deliver as one frontend PR and verify exact head and squash-merge target CI before Phase 2 starts.
+- [x] Deliver as one frontend PR and verify exact head and squash-merge target CI before Phase 2 starts.
 
 ### Phase 1 evidence
 
@@ -70,60 +70,69 @@ Make the latest valid MCP key state own the UI when reads and mutations overlap,
 
 ## Between-phase reset
 
-- [ ] Verify the Phase 1 merge commit is a real ancestor of refreshed `origin/main` and its exact target workflows are green.
-- [ ] Re-read repository instructions and this plan from disk.
-- [ ] Refresh open PRs and target SHA, then revalidate the transfer finding and its callers.
-- [ ] Start Phase 2 from the refreshed target branch, not from the Phase 1 topic head.
+- [x] Verify the Phase 1 merge commit is a real ancestor of refreshed `origin/main` and its exact target workflows are green.
+- [x] Re-read repository instructions and this plan from disk.
+- [x] Refresh open PRs and target SHA, then revalidate the transfer finding and its callers.
+- [x] Start Phase 2 from the refreshed target branch, not from the Phase 1 topic head.
 
 ## Phase 2: Await transfer ownership refreshes
 
 ### Contract changes
 
-- [ ] Define one exported transfer-completion callback/result contract shared through `PendingTransfersPanel`, wallet access, and device access props.
-- [ ] Allow synchronous callers only where compatibility requires it; ownership refresh callers must return an awaited promise.
-- [ ] Treat `committed` as refreshed success and `superseded` as a benign result owned by a newer route/read.
-- [ ] Treat `failed` or a rejected callback as a post-transfer refresh failure, distinct from a failed transfer mutation.
+- [x] Define one exported transfer-completion callback/result contract shared through `PendingTransfersPanel`, wallet access, and device access props.
+- [x] Allow synchronous callers only where compatibility requires it; ownership refresh callers must return an awaited promise.
+- [x] Treat `committed` as refreshed success and `superseded` as a benign result owned by a newer route/read.
+- [x] Treat `failed` or a rejected callback as a post-transfer refresh failure, distinct from a failed transfer mutation.
 
 ### Production changes
 
-- [ ] Await the completion callback after the transfer mutation and before the transfer-list refresh while the initiating resource still owns the action.
-- [ ] Separate the committed transfer mutation from both reconciliation steps: await the ownership callback, remove the committed transfer locally, then refresh the transfer list even when ownership refresh fails.
-- [ ] Keep action loading active until the callback settles; recheck resource ownership after every await before writing UI state.
-- [ ] Once the mutation commits, never leave its stale card actionable or present either reconciliation failure as a failed or retryable mutation. Close the completed confirmation, surface a bounded refresh-specific error, and keep that error renderable when no transfer cards remain.
-- [ ] Return explicit outcomes from both wallet and device ownership refresh callbacks without duplicating share-info writes.
-- [ ] Ensure route changes supersede all late callback, modal, error, and loading writes.
+- [x] Await the completion callback after the transfer mutation and before the transfer-list refresh while the initiating resource still owns the action.
+- [x] Separate the committed transfer mutation from both reconciliation steps: await the ownership callback, remove the committed transfer locally, then refresh the transfer list even when ownership refresh fails.
+- [x] Keep action loading active until the callback settles; recheck resource ownership after every await before writing UI state.
+- [x] Once the mutation commits, never leave its stale card actionable or present either reconciliation failure as a failed or retryable mutation. Close the completed confirmation, surface a bounded refresh-specific error, and keep that error renderable when no transfer cards remain.
+- [x] Return explicit outcomes from both wallet and device ownership refresh callbacks without duplicating share-info writes.
+- [x] Ensure route changes supersede all late callback, modal, error, and loading writes.
 
 ### Regression tests
 
-- [ ] Return a deferred completion promise and prove loading remains active and the modal does not report completion before settlement.
-- [ ] Resolve `committed` and prove normal completion closes the modal and clears loading.
-- [ ] Resolve `superseded` after a resource change and prove no stale modal, error, or loading write reaches the new resource.
-- [ ] Resolve `failed` and reject the callback in separate cases; prove the transfer is not retried or misreported as a failed mutation and the refresh-specific error remains visible with an empty transfer list.
-- [ ] Let the transfer mutation succeed and the transfer-list refresh fail; prove the modal closes, the stale card cannot reopen or issue a second API action, and a reconciliation-specific error remains visible.
-- [ ] Cover both wallet and device callback adapters or typed outcomes where their behavior differs.
+- [x] Return a deferred completion promise and prove loading remains active and the modal does not report completion before settlement.
+- [x] Resolve `committed` and prove normal completion closes the modal and clears loading.
+- [x] Resolve `superseded` after a resource change and prove no stale modal, error, or loading write reaches the new resource.
+- [x] Resolve `failed` and reject the callback in separate cases; prove the transfer is not retried or misreported as a failed mutation and the refresh-specific error remains visible with an empty transfer list.
+- [x] Let the transfer mutation succeed and the transfer-list refresh fail; prove the modal closes, the stale card cannot reopen or issue a second API action, and a reconciliation-specific error remains visible.
+- [x] Cover both wallet and device callback adapters or typed outcomes where their behavior differs.
 
 ### Verification and acceptance
 
-- [ ] `npx vitest run --config config/tooling/vitest.config.ts tests/components/PendingTransfersPanel/useTransferActions.test.ts tests/components/PendingTransfersPanel.test.tsx`
-- [ ] Run focused wallet/device hook and access-tab tests selected from changed callers.
-- [ ] `npm run typecheck:app`
-- [ ] `npm run typecheck:tests`
-- [ ] Phase 2 acceptance: transfer completion never clears loading before the ownership refresh settles, every explicit outcome is handled, post-commit reconciliation failures cannot invite duplicate actions, and route supersession prevents stale writes.
+- [x] `npx vitest run --config config/tooling/vitest.config.ts tests/components/PendingTransfersPanel/useTransferActions.test.ts tests/components/PendingTransfersPanel.test.tsx`
+- [x] Run focused wallet/device hook and access-tab tests selected from changed callers.
+- [x] `npm run typecheck:app`
+- [x] `npm run typecheck:tests`
+- [x] Phase 2 acceptance: transfer completion never clears loading before the ownership refresh settles, every explicit outcome is handled, post-commit reconciliation failures cannot invite duplicate actions, and route supersession prevents stale writes.
 - [ ] Deliver as one frontend PR and verify exact head and squash-merge target CI.
+
+### Phase 2 evidence
+
+- Focused transfer and wallet suite: 9 files and 146 tests passed with 100% coverage (340 statements, 190 branches, 65 functions, and 290 lines).
+- Broad frontend suite: 656 files and 8,883 tests passed with 100% coverage (25,762 statements, 16,397 branches, 7,177 functions, and 23,528 lines).
+- Server suite: 718 files passed, 65 skipped; 16,448 tests passed, 766 skipped, and 1 todo.
+- Static render regression: all 44 Chromium tests passed against the built `dist/` output.
+- Type checks, build, lint, architecture boundaries, server cycle baseline, lizard, large-file classification, and `git diff --check` passed.
+- Independent implementation reviews converged after adding an action-wide interaction lock and a monotonic resource epoch for A→B→A ownership changes.
 
 ## Broad verification after each phase
 
-- [ ] `npm run typecheck:all`
-- [ ] `npm run test:run`
-- [ ] `npm run build`
-- [ ] `npm run lint`
-- [ ] `npm run check:architecture-boundaries`
-- [ ] `npm run check:server-cycle-baseline`
-- [ ] `npm run quality:lizard`
-- [ ] `node scripts/quality/check-large-files.mjs`
-- [ ] Run frontend coverage and preserve the 100% threshold for changed production branches.
-- [ ] After building, serve `dist/` with a temporary static server and run the fully mocked Playwright render-regression suite through a throwaway config with no `webServer`; never start Vite or a host development server. Full backend-backed browser coverage remains an exact PR/target CI gate.
-- [ ] Run an adversarial implementation review and the required simplify/edge-case review before delivery.
+- [x] `npm run typecheck:all`
+- [x] `npm run test:run`
+- [x] `npm run build`
+- [x] `npm run lint`
+- [x] `npm run check:architecture-boundaries`
+- [x] `npm run check:server-cycle-baseline`
+- [x] `npm run quality:lizard`
+- [x] `node scripts/quality/check-large-files.mjs`
+- [x] Run frontend coverage and preserve the 100% threshold for changed production branches.
+- [x] After building, serve `dist/` with a temporary static server and run the fully mocked Playwright render-regression suite through a throwaway config with no `webServer`; never start Vite or a host development server. Full backend-backed browser coverage remains an exact PR/target CI gate.
+- [x] Run an adversarial implementation review and the required simplify/edge-case review before delivery.
 
 The changes are frontend-only and do not add an endpoint, so the Playwright API mock maps need no new entry. Exact PR and target CI remain mandatory in all cases.
 

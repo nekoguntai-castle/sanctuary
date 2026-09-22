@@ -1,9 +1,10 @@
 import React from 'react';
 import { PendingTransfersPanel } from '../../../PendingTransfersPanel';
+import type { TransferCompletionCallback } from '../../../PendingTransfersPanel';
 
 interface TransfersSectionProps {
   walletId: string;
-  onTransferComplete: () => void;
+  onTransferComplete: TransferCompletionCallback;
 }
 
 export const TransfersSection: React.FC<TransfersSectionProps> = ({

@@ -34,7 +34,7 @@ describe('PendingTransfersPanel', () => {
   const defaultProps = {
     resourceType: 'wallet' as const,
     resourceId: 'wallet-123',
-    onTransferComplete: vi.fn(),
+    onTransferComplete: vi.fn().mockResolvedValue({ status: 'committed' }),
   };
 
   const now = new Date();
@@ -463,7 +463,7 @@ describe('PendingTransfersPanel', () => {
     });
 
     it('calls onTransferComplete callback after confirm', async () => {
-      const onTransferComplete = vi.fn();
+      const onTransferComplete = vi.fn().mockResolvedValue({ status: 'committed' });
       render(<PendingTransfersPanel {...defaultProps} onTransferComplete={onTransferComplete} />);
 
       await waitFor(() => {
@@ -506,22 +506,17 @@ describe('PendingTransfersPanel', () => {
       });
     });
 
-    it('renders nothing when fetching fails with no transfers', async () => {
-      // Note: When getTransfers fails, the component sets error state but returns null
-      // because hasTransfers is false (transfers array is empty). This is the expected
-      // behavior - errors during initial load don't show an error panel, they just
-      // result in no transfers being displayed.
+    it('renders the fetch error when no transfers are available', async () => {
       vi.mocked(transfersApi.getTransfers).mockRejectedValue(new Error('API Error'));
 
-      const { container } = render(<PendingTransfersPanel {...defaultProps} />);
+      render(<PendingTransfersPanel {...defaultProps} />);
 
       // Wait for loading to complete
       await waitFor(() => {
         expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
       });
 
-      // Component returns null when there are no transfers
-      expect(container.firstChild).toBeNull();
+      expect(screen.getByText('API Error')).toBeInTheDocument();
     });
   });
 

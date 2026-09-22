@@ -147,6 +147,7 @@ describe('TransferConfirmationModal', () => {
     // The Accept Transfer button should show loading
     const button = screen.getByText('Accept Transfer').closest('button');
     expect(button).toBeInTheDocument();
+    expect(screen.getByText('Cancel').closest('button')).toBeDisabled();
   });
 
   it('does not show loading for different transfer', () => {

@@ -6,6 +6,7 @@ import type { TransferAction } from './useTransferActions';
 interface TransferActionProps {
   transferId: string;
   isLoading: boolean;
+  disabled: boolean;
   onAction: (transferId: string, action: TransferAction) => void;
 }
 
@@ -13,14 +14,14 @@ interface TransferCardActionsProps extends TransferActionProps {
   variant: TransferCardVariant;
 }
 
-function IncomingTransferActions({ transferId, isLoading, onAction }: TransferActionProps) {
+function IncomingTransferActions({ transferId, isLoading, disabled, onAction }: TransferActionProps) {
   return (
     <>
       <Button
         size="sm"
         variant="secondary"
         onClick={() => onAction(transferId, 'decline')}
-        disabled={isLoading}
+        disabled={disabled}
       >
         <X className="w-4 h-4 mr-1" />
         Decline
@@ -28,7 +29,7 @@ function IncomingTransferActions({ transferId, isLoading, onAction }: TransferAc
       <Button
         size="sm"
         onClick={() => onAction(transferId, 'accept')}
-        disabled={isLoading}
+        disabled={disabled}
         isLoading={isLoading}
       >
         <Check className="w-4 h-4 mr-1" />
@@ -38,21 +39,21 @@ function IncomingTransferActions({ transferId, isLoading, onAction }: TransferAc
   );
 }
 
-function AwaitingConfirmationActions({ transferId, isLoading, onAction }: TransferActionProps) {
+function AwaitingConfirmationActions({ transferId, isLoading, disabled, onAction }: TransferActionProps) {
   return (
     <>
       <Button
         size="sm"
         variant="secondary"
         onClick={() => onAction(transferId, 'cancel')}
-        disabled={isLoading}
+        disabled={disabled}
       >
         Cancel
       </Button>
       <Button
         size="sm"
         onClick={() => onAction(transferId, 'confirm')}
-        disabled={isLoading}
+        disabled={disabled}
         isLoading={isLoading}
       >
         <Send className="w-4 h-4 mr-1" />
@@ -62,13 +63,13 @@ function AwaitingConfirmationActions({ transferId, isLoading, onAction }: Transf
   );
 }
 
-function OutgoingTransferActions({ transferId, isLoading, onAction }: TransferActionProps) {
+function OutgoingTransferActions({ transferId, disabled, onAction }: TransferActionProps) {
   return (
     <Button
       size="sm"
       variant="secondary"
       onClick={() => onAction(transferId, 'cancel')}
-      disabled={isLoading}
+      disabled={disabled}
     >
       Cancel
     </Button>
@@ -79,6 +80,7 @@ export function TransferCardActions({
   transferId,
   variant,
   isLoading,
+  disabled,
   onAction,
 }: TransferCardActionsProps) {
   if (variant === 'incoming') {
@@ -86,6 +88,7 @@ export function TransferCardActions({
       <IncomingTransferActions
         transferId={transferId}
         isLoading={isLoading}
+        disabled={disabled}
         onAction={onAction}
       />
     );
@@ -96,6 +99,7 @@ export function TransferCardActions({
       <AwaitingConfirmationActions
         transferId={transferId}
         isLoading={isLoading}
+        disabled={disabled}
         onAction={onAction}
       />
     );
@@ -105,6 +109,7 @@ export function TransferCardActions({
     <OutgoingTransferActions
       transferId={transferId}
       isLoading={isLoading}
+      disabled={disabled}
       onAction={onAction}
     />
   );

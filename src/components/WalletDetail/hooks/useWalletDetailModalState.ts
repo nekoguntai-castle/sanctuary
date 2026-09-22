@@ -3,6 +3,7 @@ import { createLogger } from '../../../utils/logger';
 import * as walletsApi from '../../../api/wallets';
 import type { TabType } from '../types';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
+import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
 
 const log = createLogger('WalletDetail');
 
@@ -18,7 +19,7 @@ export function useWalletDetailModalState({
   ownershipKey: string;
   navigate: (path: string) => void;
   handleError: (error: unknown, title?: string) => void;
-  handleTransferComplete: () => void;
+  handleTransferComplete: TransferCompletionCallback;
   setActiveTab: (tab: TabType) => void;
 }) {
   const ownership = useWalletRouteOwnership(ownershipKey);
@@ -64,7 +65,7 @@ export function useWalletDetailModalState({
     if (transferOwner !== walletId) return;
     if (!ownership.isRouteOwner(ownership.captureRoute(ownershipKey))) return;
     setTransferOwner(null);
-    handleTransferComplete();
+    void handleTransferComplete();
   };
 
   const owns = (owner: string | null) => Boolean(walletId && owner === walletId);

@@ -46,7 +46,7 @@ const baseTransfer = (overrides: Partial<Transfer>): Transfer => ({
 const defaultProps = {
   resourceType: 'wallet' as const,
   resourceId: 'wallet-123',
-  onTransferComplete: vi.fn(),
+  onTransferComplete: vi.fn().mockResolvedValue({ status: 'committed' }),
 };
 
 const getIncomingCard = () =>
@@ -63,6 +63,38 @@ describe('PendingTransfersPanel branch coverage', () => {
     vi.mocked(transfersApi.declineTransfer).mockResolvedValue({} as any);
     vi.mocked(transfersApi.cancelTransfer).mockResolvedValue({} as any);
     vi.mocked(transfersApi.confirmTransfer).mockResolvedValue({} as any);
+    defaultProps.onTransferComplete.mockResolvedValue({ status: 'committed' });
+  });
+
+  it('removes a committed confirmation when list reconciliation fails', async () => {
+    vi.mocked(transfersApi.getTransfers)
+      .mockResolvedValueOnce({
+        transfers: [baseTransfer({
+          id: 'committed-transfer',
+          fromUserId: 'current-user',
+          toUserId: 'recipient',
+          status: 'accepted',
+          acceptedAt: new Date().toISOString(),
+          toUser: { id: 'recipient', username: 'recipient' },
+        })],
+        total: 1,
+      })
+      .mockRejectedValueOnce(new Error('refresh failed'));
+
+    render(<PendingTransfersPanel {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('Ready to Confirm')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Confirm Transfer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Complete Transfer/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(
+        'Transfer action completed, but pending transfers could not be refreshed.',
+      )).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Ready to Confirm')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Complete Transfer/i })).not.toBeInTheDocument();
+    expect(transfersApi.confirmTransfer).toHaveBeenCalledTimes(1);
   });
 
   it('covers relative-time and expiry formatting branches including acceptedAt fallback', async () => {
@@ -158,19 +190,19 @@ describe('PendingTransfersPanel branch coverage', () => {
       expect(screen.getByText('Incoming Transfer Request')).toBeInTheDocument();
     });
 
-    // Empty reason path: declineReason.trim() || undefined.
-    fireEvent.click(within(getIncomingCard()).getByRole('button', { name: /Decline/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Decline Transfer' }));
-    await waitFor(() => {
-      expect(transfersApi.declineTransfer).toHaveBeenCalledWith('incoming-1', { reason: undefined });
-    });
-
     // Decline modal cancel path.
     fireEvent.click(within(getIncomingCard()).getByRole('button', { name: /Decline/i }));
     const declineModal = screen.getByText('Decline Transfer?').closest('div.surface-elevated') as HTMLElement;
     fireEvent.click(within(declineModal).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => {
       expect(screen.queryByText('Decline Transfer?')).not.toBeInTheDocument();
+    });
+
+    // Empty reason path: declineReason.trim() || undefined.
+    fireEvent.click(within(getIncomingCard()).getByRole('button', { name: /Decline/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decline Transfer' }));
+    await waitFor(() => {
+      expect(transfersApi.declineTransfer).toHaveBeenCalledWith('incoming-1', { reason: undefined });
     });
 
     // Cancel modal "Keep Transfer" path.

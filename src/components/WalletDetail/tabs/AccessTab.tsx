@@ -18,6 +18,7 @@ import { getWalletOwnerDisplay } from './access/accessTabData';
 import { OwnershipSection } from './access/OwnershipSection';
 import { SharingSection } from './access/SharingSection';
 import { TransfersSection } from './access/TransfersSection';
+import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
 
 interface AccessTabProps {
   accessSubTab: AccessSubTab;
@@ -40,7 +41,7 @@ interface AccessTabProps {
   onShareWithUser: (userId: string, role: WalletShareRole) => void;
   onRemoveUserAccess: (userId: string) => void;
   walletId: string;
-  onTransferComplete: () => void;
+  onTransferComplete: TransferCompletionCallback;
 }
 
 export const AccessTab: React.FC<AccessTabProps> = ({

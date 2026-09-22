@@ -324,7 +324,7 @@ describe('Wallet Detail route ownership', () => {
 
     let searchPending!: Promise<void>;
     let sharePending!: Promise<void>;
-    let transferPending!: Promise<void>;
+    let transferPending!: ReturnType<typeof view.result.current.handleTransferComplete>;
     act(() => {
       searchPending = view.result.current.handleSearchUsers('alice');
       sharePending = view.result.current.handleShareWithUser('A-user');
@@ -342,6 +342,36 @@ describe('Wallet Detail route ownership', () => {
     expect(view.result.current.searchingUsers).toBe(false);
     expect(setWallet).not.toHaveBeenCalled();
     expect(refreshWalletShareInfo).not.toHaveBeenCalled();
+  });
+
+  it('reports a transfer reload rejection as superseded after the wallet route changes', async () => {
+    const reload = deferred<never>();
+    vi.mocked(walletsApi.getWallet).mockReturnValue(reload.promise);
+    const view = renderHook(
+      ({ walletId, ownershipKey }) => useWalletSharing({
+        walletId,
+        ownershipKey,
+        wallet: wallet(walletId),
+        devices: [],
+        walletShareInfo: { users: [], group: null } as never,
+        groups: [],
+        refreshWalletShareInfo: vi.fn(),
+        setWallet: vi.fn(),
+      }),
+      { initialProps: { walletId: 'A', ownershipKey: 'A:user:mainnet' } },
+    );
+
+    let transfer!: ReturnType<typeof view.result.current.handleTransferComplete>;
+    act(() => {
+      transfer = view.result.current.handleTransferComplete();
+    });
+    view.rerender({ walletId: 'B', ownershipKey: 'B:user:mainnet' });
+
+    await act(async () => {
+      reload.reject(new Error('stale reload failure'));
+    });
+
+    await expect(transfer).resolves.toEqual({ status: 'superseded' });
   });
 
   it('rejects stale A sharing controls before they start wallet B work', async () => {

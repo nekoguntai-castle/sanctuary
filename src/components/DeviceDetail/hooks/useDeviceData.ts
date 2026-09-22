@@ -18,6 +18,7 @@ import { toTabNetwork } from '../../../app/networks';
 import { createRequestOwnership, type RouteToken } from '../../../hooks/requestOwnership';
 import { isAbortError } from '../../../utils/errorHandler';
 import { createLogger } from '../../../utils/logger';
+import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
 
 const log = createLogger('DeviceDetail');
 
@@ -327,7 +328,7 @@ export function useDeviceData(id: string | undefined) {
   };
   const removeGroup = async () => updateGroup(null);
 
-  const handleTransferComplete = async () => {
+  const handleTransferComplete: TransferCompletionCallback = async () => {
     if (!id || !user) return { status: 'superseded' } as const;
     const token = ownership.captureRoute(ownershipKey);
     if (!ownsRoute(token)) return { status: 'superseded' } as const;

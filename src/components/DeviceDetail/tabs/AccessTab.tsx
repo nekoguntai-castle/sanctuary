@@ -5,6 +5,7 @@ import { useTabsA11y } from '../../ui/useTabsA11y';
 import { OwnershipSection } from '../access/OwnershipSection';
 import { SharingSection } from '../access/SharingSection';
 import { TransfersSection } from '../access/TransfersSection';
+import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
 
 interface GroupDisplay {
   id: string;
@@ -29,7 +30,7 @@ interface AccessTabProps {
   onAddGroup: () => void;
   onRemoveGroup: () => void;
   onTransfer: () => void;
-  onTransferComplete: () => void;
+  onTransferComplete: TransferCompletionCallback;
 }
 
 type AccessSubTab = 'ownership' | 'sharing' | 'transfers';

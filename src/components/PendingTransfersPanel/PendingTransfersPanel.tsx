@@ -11,11 +11,12 @@ import { TransferCard } from './TransferCard';
 import { TransferConfirmationModal } from './TransferConfirmationModal';
 import { useTransferActions } from './useTransferActions';
 import type { TransferAction } from './useTransferActions';
+import type { TransferCompletionCallback } from './transferCompletion';
 
 export interface PendingTransfersPanelProps {
   resourceType: 'wallet' | 'device';
   resourceId: string;
-  onTransferComplete?: () => void;
+  onTransferComplete?: TransferCompletionCallback;
 }
 
 export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({
@@ -53,7 +54,7 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({
     );
   }
 
-  if (!hasTransfers) {
+  if (!hasTransfers && !error) {
     return null;
   }
 
@@ -107,7 +108,9 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({
           actionLoading={actionLoading}
           declineReason={declineReason}
           onDeclineReasonChange={setDeclineReason}
-          onClose={() => setConfirmModal(null)}
+          onClose={() => {
+            if (!actionLoading) setConfirmModal(null);
+          }}
           onAccept={handleAccept}
           onDecline={handleDecline}
           onCancel={handleCancel}

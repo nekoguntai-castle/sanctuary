@@ -271,7 +271,7 @@ describe('TransferCard', () => {
     expect(screen.getByText('Decline').closest('button')).toBeDisabled();
   });
 
-  it('does not disable buttons when actionLoading is for a different transfer', () => {
+  it('disables buttons while a different transfer action is pending', () => {
     render(
       <TransferCard
         transfer={makeTransfer()}
@@ -281,7 +281,8 @@ describe('TransferCard', () => {
       />,
     );
 
-    expect(screen.getByText('Accept').closest('button')).not.toBeDisabled();
+    expect(screen.getByText('Accept').closest('button')).toBeDisabled();
+    expect(screen.getByText('Decline').closest('button')).toBeDisabled();
   });
 
   it('renders expiry timestamp', () => {

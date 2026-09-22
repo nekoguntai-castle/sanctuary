@@ -577,8 +577,9 @@ describe('useWalletSharing', () => {
   it('reloads wallet and share info after transfer completion', async () => {
     const { result } = renderSharingHook();
 
+    let outcome: unknown;
     await act(async () => {
-      await result.current.handleTransferComplete();
+      outcome = await result.current.handleTransferComplete();
     });
 
     expect(walletsApi.getWallet).toHaveBeenCalledWith('wallet-1');
@@ -599,6 +600,7 @@ describe('useWalletSharing', () => {
       name: 'Other',
     });
     expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
+    expect(outcome).toEqual({ status: 'committed', shareInfo: baseShareInfo });
   });
 
   it('awaits the single transfer share refresh through an explicit superseded result', async () => {
@@ -607,9 +609,10 @@ describe('useWalletSharing', () => {
     const { result } = renderSharingHook();
 
     let settled = false;
-    let transfer!: Promise<void>;
+    let transfer!: ReturnType<typeof result.current.handleTransferComplete>;
     act(() => {
-      transfer = result.current.handleTransferComplete().then(() => { settled = true; });
+      transfer = result.current.handleTransferComplete();
+      void transfer.then(() => { settled = true; });
     });
     await act(async () => { await Promise.resolve(); });
 
@@ -621,17 +624,21 @@ describe('useWalletSharing', () => {
       await transfer;
     });
     expect(settled).toBe(true);
+    await expect(transfer).resolves.toEqual({ status: 'superseded' });
     expect(refreshWalletShareInfo).toHaveBeenCalledTimes(1);
   });
 
-  it('swallows transfer reload failures without invoking shared error handler', async () => {
-    vi.mocked(walletsApi.getWallet).mockRejectedValue(new Error('reload failed'));
+  it('returns an explicit failed transfer refresh without invoking the shared error handler', async () => {
+    const reloadError = new Error('reload failed');
+    vi.mocked(walletsApi.getWallet).mockRejectedValue(reloadError);
     const { result } = renderSharingHook();
 
+    let outcome: unknown;
     await act(async () => {
-      await result.current.handleTransferComplete();
+      outcome = await result.current.handleTransferComplete();
     });
 
+    expect(outcome).toEqual({ status: 'failed', error: reloadError });
     expect(handleError).not.toHaveBeenCalledWith(expect.any(Error), 'Transfer Failed');
   });
 });

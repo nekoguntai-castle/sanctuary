@@ -203,7 +203,7 @@ describe('useTransferActions', () => {
 
   it('handleConfirm calls confirmTransfer and onTransferComplete', async () => {
     mockConfirmTransfer.mockResolvedValue({});
-    const onTransferComplete = vi.fn();
+    const onTransferComplete = vi.fn().mockResolvedValue({ status: 'committed' });
 
     const { result } = renderHook(() =>
       useTransferActions('wallet', 'wallet-1', onTransferComplete),
@@ -217,6 +217,204 @@ describe('useTransferActions', () => {
 
     expect(mockConfirmTransfer).toHaveBeenCalledWith('t1');
     expect(onTransferComplete).toHaveBeenCalled();
+  });
+
+  it('keeps confirmation pending until the ownership refresh settles', async () => {
+    const completion = createDeferred<{ status: 'committed' }>();
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers.mockResolvedValueOnce({
+      transfers: [makeTransfer({ id: 't1', status: 'accepted' })],
+    });
+    const onTransferComplete = vi.fn().mockReturnValue(completion.promise);
+    const { result } = renderHook(() =>
+      useTransferActions('wallet', 'wallet-1', onTransferComplete),
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation).toHaveLength(1));
+    act(() => result.current.setConfirmModal({ transferId: 't1', action: 'confirm' }));
+
+    let action!: Promise<void>;
+    act(() => {
+      action = result.current.handleConfirm('t1');
+    });
+    await waitFor(() => expect(onTransferComplete).toHaveBeenCalledTimes(1));
+
+    expect(result.current.actionLoading).toBe('t1');
+    expect(result.current.confirmModal).toEqual({ transferId: 't1', action: 'confirm' });
+    expect(mockGetTransfers).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      completion.resolve({ status: 'committed' });
+      await action;
+    });
+
+    expect(result.current.actionLoading).toBeNull();
+    expect(result.current.confirmModal).toBeNull();
+    expect(mockGetTransfers).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['returns failed', () => Promise.resolve({ status: 'failed', error: new Error('share refresh') } as const)],
+    ['rejects', () => Promise.reject(new Error('share refresh'))],
+  ])('removes the committed transfer when the completion callback %s', async (_label, completion) => {
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers
+      .mockResolvedValueOnce({ transfers: [makeTransfer({ id: 't1', status: 'accepted' })] })
+      .mockResolvedValueOnce({ transfers: [] });
+    const { result } = renderHook(() =>
+      useTransferActions('wallet', 'wallet-1', completion),
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation).toHaveLength(1));
+    act(() => result.current.setConfirmModal({ transferId: 't1', action: 'confirm' }));
+    await act(async () => {
+      await result.current.handleConfirm('t1');
+    });
+
+    expect(result.current.awaitingConfirmation).toHaveLength(0);
+    expect(result.current.confirmModal).toBeNull();
+    expect(result.current.error).toBe(
+      'Transfer action completed, but related access details could not be refreshed.',
+    );
+    expect(mockConfirmTransfer).toHaveBeenCalledTimes(1);
+    expect(mockGetTransfers).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes a committed transfer and reports a list reconciliation failure', async () => {
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers
+      .mockResolvedValueOnce({ transfers: [makeTransfer({ id: 't1', status: 'accepted' })] })
+      .mockRejectedValueOnce(new Error('list refresh failed'));
+    const onTransferComplete = vi.fn().mockResolvedValue({ status: 'committed' });
+    const { result } = renderHook(() =>
+      useTransferActions('wallet', 'wallet-1', onTransferComplete),
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation).toHaveLength(1));
+    act(() => result.current.setConfirmModal({ transferId: 't1', action: 'confirm' }));
+    await act(async () => {
+      await result.current.handleConfirm('t1');
+    });
+
+    expect(result.current.awaitingConfirmation).toHaveLength(0);
+    expect(result.current.confirmModal).toBeNull();
+    expect(result.current.error).toBe(
+      'Transfer action completed, but pending transfers could not be refreshed.',
+    );
+    expect(mockConfirmTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write callback settlement into a replacement resource', async () => {
+    const completion = createDeferred<{ status: 'superseded' }>();
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers.mockResolvedValue({ transfers: [] });
+    const onTransferComplete = vi.fn().mockReturnValue(completion.promise);
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) =>
+        useTransferActions('wallet', resourceId, onTransferComplete),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.setConfirmModal({ transferId: 't1', action: 'confirm' }));
+    let action!: Promise<void>;
+    act(() => {
+      action = result.current.handleConfirm('t1');
+    });
+    await waitFor(() => expect(onTransferComplete).toHaveBeenCalledTimes(1));
+    rerender({ resourceId: 'wallet-B' });
+
+    await act(async () => {
+      completion.resolve({ status: 'superseded' });
+      await action;
+    });
+
+    expect(result.current.confirmModal).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(result.current.actionLoading).toBeNull();
+    expect(mockGetTransfers).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let a stale callback regain ownership after an A-B-A resource cycle', async () => {
+    const completion = createDeferred<{ status: 'committed' }>();
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers
+      .mockResolvedValueOnce({
+        transfers: [makeTransfer({ id: 'old-A', resourceId: 'wallet-A', status: 'accepted' })],
+      })
+      .mockResolvedValueOnce({ transfers: [] })
+      .mockResolvedValueOnce({
+        transfers: [makeTransfer({ id: 'new-A', resourceId: 'wallet-A', status: 'accepted' })],
+      });
+    const onTransferComplete = vi.fn().mockReturnValue(completion.promise);
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) =>
+        useTransferActions('wallet', resourceId, onTransferComplete),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation[0]?.id).toBe('old-A'));
+    let action!: Promise<void>;
+    act(() => {
+      action = result.current.handleConfirm('old-A');
+    });
+    await waitFor(() => expect(onTransferComplete).toHaveBeenCalledTimes(1));
+    rerender({ resourceId: 'wallet-B' });
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(2));
+    rerender({ resourceId: 'wallet-A' });
+    await waitFor(() => expect(result.current.awaitingConfirmation[0]?.id).toBe('new-A'));
+
+    await act(async () => {
+      completion.resolve({ status: 'committed' });
+      await action;
+    });
+
+    expect(result.current.awaitingConfirmation[0]?.id).toBe('new-A');
+    expect(result.current.error).toBeNull();
+    expect(mockGetTransfers).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not let a stale list refresh regain ownership after an A-B-A resource cycle', async () => {
+    const staleRefresh = createDeferred<{ transfers: ReturnType<typeof makeTransfer>[] }>();
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers
+      .mockResolvedValueOnce({
+        transfers: [makeTransfer({ id: 't1', resourceId: 'wallet-A', status: 'accepted' })],
+      })
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockResolvedValueOnce({ transfers: [] })
+      .mockResolvedValueOnce({
+        transfers: [makeTransfer({ id: 'new-A', resourceId: 'wallet-A', status: 'accepted' })],
+      });
+    const onTransferComplete = vi.fn().mockResolvedValue({ status: 'committed' });
+    const { result, rerender } = renderHook(
+      ({ resourceId }: { resourceId: string }) =>
+        useTransferActions('wallet', resourceId, onTransferComplete),
+      { initialProps: { resourceId: 'wallet-A' } },
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation).toHaveLength(1));
+    let action!: Promise<void>;
+    act(() => {
+      action = result.current.handleConfirm('t1');
+    });
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(2));
+
+    rerender({ resourceId: 'wallet-B' });
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(3));
+    rerender({ resourceId: 'wallet-A' });
+    await waitFor(() => expect(mockGetTransfers).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(result.current.awaitingConfirmation[0]?.id).toBe('new-A'));
+    await act(async () => {
+      staleRefresh.resolve({
+        transfers: [makeTransfer({ id: 'old-A', resourceId: 'wallet-A', status: 'accepted' })],
+      });
+      await action;
+    });
+
+    expect(result.current.actionLoading).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(result.current.awaitingConfirmation[0]?.id).toBe('new-A');
   });
 
   it('sets a load error when fetching transfers fails for the current resource', async () => {

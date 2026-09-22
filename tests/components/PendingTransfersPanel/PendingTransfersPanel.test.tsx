@@ -104,6 +104,19 @@ describe('PendingTransfersPanel', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('renders a reconciliation error when the committed transfer was removed', () => {
+    vi.mocked(useTransferActions).mockReturnValue({
+      ...defaultReturn,
+      error: 'Transfer action completed, but pending transfers could not be refreshed.',
+    });
+
+    render(<PendingTransfersPanel resourceType="wallet" resourceId="wallet-1" />);
+
+    expect(screen.getByText(
+      'Transfer action completed, but pending transfers could not be refreshed.',
+    )).toBeInTheDocument();
+  });
+
   it('renders error message when error exists', () => {
     vi.mocked(useTransferActions).mockReturnValue({
       ...defaultReturn,
@@ -199,5 +212,22 @@ describe('PendingTransfersPanel', () => {
 
     fireEvent.click(screen.getByText('Close Modal'));
     expect(setConfirmModal).toHaveBeenCalledWith(null);
+  });
+
+  it('keeps the confirmation modal open while an action is settling', () => {
+    const setConfirmModal = vi.fn();
+    vi.mocked(useTransferActions).mockReturnValue({
+      ...defaultReturn,
+      hasTransfers: true,
+      incomingPending: [makeTransfer()],
+      confirmModal: { transferId: 't-1', action: 'accept' },
+      actionLoading: 't-1',
+      setConfirmModal,
+    });
+
+    render(<PendingTransfersPanel resourceType="wallet" resourceId="wallet-1" />);
+
+    fireEvent.click(screen.getByText('Close Modal'));
+    expect(setConfirmModal).not.toHaveBeenCalled();
   });
 });

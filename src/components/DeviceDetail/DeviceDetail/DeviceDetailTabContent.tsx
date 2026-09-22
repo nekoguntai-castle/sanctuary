@@ -4,6 +4,7 @@ import type { GroupDisplay, WalletInfo } from '../hooks/useDeviceData';
 import { AccessTab } from '../tabs/AccessTab';
 import { DetailsTab } from '../tabs/DetailsTab';
 import type { DeviceDetailTab } from './types';
+import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
 
 type DeviceDetailTabContentProps = {
   activeTab: DeviceDetailTab;
@@ -25,7 +26,7 @@ type DeviceDetailTabContentProps = {
   onAddGroup: () => void;
   onRemoveGroup: () => void;
   onTransfer: () => void;
-  onTransferComplete: () => void;
+  onTransferComplete: TransferCompletionCallback;
 };
 
 export function DeviceDetailTabContent({

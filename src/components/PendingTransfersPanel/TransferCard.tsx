@@ -55,6 +55,7 @@ export function TransferCard({
             transferId={transfer.id}
             variant={variant}
             isLoading={isLoading}
+            disabled={actionLoading !== null}
             onAction={onAction}
           />
         </div>
