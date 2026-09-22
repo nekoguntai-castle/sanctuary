@@ -399,6 +399,13 @@ describe('worker entrypoint', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    // Module resets do not stop a prior worker's real intervals. Keep daemon
+    // scheduling controlled for every test; periodic-behavior tests below
+    // replace this spy, capture the real callbacks, and drive them explicitly.
+    // Vitest restoreMocks restores the scheduler before the next beforeEach.
+    vi.spyOn(global, 'setInterval').mockImplementation(() => (
+      { unref: vi.fn() } as unknown as ReturnType<typeof setInterval>
+    ));
 
     mocks.initializeOpenTelemetry.mockResolvedValue(undefined);
     mocks.validateEncryptionKey.mockResolvedValue(undefined);
@@ -1080,6 +1087,20 @@ describe('worker entrypoint', () => {
     await vi.waitFor(() => {
       expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
     });
+  });
+
+  it('does not leak unattended periodic work across module resets', async () => {
+    vi.spyOn(process, 'on').mockImplementation((() => process) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    // Reproduce the next test's module/mock reset after an imported worker.
+    // Its one-second checkpoint interval must not mutate the shared mock later.
+    vi.resetModules();
+    vi.clearAllMocks();
+    await new Promise(resolve => setTimeout(resolve, 1_100));
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).not.toHaveBeenCalled();
   });
 
   it('advances and wraps the periodic checkpoint enrollment cursor fairly', async () => {

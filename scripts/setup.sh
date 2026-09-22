@@ -693,12 +693,14 @@ load_or_generate_secrets() {
     [ -z "$OPT_ENABLE_TOR" ] && OPT_ENABLE_TOR="${ENABLE_TOR:-}" || true
     [ -z "$OPT_ENABLE_MCP" ] && OPT_ENABLE_MCP="${ENABLE_MCP:-}" || true
 
-    # Existing runtime metadata describes the previous installation. An
-    # explicit offline invocation must replace it with the accepted bundle's
-    # identity so later restarts stay in no-build/no-pull mode.
+    # The invocation chooses the install mode; persisted metadata describes
+    # the previous installation and must not select contradictory overlays.
     if [ "$OPT_OFFLINE" = true ]; then
         SANCTUARY_INSTALL_MODE=offline
         SANCTUARY_OFFLINE_VERSION="$requested_offline_version"
+    else
+        SANCTUARY_INSTALL_MODE=online
+        SANCTUARY_OFFLINE_VERSION=""
     fi
 
     # Use existing secrets from environment, or generate new ones
@@ -1143,48 +1145,63 @@ start_services() {
         deployment_transition password_reconciled
     fi
 
-    # Check if --wait flag is supported (docker compose v2.1+)
-    if ! deployment_stage_before stack_started; then
-        USED_WAIT_FLAG=false
-    elif docker compose up --help 2>&1 | grep -q -- '--wait'; then
-        UP_ARGS="-d --wait"
-        if [ "$OPT_OFFLINE" = true ]; then
-            UP_ARGS="$(compose_up_no_build_args) --wait"
-        else
-            UP_ARGS="$(compose_up_after_build_args) --wait"
-        fi
-        # Use --wait to wait for health checks before returning. The build phase
-        # above is the only place setup is allowed to build images; startup must
-        # not silently run a second build with different retry behavior.
-        if docker compose "${COMPOSE_FILE_ARGS[@]}" up $UP_ARGS; then
-            FRONTEND_RUNNING=true
-            WORKER_RUNNING=true
-        else
-            echo ""
-            echo -e "${YELLOW}Note: Some services may still be starting.${NC}"
-            # Check if key services are actually running despite the timeout
-            if docker compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q "frontend.*healthy"; then
-                FRONTEND_RUNNING=true
-            fi
-            if docker compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q "worker.*healthy"; then
-                WORKER_RUNNING=true
-            fi
-        fi
-        USED_WAIT_FLAG=true
-    else
-        # Fallback for older docker compose versions
-        if [ "$OPT_OFFLINE" = true ]; then
-            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args)
-        else
-            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args)
-        fi
-        USED_WAIT_FLAG=false
-    fi
+    start_compose_services || return $?
     deployment_transition stack_started
 }
 
+start_compose_services() {
+    USED_WAIT_FLAG=false
+    if ! deployment_stage_before stack_started; then
+        return 0
+    fi
+
+    local up_args status
+    if [ "$OPT_OFFLINE" = true ]; then
+        up_args="$(compose_up_no_build_args)"
+    else
+        up_args="$(compose_up_after_build_args)"
+    fi
+    if docker compose up --help 2>&1 | grep -q -- '--wait'; then
+        up_args="$up_args --wait"
+        USED_WAIT_FLAG=true
+    fi
+
+    # A failed up leaves the pending stage retryable. Never infer success from
+    # other running containers or advance the checkpoint after a partial start.
+    if docker compose "${COMPOSE_FILE_ARGS[@]}" up $up_args; then
+        if [ "$USED_WAIT_FLAG" = true ]; then
+            FRONTEND_RUNNING=true
+            WORKER_RUNNING=true
+        fi
+    else
+        status=$?
+        USED_WAIT_FLAG=false
+        echo -e "${RED}Container startup failed; rerun setup to resume this deployment.${NC}" >&2
+        return "$status"
+    fi
+}
+
+sample_service_health() {
+    local snapshot failed
+    snapshot="$(docker compose "${COMPOSE_FILE_ARGS[@]}" ps --all --format '{{.Service}} {{.Health}} {{.State}}')" || return $?
+    FRONTEND_RUNNING=false
+    WORKER_RUNNING=false
+    if grep -Eq '^frontend[[:space:]]+healthy([[:space:]]|$)' <<< "$snapshot"; then
+        FRONTEND_RUNNING=true
+    fi
+    if grep -Eq '^worker[[:space:]]+healthy([[:space:]]|$)' <<< "$snapshot"; then
+        WORKER_RUNNING=true
+    fi
+    failed="$(awk '$NF == "exited" && $1 != "migrate" && $1 != "grafana-password-migration" { print }' <<< "$snapshot")"
+    if [ -n "$failed" ]; then
+        echo -e "${RED}Container failures detected:${NC}"
+        echo "$failed"
+        return 1
+    fi
+}
+
 wait_for_healthy() {
-    # Skip if --wait flag was used (already waited)
+    # A successful compose --wait already established health for this revision.
     if [ "$USED_WAIT_FLAG" = true ]; then
         echo ""
         return
@@ -1198,37 +1215,21 @@ wait_for_healthy() {
     INTERVAL=5
 
     while [ $WAITED -lt $MAX_WAIT ]; do
-        if docker compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q "frontend.*healthy"; then
-            FRONTEND_RUNNING=true
-        fi
-
-        if docker compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q "worker.*healthy"; then
-            WORKER_RUNNING=true
-        fi
-
+        sample_service_health || return $?
         if [ "$FRONTEND_RUNNING" = true ] && [ "$WORKER_RUNNING" = true ]; then
+            echo -e "${GREEN}✓${NC} Services are healthy"
             break
         fi
-
-        if docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -qE "(Exit|exited)"; then
-            echo -e "${YELLOW}Some containers exited. Checking status...${NC}"
-            FAILED=$(docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -E "(Exit|exited)" | grep -v "migrate" || true)
-            if [ -n "$FAILED" ]; then
-                echo -e "${RED}Container failures detected:${NC}"
-                echo "$FAILED"
-                break
-            fi
-        fi
-
         sleep $INTERVAL
         WAITED=$((WAITED + INTERVAL))
         echo "  Still starting... ($WAITED/${MAX_WAIT}s)"
     done
 
-    if [ $WAITED -ge $MAX_WAIT ] && { [ "$FRONTEND_RUNNING" = false ] || [ "$WORKER_RUNNING" = false ]; }; then
+    if [ "$FRONTEND_RUNNING" = false ] || [ "$WORKER_RUNNING" = false ]; then
         echo -e "${YELLOW}Timeout waiting for services. They may still be starting.${NC}"
         echo "  Check status with: ./scripts/ownership/run-operator-compose.sh ps"
         echo "  View logs with: ./scripts/ownership/run-operator-compose.sh logs -f"
+        return 1
     fi
 
     echo ""

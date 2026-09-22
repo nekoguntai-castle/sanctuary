@@ -54,6 +54,19 @@ release tag from a git bundle, then starts Sanctuary without network pulls or
 Docker builds. Never execute it from an archive whose detached signature has
 not been verified first.
 
+## Returning to source-based installation
+
+An invocation of `install.sh` without an offline bundle uses online source
+installation. Setup preserves existing secrets and optional-profile preferences,
+sets `SANCTUARY_INSTALL_MODE=online`, and clears `SANCTUARY_OFFLINE_VERSION`.
+An explicit offline invocation instead records the target bundle version and
+keeps subsequent starts in no-build/no-pull mode.
+
+A failed container startup leaves the pending deployment stage retryable. Rerun
+the same installation with the same checkout, runtime configuration, and profiles
+to resume it; do not edit pending ownership manifests or change installation mode
+while a pending deployment remains unresolved.
+
 ## Release Manifest Verification
 
 Stable releases must publish a release manifest next to the release assets. The

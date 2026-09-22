@@ -1593,7 +1593,9 @@ test_setup_script_does_not_rebuild_during_compose_up_after_build() {
 
     assert_contains "$start_body" "run_compose_build \$BUILD_ARGS" \
         "setup.sh should route image builds through the retrying build wrapper" || return 1
-    assert_contains "$start_body" "compose_up_after_build_args" \
+    local up_body
+    up_body="$(extract_shell_function "start_compose_services" "$SETUP_SCRIPT")"
+    assert_contains "$up_body" "compose_up_after_build_args" \
         "setup.sh should use no-build compose-up args after a successful build" || return 1
 
     local up_args_body

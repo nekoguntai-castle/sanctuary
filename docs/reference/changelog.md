@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   HTTP connections, and worker checkpoints during shutdown.
 - Isolate monitoring upgrade fixture ports and correct owned-source canary image
   registration and verifier shutdown handling.
+- Reconcile offline-to-online installation mode during source upgrades and keep
+  failed container startup retryable until the selected services are healthy.
 
 ### Upgrade validation
 

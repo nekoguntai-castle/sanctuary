@@ -136,6 +136,9 @@ run_unit_suites() {
     if ! run_test_suite "Unit Tests" "$SCRIPT_DIR/unit/install-script.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Setup Upgrade State Tests" "$SCRIPT_DIR/unit/setup-upgrade-state.test.sh"; then
+        suite_failed=true
+    fi
     if ! run_test_suite "Migration Compose Contract Tests" "$SCRIPT_DIR/unit/migration-compose-contract.test.sh"; then
         suite_failed=true
     fi
