@@ -17,28 +17,49 @@ export const BlockHeightIndicator: React.FC = () => {
   const [tick, setTick] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    let requestGeneration = 0;
+    let tickGeneration = 0;
+    let currentHeight: number | null = null;
+    let tickResetTimeout: ReturnType<typeof setTimeout> | null = null;
+
     setBlockHeight(null);
+    setTick(false);
 
     const fetchHeight = async () => {
+      const generation = ++requestGeneration;
       try {
         const status = await bitcoinApi.getStatus(selectedNetwork);
-        if (status.blockHeight) {
-          setBlockHeight(prev => {
-            if (prev !== null && prev !== status.blockHeight) {
-              setTick(true);
-              setTimeout(() => setTick(false), 1500);
-            }
-            return status.blockHeight!;
-          });
+        if (!active || generation !== requestGeneration || !status.blockHeight) return;
+
+        if (currentHeight !== null && currentHeight !== status.blockHeight) {
+          const currentTickGeneration = ++tickGeneration;
+          setTick(true);
+          if (tickResetTimeout) clearTimeout(tickResetTimeout);
+          tickResetTimeout = setTimeout(() => {
+            if (!active || currentTickGeneration !== tickGeneration) return;
+            tickResetTimeout = null;
+            setTick(false);
+          }, 1500);
         }
+
+        currentHeight = status.blockHeight;
+        setBlockHeight(status.blockHeight);
       } catch (error) {
-        log.debug('Failed to fetch block height');
+        if (active && generation === requestGeneration) {
+          log.debug('Failed to fetch block height');
+        }
       }
     };
 
     fetchHeight();
     const interval = setInterval(fetchHeight, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      tickGeneration++;
+      clearInterval(interval);
+      if (tickResetTimeout) clearTimeout(tickResetTimeout);
+    };
   }, [selectedNetwork]);
 
   if (blockHeight === null) return null;

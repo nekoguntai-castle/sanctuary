@@ -84,10 +84,10 @@ Transfer confirmation can remove the former owner's access when `keepExistingUse
 
 After every phase:
 
-- [ ] Verify the phase merge commit is a real ancestor of refreshed `origin/main` and all exact target workflows are green.
-- [ ] Re-read repository instructions and this plan from disk.
-- [ ] Refresh open PRs and target SHA, then revalidate every remaining finding and caller against the new target.
-- [ ] Start the next phase from refreshed `origin/main`, never from the prior topic head.
+- [x] Verify the phase merge commit is a real ancestor of refreshed `origin/main` and all exact target workflows are green.
+- [x] Re-read repository instructions and this plan from disk.
+- [x] Refresh open PRs and target SHA, then revalidate every remaining finding and caller against the new target.
+- [x] Start the next phase from refreshed `origin/main`, never from the prior topic head.
 
 ## Phase 2: Drain accepted subscription checkpoints on shutdown
 
@@ -153,33 +153,33 @@ After every phase:
 - [x] `npm run typecheck:app`
 - [x] `npm run typecheck:tests`
 - [x] Phase 3 acceptance: a successful transfer that removes the initiating user's access cannot leave stale resource detail or collection state visible, while unrelated reconciliation failures and superseded routes keep their current semantics.
-- [ ] Deliver as one frontend transfer-ownership PR and verify exact head and squash-merge target CI before Phase 4.
+- [x] Deliver as one frontend transfer-ownership PR and verify exact head and squash-merge target CI before Phase 4.
 
 ## Phase 4: Fence network-specific status responses
 
 ### Production changes
 
-- [ ] Add effect-local activity and a monotonic request generation in `BlockHeightIndicator` so only the newest poll in the current selected-network effect may update height or tick state.
-- [ ] Track the effect's current height outside the state updater, own and clear the tick-reset timeout as well as the polling interval, and prevent an older timeout from ending a newer animation.
-- [ ] Fence both successful and failed connection checks in `useLayoutNotifications` with effect activity plus a per-poll generation so a settled request may add or remove `connection_error` only while it is the newest request in the current user/network effect.
-- [ ] Preserve the exported `checkBitcoinConnection` helper's direct behavior where tests or callers rely on it; pass an explicit ownership predicate rather than adding hidden global state.
-- [ ] Preserve polling intervals, admin action metadata, fallback messages, and draft-notification behavior.
+- [x] Add effect-local activity and a monotonic request generation in `BlockHeightIndicator` so only the newest poll in the current selected-network effect may update height or tick state.
+- [x] Track the effect's current height outside the state updater, own and clear the tick-reset timeout as well as the polling interval, and prevent an older timeout from ending a newer animation.
+- [x] Fence both successful and failed connection checks in `useLayoutNotifications` with effect activity plus a per-poll generation so a settled request may add or remove `connection_error` only while it is the newest request in the current user/network effect.
+- [x] Preserve the exported `checkBitcoinConnection` helper's direct behavior where tests or callers rely on it; pass an explicit ownership predicate rather than adding hidden global state.
+- [x] Preserve polling intervals, admin action metadata, fallback messages, and draft-notification behavior.
 
 ### Regression tests
 
-- [ ] Defer block-height request A, switch to B, resolve B, then resolve A and prove B's height and title remain paired.
-- [ ] Start overlapping polls on one network, resolve the newer one first, and prove the older response cannot replace it.
-- [ ] Switch networks while the tick animation timeout is active and prove the old timeout cannot alter the new effect's tick state; unmount with all timers owned and cleared.
-- [ ] Defer connection request A, switch to B, resolve B disconnected, then resolve A connected and prove B's critical notification remains.
-- [ ] Cover the inverse stale failure, overlapping same-network polls, and unmount paths so an old request can neither add nor remove a current notification.
-- [ ] Preserve ordinary initial checks, interval polls, connected/disconnected outcomes, and admin/non-admin actions.
+- [x] Defer block-height request A, switch to B, resolve B, then resolve A and prove B's height and title remain paired.
+- [x] Start overlapping polls on one network, resolve the newer one first, and prove the older response cannot replace it.
+- [x] Switch networks while the tick animation timeout is active and prove the old timeout cannot alter the new effect's tick state; unmount with all timers owned and cleared.
+- [x] Defer connection request A, switch to B, resolve B disconnected, then resolve A connected and prove B's critical notification remains.
+- [x] Cover the inverse stale failure, overlapping same-network polls, and unmount paths so an old request can neither add nor remove a current notification.
+- [x] Preserve ordinary initial checks, interval polls, connected/disconnected outcomes, and admin/non-admin actions.
 
 ### Verification and acceptance
 
-- [ ] `npx vitest run --config config/tooling/vitest.config.ts tests/components/Layout/BlockHeightIndicator.test.tsx tests/components/Layout/useLayoutNotifications.test.tsx tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx`
-- [ ] `npm run typecheck:app`
-- [ ] `npm run typecheck:tests`
-- [ ] Phase 4 acceptance: only the current network effect can write height, animation, or connection-notification state, including reverse completion and unmount.
+- [x] `npx vitest run --config config/tooling/vitest.config.ts tests/components/Layout/BlockHeightIndicator.test.tsx tests/components/Layout/useLayoutNotifications.test.tsx tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx`
+- [x] `npm run typecheck:app`
+- [x] `npm run typecheck:tests`
+- [x] Phase 4 acceptance: only the current network effect can write height, animation, or connection-notification state, including reverse completion and unmount.
 - [ ] Deliver as one frontend layout-ownership PR and verify exact head and squash-merge target CI.
 
 ## Broad verification after each phase
@@ -205,6 +205,23 @@ After every phase:
 - TypeScript app/test/all gates, build, lint, architecture boundaries and generated diagrams, server cycle baseline, complexity, and large-file classification pass.
 - The fully mocked Chromium render regression passes all 44 routes against the production preview server.
 - Independent adversarial review found and verified the StrictMode mounted-flag correction, then completed a clean re-review of the final diff.
+
+### Phase 4 evidence
+
+- The four focused Layout suites pass 74 tests after the initial ownership regressions failed against the prior implementation.
+- After correcting the pre-commit timer leak, the exact frontend suite and final coverage run pass 8,911 tests. Coverage remains literal 100%: 25,861 statements, 16,458 branches, 7,190 functions, and 23,610 lines. The full server suite passes 16,462 tests with 767 skips and one todo.
+- Build, full lint, all TypeScript checks, architecture boundaries, server cycle baseline, complexity, large-file classification, and diff validation pass.
+- The fully mocked Chromium production render regression passes all 44 routes.
+- Independent adversarial review completed cleanly after checking effect lifetime, overlapping requests, tick timeout ownership, StrictMode behavior, helper compatibility, notification metadata, and the Account timer correction. Its final focused run passed 98 tests across five affected suites, and `git diff --check` passed.
+
+### Phase 4 pre-commit retry evidence
+
+- Immutable identity: target `94032d19ee9da5b8dfa4ab105b8ae18581fa50ff`, staged-diff object `f483b5470e0b7aa024183ee81bbb74b0b60ae4ce`; the hook's AI test reviewer recommended proceeding.
+- Failure signature: all 8,908 frontend tests passed, then Vitest reported one unhandled `window is not defined` from the pre-existing three-second password-success timeout in `usePasswordChangeController.ts` after the `Account.test.tsx` environment had been torn down.
+- New hypothesis: full-suite scheduling let the existing Account success timer outlive jsdom; the Phase 4 Layout code and all of its focused tests had already completed successfully.
+- Cheap discriminator: `tests/components/Account.test.tsx` passed alone (21 tests, no unhandled error).
+- Root-cause correction: the Account password controller now owns and clears its success-reset timeout on unmount, and ignores password requests that settle after unmount. Focused regressions cover the cleared handle, an already-queued callback, and late resolve and reject paths at literal 100% controller coverage.
+- The hook's subsequent generic frontend failures exposed no stderr. A temporary PATH delegate captured the suppressed failure without changing or bypassing the hook: the commit shell had selected npm 11.19.0, and npm rejected the repository's required `>=12.0.2 <13` developer engine before Vitest started. The exact hook wrapper passed all 8,911 tests with exit status 0 after selecting the repository's NVM toolchain.
 
 No phase adds an endpoint, so OpenAPI coverage and Playwright API mock maps should not require new routes. Exact PR-head and landed-target CI remain mandatory for every phase.
 

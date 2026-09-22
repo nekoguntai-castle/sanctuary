@@ -92,9 +92,12 @@ export const checkBitcoinConnection = async (
   isAdmin: boolean,
   network: TabNetwork,
   notificationActions: NotificationActions,
+  isCurrent: () => boolean = () => true,
 ) => {
   try {
     const status = await bitcoinApi.getStatus(network);
+    if (!isCurrent()) return;
+
     if (status.connected) {
       notificationActions.removeNotificationsByType('connection_error');
       return;
@@ -107,6 +110,8 @@ export const checkBitcoinConnection = async (
       status.error || 'Unable to connect to blockchain. Wallet data may be outdated.',
     );
   } catch {
+    if (!isCurrent()) return;
+
     addConnectionErrorNotification(
       notificationActions,
       isAdmin,
@@ -136,13 +141,25 @@ export function useLayoutNotifications({
   useEffect(() => {
     if (!user) return;
 
+    let active = true;
+    let requestGeneration = 0;
+
     const runConnectionCheck = () => {
-      void checkBitcoinConnection(!!user.isAdmin, selectedNetwork, notificationActions);
+      const generation = ++requestGeneration;
+      void checkBitcoinConnection(
+        !!user.isAdmin,
+        selectedNetwork,
+        notificationActions,
+        () => active && generation === requestGeneration,
+      );
     };
 
     runConnectionCheck();
     const interval = setInterval(runConnectionCheck, 60000);
 
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [user, selectedNetwork, notificationActions]);
 }

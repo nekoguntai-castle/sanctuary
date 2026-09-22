@@ -28,6 +28,7 @@ vi.mock('../../src/contexts/UserContext', () => ({
 
 // Mock auth API
 const mockChangePassword = vi.fn();
+const mockAccountLogError = vi.hoisted(() => vi.fn());
 vi.mock('../../src/api/auth', () => ({
   changePassword: (...args: unknown[]) => mockChangePassword(...args),
 }));
@@ -50,7 +51,7 @@ vi.mock('../../src/utils/logger', () => ({
     info: vi.fn(),
     debug: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error: mockAccountLogError,
   }),
 }));
 
@@ -89,7 +90,7 @@ vi.mock('../../src/components/ui/Button', () => ({
 
 async function renderAccount() {
   const { Account } = await import('../../src/components/Account');
-  render(<Account />);
+  return render(<Account />);
 }
 
 function getPasswordInputs() {
@@ -286,13 +287,91 @@ describe('Account Component - Password Actions', () => {
       .filter(([, delay]) => delay === 3000)
       .map(([callback]) => callback)
       .filter((callback): callback is () => void => typeof callback === 'function');
+    const timeoutHandles = timeoutSpy.mock.calls
+      .map(([, delay], index) => delay === 3000 ? timeoutSpy.mock.results[index]?.value : null)
+      .filter((handle) => handle !== null);
 
     act(() => {
       timeoutCallbacks.forEach((callback) => callback());
     });
+    timeoutHandles.forEach((handle) => clearTimeout(handle));
 
     expect(screen.queryByText('Password changed successfully')).not.toBeInTheDocument();
     timeoutSpy.mockRestore();
+  });
+
+  it('clears the password success timeout on unmount', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    mockChangePassword.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    const view = await renderAccount();
+
+    const [currentPassword, newPassword, confirmPassword] = getPasswordInputs();
+    await user.type(currentPassword, 'current-pass');
+    await user.type(newPassword, 'new-pass-123');
+    await user.type(confirmPassword, 'new-pass-123');
+    await user.click(screen.getByRole('button', { name: /change password/i }));
+    expect(await screen.findByText('Password changed successfully')).toBeInTheDocument();
+
+    const timeoutIndex = timeoutSpy.mock.calls.findIndex(([, delay]) => delay === 3000);
+    const successTimeout = timeoutSpy.mock.results[timeoutIndex]?.value;
+    const successCallback = timeoutSpy.mock.calls[timeoutIndex]?.[0];
+    expect(successTimeout).toBeDefined();
+
+    view.unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(successTimeout);
+    act(() => {
+      if (typeof successCallback === 'function') successCallback();
+    });
+
+    timeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('does not schedule a success timeout when the request resolves after unmount', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    let resolvePasswordChange!: () => void;
+    mockChangePassword.mockImplementationOnce(() => new Promise<void>(resolve => {
+      resolvePasswordChange = resolve;
+    }));
+    const user = userEvent.setup();
+    const view = await renderAccount();
+
+    const [currentPassword, newPassword, confirmPassword] = getPasswordInputs();
+    await user.type(currentPassword, 'current-pass');
+    await user.type(newPassword, 'new-pass-123');
+    await user.type(confirmPassword, 'new-pass-123');
+    await user.click(screen.getByRole('button', { name: /change password/i }));
+    await waitFor(() => expect(mockChangePassword).toHaveBeenCalledTimes(1));
+    const successTimeoutCount = timeoutSpy.mock.calls.filter(([, delay]) => delay === 3000).length;
+
+    view.unmount();
+    await act(async () => resolvePasswordChange());
+
+    expect(timeoutSpy.mock.calls.filter(([, delay]) => delay === 3000)).toHaveLength(successTimeoutCount);
+    timeoutSpy.mockRestore();
+  });
+
+  it('ignores a password error when the request rejects after unmount', async () => {
+    let rejectPasswordChange!: (error: Error) => void;
+    mockChangePassword.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectPasswordChange = reject;
+    }));
+    const user = userEvent.setup();
+    const view = await renderAccount();
+
+    const [currentPassword, newPassword, confirmPassword] = getPasswordInputs();
+    await user.type(currentPassword, 'current-pass');
+    await user.type(newPassword, 'new-pass-123');
+    await user.type(confirmPassword, 'new-pass-123');
+    await user.click(screen.getByRole('button', { name: /change password/i }));
+    await waitFor(() => expect(mockChangePassword).toHaveBeenCalledTimes(1));
+
+    view.unmount();
+    await act(async () => rejectPasswordChange(new Error('late failure')));
+
+    expect(mockAccountLogError).not.toHaveBeenCalled();
   });
 
   it('shows API error message when password change fails with ApiError', async () => {
