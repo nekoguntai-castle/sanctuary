@@ -91,6 +91,10 @@ import {
   type NetworkHeaderReconciliationRuntime,
 } from './worker/networkHeaderReconciliationRuntime';
 import { completeWalletSubscriptionEnrollment } from './worker/walletSubscriptionEnrollment';
+import {
+  drainSubscriptionStatusTails,
+  startWorkerShutdownDeadline,
+} from './worker/shutdownLifecycle';
 import { schedulerRetirementCutover } from './services/sync/schedulerRetirementCutover';
 import { readSchedulerRetirementReadiness } from './services/sync/schedulerRetirementReadiness';
 import {
@@ -307,6 +311,8 @@ async function recordSubscriptionStatus(
   scriptHash: string,
   observedStatus: string | null,
 ): Promise<void> {
+  // Shutdown closes admission before it snapshots the accepted tail map.
+  if (isShuttingDown) return;
   const key = `${network}:${scriptHash}`;
   const previous = subscriptionStatusTails.get(key) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(() => (
@@ -824,6 +830,10 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   }
   isShuttingDown = true;
   shutdownExitCode = exitCode;
+  const shutdownDeadline = startWorkerShutdownDeadline(() => {
+    shutdownExitCode = 1;
+    exitNow(1);
+  });
 
   log.info(`${signal} received, shutting down worker...`);
 
@@ -847,6 +857,24 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     clearInterval(networkHeaderReconciliationTimer);
     networkHeaderReconciliationTimer = null;
   }
+  if (scheduleReconciliationTimer) {
+    clearInterval(scheduleReconciliationTimer);
+    scheduleReconciliationTimer = null;
+  }
+  if (metricsTimer) {
+    clearInterval(metricsTimer);
+    metricsTimer = null;
+  }
+
+  // Address activity callbacks are fire-and-forget at the Electrum boundary.
+  // Admission is closed above, so this snapshot owns every accepted tail and
+  // keeps its dependencies alive until the complete predecessor chain settles.
+  await drainSubscriptionStatusTails(subscriptionStatusTails);
+
+  subscriptionCheckpointCursors.clear();
+  subscriptionStatusRefreshCursors.clear();
+  subscriptionCheckpointInFlight = false;
+  subscriptionStatusRefreshInFlight = false;
   if (networkHeaderReconciliationRuntime) {
     try {
       await networkHeaderReconciliationRuntime.stop();
@@ -856,19 +884,6 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
       });
     }
     networkHeaderReconciliationRuntime = null;
-  }
-  subscriptionCheckpointCursors.clear();
-  subscriptionStatusRefreshCursors.clear();
-  subscriptionCheckpointInFlight = false;
-  subscriptionStatusRefreshInFlight = false;
-  subscriptionStatusTails.clear();
-  if (scheduleReconciliationTimer) {
-    clearInterval(scheduleReconciliationTimer);
-    scheduleReconciliationTimer = null;
-  }
-  if (metricsTimer) {
-    clearInterval(metricsTimer);
-    metricsTimer = null;
   }
 
   // Stop health server first
@@ -961,6 +976,7 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     log.error('Error disconnecting database', { error: getErrorMessage(err) });
   }
 
+  clearTimeout(shutdownDeadline);
   log.info('Worker shutdown complete');
   exitNow(shutdownExitCode);
 }

@@ -70,7 +70,7 @@ Transfer confirmation can remove the former owner's access when `keepExistingUse
 - [x] `npm run typecheck:all`
 - [x] `npm run typecheck:server:tests`
 - [x] Phase 1 acceptance: no observable database state can contain a newly committed admin-set password with the prior session version or refresh tokens, and the final-admin concurrency guard remains intact.
-- [ ] Deliver as one server security/persistence PR and verify exact head and squash-merge target CI before Phase 2.
+- [x] Deliver as one server security/persistence PR and verify exact head and squash-merge target CI before Phase 2.
 
 ### Phase 1 evidence
 
@@ -93,30 +93,38 @@ After every phase:
 
 ### Production changes
 
-- [ ] Give `server/src/worker.ts` explicit ownership of every accepted address-activity checkpoint promise, including queued per-script-hash tails; the latest tail for a key must represent its complete predecessor chain.
-- [ ] Stop admission before beginning the drain so Electrum callbacks cannot add new checkpoint work after the drain snapshot.
-- [ ] Await all accepted checkpoint tails with `Promise.allSettled` before closing Electrum-dependent, Redis, or database resources; log failures without skipping the remaining teardown.
-- [ ] Add one named 30-second worker-wide hard shutdown deadline at shutdown start, following the API server's process-entry pattern; unref it, clear it on graceful completion, and force a failing exit if any teardown stage, including the drain, exceeds the bound.
-- [ ] Keep the normal drain unbounded inside that worker-wide deadline. Do not time out the drain and continue closing its dependencies while checkpoint code can still run.
-- [ ] Clear tail bookkeeping only after settlement, while preserving normal per-script-hash serialization and error recovery.
-- [ ] Keep unrelated interval work outside this change unless implementation evidence shows it shares the same accepted-work promise boundary.
+- [x] Give `server/src/worker.ts` explicit ownership of every accepted address-activity checkpoint promise, including queued per-script-hash tails; the latest tail for a key must represent its complete predecessor chain.
+- [x] Stop admission before beginning the drain so Electrum callbacks cannot add new checkpoint work after the drain snapshot.
+- [x] Await all accepted checkpoint tails with `Promise.allSettled` before closing Electrum-dependent, Redis, or database resources; log failures without skipping the remaining teardown.
+- [x] Add one named 30-second worker-wide hard shutdown deadline at shutdown start, following the API server's process-entry pattern; unref it, clear it on graceful completion, and force a failing exit if any teardown stage, including the drain, exceeds the bound.
+- [x] Keep the normal drain unbounded inside that worker-wide deadline. Do not time out the drain and continue closing its dependencies while checkpoint code can still run.
+- [x] Clear tail bookkeeping only after settlement, while preserving normal per-script-hash serialization and error recovery.
+- [x] Keep unrelated interval work outside this change unless implementation evidence shows it shares the same accepted-work promise boundary.
 
 ### Regression tests
 
-- [ ] Defer a multi-page `recordStatusPage`, invoke `onAddressActivity`, signal shutdown, and prove Electrum stop, Redis/database teardown, and process exit all wait for the checkpoint to settle.
-- [ ] Queue two updates for one script hash and prove shutdown drains the full serialized tail, not only the currently running operation.
-- [ ] Reject a checkpoint and prove shutdown logs/settles the failure and still performs teardown exactly once.
-- [ ] Hold a checkpoint past the new worker-wide deadline and prove it logs the timeout and forces exit 1 without beginning dependency teardown beneath the active checkpoint.
-- [ ] Prove callbacks arriving after admission closes cannot start persistence work.
+- [x] Defer a multi-page `recordStatusPage`, invoke `onAddressActivity`, signal shutdown, and prove Electrum stop, Redis/database teardown, and process exit all wait for the checkpoint to settle.
+- [x] Queue two updates for one script hash and prove shutdown drains the full serialized tail, not only the currently running operation.
+- [x] Reject a checkpoint and prove shutdown logs/settles the failure and still performs teardown exactly once.
+- [x] Hold a checkpoint past the new worker-wide deadline and prove it logs the timeout and forces exit 1 without beginning dependency teardown beneath the active checkpoint.
+- [x] Prove callbacks arriving after admission closes cannot start persistence work.
 
 ### Verification and acceptance
 
-- [ ] `cd server && npx vitest run tests/unit/worker/worker.entry.test.ts tests/integration/worker/worker.integration.test.ts`
-- [ ] Run the focused subscription-checkpoint runtime suite when shared helpers change.
-- [ ] `npm run typecheck:all`
-- [ ] `npm run typecheck:server:tests`
-- [ ] Phase 2 acceptance: shutdown never tears down dependent resources while accepted address-activity checkpoint work is still eligible to complete, and a stuck operation remains bounded by the documented shutdown deadline.
+- [x] `cd server && npx vitest run tests/unit/worker/worker.entry.test.ts tests/integration/worker/worker.integration.test.ts`
+- [x] Run the focused subscription-checkpoint runtime suite when shared helpers change.
+- [x] `npm run typecheck:all`
+- [x] `npm run typecheck:server:tests`
+- [x] Phase 2 acceptance: shutdown never tears down dependent resources while accepted address-activity checkpoint work is still eligible to complete, and a stuck operation remains bounded by the documented shutdown deadline.
 - [ ] Deliver as one worker lifecycle PR and verify exact head and squash-merge target CI before Phase 3.
+
+### Phase 2 evidence
+
+- Five failing-before worker entrypoint regressions demonstrated multi-page truncation, queued-tail truncation, rejection escape, the missing deadline, and post-shutdown admission; all pass after the lifecycle fix.
+- The focused worker entrypoint and integration suites pass 47 tests, and the extracted shutdown lifecycle module keeps the production entrypoint below the repository's 1,000-line limit.
+- Backend unit coverage passes at 100% for 41,017 statements, 23,127 branches, 8,738 functions, and 38,212 lines.
+- Full frontend and server suites pass 8,883 and 17,230 tests respectively; the server total includes 16,462 passed tests, 767 guarded skips, and one existing todo.
+- Build, lint, both TypeScript checks, architecture boundaries and generated graphs, cycle baseline, complexity, large-file classification, independent adversarial review, and simplify/edge-case review pass.
 
 ## Phase 3: Reconcile former-owner access loss after transfer
 

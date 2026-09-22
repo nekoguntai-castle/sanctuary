@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import { WORKER_SHUTDOWN_TIMEOUT_MS } from '../../../src/worker/shutdownLifecycle';
 
 const mocks = vi.hoisted(() => {
   const logger = {
@@ -366,6 +367,33 @@ vi.mock('../../../src/websocket/redisBridge', () => ({
 vi.mock('../../../src/services/supportPackage/captureRuntime', () => ({
   startCaptureParticipant: mocks.startCaptureParticipant, stopCaptureParticipant: mocks.stopCaptureParticipant,
 }));
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function statusPageResult(scanned = 0, nextCursor?: string) {
+  return {
+    scanned,
+    completed: 0,
+    unavailable: 0,
+    ...(nextCursor !== undefined ? { nextCursor } : {}),
+    syncIntents: [],
+    dispatch: {
+      intents: 0,
+      published: 0,
+      publicationFailed: 0,
+      woken: 0,
+      wakeUnavailable: 0,
+    },
+  };
+}
 
 describe('worker entrypoint', () => {
   beforeEach(() => {
@@ -763,6 +791,250 @@ describe('worker entrypoint', () => {
       2,
       expect.objectContaining({ observedStatus: 'b'.repeat(64) }),
     );
+  });
+
+  it('drains every page of accepted address activity before dependency teardown', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    const processExitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const firstPage = deferred<ReturnType<typeof statusPageResult>>();
+    const secondPage = deferred<ReturnType<typeof statusPageResult>>();
+    mocks.subscriptionCheckpointRuntime.recordStatusPage
+      .mockReturnValueOnce(firstPage.promise)
+      .mockReturnValueOnce(secondPage.promise);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    mocks.getElectrumCallbacks()!.onAddressActivity(
+      'testnet4',
+      'd'.repeat(64),
+      'a'.repeat(64),
+    );
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
+    });
+
+    const shutdownPromise = handlers.SIGTERM![0]();
+    await Promise.resolve();
+    const teardownStartedBeforeDrain = mocks.electrumInstance.stop.mock.calls.length > 0
+      || mocks.queueInstance.shutdown.mock.calls.length > 0
+      || mocks.shutdownRedis.mock.calls.length > 0
+      || mocks.disconnect.mock.calls.length > 0
+      || processExitSpy.mock.calls.length > 0;
+
+    firstPage.resolve(statusPageResult(200, 'next-page'));
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.electrumInstance.stop).not.toHaveBeenCalled();
+    secondPage.resolve(statusPageResult());
+    await shutdownPromise;
+
+    expect(teardownStartedBeforeDrain).toBe(false);
+    expect(mocks.electrumInstance.stop).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.shutdown).toHaveBeenCalledOnce();
+    expect(mocks.shutdownRedis).toHaveBeenCalledOnce();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('drains the complete same-key status tail before dependency teardown', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const firstWrite = deferred<ReturnType<typeof statusPageResult>>();
+    const secondWrite = deferred<ReturnType<typeof statusPageResult>>();
+    mocks.subscriptionCheckpointRuntime.recordStatusPage
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(secondWrite.promise);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const callbacks = mocks.getElectrumCallbacks()!;
+    callbacks.onAddressActivity('testnet4', 'e'.repeat(64), 'a'.repeat(64));
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
+    });
+    callbacks.onAddressActivity('testnet4', 'e'.repeat(64), 'b'.repeat(64));
+
+    const shutdownPromise = handlers.SIGTERM![0]();
+    firstWrite.resolve(statusPageResult());
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledTimes(2);
+    });
+    const teardownStartedBeforeTail = mocks.electrumInstance.stop.mock.calls.length > 0
+      || mocks.queueInstance.shutdown.mock.calls.length > 0
+      || mocks.shutdownRedis.mock.calls.length > 0
+      || mocks.disconnect.mock.calls.length > 0;
+    secondWrite.resolve(statusPageResult());
+    await shutdownPromise;
+
+    expect(teardownStartedBeforeTail).toBe(false);
+    expect(mocks.electrumInstance.stop).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.shutdown).toHaveBeenCalledOnce();
+    expect(mocks.shutdownRedis).toHaveBeenCalledOnce();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('settles a rejected accepted checkpoint before completing teardown', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const write = deferred<ReturnType<typeof statusPageResult>>();
+    mocks.subscriptionCheckpointRuntime.recordStatusPage.mockReturnValueOnce(write.promise);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    mocks.getElectrumCallbacks()!.onAddressActivity(
+      'testnet4',
+      'f'.repeat(64),
+      'a'.repeat(64),
+    );
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
+    });
+
+    const shutdownPromise = handlers.SIGTERM![0]();
+    await Promise.resolve();
+    const teardownStartedBeforeSettlement = mocks.electrumInstance.stop.mock.calls.length > 0
+      || mocks.queueInstance.shutdown.mock.calls.length > 0
+      || mocks.shutdownRedis.mock.calls.length > 0
+      || mocks.disconnect.mock.calls.length > 0;
+    write.reject(new Error('checkpoint write failed'));
+    await shutdownPromise;
+
+    expect(teardownStartedBeforeSettlement).toBe(false);
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Failed to persist address activity checkpoint',
+      expect.objectContaining({ error: 'checkpoint write failed' }),
+    );
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Accepted subscription checkpoint failed during shutdown',
+      { error: 'checkpoint write failed' },
+    );
+    expect(mocks.electrumInstance.stop).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.shutdown).toHaveBeenCalledOnce();
+    expect(mocks.shutdownRedis).toHaveBeenCalledOnce();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('forces exit 1 at the worker deadline without tearing down active checkpoint dependencies', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    const processExitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const realSetTimeout = global.setTimeout;
+    let deadlineCallback: (() => void) | undefined;
+    const deadlineHandle = { unref: vi.fn() } as any;
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+    vi.spyOn(global, 'setTimeout').mockImplementation(((
+      callback: (...args: any[]) => void,
+      delay?: number,
+      ...args: any[]
+    ) => {
+      if (delay === WORKER_SHUTDOWN_TIMEOUT_MS) {
+        deadlineCallback = () => callback(...args);
+        return deadlineHandle;
+      }
+      return realSetTimeout(callback, delay, ...args);
+    }) as typeof setTimeout);
+    const write = deferred<ReturnType<typeof statusPageResult>>();
+    mocks.subscriptionCheckpointRuntime.recordStatusPage.mockReturnValueOnce(write.promise);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    mocks.getElectrumCallbacks()!.onAddressActivity(
+      'testnet4',
+      '1'.repeat(64),
+      'a'.repeat(64),
+    );
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
+    });
+
+    const shutdownPromise = handlers.SIGTERM![0]();
+    const deadlineWasInstalled = deadlineCallback !== undefined;
+    deadlineCallback?.();
+    await Promise.resolve();
+    const teardownStartedAtDeadline = mocks.electrumInstance.stop.mock.calls.length > 0
+      || mocks.queueInstance.shutdown.mock.calls.length > 0
+      || mocks.shutdownRedis.mock.calls.length > 0
+      || mocks.disconnect.mock.calls.length > 0;
+    write.resolve(statusPageResult());
+    await shutdownPromise;
+
+    expect(deadlineWasInstalled).toBe(true);
+    expect(deadlineHandle.unref).toHaveBeenCalledOnce();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(deadlineHandle);
+    expect(teardownStartedAtDeadline).toBe(false);
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Worker shutdown timed out, forcing exit',
+      { timeoutMs: WORKER_SHUTDOWN_TIMEOUT_MS },
+    );
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(processExitSpy).not.toHaveBeenCalledWith(0);
+  });
+
+  it('rejects address activity admitted after shutdown begins', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const stopNetworkHeaders = deferred<void>();
+    mocks.networkHeaderReconciliationRuntime.stop.mockReturnValueOnce(stopNetworkHeaders.promise);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const shutdownPromise = handlers.SIGTERM![0]();
+    await vi.waitFor(() => {
+      expect(mocks.networkHeaderReconciliationRuntime.stop).toHaveBeenCalledOnce();
+    });
+    mocks.getElectrumCallbacks()!.onAddressActivity(
+      'testnet4',
+      '2'.repeat(64),
+      'a'.repeat(64),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const admittedAfterShutdown = mocks.subscriptionCheckpointRuntime.recordStatusPage.mock.calls.length;
+    stopNetworkHeaders.resolve();
+    await shutdownPromise;
+
+    expect(admittedAfterShutdown).toBe(0);
+    expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).not.toHaveBeenCalled();
   });
 
   it('orders live activity after the initial checkpoint baseline commits', async () => {
@@ -1699,7 +1971,12 @@ describe('worker entrypoint', () => {
     }) as any));
     const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
 
-    vi.spyOn(global, 'setTimeout').mockImplementation((((cb: () => void) => {
+    const shutdownDeadlineHandle = { unref: vi.fn() } as any;
+    vi.spyOn(global, 'setTimeout').mockImplementation((((
+      cb: () => void,
+      delay?: number,
+    ) => {
+      if (delay === WORKER_SHUTDOWN_TIMEOUT_MS) return shutdownDeadlineHandle;
       cb();
       return 1 as any;
     }) as any));
