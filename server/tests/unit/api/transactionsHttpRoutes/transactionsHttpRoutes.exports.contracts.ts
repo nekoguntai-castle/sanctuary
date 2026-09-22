@@ -1,7 +1,7 @@
 import { get as httpGet } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import request from "supertest";
 
 import { mockPrismaClient } from "../../../mocks/prisma";
@@ -703,9 +703,33 @@ export function registerTransactionHttpExportTests(): void {
       blockTime: null,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
     })));
-
+    let markTimerReady!: () => void;
+    const timerReady = new Promise<void>(resolve => { markTimerReady = resolve; });
+    let allowTimeout!: () => void;
+    const timeoutAllowed = new Promise<void>(resolve => { allowTimeout = resolve; });
+    let serverResponse: express.Response | undefined;
+    let requestSignal: AbortSignal | undefined;
+    const nativeSetTimeout = globalThis.setTimeout;
     const timedApp = express();
-    timedApp.use(withTimeout(75));
+    timedApp.use((req, res, next) => {
+      serverResponse = res;
+      const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementationOnce(
+        (callback, delay) => nativeSetTimeout(() => {
+          // Exercise the production callback only once the intended streaming
+          // state is witnessed, even if capture outlasts the timer under load.
+          markTimerReady();
+          void timeoutAllowed.then(() => callback());
+        }, delay),
+      );
+      try {
+        withTimeout(75)(req, res, () => {
+          requestSignal = req.requestAbortSignal;
+          next();
+        });
+      } finally {
+        timer.mockRestore();
+      }
+    });
     timedApp.use('/api/v1', createExportRouter());
     timedApp.use(errorHandler);
     const server = timedApp.listen(0);
@@ -731,10 +755,18 @@ export function registerTransactionHttpExportTests(): void {
         });
       });
 
-      await expect.poll(() => transactionExportPermits.active).toBe(1);
+      expect(response?.statusCode).toBe(200);
+      expect(response?.headers['content-disposition']).toContain('Timed_export');
+      await timerReady;
+      await expect.poll(() => serverResponse?.listenerCount('drain')).toBe(1);
+      expect(requestSignal?.aborted).toBe(false);
+      expect(transactionExportPermits.active).toBe(1);
+      allowTimeout();
+      await expect.poll(() => requestSignal?.aborted).toBe(true);
       await expect.poll(() => transactionExportPermits.active).toBe(0);
       expect(response?.complete).toBe(false);
     } finally {
+      allowTimeout();
       response?.destroy();
       client?.destroy();
       server.closeAllConnections();
