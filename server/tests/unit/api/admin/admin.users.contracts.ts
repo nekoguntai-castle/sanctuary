@@ -10,7 +10,7 @@ import {
   findRouteLayer,
   getAdminRouter,
   mockAuditLogFromRequest,
-  mockRevokeAllUserTokens,
+  mockDisconnectWebSocketUser,
 } from './adminTestHarness';
 
 export function registerAdminUserTests(): void {
@@ -229,17 +229,15 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(200);
-          expect(response.body.email).toBe('new@example.com');
-          expect(mockAuditLogFromRequest).toHaveBeenCalled();
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(200);
+        expect(response.body.email).toBe('new@example.com');
+        expect(mockAuditLogFromRequest).toHaveBeenCalled();
       });
 
       it('should update user password', async () => {
@@ -264,17 +262,15 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(200);
-          expect(mockPrismaClient.user.update).toHaveBeenCalled();
-          expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_password_reset');
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(200);
+        expect(mockPrismaClient.user.update).toHaveBeenCalled();
+        expect(mockDisconnectWebSocketUser).toHaveBeenCalledWith('user-1');
       });
 
       it('should update admin status and log appropriately', async () => {
@@ -299,22 +295,20 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(200);
-          expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
-            expect.anything(),
-            'user.admin_grant',
-            expect.anything(),
-            expect.anything()
-          );
-          expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_role_change');
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(200);
+        expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
+          expect.anything(),
+          'user.admin_grant',
+          expect.anything(),
+          expect.anything()
+        );
+        expect(mockDisconnectWebSocketUser).toHaveBeenCalledWith('user-1');
       });
 
       it('should revoke sessions once when password and admin status change together', async () => {
@@ -348,8 +342,8 @@ export function registerAdminUserTests(): void {
 
         const response = getResponse();
         expect(response.statusCode).toBe(200);
-        expect(mockRevokeAllUserTokens).toHaveBeenCalledTimes(1);
-        expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_security_update');
+        expect(mockDisconnectWebSocketUser).toHaveBeenCalledTimes(1);
+        expect(mockDisconnectWebSocketUser).toHaveBeenCalledWith('user-1');
       });
 
       it('should not revoke sessions when admin status is submitted unchanged', async () => {
@@ -373,16 +367,14 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(200);
-          expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(200);
+        expect(mockDisconnectWebSocketUser).not.toHaveBeenCalled();
       });
 
       it('should return 404 for non-existent user', async () => {
@@ -395,16 +387,14 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(404);
-          expect(response.body.message).toContain('not found');
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(404);
+        expect(response.body.message).toContain('not found');
       });
 
       it('should reject duplicate email', async () => {
@@ -426,16 +416,14 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(409);
-          expect(response.body.message).toContain('already exists');
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(409);
+        expect(response.body.message).toContain('already exists');
       });
     });
 
@@ -457,21 +445,19 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.delete
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'delete');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(200);
-          expect(response.body.message).toContain('deleted successfully');
-          expect(mockPrismaClient.user.delete).toHaveBeenCalledWith({
-            where: { id: 'user-1' },
-          });
-          expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_user_delete');
-          expect(mockAuditLogFromRequest).toHaveBeenCalled();
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(200);
+        expect(response.body.message).toContain('deleted successfully');
+        expect(mockPrismaClient.user.delete).toHaveBeenCalledWith({
+          where: { id: 'user-1' },
+        });
+        expect(mockDisconnectWebSocketUser).toHaveBeenCalledWith('user-1');
+        expect(mockAuditLogFromRequest).toHaveBeenCalled();
       });
 
       it('should prevent self-deletion', async () => {
@@ -481,16 +467,14 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.delete
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'delete');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(400);
-          expect(response.body.message).toContain('Cannot delete your own account');
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(400);
+        expect(response.body.message).toContain('Cannot delete your own account');
       });
 
       it('should return 404 for non-existent user', async () => {
@@ -502,16 +486,14 @@ export function registerAdminUserTests(): void {
         });
         const { res, getResponse } = createMockResponse();
 
-        const handler = getAdminRouter().stack.find((layer: any) =>
-          layer.route?.path === '/users/:userId' && layer.route?.methods?.delete
-        )?.route?.stack?.[2]?.handle;
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'delete');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
 
-        if (handler) {
-          await handler(req, res);
-          const response = getResponse();
-          expect(response.statusCode).toBe(404);
-          expect(response.body.message).toContain('not found');
-        }
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+        const response = getResponse();
+        expect(response.statusCode).toBe(404);
+        expect(response.body.message).toContain('not found');
       });
     });
   });

@@ -13,7 +13,10 @@ vi.mock('../../../src/models/prisma', () => ({
   default: mockPrisma,
 }));
 
-import { userRepository } from '../../../src/repositories/userRepository';
+import {
+  userRepository,
+} from '../../../src/repositories/userRepository';
+import { getAdminSessionInvalidationReason } from '../../../src/utils/adminSessionInvalidation';
 
 const adminSelect = { id: true, username: true, isAdmin: true } as const;
 
@@ -27,6 +30,7 @@ function serializableConflict() {
 function installAdminTransaction(options: {
   targetIsAdmin: boolean;
   adminCount: number;
+  revokedTokenCount?: number;
 }) {
   const tx = {
     user: {
@@ -41,6 +45,9 @@ function installAdminTransaction(options: {
         username: 'target-user',
         isAdmin: false,
       }),
+    },
+    refreshToken: {
+      deleteMany: vi.fn().mockResolvedValue({ count: options.revokedTokenCount ?? 2 }),
     },
   };
   mockPrisma.$transaction.mockImplementation(
@@ -83,6 +90,9 @@ function installAdminSetBarrier() {
       walletUser: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      refreshToken: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     const result = await callback(tx);
@@ -114,6 +124,15 @@ function expectOneAdminFloorWinner(
 }
 
 describe('Admin user repository updates', () => {
+  it.each([
+    [{ passwordChanged: true, adminRoleChanged: true }, 'admin_security_update'],
+    [{ passwordChanged: true, adminRoleChanged: false }, 'admin_password_reset'],
+    [{ passwordChanged: false, adminRoleChanged: true }, 'admin_role_change'],
+    [{ passwordChanged: false, adminRoleChanged: false }, null],
+  ] as const)('maps session invalidation transitions %#', (transitions, expected) => {
+    expect(getAdminSessionInvalidationReason(transitions)).toBe(expected);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -173,8 +192,107 @@ describe('Admin user repository updates', () => {
     });
     expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'target' },
-      data: { isAdmin: false, password: 'new-hash' },
+      data: {
+        isAdmin: false,
+        password: 'new-hash',
+        sessionVersion: { increment: 1 },
+      },
     }));
+    expect(tx.refreshToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'target' },
+    });
+  });
+
+  it('atomically invalidates sessions for a password-only update', async () => {
+    const tx = installAdminTransaction({ targetIsAdmin: false, adminCount: 1 });
+
+    await expect(userRepository.updateFromAdmin(
+      'target',
+      { password: 'new-hash' },
+      adminSelect,
+    )).resolves.toEqual({
+      user: expect.objectContaining({ id: 'target' }),
+      transitions: { adminRoleChanged: false, passwordChanged: true },
+    });
+
+    expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        password: 'new-hash',
+        sessionVersion: { increment: 1 },
+      },
+    }));
+    expect(tx.refreshToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'target' },
+    });
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('aborts the security transaction when refresh-token deletion fails', async () => {
+    const deletionFailure = new Error('refresh-token deletion failed');
+    const tx = {
+      user: {
+        update: vi.fn().mockImplementation(async ({ data }) => ({
+          id: 'target',
+          username: 'target-user',
+          isAdmin: false,
+          password: data.password,
+          sessionVersion: 5,
+        })),
+      },
+      refreshToken: {
+        deleteMany: vi.fn().mockRejectedValue(deletionFailure),
+      },
+    };
+    mockPrisma.$transaction.mockImplementation(async (
+      callback: (client: typeof tx) => Promise<unknown>,
+    ) => callback(tx));
+
+    await expect(userRepository.updateFromAdmin(
+      'target',
+      { password: 'new-hash' },
+      adminSelect,
+    )).rejects.toBe(deletionFailure);
+
+    expect(tx.user.update).toHaveBeenCalledOnce();
+    expect(tx.refreshToken.deleteMany).toHaveBeenCalledOnce();
+  });
+
+  it('does not invalidate sessions when an admin role write is a no-op', async () => {
+    const tx = installAdminTransaction({ targetIsAdmin: false, adminCount: 1 });
+
+    await expect(userRepository.updateFromAdmin(
+      'target',
+      { isAdmin: false },
+      adminSelect,
+    )).resolves.toEqual({
+      user: expect.objectContaining({ id: 'target' }),
+      transitions: { adminRoleChanged: false, passwordChanged: false },
+    });
+
+    expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { isAdmin: false },
+    }));
+    expect(tx.refreshToken.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('atomically invalidates sessions for a real role-only transition', async () => {
+    const tx = installAdminTransaction({ targetIsAdmin: false, adminCount: 1 });
+
+    await expect(userRepository.updateFromAdmin(
+      'target',
+      { isAdmin: true },
+      adminSelect,
+    )).resolves.toEqual({
+      user: expect.objectContaining({ id: 'target' }),
+      transitions: { adminRoleChanged: true, passwordChanged: false },
+    });
+
+    expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { isAdmin: true, sessionVersion: { increment: 1 } },
+    }));
+    expect(tx.refreshToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'target' },
+    });
   });
 
   it('retries a demotion then protects the remaining administrator', async () => {

@@ -54,7 +54,7 @@ const mockAuditGetStats = vi.fn().mockResolvedValue({
   byCategory: {},
   byUser: {},
 });
-const mockRevokeAllUserTokens = vi.hoisted(() => vi.fn().mockResolvedValue(0));
+const mockDisconnectWebSocketUser = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('../../../../src/services/auditService', () => ({
   auditService: {
@@ -88,8 +88,10 @@ vi.mock('../../../../src/services/auditService', () => ({
   getClientInfo: vi.fn().mockReturnValue({ ipAddress: '127.0.0.1', userAgent: 'test' }),
 }));
 
-vi.mock('../../../../src/services/tokenRevocation', () => ({
-  revokeAllUserTokens: mockRevokeAllUserTokens,
+vi.mock('../../../../src/services/websocketAuthorizationInvalidation', () => ({
+  disconnectWebSocketAccessToken: vi.fn().mockResolvedValue(undefined),
+  disconnectWebSocketUser: mockDisconnectWebSocketUser,
+  invalidateWebSocketWalletAccess: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock backup service
@@ -271,7 +273,7 @@ export {
   mockAuditGetStats,
   mockAuditLogFromRequest,
   mockAuditQuery,
-  mockRevokeAllUserTokens,
+  mockDisconnectWebSocketUser,
   mockCreateBackup,
   mockReloadElectrumServers,
   mockResetNodeClient,

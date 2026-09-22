@@ -7,10 +7,7 @@
 import { Router, type Request, type Response } from "express";
 import expressRateLimit from "express-rate-limit";
 import { userRepository } from "../../repositories";
-import type {
-  AdminUpdateTransitions,
-  AdminUserUpdateData,
-} from "../../repositories/userRepository";
+import type { AdminUserUpdateData } from "../../repositories/userRepository";
 import { authenticate, requireAdmin } from "../../middleware/auth";
 import { rateLimitByUser } from "../../middleware/rateLimit";
 import { asyncHandler, type TypedRequest } from "../../errors/errorHandler";
@@ -23,11 +20,15 @@ import { createLogger } from "../../utils/logger";
 import { normalizeEmail } from "../../utils/email";
 import { hashPassword } from "../../utils/password";
 import {
+  getAdminSessionInvalidationReason,
+  type AdminSessionInvalidationReason,
+  type AdminUpdateTransitions,
+} from "../../utils/adminSessionInvalidation";
+import {
   auditService,
   AuditAction,
   AuditCategory,
 } from "../../services/auditService";
-import { revokeAllUserTokens } from "../../services/tokenRevocation";
 import { disconnectWebSocketUser } from "../../services/websocketAuthorizationInvalidation";
 import { CreateUserSchema, UpdateUserSchema } from "../schemas/admin";
 import { parseAdminRequestBody } from "./requestValidation";
@@ -210,21 +211,6 @@ async function auditUserUpdate(
   );
 }
 
-function getSessionRevocationReason(
-  transitions: AdminUpdateTransitions,
-): string | null {
-  if (transitions.passwordChanged && transitions.adminRoleChanged) {
-    return "admin_security_update";
-  }
-  if (transitions.passwordChanged) {
-    return "admin_password_reset";
-  }
-  if (transitions.adminRoleChanged) {
-    return "admin_role_change";
-  }
-  return null;
-}
-
 async function handleUpdateUser(
   req: TypedRequest,
   res: Response,
@@ -250,10 +236,13 @@ async function handleUpdateUser(
     updateData,
     ADMIN_USER_RESPONSE_SELECT,
   );
-  const sessionRevocationReason = getSessionRevocationReason(transitions);
+  const sessionRevocationReason: AdminSessionInvalidationReason | null =
+    getAdminSessionInvalidationReason(transitions);
 
   if (sessionRevocationReason) {
-    await revokeAllUserTokens(userId, sessionRevocationReason);
+    // executeAdminUserUpdate already incremented sessionVersion and deleted
+    // refresh tokens; disconnect the remaining live transport only after commit.
+    await disconnectWebSocketUser(userId);
     log.info("User sessions invalidated after admin security update", {
       userId,
       reason: sessionRevocationReason,

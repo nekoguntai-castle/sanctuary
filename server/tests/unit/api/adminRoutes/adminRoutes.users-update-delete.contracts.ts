@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { adminRoutesRequest, mockAuditService, mockPrisma } from './adminRoutesTestHarness';
 import { PASSWORD_POLICY } from '../../../../src/utils/password';
 import { revokeAllUserTokens } from '../../../../src/services/tokenRevocation';
+import { disconnectWebSocketUser } from '../../../../src/services/websocketAuthorizationInvalidation';
 
 const mockRevokeAllUserTokens = vi.mocked(revokeAllUserTokens);
+const mockDisconnectWebSocketUser = vi.mocked(disconnectWebSocketUser);
 
 export function registerAdminRoutesUserUpdateDeleteContracts(): void {
   describe('PUT /api/v1/admin/users/:userId', () => {
@@ -304,6 +306,40 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
 
       const updatePayload = mockPrisma.user.update.mock.calls.at(-1)?.[0];
       expect(updatePayload.data.password).not.toBe('Str0ngPassw0rd!');
+      expect(updatePayload.data.sessionVersion).toEqual({ increment: 1 });
+      expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+      expect(mockDisconnectWebSocketUser).toHaveBeenCalledOnce();
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
+    });
+
+    it('does not audit or disconnect when atomic session invalidation fails', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        id: 'user-1',
+        username: 'testuser',
+        email: 'test@test.com',
+        isAdmin: false,
+      });
+      mockPrisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        username: 'testuser',
+        email: 'test@test.com',
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockPrisma.refreshToken.deleteMany.mockRejectedValue(
+        new Error('refresh-token deletion failed'),
+      );
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ password: 'Str0ngPassw0rd!' });
+
+      expect(response.status).toBe(500);
+      expect(mockAuditService.logFromRequest).not.toHaveBeenCalled();
+      expect(mockDisconnectWebSocketUser).not.toHaveBeenCalled();
     });
 
     it('should log admin grant action when isAdmin is set to true', async () => {
@@ -436,8 +472,11 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
       const response = await pendingResponse;
 
       expect(response.status).toBe(200);
-      expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_security_update');
-      expect(mockPrisma.user.update).toHaveBeenCalledBefore(mockRevokeAllUserTokens);
+      expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+      expect(mockDisconnectWebSocketUser).toHaveBeenCalledOnce();
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
     });
 
     it('does not revoke when a stale preflight suggests a role transition that did not commit', async () => {
@@ -465,6 +504,7 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
 
       expect(response.status).toBe(200);
       expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
+      expect(mockDisconnectWebSocketUser).not.toHaveBeenCalled();
       expect(mockAuditService.logFromRequest).toHaveBeenCalledWith(
         expect.any(Object),
         'user.update',

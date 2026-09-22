@@ -1,16 +1,15 @@
 import { Prisma } from '../generated/prisma/client';
 import prisma from '../models/prisma';
 import { ConflictError, NotFoundError } from '../errors';
+import {
+  getAdminSessionInvalidationReason,
+  type AdminUpdateTransitions,
+} from '../utils/adminSessionInvalidation';
 import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
 
 const MAX_ADMIN_FLOOR_ATTEMPTS = 3;
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
-
-export interface AdminUpdateTransitions {
-  adminRoleChanged: boolean;
-  passwordChanged: boolean;
-}
 
 export type AdminUserUpdateData = Record<string, unknown> & {
   isAdmin?: boolean;
@@ -49,17 +48,69 @@ async function attemptAdminRoleUpdate<T extends Prisma.UserSelect>(
       throw new ConflictError('Cannot demote the final administrator');
     }
 
-    const user = await tx.user.update<{
-      where: Prisma.UserWhereUniqueInput;
-      data: Prisma.UserUpdateInput;
-      select: T;
-    }>({
-      where: { id },
-      data: data as Prisma.UserUpdateInput,
+    const user = await updateUserAndInvalidateSessions(
+      tx,
+      id,
+      data,
       select,
-    });
+      transitions,
+    );
     return { user, transitions };
   }, { isolationLevel: 'Serializable' });
+}
+
+async function updateUserAndInvalidateSessions<T extends Prisma.UserSelect>(
+  tx: TxClient,
+  id: string,
+  data: AdminUserUpdateData,
+  select: T,
+  transitions: AdminUpdateTransitions,
+) {
+  // Credential or privilege changes and durable token invalidation must commit
+  // together so no observer can authenticate against a partially applied state.
+  // Access JWTs carry sessionVersion, and authentication rejects the old claim
+  // after this increment; deleting refresh rows closes the renewal path.
+  const invalidatesSessions = getAdminSessionInvalidationReason(transitions) !== null;
+  const updateData = invalidatesSessions
+    ? { ...data, sessionVersion: { increment: 1 } }
+    : data;
+  const user = await tx.user.update<{
+    where: Prisma.UserWhereUniqueInput;
+    data: Prisma.UserUpdateInput;
+    select: T;
+  }>({
+    where: { id },
+    data: updateData as Prisma.UserUpdateInput,
+    select,
+  });
+  if (invalidatesSessions) {
+    // This is the transaction-scoped SEC-003 equivalent of
+    // tokenRevocation.revokeAllUserTokens. Keep the sessionVersion increment
+    // and refresh-token deletion contract aligned with that service; both
+    // writes stay here so they commit with the admin security update.
+    await tx.refreshToken.deleteMany({ where: { userId: id } });
+  }
+  return user;
+}
+
+async function attemptAdminSecurityUpdate<T extends Prisma.UserSelect>(
+  id: string,
+  data: AdminUserUpdateData,
+  select: T,
+  transitions: AdminUpdateTransitions,
+) {
+  // This path cannot change the administrator floor, so it needs atomicity but
+  // not the Serializable isolation used by role-bearing updates.
+  return prisma.$transaction(async (tx) => {
+    const user = await updateUserAndInvalidateSessions(
+      tx,
+      id,
+      data,
+      select,
+      transitions,
+    );
+    return { user, transitions };
+  });
 }
 
 async function executeWithAdminFloorRetry<T>(
@@ -142,6 +193,11 @@ async function attemptAdminUserDelete(id: string) {
   }, { isolationLevel: 'Serializable' });
 }
 
+/**
+ * Commits the user update and durable access/refresh-token invalidation.
+ * Callers use the returned transition metadata for post-commit transport
+ * cleanup, which cannot participate in the database transaction.
+ */
 export async function executeAdminUserUpdate<T extends Prisma.UserSelect>(
   id: string,
   data: AdminUserUpdateData,
@@ -151,6 +207,13 @@ export async function executeAdminUserUpdate<T extends Prisma.UserSelect>(
     return executeWithAdminFloorRetry(
       () => attemptAdminRoleUpdate(id, data, select),
     );
+  }
+
+  // With isAdmin absent, false is the complete role-transition baseline; this
+  // also keeps every future invalidating transition on the atomic path below.
+  const transitions = getAdminUpdateTransitions(false, data);
+  if (getAdminSessionInvalidationReason(transitions) !== null) {
+    return attemptAdminSecurityUpdate(id, data, select, transitions);
   }
 
   const user = await prisma.user.update<{
@@ -164,7 +227,7 @@ export async function executeAdminUserUpdate<T extends Prisma.UserSelect>(
   });
   return {
     user,
-    transitions: getAdminUpdateTransitions(false, data),
+    transitions,
   };
 }
 

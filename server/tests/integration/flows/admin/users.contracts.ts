@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   app,
   authHeader,
@@ -8,6 +8,35 @@ import {
   request,
   uniqueUsername,
 } from './adminIntegrationTestHarness';
+
+const REFRESH_DELETE_FAILURE_FUNCTION = 'test_fail_admin_refresh_token_delete';
+const REFRESH_DELETE_FAILURE_TRIGGER = 'test_fail_admin_refresh_token_delete_trigger';
+
+async function removeRefreshDeleteFailureTrigger(): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `DROP TRIGGER IF EXISTS ${REFRESH_DELETE_FAILURE_TRIGGER} ON "refresh_tokens"`,
+  );
+  await prisma.$executeRawUnsafe(
+    `DROP FUNCTION IF EXISTS ${REFRESH_DELETE_FAILURE_FUNCTION}()`,
+  );
+}
+
+async function installRefreshDeleteFailureTrigger(): Promise<void> {
+  await removeRefreshDeleteFailureTrigger();
+  await prisma.$executeRawUnsafe(`
+    CREATE FUNCTION ${REFRESH_DELETE_FAILURE_FUNCTION}() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RAISE EXCEPTION 'forced admin refresh-token deletion failure';
+    END;
+    $$
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER ${REFRESH_DELETE_FAILURE_TRIGGER}
+    BEFORE DELETE ON "refresh_tokens"
+    FOR EACH ROW EXECUTE FUNCTION ${REFRESH_DELETE_FAILURE_FUNCTION}()
+  `);
+}
 
 export function registerAdminUserManagementContracts(): void {
   // =============================================
@@ -200,6 +229,10 @@ export function registerAdminUserManagementContracts(): void {
     });
 
     describe('PUT /api/v1/admin/users/:userId', () => {
+      afterEach(async () => {
+        await removeRefreshDeleteFailureTrigger();
+      });
+
       it('should update user username', async () => {
         const { token } = await createAdminAndLogin();
         const { userId, username: oldUsername } = await createUserAndLogin();
@@ -236,8 +269,18 @@ export function registerAdminUserManagementContracts(): void {
 
       it('should update user password', async () => {
         const { token } = await createAdminAndLogin();
-        const { userId, username } = await createUserAndLogin();
+        const {
+          userId,
+          token: priorAccessToken,
+          username,
+        } = await createUserAndLogin();
         const newPassword = 'NewPassword123!';
+        const before = await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { sessionVersion: true },
+        });
+        await expect(prisma.refreshToken.count({ where: { userId } }))
+          .resolves.toBeGreaterThan(0);
 
         await request(app)
           .put(`/api/v1/admin/users/${userId}`)
@@ -245,16 +288,77 @@ export function registerAdminUserManagementContracts(): void {
           .send({ password: newPassword })
           .expect(200);
 
-        // Verify new password works
+        const after = await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { sessionVersion: true },
+        });
+        expect(after.sessionVersion).toBe(before.sessionVersion + 1);
+        await expect(prisma.refreshToken.count({ where: { userId } }))
+          .resolves.toBe(0);
+
+        await request(app)
+          .get('/api/v1/auth/me')
+          .set(authHeader(priorAccessToken))
+          .expect(401);
+
+        await request(app)
+          .post('/api/v1/auth/login')
+          .send({ username, password: 'UserPass123!' })
+          .expect(401);
+
         await request(app)
           .post('/api/v1/auth/login')
           .send({ username, password: newPassword })
           .expect(200);
       });
 
+      it('rolls back the password and session version when token deletion fails', async () => {
+        const { token } = await createAdminAndLogin();
+        const { userId, username } = await createUserAndLogin();
+        const before = await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { password: true, sessionVersion: true },
+        });
+        const refreshTokenCount = await prisma.refreshToken.count({ where: { userId } });
+        expect(refreshTokenCount).toBeGreaterThan(0);
+
+        await installRefreshDeleteFailureTrigger();
+        try {
+          await request(app)
+            .put(`/api/v1/admin/users/${userId}`)
+            .set(authHeader(token))
+            .send({ password: 'RejectedPassword123!' })
+            .expect(500);
+        } finally {
+          await removeRefreshDeleteFailureTrigger();
+        }
+
+        await expect(prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { password: true, sessionVersion: true },
+        })).resolves.toEqual(before);
+        await expect(prisma.refreshToken.count({ where: { userId } }))
+          .resolves.toBe(refreshTokenCount);
+
+        await request(app)
+          .post('/api/v1/auth/login')
+          .send({ username, password: 'UserPass123!' })
+          .expect(200);
+        await request(app)
+          .post('/api/v1/auth/login')
+          .send({ username, password: 'RejectedPassword123!' })
+          .expect(401);
+      });
+
       it('should promote user to admin', async () => {
         const { token } = await createAdminAndLogin();
-        const { userId } = await createUserAndLogin();
+        const { userId, token: priorAccessToken } = await createUserAndLogin();
+        const before = await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { sessionVersion: true },
+        });
+        await expect(prisma.refreshToken.count({ where: { userId } }))
+          .resolves.toBeGreaterThan(0);
 
         const response = await request(app)
           .put(`/api/v1/admin/users/${userId}`)
@@ -267,6 +371,13 @@ export function registerAdminUserManagementContracts(): void {
         // Verify in database
         const user = await prisma.user.findUnique({ where: { id: userId } });
         expect(user?.isAdmin).toBe(true);
+        expect(user?.sessionVersion).toBe(before.sessionVersion + 1);
+        await expect(prisma.refreshToken.count({ where: { userId } }))
+          .resolves.toBe(0);
+        await request(app)
+          .get('/api/v1/auth/me')
+          .set(authHeader(priorAccessToken))
+          .expect(401);
       });
 
       it('should demote admin to regular user', async () => {

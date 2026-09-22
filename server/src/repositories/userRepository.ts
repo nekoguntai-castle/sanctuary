@@ -18,10 +18,8 @@ import {
 } from './userAdminUpdate';
 import { buildUserWalletAccessWhere } from './userWalletAccessQuery';
 
-export type {
-  AdminUpdateTransitions,
-  AdminUserUpdateData,
-} from './userAdminUpdate';
+export type { AdminUpdateTransitions } from '../utils/adminSessionInvalidation';
+export type { AdminUserUpdateData } from './userAdminUpdate';
 
 const MAX_PREFERENCE_UPDATE_ATTEMPTS = 3;
 const PREFERENCE_USER_SELECT = {
