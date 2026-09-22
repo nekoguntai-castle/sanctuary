@@ -13,6 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.8.74] - 2026-09-22
+
+### Changed
+
+- Separate Prisma migration tooling from application images and update runtime,
+  monitoring, signing-verifier, and development dependencies.
+
+### Fixed
+
+- Reconcile wallet and device access after ownership transfers, enforce group
+  membership and direct-role precedence, and apply consistent access checks to
+  mobile clients, imports, and Telegram notifications.
+- Prevent stale authentication, network, model-discovery, sharing-search, and
+  hardware-wallet responses from overwriting a newer session or selection.
+- Enforce replacement-transaction fee requirements, exclude replaced transactions
+  from live accounting, and export transactions using their effective UTC date.
+- Restore gateway transaction push delivery and drain database health checks,
+  HTTP connections, and worker checkpoints during shutdown.
+- Isolate monitoring upgrade fixture ports and correct owned-source canary image
+  registration and verifier shutdown handling.
+
+### Upgrade validation
+
+- No database migration or new required runtime environment variable is added.
+  Existing application-data, browser-authentication, legacy-environment, and
+  optional-profile fixtures cover the affected upgrade surfaces. The release
+  requires the `latest-stable` and `n-2` upgrade lanes and both wallet-sync
+  persistence replay shapes before candidate acceptance.
+
 ## [0.8.73] - 2026-09-18
 
 The only upgrade-path-relevant change since v0.8.72 is the Grafana volume
@@ -887,7 +916,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.73...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.74...HEAD
+[0.8.74]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.73...v0.8.74
 [0.8.73]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.72...v0.8.73
 [0.8.72]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...v0.8.72
 [0.8.71]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.70...v0.8.71
