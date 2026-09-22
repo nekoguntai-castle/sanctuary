@@ -23,6 +23,7 @@ import { useWalletDetailTabs } from './hooks/useWalletDetailTabs';
 import { useWalletDraftNotifications } from './hooks/useWalletDraftNotifications';
 import { useWalletMutations } from './hooks/useWalletMutations';
 import { useWalletSharing } from './hooks/useWalletSharing';
+import { useWalletTransferCompletion } from './hooks/useWalletTransferCompletion';
 import { useWalletSync } from './hooks/useWalletSync';
 import { useWalletWebSocket } from './hooks/useWalletWebSocket';
 import {
@@ -197,7 +198,8 @@ export const useWalletDetailController = () => {
     addGroup, updateGroupRole, removeGroup,
     sharingLoading, handleShareWithUser, handleRemoveUserAccess,
     deviceSharePrompt, handleShareDevicesWithUser, dismissDeviceSharePrompt,
-    handleTransferComplete,
+    handleTransferComplete: refreshAfterTransfer,
+    handleConfirmedTransferComplete: refreshAfterConfirmedTransfer,
   } = useWalletSharing({
     walletId: id,
     ownershipKey,
@@ -207,6 +209,13 @@ export const useWalletDetailController = () => {
     groups,
     refreshWalletShareInfo,
     setWallet,
+  });
+
+  const handleTransferComplete = useWalletTransferCompletion({
+    walletId: id,
+    ownershipKey,
+    navigate,
+    refreshAfterConfirmedTransfer,
   });
 
   const { data: walletLabels = [] } = useWalletLabels(id);
@@ -320,7 +329,7 @@ export const useWalletDetailController = () => {
     ownershipKey,
     navigate,
     handleError,
-    handleTransferComplete,
+    handleTransferComplete: refreshAfterTransfer,
     setActiveTab,
   });
 

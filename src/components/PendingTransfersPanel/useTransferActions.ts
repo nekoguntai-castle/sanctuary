@@ -185,6 +185,11 @@ export function useTransferActions(
     onCommitted?.();
     if (completion?.status === 'failed') setActionError(ACCESS_REFRESH_ERROR);
 
+    if (completion?.status === 'access-removed') {
+      setActionLoading(null);
+      return;
+    }
+
     await fetchTransfers(TRANSFER_LIST_REFRESH_ERROR, transferId);
     if (isCurrentResource(requestResourceType, requestResourceId, requestEpoch)) {
       setActionLoading(null);

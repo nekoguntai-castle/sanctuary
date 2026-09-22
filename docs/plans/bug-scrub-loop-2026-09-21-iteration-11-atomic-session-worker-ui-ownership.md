@@ -116,7 +116,7 @@ After every phase:
 - [x] `npm run typecheck:all`
 - [x] `npm run typecheck:server:tests`
 - [x] Phase 2 acceptance: shutdown never tears down dependent resources while accepted address-activity checkpoint work is still eligible to complete, and a stuck operation remains bounded by the documented shutdown deadline.
-- [ ] Deliver as one worker lifecycle PR and verify exact head and squash-merge target CI before Phase 3.
+- [x] Deliver as one worker lifecycle PR and verify exact head and squash-merge target CI before Phase 3.
 
 ### Phase 2 evidence
 
@@ -130,29 +130,29 @@ After every phase:
 
 ### Contract and production changes
 
-- [ ] Extend `TransferCompletionResult` with one explicit access-removed outcome that is distinct from `committed`, `superseded`, and generic refresh `failed`.
-- [ ] Recognize the repository's canonical 403 access denial as access removal only after a successful transfer confirmation and while the initiating resource route still owns the callback; preserve generic handling for every other context and for network, server, parsing, and other refresh failures.
-- [ ] Keep the data hooks responsible for API/state reconciliation: after their existing route-ownership check inside the successful-confirm callback, classify `ApiError` 403 as `access-removed`; do not create a global rule that interprets arbitrary 403 responses as resource removal.
-- [ ] Add a small shared transfer-access cache helper so the near-400-line wallet and device detail hooks do not absorb duplicate cache logic. It must synchronously filter the inaccessible ID from `walletKeys.lists()` or `deviceKeys.lists()`, remove the detail query, then invalidate the list for server truth.
-- [ ] Keep navigation in the existing route-owning boundaries: wrap the wallet completion callback in `useWalletDetailController` and the device callback in `DeviceDetailContent`, await the cache reconciliation, recheck current route ownership, then replace-navigate to `/wallets` or `/devices` before returning `access-removed`.
-- [ ] Keep cache cleanup on the existing React Query keys and client; do not introduce a second global cache system. Safe cache eviction may finish after route supersession, but a stale callback must never navigate the newer route.
-- [ ] Teach `useTransferActions` to treat access removal as a successful terminal reconciliation: remove the transfer locally, close the modal, release loading, avoid the generic access-refresh error, and skip the now-irrelevant transfer-list refetch on the route that is leaving.
-- [ ] Preserve the current committed, superseded, rejected-callback, transfer-list-refresh, and route A→B→A ownership behavior.
+- [x] Extend `TransferCompletionResult` with one explicit access-removed outcome that is distinct from `committed`, `superseded`, and generic refresh `failed`.
+- [x] Recognize the repository's canonical 403 access denial as access removal only after a successful transfer confirmation and while the initiating resource route still owns the callback; preserve generic handling for every other context and for network, server, parsing, and other refresh failures.
+- [x] Keep the data hooks responsible for API/state reconciliation: after their existing route-ownership check inside the successful-confirm callback, classify `ApiError` 403 as `access-removed`; do not create a global rule that interprets arbitrary 403 responses as resource removal.
+- [x] Add a small shared transfer-access cache helper so the near-400-line wallet and device detail hooks do not absorb duplicate cache logic. It must synchronously filter the inaccessible ID from `walletKeys.lists()` or `deviceKeys.lists()`, remove the detail query, then invalidate the list for server truth.
+- [x] Keep navigation in the existing route-owning boundaries: wrap the wallet completion callback in `useWalletDetailController` and the device callback in `DeviceDetailContent`, await the cache reconciliation, recheck current route ownership, then replace-navigate to `/wallets` or `/devices` before returning `access-removed`.
+- [x] Keep cache cleanup on the existing React Query keys and client; do not introduce a second global cache system. Safe cache eviction may finish after route supersession, but a stale callback must never navigate the newer route.
+- [x] Teach `useTransferActions` to treat access removal as a successful terminal reconciliation: remove the transfer locally, close the modal, release loading, avoid the generic access-refresh error, and skip the now-irrelevant transfer-list refetch on the route that is leaving.
+- [x] Preserve the current committed, superseded, rejected-callback, transfer-list-refresh, and route A→B→A ownership behavior.
 
 ### Regression tests
 
-- [ ] Confirm a wallet transfer, seed its list/detail query data, make the post-confirm wallet read return the canonical 403 denial, and prove the ID is absent from cache at navigation time, stale detail is no longer rendered, and replacement navigation goes to `/wallets` only while the initiating route still owns the action.
-- [ ] Cover the equivalent device path and `/devices` navigation.
-- [ ] Prove 403 outside the successful-confirm callback and non-access refresh failures stay on their existing paths and do not trigger access-removal navigation.
-- [ ] Switch routes before the inaccessible response settles and during list invalidation; prove safe cache eviction may complete but the stale callback cannot clear or navigate the newer route.
-- [ ] Prove `useTransferActions` handles the access-removed result without retrying the committed mutation or retaining an actionable transfer card.
+- [x] Confirm a wallet transfer, seed its list/detail query data, make the post-confirm wallet read return the canonical 403 denial, and prove the ID is absent from cache at navigation time, stale detail is no longer rendered, and replacement navigation goes to `/wallets` only while the initiating route still owns the action.
+- [x] Cover the equivalent device path and `/devices` navigation.
+- [x] Prove 403 outside the successful-confirm callback and non-access refresh failures stay on their existing paths and do not trigger access-removal navigation.
+- [x] Switch routes before the inaccessible response settles and during list invalidation; prove safe cache eviction may complete but the stale callback cannot clear or navigate the newer route.
+- [x] Prove `useTransferActions` handles the access-removed result without retrying the committed mutation or retaining an actionable transfer card.
 
 ### Verification and acceptance
 
-- [ ] Run focused `PendingTransfersPanel`, wallet sharing/detail, device data/detail, and collection-state tests selected from changed files with `config/tooling/vitest.config.ts`.
-- [ ] `npm run typecheck:app`
-- [ ] `npm run typecheck:tests`
-- [ ] Phase 3 acceptance: a successful transfer that removes the initiating user's access cannot leave stale resource detail or collection state visible, while unrelated reconciliation failures and superseded routes keep their current semantics.
+- [x] Run focused `PendingTransfersPanel`, wallet sharing/detail, device data/detail, and collection-state tests selected from changed files with `config/tooling/vitest.config.ts`.
+- [x] `npm run typecheck:app`
+- [x] `npm run typecheck:tests`
+- [x] Phase 3 acceptance: a successful transfer that removes the initiating user's access cannot leave stale resource detail or collection state visible, while unrelated reconciliation failures and superseded routes keep their current semantics.
 - [ ] Deliver as one frontend transfer-ownership PR and verify exact head and squash-merge target CI before Phase 4.
 
 ## Phase 4: Fence network-specific status responses
@@ -184,19 +184,27 @@ After every phase:
 
 ## Broad verification after each phase
 
-- [ ] `npm run typecheck:all`
-- [ ] `npm run test:run`
-- [ ] `npm --prefix server run test:run`
-- [ ] `npm run typecheck:server:tests`
-- [ ] `npm run build`
-- [ ] `npm run lint`
-- [ ] `npm run check:architecture-boundaries`
-- [ ] `npm run check:server-cycle-baseline`
-- [ ] `npm run quality:lizard`
-- [ ] `node scripts/quality/check-large-files.mjs`
-- [ ] Run changed-package coverage and preserve the repository's literal 100% thresholds.
-- [ ] For frontend phases, build and run the fully mocked Playwright render regression against a temporary static server; never start a host development server.
-- [ ] Run an adversarial implementation review and a simplify/edge-case review before each delivery.
+- [x] `npm run typecheck:all`
+- [x] `npm run test:run`
+- [x] `npm --prefix server run test:run`
+- [x] `npm run typecheck:server:tests`
+- [x] `npm run build`
+- [x] `npm run lint`
+- [x] `npm run check:architecture-boundaries`
+- [x] `npm run check:server-cycle-baseline`
+- [x] `npm run quality:lizard`
+- [x] `node scripts/quality/check-large-files.mjs`
+- [x] Run changed-package coverage and preserve the repository's literal 100% thresholds.
+- [x] For frontend phases, build and run the fully mocked Playwright render regression against a temporary static server; never start a host development server.
+- [x] Run an adversarial implementation review and a simplify/edge-case review before each delivery.
+
+### Phase 3 evidence
+
+- Focused transfer, wallet, device, query-key, and route-ownership suites pass 192 tests; the final extracted wallet wrapper and StrictMode device lifecycle regressions pass their focused 16-test and 3-test suites.
+- Full frontend and server suites pass 8,894 and 17,230 tests respectively before the final no-behavior extraction; the final full frontend coverage run passes 8,896 tests at literal 100% statements, branches, functions, and lines.
+- TypeScript app/test/all gates, build, lint, architecture boundaries and generated diagrams, server cycle baseline, complexity, and large-file classification pass.
+- The fully mocked Chromium render regression passes all 44 routes against the production preview server.
+- Independent adversarial review found and verified the StrictMode mounted-flag correction, then completed a clean re-review of the final diff.
 
 No phase adds an endpoint, so OpenAPI coverage and Playwright API mock maps should not require new routes. Exact PR-head and landed-target CI remain mandatory for every phase.
 

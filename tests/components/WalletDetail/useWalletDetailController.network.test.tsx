@@ -1,6 +1,8 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWalletDetailController } from '../../../src/components/WalletDetail/useWalletDetailController';
+import { queryClient } from '../../../src/providers/QueryProvider';
+import { walletKeys } from '../../../src/hooks/queries/useWallets';
 
 const controllerState = vi.hoisted(() => ({
   activeNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
@@ -17,6 +19,9 @@ const controllerState = vi.hoisted(() => ({
   user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
   fetchData: vi.fn(),
   refreshData: vi.fn().mockResolvedValue(true),
+  navigate: vi.fn(),
+  refreshAfterTransfer: vi.fn().mockResolvedValue({ status: 'committed' }),
+  refreshAfterConfirmedTransfer: vi.fn().mockResolvedValue({ status: 'committed' }),
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -24,7 +29,7 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useParams: () => ({ id: controllerState.routeId }),
-    useNavigate: () => vi.fn(),
+    useNavigate: () => controllerState.navigate,
     useLocation: () => ({ state: null }),
   };
 });
@@ -193,7 +198,8 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletSharing', () => ({
     deviceSharePrompt: null,
     handleShareDevicesWithUser: vi.fn(),
     dismissDeviceSharePrompt: vi.fn(),
-    handleTransferComplete: vi.fn(),
+    handleTransferComplete: controllerState.refreshAfterTransfer,
+    handleConfirmedTransferComplete: controllerState.refreshAfterConfirmedTransfer,
   }),
 }));
 
@@ -263,6 +269,8 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletDetailModalState', 
 
 describe('useWalletDetailController network preference alignment', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    queryClient.clear();
     controllerState.activeNetwork = 'mainnet';
     controllerState.walletNetwork = 'signet';
     controllerState.setSelectedNetwork.mockClear();
@@ -271,6 +279,9 @@ describe('useWalletDetailController network preference alignment', () => {
     controllerState.routeId = 'wallet-1';
     controllerState.user = { id: 'user-1', isAdmin: false };
     controllerState.fetchData.mockClear();
+    controllerState.navigate.mockClear();
+    controllerState.refreshAfterTransfer.mockReset().mockResolvedValue({ status: 'committed' });
+    controllerState.refreshAfterConfirmedTransfer.mockReset().mockResolvedValue({ status: 'committed' });
   });
 
   it('updates the active network preference to match the loaded wallet', async () => {
@@ -324,6 +335,69 @@ describe('useWalletDetailController network preference alignment', () => {
     const { result } = renderHook(() => useWalletDetailController());
 
     expect(result.current.pendingFreezeIds).toEqual(new Set(['pending-controller-utxo']));
+  });
+
+  it('preserves ordinary completion and missing-route outcomes', async () => {
+    controllerState.walletNetwork = 'mainnet';
+    const current = renderHook(() => useWalletDetailController());
+    await expect(current.result.current.handleTransferComplete()).resolves.toEqual({
+      status: 'committed',
+    });
+    expect(controllerState.navigate).not.toHaveBeenCalled();
+
+    controllerState.routeId = undefined;
+    current.rerender();
+    await expect(current.result.current.handleTransferComplete()).resolves.toEqual({
+      status: 'superseded',
+    });
+    expect(controllerState.refreshAfterConfirmedTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('evicts inaccessible wallet data before replace navigation', async () => {
+    controllerState.walletNetwork = 'mainnet';
+    controllerState.refreshAfterConfirmedTransfer.mockResolvedValue({ status: 'access-removed' });
+    queryClient.setQueryData(walletKeys.lists(), [{ id: 'wallet-1' }, { id: 'wallet-2' }]);
+    queryClient.setQueryData(walletKeys.detail('wallet-1'), { id: 'wallet-1' });
+    const { result } = renderHook(() => useWalletDetailController());
+
+    await act(async () => {
+      await expect(result.current.handleTransferComplete()).resolves.toEqual({
+        status: 'access-removed',
+      });
+    });
+
+    expect(queryClient.getQueryData(walletKeys.lists())).toEqual([{ id: 'wallet-2' }]);
+    expect(queryClient.getQueryData(walletKeys.detail('wallet-1'))).toBeUndefined();
+    expect(controllerState.navigate).toHaveBeenCalledWith('/wallets', { replace: true });
+  });
+
+  it('does not let an A-B-A route cycle navigate after delayed cache reconciliation', async () => {
+    controllerState.walletNetwork = 'mainnet';
+    controllerState.refreshAfterConfirmedTransfer.mockResolvedValue({ status: 'access-removed' });
+    queryClient.setQueryData(walletKeys.lists(), [{ id: 'wallet-1' }]);
+    let finishInvalidation!: () => void;
+    const invalidation = new Promise<void>(resolve => {
+      finishInvalidation = resolve;
+    });
+    vi.spyOn(queryClient, 'invalidateQueries').mockReturnValue(invalidation);
+    const view = renderHook(() => useWalletDetailController());
+
+    let completion!: ReturnType<typeof view.result.current.handleTransferComplete>;
+    act(() => {
+      completion = view.result.current.handleTransferComplete();
+    });
+    await waitFor(() => expect(queryClient.getQueryData(walletKeys.lists())).toEqual([]));
+    controllerState.routeId = 'wallet-2';
+    view.rerender();
+    controllerState.routeId = 'wallet-1';
+    view.rerender();
+    await act(async () => {
+      finishInvalidation();
+      await invalidation;
+    });
+
+    await expect(completion).resolves.toEqual({ status: 'superseded' });
+    expect(controllerState.navigate).not.toHaveBeenCalled();
   });
 
   it('builds an anonymous empty-route owner and guards route-bound label refreshes', () => {

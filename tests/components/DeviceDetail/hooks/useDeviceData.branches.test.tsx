@@ -5,6 +5,7 @@ import * as adminApi from '../../../../src/api/admin';
 import * as authApi from '../../../../src/api/auth';
 import * as devicesApi from '../../../../src/api/devices';
 import { WalletType } from '../../../../src/types';
+import { ApiError } from '../../../../src/api/client';
 
 const useUserMock = vi.hoisted(() => vi.fn());
 const loggerSpies = vi.hoisted(() => ({
@@ -303,6 +304,32 @@ describe('useDeviceData branch coverage', () => {
     expect(loggerSpies.error).toHaveBeenCalledWith('Failed to share with group', expect.any(Object));
     expect(loggerSpies.error).toHaveBeenCalledWith('Failed to remove group access', expect.any(Object));
     expect(loggerSpies.error).toHaveBeenCalledWith('Failed to reload device after transfer', expect.any(Object));
+  });
+
+  it('classifies loss of access after transfer confirmation separately', async () => {
+    const { result } = renderHook(() => useDeviceData('dev-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    vi.mocked(devicesApi.getDevice).mockRejectedValueOnce(new ApiError('Forbidden', 403));
+
+    await act(async () => {
+      await expect(result.current.handleTransferComplete()).resolves.toEqual({
+        status: 'access-removed',
+      });
+    });
+
+    expect(loggerSpies.error).not.toHaveBeenCalledWith(
+      'Failed to reload device after transfer',
+      expect.any(Object),
+    );
+
+    const serverError = new ApiError('Unavailable', 500);
+    vi.mocked(devicesApi.getDevice).mockRejectedValueOnce(serverError);
+    await act(async () => {
+      await expect(result.current.handleTransferComplete()).resolves.toEqual({
+        status: 'failed',
+        error: serverError,
+      });
+    });
   });
 
   it('reports owned share refresh failures through each mutation error path', async () => {

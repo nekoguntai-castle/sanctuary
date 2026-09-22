@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DeviceAccountsSection } from './DeviceAccountsSection';
 import { DeviceDetailHeader } from './DeviceDetailHeader';
@@ -9,6 +9,9 @@ import type { DeviceDetailTab } from './types';
 import type { useDeviceData } from '../hooks/useDeviceData';
 import { useDeviceDeletion } from '../hooks/useDeviceDeletion';
 import type { Device } from '../../../types';
+import { deviceKeys } from '../../../hooks/queries/deviceKeys';
+import { removeTransferredResourceAccess } from '../../PendingTransfersPanel/transferAccessCache';
+import { getQueryClient } from '../../../providers/QueryProvider';
 
 type LoadedDeviceData = ReturnType<typeof useDeviceData> & { device: Device };
 
@@ -19,6 +22,8 @@ interface DeviceDetailContentProps {
 
 export function DeviceDetailContent({ id, data }: DeviceDetailContentProps) {
   const navigate = useNavigate();
+  const queryClient = getQueryClient();
+  const activeRef = useRef(true);
   const [activeTab, setActiveTab] = useState<DeviceDetailTab>('details');
   const [showAddAccount, setShowAddAccount] = useState(false);
 
@@ -54,9 +59,32 @@ export function DeviceDetailContent({ id, data }: DeviceDetailContentProps) {
     handleRemoveUserAccess,
     addGroup,
     removeGroup,
-    handleTransferComplete,
+    handleTransferComplete: refreshAfterTransfer,
     getDeviceDisplayName,
   } = data;
+
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
+
+  const handleTransferComplete = async () => {
+    if (!activeRef.current || !ownsCurrentRoute()) return { status: 'superseded' } as const;
+    const result = await refreshAfterTransfer();
+    if (result.status !== 'access-removed') return result;
+
+    await removeTransferredResourceAccess(
+      queryClient,
+      id,
+      deviceKeys.lists(),
+      deviceKeys.detail(id),
+    );
+    if (!activeRef.current || !ownsCurrentRoute()) return { status: 'superseded' } as const;
+    navigate('/devices', { replace: true });
+    return result;
+  };
 
   const attachedWalletCount = Math.max(wallets.length, device.walletCount ?? 0);
 

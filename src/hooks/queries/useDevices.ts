@@ -1,14 +1,13 @@
 import * as devicesApi from '../../api/devices';
 import {
-  createQueryKeys,
   createListQuery,
   createDetailQuery,
   createMutation,
   createInvalidateAll,
 } from './factory';
+import { deviceKeys } from './deviceKeys';
 
-// Query key factory for device-related queries
-export const deviceKeys = createQueryKeys('devices');
+export { deviceKeys } from './deviceKeys';
 
 /**
  * Hook to fetch all devices for the current user

@@ -6,6 +6,7 @@ import { useErrorHandler } from '../../../../src/hooks/useErrorHandler';
 import * as authApi from '../../../../src/api/auth';
 import * as devicesApi from '../../../../src/api/devices';
 import * as walletsApi from '../../../../src/api/wallets';
+import { ApiError } from '../../../../src/api/client';
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -640,5 +641,35 @@ describe('useWalletSharing', () => {
 
     expect(outcome).toEqual({ status: 'failed', error: reloadError });
     expect(handleError).not.toHaveBeenCalledWith(expect.any(Error), 'Transfer Failed');
+  });
+
+  it('classifies loss of access only for the confirmed-transfer refresh', async () => {
+    vi.mocked(walletsApi.getWallet).mockRejectedValue(new ApiError('Forbidden', 403));
+    const { result } = renderSharingHook();
+
+    let initiationOutcome: unknown;
+    let confirmationOutcome: unknown;
+    await act(async () => {
+      initiationOutcome = await result.current.handleTransferComplete();
+      confirmationOutcome = await result.current.handleConfirmedTransferComplete();
+    });
+
+    expect(initiationOutcome).toEqual({
+      status: 'failed',
+      error: expect.objectContaining({ status: 403 }),
+    });
+    expect(confirmationOutcome).toEqual({ status: 'access-removed' });
+    expect(refreshWalletShareInfo).not.toHaveBeenCalled();
+  });
+
+  it('keeps a confirmed-transfer server error on the generic failure path', async () => {
+    const serverError = new ApiError('Unavailable', 500);
+    vi.mocked(walletsApi.getWallet).mockRejectedValue(serverError);
+    const { result } = renderSharingHook();
+
+    await expect(result.current.handleConfirmedTransferComplete()).resolves.toEqual({
+      status: 'failed',
+      error: serverError,
+    });
   });
 });

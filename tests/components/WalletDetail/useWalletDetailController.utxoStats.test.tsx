@@ -182,6 +182,7 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletSharing', () => ({
     handleShareDevicesWithUser: vi.fn(),
     dismissDeviceSharePrompt: vi.fn(),
     handleTransferComplete: vi.fn(),
+    handleConfirmedTransferComplete: vi.fn(),
   }),
 }));
 

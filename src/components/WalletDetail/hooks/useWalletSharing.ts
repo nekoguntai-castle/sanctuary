@@ -10,6 +10,7 @@ import { useLayoutEffect, useState, type Dispatch, type SetStateAction } from 'r
 import * as walletsApi from '../../../api/wallets';
 import * as devicesApi from '../../../api/devices';
 import * as authApi from '../../../api/auth';
+import { ApiError } from '../../../api/client';
 import { useErrorHandler } from '../../../hooks/useErrorHandler';
 import { useAppNotifications } from '../../../contexts/AppNotificationContext';
 import { createLogger } from '../../../utils/logger';
@@ -76,6 +77,7 @@ export interface UseWalletSharingReturn {
 
   // Transfer
   handleTransferComplete: TransferCompletionCallback;
+  handleConfirmedTransferComplete: TransferCompletionCallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +340,11 @@ export function useWalletSharing({
   };
 
   // Reload wallet data after transfer actions
-  const handleTransferComplete = async (): Promise<TransferCompletionResult> => {
+  const reloadAfterTransfer = async (
+    // Initiating a transfer also reloads this data. Only a confirmed transfer
+    // can legitimately remove the initiating owner's access.
+    classifyRemovedAccess: boolean,
+  ): Promise<TransferCompletionResult> => {
     if (!walletId) return { status: 'superseded' };
     const id = walletId;
     const token = ownership.captureRoute(ownershipKey);
@@ -352,10 +358,15 @@ export function useWalletSharing({
       return await refreshShareInfo(id, token);
     } catch (err) {
       if (!owns(token, id)) return { status: 'superseded' };
+      if (classifyRemovedAccess && err instanceof ApiError && err.status === 403) {
+        return { status: 'access-removed' };
+      }
       log.error('Failed to reload wallet after transfer', { error: err });
       return { status: 'failed', error: err };
     }
   };
+  const handleTransferComplete = () => reloadAfterTransfer(false);
+  const handleConfirmedTransferComplete = () => reloadAfterTransfer(true);
 
   return {
     // User search
@@ -383,5 +394,6 @@ export function useWalletSharing({
 
     // Transfer
     handleTransferComplete,
+    handleConfirmedTransferComplete,
   };
 }

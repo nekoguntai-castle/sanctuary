@@ -33,7 +33,7 @@ vi.mock('../../../src/api/transfers', () => ({
 
 vi.mock('../../../src/api/client', () => {
   class ApiError extends Error {
-    constructor(message: string) {
+    constructor(message: string, public status = 0) {
       super(message);
       this.name = 'ApiError';
     }
@@ -251,6 +251,50 @@ describe('useTransferActions', () => {
     expect(result.current.actionLoading).toBeNull();
     expect(result.current.confirmModal).toBeNull();
     expect(mockGetTransfers).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats removed access as terminal success without refetching an inaccessible transfer list', async () => {
+    mockConfirmTransfer.mockResolvedValue({});
+    mockGetTransfers.mockResolvedValueOnce({
+      transfers: [makeTransfer({ id: 't1', status: 'accepted' })],
+    });
+    const onTransferComplete = vi.fn().mockResolvedValue({ status: 'access-removed' });
+    const { result } = renderHook(() =>
+      useTransferActions('wallet', 'wallet-1', onTransferComplete),
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation).toHaveLength(1));
+    act(() => result.current.setConfirmModal({ transferId: 't1', action: 'confirm' }));
+    await act(async () => {
+      await result.current.handleConfirm('t1');
+    });
+
+    expect(result.current.awaitingConfirmation).toHaveLength(0);
+    expect(result.current.confirmModal).toBeNull();
+    expect(result.current.actionLoading).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(mockGetTransfers).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a confirmation 403 as an action failure without running completion reconciliation', async () => {
+    mockConfirmTransfer.mockRejectedValue(new ApiError('Forbidden', 403));
+    mockGetTransfers.mockResolvedValueOnce({
+      transfers: [makeTransfer({ id: 't1', status: 'accepted' })],
+    });
+    const onTransferComplete = vi.fn();
+    const { result } = renderHook(() =>
+      useTransferActions('wallet', 'wallet-1', onTransferComplete),
+    );
+
+    await waitFor(() => expect(result.current.awaitingConfirmation).toHaveLength(1));
+    await act(async () => {
+      await result.current.handleConfirm('t1');
+    });
+
+    expect(onTransferComplete).not.toHaveBeenCalled();
+    expect(result.current.awaitingConfirmation).toHaveLength(1);
+    expect(result.current.error).toBe('Forbidden');
+    expect(mockGetTransfers).toHaveBeenCalledTimes(1);
   });
 
   it.each([

@@ -12,6 +12,7 @@ import {
 } from '../../../api/devices';
 import * as authApi from '../../../api/auth';
 import * as adminApi from '../../../api/admin';
+import { ApiError } from '../../../api/client';
 import { useUser } from '../../../contexts/UserContext';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { toTabNetwork } from '../../../app/networks';
@@ -339,6 +340,11 @@ export function useDeviceData(id: string | undefined) {
       return await fetchShareInfo();
     } catch (error) {
       if (!ownsRoute(token)) return { status: 'superseded' } as const;
+      // This callback runs only after confirmation; a canonical 403 means the
+      // former owner's membership was removed by the committed transfer.
+      if (error instanceof ApiError && error.status === 403) {
+        return { status: 'access-removed' } as const;
+      }
       log.error('Failed to reload device after transfer', { error });
       return { status: 'failed', error } as const;
     }
