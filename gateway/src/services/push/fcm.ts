@@ -15,6 +15,7 @@ import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('FCM');
+const FCM_MULTICAST_LIMIT = 500;
 
 let messaging: Messaging | undefined;
 
@@ -57,6 +58,60 @@ export interface FCMNotification {
   title: string;
   body: string;
   data?: Record<string, string>;
+}
+
+interface MulticastResult {
+  success: number;
+  failed: number;
+  invalidTokens: string[];
+}
+
+function buildMulticastMessage(
+  tokens: string[],
+  notification: FCMNotification,
+): MulticastMessage {
+  return {
+    tokens,
+    notification: {
+      title: notification.title,
+      body: notification.body,
+    },
+    data: notification.data,
+    android: {
+      priority: 'high',
+      notification: {
+        channelId: 'sanctuary_transactions',
+        priority: 'high',
+        defaultSound: true,
+        defaultVibrateTimings: true,
+      },
+    },
+  };
+}
+
+async function sendMulticastBatch(
+  client: Messaging,
+  tokens: string[],
+  notification: FCMNotification,
+): Promise<MulticastResult> {
+  try {
+    const response = await client.sendEachForMulticast(buildMulticastMessage(tokens, notification));
+    const invalidTokens = response.responses.flatMap((result, index) => {
+      const code = result.error?.code;
+      return !result.success && (
+        code === 'messaging/invalid-registration-token'
+        || code === 'messaging/registration-token-not-registered'
+      ) ? [tokens[index]] : [];
+    });
+    return {
+      success: response.successCount,
+      failed: response.failureCount,
+      invalidTokens,
+    };
+  } catch (err) {
+    log.error('FCM multicast error', { error: (err as Error).message });
+    return { success: 0, failed: tokens.length, invalidTokens: [] };
+  }
 }
 
 /**
@@ -125,52 +180,15 @@ export async function sendToDevices(
     return { success: 0, failed: 0, invalidTokens: [] };
   }
 
-  try {
-    const message: MulticastMessage = {
-      tokens: pushTokens,
-      notification: {
-        title: notification.title,
-        body: notification.body,
-      },
-      data: notification.data,
-      android: {
-        priority: 'high',
-        notification: {
-          channelId: 'sanctuary_transactions',
-          priority: 'high',
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        },
-      },
-    };
-
-    const response = await client.sendEachForMulticast(message);
-
-    const invalidTokens: string[] = [];
-    response.responses.forEach((resp, idx) => {
-      if (!resp.success && resp.error) {
-        const code = resp.error.code;
-        if (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
-        ) {
-          invalidTokens.push(pushTokens[idx]);
-        }
-      }
-    });
-
-    log.debug('FCM multicast sent', {
-      success: response.successCount,
-      failed: response.failureCount,
-    });
-
-    return {
-      success: response.successCount,
-      failed: response.failureCount,
-      invalidTokens,
-    };
-  } catch (err) {
-    log.error('FCM multicast error', { error: (err as Error).message });
-    return { success: 0, failed: pushTokens.length, invalidTokens: [] };
+  const result: MulticastResult = { success: 0, failed: 0, invalidTokens: [] };
+  for (let offset = 0; offset < pushTokens.length; offset += FCM_MULTICAST_LIMIT) {
+    const batch = pushTokens.slice(offset, offset + FCM_MULTICAST_LIMIT);
+    const batchResult = await sendMulticastBatch(client, batch, notification);
+    result.success += batchResult.success;
+    result.failed += batchResult.failed;
+    result.invalidTokens.push(...batchResult.invalidTokens);
   }
+
+  log.debug('FCM multicast sent', { success: result.success, failed: result.failed });
+  return result;
 }

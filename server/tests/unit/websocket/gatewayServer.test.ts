@@ -1,6 +1,9 @@
 import { createHmac } from 'crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GATEWAY_AUTH_TIMEOUT_MS } from '../../../src/websocket/types';
+import {
+  GATEWAY_AUTH_TIMEOUT_MS,
+  GATEWAY_EVENT_PREPARATION_TIMEOUT_MS,
+} from '../../../src/websocket/types';
 
 const mocks = vi.hoisted(() => {
   class MockWebSocketServer {
@@ -29,6 +32,7 @@ const mocks = vi.hoisted(() => {
     websocketConnectionsInc: vi.fn(),
     websocketConnectionsDec: vi.fn(),
     websocketMessagesInc: vi.fn(),
+    mapGatewayEvent: vi.fn(async (event: unknown) => event),
   };
 });
 
@@ -58,6 +62,10 @@ vi.mock('../../../src/observability/metrics', () => ({
   websocketMessagesTotal: {
     inc: mocks.websocketMessagesInc,
   },
+}));
+
+vi.mock('../../../src/websocket/gatewayEventMapper', () => ({
+  mapGatewayEvent: mocks.mapGatewayEvent,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -105,6 +113,8 @@ describe('GatewayWebSocketServer', () => {
     vi.useRealTimers();
     mocks.config.gatewaySecret = 'gateway-secret';
     mocks.createdServers.length = 0;
+    mocks.mapGatewayEvent.mockReset();
+    mocks.mapGatewayEvent.mockImplementation(async (event) => event);
   });
 
   it('rejects connections when gateway secret is not configured', () => {
@@ -346,11 +356,11 @@ describe('GatewayWebSocketServer', () => {
     expect((server as any).gateway).toBeNull();
   });
 
-  it('sends events only when an authenticated gateway is available', () => {
+  it('sends events only when an authenticated gateway is available', async () => {
     const server = new GatewayWebSocketServer();
     const client = createClient();
 
-    server.sendEvent({ type: 'transaction', data: { txid: 'abc' } } as any);
+    await server.sendEvent({ type: 'transaction', data: { txid: 'abc' } } as any);
     expect(client.send).not.toHaveBeenCalled();
 
     (server as any).handleConnection(client, {} as any);
@@ -360,13 +370,132 @@ describe('GatewayWebSocketServer', () => {
       response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
     })));
 
-    server.sendEvent({ type: 'transaction', data: { txid: 'abc' } } as any);
+    await server.sendEvent({ type: 'transaction', data: { txid: 'abc' } } as any);
 
     const payload = JSON.parse(client.send.mock.calls[2][0]);
     expect(payload).toEqual({
       type: 'event',
       event: { type: 'transaction', data: { txid: 'abc' } },
     });
+  });
+
+  it('preserves accepted event order across deferred audience reads', async () => {
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+    (server as any).handleConnection(client, {} as any);
+    const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth_response',
+      response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+    })));
+
+    let releaseFirst!: () => void;
+    mocks.mapGatewayEvent
+      .mockImplementationOnce((event) => new Promise((resolve) => {
+        releaseFirst = () => resolve({ ...event as object, userIds: ['first'] });
+      }))
+      .mockImplementationOnce(async (event) => ({ ...event as object, userIds: ['second'] }));
+
+    const first = server.sendEvent({ type: 'transaction', data: { txid: 'first' } } as any);
+    const second = server.sendEvent({ type: 'transaction', data: { txid: 'second' } } as any);
+    await Promise.resolve();
+    expect(mocks.mapGatewayEvent).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(client.send.mock.calls.slice(2).map(([payload]) => JSON.parse(payload).event.userIds[0]))
+      .toEqual(['first', 'second']);
+  });
+
+  it('allows later events after a mapper failure', async () => {
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+    (server as any).handleConnection(client, {} as any);
+    const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth_response',
+      response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+    })));
+    mocks.mapGatewayEvent
+      .mockRejectedValueOnce(new Error('audience read failed'))
+      .mockImplementationOnce(async (event) => ({ ...event as object, userIds: ['ok'] }));
+
+    await expect(server.sendEvent({ type: 'transaction', data: { txid: 'bad' } } as any))
+      .rejects.toThrow('audience read failed');
+    await expect(server.sendEvent({ type: 'transaction', data: { txid: 'good' } } as any))
+      .resolves.toBeUndefined();
+    expect(JSON.parse(client.send.mock.calls[2][0]).event.userIds).toEqual(['ok']);
+  });
+
+  it('times out a stuck audience read without blocking later events', async () => {
+    vi.useFakeTimers();
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+    (server as any).handleConnection(client, {} as any);
+    const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth_response',
+      response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+    })));
+    let rejectLate!: (error: Error) => void;
+    mocks.mapGatewayEvent
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectLate = reject;
+      }))
+      .mockImplementationOnce(async (event) => ({ ...event as object, userIds: ['ok'] }));
+
+    const stuck = server.sendEvent({ type: 'transaction', data: { txid: 'stuck' } } as any);
+    const next = server.sendEvent({ type: 'transaction', data: { txid: 'next' } } as any);
+    const rejection = expect(stuck).rejects.toThrow('Gateway event preparation timed out');
+    await vi.advanceTimersByTimeAsync(GATEWAY_EVENT_PREPARATION_TIMEOUT_MS);
+
+    await rejection;
+    await expect(next).resolves.toBeUndefined();
+    rejectLate(new Error('late audience failure'));
+    await Promise.resolve();
+    expect(JSON.parse(client.send.mock.calls[2][0]).event.userIds).toEqual(['ok']);
+  });
+
+  it('accepts sync batches larger than the browser socket queue limit', async () => {
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+    (server as any).handleConnection(client, {} as any);
+    const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth_response',
+      response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+    })));
+
+    const sends = Array.from({ length: 101 }, (_, index) => server.sendEvent({
+      type: 'transaction', data: { txid: `sync-${index}` },
+    } as any));
+
+    await expect(Promise.all(sends)).resolves.toHaveLength(101);
+    expect(mocks.mapGatewayEvent).toHaveBeenCalledTimes(101);
+    expect(client.send).toHaveBeenCalledTimes(103);
+  });
+
+  it('does not send an enriched event after the gateway socket stops being open', async () => {
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+    (server as any).handleConnection(client, {} as any);
+    const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth_response',
+      response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+    })));
+
+    let release!: () => void;
+    mocks.mapGatewayEvent.mockImplementationOnce((event) => new Promise((resolve) => {
+      release = () => resolve(event);
+    }));
+    const send = server.sendEvent({ type: 'transaction', data: { txid: 'tx1' } } as any);
+    await Promise.resolve();
+    client.readyState = 0;
+    release();
+    await send;
+
+    expect(client.send).toHaveBeenCalledTimes(2);
   });
 
   it('skips sending when client socket is not open', () => {

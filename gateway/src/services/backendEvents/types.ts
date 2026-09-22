@@ -31,6 +31,7 @@ export interface BackendEvent {
   walletId: string;
   walletName?: string;
   userId?: string;
+  userIds?: string[];
   data: {
     txid?: string;
     type?: 'received' | 'sent' | 'consolidation';

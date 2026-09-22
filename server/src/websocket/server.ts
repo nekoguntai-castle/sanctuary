@@ -80,6 +80,14 @@ export const initializeWebSocketServer = (): SanctauryWebSocketServer => {
     void wsServer!.localBroadcast(normalizedEvent).catch((error) => {
       log.error('Failed to apply remote WebSocket broadcast', { error: String(error) });
     });
+    const gatewayServer = getGatewayWebSocketServer();
+    if (gatewayServer) {
+      void gatewayServer.sendEvent(normalizedEvent).catch((error) => {
+        log.error('Failed to forward remote WebSocket broadcast to gateway', {
+          error: String(error),
+        });
+      });
+    }
   });
   redisBridge.setControlHandler((control) => wsServer!.applyAuthorizationControl(control));
   registerWebSocketAuthorizationControlDispatcher(async (control) => {

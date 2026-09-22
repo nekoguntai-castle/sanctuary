@@ -18,7 +18,7 @@ const mockLogger = vi.hoisted(() => ({
 const mockBroadcast = vi.hoisted(() => vi.fn());
 const mockGetStats = vi.hoisted(() => vi.fn().mockReturnValue({ clients: 5, channelList: [] }));
 const mockIsGatewayConnected = vi.hoisted(() => vi.fn().mockReturnValue(false));
-const mockSendEvent = vi.hoisted(() => vi.fn());
+const mockSendEvent = vi.hoisted(() => vi.fn(async () => undefined));
 const mockGetWebSocketServerIfInitialized = vi.hoisted(() => vi.fn(() => ({
   broadcast: mockBroadcast,
   getStats: mockGetStats,

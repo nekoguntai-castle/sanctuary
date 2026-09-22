@@ -358,6 +358,31 @@ describe('FCM Service', () => {
       expect(result.invalidTokens).toEqual(['invalid-token', 'unregistered-token']);
     });
 
+    it('chunks audiences larger than the Firebase multicast limit', async () => {
+      const tokens = Array.from({ length: 501 }, (_, index) => `token-${index}`);
+      mockSendEachForMulticast
+        .mockResolvedValueOnce({
+          successCount: 500,
+          failureCount: 0,
+          responses: Array.from({ length: 500 }, () => ({ success: true })),
+        })
+        .mockResolvedValueOnce({
+          successCount: 0,
+          failureCount: 1,
+          responses: [{
+            success: false,
+            error: { code: 'messaging/registration-token-not-registered' },
+          }],
+        });
+
+      const result = await fcm.sendToDevices(tokens, { title: 'Test', body: 'Test' });
+
+      expect(mockSendEachForMulticast).toHaveBeenCalledTimes(2);
+      expect(mockSendEachForMulticast.mock.calls[0][0].tokens).toHaveLength(500);
+      expect(mockSendEachForMulticast.mock.calls[1][0].tokens).toEqual(['token-500']);
+      expect(result).toEqual({ success: 500, failed: 1, invalidTokens: ['token-500'] });
+    });
+
     it('should not collect non-token-related errors as invalid tokens', async () => {
       mockSendEachForMulticast.mockResolvedValue({
         successCount: 0,

@@ -32,6 +32,7 @@ import type {
 import { EventBuilders } from './events';
 import type { WebSocketEvent } from './types';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 const log = createLogger('WS:BROADCAST');
 
@@ -81,7 +82,12 @@ function broadcastEvent(event: BroadcastEvent): void {
     // Also send to gateway if connected
     const gatewayServer = getGatewayWebSocketServer();
     if (gatewayServer?.isGatewayConnected()) {
-      gatewayServer.sendEvent(legacyEvent);
+      void gatewayServer.sendEvent(legacyEvent).catch((error) => {
+        log.error('Failed to dispatch event to gateway', {
+          error: getErrorMessage(error),
+          type: event.type,
+        });
+      });
     }
   } catch (error) {
     // WebSocket server might not be initialized during startup

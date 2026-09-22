@@ -273,7 +273,7 @@ describe('Push Notification Service', () => {
       const notification = formatTransactionNotification(
         'sent',
         'Savings',
-        100000, // 0.001 BTC in sats
+        -100000, // Production sent events carry a negative wallet delta
         'txid456'
       );
 

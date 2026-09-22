@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => {
     applyAuthorizationControl = vi.fn(async () => undefined);
   }
 
-  class MockGatewayWsServer {}
+  class MockGatewayWsServer {
+    sendEvent = vi.fn(async () => undefined);
+  }
 
   return {
     MockClientWsServer,
@@ -123,6 +125,37 @@ describe('websocket/server singleton wiring', () => {
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Failed to apply remote WebSocket broadcast',
       { error: String(rejection) },
+    );
+  });
+
+  it('forwards a worker event locally and to the gateway exactly once', async () => {
+    const mod = await import('../../../src/websocket/server');
+    const server = mod.initializeWebSocketServer();
+    const gateway = mod.initializeGatewayWebSocketServer();
+    const event = { type: 'transaction', walletId: 'w1', data: { txid: 'tx1' } };
+
+    mocks.emitRedisEvent(event);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect((server as any).localBroadcast).toHaveBeenCalledTimes(1);
+    expect((server as any).localBroadcast).toHaveBeenCalledWith(event);
+    expect((gateway as any).sendEvent).toHaveBeenCalledTimes(1);
+    expect((gateway as any).sendEvent).toHaveBeenCalledWith(event);
+  });
+
+  it('logs rejected worker gateway dispatches without affecting local delivery', async () => {
+    const mod = await import('../../../src/websocket/server');
+    const server = mod.initializeWebSocketServer();
+    const gateway = mod.initializeGatewayWebSocketServer();
+    (gateway as any).sendEvent.mockRejectedValueOnce(new Error('gateway unavailable'));
+
+    mocks.emitRedisEvent({ type: 'transaction', walletId: 'w1', data: { txid: 'tx1' } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect((server as any).localBroadcast).toHaveBeenCalledTimes(1);
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Failed to forward remote WebSocket broadcast to gateway',
+      { error: 'Error: gateway unavailable' },
     );
   });
 

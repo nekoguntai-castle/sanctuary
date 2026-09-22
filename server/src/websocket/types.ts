@@ -72,6 +72,9 @@ export const QUEUE_OVERFLOW_POLICY: QueueOverflowPolicy =
 /** Timeout for gateway authentication */
 export const GATEWAY_AUTH_TIMEOUT_MS = 10000; // 10 seconds
 
+/** Bound audience enrichment so one database read cannot stall every later push. */
+export const GATEWAY_EVENT_PREPARATION_TIMEOUT_MS = 10000;
+
 // ============================================================================
 // Types and Interfaces
 // ============================================================================

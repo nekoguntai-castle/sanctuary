@@ -20,13 +20,15 @@ import {
 } from '../../../src/websocket/broadcast';
 import { getWebSocketServer, getGatewayWebSocketServer } from '../../../src/websocket/server';
 
+const mockLogError = vi.hoisted(() => vi.fn());
+
 // Mock the logger
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error: mockLogError,
   }),
 }));
 
@@ -48,7 +50,7 @@ const mockGetStats = vi.fn().mockReturnValue({
   },
 });
 const mockIsGatewayConnected = vi.fn().mockReturnValue(false);
-const mockSendEvent = vi.fn();
+const mockSendEvent = vi.fn().mockResolvedValue(undefined);
 
 const mockGetWebSocketServerIfInitialized = vi.hoisted(() => vi.fn<() => unknown>());
 const mockPublishBroadcast = vi.hoisted(() => vi.fn());
@@ -613,6 +615,24 @@ describe('Broadcast Helpers', () => {
       });
 
       expect(mockSendEvent).not.toHaveBeenCalled();
+    });
+
+    it('contains an asynchronous gateway dispatch rejection', async () => {
+      mockIsGatewayConnected.mockReturnValue(true);
+      mockSendEvent.mockRejectedValueOnce(new Error('gateway queue failed'));
+
+      expect(() => broadcastBalance('wallet-123', {
+        balance: 100000,
+        unconfirmed: 0,
+        change: 0,
+      })).not.toThrow();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockSendEvent).toHaveBeenCalledTimes(1);
+      expect(mockLogError).toHaveBeenCalledWith('Failed to dispatch event to gateway', {
+        error: 'gateway queue failed',
+        type: 'balance',
+      });
     });
   });
 });

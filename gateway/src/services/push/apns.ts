@@ -9,6 +9,8 @@ import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('APNS');
+// Apply app-level backpressure because APNs negotiates a dynamic stream limit.
+const APNS_SEND_CONCURRENCY = 100;
 
 let apnsProvider: apn.Provider | null = null;
 
@@ -64,6 +66,36 @@ export interface APNsNotification {
   data?: Record<string, unknown>;
   badge?: number;
   sound?: string;
+}
+
+interface APNsBatchResult {
+  success: number;
+  failed: number;
+  invalidTokens: string[];
+}
+
+async function sendAPNsBatch(
+  provider: apn.Provider,
+  note: apn.Notification,
+  tokens: string[],
+): Promise<APNsBatchResult> {
+  try {
+    const result = await provider.send(note, tokens);
+    const invalidTokens = result.failed.flatMap((failure) => {
+      const reason = failure.response?.reason;
+      return reason === 'BadDeviceToken' || reason === 'Unregistered'
+        ? [failure.device]
+        : [];
+    });
+    return {
+      success: result.sent.length,
+      failed: result.failed.length,
+      invalidTokens,
+    };
+  } catch (err) {
+    log.error('APNs multicast error', { error: (err as Error).message });
+    return { success: 0, failed: tokens.length, invalidTokens: [] };
+  }
 }
 
 /**
@@ -129,42 +161,28 @@ export async function sendToDevices(
     return { success: 0, failed: 0, invalidTokens: [] };
   }
 
-  try {
-    const note = new apn.Notification();
-    note.alert = {
-      title: notification.title,
-      body: notification.body,
-    };
-    note.topic = config.apns.bundleId;
-    note.sound = notification.sound || 'default';
-    if (notification.badge !== undefined) {
-      note.badge = notification.badge;
-    }
-    note.payload = notification.data || {};
-    note.pushType = 'alert';
-
-    const result = await apnsProvider.send(note, pushTokens);
-
-    const invalidTokens: string[] = [];
-    result.failed.forEach((failure) => {
-      const reason = failure.response?.reason;
-      if (reason === 'BadDeviceToken' || reason === 'Unregistered') {
-        invalidTokens.push(failure.device);
-      }
-    });
-
-    log.debug('APNs multicast sent', {
-      success: result.sent.length,
-      failed: result.failed.length,
-    });
-
-    return {
-      success: result.sent.length,
-      failed: result.failed.length,
-      invalidTokens,
-    };
-  } catch (err) {
-    log.error('APNs multicast error', { error: (err as Error).message });
-    return { success: 0, failed: pushTokens.length, invalidTokens: [] };
+  const note = new apn.Notification();
+  note.alert = {
+    title: notification.title,
+    body: notification.body,
+  };
+  note.topic = config.apns.bundleId;
+  note.sound = notification.sound || 'default';
+  if (notification.badge !== undefined) {
+    note.badge = notification.badge;
   }
+  note.payload = notification.data || {};
+  note.pushType = 'alert';
+
+  const result: APNsBatchResult = { success: 0, failed: 0, invalidTokens: [] };
+  for (let offset = 0; offset < pushTokens.length; offset += APNS_SEND_CONCURRENCY) {
+    const batch = pushTokens.slice(offset, offset + APNS_SEND_CONCURRENCY);
+    const batchResult = await sendAPNsBatch(apnsProvider, note, batch);
+    result.success += batchResult.success;
+    result.failed += batchResult.failed;
+    result.invalidTokens.push(...batchResult.invalidTokens);
+  }
+
+  log.debug('APNs multicast sent', { success: result.success, failed: result.failed });
+  return result;
 }

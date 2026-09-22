@@ -130,13 +130,14 @@ export async function sendToDevices(
   // Send to Android devices
   if (androidDevices.length > 0 && fcm.isFCMAvailable()) {
     const tokens = androidDevices.map((d) => d.pushToken);
+    const devicesByToken = new Map(androidDevices.map((device) => [device.pushToken, device]));
     const result = await fcm.sendToDevices(tokens, notification);
     totalSuccess += result.success;
     totalFailed += result.failed;
 
     // Map invalid tokens back to device IDs
     result.invalidTokens.forEach((token) => {
-      const device = androidDevices.find((d) => d.pushToken === token);
+      const device = devicesByToken.get(token);
       if (device) {
         invalidTokens.push({ id: device.id, token });
       }
@@ -148,13 +149,14 @@ export async function sendToDevices(
   // Send to iOS devices
   if (iosDevices.length > 0 && apns.isAPNsAvailable()) {
     const tokens = iosDevices.map((d) => d.pushToken);
+    const devicesByToken = new Map(iosDevices.map((device) => [device.pushToken, device]));
     const result = await apns.sendToDevices(tokens, notification);
     totalSuccess += result.success;
     totalFailed += result.failed;
 
     // Map invalid tokens back to device IDs
     result.invalidTokens.forEach((token) => {
-      const device = iosDevices.find((d) => d.pushToken === token);
+      const device = devicesByToken.get(token);
       if (device) {
         invalidTokens.push({ id: device.id, token });
       }
@@ -182,7 +184,8 @@ export function formatTransactionNotification(
   amount: number,
   txid: string
 ): PushNotification {
-  const amountBtc = formatSats(amount);
+  // Producers send signed wallet deltas; the message template owns the sign.
+  const amountBtc = formatSats(Math.abs(amount));
 
   switch (type) {
     case 'received':

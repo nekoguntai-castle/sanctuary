@@ -11,6 +11,27 @@ import { PUSH_EVENT_TYPES, formatNotificationForEvent } from './notifications';
 import type { BackendEvent } from './types';
 
 const log = createLogger('BACKEND_EVENTS');
+// Bound concurrent backend requests for wallets with large shared audiences.
+const DEVICE_LOOKUP_CONCURRENCY = 5;
+
+function getAudienceIds(event: BackendEvent): string[] {
+  return [...new Set([
+    ...(event.userIds ?? []),
+    ...(event.userId ? [event.userId] : []),
+  ].filter((userId) => userId.length > 0))];
+}
+
+async function getDistinctAudienceDevices(userIds: string[]) {
+  const devicesById = new Map<string, Awaited<ReturnType<typeof getDevicesForUser>>[number]>();
+  for (let offset = 0; offset < userIds.length; offset += DEVICE_LOOKUP_CONCURRENCY) {
+    const batch = userIds.slice(offset, offset + DEVICE_LOOKUP_CONCURRENCY);
+    const deviceLists = await Promise.all(batch.map((userId) => getDevicesForUser(userId)));
+    for (const device of deviceLists.flat()) {
+      devicesById.set(device.id, device);
+    }
+  }
+  return [...devicesById.values()];
+}
 
 /**
  * Handle incoming event from backend
@@ -23,15 +44,15 @@ export async function handleEvent(event: BackendEvent): Promise<void> {
     return;
   }
 
-  // Need userId to know which devices to notify
-  if (!event.userId) {
-    log.warn('Event missing userId, cannot send push notification');
+  const userIds = getAudienceIds(event);
+  if (userIds.length === 0) {
+    log.warn('Event missing recipients, cannot send push notification');
     return;
   }
 
-  const devices = await getDevicesForUser(event.userId);
+  const devices = await getDistinctAudienceDevices(userIds);
   if (devices.length === 0) {
-    log.debug('No devices registered for user', { userId: event.userId });
+    log.debug('No devices registered for audience', { userIds });
     return;
   }
 
@@ -51,7 +72,7 @@ export async function handleEvent(event: BackendEvent): Promise<void> {
 
   const result = await push.sendToDevices(pushDevices, notification);
   log.info('Push notifications sent', {
-    userId: event.userId,
+    userIds,
     eventType: event.type,
     success: result.success,
     failed: result.failed,
@@ -62,7 +83,10 @@ export async function handleEvent(event: BackendEvent): Promise<void> {
     log.warn('Invalid push tokens found', { count: result.invalidTokens.length });
 
     // Remove each invalid token from the backend database
-    for (const invalidToken of result.invalidTokens) {
+    const distinctInvalidTokens = new Map(
+      result.invalidTokens.map((invalidToken) => [invalidToken.id, invalidToken]),
+    );
+    for (const invalidToken of distinctInvalidTokens.values()) {
       await removeInvalidDevice(invalidToken.id, invalidToken.token);
     }
   }

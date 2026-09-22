@@ -462,6 +462,23 @@ describe('APNs Service', () => {
       expect(result.invalidTokens).toEqual(['bad-token', 'old-token']);
     });
 
+    it('bounds provider fanout and preserves completed batches when a later batch fails', async () => {
+      const tokens = Array.from({ length: 101 }, (_, index) => `token-${index}`);
+      mockSend
+        .mockResolvedValueOnce({
+          sent: tokens.slice(0, 100).map((device) => ({ device })),
+          failed: [],
+        })
+        .mockRejectedValueOnce(new Error('Network failure'));
+
+      const result = await apns.sendToDevices(tokens, { title: 'Test', body: 'Test' });
+
+      expect(mockSend).toHaveBeenCalledTimes(2);
+      expect(mockSend.mock.calls[0][1]).toHaveLength(100);
+      expect(mockSend.mock.calls[1][1]).toEqual(['token-100']);
+      expect(result).toEqual({ success: 100, failed: 1, invalidTokens: [] });
+    });
+
     it('should not collect non-token-related errors as invalid tokens', async () => {
       mockSend.mockResolvedValue({
         sent: [],

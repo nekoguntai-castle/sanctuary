@@ -68,6 +68,73 @@ describe('handleEvent', () => {
     expect(mockGetDevicesForUser).not.toHaveBeenCalled();
   });
 
+  it('fans out to distinct plural users and suppresses duplicate devices', async () => {
+    mockGetDevicesForUser
+      .mockResolvedValueOnce([
+        { id: 'shared', platform: 'android', pushToken: 'tok-shared', userId: 'u1' },
+        { id: 'u1-only', platform: 'ios', pushToken: 'tok-u1', userId: 'u1' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'shared', platform: 'android', pushToken: 'tok-shared', userId: 'u2' },
+        { id: 'u2-only', platform: 'android', pushToken: 'tok-u2', userId: 'u2' },
+      ]);
+    mockFormatNotificationForEvent.mockReturnValue({ title: 'Test', body: 'Test', data: {} });
+    mockSendToDevices.mockResolvedValue({ success: 3, failed: 0, invalidTokens: [] });
+
+    await handleEvent({
+      type: 'transaction', walletId: 'w1', userIds: ['u1', 'u2', 'u1'],
+      data: { txid: 'tx1', type: 'received', amount: 1000 },
+    });
+
+    expect(mockGetDevicesForUser.mock.calls.map(([userId]) => userId)).toEqual(['u1', 'u2']);
+    expect(mockFormatNotificationForEvent).toHaveBeenCalledTimes(1);
+    expect(mockSendToDevices).toHaveBeenCalledWith([
+      { id: 'shared', platform: 'android', pushToken: 'tok-shared' },
+      { id: 'u1-only', platform: 'ios', pushToken: 'tok-u1' },
+      { id: 'u2-only', platform: 'android', pushToken: 'tok-u2' },
+    ], expect.any(Object));
+  });
+
+  it('bounds concurrent audience device lookups', async () => {
+    const releases: Array<() => void> = [];
+    mockGetDevicesForUser.mockImplementation(() => new Promise((resolve) => {
+      releases.push(() => resolve([]));
+    }));
+
+    const handling = handleEvent({
+      type: 'transaction', walletId: 'w1', userIds: ['u1', 'u2', 'u3', 'u4', 'u5', 'u6'],
+      data: { txid: 'tx1', type: 'received', amount: 1000 },
+    });
+    await vi.waitFor(() => expect(mockGetDevicesForUser).toHaveBeenCalledTimes(5));
+
+    releases.splice(0).forEach((release) => release());
+    await vi.waitFor(() => expect(mockGetDevicesForUser).toHaveBeenCalledTimes(6));
+    releases.splice(0).forEach((release) => release());
+    await handling;
+    expect(mockGetDevicesForUser.mock.calls.map(([userId]) => userId))
+      .toEqual(['u1', 'u2', 'u3', 'u4', 'u5', 'u6']);
+  });
+
+  it('combines plural and legacy recipients without duplicate lookups', async () => {
+    mockGetDevicesForUser.mockResolvedValue([]);
+    await handleEvent({
+      type: 'transaction', walletId: 'w1', userId: 'legacy', userIds: ['new', 'legacy', ''],
+      data: { txid: 'tx1', type: 'received', amount: 1000 },
+    });
+    expect(mockGetDevicesForUser.mock.calls.map(([userId]) => userId)).toEqual(['new', 'legacy']);
+    expect(mockSendToDevices).not.toHaveBeenCalled();
+  });
+
+  it('does no provider work for an explicitly empty audience', async () => {
+    await handleEvent({
+      type: 'transaction', walletId: 'w1', userIds: [],
+      data: { txid: 'tx1', type: 'received', amount: 1000 },
+    });
+    expect(mockGetDevicesForUser).not.toHaveBeenCalled();
+    expect(mockFormatNotificationForEvent).not.toHaveBeenCalled();
+    expect(mockSendToDevices).not.toHaveBeenCalled();
+  });
+
   it('should skip when user has no registered devices', async () => {
     mockGetDevicesForUser.mockResolvedValue([]);
 
@@ -196,6 +263,30 @@ describe('handleEvent', () => {
     expect(mockRemoveInvalidDevice).toHaveBeenCalledTimes(2);
     expect(mockRemoveInvalidDevice).toHaveBeenCalledWith('d1', 'tok1');
     expect(mockRemoveInvalidDevice).toHaveBeenCalledWith('d3', 'tok3');
+  });
+
+  it('removes a duplicate invalid device only once', async () => {
+    mockGetDevicesForUser.mockResolvedValue([
+      { id: 'd1', platform: 'android', pushToken: 'tok1', userId: 'u1' },
+    ]);
+    mockFormatNotificationForEvent.mockReturnValue({ title: 'Test', body: 'Test', data: {} });
+    mockSendToDevices.mockResolvedValue({
+      success: 0,
+      failed: 2,
+      invalidTokens: [
+        { id: 'd1', token: 'tok1' },
+        { id: 'd1', token: 'tok1' },
+      ],
+    });
+    mockRemoveInvalidDevice.mockResolvedValue(undefined);
+
+    await handleEvent({
+      type: 'transaction', walletId: 'w1', userIds: ['u1'],
+      data: { txid: 'tx1', type: 'received', amount: 1000 },
+    });
+
+    expect(mockRemoveInvalidDevice).toHaveBeenCalledTimes(1);
+    expect(mockRemoveInvalidDevice).toHaveBeenCalledWith('d1', 'tok1');
   });
 
   it('should not call removeInvalidDevice when there are no invalid tokens', async () => {

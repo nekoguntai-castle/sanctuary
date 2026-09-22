@@ -18,6 +18,7 @@ import type { Duplex } from 'stream';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
+import { withTimeout } from '../utils/async';
 import config from '../config';
 import { parseGatewayMessage } from './schemas';
 import {
@@ -26,9 +27,11 @@ import {
 } from '../observability/metrics';
 import {
   GATEWAY_AUTH_TIMEOUT_MS,
+  GATEWAY_EVENT_PREPARATION_TIMEOUT_MS,
   GatewayWebSocket,
   WebSocketEvent,
 } from './types';
+import { mapGatewayEvent } from './gatewayEventMapper';
 
 const log = createLogger('WS:GATEWAY');
 
@@ -41,6 +44,9 @@ const log = createLogger('WS:GATEWAY');
 export class GatewayWebSocketServer {
   private wss: WebSocketServer;
   private gateway: GatewayWebSocket | null = null;
+  // Serialize enrichment to preserve accepted event order. Catching on the tail
+  // keeps one failed lookup from poisoning every event accepted after it.
+  private sendTail: Promise<void> = Promise.resolve();
 
   constructor() {
     this.wss = new WebSocketServer({
@@ -221,15 +227,38 @@ export class GatewayWebSocketServer {
   /**
    * Send event to connected gateway
    */
-  public sendEvent(event: WebSocketEvent) {
+  public sendEvent(event: WebSocketEvent): Promise<void> {
+    const operation = this.sendTail.then(() => this.mapAndSendEvent(event));
+    this.sendTail = operation.catch((error) => {
+      log.error('Failed to prepare gateway event', { error: getErrorMessage(error), type: event.type });
+    });
+    return operation;
+  }
+
+  private async mapAndSendEvent(event: WebSocketEvent): Promise<void> {
     if (!this.gateway || !this.gateway.isAuthenticated) {
       log.debug('No authenticated gateway to send event');
       return;
     }
 
-    this.sendToClient(this.gateway, {
+    const mappedEvent = await withTimeout(
+      mapGatewayEvent(event),
+      GATEWAY_EVENT_PREPARATION_TIMEOUT_MS,
+      'Gateway event preparation timed out',
+      (error) => log.error('Gateway event preparation failed after timeout', {
+        error: getErrorMessage(error),
+        type: event.type,
+      }),
+    );
+    const gateway = this.gateway;
+    if (!gateway || !gateway.isAuthenticated || gateway.readyState !== WebSocket.OPEN) {
+      log.debug('Gateway disconnected before event was ready', { type: event.type });
+      return;
+    }
+
+    this.sendToClient(gateway, {
       type: 'event',
-      event,
+      event: mappedEvent,
     });
   }
 

@@ -32,6 +32,7 @@ export { labelRepository, default as labelRepo } from './labelRepository';
 export { draftRepository, default as draftRepo } from './draftRepository';
 export { deviceRepository, default as deviceRepo } from './deviceRepository';
 export { pushDeviceRepository, default as pushDeviceRepo } from './pushDeviceRepository';
+export { pushAudienceRepository, default as pushAudienceRepo } from './pushAudienceRepository';
 export { sessionRepository, default as sessionRepo } from './sessionRepository';
 export { auditLogRepository, default as auditLogRepo } from './auditLogRepository';
 export { systemSettingRepository, default as systemSettingRepo } from './systemSettingRepository';
