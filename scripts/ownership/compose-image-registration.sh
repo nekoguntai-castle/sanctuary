@@ -51,6 +51,17 @@ ownership_new_image_removal_deadline() {
   printf '%s\n' "$(( $(ownership_image_now_ms) + 60000 ))"
 }
 
+# Freshly loaded images can take seconds to become visible to a label-filtered
+# `image ls` on a loaded rootless-Podman host (PR #1287 run 18635, Upgrade
+# Baseline on x300, 2026-09-23: partial answers at 07:47:41 and :44 HST, the
+# full set from :48, each query taking ~3s; five earlier occurrences across
+# lanes). Discovery that runs inside the subject may wait this long for the
+# expected set. The EXIT/interrupt fallback keeps the short shared deadline so
+# it stays inside the coordinator's five-second TERM-to-KILL grace.
+ownership_new_image_discovery_deadline() {
+  printf '%s\n' "$(( $(ownership_image_now_ms) + 30000 ))"
+}
+
 ownership_timeout_window_before_deadline() {
   local deadline="$1" max_window="${2:-3000}" now remaining window
   now="$(ownership_image_now_ms)" || return 1
@@ -73,6 +84,18 @@ ownership_timeout_window_before_deadline() {
   else
     printf '0.%03ds\n' "$window"
   fi
+}
+
+# Discovery polls until its deadline rather than for a fixed number of
+# attempts: five attempts of ~3s queries could end before the images became
+# visible although the deadline had time left. The cap only backstops a
+# far-future deadline.
+ownership_discovery_retry_before_deadline() {
+  local deadline="$1" attempt="$2" now
+  [ "$attempt" -lt 120 ] || return 1
+  now="$(ownership_image_now_ms)" || return 1
+  [ "$((deadline - now))" -gt 750 ] || return 1
+  sleep 0.5
 }
 
 ownership_retry_before_deadline() {
@@ -329,10 +352,11 @@ compose_tagged_refs_from_image_rows() {
 
 wait_for_ci_compose_image_refs() {
   local expected_refs="$1" allow_no_owned_images="$2" deadline="$3"
-  local observed_rows='' observed_refs='' last_successful_rows='' attempt
-  for attempt in 1 2 3 4 5; do
+  local observed_rows='' observed_refs='' last_successful_rows='' attempt=0
+  while :; do
+    attempt=$((attempt + 1))
     observed_rows="$(list_ci_compose_lane_images "$deadline")" || {
-      ownership_retry_before_deadline "$deadline" "$attempt" && continue
+      ownership_discovery_retry_before_deadline "$deadline" "$attempt" && continue
       printf '%s' "$last_successful_rows"
       return 1
     }
@@ -349,7 +373,7 @@ wait_for_ci_compose_image_refs() {
     if [ "$allow_no_owned_images" -eq 1 ] && [ -z "$observed_rows" ]; then
       return 0
     fi
-    ownership_retry_before_deadline "$deadline" "$attempt" || break
+    ownership_discovery_retry_before_deadline "$deadline" "$attempt" || break
   done
   printf '%s' "$last_successful_rows"
   return 1

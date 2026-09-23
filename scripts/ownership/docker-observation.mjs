@@ -422,8 +422,12 @@ function normalizeImageListIdentity(value) {
 }
 
 function parseImageReferenceWitness(output) {
+  // Only tagged rows carry references, so only they count toward the bound.
+  // Untagged rows (dangling images, and any intermediates a native Buildah
+  // build leaves behind) are validated but otherwise contribute nothing.
   const rows = lines(output);
-  if (rows.length > 256) throw Object.assign(new Error('image reference witness exceeds the bounded limit'), {
+  const taggedRows = rows.filter((row) => row.split('\t')[2] !== '<none>');
+  if (taggedRows.length > 256) throw Object.assign(new Error('image reference witness exceeds the bounded limit'), {
     category: 'output_limit', operation: 'image reference witness',
   });
   const byIdentity = new Map();
@@ -454,8 +458,12 @@ function listedImageReferences(context, labels, identity) {
     return { tags: [], digests: [] };
   }
   if (!context.imageReferenceWitnesses.has(buildId)) {
+    // No `--all`: a tagged image is always listed without it, and with it a
+    // native (DOCKER_BUILDKIT=0) build adds an untagged intermediate per
+    // Dockerfile step after the LABEL -- 263 rows for one Upgrade Baseline
+    // lane on kumo, which used to exhaust the bound (v0.8.75-rc1/rc2).
     const output = query(context.run, context.engine, [
-      'image', 'ls', '--all', '--no-trunc',
+      'image', 'ls', '--no-trunc',
       '--filter', `label=io.sanctuary.build-id=${buildId}`,
       '--format', '{{.ID}}\t{{.Repository}}\t{{.Tag}}',
     ], 'image reference witness');

@@ -31,6 +31,7 @@ function fixtureRun({
   drift = false, malformed = false, volumeIdentityDrift = false,
   safetyDrift = null, lifecycle = 'active', imageTags, imageDigests,
   imageLabels, imageContainerReferences, imageListTags, extraLabels,
+  witnessIntermediates = 0, witnessDangling = 0,
 } = {}) {
   const calls = [];
   let containerLists = 0;
@@ -62,10 +63,20 @@ function fixtureRun({
       imageWitnesses += 1;
       const tags = safetyDrift === 'image_tag' && imageWitnesses > 1
         ? ['sanctuary:local', 'sanctuary:release'] : (imageListTags ?? imageTags ?? ['sanctuary:local']);
-      return tags.map((tag) => {
+      const tagged = tags.map((tag) => {
         const separator = tag.lastIndexOf(':');
         return `${IMAGE}\t${tag.slice(0, separator)}\t${tag.slice(separator + 1)}`;
-      }).join('\n');
+      });
+      // A native (Buildah) build commits every step after the LABEL as an
+      // untagged intermediate carrying the label; `--all` lists them all.
+      // Dangling (superseded, untagged) images show up either way.
+      const untagged = (count, salt) => Array.from({ length: count }, (_, index) =>
+        `sha256:${salt}${index.toString(16).padStart(63, '0')}\t<none>\t<none>`);
+      return [
+        ...tagged,
+        ...(effectiveArgs.includes('--all') ? untagged(witnessIntermediates, 'e') : []),
+        ...untagged(witnessDangling, 'f'),
+      ].join('\n');
     }
     if (joined.startsWith('image ls')) return `${IMAGE}\n`;
     if (joined.startsWith('container ls') && joined.includes('volume=')) {
@@ -438,6 +449,58 @@ test('Compose-added image labels do not invalidate exact provenance registration
   assert.deepEqual(result.resources[0].classifications, [
     'externally_registered', 'legacy_unlabeled', 'registered', 'unlabeled',
   ]);
+});
+
+test('native-builder intermediates do not exhaust the image reference witness', () => {
+  // Non-regression (v0.8.75-rc1/rc2 Upgrade Baseline on kumo, runs 18622 and
+  // 18628): with DOCKER_BUILDKIT=0 the lane's three builds under one build-id
+  // left 263 labelled images, 248 of them untagged intermediates. The witness
+  // listed them with `--all`, crossed its 256-row bound, and every image was
+  // refused as query_failed although each inspect had succeeded.
+  const authority = tuple('oci_image', {
+    'io.sanctuary.deployment-id': 'replay-live-deployment',
+    'io.sanctuary.owner-id': 'replay-live-owner',
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'replay-live-run',
+  });
+  const observe = (fixture) => observeDockerResources({
+    selectors: { oci_image: [{ reference: 'wallet-sync-replay:test' }] },
+    registrations: [replayImageRegistration(authority)], runCommand: fixture.run,
+  });
+
+  const nativeBuilder = fixtureRun({
+    imageTags: [], imageDigests: [], imageListTags: ['wallet-sync-replay:test'],
+    imageLabels: replayImageProvenance(), imageContainerReferences: [],
+    witnessIntermediates: 262, witnessDangling: 10,
+  });
+  const result = observe(nativeBuilder);
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.ambiguities, []);
+  assert.deepEqual(result.resources[0].runtime.tags, ['wallet-sync-replay:test']);
+  const witnessQueries = nativeBuilder.calls
+    .map((call) => call.effectiveArgs.join(' '))
+    .filter((joined) => joined.includes('label=io.sanctuary.build-id='));
+  assert.ok(witnessQueries.length > 0);
+  assert.ok(witnessQueries.every((joined) => !joined.includes('--all')), 'witness must not list intermediates');
+
+  // Untagged rows carry no references, so they do not count toward the bound
+  // even when a plain listing returns many dangling images.
+  const manyDangling = observe(fixtureRun({
+    imageTags: [], imageDigests: [], imageListTags: ['wallet-sync-replay:test'],
+    imageLabels: replayImageProvenance(), imageContainerReferences: [],
+    witnessDangling: 300,
+  }));
+  assert.equal(manyDangling.complete, true);
+  assert.deepEqual(manyDangling.resources[0].runtime.tags, ['wallet-sync-replay:test']);
+
+  // The bound still holds for real references.
+  const tooManyTags = observe(fixtureRun({
+    imageTags: [], imageDigests: [], imageLabels: replayImageProvenance(), imageContainerReferences: [],
+    imageListTags: ['wallet-sync-replay:test',
+      ...Array.from({ length: 256 }, (_, index) => `wallet-sync-replay:extra-${index}`)],
+  }));
+  assert.equal(tooManyTags.complete, false);
+  assert.ok(tooManyTags.ambiguities.some((entry) => entry.category === 'output_limit'));
 });
 
 test('stable image-list evidence supplies references omitted by image inspect', () => {

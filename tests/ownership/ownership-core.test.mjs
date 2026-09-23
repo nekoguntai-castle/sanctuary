@@ -96,6 +96,35 @@ test('upload privacy scan rejects credentials, keys, addresses, and sensitive fi
   assert.throws(() => assertUploadSafe({ evidencePath: '/var/lib/sanctuary/evidence' }), /upload-safe|local locator/);
 });
 
+test('privacy scan rejects wallet addresses and keys but not hex identities', () => {
+  for (const value of [
+    '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+    '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy',
+    'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+    'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8',
+  ]) {
+    assert.throws(() => assertLocalPrivateSafe({ note: `paid ${value} today` }), /private material/, value);
+    assert.throws(() => assertUploadSafe({ note: value }), /private material/, value);
+  }
+
+  // Non-regression (v0.8.75-rc2, run 18628): cleanup-planner names an
+  // ambiguity refusal `scope-<first 32 hex of a sha256>`. The hyphen is a word
+  // boundary, so a digest starting 1/2/3 with no 0 in it looked like a legacy
+  // address; about 1 in 40 refusals crashed the coordinator with
+  // "$.refusals[0].immutableIdentity contains private material" instead of
+  // recording the refusal. Hex-only tokens are internal digests, not addresses.
+  for (const identity of [
+    'scope-2a8f3bfb816c8fa8d5812bca391ed3a9',
+    'scope-1111111111111111111111111111111a',
+    `sha256:${'3'.repeat(64)}`,
+    '3a8f3bfb816c8fa8d5812bca391ed3a9e',
+  ]) {
+    const refusal = { refusals: [{ resourceClass: 'oci_image', immutableIdentity: identity }] };
+    assert.doesNotThrow(() => assertLocalPrivateSafe(refusal), identity);
+    assert.doesNotThrow(() => assertUploadSafe(refusal), identity);
+  }
+});
+
 function validReceipt() {
   const hash = 'a'.repeat(64);
   return {

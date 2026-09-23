@@ -267,6 +267,7 @@ original_ownership_bounded_image_inspect="$(declare -f ownership_bounded_image_i
 original_ownership_bounded_image_list="$(declare -f ownership_bounded_image_list)"
 original_retire_exact_built_image="$(declare -f retire_exact_built_image)"
 original_ownership_new_image_deadline="$(declare -f ownership_new_image_deadline)"
+original_ownership_image_now_ms="$(declare -f ownership_image_now_ms)"
 compose_image_calls="$(mktemp)"
 compose_list_state="$(mktemp)"
 compose_recover_frontend_available=1
@@ -347,6 +348,42 @@ printf '0\n' > "$compose_list_state"
 register_ci_compose_images 0 "$compose_deadline" sanctuary-backend:test-run sanctuary-frontend:test-run
 test "${#REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}" -eq 2
 test "$(grep -Fc 'register ' "$compose_image_calls")" -eq 2
+
+# Non-regression (PR #1287 run 18635, Upgrade Baseline on x300,
+# 2026-09-23): under load each image list took ~3s and freshly loaded images
+# became visible to the build-id label query only a few seconds later.
+# Discovery stopped after a fixed five attempts although its deadline had not
+# passed, and the lane failed with "observed: (empty)". It must keep polling
+# until the deadline instead.
+list_ci_compose_lane_images() {
+  local count
+  count="$(cat "$compose_list_state")"
+  printf '%s\n' "$((count + 1))" > "$compose_list_state"
+  printf 'sha256:%064d\t%s\n' 1 'sanctuary-backend:test-run'
+  [ "$count" -lt 6 ] || printf 'sha256:%064d\t%s\n' 2 'sanctuary-frontend:test-run'
+}
+: > "$compose_image_calls"
+printf '0\n' > "$compose_list_state"
+register_ci_compose_images 0 "$compose_deadline" sanctuary-backend:test-run sanctuary-frontend:test-run
+test "${#REGISTERED_CI_COMPOSE_IMAGE_REFS[@]}" -eq 2
+test "$(cat "$compose_list_state")" -eq 7
+# A near deadline still bounds the polling (the interrupt path's five-second
+# grace depends on it).
+ownership_image_now_ms() { printf '%s\n' "$(( $(cat "$compose_clock") + 0 ))"; }
+compose_clock="$(mktemp)"
+printf '1000\n' > "$compose_clock"
+list_ci_compose_lane_images() {
+  printf '%s\n' "$(( $(cat "$compose_clock") + 400 ))" > "$compose_clock"
+  printf 'sha256:%064d\t%s\n' 1 'sanctuary-backend:test-run'
+}
+set +e
+register_ci_compose_images 0 3000 sanctuary-backend:test-run sanctuary-frontend:test-run 2>/dev/null
+bounded_status=$?
+set -e
+test "$bounded_status" -ne 0
+test "$(cat "$compose_clock")" -le 3000
+eval "$original_ownership_image_now_ms"
+rm -f "$compose_clock"
 
 list_ci_compose_lane_images() {
   printf 'sha256:%064d\t%s\n' 1 'sanctuary-backend:test-run'
@@ -722,6 +759,9 @@ set +e
     printf 'deadline-%s\n' "$((count + 1))" >> "$registration_deadline_calls"
     printf 'deadline-%s\n' "$((count + 1))"
   }
+  # Normal-path discovery waits on its own longer deadline; the interrupt
+  # fallback (below) keeps the shared short one.
+  ownership_new_image_discovery_deadline() { printf '%s\n' discovery-deadline; }
   ownership_initialize_build_identity() { printf '%s\n' identity >> "$registration_chain_calls"; }
   export_lane_image_tag() { printf '%s\n' tag >> "$registration_chain_calls"; }
   register_ci_compose_images() { printf 'images %s\n' "$2" >> "$registration_chain_calls"; return 37; }
@@ -734,7 +774,7 @@ set -e
 test "$registration_chain_status" -eq 37
 test "$(cat "$registration_chain_calls")" = "identity
 tag
-images deadline-1
+images discovery-deadline
 volumes deadline-2 per-resource"
 
 : > "$registration_chain_calls"

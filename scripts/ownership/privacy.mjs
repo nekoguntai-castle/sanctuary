@@ -3,15 +3,31 @@ const FORBIDDEN_VALUES = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\b(?:https?|postgres(?:ql)?|redis):\/\/[^\s"/]+:[^\s"@]+@/i,
   /\b(?:xpub|xprv|tpub|tprv|ypub|yprv|zpub|zprv)[1-9A-HJ-NP-Za-km-z]{20,}\b/,
-  /\b(?:bc1|tb1|bcrt1)[ac-hj-np-z02-9]{20,}\b/i,
-  /\b[13mn2][1-9A-HJ-NP-Za-km-z]{25,34}\b/,
 ];
+// Address shapes are loose enough to match a hex digest: a `scope-<32 hex>`
+// refusal identity whose digest starts 1/2/3 and has no 0 is a "legacy
+// address" to the pattern below (about 1 in 40 of them). Hex-only tokens are
+// this tooling's own digests, and a real address essentially never is one, so
+// they are exempt -- otherwise a refusal crashes the coordinator instead of
+// being recorded (v0.8.75-rc2, run 18628).
+const ADDRESS_VALUES = [
+  /\b(?:bc1|tb1|bcrt1)[ac-hj-np-z02-9]{20,}\b/gi,
+  /\b[13mn2][1-9A-HJ-NP-Za-km-z]{25,34}\b/g,
+];
+const HEX_TOKEN = /^[0-9a-f]+$/i;
+
+function containsAddress(value) {
+  return ADDRESS_VALUES.some((pattern) => [...value.matchAll(pattern)]
+    .some(([match]) => !HEX_TOKEN.test(match)));
+}
 const UPLOAD_ONLY_KEYS = /(?:path|host|mount|container[_-]?name|raw[_-]?config|stdout|stderr|command[_-]?output|environment|env)$/i;
 const UPLOAD_ONLY_VALUES = /^(?:\/|~\/|[A-Za-z]:\\|\.\.\/|\/tmp\/|\/home\/)/;
 
 function scan(value, path, uploadSafe) {
   if (typeof value === 'string') {
-    if (FORBIDDEN_VALUES.some((pattern) => pattern.test(value))) throw new Error(`${path} contains private material`);
+    if (FORBIDDEN_VALUES.some((pattern) => pattern.test(value)) || containsAddress(value)) {
+      throw new Error(`${path} contains private material`);
+    }
     if (uploadSafe && UPLOAD_ONLY_VALUES.test(value)) throw new Error(`${path} contains a local locator`);
     return;
   }

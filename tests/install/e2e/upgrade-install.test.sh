@@ -596,7 +596,7 @@ register_owned_lane_images() {
         [ "${COMPOSE_REGISTRATION_ARGS[$index]}" = "--expected-image" ] || continue
         expected_refs+=("${COMPOSE_REGISTRATION_ARGS[$((index + 1))]}:$SANCTUARY_IMAGE_TAG")
     done
-    register_ci_compose_images 0 "$(ownership_new_image_deadline)" "${expected_refs[@]}" || return 1
+    register_ci_compose_images 0 "$(ownership_new_image_discovery_deadline)" "${expected_refs[@]}" || return 1
     retire_shared_ci_compose_image_references "$(ownership_new_image_deadline)" || return 1
     UPGRADE_LANE_IMAGES_REGISTERED=true
 }

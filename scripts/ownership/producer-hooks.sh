@@ -241,8 +241,11 @@ register_ci_compose_resources() {
     [ "$image_status" -eq 0 ] || return "$image_status"
     return "$volume_status"
   fi
+  # Outside the interrupt fallback the subject's own time bounds this, so
+  # discovery may wait for slow image visibility (see
+  # ownership_new_image_discovery_deadline).
   register_ci_compose_images \
-    "$allow_no_owned_images" "$image_discovery_deadline" "${expected_refs[@]}" || image_status=$?
+    "$allow_no_owned_images" "$(ownership_new_image_discovery_deadline)" "${expected_refs[@]}" || image_status=$?
   volume_deadline="$(ownership_new_image_deadline)"
   register_ci_compose_volumes "$volume_deadline" per-resource \
     "${expected_volumes[@]}" || volume_status=$?
