@@ -427,6 +427,7 @@ n_src_types_ui_ts["ui.ts"]
 n_src_types_user_ts["user.ts"]
 end
 subgraph n_src_utils["utils"]
+n_src_utils_balanceHistorySeries_ts["balanceHistorySeries.ts"]
 n_src_utils_bip21Parser_ts["bip21Parser.ts"]
 n_src_utils_bufferUtils_ts["bufferUtils.ts"]
 n_src_utils_clipboard_ts["clipboard.ts"]
@@ -678,6 +679,7 @@ n_src_components_Dashboard__collapsed-->n_src_hooks_useUserPreference_ts
 n_src_components_Dashboard__collapsed-->n_src_hooks_useWalletSyncLifecycleClock_ts
 n_src_components_Dashboard__collapsed-->n_src_hooks_websocket__collapsed
 n_src_components_Dashboard__collapsed-->n_src_types_index_ts
+n_src_components_Dashboard__collapsed-->n_src_utils_balanceHistorySeries_ts
 n_src_components_Dashboard__collapsed-->n_src_utils_feeRate_ts
 n_src_components_Dashboard__collapsed-->n_src_utils_logger_ts
 n_src_components_Dashboard__collapsed-->n_src_utils_relativeTime_ts
@@ -986,6 +988,7 @@ n_src_components_WalletList__collapsed-->n_src_hooks_queries__collapsed
 n_src_components_WalletList__collapsed-->n_src_hooks_useDelayedRender_ts
 n_src_components_WalletList__collapsed-->n_src_hooks_useWalletSyncLifecycleClock_ts
 n_src_components_WalletList__collapsed-->n_src_types_index_ts
+n_src_components_WalletList__collapsed-->n_src_utils_balanceHistorySeries_ts
 n_src_components_WalletList__collapsed-->n_src_utils_preferencePaths_ts
 n_src_components_WalletList__collapsed-->n_src_utils_walletSyncPresentation_ts
 n_src_components_WalletStats_tsx-->n_src_app_networks_ts
@@ -1088,6 +1091,7 @@ n_src_hooks_queries__collapsed-->n_src_api_devices_ts
 n_src_hooks_queries__collapsed-->n_src_api_labels_ts
 n_src_hooks_queries__collapsed-->n_src_api_transactions__collapsed
 n_src_hooks_queries__collapsed-->n_src_api_wallets_ts
+n_src_hooks_queries__collapsed-->n_src_utils_balanceHistorySeries_ts
 n_src_hooks_queries__collapsed-->n_src_utils_walletSyncSnapshot_ts
 n_src_hooks_send__collapsed-->n_shared_utils_errors_ts
 n_src_hooks_send__collapsed-->n_src_api_client_ts

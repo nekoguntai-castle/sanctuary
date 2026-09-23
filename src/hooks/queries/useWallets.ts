@@ -10,6 +10,7 @@ import * as walletsApi from '../../api/wallets';
 import * as transactionsApi from '../../api/transactions';
 import { createQueryKeys, createMutation, createInvalidateAll } from './factory';
 import { mergeWalletListHttpSyncState } from '../../utils/walletSyncSnapshot';
+import { buildBalanceSeries } from '../../utils/balanceHistorySeries';
 
 // Stable empty arrays to prevent re-renders when data is loading
 const EMPTY_TRANSACTIONS: Awaited<ReturnType<typeof transactionsApi.getTransactions>> = [];
@@ -306,7 +307,9 @@ async function fetchSparkline(
   try {
     const history = await transactionsApi.getBalanceHistory('1W', balance, [id]);
     if (history.length < 2) return [id, { status: 'unavailable' }];
-    const values = history.map(({ value }) => value) as [number, number, ...number[]];
+    // Sampled evenly in time, so a week with one early deposit does not draw
+    // as a line that climbs across the whole card.
+    const values = buildBalanceSeries(history, '1W').map(({ value }) => value) as [number, number, ...number[]];
     return [id, { status: 'ready', values }];
   } catch {
     return [id, { status: 'error' }];

@@ -392,7 +392,7 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
 
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBeGreaterThanOrEqual(2);
-      expect(response.body[response.body.length - 1]).toEqual({ name: 'Now', value: totalBalance });
+      expect(response.body[response.body.length - 1]).toMatchObject({ name: 'Now', value: totalBalance });
       expect(response.body.some((point: { value: number }) => point.value < totalBalance)).toBe(true);
     });
   });

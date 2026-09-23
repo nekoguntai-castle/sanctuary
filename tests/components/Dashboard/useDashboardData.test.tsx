@@ -120,10 +120,12 @@ describe('useDashboardData', () => {
     expect(result.current.queuedBlocksSummary).toEqual(state.mempoolDataData.queuedBlocksSummary);
     expect(result.current.lastMempoolUpdate).not.toBeNull();
     expect(result.current.chartReady).toBe(true);
-    expect(result.current.chartData).toEqual([
-      { name: 'Start', sats: 5000 },
-      { name: 'Now', sats: 8000 },
-    ]);
+    // Resampled onto a time grid: opens at the period start, closes at now,
+    // in time order.
+    const chartData = result.current.chartData;
+    expect(chartData[0].sats).toBe(5000);
+    expect(chartData[chartData.length - 1].sats).toBe(8000);
+    expect(chartData.every((point, index) => index === 0 || point.t > chartData[index - 1].t)).toBe(true);
     expect(result.current.priceChangePositive).toBe(true);
 
     expect(mockSubscribeWallets).toHaveBeenCalledWith([

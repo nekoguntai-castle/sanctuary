@@ -3,12 +3,16 @@ import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YA
 import { ChartTooltip } from './ChartTooltip';
 import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import { buildBalanceAxis, buildTickFormatter } from './balanceAxisModel';
+import { buildBalanceTimeAxis } from '../../../utils/balanceHistorySeries';
+import type { Timeframe } from '../hooks/useDashboardData';
 import type { PriceChartPoint } from './types';
 import type { TrendDirection } from './balanceTrendModel';
 
 interface PriceChartBodyProps {
   chartReady: boolean;
   chartData: PriceChartPoint[];
+  /** Chooses the x-axis ticks: hours, weekdays, dates or months. */
+  timeframe: Timeframe;
   direction?: TrendDirection;
   /**
    * Balance at the start of the period, marked with a reference line.
@@ -79,6 +83,7 @@ const DIRECTION_COLORS: Record<TrendDirection, { stroke: string; fill: string; c
 export function PriceChartBody({
   chartReady,
   chartData,
+  timeframe,
   direction = 'flat',
   openingSats,
 }: PriceChartBodyProps) {
@@ -92,6 +97,7 @@ export function PriceChartBody({
   // churn the axis for no reason.
   const axis = useMemo(() => buildBalanceAxis(chartData, openingSats), [chartData, openingSats]);
   const formatTick = useMemo(() => buildTickFormatter(axis, unit), [axis, unit]);
+  const timeAxis = useMemo(() => buildBalanceTimeAxis(chartData, timeframe), [chartData, timeframe]);
 
   // Distinct per direction: a single shared id would let one chart's gradient
   // definition win for another rendered on the same page.
@@ -109,7 +115,7 @@ export function PriceChartBody({
                 <stop offset="100%" stopColor={colors.fill} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={X_AXIS_TICK} />
+            <XAxis {...timeAxis.xAxisProps} axisLine={false} tickLine={false} tick={X_AXIS_TICK} />
             {/* Fitted rather than zero-based, and labelled so the reader can
                 see where the scale starts — a truncated axis with no numbers
                 would overstate every movement. */}
@@ -123,7 +129,7 @@ export function PriceChartBody({
               tick={Y_AXIS_TICK}
             />
             <Tooltip
-              content={<ChartTooltip format={format} />}
+              content={<ChartTooltip format={format} formatLabel={timeAxis.formatTooltip} />}
               cursor={{ stroke: colors.cursor, strokeWidth: 1, strokeDasharray: '4 4' }}
             />
             {/* The period's opening balance. Turns the shaded area between it

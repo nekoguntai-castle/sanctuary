@@ -39,7 +39,20 @@ vi.mock('recharts', () => ({
     );
   },
   Area: () => <span data-testid="area" />,
-  XAxis: () => <span data-testid="x-axis" />,
+  // Surfaces the time axis so the tick labels a reader sees are asserted.
+  XAxis: ({ type, domain, ticks, tickFormatter }: {
+    type?: string;
+    domain?: [number, number];
+    ticks?: number[];
+    tickFormatter?: (value: number) => string;
+  }) => (
+    <span
+      data-testid="x-axis"
+      data-type={type}
+      data-domain={domain ? domain.join(',') : ''}
+      data-tick-labels={ticks && tickFormatter ? ticks.map(tickFormatter).join(',') : ''}
+    />
+  ),
   // Surfaces the axis configuration rather than swallowing it: a bare stub
   // would let the domain, ticks and formatter regress to recharts' zero-based
   // default — the exact defect the fitted axis exists to fix — without
@@ -60,7 +73,7 @@ vi.mock('recharts', () => ({
   Tooltip: ({ content }: { content: React.ReactElement<Record<string, unknown>> }) => (
     <div data-testid="tooltip">
       <div data-testid="tooltip-inactive">{React.cloneElement(content, { active: false, payload: [], label: '' })}</div>
-      <div data-testid="tooltip-active">{React.cloneElement(content, { active: true, payload: [{ value: 42000 }], label: 'Jan 1' })}</div>
+      <div data-testid="tooltip-active">{React.cloneElement(content, { active: true, payload: [{ value: 42000 }], label: Date.UTC(2026, 0, 1, 12) })}</div>
     </div>
   ),
 }));
@@ -72,7 +85,7 @@ describe('PriceChart', () => {
         totalBalance={123456}
         chartReady={true}
         timeframe="1W"
-        chartData={[{ name: 'Jan', sats: 1000 }]}
+        chartData={[{ t: 0, sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
       />
@@ -91,7 +104,7 @@ describe('PriceChart', () => {
         totalBalance={100}
         chartReady={true}
         timeframe="1D"
-        chartData={[{ name: 'Jan', sats: 1000 }]}
+        chartData={[{ t: 1, sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
       />
@@ -101,7 +114,10 @@ describe('PriceChart', () => {
     expect(screen.getByTestId('tooltip-inactive')).toBeEmptyDOMElement();
     // Active tooltip renders the value
     expect(screen.getByTestId('tooltip-active')).toHaveTextContent('42,000 sats');
-    expect(screen.getByTestId('tooltip-active')).toHaveTextContent('Jan 1');
+    // The hovered time, formatted for a 1D chart (weekday and time of day).
+    const hovered = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+      .format(Date.UTC(2026, 0, 1, 12));
+    expect(screen.getByTestId('tooltip-active')).toHaveTextContent(hovered);
   });
 
   it('hides chart body when chartReady is false', () => {
@@ -110,7 +126,7 @@ describe('PriceChart', () => {
         totalBalance={1}
         chartReady={false}
         timeframe="1D"
-        chartData={[{ name: 'Now', sats: 1 }]}
+        chartData={[{ t: 2, sats: 1 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
       />
@@ -125,7 +141,7 @@ describe('PriceChart', () => {
         totalBalance={123456}
         chartReady={true}
         timeframe="1W"
-        chartData={[{ name: 'Jan', sats: 1000 }]}
+        chartData={[{ t: 3, sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
         {...props}
@@ -252,7 +268,7 @@ describe('AnimatedPrice', () => {
 });
 
 describe('PriceChart balance trend', () => {
-  const renderChart = (chartData: { name: string; sats: number }[], timeframe: any = '1W') =>
+  const renderChart = (chartData: { t: number; sats: number }[], timeframe: any = '1W') =>
     render(
       <PriceChart
         totalBalance={1_125_000}
@@ -266,8 +282,8 @@ describe('PriceChart balance trend', () => {
 
   it('states a gain in words, not only in colour', () => {
     renderChart([
-      { name: 'a', sats: 1_000_000 },
-      { name: 'b', sats: 1_125_000 },
+      { t: 4, sats: 1_000_000 },
+      { t: 5, sats: 1_125_000 },
     ]);
 
     const trend = screen.getByTestId('balance-trend');
@@ -280,8 +296,8 @@ describe('PriceChart balance trend', () => {
   it('states a loss with a negative sign', () => {
     renderChart(
       [
-        { name: 'a', sats: 200_000 },
-        { name: 'b', sats: 150_000 },
+        { t: 6, sats: 200_000 },
+        { t: 7, sats: 150_000 },
       ],
       '1M'
     );
@@ -292,7 +308,7 @@ describe('PriceChart balance trend', () => {
   });
 
   it('says no change rather than showing a bare zero', () => {
-    renderChart([{ name: 'a', sats: 5 }, { name: 'b', sats: 5 }], 'ALL');
+    renderChart([{ t: 8, sats: 5 }, { t: 9, sats: 5 }], 'ALL');
 
     const trend = screen.getByTestId('balance-trend');
     expect(trend).toHaveAttribute('data-direction', 'flat');
@@ -307,8 +323,8 @@ describe('PriceChart balance trend', () => {
 
   it('omits the percentage when the period opened at zero', () => {
     renderChart([
-      { name: 'a', sats: 0 },
-      { name: 'b', sats: 100_000 },
+      { t: 10, sats: 0 },
+      { t: 11, sats: 100_000 },
     ]);
 
     const trend = screen.getByTestId('balance-trend');
@@ -318,8 +334,8 @@ describe('PriceChart balance trend', () => {
 
   it('drives the chart from the same direction as the annotation', () => {
     renderChart([
-      { name: 'a', sats: 200_000 },
-      { name: 'b', sats: 150_000 },
+      { t: 12, sats: 200_000 },
+      { t: 13, sats: 150_000 },
     ]);
 
     // One trend model feeds both, so the line cannot disagree with the words.
@@ -334,8 +350,8 @@ describe('PriceChart balance trend', () => {
         chartReady={true}
         timeframe="1W"
         chartData={[
-          { name: 'a', sats: 1_000_000 },
-          { name: 'b', sats: 1_125_000 },
+          { t: 14, sats: 1_000_000 },
+          { t: 15, sats: 1_125_000 },
         ]}
         pendingTotals={{ incoming: 40_000, outgoing: 0 }}
         walletCount={2}
@@ -352,8 +368,8 @@ describe('PriceChart balance trend', () => {
       // The reported defect: 12.4 BTC moving 0.03%. Against recharts' default
       // [0, 'auto'] domain this draws as a flat line.
       renderChart([
-        { name: 'a', sats: 1_240_380_000 },
-        { name: 'b', sats: 1_240_810_000 },
+        { t: 16, sats: 1_240_380_000 },
+        { t: 17, sats: 1_240_810_000 },
       ]);
 
       const [low] = screen
@@ -367,8 +383,8 @@ describe('PriceChart balance trend', () => {
 
     it('labels the ticks distinguishably rather than repeating one number', () => {
       renderChart([
-        { name: 'a', sats: 1_240_380_000 },
-        { name: 'b', sats: 1_240_810_000 },
+        { t: 18, sats: 1_240_380_000 },
+        { t: 19, sats: 1_240_810_000 },
       ]);
 
       const labels = screen.getByTestId('y-axis').getAttribute('data-tick-labels')!.split(',');
@@ -381,8 +397,8 @@ describe('PriceChart balance trend', () => {
 
     it('marks the period opening balance so the change has a baseline', () => {
       renderChart([
-        { name: 'a', sats: 900_000 },
-        { name: 'b', sats: 1_000_000 },
+        { t: 20, sats: 900_000 },
+        { t: 21, sats: 1_000_000 },
       ]);
 
       expect(screen.getByTestId('reference-line')).toHaveAttribute('data-y', '900000');
@@ -392,8 +408,8 @@ describe('PriceChart balance trend', () => {
       currencyUnit.current = 'btc';
       try {
         renderChart([
-          { name: 'a', sats: 100_000_000 },
-          { name: 'b', sats: 400_000_000 },
+          { t: 22, sats: 100_000_000 },
+          { t: 23, sats: 400_000_000 },
         ]);
 
         const labels = screen.getByTestId('y-axis').getAttribute('data-tick-labels')!.split(',');
@@ -409,7 +425,7 @@ describe('PriceChart balance trend', () => {
     it('renders the tooltip through the app-wide formatter, not a private copy', () => {
       currencyUnit.current = 'btc';
       try {
-        renderChart([{ name: 'a', sats: 1000 }]);
+        renderChart([{ t: 24, sats: 1000 }]);
 
         // The mocked Tooltip clones the content with a payload of 42000 sats.
         // Keeping the tooltip on `format` is what stops it drifting from how
@@ -426,7 +442,7 @@ describe('PriceChart balance trend', () => {
         totalBalance={123456}
         chartReady={true}
         timeframe="1W"
-        chartData={[{ name: 'Jan', sats: 1000 }]}
+        chartData={[{ t: 25, sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
         {...props}

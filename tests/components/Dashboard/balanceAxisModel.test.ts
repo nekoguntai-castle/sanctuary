@@ -6,7 +6,7 @@ import {
 import type { PriceChartPoint } from '../../../src/components/Dashboard/PriceChart/types';
 
 const points = (...sats: number[]): PriceChartPoint[] =>
-  sats.map((value, index) => ({ name: `p${index}`, sats: value }));
+  sats.map((value, index) => ({ t: index, sats: value }));
 
 const labelsFor = (axis: ReturnType<typeof buildBalanceAxis>, unit: 'sats' | 'btc') =>
   axis.ticks.map(buildTickFormatter(axis, unit));
@@ -66,10 +66,10 @@ describe('buildBalanceAxis', () => {
   it('ignores non-finite readings rather than producing a NaN domain', () => {
     const axis = buildBalanceAxis(
       [
-        { name: 'a', sats: Number.NaN },
-        { name: 'b', sats: 1000 },
-        { name: 'c', sats: Number.POSITIVE_INFINITY },
-        { name: 'd', sats: 2000 },
+        { t: 0, sats: Number.NaN },
+        { t: 1, sats: 1000 },
+        { t: 2, sats: Number.POSITIVE_INFINITY },
+        { t: 3, sats: 2000 },
       ],
       1000
     );

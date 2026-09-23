@@ -12,6 +12,7 @@ usePendingTransactions,
 useRecentTransactions,
 useUpdateWallet,
 useWalletSparklines,
+type WalletSparklineResult,
 useWallets,
 walletActivityKeys,
 walletKeys,
@@ -475,6 +476,27 @@ describe('useActivitySummary', () => {
 });
 
 describe('useWalletSparklines', () => {
+  // Points spread evenly across the past week, as the endpoint reports them.
+  const week = (values: number[]) => {
+    const now = Date.now();
+    const step = (7 * 86_400_000) / (values.length - 1);
+    return values.map((value, index) => ({
+      name: `p${index}`,
+      value,
+      timestamp: new Date(now - 7 * 86_400_000 + index * step).toISOString(),
+    }));
+  };
+
+  // The sparkline is sampled on an hourly grid, so assert its shape: it opens
+  // and closes on the reported balances and passes through only those values.
+  const expectSparkline = (result: WalletSparklineResult | undefined, values: number[]) => {
+    expect(result?.status).toBe('ready');
+    const drawn = result?.status === 'ready' ? result.values : [];
+    expect(drawn.length).toBeGreaterThan(100);
+    expect(drawn[0]).toBe(values[0]);
+    expect(drawn[drawn.length - 1]).toBe(values[values.length - 1]);
+    expect(new Set(drawn)).toEqual(new Set(values));
+  };
   let queryClient: QueryClient;
   beforeEach(() => {
     queryClient = createTestQueryClient();
@@ -483,15 +505,8 @@ describe('useWalletSparklines', () => {
 
   it('returns sparkline data per wallet', async () => {
     mockGetBalanceHistory
-      .mockResolvedValueOnce([
-        { name: 'Mon', value: 100 },
-        { name: 'Tue', value: 200 },
-        { name: 'Wed', value: 150 },
-      ] as any)
-      .mockResolvedValueOnce([
-        { name: 'Mon', value: 500 },
-        { name: 'Tue', value: 600 },
-      ] as any);
+      .mockResolvedValueOnce(week([100, 200, 150]) as any)
+      .mockResolvedValueOnce(week([500, 600]) as any);
 
     const wallets = [
       { id: 'w1', balance: 150 },
@@ -504,8 +519,8 @@ describe('useWalletSparklines', () => {
       expect(result.current['w2']?.status).toBe('ready');
     });
 
-    expect(result.current['w1']).toEqual({ status: 'ready', values: [100, 200, 150] });
-    expect(result.current['w2']).toEqual({ status: 'ready', values: [500, 600] });
+    expectSparkline(result.current['w1'], [100, 200, 150]);
+    expectSparkline(result.current['w2'], [500, 600]);
   });
 
   it('returns empty object for empty wallets', () => {
@@ -516,10 +531,7 @@ describe('useWalletSparklines', () => {
   it('marks wallets with fewer than 2 real points unavailable', async () => {
     mockGetBalanceHistory
       .mockResolvedValueOnce([{ name: 'Now', value: 100 }] as any) // only 1 point
-      .mockResolvedValueOnce([
-        { name: 'Mon', value: 200 },
-        { name: 'Tue', value: 300 },
-      ] as any);
+      .mockResolvedValueOnce(week([200, 300]) as any);
 
     const wallets = [
       { id: 'w1', balance: 100 },
@@ -532,16 +544,13 @@ describe('useWalletSparklines', () => {
     });
 
     expect(result.current['w1']).toEqual({ status: 'unavailable' });
-    expect(result.current['w2']).toEqual({ status: 'ready', values: [200, 300] });
+    expectSparkline(result.current['w2'], [200, 300]);
   });
 
   it('handles API errors gracefully', async () => {
     mockGetBalanceHistory
       .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce([
-        { name: 'Mon', value: 400 },
-        { name: 'Tue', value: 500 },
-      ] as any);
+      .mockResolvedValueOnce(week([400, 500]) as any);
 
     const wallets = [
       { id: 'w-fail', balance: 0 },
@@ -554,7 +563,7 @@ describe('useWalletSparklines', () => {
     });
 
     expect(result.current['w-fail']).toEqual({ status: 'error' });
-    expect(result.current['w-ok']).toEqual({ status: 'ready', values: [400, 500] });
+    expectSparkline(result.current['w-ok'], [400, 500]);
   });
 
   it('keys requests by current balance and ignores an older in-flight result', async () => {
@@ -573,26 +582,20 @@ describe('useWalletSparklines', () => {
     rerender({ balance: 200 });
     await waitFor(() => expect(mockGetBalanceHistory).toHaveBeenCalledWith('1W', 200, ['w1']));
 
-    oldRequest.resolve([
-      { name: 'Mon', value: 90 },
-      { name: 'Tue', value: 100 },
-    ]);
+    oldRequest.resolve(week([90, 100]));
     await act(async () => undefined);
     expect(result.current['w1']).toEqual({ status: 'unavailable' });
 
-    newRequest.resolve([
-      { name: 'Mon', value: 180 },
-      { name: 'Tue', value: 200 },
-    ]);
+    newRequest.resolve(week([180, 200]));
     await waitFor(() => {
-      expect(result.current['w1']).toEqual({ status: 'ready', values: [180, 200] });
+      expectSparkline(result.current['w1'], [180, 200]);
     });
   });
 
   it('uses deterministic query identity when wallets are reordered', async () => {
     mockGetBalanceHistory
-      .mockResolvedValueOnce([{ name: 'Mon', value: 10 }, { name: 'Tue', value: 20 }] as any)
-      .mockResolvedValueOnce([{ name: 'Mon', value: 30 }, { name: 'Tue', value: 40 }] as any);
+      .mockResolvedValueOnce(week([10, 20]) as any)
+      .mockResolvedValueOnce(week([30, 40]) as any);
     const walletA = { id: 'a', balance: 20 };
     const walletB = { id: 'b', balance: 40 };
 

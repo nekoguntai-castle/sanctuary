@@ -322,8 +322,8 @@ export const resetState = () => {
   state.txLoading = false;
   state.pendingTxData = [{ txid: 'pending-1' }];
   state.balanceHistoryData = [
-    { name: 'Start', value: 5000 },
-    { name: 'Now', value: 8000 },
+    { name: 'Start', value: 5000, timestamp: new Date(Date.now() - 7 * 86_400_000).toISOString() },
+    { name: 'Now', value: 8000, timestamp: new Date().toISOString() },
   ];
 
   state.feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4, network: 'mainnet' };

@@ -242,7 +242,13 @@ export interface AggregatedPendingTransaction {
 
 export interface BalanceHistoryPoint {
   name: string;
+  /** Balance in sats at `timestamp`. */
   value: number;
+  /**
+   * ISO instant the balance held at. Absent only on the client-side
+   * placeholder, which has no history to place.
+   */
+  timestamp?: string;
 }
 
 /**

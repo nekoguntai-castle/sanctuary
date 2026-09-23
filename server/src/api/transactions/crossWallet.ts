@@ -101,33 +101,23 @@ function getTimeframeStartDate(timeframe: string): Date {
   }
 }
 
-type BucketUnit = 'hour' | 'day' | 'week' | 'month';
+/**
+ * Buckets fine enough for the client to regroup them into the reader's own
+ * local hours, days, weeks and months. Labels are deliberately not rendered
+ * here: the server knows neither the reader's timezone nor their locale, and
+ * `date_trunc` runs in UTC.
+ */
+function getBucketUnit(timeframe: string): { unit: 'hour' | 'day'; ms: number } {
+  return timeframe === '1Y' || timeframe === 'ALL'
+    ? { unit: 'day', ms: 24 * 60 * 60 * 1000 }
+    : { unit: 'hour', ms: 60 * 60 * 1000 };
+}
 
-function getBucketConfig(timeframe: string): { unit: BucketUnit; label: (date: Date) => string } {
-  switch (timeframe) {
-    case '1D':
-      return {
-        unit: 'hour',
-        label: (date) => date.toLocaleTimeString(undefined, { hour: 'numeric' }),
-      };
-    case '1Y':
-      return {
-        unit: 'week',
-        label: (date) => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      };
-    case 'ALL':
-      return {
-        unit: 'month',
-        label: (date) => date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
-      };
-    case '1W':
-    case '1M':
-    default:
-      return {
-        unit: 'day',
-        label: (date) => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      };
-  }
+interface BalanceHistoryPoint {
+  name: string;
+  value: number;
+  /** ISO instant the balance `value` held at. */
+  timestamp: string;
 }
 
 // getBucketedBalanceDeltas has been moved to transactionRepository
@@ -338,12 +328,27 @@ router.get('/transactions/pending', asyncHandler(async (req, res) => {
  */
 router.get('/transactions/balance-history', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const timeframe = (req.query.timeframe as string) || '1W';
+  /* v8 ignore next -- schema catch provides default for malformed query input */
+  const timeframe = TimeframeSchema.safeParse(req.query.timeframe ?? '1W').data ?? '1W';
   /* v8 ignore next -- schema catch provides default for malformed query input */
   const totalBalance = TotalBalanceSchema.safeParse(req.query.totalBalance).data ?? 0;
   const requestedWalletIds = req.query.walletIds
     ? (req.query.walletIds as string).split(',').filter(Boolean)
     : null;
+
+  const now = new Date();
+  const startDate = getTimeframeStartDate(timeframe);
+  // All-time has no natural opening; the epoch would stretch the axis across
+  // decades of nothing, so it opens at the first activity (or now, if none).
+  const openingFloor = timeframe === 'ALL' ? null : startDate;
+
+  const flatLine = (): BalanceHistoryPoint[] => {
+    const openedAt = (openingFloor ?? now).toISOString();
+    return [
+      { name: 'Start', value: totalBalance, timestamp: openedAt },
+      { name: 'Now', value: totalBalance, timestamp: now.toISOString() },
+    ];
+  };
 
   // Get all wallet IDs the user has access to
   const accessibleWallets = await walletRepository.findAccessibleWithSelect(
@@ -353,47 +358,37 @@ router.get('/transactions/balance-history', asyncHandler(async (req, res) => {
   );
 
   if (accessibleWallets.length === 0) {
-    return res.json([
-      { name: 'Start', value: totalBalance },
-      { name: 'Now', value: totalBalance },
-    ]);
+    return res.json(flatLine());
   }
 
   const walletIds = accessibleWallets.map(w => w.id);
-  const startDate = getTimeframeStartDate(timeframe);
-
-  const bucketConfig = getBucketConfig(timeframe);
-  const bucketed = await transactionRepository.getBucketedBalanceDeltas(walletIds, startDate, bucketConfig.unit);
+  const bucket = getBucketUnit(timeframe);
+  const bucketed = await transactionRepository.getBucketedBalanceDeltas(walletIds, startDate, bucket.unit);
 
   if (bucketed.length === 0) {
-    // No transactions in range - return flat line
-    return res.json([
-      { name: 'Start', value: totalBalance },
-      { name: 'Now', value: totalBalance },
-    ]);
+    return res.json(flatLine());
   }
 
-  // Calculate running balance backwards from current total
+  // Each bucket point is the balance once that bucket's transactions settled,
+  // so it is stamped at the bucket's end (or now, for the current bucket):
+  // stamped at its start, a change would draw up to a bucket early, and the
+  // first bucket would share an instant with the opening point.
+  // Walk backwards from the current total, which is the only balance known.
   let runningBalance = totalBalance;
-  const chartData: { name: string; value: number }[] = [];
-
-  // Start with current balance
-  chartData.push({ name: 'Now', value: totalBalance });
-
-  // Work backwards through bucketed deltas to reconstruct history
-  // Buckets are sorted oldest first, so reverse iterate
+  const bucketPoints: BalanceHistoryPoint[] = [];
   for (let i = bucketed.length - 1; i >= 0; i--) {
-    const bucket = bucketed[i];
-    const amount = bigIntToNumberOrZero(bucket.amount);
-    // Subtract the bucket net amount to get balance before
-    runningBalance -= amount;
-    chartData.unshift({
-      name: bucketConfig.label(new Date(bucket.bucket)),
-      value: runningBalance,
-    });
+    const bucketEnd = new Date(bucketed[i].bucket).getTime() + bucket.ms;
+    const timestamp = new Date(Math.min(bucketEnd, now.getTime())).toISOString();
+    bucketPoints.unshift({ name: timestamp, value: runningBalance, timestamp });
+    runningBalance -= bigIntToNumberOrZero(bucketed[i].amount);
   }
 
-  res.json(chartData);
+  const openedAt = openingFloor ?? new Date(bucketed[0].bucket);
+  res.json([
+    { name: 'Start', value: runningBalance, timestamp: openedAt.toISOString() },
+    ...bucketPoints,
+    { name: 'Now', value: totalBalance, timestamp: now.toISOString() },
+  ]);
 }));
 
 /**

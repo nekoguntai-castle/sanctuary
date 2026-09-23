@@ -7,6 +7,7 @@ import { useNotifications } from '../../../contexts/NotificationContext';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { createLogger } from '../../../utils/logger';
+import { buildBalanceSeries } from '../../../utils/balanceHistorySeries';
 import { useWallets, useRecentTransactions, useInvalidateAllWallets, useBalanceHistory, usePendingTransactions, useActivitySummary } from '../../../hooks/queries/useWallets';
 import { useFeeEstimates, useBitcoinStatus, useMempoolData } from '../../../hooks/queries/useBitcoin';
 import { useCurrency } from '../../../contexts/CurrencyContext';
@@ -347,8 +348,8 @@ export function useDashboardData() {
 
   // Convert to chart format (value -> sats for tooltip compatibility)
   const chartData = useMemo(() =>
-    balanceHistoryData.map(d => ({ name: d.name, sats: d.value })),
-    [balanceHistoryData]
+    buildBalanceSeries(balanceHistoryData, timeframe).map(({ t, value }) => ({ t, sats: value })),
+    [balanceHistoryData, timeframe]
   );
 
   return {

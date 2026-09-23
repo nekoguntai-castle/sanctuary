@@ -8,10 +8,15 @@ import * as walletDeviceTests from './render-regression/renderRegressionWalletDe
 
 test.describe('Route-level rendering regressions', () => {
   setupRenderRegressionErrorChecks();
-  test('dashboard renders core cards and network-specific placeholders', coreTests.renderDashboardRendersCoreCardsAndNetworkSpecificPlaceholders);
+  test.describe('with the balance chart time axis', () => {
+    // Paired with the fixed clock these contracts set: tick labels are local
+    // hours and dates, so the zone must not follow the host.
+    test.use({ timezoneId: 'UTC', locale: 'en-US' });
+    test('dashboard renders core cards and network-specific placeholders', coreTests.renderDashboardRendersCoreCardsAndNetworkSpecificPlaceholders);
+    test('wallet list renders network-scoped cards and controls', coreTests.renderWalletListRendersNetworkScopedCardsAndControls);
+  });
   test('wallet detail renders tab shells and empty-state content', coreTests.renderWalletDetailRendersTabShellsAndEmptyStateContent);
   test('device detail renders add-account flow options without crashing', coreTests.renderDeviceDetailRendersAddAccountFlowOptionsWithoutCrashing);
-  test('wallet list renders network-scoped cards and controls', coreTests.renderWalletListRendersNetworkScopedCardsAndControls);
   test('wallet list route renders first-wallet empty state when no wallets exist', coreTests.renderWalletListRouteRendersFirstWalletEmptyStateWhenNoWalletsExist);
   test('settings route renders tab panels and notification sub-tabs', coreTests.renderSettingsRouteRendersTabPanelsAndNotificationSubTabs);
   test('admin system settings route renders access and websocket panels', adminTests.renderAdminSystemSettingsRouteRendersAccessAndWebsocketPanels);

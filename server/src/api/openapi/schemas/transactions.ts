@@ -493,9 +493,14 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       name: { type: 'string' },
-      value: { type: 'number' },
+      value: { type: 'number', description: 'Balance in sats at `timestamp`.' },
+      timestamp: {
+        type: 'string',
+        format: 'date-time',
+        description: 'Instant the balance held at. Clients format it in the reader\'s own timezone.',
+      },
     },
-    required: ['name', 'value'],
+    required: ['name', 'value', 'timestamp'],
   },
   ActivitySummary: {
     type: 'object',

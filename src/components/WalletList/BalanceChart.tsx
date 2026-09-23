@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Amount } from '../Amount';
 import { useBalanceHistory } from '../../hooks/queries/useWallets';
 import { useDelayedRender } from '../../hooks/useDelayedRender';
+import type { Timeframe } from '../../api/transactions/types';
+import { buildBalanceSeries, buildBalanceTimeAxis } from '../../utils/balanceHistorySeries';
 import { Card } from '../ui/Card';
-
-type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
 interface BalanceChartProps {
   totalBalance: number;
@@ -37,7 +37,9 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
   const chartReady = useDelayedRender();
 
   // Fetch real balance history from transactions
-  const { data: chartData } = useBalanceHistory(walletIds, totalBalance, timeframe);
+  const { data: history } = useBalanceHistory(walletIds, totalBalance, timeframe);
+  const chartData = useMemo(() => buildBalanceSeries(history, timeframe), [history, timeframe]);
+  const timeAxis = useMemo(() => buildBalanceTimeAxis(chartData, timeframe), [chartData, timeframe]);
 
   return (
     <Card padding="sm">
@@ -80,8 +82,14 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
                       <stop offset="95%" stopColor="var(--color-chart-series-success)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--color-chart-axis)'}} />
+                  <XAxis
+                    {...timeAxis.xAxisProps}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{fontSize: 10, fill: 'var(--color-chart-axis)'}}
+                  />
                   <Tooltip
+                    labelFormatter={(t) => timeAxis.formatTooltip(Number(t))}
                     contentStyle={BALANCE_CHART_TOOLTIP_STYLE}
                     itemStyle={{ color: 'var(--color-chart-series-success)' }}
                   />

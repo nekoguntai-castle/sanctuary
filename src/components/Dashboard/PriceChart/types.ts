@@ -12,7 +12,10 @@ export interface ChartTooltipPayload {
 export interface ChartTooltipProps {
   active?: boolean;
   payload?: ChartTooltipPayload[];
-  label?: string;
+  /** The hovered point's time, epoch milliseconds. */
+  label?: number;
+  /** Renders `label` for the period shown — see `buildBalanceTimeAxis`. */
+  formatLabel: (t: number) => string;
   /**
    * The app-wide sats formatter from `usePriceFreeFormatter`, so the tooltip
    * renders in the reader's selected unit without keeping a second copy of the
@@ -24,7 +27,8 @@ export interface ChartTooltipProps {
 }
 
 export interface PriceChartPoint {
-  name: string;
+  /** Epoch milliseconds — the chart's x axis is real time. */
+  t: number;
   sats: number;
 }
 

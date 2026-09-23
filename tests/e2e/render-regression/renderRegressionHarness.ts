@@ -12,6 +12,11 @@ import {
 // success, so render fixtures must not drift with the wall clock.
 const SETTLED_SYNCED_AT = '2024-01-01T00:00:00.000Z';
 
+// The balance chart's time axis labels its ticks from the clock (hours,
+// weekdays, dates), so a screenshot that includes it must pin the time — and
+// the spec pins the timezone — or the baseline drifts every day.
+export const RENDER_FIXED_NOW = new Date('2026-03-12T12:00:00.000Z');
+
 export const MAINNET_WALLET_ID = 'wallet-mainnet-1';
 export const TESTNET_WALLET_ID = 'wallet-testnet-1';
 export const DEVICE_ID = 'device-render-1';

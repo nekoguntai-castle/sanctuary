@@ -150,6 +150,7 @@ export function PriceChart({
             <PriceChartBody
               chartReady={chartReady}
               chartData={chartData}
+              timeframe={timeframe}
               direction={trend.direction}
               openingSats={trend.openingSats}
             />

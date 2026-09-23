@@ -6,7 +6,7 @@ import {
 import type { PriceChartPoint } from '../../../src/components/Dashboard/PriceChart/types';
 
 const points = (...sats: number[]): PriceChartPoint[] =>
-  sats.map((value, index) => ({ name: `p${index}`, sats: value }));
+  sats.map((value, index) => ({ t: index, sats: value }));
 
 describe('buildBalanceTrend', () => {
   it('reports growth between the first and last reading', () => {
@@ -71,9 +71,9 @@ describe('buildBalanceTrend', () => {
   it('ignores readings that are not finite numbers', () => {
     const trend = buildBalanceTrend(
       [
-        { name: 'a', sats: Number.NaN },
-        { name: 'b', sats: 100_000 },
-        { name: 'c', sats: 140_000 },
+        { t: 0, sats: Number.NaN },
+        { t: 1, sats: 100_000 },
+        { t: 2, sats: 140_000 },
       ],
       '1W'
     );
@@ -83,7 +83,7 @@ describe('buildBalanceTrend', () => {
   });
 
   it('falls back to flat when no reading is usable', () => {
-    const trend = buildBalanceTrend([{ name: 'a', sats: Number.NaN }], '1W');
+    const trend = buildBalanceTrend([{ t: 3, sats: Number.NaN }], '1W');
 
     expect(trend.direction).toBe('flat');
     expect(trend.openingSats).toBe(0);

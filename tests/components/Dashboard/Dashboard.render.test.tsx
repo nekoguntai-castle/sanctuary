@@ -151,7 +151,7 @@ const makeDashboardStateBase = (overrides: Partial<any> = {}) => ({
   chartReady: true,
   timeframe: '1W',
   setTimeframe: mocks.setTimeframe,
-  chartData: [{ name: 'Now', sats: 1000 }],
+  chartData: [{ t: 0, sats: 1000 }],
   wsConnected: true,
   wsState: 'connected',
   wallets: [{ id: 'w1' }],

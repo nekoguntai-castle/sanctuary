@@ -4,6 +4,7 @@ import {
   DEVICE_ID,
   MAINNET_WALLET,
   MAINNET_WALLET_ID,
+  RENDER_FIXED_NOW,
   TESTNET_WALLET_ID,
   expectChromiumMainScreenshot,
   mockAuthenticatedApi,
@@ -16,6 +17,7 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   page: Page;
 }): Promise<void> {
   const unhandledRequests = await mockAuthenticatedApi(page);
+  await page.clock.setSystemTime(RENDER_FIXED_NOW);
 
   await page.goto("/#/");
 
@@ -212,6 +214,7 @@ export async function renderWalletListRendersNetworkScopedCardsAndControls({
   page: Page;
 }): Promise<void> {
   const unhandledRequests = await mockAuthenticatedApi(page);
+  await page.clock.setSystemTime(RENDER_FIXED_NOW);
 
   await page.goto("/#/wallets");
 

@@ -115,7 +115,7 @@ export function registerOpenApiWalletTests() {
       name: 'timeframe',
       schema: expect.objectContaining({ enum: ['1D', '1W', '1M', '1Y', 'ALL'], default: '1W' }),
     }));
-    expect(openApiSpec.components.schemas.BalanceHistoryPoint.required).toEqual(['name', 'value']);
+    expect(openApiSpec.components.schemas.BalanceHistoryPoint.required).toEqual(['name', 'value', 'timestamp']);
     expect(openApiSpec.paths['/transactions/activity-summary'].get.parameters).toContainEqual(expect.objectContaining({
       name: 'timeframe',
       schema: expect.objectContaining({ enum: ['1D', '1W', '1M', '1Y', 'ALL'], default: '1W' }),
