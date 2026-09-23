@@ -13,6 +13,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.8.75] - 2026-09-22
+
+### Changed
+
+- The wallet list's balance period (1D/1W/1M/1Y/All) now also drives every
+  wallet card's sparkline, and is remembered with the list's other view
+  settings.
+- The LLM egress proxy admits the private LAN IP endpoint an admin saves in AI
+  Settings (and one they run detection against) without an
+  `LLM_EGRESS_PROXY_ALLOWED_CIDRS` entry. Only that exact address and port are
+  admitted, never loopback or cloud metadata, and saving a new endpoint revokes
+  the previous one; hostnames and the existing allowlists are unchanged.
+
+### Fixed
+
+- Plot the Total Balance charts and wallet sparklines against real time in the
+  reader's timezone, with hours, weekdays, dates or months on the axis for the
+  selected period, instead of evenly spacing only the periods that had
+  transactions.
+
+### Upgrade validation
+
+- No database migration, Compose or service-topology change, or new required
+  runtime environment variable is added. The balance-history response gains a
+  per-point `timestamp`; the new `viewSettings.wallets.timeframe` preference is
+  optional and falls back to 1M when absent. Existing application-data and
+  browser-authentication fixtures cover the affected upgrade surfaces. The
+  release requires the `latest-stable` and `n-2` upgrade lanes and both
+  wallet-sync persistence replay shapes before candidate acceptance.
+
 ## [0.8.74] - 2026-09-22
 
 ### Changed
@@ -918,7 +948,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.74...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.75...HEAD
+[0.8.75]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.74...v0.8.75
 [0.8.74]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.73...v0.8.74
 [0.8.73]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.72...v0.8.73
 [0.8.72]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.71...v0.8.72
