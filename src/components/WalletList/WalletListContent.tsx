@@ -11,6 +11,7 @@ import { WalletGridView } from './WalletGridView';
 import { WalletListHeader } from './WalletListHeader';
 import type { PendingData, WalletSortField, WalletSortOrder, WalletViewMode } from './types';
 import type { WalletSparklineResult } from '../../hooks/queries/useWallets';
+import type { Timeframe } from '../../api/transactions/types';
 
 export function WalletListContent({
   selectedNetwork,
@@ -21,6 +22,8 @@ export function WalletListContent({
   pendingByWallet,
   walletsWithPending,
   sparklineData,
+  timeframe,
+  setTimeframe,
   viewMode,
   setViewMode,
   sortBy,
@@ -46,6 +49,8 @@ export function WalletListContent({
   pendingByWallet: Record<string, PendingData>;
   walletsWithPending: WalletWithPending[];
   sparklineData: Record<string, WalletSparklineResult>;
+  timeframe: Timeframe;
+  setTimeframe: (timeframe: Timeframe) => void;
   viewMode: WalletViewMode;
   setViewMode: (mode: WalletViewMode) => void;
   sortBy: WalletSortField;
@@ -91,6 +96,8 @@ export function WalletListContent({
         walletCount={filteredWallets.length}
         walletIds={walletIds}
         selectedNetwork={selectedNetwork}
+        timeframe={timeframe}
+        onTimeframeChange={setTimeframe}
       />
 
       {viewMode === 'grid' && (

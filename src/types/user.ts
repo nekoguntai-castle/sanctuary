@@ -31,6 +31,7 @@ export interface PageViewSettings {
   visibleColumns?: string[];  // Column IDs that are visible
   columnOrder?: string[];     // Column IDs in display order
   walletsExpanded?: boolean;  // Dashboard: show all wallets vs. truncate to the row cap
+  timeframe?: string;         // Wallets: balance period for the chart and card sparklines
 }
 
 // View settings keyed by page name (wallets, devices, transactions, etc.)

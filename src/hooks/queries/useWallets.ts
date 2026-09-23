@@ -62,8 +62,8 @@ export const walletActivityKeys = {
   },
   walletSparklines: {
     all: walletSparklinesPrefix,
-    list: (inputs: readonly WalletSparklineInput[]) =>
-      [...walletSparklinesPrefix, inputs] as const,
+    list: (inputs: readonly WalletSparklineInput[], timeframe: Timeframe) =>
+      [...walletSparklinesPrefix, timeframe, inputs] as const,
   },
 };
 
@@ -302,14 +302,15 @@ function unavailableSparklines(inputs: WalletSparklineInput[]) {
 }
 
 async function fetchSparkline(
-  [id, balance]: WalletSparklineInput
+  [id, balance]: WalletSparklineInput,
+  timeframe: Timeframe
 ): Promise<[string, WalletSparklineResult]> {
   try {
-    const history = await transactionsApi.getBalanceHistory('1W', balance, [id]);
+    const history = await transactionsApi.getBalanceHistory(timeframe, balance, [id]);
     if (history.length < 2) return [id, { status: 'unavailable' }];
-    // Sampled evenly in time, so a week with one early deposit does not draw
-    // as a line that climbs across the whole card.
-    const values = buildBalanceSeries(history, '1W').map(({ value }) => value) as [number, number, ...number[]];
+    // Sampled evenly in time, so a period with one early deposit does not
+    // draw as a line that climbs across the whole card.
+    const values = buildBalanceSeries(history, timeframe).map(({ value }) => value) as [number, number, ...number[]];
     return [id, { status: 'ready', values }];
   } catch {
     return [id, { status: 'error' }];
@@ -317,18 +318,20 @@ async function fetchSparkline(
 }
 
 /**
- * Hook to fetch per-wallet balance sparkline data for grid cards
+ * Hook to fetch per-wallet balance sparkline data for grid cards, over the
+ * same period as the wallet list's balance chart.
  * Uses a single useQuery with Promise.all to batch all per-wallet requests
  */
 export function useWalletSparklines(
-  wallets: Array<{ id: string; balance: number }>
+  wallets: Array<{ id: string; balance: number }>,
+  timeframe: Timeframe
 ) {
   const inputs = sortedSparklineInputs(wallets);
 
   const query = useQuery({
-    queryKey: walletActivityKeys.walletSparklines.list(inputs),
+    queryKey: walletActivityKeys.walletSparklines.list(inputs, timeframe),
     queryFn: async () => {
-      const results = await Promise.all(inputs.map(fetchSparkline));
+      const results = await Promise.all(inputs.map(input => fetchSparkline(input, timeframe)));
       return Object.fromEntries(results) as Record<string, WalletSparklineResult>;
     },
     enabled: inputs.length > 0,

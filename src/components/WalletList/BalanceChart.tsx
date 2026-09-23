@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Amount } from '../Amount';
 import { useBalanceHistory } from '../../hooks/queries/useWallets';
 import { useDelayedRender } from '../../hooks/useDelayedRender';
 import type { Timeframe } from '../../api/transactions/types';
-import { buildBalanceSeries, buildBalanceTimeAxis } from '../../utils/balanceHistorySeries';
+import { BALANCE_TIMEFRAMES, buildBalanceSeries, buildBalanceTimeAxis } from '../../utils/balanceHistorySeries';
 import { Card } from '../ui/Card';
 
 interface BalanceChartProps {
@@ -12,6 +12,9 @@ interface BalanceChartProps {
   walletCount: number;
   walletIds: string[];
   selectedNetwork: string;
+  /** Owned by the page: the wallet cards' sparklines follow the same period. */
+  timeframe: Timeframe;
+  onTimeframeChange: (timeframe: Timeframe) => void;
 }
 
 const BALANCE_CHART_TOOLTIP_STYLE = {
@@ -30,8 +33,9 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
   walletCount,
   walletIds,
   selectedNetwork,
+  timeframe,
+  onTimeframeChange,
 }) => {
-  const [timeframe, setTimeframe] = useState<Timeframe>('1M');
 
   // Delay chart render to avoid Recharts dimension warning during initial layout
   const chartReady = useDelayedRender();
@@ -61,10 +65,11 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
         <div className="md:w-2/3">
           <div className="flex justify-end mb-2">
             <div className="flex space-x-0.5 surface-secondary p-0.5 rounded-lg">
-              {(['1D', '1W', '1M', '1Y', 'ALL'] as Timeframe[]).map((tf) => (
+              {BALANCE_TIMEFRAMES.map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => setTimeframe(tf)}
+                  aria-pressed={timeframe === tf}
+                  onClick={() => onTimeframeChange(tf)}
                   className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${timeframe === tf ? 'bg-white dark:bg-sanctuary-600 text-sanctuary-900 dark:text-sanctuary-50 shadow-sm' : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'}`}
                 >
                   {tf}

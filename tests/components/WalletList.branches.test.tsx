@@ -100,9 +100,10 @@ vi.mock('../../src/components/ui/ColumnConfigButton', () => ({
 }));
 
 vi.mock('../../src/components/WalletList/BalanceChart', () => ({
-  BalanceChart: ({ totalBalance, walletCount, selectedNetwork }: any) => (
-    <div data-testid="balance-chart">
+  BalanceChart: ({ totalBalance, walletCount, selectedNetwork, timeframe, onTimeframeChange }: any) => (
+    <div data-testid="balance-chart" data-timeframe={timeframe}>
       {`${selectedNetwork}:${walletCount}:${totalBalance}`}
+      <button onClick={() => onTimeframeChange('1Y')}>chart-select-1Y</button>
     </div>
   ),
 }));
@@ -200,6 +201,36 @@ describe('WalletList branch coverage', () => {
     vi.mocked(useWalletsHook.usePendingTransactions).mockReturnValue({
       data: [],
     } as any);
+  });
+
+  it('drives the total chart and the card sparklines from one saved period', async () => {
+    const user = userEvent.setup();
+    setUserPrefs({ timeframe: '1W' });
+    renderWalletList();
+
+    expect(screen.getByTestId('balance-chart')).toHaveAttribute('data-timeframe', '1W');
+    expect(useWalletsHook.useWalletSparklines).toHaveBeenLastCalledWith(expect.any(Array), '1W');
+
+    await user.click(screen.getByRole('button', { name: 'chart-select-1Y' }));
+
+    expect(updatePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewSettings: expect.objectContaining({
+          wallets: expect.objectContaining({ timeframe: '1Y' }),
+        }),
+      })
+    );
+  });
+
+  it.each([
+    ['nothing saved', {}],
+    ['an unrecognised saved value', { timeframe: '5Y' }],
+  ])('defaults the period to 1M with %s', (_label, prefs) => {
+    setUserPrefs(prefs);
+    renderWalletList();
+
+    expect(screen.getByTestId('balance-chart')).toHaveAttribute('data-timeframe', '1M');
+    expect(useWalletsHook.useWalletSparklines).toHaveBeenLastCalledWith(expect.any(Array), '1M');
   });
 
   it('uses the active network preference instead of URL network state', () => {

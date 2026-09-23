@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import React from 'react';
+import React, { useState } from 'react';
+import type { Timeframe } from '../../../src/api/transactions/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BalanceChart } from '../../../src/components/WalletList/BalanceChart';
 
@@ -54,8 +55,44 @@ describe('BalanceChart', () => {
     ];
   });
 
-  const renderChart = () =>
-    render(<BalanceChart totalBalance={2000} walletCount={2} walletIds={['a', 'b']} selectedNetwork="mainnet" />);
+  // The page owns the period (the wallet cards follow it too), so the chart is
+  // driven through props; this stands in for the page's saved preference.
+  function Page({
+    initial = '1M',
+    onChange = () => undefined,
+  }: { initial?: Timeframe; onChange?: (t: Timeframe) => void }) {
+    const [timeframe, setTimeframe] = useState<Timeframe>(initial);
+    return (
+      <BalanceChart
+        totalBalance={2000}
+        walletCount={2}
+        walletIds={['a', 'b']}
+        selectedNetwork="mainnet"
+        timeframe={timeframe}
+        onTimeframeChange={(next) => {
+          onChange(next);
+          setTimeframe(next);
+        }}
+      />
+    );
+  }
+
+  const renderChart = (props: { initial?: Timeframe; onChange?: (t: Timeframe) => void } = {}) =>
+    render(<Page {...props} />);
+
+  it('shows the period it is given and reports a new selection to its owner', () => {
+    const onChange = vi.fn();
+    renderChart({ initial: '1Y', onChange });
+
+    expect(history.calls).toEqual(['1Y']);
+    expect(screen.getByRole('button', { name: '1Y' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: '1D' }));
+
+    expect(onChange).toHaveBeenCalledWith('1D');
+    expect(screen.getByRole('button', { name: '1D' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '1Y' })).toHaveAttribute('aria-pressed', 'false');
+  });
 
   it('plots against real time rather than evenly spaced categories', () => {
     renderChart();

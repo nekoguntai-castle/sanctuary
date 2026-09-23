@@ -12,6 +12,14 @@
 
 import type { Timeframe } from '../api/transactions/types';
 
+/** The selectable periods, in the order the selectors show them. */
+export const BALANCE_TIMEFRAMES: readonly Timeframe[] = ['1D', '1W', '1M', '1Y', 'ALL'];
+
+/** Narrows a stored preference, which is untyped JSON, to a period. */
+export function isBalanceTimeframe(value: unknown): value is Timeframe {
+  return (BALANCE_TIMEFRAMES as readonly unknown[]).includes(value);
+}
+
 export interface BalanceHistoryInput {
   value: number;
   /** ISO instant the balance held at. Points without one cannot be placed. */

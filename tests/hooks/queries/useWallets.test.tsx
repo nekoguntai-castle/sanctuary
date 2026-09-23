@@ -107,8 +107,8 @@ describe('walletActivityKeys', () => {
       'activitySummary', 'w1,w2', '1M',
     ]);
     expect(walletActivityKeys.walletSparklines.all).toEqual(['walletSparklines']);
-    expect(walletActivityKeys.walletSparklines.list(sparklineInputs)).toEqual([
-      'walletSparklines', sparklineInputs,
+    expect(walletActivityKeys.walletSparklines.list(sparklineInputs, '1M')).toEqual([
+      'walletSparklines', '1M', sparklineInputs,
     ]);
   });
 });
@@ -512,7 +512,7 @@ describe('useWalletSparklines', () => {
       { id: 'w1', balance: 150 },
       { id: 'w2', balance: 600 },
     ];
-    const { result } = renderHook(() => useWalletSparklines(wallets), { wrapper: createWrapper(queryClient) });
+    const { result } = renderHook(() => useWalletSparklines(wallets, '1W'), { wrapper: createWrapper(queryClient) });
 
     await waitFor(() => {
       expect(result.current['w1']?.status).toBe('ready');
@@ -523,8 +523,35 @@ describe('useWalletSparklines', () => {
     expectSparkline(result.current['w2'], [500, 600]);
   });
 
+  it('follows the selected period, keyed separately per period', async () => {
+    const monthAgo = Date.now() - 30 * 86_400_000;
+    mockGetBalanceHistory.mockResolvedValue([
+      { name: 'Start', value: 100, timestamp: new Date(monthAgo).toISOString() },
+      { name: 'Now', value: 300, timestamp: new Date().toISOString() },
+    ] as any);
+    const wallets = [{ id: 'w1', balance: 300 }];
+
+    const { result, rerender } = renderHook(
+      ({ timeframe }) => useWalletSparklines(wallets, timeframe),
+      { initialProps: { timeframe: '1W' as const } as { timeframe: '1W' | '1M' }, wrapper: createWrapper(queryClient) }
+    );
+    await waitFor(() => expect(result.current['w1']?.status).toBe('ready'));
+    // Hourly across a week.
+    const week = result.current['w1'].status === 'ready' ? result.current['w1'].values : [];
+    expect(week.length).toBeGreaterThan(100);
+
+    rerender({ timeframe: '1M' });
+    await waitFor(() => expect(mockGetBalanceHistory).toHaveBeenCalledWith('1M', 300, ['w1']));
+    await waitFor(() => {
+      const month = result.current['w1'];
+      // Daily across a month: the card draws the same period as the chart above it.
+      expect(month.status === 'ready' && month.values.length).toBeGreaterThanOrEqual(31);
+      expect(month.status === 'ready' && month.values.length).toBeLessThan(40);
+    });
+  });
+
   it('returns empty object for empty wallets', () => {
-    const { result } = renderHook(() => useWalletSparklines([]), { wrapper: createWrapper(queryClient) });
+    const { result } = renderHook(() => useWalletSparklines([], '1W'), { wrapper: createWrapper(queryClient) });
     expect(result.current).toEqual({});
   });
 
@@ -537,7 +564,7 @@ describe('useWalletSparklines', () => {
       { id: 'w1', balance: 100 },
       { id: 'w2', balance: 300 },
     ];
-    const { result } = renderHook(() => useWalletSparklines(wallets), { wrapper: createWrapper(queryClient) });
+    const { result } = renderHook(() => useWalletSparklines(wallets, '1W'), { wrapper: createWrapper(queryClient) });
 
     await waitFor(() => {
       expect(result.current['w2']?.status).toBe('ready');
@@ -556,7 +583,7 @@ describe('useWalletSparklines', () => {
       { id: 'w-fail', balance: 0 },
       { id: 'w-ok', balance: 500 },
     ];
-    const { result } = renderHook(() => useWalletSparklines(wallets), { wrapper: createWrapper(queryClient) });
+    const { result } = renderHook(() => useWalletSparklines(wallets, '1W'), { wrapper: createWrapper(queryClient) });
 
     await waitFor(() => {
       expect(result.current['w-ok']?.status).toBe('ready');
@@ -574,7 +601,7 @@ describe('useWalletSparklines', () => {
       .mockReturnValueOnce(newRequest.promise);
 
     const { result, rerender } = renderHook(
-      ({ balance }) => useWalletSparklines([{ id: 'w1', balance }]),
+      ({ balance }) => useWalletSparklines([{ id: 'w1', balance }], '1W'),
       { initialProps: { balance: 100 }, wrapper: createWrapper(queryClient) }
     );
     await waitFor(() => expect(mockGetBalanceHistory).toHaveBeenCalledWith('1W', 100, ['w1']));
@@ -600,7 +627,7 @@ describe('useWalletSparklines', () => {
     const walletB = { id: 'b', balance: 40 };
 
     const { result, rerender } = renderHook(
-      ({ wallets }) => useWalletSparklines(wallets),
+      ({ wallets }) => useWalletSparklines(wallets, '1W'),
       {
         initialProps: { wallets: [walletB, walletA] },
         wrapper: createWrapper(queryClient),

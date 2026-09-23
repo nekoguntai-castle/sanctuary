@@ -6,6 +6,8 @@ import {
   DEFAULT_WALLET_VISIBLE_COLUMNS,
   mergeWalletColumnOrder,
 } from '../columns/walletColumns';
+import type { Timeframe } from '../../api/transactions/types';
+import { isBalanceTimeframe } from '../../utils/balanceHistorySeries';
 import type { WalletSortField, WalletSortOrder, WalletViewMode } from './types';
 
 export function useWalletListPreferences() {
@@ -28,6 +30,14 @@ export function useWalletListPreferences() {
     [walletSettings?.columnOrder]
   );
   const visibleColumns = walletSettings?.visibleColumns || DEFAULT_WALLET_VISIBLE_COLUMNS;
+  // One period for the total chart and every card's sparkline.
+  const timeframe: Timeframe = isBalanceTimeframe(walletSettings?.timeframe)
+    ? walletSettings.timeframe
+    : '1M';
+
+  const setTimeframe = (next: Timeframe) => {
+    updateWalletSettings({ timeframe: next });
+  };
 
   const setViewMode = (mode: WalletViewMode) => {
     updateWalletSettings({ layout: mode });
@@ -72,5 +82,7 @@ export function useWalletListPreferences() {
     handleColumnOrderChange,
     handleColumnVisibilityChange,
     handleColumnReset,
+    timeframe,
+    setTimeframe,
   };
 }

@@ -20,6 +20,7 @@ export const WalletList: React.FC = () => {
     selectedNetwork,
     sortBy: preferences.sortBy,
     sortOrder: preferences.sortOrder,
+    timeframe: preferences.timeframe,
   });
   const syncNow = useWalletSyncLifecycleClock(walletData.filteredWallets, selectedNetwork);
   const cellRenderers = useMemo(
@@ -50,6 +51,8 @@ export const WalletList: React.FC = () => {
       pendingByWallet={walletData.pendingByWallet}
       walletsWithPending={walletData.walletsWithPending}
       sparklineData={walletData.sparklineData}
+      timeframe={preferences.timeframe}
+      setTimeframe={preferences.setTimeframe}
       viewMode={preferences.viewMode}
       setViewMode={preferences.setViewMode}
       sortBy={preferences.sortBy}
