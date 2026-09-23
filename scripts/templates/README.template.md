@@ -1352,7 +1352,7 @@ Sanctuary includes optional AI surfaces for:
    - Same Docker host LM Studio: use `http://host.docker.internal:1234/v1`
    - LAN LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - llama.cpp, vLLM, or another trusted provider: enter its OpenAI-compatible base URL
-   - Add numeric LAN ranges to `LLM_EGRESS_PROXY_ALLOWED_CIDRS` before using LAN IP endpoints
+   - A private LAN IP endpoint is allowed as soon as it is saved in AI Settings; no proxy allowlist is needed (LAN hostnames other than `*.local` still need `LLM_EGRESS_PROXY_ALLOWED_HOSTS`)
 
    **Option C: Cloud AI (Less Private)**
    - Enter an OpenAI-compatible endpoint URL

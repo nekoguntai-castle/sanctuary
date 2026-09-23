@@ -6,7 +6,11 @@ import {
   parseRequestBody,
   type ConfigBody,
 } from "./requestSchemas";
-import { evaluateProviderEndpoint } from "./endpointPolicy";
+import {
+  evaluateProviderEndpoint,
+  getEndpointPolicyOptions,
+  setConfiguredProviderEndpoint,
+} from "./endpointPolicy";
 import { getConfigResponse, type GetAiConfig } from "./llmEgressProxyRuntime";
 
 interface ConfigRouteDeps {
@@ -24,7 +28,12 @@ function rejectDisallowedConfigEndpoint(
     return false;
   }
 
-  const decision = evaluateProviderEndpoint(endpoint);
+  // The endpoint arrives from the admin's saved settings, so it is judged as
+  // an approved one.
+  const decision = evaluateProviderEndpoint(
+    endpoint,
+    getEndpointPolicyOptions([endpoint]),
+  );
   if (decision.allowed) {
     return false;
   }
@@ -52,6 +61,7 @@ export function registerConfigRoutes(app: Express, deps: ConfigRouteDeps) {
     if (rejectDisallowedConfigEndpoint(body.endpoint, res, deps.log)) return;
 
     const aiConfig = deps.updateAiConfig(body);
+    setConfiguredProviderEndpoint(aiConfig.endpoint);
 
     deps.log.info("Configuration updated", {
       enabled: aiConfig.enabled,

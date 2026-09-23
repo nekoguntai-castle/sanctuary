@@ -39,7 +39,7 @@ Open **Administration -> AI Settings**.
 1. In **Status**, enable AI features.
 2. In **Settings**, configure the active provider profile:
    - **Host Ollama:** `http://host.docker.internal:11434`
-   - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434` or an LM Studio `/v1` endpoint such as `http://192.168.1.20:1234/v1`; add the LAN range to `LLM_EGRESS_PROXY_ALLOWED_CIDRS`.
+   - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434` or an LM Studio `/v1` endpoint such as `http://192.168.1.20:1234/v1`. The LLM egress proxy admits the private LAN IP address and port you save here (and one you run detection against); changing it revokes the old one.
    - **Cloud OpenAI-compatible:** use HTTPS and explicitly allowlist the provider endpoint in the LLM egress proxy environment.
 3. Set the model name, provider type, and capability flags.
 4. Enter an API key only when the provider requires it. API keys are write-only: Sanctuary stores encrypted credential material and later shows only credential status.

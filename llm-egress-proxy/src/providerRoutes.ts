@@ -8,7 +8,10 @@ import {
   DetectProviderBodySchema,
   parseRequestBody,
 } from "./requestSchemas";
-import { evaluateProviderEndpoint } from "./endpointPolicy";
+import {
+  evaluateProviderEndpoint,
+  withApprovedProviderEndpoint,
+} from "./endpointPolicy";
 import { extractErrorMessage } from "./utils";
 import {
   inferEndpointType,
@@ -116,11 +119,15 @@ export function registerProviderRoutes(app: Express, deps: ProviderRouteDeps) {
       );
       if (!body) return;
 
-      const result = await detectProviderModels(
-        deps.getAiConfig(),
-        body.endpoint,
-        body.preferredProviderType,
-        body.apiKey,
+      // Only the admin detect route forwards a typed endpoint, so it may
+      // probe a LAN address before that address is saved.
+      const result = await withApprovedProviderEndpoint(body.endpoint, () =>
+        detectProviderModels(
+          deps.getAiConfig(),
+          body.endpoint,
+          body.preferredProviderType,
+          body.apiKey,
+        ),
       );
 
       if (result.blockedReason) {

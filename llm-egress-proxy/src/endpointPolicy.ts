@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { isIP } from "node:net";
 
 import {
@@ -13,6 +14,12 @@ export interface EndpointPolicyOptions {
   allowedHosts: string[];
   allowedCidrs: string[];
   allowPublicHttps: boolean;
+  /**
+   * Endpoints an admin chose — the saved provider endpoint, or one typed into
+   * detection — as `address|port` keys. Admitted only where the rules above
+   * refuse them, and only for private LAN IP literals.
+   */
+  approvedEndpoints?: string[];
 }
 
 export type ResolvedAddressPolicyMode =
@@ -20,6 +27,7 @@ export type ResolvedAddressPolicyMode =
   | "local-network"
   | "explicit-host"
   | "explicit-cidr"
+  | "approved-lan"
   | "public-https";
 
 export interface ResolvedAddressPolicy {
@@ -57,6 +65,85 @@ export function getEndpointPolicyOptionsFromEnv(): EndpointPolicyOptions {
 
 function stripIpv6Brackets(hostname: string): string {
   return hostname.replace(/^\[/, "").replace(/\]$/, "");
+}
+
+/**
+ * The key an admin approval is recorded under: a normalized IP literal and its
+ * effective port. Hostnames are never approvable — a name is re-resolved on
+ * every hop, so approving one would let whoever controls its DNS steer the
+ * proxy across the LAN (and single-label names are Docker services). Names
+ * keep the existing routes: `*.local`, `host.docker.internal`, or the env
+ * allowlists. The port is part of the key so a provider cannot redirect to
+ * another service on the same machine.
+ */
+function approvalKey(endpoint: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(endpoint.trim());
+  } catch {
+    return null;
+  }
+  const hostname = stripIpv6Brackets(url.hostname.toLowerCase());
+  if (isIP(hostname) === 0) return null;
+  const address = normalizeIpAddress(hostname);
+  if (!address) return null;
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
+  return `${address}|${port}`;
+}
+
+// Proxy routes are reachable only by the backend (shared secret), which
+// forwards a provider endpoint only from admin settings or admin detection.
+// Approval follows that choice rather than a static allowlist, so changing the
+// endpoint in the UI is enough — and the previous one stops being admitted.
+let configuredApproval: string | null = null;
+const requestApprovals = new AsyncLocalStorage<string[]>();
+
+/** Record the provider endpoint the admin saved, replacing the previous one. */
+export function setConfiguredProviderEndpoint(endpoint: string): void {
+  configuredApproval = approvalKey(endpoint);
+}
+
+/**
+ * Admit an admin-typed endpoint for the duration of `run` (and every redirect
+ * hop it makes), e.g. to detect a provider before its endpoint is saved.
+ */
+export function withApprovedProviderEndpoint<T>(
+  endpoint: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const key = approvalKey(endpoint);
+  const inherited = requestApprovals.getStore() ?? [];
+  return requestApprovals.run(key ? [...inherited, key] : inherited, run);
+}
+
+/** Env allowlists plus the endpoints an admin has approved. */
+export function getEndpointPolicyOptions(
+  extraApprovedEndpoints: readonly string[] = [],
+): EndpointPolicyOptions {
+  const approvedEndpoints = [
+    configuredApproval,
+    ...(requestApprovals.getStore() ?? []),
+    ...extraApprovedEndpoints.map(approvalKey),
+  ].filter((key): key is string => Boolean(key));
+  return { ...getEndpointPolicyOptionsFromEnv(), approvedEndpoints };
+}
+
+/** A private LAN address that is neither the proxy's own loopback nor metadata. */
+function isApprovedLanAddress(address: string): boolean {
+  return (
+    isLocalNetworkIp(address) && !isLoopbackIp(address) && !isMetadataIp(address)
+  );
+}
+
+function approvedLanDecision(
+  endpoint: string,
+  options: EndpointPolicyOptions,
+): EndpointPolicyDecision | null {
+  const key = approvalKey(endpoint);
+  if (!key || !options.approvedEndpoints?.includes(key)) return null;
+  const [address] = key.split("|");
+  if (!isApprovedLanAddress(address!)) return null;
+  return allowDecision(new URL(endpoint.trim()), { mode: "approved-lan" });
 }
 
 function hostMatchesAllowedPattern(hostname: string, pattern: string): boolean {
@@ -120,7 +207,20 @@ function evaluateIpEndpoint(
 /** Evaluate the URL-level boundary and select the policy for DNS answers. */
 export function evaluateProviderEndpoint(
   endpoint: string,
-  options = getEndpointPolicyOptionsFromEnv(),
+  options = getEndpointPolicyOptions(),
+): EndpointPolicyDecision {
+  const decision = evaluateStaticPolicy(endpoint, options);
+  if (decision.allowed || decision.reason !== "host_not_allowed") {
+    return decision;
+  }
+  // Only widens what the static rules refuse, so a host they already admit
+  // keeps its own (e.g. public-https) policy.
+  return approvedLanDecision(endpoint, options) ?? decision;
+}
+
+function evaluateStaticPolicy(
+  endpoint: string,
+  options: EndpointPolicyOptions,
 ): EndpointPolicyDecision {
   let url: URL;
   try {
@@ -176,6 +276,8 @@ function addressMatchesPolicy(
       );
     case "explicit-cidr":
       return isIpAllowed(address, policy.allowedCidrs ?? []);
+    case "approved-lan":
+      return isApprovedLanAddress(address);
     case "public-https":
       return isPublicIp(address);
   }

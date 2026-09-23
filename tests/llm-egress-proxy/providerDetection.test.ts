@@ -100,7 +100,7 @@ describe("LLM egress proxy provider detection", () => {
       found: false,
       blockedReason: "host_not_allowed",
       message:
-        "AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.",
+        "AI endpoint is blocked: host_not_allowed. Private LAN IP endpoints are allowed once saved in AI settings, and host.docker.internal reaches the Docker host; public endpoints need HTTPS with LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=true or an LLM_EGRESS_PROXY_ALLOWED_HOSTS entry.",
     });
     expect(mocks.requestProviderEndpoint).not.toHaveBeenCalled();
   });

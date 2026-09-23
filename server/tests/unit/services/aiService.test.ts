@@ -337,7 +337,7 @@ describe("aiService", () => {
       endpoint: "http://host.docker.internal:11434",
       proxyAvailable: true,
       error:
-        "AI endpoint is not allowed: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS for numeric LAN IP endpoints.",
+        "AI endpoint is not allowed: host_not_allowed. Private LAN IP endpoints are allowed once saved in AI settings, and host.docker.internal reaches the Docker host; public endpoints need HTTPS with LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=true or an LLM_EGRESS_PROXY_ALLOWED_HOSTS entry.",
     });
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
   });

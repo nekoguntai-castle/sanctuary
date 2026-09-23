@@ -67,7 +67,7 @@ The LLM egress proxy NEVER receives:
 
 ## Egress Policy
 
-The proxy is the only Sanctuary process that contacts configured LLM providers. It allows host-local and mDNS-discovered endpoints by default, and rejects Docker service names plus numeric LAN/public IPs unless the operator explicitly allowlists them through `LLM_EGRESS_PROXY_ALLOWED_HOSTS`, `LLM_EGRESS_PROXY_ALLOWED_CIDRS`, or `LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=true`.
+The proxy is the only Sanctuary process that contacts configured LLM providers. It allows host-local and mDNS-discovered endpoints by default, plus the provider endpoint an admin saves in AI Settings (or runs detection against) when it is a private LAN IP literal — never loopback or cloud metadata. Only that exact address and port are admitted, and changing the setting revokes the previous one. Docker service names, other LAN hostnames, other LAN IPs, and public IPs still need `LLM_EGRESS_PROXY_ALLOWED_HOSTS`, `LLM_EGRESS_PROXY_ALLOWED_CIDRS`, or `LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=true`.
 
 This gives the sidecar a concrete security job even when all models are external:
 
@@ -91,8 +91,8 @@ In Sanctuary Admin → AI Settings:
 2. Set AI Endpoint URL:
    - Host Ollama: `http://host.docker.internal:11434`
    - Host LM Studio/OpenAI-compatible: `http://host.docker.internal:1234/v1`
-   - LAN Ollama: `http://192.168.1.20:11434` (requires `LLM_EGRESS_PROXY_ALLOWED_CIDRS`)
-   - LM Studio/OpenAI-compatible: `http://192.168.1.20:1234/v1` (requires `LLM_EGRESS_PROXY_ALLOWED_CIDRS`)
+   - LAN Ollama: `http://192.168.1.20:11434`
+   - LM Studio/OpenAI-compatible: `http://192.168.1.20:1234/v1`
    - Cloud: `https://api.openai.com` (requires explicit endpoint allowlisting)
 3. Set Model Name: e.g., `llama3.2:3b` or `gpt-4`
 
@@ -111,7 +111,7 @@ ollama pull llama3.2:3b
 # - Host Ollama: http://host.docker.internal:11434
 # - Host LM Studio: http://host.docker.internal:1234/v1
 # - LM Studio LAN: http://<host-or-ip>:1234/v1
-#   Add the LAN CIDR to LLM_EGRESS_PROXY_ALLOWED_CIDRS first.
+#   Saving it in AI Settings is enough; no CIDR allowlist is needed.
 ```
 
 ## API Endpoints
@@ -150,7 +150,7 @@ docker compose ps
 
 - For Ollama, ensure it is running: `ollama serve`; default port is 11434.
 - For LM Studio, start the local server and use its OpenAI-compatible `/v1` base URL; default port is commonly 1234.
-- From Docker, use `host.docker.internal` or an allowlisted LAN IP instead of `localhost` when the provider runs outside the LLM egress proxy container.
+- From Docker, use `host.docker.internal` or the provider's LAN address instead of `localhost` when the provider runs outside the LLM egress proxy container.
 
 ### Network Issues
 
