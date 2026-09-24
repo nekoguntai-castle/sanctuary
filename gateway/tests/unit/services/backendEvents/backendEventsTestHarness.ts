@@ -133,8 +133,8 @@ export function setupBackendEventsTestHarness(): void {
     global.fetch = backendEventsMocks.mockFetch as unknown as typeof fetch;
   });
 
-  afterEach(() => {
-    stopBackendEvents();
+  afterEach(async () => {
+    await stopBackendEvents();
     vi.useRealTimers();
   });
 }
@@ -151,8 +151,8 @@ export function startBackendEvents(): void {
   getBackendEventsService().startBackendEvents();
 }
 
-export function stopBackendEvents(): void {
-  getBackendEventsService().stopBackendEvents();
+export function stopBackendEvents(): Promise<void> {
+  return Promise.resolve(getBackendEventsService().stopBackendEvents());
 }
 
 export function mockDeviceFetchResponse(devices: DeviceResponse[] = [

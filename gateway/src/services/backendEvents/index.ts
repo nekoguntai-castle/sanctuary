@@ -39,6 +39,12 @@ const log = createLogger('BACKEND_EVENTS');
 let ws: WebSocket | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let isShuttingDown = false;
+// A stop owns the drain promise. A start during that drain records one deferred
+// restart, while another stop cancels it. Accepted event promises remain here
+// until settled so shutdown can await the exact admitted set.
+let pendingStop: Promise<void> | null = null;
+let restartAfterStop = false;
+const inFlightEvents = new Set<Promise<void>>();
 
 const RECONNECT_DELAY = 5000; // 5 seconds
 
@@ -60,13 +66,19 @@ function connect(): void {
   const wsUrl = `${config.backendWsUrl}/gateway`;
   log.info('Connecting to backend WebSocket', { url: wsUrl });
 
-  ws = new WebSocket(wsUrl);
+  const socket = new WebSocket(wsUrl);
+  ws = socket;
 
-  ws.on('open', () => {
+  socket.on('open', () => {
     log.info('Connected to backend WebSocket, waiting for auth challenge');
   });
 
-  ws.on('message', (data) => {
+  socket.on('message', (data) => {
+    // Ignore buffered callbacks from a socket that shutdown or restart retired.
+    if (ws !== socket || isShuttingDown) {
+      return;
+    }
+
     try {
       const message = JSON.parse(data.toString());
 
@@ -83,7 +95,7 @@ function connect(): void {
           .update(challenge)
           .digest('hex');
 
-        ws?.send(JSON.stringify({
+        socket.send(JSON.stringify({
           type: 'auth_response',
           response,
         }));
@@ -98,24 +110,35 @@ function connect(): void {
       }
 
       if (message.type === 'event') {
-        void handleEvent(message.event as BackendEvent).catch((error: unknown) => {
-          log.error('Error handling backend event', {
-            error: error instanceof Error ? error.message : String(error),
+        let trackedEvent!: Promise<void>;
+        trackedEvent = Promise.resolve()
+          .then(() => handleEvent(message.event as BackendEvent))
+          .catch((error: unknown) => {
+            log.error('Error handling backend event', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          })
+          .finally(() => {
+            inFlightEvents.delete(trackedEvent);
           });
-        });
+        inFlightEvents.add(trackedEvent);
       }
     } catch (err) {
       log.error('Error parsing WebSocket message', { error: (err as Error).message });
     }
   });
 
-  ws.on('close', (code, reason) => {
+  socket.on('close', (code, reason) => {
     log.warn('Backend WebSocket closed', { code, reason: reason.toString() });
+    // A superseded socket cannot clear or reconnect over the active owner.
+    if (ws !== socket) {
+      return;
+    }
     ws = null;
     scheduleReconnect();
   });
 
-  ws.on('error', (err) => {
+  socket.on('error', (err) => {
     log.error('Backend WebSocket error', { error: err.message });
   });
 }
@@ -134,18 +157,36 @@ function scheduleReconnect(): void {
 }
 
 /**
- * Start the backend events service
+ * Start the backend events service. If a prior stop is still draining, one
+ * restart is deferred until that drain settles.
  */
 export function startBackendEvents(): void {
+  if (pendingStop) {
+    if (!restartAfterStop) {
+      restartAfterStop = true;
+      void pendingStop.then(() => {
+        if (!restartAfterStop) {
+          return;
+        }
+        restartAfterStop = false;
+        isShuttingDown = false;
+        connect();
+      });
+    }
+    return;
+  }
+
   isShuttingDown = false;
   connect();
 }
 
 /**
- * Stop the backend events service
+ * Stop accepting events and resolve after all previously accepted work settles.
+ * Concurrent callers share the same drain.
  */
-export function stopBackendEvents(): void {
+export function stopBackendEvents(): Promise<void> {
   isShuttingDown = true;
+  restartAfterStop = false;
 
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
@@ -153,9 +194,25 @@ export function stopBackendEvents(): void {
   }
 
   if (ws) {
-    ws.close();
+    const socket = ws;
     ws = null;
+    socket.close();
   }
 
-  log.info('Backend events service stopped');
+  if (pendingStop) {
+    return pendingStop;
+  }
+
+  const acceptedEvents = [...inFlightEvents];
+  const drain = Promise.allSettled(acceptedEvents).then(() => {
+    log.info('Backend events service stopped');
+  });
+  let trackedStop!: Promise<void>;
+  trackedStop = drain.finally(() => {
+    if (pendingStop === trackedStop) {
+      pendingStop = null;
+    }
+  });
+  pendingStop = trackedStop;
+  return trackedStop;
 }

@@ -22,6 +22,7 @@ import { config, validateConfig } from './config';
 import { createLogger } from './utils/logger';
 import { exitNow } from './utils/processExit';
 import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
+import { createGatewayShutdownHandler } from './utils/gracefulShutdown';
 import { requestLogger } from './middleware/requestLogger';
 import { authRateLimiter, cleanupBackoffTracker } from './middleware/rateLimit';
 import { normalizeTrailingSlash } from './middleware/trailingSlash';
@@ -186,8 +187,6 @@ const tlsOptions = loadTlsCertificates();
 
 // Periodic cleanup interval for rate limit backoff tracker
 let backoffCleanupInterval: NodeJS.Timeout | null = null;
-let isShuttingDown = false;
-let shutdownExitCode: 0 | 1 = 0;
 
 if (tlsOptions) {
   // HTTPS server
@@ -228,45 +227,28 @@ if (tlsOptions) {
   });
 }
 
-// Graceful shutdown
-function shutdown(signal: string, exitCode: 0 | 1 = 0): void {
-  if (isShuttingDown) {
-    if (exitCode === 1) {
-      shutdownExitCode = 1;
-    }
-    log.warn(`Received ${signal} while shutdown is already in progress`);
-    return;
-  }
-  isShuttingDown = true;
-  shutdownExitCode = exitCode;
-
-  log.info(`Received ${signal}, shutting down...`);
-
-  // Force exit after 10 seconds
-  const forceExit = setTimeout(() => {
-    log.error('Forced shutdown after timeout');
-    exitNow(1);
-  }, 10000);
-  forceExit.unref();
-
-  server.close(() => {
-    clearTimeout(forceExit);
-    log.info('HTTP server closed');
-
-    // Cleanup services
-    stopBackendEvents();
-    shutdownPushServices();
-
-    // Clear backoff cleanup interval
+const shutdown = createGatewayShutdownHandler({
+  log,
+  closeHttpServer: () => new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  }),
+  stopBackendEvents,
+  shutdownPushServices,
+  clearBackoffCleanup: () => {
     if (backoffCleanupInterval) {
       clearInterval(backoffCleanupInterval);
+      backoffCleanupInterval = null;
     }
+  },
+  exitNow,
+});
 
-    log.info('Gateway shutdown complete');
-    exitNow(shutdownExitCode);
-  });
-}
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 registerFatalProcessHandlers({ log, shutdown, exitNow });
