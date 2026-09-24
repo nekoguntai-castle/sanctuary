@@ -71,16 +71,19 @@ log_info()  { printf '%s\n' "$*" >> "$INFO_LOG_FILE"; }
 log_error() { printf '%s\n' "$*" >> "$INFO_LOG_FILE"; }
 
 # Stands in for `docker compose -f ... exec -T -e SANCTUARY_TOTP_SECRET=<secret>
-# backend node -e '...'`. Returns a 6-digit numeric string, matching the shape
-# otplib's generateSync actually produces -- a stub that returned anything
-# else could never distinguish "clean digits" from "digits plus noise".
+# backend node -e '...'`. Prints "<6-digit code> <minted step>", matching the
+# real command: the code has otplib generateSync's shape (a stub that returned
+# anything else could never distinguish "clean digits" from "digits plus
+# noise"), and the step is the one the backend minted it for. MINT_STEP_OVERRIDE
+# models the exec landing in a later step than the caller last read; unset, the
+# mint step is the caller's current step.
 # Called from inside generate_totp_code's own command-substitution subshell,
 # so the call counter lives in a file rather than an in-process counter.
 docker() {
     local n
     printf 'x' >> "$DOCKER_CALL_LOG"
     n=$(wc -c < "$DOCKER_CALL_LOG")
-    printf '%06d' "$n"
+    printf '%06d %s' "$n" "${MINT_STEP_OVERRIDE:-$SANCTUARY_TOTP_STEP_OVERRIDE}"
 }
 
 # Simulates the 30s step boundary advancing after one wait tick, so the test
@@ -350,6 +353,51 @@ if [ -n "$operator_code" ] && [ -n "$legacy_code" ]; then
   ok "both distinct-account mints still return a code"
 else
   bad "expected two non-empty codes, got '$operator_code' and '$legacy_code'"
+fi
+
+# ----- 7. the recorded step is the step the code was minted for --------------
+# v0.8.75-rc4 install-test attempt 2 (run 18785, job 234789, kumo): the
+# optional-profiles "Verify 2FA Preserved" phase failed in 1s with
+# `auth.2fa_failed ... Invalid 2FA code`. The previous admin login read the
+# host step at 18:37:29.8 (step N-1), but the `docker compose exec` that
+# minted its code ran past 18:37:30, so the backend minted -- and the product
+# consumed -- step N. With N-1 recorded, the next login at 18:37:32 saw a
+# "new" step, skipped the wait, and minted a second step-N code, which the
+# single-use guard rejected as a replay.
+TOTP_STEP_STATE_FILE="$TEST_TMP_DIR/state-7"
+rm -f "$TOTP_STEP_STATE_FILE"
+export SANCTUARY_TOTP_STEP_OVERRIDE=9000
+export MINT_STEP_OVERRIDE=9001          # the exec crosses into the next step
+: > "$SLEEP_CALL_LOG"
+
+straddle_code=$(generate_totp_code "secret-straddle" "admin")
+straddle_step="$(totp_last_used_step "$(totp_step_tracking_key "secret-straddle" "admin")")"
+unset MINT_STEP_OVERRIDE
+
+if [[ "$straddle_code" =~ ^[0-9]{6}$ ]]; then
+  ok "a mint that crosses a step boundary still returns exactly the 6-digit code"
+else
+  bad "expected exactly a 6-digit code from the boundary-crossing mint, got '$straddle_code'"
+fi
+
+if [ "$straddle_step" = "9001" ]; then
+  ok "the recorded step is the step the backend minted for, not the caller's earlier reading"
+else
+  bad "expected the minted step 9001 to be recorded, got '$straddle_step'"
+fi
+
+export SANCTUARY_TOTP_STEP_OVERRIDE=9001   # the next login lands in the minted step
+next_code=$(generate_totp_code "secret-straddle" "admin")
+
+if [ "$(sleep_call_count)" -ge 1 ]; then
+  ok "the next login in the minted step waits instead of replaying it"
+else
+  bad "the next login in the minted step did not wait, so it would replay step 9001"
+fi
+if [ -n "$next_code" ]; then
+  ok "the login after the wait still mints a code"
+else
+  bad "expected a code from the login after the wait"
 fi
 
 echo

@@ -320,11 +320,13 @@ generate_totp_code() {
 
     wait_for_totp_step_boundary "$step_key" || return 1
 
-    local step
-    step=$(totp_current_step)
-
-    local code
-    code=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+    # The backend mints the code and reports the step it minted for from one
+    # clock read. Recording the caller's own step reading instead is wrong
+    # whenever the exec crosses a 30s boundary: the product consumes the
+    # minted step, the tracker records the step before it, and the next
+    # login skips its wait and replays the consumed step.
+    local minted code step
+    minted=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
         -e "SANCTUARY_TOTP_SECRET=$secret" \
         backend node -e '
 const { generateSync } = require("otplib");
@@ -333,10 +335,13 @@ if (!secret) {
   process.stderr.write("SANCTUARY_TOTP_SECRET is required\n");
   process.exit(1);
 }
-process.stdout.write(generateSync({ secret }));
+const epoch = Math.floor(Date.now() / 1000);
+process.stdout.write(`${generateSync({ secret, epoch })} ${Math.floor(epoch / 30)}`);
 ')
+    read -r code step <<< "$minted"
 
-    if [ -z "$code" ]; then
+    if ! [[ "$code" =~ ^[0-9]{6}$ ]] || ! [[ "$step" =~ ^[0-9]+$ ]]; then
+        log_error "TOTP mint did not return a code and its step" >&2
         return 1
     fi
 
