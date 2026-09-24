@@ -1188,6 +1188,33 @@ assert_named_job_step_contains "$RC" "fresh-install-test" "Run fresh install tes
 
 # --- install-test.yml -------------------------------------------------------
 IT="$REPO_ROOT/.github/workflows/install-test.yml"
+# Kumo injects DOCKER_BUILDKIT=0 for counting-cats. Install lanes must override
+# it at workflow scope, including historical source installations, while keeping
+# the established non-Bake Compose path. Reject job/step overrides as well.
+assert_install_builder_policy() {
+  local workflow="$1" name="$2"
+  local label="$name workflow uses BuildKit without Compose Bake on every host"
+  if awk '
+    /^env:$/ { in_env = 1; next }
+    /^[^[:space:]#]/ { in_env = 0 }
+    /^[[:space:]]*(DOCKER_BUILDKIT|COMPOSE_BAKE):/ {
+      if (!in_env || $0 !~ /^  [A-Z_]+:/) invalid = 1
+      if ($1 == "DOCKER_BUILDKIT:") { buildkit++; if ($2 != "\0471\047") invalid = 1 }
+      if ($1 == "COMPOSE_BAKE:") { bake++; if ($2 != "\047false\047") invalid = 1 }
+    }
+    END { exit !(buildkit == 1 && bake == 1 && !invalid) }
+  ' "$workflow"; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: require workflow env DOCKER_BUILDKIT=1 and COMPOSE_BAKE=false without overrides")
+    echo "FAIL: $label" >&2
+  fi
+}
+assert_install_builder_policy "$IT" "install"
+assert_install_builder_policy "$RC" "release-candidate"
+
 INSTALL_ISOLATED_SUBJECT="$REPO_ROOT/scripts/ci/run-install-e2e-isolated-subject.sh"
 UPGRADE_BASELINE_SUBJECT="$REPO_ROOT/scripts/ci/run-upgrade-baseline-isolated-subject.sh"
 assert_occurrence_count "$IT" \
