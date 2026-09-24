@@ -209,6 +209,40 @@ set -e
 test "$retirement_status" -ne 0
 printf '%s\n' "$retirement_diagnostic" \
   | grep -Fq "Exact image retirement postcondition is unavailable: $image_ref"
+
+# Non-regression (PR #1288 run 18693, verify-ledger-emulator 234109, kumo,
+# 2026-09-23; also jade 212960/218477 on kumo and ledger 232487 on x300): the
+# DELETE and the daemon's empty postcondition answer both landed within about
+# a second, but the single postcondition `docker image ls` was killed at its
+# 3s window and the proof failed after every conformance test passed. Without
+# a caller deadline (the emulator proofs, outside the coordinator's grace) one
+# failed postcondition listing must be retried, not treated as final.
+image_inspect="$original_image_inspect"
+image_rm_mode=success
+postcondition_failures="$(mktemp)"
+printf '1\n' > "$postcondition_failures"
+ownership_run_docker_before_deadline() {
+  shift
+  if [ "$1 $2" = 'image ls' ] && [ "$(cat "$postcondition_failures")" -gt 0 ]; then
+    printf '%s\n' "$(( $(cat "$postcondition_failures") - 1 ))" > "$postcondition_failures"
+    return 124
+  fi
+  docker "$@"
+}
+retire_exact_built_image "$image_ref" "$image_id" test-run
+test "$(cat "$postcondition_failures")" -eq 0
+test "$(jq -r '.[0].RepoTags[]' <<< "$image_inspect")" = 'shared:keep'
+# A caller-supplied (coordinator grace) deadline keeps a single attempt.
+image_inspect="$original_image_inspect"
+printf '1\n' > "$postcondition_failures"
+set +e
+retire_exact_built_image "$image_ref" "$image_id" test-run "$(ownership_new_image_deadline)" \
+  >/dev/null 2>&1
+caller_deadline_status=$?
+set -e
+test "$caller_deadline_status" -ne 0
+rm -f "$postcondition_failures"
+image_inspect="$original_image_inspect"
 ownership_run_docker_before_deadline() { shift; docker "$@"; }
 
 # Non-regression (run 17590, job verify-jade-emulator 220951, kumo,

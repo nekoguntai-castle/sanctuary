@@ -226,7 +226,7 @@ ownership_verify_registered_image_identity() {
 retire_exact_built_image() {
   local image_ref="$1" image_id="$2" build_id="$3" deadline="${4:-}"
   local listed remove_status=0 identity_status=0
-  local removal_deadline removal_max_window=3000 postcondition_deadline
+  local removal_deadline removal_max_window=3000 postcondition_deadline postcondition_attempt=0
   # A caller that supplies its own deadline is the coordinator's shared,
   # tightly bounded retirement budget (retire_shared_ci_compose_image_references):
   # a genuinely stuck daemon there must still be killed inside the
@@ -256,19 +256,27 @@ retire_exact_built_image() {
   ownership_bounded_image_remove "$removal_deadline" "$image_ref" "$removal_max_window" \
     >/dev/null || remove_status=$?
   # Fresh, taken now that removal has returned, rather than whatever the
-  # removal budget left behind -- the postcondition keeps the same fast 3.5s
-  # bound as every other observation call in this file. A caller-supplied
-  # deadline is honored unchanged end to end (see comment above), so it is
-  # reused here rather than replaced.
+  # removal budget left behind. A caller-supplied deadline is honored
+  # unchanged end to end with a single attempt (see comment above). Without
+  # one, each attempt keeps the usual 3s per-call cap but a failed listing is
+  # retried: on a loaded host the `docker` client was killed at its window
+  # after the daemon had already answered (PR #1288 run 18693 ledger on kumo,
+  # jade 212960/218477 on kumo, ledger 232487 on x300), failing a proof whose
+  # conformance tests all passed.
   postcondition_deadline="$deadline"
   if [ "$has_caller_deadline" -eq 0 ]; then
-    postcondition_deadline="$(ownership_new_image_deadline)"
+    postcondition_deadline="$(ownership_new_image_discovery_deadline)"
   fi
-  listed="$(ownership_run_docker_before_deadline "$postcondition_deadline" image ls --no-trunc \
-    --filter "reference=$image_ref" --format '{{.ID}}\t{{.Repository}}:{{.Tag}}')" || {
-    echo "Exact image retirement postcondition is unavailable: $image_ref" >&2
-    return 1
-  }
+  while :; do
+    postcondition_attempt=$((postcondition_attempt + 1))
+    listed="$(ownership_run_docker_before_deadline "$postcondition_deadline" image ls --no-trunc \
+      --filter "reference=$image_ref" --format '{{.ID}}\t{{.Repository}}:{{.Tag}}')" && break
+    if [ "$has_caller_deadline" -eq 1 ] || [ "$postcondition_attempt" -ge 5 ] \
+        || ! ownership_discovery_retry_before_deadline "$postcondition_deadline" "$postcondition_attempt"; then
+      echo "Exact image retirement postcondition is unavailable: $image_ref" >&2
+      return 1
+    fi
+  done
   listed="$(printf '%s\n' "$listed" \
     | ownership_exact_reference_id_from_list "$image_ref")" || {
     echo "Exact image retirement postcondition is malformed: $image_ref" >&2
