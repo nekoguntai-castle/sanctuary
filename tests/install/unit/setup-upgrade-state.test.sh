@@ -122,9 +122,25 @@ health_contract() (
         [[ "$result" != 0 ]] || fail 'unhealthy generation passed readiness'
     fi
 )
+# The install/upgrade log is kept on disk and often shared when asking for
+# help; the reminder must say where the keys live without printing them
+# (v0.8.75-rc3 prod upgrade log, 2026-09-23, held the key and salt).
+backup_reminder_contract() (
+    ENV_FILE=/home/operator/.config/sanctuary/sanctuary.env
+    ENCRYPTION_KEY='unique-key-value-6f1c2a9e8b7d'
+    ENCRYPTION_SALT='unique-salt-value-3d4e5f60'
+    eval "$(extract show_backup_reminder)"
+    local output
+    output="$(show_backup_reminder)"
+    [[ "$output" != *"$ENCRYPTION_KEY"* ]] || fail 'backup reminder printed ENCRYPTION_KEY'
+    [[ "$output" != *"$ENCRYPTION_SALT"* ]] || fail 'backup reminder printed ENCRYPTION_SALT'
+    [[ "$output" == *"$ENV_FILE"* ]] || fail 'backup reminder no longer names the runtime env file'
+    [[ "$output" == *ENCRYPTION_KEY* && "$output" == *ENCRYPTION_SALT* ]] \
+        || fail 'backup reminder no longer names the keys to back up'
+)
 mkdir -p "$ROOT/.tmp"
 failures=0
-for contract in 'mode_contract false offline online ""' 'mode_contract false online online ""' 'mode_contract true online offline v0.8.74-rc2' 'mode_contract true offline offline v0.8.74-rc2' 'startup_contract true 42' 'startup_contract false 42' 'startup_contract true 0' 'startup_contract true 42 true' 'startup_contract false 42 true' 'health_contract true' 'health_contract false' 'health_contract missing' 'health_contract unhealthy' 'health_contract alternating'; do
+for contract in 'mode_contract false offline online ""' 'mode_contract false online online ""' 'mode_contract true online offline v0.8.74-rc2' 'mode_contract true offline offline v0.8.74-rc2' 'startup_contract true 42' 'startup_contract false 42' 'startup_contract true 0' 'startup_contract true 42 true' 'startup_contract false 42 true' 'health_contract true' 'health_contract false' 'health_contract missing' 'health_contract unhealthy' 'health_contract alternating' 'backup_reminder_contract'; do
     if ( eval "$contract" ); then echo "PASS: $contract"; else failures=$((failures + 1)); fi
 done
 [[ "$failures" == 0 ]]
