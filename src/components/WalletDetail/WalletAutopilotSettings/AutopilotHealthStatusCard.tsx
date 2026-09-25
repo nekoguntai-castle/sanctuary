@@ -1,13 +1,12 @@
 import { Activity } from 'lucide-react';
 import type React from 'react';
+import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import type { AutopilotStatus } from '../../../types';
 
-function formatSats(value: string): string {
-  const num = Number(value);
-  if (num >= 100_000_000) {
-    return `${(num / 100_000_000).toFixed(8)} BTC`;
-  }
-  return `${num.toLocaleString()} sats`;
+/** A sats amount (serialized as a string) shown in the user's BTC/sats unit. */
+function AmountHealthRow({ label, sats }: { label: string; sats: string }) {
+  const { format } = usePriceFreeFormatter();
+  return <HealthRow label={label} value={format(Number(sats))} mono />;
 }
 
 function HealthRow({
@@ -56,9 +55,9 @@ export function AutopilotHealthStatusCard({
           <HealthRow label="Total UTXOs" value={status.utxoHealth.totalUtxos} />
           <HealthRow label="Candidates" value={status.utxoHealth.consolidationCandidates} />
           <HealthRow label="Dust UTXOs" value={status.utxoHealth.dustCount} />
-          <HealthRow label="Dust value" value={formatSats(status.utxoHealth.dustValue)} mono />
-          <HealthRow label="Smallest" value={formatSats(status.utxoHealth.smallestUtxo)} mono />
-          <HealthRow label="Largest" value={formatSats(status.utxoHealth.largestUtxo)} mono />
+          <AmountHealthRow label="Dust value" sats={status.utxoHealth.dustValue} />
+          <AmountHealthRow label="Smallest" sats={status.utxoHealth.smallestUtxo} />
+          <AmountHealthRow label="Largest" sats={status.utxoHealth.largestUtxo} />
           {status.feeSnapshot && (
             <HealthRow label="Economy fee" value={`${status.feeSnapshot.economy} sat/vB`} fullWidth />
           )}

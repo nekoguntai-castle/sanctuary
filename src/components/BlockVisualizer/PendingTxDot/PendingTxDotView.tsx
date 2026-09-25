@@ -1,4 +1,5 @@
 import { ExternalLink } from 'lucide-react';
+import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import type { PendingTxDotViewProps } from './types';
 
 export function PendingTxDotView({
@@ -73,6 +74,7 @@ function TooltipDetails({
   tx,
   viewModel,
 }: Pick<PendingTxDotViewProps, 'tx' | 'viewModel'>) {
+  const { format } = usePriceFreeFormatter();
   return (
     <div className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5">
       <span className="text-sanctuary-400 dark:text-sanctuary-500">Fee Rate:</span>
@@ -80,9 +82,9 @@ function TooltipDetails({
       <span className="text-sanctuary-400 dark:text-sanctuary-500">ETA:</span>
       <span className="font-bold">{viewModel.eta}</span>
       <span className="text-sanctuary-400 dark:text-sanctuary-500">Fee:</span>
-      <span className="font-mono">{tx.fee.toLocaleString()} sats</span>
+      <span className="font-mono">{format(tx.fee)}</span>
       <span className="text-sanctuary-400 dark:text-sanctuary-500">Amount:</span>
-      <span className="font-mono">{Math.abs(tx.amount).toLocaleString()} sats</span>
+      <span className="font-mono">{format(Math.abs(tx.amount))}</span>
       <RecipientRow recipientPreview={viewModel.recipientPreview} />
       <span className="text-sanctuary-400 dark:text-sanctuary-500">Waiting:</span>
       <span>{viewModel.waitingTime}</span>

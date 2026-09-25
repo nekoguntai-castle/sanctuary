@@ -5,6 +5,15 @@ import { TransactionsTab } from '../../../../src/components/WalletDetail/tabs/Tr
 const mockRefs = vi.hoisted(() => ({
   txListProps: null as any,
   aiOwnershipKey: null as string | null,
+  unit: 'sats' as 'btc' | 'sats',
+}));
+
+vi.mock('../../../../src/contexts/CurrencyContext', () => ({
+  usePriceFreeFormatter: () => ({
+    unit: mockRefs.unit,
+    format: (sats: number) =>
+      mockRefs.unit === 'sats' ? `${sats.toLocaleString()} sats` : `${(sats / 100_000_000).toFixed(8)} BTC`,
+  }),
 }));
 
 vi.mock('../../../../src/components/TransactionList', () => ({
@@ -143,6 +152,44 @@ describe('TransactionsTab', () => {
     expect(screen.getByText('12,345 sats')).toBeInTheDocument();
     expect(screen.getByText('(sum)')).toBeInTheDocument();
     expect(mockRefs.txListProps.transactionStats).toBeUndefined();
+  });
+
+  it('formats an amount aggregation in BTC when that is the display unit', () => {
+    mockRefs.unit = 'btc';
+    try {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          aiEnabled={true}
+          aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+          aiAggregationResult={12345}
+        />
+      );
+
+      expect(screen.getByText('0.00012345 BTC')).toBeInTheDocument();
+      expect(screen.queryByText('12,345 sats')).not.toBeInTheDocument();
+    } finally {
+      mockRefs.unit = 'sats';
+    }
+  });
+
+  it('shows a count aggregation as a plain number in either unit', () => {
+    mockRefs.unit = 'btc';
+    try {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          aiEnabled={true}
+          aiQueryFilter={{ type: 'transactions', aggregation: 'count' }}
+          aiAggregationResult={3}
+        />
+      );
+
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('(count)')).toBeInTheDocument();
+    } finally {
+      mockRefs.unit = 'sats';
+    }
   });
 
   it('shows filtered transaction summary when AI filter has no aggregation result', () => {

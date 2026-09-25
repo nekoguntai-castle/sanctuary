@@ -462,6 +462,9 @@ describe('useDashboardData', () => {
       expect.objectContaining({
         type: 'transaction',
         title: 'Bitcoin Received',
+        // The harness `format` renders bare sats, so this proves the toast
+        // amount comes from the user's unit-aware formatter.
+        message: '+250000 • 2 confirmations',
       })
     );
     expect(mockPlayEventSound).toHaveBeenCalledWith('receive');

@@ -57,8 +57,11 @@ describe('TransactionFlowPreview', () => {
     expect(screen.getByText('~30000 sats')).toBeInTheDocument();
     expect(screen.getByText('~18000 sats')).toBeInTheDocument();
     expect(screen.getByText('Fee (5 sat/vB)')).toBeInTheDocument();
-    // Fee uses toLocaleString() which adds comma formatting
-    expect(screen.getByText('~2,000 sats')).toBeInTheDocument();
+    // The fee renders through the same unit-aware `format` as the inputs and
+    // outputs (the mock's ungrouped "2000 sats"), so a BTC user never sees a
+    // sats fee next to BTC amounts in one diagram.
+    expect(screen.getByText('~2000 sats')).toBeInTheDocument();
+    expect(screen.queryByText('~2,000 sats')).not.toBeInTheDocument();
     expect(screen.getByText('Savings')).toBeInTheDocument();
     expect(screen.getByText('change')).toBeInTheDocument();
     expect(screen.getByText('Change')).toBeInTheDocument();

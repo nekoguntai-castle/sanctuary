@@ -79,23 +79,26 @@ export function buildBalanceTrend(
 }
 
 /**
- * `+125,000 sats (+4.2%) over the past week`, or the same without the
- * percentage when there is no meaningful basis for one.
+ * `+125,000 sats (+4.2%) over the past week` (or `+0.00125 BTC ...`), or the
+ * same without the percentage when there is no meaningful basis for one.
+ *
+ * `format` is the app's unit-aware amount formatter; the model never picks a
+ * unit itself, so the line matches the chart and the rest of the app.
  *
  * The sign is always written out. Colour alone must never be the thing that
  * tells a reader whether they gained or lost.
  */
-export function formatBalanceTrend(trend: BalanceTrend): string {
+export function formatBalanceTrend(trend: BalanceTrend, format: (sats: number) => string): string {
   if (trend.direction === 'flat') {
     return `No change over ${trend.timeframeLabel}`;
   }
 
   const sign = trend.deltaSats > 0 ? '+' : '-';
-  const sats = `${sign}${Math.abs(trend.deltaSats).toLocaleString()} sats`;
+  const amount = `${sign}${format(Math.abs(trend.deltaSats))}`;
   const percent =
     trend.percentChange === null
       ? ''
       : ` (${sign}${Math.abs(trend.percentChange).toFixed(1)}%)`;
 
-  return `${sats}${percent} over ${trend.timeframeLabel}`;
+  return `${amount}${percent} over ${trend.timeframeLabel}`;
 }

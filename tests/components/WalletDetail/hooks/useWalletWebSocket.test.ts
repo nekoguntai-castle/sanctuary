@@ -26,6 +26,15 @@ vi.mock('../../../../src/contexts/NotificationContext', () => ({
   }),
 }));
 
+const currency = vi.hoisted(() => ({ unit: 'sats' as 'btc' | 'sats' }));
+vi.mock('../../../../src/contexts/CurrencyContext', () => ({
+  usePriceFreeFormatter: () => ({
+    unit: currency.unit,
+    format: (sats: number) =>
+      currency.unit === 'sats' ? `${sats.toLocaleString()} sats` : `${(sats / 100_000_000).toFixed(8)} BTC`,
+  }),
+}));
+
 describe('useWalletWebSocket', () => {
   let handlers: Record<string, (data: any) => void>;
 
@@ -48,6 +57,7 @@ describe('useWalletWebSocket', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    currency.unit = 'sats';
     socketState.connected = true;
     handlers = {};
     vi.mocked(useWalletEvents).mockImplementation((_, cb) => {
@@ -83,10 +93,23 @@ describe('useWalletWebSocket', () => {
     expect(addNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'transaction',
-        message: expect.stringContaining('BTC'),
+        message: '+0 sats in Primary Wallet',
       })
     );
     expect(fetchData).toHaveBeenCalledWith(true);
+  });
+
+  // The toast used to hard-code "<8 decimals> BTC" whatever the user's unit.
+  it.each([
+    ['sats', '+12,345 sats in Primary Wallet'],
+    ['btc', '+0.00012345 BTC in Primary Wallet'],
+  ] as const)('states the received amount in the %s display unit', (unit, message) => {
+    currency.unit = unit;
+    renderWithWallet();
+
+    handlers.onTransaction({ txid: 'tx-unit', type: 'received', amount: 12_345 });
+
+    expect(addNotification).toHaveBeenCalledWith(expect.objectContaining({ message }));
   });
 
   it('uses sent and consolidation transaction titles', () => {

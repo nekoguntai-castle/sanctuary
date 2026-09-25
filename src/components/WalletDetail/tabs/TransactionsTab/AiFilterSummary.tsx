@@ -2,6 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import type { Transaction } from '../../../../types';
 import type { NaturalQueryResult } from '../../../../api/ai';
+import { usePriceFreeFormatter } from '../../../../contexts/CurrencyContext';
 
 interface AiFilterSummaryProps {
   aiQueryFilter: NaturalQueryResult | null;
@@ -29,7 +30,7 @@ export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
           <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
             {aiAggregationResult !== null ? (
               <>
-                Result: <span className="font-bold">{formatAggregationValue(aiQueryFilter, aiAggregationResult)}</span>
+                Result: <span className="font-bold"><AggregationValue aiQueryFilter={aiQueryFilter} value={aiAggregationResult} /></span>
                 {aiQueryFilter.aggregation && <span className="text-sanctuary-500 ml-1">({aiQueryFilter.aggregation})</span>}
               </>
             ) : (
@@ -49,10 +50,9 @@ export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
   );
 };
 
-function formatAggregationValue(aiQueryFilter: NaturalQueryResult, value: number): string | number {
-  if (aiQueryFilter.aggregation === 'count') {
-    return value;
-  }
-
-  return `${value.toLocaleString()} sats`;
+// A count is a number of transactions; every other aggregation is an amount
+// and follows the user's BTC/sats preference.
+function AggregationValue({ aiQueryFilter, value }: { aiQueryFilter: NaturalQueryResult; value: number }) {
+  const { format } = usePriceFreeFormatter();
+  return <>{aiQueryFilter.aggregation === 'count' ? value : format(value)}</>;
 }

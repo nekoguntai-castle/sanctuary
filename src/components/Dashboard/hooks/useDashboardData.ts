@@ -41,7 +41,7 @@ const EMPTY_PENDING: never[] = [];
 export type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
 export function useDashboardData() {
-  const { btcPrice, priceChange24h, currencySymbol, lastPriceUpdate } = useCurrency();
+  const { btcPrice, priceChange24h, currencySymbol, lastPriceUpdate, format } = useCurrency();
   const { selectedNetwork } = useActiveNetwork();
   const navigate = useNavigate();
   // Persisted, like the activity page size and unlike the activity page. The
@@ -280,7 +280,7 @@ export function useDashboardData() {
   // Handle transaction notifications
   useWebSocketEvent('transaction', (event) => {
     const data = event.data as WebSocketTransactionData;
-    const { notification, sound } = buildTransactionNotification(data);
+    const { notification, sound } = buildTransactionNotification(data, format);
 
     addNotification(notification);
     if (sound) {
@@ -289,12 +289,12 @@ export function useDashboardData() {
 
     // Invalidate wallet queries to refresh data
     invalidateAllWallets();
-  }, [addNotification, invalidateAllWallets, playEventSound]);
+  }, [addNotification, format, invalidateAllWallets, playEventSound]);
 
   // Handle balance updates
   useWebSocketEvent('balance', (event) => {
     const data = event.data as WebSocketBalanceData;
-    const notification = buildBalanceNotification(data);
+    const notification = buildBalanceNotification(data, format);
 
     if (notification) {
       addNotification(notification);
@@ -302,7 +302,7 @@ export function useDashboardData() {
 
     // Invalidate wallet queries to refresh data
     invalidateAllWallets();
-  }, [addNotification, invalidateAllWallets]);
+  }, [addNotification, format, invalidateAllWallets]);
 
   // Handle new block notifications
   useWebSocketEvent('block', (event) => {

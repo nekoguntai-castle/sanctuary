@@ -43,9 +43,17 @@ vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../src/contexts/CurrencyContext', () => ({
-  useCurrency: vi.fn(),
-}));
+vi.mock('../../src/contexts/CurrencyContext', () => {
+  const useCurrency = vi.fn();
+  return {
+    useCurrency,
+    // The price-free hook shares the per-test currency mock's formatter.
+    usePriceFreeFormatter: () => {
+      const { format, unit } = useCurrency();
+      return { format, unit };
+    },
+  };
+});
 
 vi.mock('../../src/contexts/NotificationContext', () => ({
   useNotifications: vi.fn(),

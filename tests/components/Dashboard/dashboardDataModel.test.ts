@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildBalanceNotification,
   buildNodeStatusQueryData,
+  buildTransactionNotification,
   formatFeeRate,
   mapApiWalletToDashboardWallet,
   neverAnswered,
@@ -220,5 +222,39 @@ describe('buildNodeStatusQueryData', () => {
     expect(result.isPlaceholderData).toBe(false);
     expect(result.dataUpdatedAt).toBe(3000);
     expect(result.error).toBe(err);
+  });
+});
+
+// Toasts used to hard-code "<8 decimals> BTC", so a sats user got BTC pop-ups.
+describe('transaction and balance notifications', () => {
+  const satsFormat = (sats: number) => `${sats.toLocaleString()} sats`;
+  const btcFormat = (sats: number) => `${(sats / 100_000_000).toFixed(8)} BTC`;
+
+  it.each([
+    ['sats', satsFormat, '+250,000 sats • 2 confirmations'],
+    ['btc', btcFormat, '+0.00250000 BTC • 2 confirmations'],
+  ] as const)('states a received amount in the %s display unit', (_unit, format, message) => {
+    const { notification } = buildTransactionNotification(
+      { type: 'received', amount: 250_000, confirmations: 2 } as never,
+      format,
+    );
+    expect(notification.message).toBe(message);
+  });
+
+  it('signs a sent amount negative from its magnitude', () => {
+    const { notification } = buildTransactionNotification(
+      { type: 'sent', amount: -120_000, confirmations: 0 } as never,
+      satsFormat,
+    );
+    expect(notification.message).toBe('-120,000 sats • 0 confirmations');
+  });
+
+  it.each([
+    ['sats', satsFormat, 25_000, '+25,000 sats'],
+    ['btc', btcFormat, 25_000, '+0.00025000 BTC'],
+    ['sats', satsFormat, -40_000, '-40,000 sats'],
+    ['btc', btcFormat, -40_000, '-0.00040000 BTC'],
+  ] as const)('states a balance change in the %s display unit (%d)', (_unit, format, change, message) => {
+    expect(buildBalanceNotification({ change } as never, format)?.message).toBe(message);
   });
 });

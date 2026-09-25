@@ -11,6 +11,16 @@ vi.mock('lucide-react', () => ({
   ),
 }));
 
+const currency = vi.hoisted(() => ({ unit: 'sats' as 'btc' | 'sats' }));
+
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
+  usePriceFreeFormatter: () => ({
+    unit: currency.unit,
+    format: (sats: number) =>
+      currency.unit === 'sats' ? `${sats.toLocaleString()} sats` : `${(sats / 100_000_000).toFixed(8)} BTC`,
+  }),
+}));
+
 const makeTx = (overrides: Partial<PendingTransaction> = {}): PendingTransaction => ({
   txid: 'txid-123',
   walletId: 'wallet-1',
@@ -26,6 +36,7 @@ const makeTx = (overrides: Partial<PendingTransaction> = {}): PendingTransaction
 
 describe('PendingTxDot', () => {
   beforeEach(() => {
+    currency.unit = 'sats';
     vi.restoreAllMocks();
     vi.spyOn(window, 'open').mockImplementation(() => null);
   });
@@ -75,6 +86,21 @@ describe('PendingTxDot', () => {
 
     fireEvent.mouseLeave(wrapper);
     expect(screen.queryByText('Fee Rate:')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['btc', '0.00000420 BTC', '0.00025000 BTC'],
+    ['sats', '420 sats', '25,000 sats'],
+  ] as const)('shows the fee and amount in the %s display unit', (unit, fee, amount) => {
+    currency.unit = unit;
+    render(<PendingTxDot tx={makeTx({ feeRate: 12 })} explorerUrl="https://mempool.space" compact={false} />);
+
+    fireEvent.mouseEnter(screen.getByTitle('Sending 12 sat/vB').parentElement as HTMLElement);
+
+    expect(screen.getByText(fee)).toBeInTheDocument();
+    expect(screen.getByText(amount)).toBeInTheDocument();
+    // The fee rate is its own unit and stays in sat/vB.
+    expect(screen.getByText('12.0 sat/vB')).toBeInTheDocument();
   });
 
   it('uses received styling and hides recipient row when no recipient is provided', () => {

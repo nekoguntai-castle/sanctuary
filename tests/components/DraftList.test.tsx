@@ -158,6 +158,18 @@ describe('DraftList', () => {
       });
     });
 
+    // The fee sat beside a unit-aware amount but was always printed in sats.
+    it('shows the draft fee in the selected display unit', async () => {
+      const btc = { format: (sats: number) => `${(sats / 100_000_000).toFixed(8)} BTC`, unit: 'btc' };
+      vi.mocked(CurrencyContext.useCurrency).mockReturnValue(btc as any);
+      vi.mocked(CurrencyContext.usePriceFreeFormatter).mockReturnValue(btc as any);
+
+      renderDraftList();
+
+      expect(await screen.findByText('0.00001000 BTC (10 sat/vB)')).toBeInTheDocument();
+      expect(screen.queryByText('1,000 sats (10 sat/vB)')).not.toBeInTheDocument();
+    });
+
     it('displays draft status badges', async () => {
       renderDraftList();
 

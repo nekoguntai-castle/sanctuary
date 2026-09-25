@@ -24,6 +24,16 @@ vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
+const currency = vi.hoisted(() => ({ unit: 'sats' as 'btc' | 'sats' }));
+
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
+  usePriceFreeFormatter: () => ({
+    unit: currency.unit,
+    format: (sats: number) =>
+      currency.unit === 'sats' ? `${sats.toLocaleString()} sats` : `${(sats / 100_000_000).toFixed(8)} BTC`,
+  }),
+}));
+
 vi.mock('../../../src/api/wallets', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
@@ -748,23 +758,35 @@ describe('WalletAutopilotSettings', () => {
     expect(screen.queryByText('Economy fee')).not.toBeInTheDocument();
   });
 
-  it('formats large values as BTC in UTXO health card', async () => {
-    mockTelegramUser();
-    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
-      ...defaultSettings,
-      enabled: true,
-    });
-    vi.mocked(walletsApi.getWalletAutopilotStatus).mockResolvedValue({
-      ...defaultStatus,
-      utxoHealth: {
-        ...defaultStatus.utxoHealth,
-        largestUtxo: '250000000', // 2.5 BTC
-      },
-    });
+  // The health card used to pick BTC or sats by magnitude (BTC at >= 1 BTC),
+  // ignoring the user's unit, so one card could mix both units.
+  it.each([
+    ['btc', '0.00015000 BTC', '0.00002000 BTC', '2.50000000 BTC'],
+    ['sats', '15,000 sats', '2,000 sats', '250,000,000 sats'],
+  ] as const)('shows every UTXO health amount in the %s display unit', async (unit, dust, smallest, largest) => {
+    currency.unit = unit;
+    try {
+      mockTelegramUser();
+      vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+        ...defaultSettings,
+        enabled: true,
+      });
+      vi.mocked(walletsApi.getWalletAutopilotStatus).mockResolvedValue({
+        ...defaultStatus,
+        utxoHealth: {
+          ...defaultStatus.utxoHealth,
+          largestUtxo: '250000000',
+        },
+      });
 
-    render(<WalletAutopilotSettings walletId={walletId} />);
+      render(<WalletAutopilotSettings walletId={walletId} />);
 
-    expect(await screen.findByText('2.50000000 BTC')).toBeInTheDocument();
+      expect(await screen.findByText(largest)).toBeInTheDocument();
+      expect(screen.getByText(dust)).toBeInTheDocument();
+      expect(screen.getByText(smallest)).toBeInTheDocument();
+    } finally {
+      currency.unit = 'sats';
+    }
   });
 
   it('hides UTXO health card when status fetch fails', async () => {

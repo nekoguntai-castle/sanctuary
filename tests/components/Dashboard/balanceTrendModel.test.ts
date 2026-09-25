@@ -91,22 +91,34 @@ describe('buildBalanceTrend', () => {
 });
 
 describe('formatBalanceTrend', () => {
+  // Stand-ins for the app's unit-aware `format`; the model must not pick a unit.
+  const satsFormat = (sats: number) => `${sats.toLocaleString()} sats`;
+  const btcFormat = (sats: number) => `${(sats / 100_000_000).toFixed(8)} BTC`;
+
   it('writes the sign out rather than relying on colour', () => {
-    const gain = formatBalanceTrend(buildBalanceTrend(points(1_000_000, 1_125_000), '1W'));
+    const gain = formatBalanceTrend(buildBalanceTrend(points(1_000_000, 1_125_000), '1W'), satsFormat);
     expect(gain).toBe('+125,000 sats (+12.5%) over the past week');
 
-    const loss = formatBalanceTrend(buildBalanceTrend(points(200_000, 150_000), '1M'));
+    const loss = formatBalanceTrend(buildBalanceTrend(points(200_000, 150_000), '1M'), satsFormat);
     expect(loss).toBe('-50,000 sats (-25.0%) over the past month');
+  });
+
+  it('states the change in the unit the formatter renders, not always sats', () => {
+    const gain = formatBalanceTrend(buildBalanceTrend(points(1_000_000, 1_125_000), '1W'), btcFormat);
+    expect(gain).toBe('+0.00125000 BTC (+12.5%) over the past week');
+
+    const loss = formatBalanceTrend(buildBalanceTrend(points(200_000, 150_000), '1M'), btcFormat);
+    expect(loss).toBe('-0.00050000 BTC (-25.0%) over the past month');
   });
 
   it('omits the percentage when there is no basis for one', () => {
     const trend = buildBalanceTrend(points(0, 100_000), '1D');
 
-    expect(formatBalanceTrend(trend)).toBe('+100,000 sats over the past day');
+    expect(formatBalanceTrend(trend, satsFormat)).toBe('+100,000 sats over the past day');
   });
 
   it('states flat plainly', () => {
-    expect(formatBalanceTrend(buildBalanceTrend(points(5, 5), 'ALL'))).toBe(
+    expect(formatBalanceTrend(buildBalanceTrend(points(5, 5), 'ALL'), satsFormat)).toBe(
       'No change over all time'
     );
   });

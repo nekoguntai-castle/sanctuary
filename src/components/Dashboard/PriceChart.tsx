@@ -1,5 +1,6 @@
 import { ArrowDownLeft, ArrowUpRight, Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import { Amount } from '../Amount';
+import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { AnimatedPrice } from './PriceChart/AnimatedPrice';
 import { PriceChartBody } from './PriceChart/PriceChartBody';
 import type { PriceChartProps, PendingTotals } from './PriceChart/types';
@@ -74,6 +75,7 @@ const TREND_PRESENTATION: Record<
 
 function BalanceTrendRow({ trend }: { trend: BalanceTrend }) {
   const { icon: Icon, className } = TREND_PRESENTATION[trend.direction];
+  const { format } = usePriceFreeFormatter();
 
   return (
     <p
@@ -82,7 +84,7 @@ function BalanceTrendRow({ trend }: { trend: BalanceTrend }) {
       className={`flex items-center gap-1 text-xs font-medium ${className}`}
     >
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-      {formatBalanceTrend(trend)}
+      {formatBalanceTrend(trend, format)}
     </p>
   );
 }

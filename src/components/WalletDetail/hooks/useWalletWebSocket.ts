@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Wallet, Transaction } from '../../../types';
-import { satsToBTC, formatBTC } from '@sanctuary/shared/utils/bitcoin';
 import { useWalletEvents, useWebSocket } from '../../../hooks/websocket';
+import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { createLogger } from '../../../utils/logger';
 import type { SyncRetryInfo } from '../types';
@@ -34,6 +34,7 @@ export function useWalletWebSocket({
   fetchData,
 }: UseWalletWebSocketOptions) {
   const { addNotification } = useNotifications();
+  const { format } = usePriceFreeFormatter();
   const { connected } = useWebSocket();
   const ownership = useWalletRouteOwnership(ownershipKey);
   const wasConnected = useRef(connected);
@@ -71,7 +72,7 @@ export function useWalletWebSocket({
       addNotification({
         type: 'transaction',
         title,
-        message: `${prefix}${formatBTC(satsToBTC(Math.abs(amount)), 8, false)} BTC in ${wallet?.name || 'wallet'}`,
+        message: `${prefix}${format(Math.abs(amount))} in ${wallet?.name || 'wallet'}`,
         duration: 10000,
         data,
       });

@@ -293,6 +293,22 @@ describe('PriceChart balance trend', () => {
     expect(trend).toHaveTextContent('+125,000 sats (+12.5%) over the past week');
   });
 
+  it('states the gain in the selected display unit', () => {
+    currencyUnit.current = 'btc';
+    try {
+      renderChart([
+        { t: 4, sats: 1_000_000 },
+        { t: 5, sats: 1_125_000 },
+      ]);
+
+      const trend = screen.getByTestId('balance-trend');
+      expect(trend).toHaveTextContent('+0.00125000 BTC (+12.5%) over the past week');
+      expect(trend.textContent).not.toContain('sats');
+    } finally {
+      currencyUnit.current = 'sats';
+    }
+  });
+
   it('states a loss with a negative sign', () => {
     renderChart(
       [

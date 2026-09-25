@@ -1,4 +1,3 @@
-import { satsToBTC, formatBTC } from '@sanctuary/shared/utils/bitcoin';
 import {
   WalletType,
   type Transaction,
@@ -282,8 +281,12 @@ export function buildMempoolSnapshot(mempoolData: MempoolData | undefined): Memp
   };
 }
 
+/** The app's unit-aware amount formatter (`useCurrency().format`). */
+type AmountFormatter = (sats: number) => string;
+
 export function buildTransactionNotification(
-  data: WebSocketTransactionData
+  data: WebSocketTransactionData,
+  format: AmountFormatter,
 ): DashboardNotificationResult {
   const title = data.type === 'received' ? 'Bitcoin Received'
     : data.type === 'consolidation' ? 'Consolidation'
@@ -297,7 +300,7 @@ export function buildTransactionNotification(
     notification: {
       type: 'transaction',
       title,
-      message: `${prefix}${formatBTC(satsToBTC(Math.abs(data.amount ?? 0)), 8, false)} BTC • ${data.confirmations ?? 0} confirmations`,
+      message: `${prefix}${format(Math.abs(data.amount ?? 0))} • ${data.confirmations ?? 0} confirmations`,
       duration: 10000,
       data,
     },
@@ -305,7 +308,10 @@ export function buildTransactionNotification(
   };
 }
 
-export function buildBalanceNotification(data: WebSocketBalanceData): Omit<Notification, 'id'> | null {
+export function buildBalanceNotification(
+  data: WebSocketBalanceData,
+  format: AmountFormatter,
+): Omit<Notification, 'id'> | null {
   const change = data.change ?? 0;
 
   if (Math.abs(change) <= 10000) {
@@ -315,7 +321,7 @@ export function buildBalanceNotification(data: WebSocketBalanceData): Omit<Notif
   return {
     type: 'balance',
     title: 'Balance Updated',
-    message: `${change > 0 ? '+' : ''}${formatBTC(satsToBTC(change), 8, false)} BTC`,
+    message: `${change > 0 ? '+' : '-'}${format(Math.abs(change))}`,
     duration: 8000,
     data,
   };

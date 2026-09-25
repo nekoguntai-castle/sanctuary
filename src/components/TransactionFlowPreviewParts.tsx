@@ -44,6 +44,7 @@ interface FlowFeeRowProps {
   fee: number;
   feeRate: number;
   barHeight: number;
+  format: SatsFormatter;
   isEstimate: boolean;
 }
 
@@ -263,7 +264,7 @@ export function FlowConnector() {
   );
 }
 
-function FlowFeeRow({ fee, feeRate, barHeight, isEstimate }: FlowFeeRowProps) {
+function FlowFeeRow({ fee, feeRate, barHeight, format, isEstimate }: FlowFeeRowProps) {
   return (
     <div
       className="flex items-center rounded-lg overflow-hidden transition-all duration-200"
@@ -279,7 +280,7 @@ function FlowFeeRow({ fee, feeRate, barHeight, isEstimate }: FlowFeeRowProps) {
         style={{ background: 'linear-gradient(135deg, var(--color-flow-fee-start) 0%, var(--color-flow-fee-end) 100%)' }}
       >
         <span className="text-white text-[11px] font-semibold whitespace-nowrap drop-shadow-sm">
-          {isEstimate && '~'}{fee.toLocaleString()} sats
+          {isEstimate && '~'}{format(fee)}
         </span>
       </div>
     </div>
@@ -313,6 +314,7 @@ export function OutputsColumn({
           fee={fee}
           feeRate={feeRate}
           barHeight={barHeight(fee)}
+          format={format}
           isEstimate={isEstimate}
         />
       )}

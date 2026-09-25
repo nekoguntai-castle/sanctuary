@@ -28,6 +28,10 @@ vi.mock('../../../src/components/FiatDisplay', () => ({
   FiatDisplaySubtle: ({ sats }: { sats: number }) => <span>{`fiat:${sats}`}</span>,
 }));
 
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
+  useCurrency: () => ({ format: (sats: number) => `format:${sats}`, unit: 'sats' }),
+}));
+
 vi.mock('../../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: ({ inputs, outputs }: { inputs: unknown[]; outputs: unknown[] }) => (
     <div data-testid="flow-preview">{`flow:${inputs.length}->${outputs.length}`}</div>
