@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [0.8.75] - 2026-09-22
+## [0.8.75] - 2026-09-25
 
 ### Changed
 
@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LLM_EGRESS_PROXY_ALLOWED_CIDRS` entry. Only that exact address and port are
   admitted, never loopback or cloud metadata, and saving a new endpoint revokes
   the previous one; hostnames and the existing allowlists are unchanged.
+- Install and upgrade no longer print the `ENCRYPTION_KEY` and
+  `ENCRYPTION_SALT` values, because that output is kept in log files and
+  shared when asking for help. The backup reminder names both secrets and
+  points to the runtime env file that holds them.
 
 ### Fixed
 
@@ -32,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reader's timezone, with hours, weekdays, dates or months on the axis for the
   selected period, instead of evenly spacing only the periods that had
   transactions.
+- Show every bitcoin amount in the BTC/sats unit you selected. The Wallets page
+  balance chart tooltip showed a raw sats integer. The dashboard gain/loss line,
+  transaction-flow and draft fees, the block visualizer's pending-transaction
+  card, AI filter totals, and the Autopilot UTXO health card always used sats
+  (or switched by size), and transaction and balance notifications always used
+  BTC. Fee rates stay in sat/vB; fee estimates and sats-denominated settings
+  such as agent spend limits and the dust threshold stay in sats.
+- The gateway finishes delivering push notifications for events it had already
+  accepted before it shuts down or restarts, instead of dropping them.
 
 ### Upgrade validation
 
