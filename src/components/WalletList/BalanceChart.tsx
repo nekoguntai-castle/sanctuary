@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Amount } from '../Amount';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { useBalanceHistory } from '../../hooks/queries/useWallets';
 import { useDelayedRender } from '../../hooks/useDelayedRender';
 import type { Timeframe } from '../../api/transactions/types';
@@ -39,6 +40,7 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
 
   // Delay chart render to avoid Recharts dimension warning during initial layout
   const chartReady = useDelayedRender();
+  const { format } = useCurrency();
 
   // Fetch real balance history from transactions
   const { data: history } = useBalanceHistory(walletIds, totalBalance, timeframe);
@@ -95,6 +97,7 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
                   />
                   <Tooltip
                     labelFormatter={(t) => timeAxis.formatTooltip(Number(t))}
+                    formatter={(value) => [format(Number(value)), 'Balance']}
                     contentStyle={BALANCE_CHART_TOOLTIP_STYLE}
                     itemStyle={{ color: 'var(--color-chart-series-success)' }}
                   />

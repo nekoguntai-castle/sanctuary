@@ -5,6 +5,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BalanceChart } from '../../../src/components/WalletList/BalanceChart';
 
 const history = vi.hoisted(() => ({ calls: [] as string[], data: [] as unknown[] }));
+const currency = vi.hoisted(() => ({ unit: 'btc' as 'btc' | 'sats' }));
+
+// The hovered point's balance. Recharts renders a bare `value` when the
+// Tooltip has no formatter, which is how the chart showed raw sats as an
+// integer regardless of the BTC/sats preference.
+const HOVERED_SATS = 123_456_789;
+
+// Mirrors CurrencyPreferencesContext's `format` with the same shared helpers,
+// so the assertions below check the real BTC and sats output shapes.
+vi.mock('../../../src/contexts/CurrencyContext', async () => {
+  const { formatBTC, satsToBTC } = await import('@sanctuary/shared/utils/bitcoin');
+  return {
+    useCurrency: () => ({
+      unit: currency.unit,
+      format: (sats: number) =>
+        currency.unit === 'sats' ? `${sats.toLocaleString()} sats` : `${formatBTC(satsToBTC(sats))} BTC`,
+    }),
+  };
+});
 
 vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useBalanceHistory: (_ids: string[], _balance: number, timeframe: string) => {
@@ -39,8 +58,16 @@ vi.mock('recharts', () => ({
       data-tick-labels={ticks && tickFormatter ? ticks.map(tickFormatter).join('|') : ''}
     />
   ),
-  Tooltip: ({ labelFormatter }: { labelFormatter?: (label: unknown) => string }) => (
-    <span data-testid="tooltip-label">{labelFormatter?.(Date.UTC(2026, 0, 1, 12))}</span>
+  Tooltip: ({ labelFormatter, formatter }: {
+    labelFormatter?: (label: unknown) => string;
+    formatter?: (value: number, name: string) => unknown;
+  }) => (
+    <>
+      <span data-testid="tooltip-label">{labelFormatter?.(Date.UTC(2026, 0, 1, 12))}</span>
+      <span data-testid="tooltip-value">
+        {formatter ? [formatter(HOVERED_SATS, 'value')].flat().join(' | ') : String(HOVERED_SATS)}
+      </span>
+    </>
   ),
 }));
 
@@ -48,6 +75,7 @@ const now = Date.now();
 
 describe('BalanceChart', () => {
   beforeEach(() => {
+    currency.unit = 'btc';
     history.calls = [];
     history.data = [
       { name: 'Start', value: 1000, timestamp: new Date(now - 30 * 86_400_000).toISOString() },
@@ -135,5 +163,22 @@ describe('BalanceChart', () => {
     const expected = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
       .format(Date.UTC(2026, 0, 1, 12));
     expect(screen.getByTestId('tooltip-label')).toHaveTextContent(expected);
+  });
+
+  it('shows the hovered balance in BTC with decimals when the unit is BTC', () => {
+    currency.unit = 'btc';
+    renderChart();
+    const value = screen.getByTestId('tooltip-value');
+    expect(value).toHaveTextContent('1.23456789 BTC');
+    expect(value).toHaveTextContent('Balance');
+    expect(value.textContent).not.toContain(String(HOVERED_SATS));
+  });
+
+  it('shows the hovered balance as whole sats when the unit is sats', () => {
+    currency.unit = 'sats';
+    renderChart();
+    const value = screen.getByTestId('tooltip-value');
+    expect(value).toHaveTextContent(`${HOVERED_SATS.toLocaleString()} sats`);
+    expect(value.textContent).not.toContain('BTC');
   });
 });
