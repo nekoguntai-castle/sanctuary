@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import * as visualConsistency from './render-regression/renderRegressionVisualConsistency.contracts';
 
 import * as adminTests from './render-regression/renderRegressionAdmin.contracts';
 import * as coreTests from './render-regression/renderRegressionCore.contracts';
@@ -67,3 +68,19 @@ test.describe('Route-level rendering regressions', () => {
     test('dashboard stacks wallets and activity full width at 1920px', coreTests.renderDashboardWideViewportStacksSections);
   });
 });
+
+// Registered in the render lane, including the two narrow widths that exposed
+// page-wide scrolling. Exact geometry/contrast checks supplement PNG tolerance.
+for (const darkMode of [false, true]) {
+  for (const width of [1440, 390, 320]) {
+    test.describe(`visual consistency ${darkMode ? 'dark' : 'light'} ${width}`, () => {
+      test.use({ viewport: { width, height: 1000 } });
+      setupRenderRegressionErrorChecks();
+      test('selected settings tabs remain readable', ({ page }) => visualConsistency.renderSettingsSelectedContrast(page, darkMode));
+      test('wallet settings overflow stays local', ({ page }) => visualConsistency.renderWalletSettingsOverflow(page, darkMode));
+      test('device identity and accounts fit the content', ({ page }) => visualConsistency.renderDeviceResponsiveLayout(page, darkMode));
+      test('long device labels and multiple accounts stay bounded', ({ page }) => visualConsistency.renderDeviceResponsiveLayout(page, darkMode, true));
+      test('relationship navigation supports keyboard and direct entry', ({ page }) => visualConsistency.renderRelationshipKeyboardJourney(page, darkMode));
+    });
+  }
+}

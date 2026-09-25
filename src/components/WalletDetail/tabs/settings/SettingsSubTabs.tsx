@@ -32,23 +32,25 @@ export const SettingsSubTabs: React.FC<SettingsSubTabsProps> = ({
   });
 
   return (
-    <div
-      {...getTabListProps('Wallet settings sections')}
-      className="flex gap-1 p-1 bg-sanctuary-100 dark:bg-sanctuary-800 rounded-lg w-fit"
-    >
-      {TAB_ITEMS.map(({ key, label }) => (
-        <button
-          key={key}
-          {...getTabProps(key)}
-          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-            settingsSubTab === key
-              ? 'bg-white dark:bg-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 shadow-sm'
-              : 'text-sanctuary-600 dark:text-sanctuary-400 hover:text-sanctuary-900 dark:hover:text-sanctuary-200'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
+    <div className="max-w-full overflow-x-auto">
+      <div
+        {...getTabListProps('Wallet settings sections')}
+        className="flex gap-1 p-1 bg-sanctuary-100 dark:bg-sanctuary-800 rounded-lg w-fit"
+      >
+        {TAB_ITEMS.map(({ key, label }) => (
+          <button
+            key={key}
+            {...getTabProps(key)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              settingsSubTab === key
+                ? 'bg-white dark:bg-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 shadow-sm'
+                : 'text-sanctuary-600 dark:text-sanctuary-400 hover:text-sanctuary-900 dark:hover:text-sanctuary-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

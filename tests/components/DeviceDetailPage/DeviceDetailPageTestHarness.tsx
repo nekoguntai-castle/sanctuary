@@ -1,4 +1,5 @@
 import { beforeEach, vi } from 'vitest';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import { DeviceDetail } from '../../../src/components/DeviceDetail';
 
@@ -29,7 +30,19 @@ const deviceDetailMocks = vi.hoisted(() => ({
 }));
 
 export const mocks = deviceDetailMocks;
-export const DeviceDetailComponent = DeviceDetail;
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="router-location">{location.pathname}</output>;
+}
+
+export function DeviceDetailComponent() {
+  return (
+    <MemoryRouter initialEntries={['/devices/device-1']}>
+      <DeviceDetail />
+      <LocationProbe />
+    </MemoryRouter>
+  );
+}
 
 const mockCurrentUser = {
   id: 'user-1',
@@ -38,7 +51,8 @@ const mockCurrentUser = {
   preferences: {},
 };
 
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...await importOriginal<typeof import('react-router-dom')>(),
   useParams: () => ({ id: 'device-1' }),
   useNavigate: () => deviceDetailMocks.navigate,
 }));

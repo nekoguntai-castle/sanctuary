@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { selectedSettingsTabClassName } from './tabStyles';
 import { Monitor, Globe, Palette, Volume2 } from 'lucide-react';
 import { AppearanceTab } from './sections/ThemeSection';
 import { DisplayTab } from './sections/DisplaySection';
@@ -45,7 +46,7 @@ export const Settings: React.FC = () => {
               aria-label={tab.name}
               className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.id
-                  ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'
+                  ? selectedSettingsTabClassName
                   : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
               }`}
             >

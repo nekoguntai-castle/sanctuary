@@ -338,7 +338,7 @@ describe('DeviceDetail page', () => {
     expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
 
     await user.click(screen.getByText('Main Wallet'));
-    expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1');
+    expect(screen.getByTestId('router-location')).toHaveTextContent(/^\/wallets\/wallet-1$/);
   });
 
   it('does not call user search API for queries shorter than 2 characters', async () => {

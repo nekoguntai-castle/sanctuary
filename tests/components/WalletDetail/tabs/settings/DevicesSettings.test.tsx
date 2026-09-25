@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { DevicesSettings } from '../../../../../src/components/WalletDetail/tabs/settings/DevicesSettings';
 import { WalletType } from '../../../../../src/types';
@@ -11,11 +12,10 @@ vi.mock('../../../../../src/components/ui/CustomIcons', () => ({
   ),
 }));
 
-const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
-  return { ...actual, useNavigate: () => mockNavigate };
-});
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}{location.search}</output>;
+}
 
 const baseWallet = {
   id: 'wallet-1',
@@ -36,10 +36,6 @@ const makeDevice = (overrides: Partial<Device> = {}): Device => ({
 } as Device);
 
 describe('DevicesSettings', () => {
-  beforeEach(() => {
-    mockNavigate.mockClear();
-  });
-
   it('renders empty state when no devices', () => {
     render(
       <MemoryRouter>
@@ -63,16 +59,22 @@ describe('DevicesSettings', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
-  it('navigates to device detail on click', () => {
-    const devices = [makeDevice()];
+  it('exposes a native device link within the list and navigates with Enter', async () => {
+    const user = userEvent.setup();
     render(
-      <MemoryRouter>
-        <DevicesSettings wallet={baseWallet} devices={devices} />
+      <MemoryRouter initialEntries={['/wallets/wallet-1?tab=settings']}>
+        <DevicesSettings wallet={baseWallet} devices={[makeDevice()]} />
+        <LocationProbe />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByText('Coldcard'));
-    expect(mockNavigate).toHaveBeenCalledWith('/devices/device-1');
+    const link = screen.getByRole('link', { name: /Coldcard/ });
+    expect(link).toHaveAttribute('href', '/devices/device-1');
+    expect(link.parentElement).toBe(screen.getByRole('listitem'));
+    await user.tab();
+    expect(link).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/devices\/device-1$/);
   });
 
   it('shows account mismatch warning for single-sig wallet', () => {

@@ -68,7 +68,7 @@ export function DeviceAccountsSection({
 
 function DeviceAccountsHeader({ accountCount }: { accountCount: number }) {
   return (
-    <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
       <p className="text-xs text-sanctuary-500 uppercase">Registered Accounts</p>
       <span className="text-xs text-sanctuary-400">
         {accountCount} {accountCount === 1 ? 'account' : 'accounts'}
@@ -167,7 +167,7 @@ function DeviceAccountTabs({
       </div>
       <div
         {...getPurposeTabListProps('Device account purposes')}
-        className="flex items-center gap-2"
+        className="flex flex-wrap items-center gap-2"
       >
         <PurposeAccountTabButton
           purpose={DeviceAccountPurposeValue.SINGLE_SIG}
@@ -255,8 +255,8 @@ function DeviceAccountCard({ account }: { account: DeviceAccount }) {
 
   return (
     <div className="surface-muted p-4 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-sanctuary-900 dark:text-sanctuary-100 text-sm">
             {info.title}
           </span>
@@ -298,7 +298,7 @@ function AccountKeyDetails({ derivationPath, xpub }: { derivationPath: string; x
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       <div>
         <p className="text-[10px] text-sanctuary-400 uppercase mb-1">Derivation Path</p>
-        <code className="text-xs text-sanctuary-600 dark:text-sanctuary-300 font-mono">
+        <code className="break-all text-xs text-sanctuary-600 dark:text-sanctuary-300 font-mono">
           {derivationPath}
         </code>
       </div>

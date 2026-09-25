@@ -1,17 +1,22 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
+import { fireEvent,render as renderComponent,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 import { SettingsTab } from '../../../../src/components/WalletDetail/tabs/SettingsTab';
 import { WalletType,type Device } from '../../../../src/types';
 
-const navigateMock = vi.fn();
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="router-location">{location.pathname}</output>;
+}
 
-vi.mock('react-router-dom', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
-  return {
-    ...actual,
-    useNavigate: () => navigateMock,
-  };
-});
+function RouterWrapper({ children }: { children: ReactNode }) {
+  return <MemoryRouter>{children}<LocationProbe /></MemoryRouter>;
+}
+
+function render(ui: ReactElement) {
+  return renderComponent(ui, { wrapper: RouterWrapper });
+}
 
 vi.mock('../../../../src/components/LabelManager', () => ({
   LabelManager: () => <div data-testid="label-manager">Label manager</div>,
@@ -92,7 +97,7 @@ describe('SettingsTab', () => {
 
     expect(screen.getByText('Cannot Sign')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Ledger'));
-    expect(navigateMock).toHaveBeenCalledWith('/devices/d1');
+    expect(screen.getByTestId('router-location')).toHaveTextContent(/^\/devices\/d1$/);
   });
 
   it('renders notifications and advanced actions', () => {

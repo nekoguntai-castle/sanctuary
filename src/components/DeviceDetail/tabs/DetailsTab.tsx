@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { isMultisigType } from '../../../types';
 import { getWalletIcon } from '../../ui/CustomIcons';
 import type { WalletInfo } from '../hooks/useDeviceData';
@@ -9,8 +9,6 @@ interface DetailsTabProps {
 }
 
 export const DetailsTab: React.FC<DetailsTabProps> = ({ wallets }) => {
-  const navigate = useNavigate();
-
   return (
     <div className="space-y-4">
          <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Associated Wallets</h3>
@@ -27,10 +25,10 @@ export const DetailsTab: React.FC<DetailsTabProps> = ({ wallets }) => {
                         : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20';
 
                      return (
-                        <div
+                        <Link
                             key={w.id}
-                            onClick={() => navigate(`/wallets/${w.id}`)}
-                            className="group cursor-pointer surface-elevated p-4 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800 hover:border-sanctuary-400 dark:hover:border-sanctuary-600 transition-all"
+                            to={`/wallets/${w.id}`}
+                            className="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 surface-elevated p-4 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800 hover:border-sanctuary-400 dark:hover:border-sanctuary-600 transition-all"
                         >
                             <div className="flex items-center justify-between mb-2">
                                  <div className="flex items-center space-x-3">
@@ -46,7 +44,7 @@ export const DetailsTab: React.FC<DetailsTabProps> = ({ wallets }) => {
                             <div className="text-sm text-sanctuary-500 pl-10">
                                 ID: {w.id}
                             </div>
-                        </div>
+                        </Link>
                      );
                  })}
              </div>

@@ -58,10 +58,10 @@ export function DeviceDetailHeader({
     <>
       <BackToDevicesButton onBack={onBack} />
       <Card padding="lg">
-        <div className="flex items-start space-x-6">
+        <div className="flex flex-col items-start gap-6 sm:flex-row">
           <DeviceIconPanel deviceType={device.type} />
-          <div className="flex-1">
-            <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 w-full flex-1">
+            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
               <DeviceTitleArea
                 device={device}
                 isEditing={isEditing}
@@ -145,8 +145,8 @@ function DeviceTitleArea({
   getDeviceDisplayName,
 }: DeviceTitleAreaProps) {
   return (
-    <div>
-      <div className="flex items-center space-x-2">
+    <div className="min-w-0 max-w-full">
+      <div className="flex flex-wrap items-center gap-2">
         {isEditing ? (
           <DeviceTitleEditor
             editLabel={editLabel}
@@ -184,11 +184,11 @@ function DeviceTitleEditor({
   onCancelEdit,
 }: Pick<DeviceDetailHeaderProps, 'editLabel' | 'onEditLabelChange' | 'onSave' | 'onCancelEdit'>) {
   return (
-    <div className="flex items-center space-x-2">
+    <div className="flex min-w-0 w-full items-center gap-2">
       <input
         value={editLabel}
         onChange={event => onEditLabelChange(event.target.value)}
-        className="px-2 py-1 border border-sanctuary-300 dark:border-sanctuary-700 rounded surface-muted text-xl font-light focus:outline-none"
+        className="min-w-0 w-full px-2 py-1 border border-sanctuary-300 dark:border-sanctuary-700 rounded surface-muted text-xl font-light focus:outline-none"
       />
       <button onClick={onSave} className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded transition-colors" aria-label="Save label">
         <Save className="w-5 h-5" />
@@ -213,7 +213,7 @@ function DeviceTitleReadOnly({
 }) {
   return (
     <>
-      <h1 className="text-3xl font-medium text-sanctuary-900 dark:text-sanctuary-50">{device.label}</h1>
+      <h1 className="max-w-full break-words text-3xl font-medium text-sanctuary-900 dark:text-sanctuary-50">{device.label}</h1>
       <DeviceRoleBadge userRole={userRole} />
       {isOwner && (
         <button onClick={onStartEditing} className="text-sanctuary-400 hover:text-sanctuary-600 p-1" aria-label="Edit label">
@@ -297,8 +297,8 @@ function DeviceHeaderActions({
   onCancelDelete: () => void;
 }) {
   return (
-    <div className="flex flex-col items-end gap-2 min-w-fit">
-      <div className="flex items-start gap-3">
+    <div className="flex max-w-full flex-col items-start gap-2 sm:items-end sm:shrink-0">
+      <div className="flex flex-wrap items-start gap-3">
         {canDelete && (
           <DeviceDeleteAction
             deleteConfirmOpen={deleteConfirmOpen}
@@ -374,7 +374,7 @@ function DeviceDeleteAction({
 
 function DeviceFingerprint({ fingerprint }: { fingerprint: string }) {
   return (
-    <div className="text-right">
+    <div className="text-left sm:text-right">
       <div className="text-xs text-sanctuary-400 uppercase tracking-wide">Master Fingerprint</div>
       <div className="text-xl font-mono text-sanctuary-700 dark:text-sanctuary-300">{fingerprint}</div>
     </div>

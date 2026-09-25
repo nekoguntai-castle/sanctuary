@@ -164,6 +164,26 @@ main() {
   local proceed_json='{"rubric":{"format":"OK"},"verdict":"PROCEED","issues":[]}'
   local output cache_file agent_env leaked_var
 
+  # Exercise the real UI prompt assignment: unescaped quotes inside its shell
+  # string previously attempted to execute `not` and skipped the UI reviewer.
+  reset_case "ui-prompt-reaches-reviewer"
+  write_response 1 '{"rubric":{"pattern_adherence":"OK","dark_mode":"OK","shared_components":"OK"},"verdict":"PROCEED","issues":[]}'
+  output="$(
+    git() {
+      case "$*" in
+        'diff --cached --name-only --diff-filter=ACMR') printf '%s\n' 'src/components/Fixture.tsx' ;;
+        'diff --cached -- src/components/Fixture.tsx') printf '%s\n' '+<button>Fixture</button>' ;;
+        *) command git "$@" ;;
+      esac
+    }
+    eval "$(sed -n '/^run_ui_consistency_agent() {/,/^}/p' "$PRE_COMMIT_HOOK")"
+    run_ui_consistency_agent
+  )" || fail "UI prompt did not reach its reviewer"
+  assert_file_equals "1" "$CLAUDE_COUNT_FILE"
+  assert_contains "$(cat "$CLAUDE_PROMPT_DIR/prompt-1.txt")" "does not exist"
+  assert_contains "$(cat "$CLAUDE_PROMPT_DIR/prompt-1.txt")" "+<button>Fixture</button>"
+  assert_cache_verdict "$(cache_file_for ui-consistency)" "PROCEED"
+
   reset_case "malformed-cache-rerun"
   cache_file="$(cache_file_for backend-quality)"
   printf 'not-json\n' > "$cache_file"

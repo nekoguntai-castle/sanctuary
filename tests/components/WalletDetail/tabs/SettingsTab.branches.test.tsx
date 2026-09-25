@@ -1,17 +1,22 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
+import { fireEvent,render as renderComponent,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 import { SettingsTab } from '../../../../src/components/WalletDetail/tabs/SettingsTab';
 import { WalletType,type Device } from '../../../../src/types';
 
-const navigateMock = vi.fn();
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="router-location">{location.pathname}</output>;
+}
 
-vi.mock('react-router-dom', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    useNavigate: () => navigateMock,
-  };
-});
+function RouterWrapper({ children }: { children: ReactNode }) {
+  return <MemoryRouter>{children}<LocationProbe /></MemoryRouter>;
+}
+
+function render(ui: ReactElement) {
+  return renderComponent(ui, { wrapper: RouterWrapper });
+}
 
 vi.mock('../../../../src/components/LabelManager', () => ({
   LabelManager: () => <div data-testid="label-manager">Label manager</div>,
@@ -164,7 +169,7 @@ describe('SettingsTab branch coverage', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
     fireEvent.click(screen.getByText('Ledger Active'));
-    expect(navigateMock).toHaveBeenCalledWith('/devices/dev-active');
+    expect(screen.getByTestId('router-location')).toHaveTextContent(/^\/devices\/dev-active$/);
 
     rerender(
       <SettingsTab
