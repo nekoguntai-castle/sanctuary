@@ -54,9 +54,9 @@ Acceptance: only current request/file owns results and terminal state; stale req
 
 ### Phase 4 — Browser WebSocket backpressure recovery
 
-- [ ] Add a failing regression using supported ws transport behavior, not a fabricated WebSocket drain event.
-- [ ] Choose a supported send-completion or bounded retry mechanism; guarantee a single queue owner, ordered messages, retry cancellation on close, and bounded memory under sustained pressure. Inspect `clientServer` cleanup and the `AuthenticatedWebSocket` type before implementation.
-- [ ] Test recovery, sustained/repeated pressure, close while waiting, send errors, and ordering; preserve existing overflow modes and metrics.
+- [x] Add a failing regression using supported ws transport behavior, not a fabricated WebSocket drain event.
+- [x] Choose a supported send-completion or bounded retry mechanism; guarantee a single queue owner, ordered messages, retry cancellation on close, and bounded memory under sustained pressure. Inspect `clientServer` cleanup and the `AuthenticatedWebSocket` type before implementation.
+- [x] Test recovery, sustained/repeated pressure, close while waiting, send errors, and ordering; preserve existing overflow modes and metrics.
 - [ ] Verify/review and deliver one server PR with exact target CI.
 
 Acceptance: temporary backpressure resumes delivery without reconnect; closed clients retain no retry resources. No private ws fields or new unbounded polling.
@@ -116,3 +116,10 @@ Two complete passes: coordinator source/contract review and independent read-onl
 - Reused `createRequestOwnership` through a stable `useLatestRequest` lifecycle hook; cleanup invalidates old work while StrictMode replay accepts new work. Independent reviews of audit/helper, backup, and currency slices found no remaining actionable issues.
 - Browser JSON parsing reports failure without retaining syntax errors that may contain backup contents; the API remains authoritative for backup compatibility.
 - Full frontend: 669 files / 9,026 tests passed. Root app/test/all TypeScript checks passed. Frontend coverage passed at 100% statements, branches, functions, and lines. Production build, lint, complexity, architecture diagrams, and 177 static-build Chromium render/admin/settings tests passed. Full backend passed 16,503 tests (65 database-dependent suites skipped), and server source/test types passed. Delivery pending.
+
+## Phase 4 verification progress
+
+- Pre-fix high-buffer regression on the installed ws event surface sent zero messages. Replaced unsupported drain waiting with one send in flight, supported send completion, and a guarded microtask continuation.
+- Terminal cleanup covers disconnect, revocation, heartbeat termination, shutdown, overflow, and errors. New closing/error regression first reproduced overwritten auth-expiry close reason; the completion now retires non-OPEN transport before interpreting its error.
+- Focused queue/lifecycle suite: 88 tests passed. Full frontend: 9,026 tests passed. Root/server source/test types, lint, architecture/cycles/diagrams, complexity, and independent final review passed. Full backend: 723 files / 16,518 tests passed (65 database-dependent suites skipped). Unit-only coverage passed at 100% statements (41,105), branches (23,194), functions (8,752), and lines (38,289). Delivery pending.
+- Reviewed adjacent concerns: old queued wallet payloads are immutable and authorized at admission; new private events revalidate access/generation. Terminal error frames were already best-effort before immediate close; close code/reason and browser retry behavior remain unchanged. No additional P0-P2 was confirmed.

@@ -122,7 +122,7 @@ export const registerClientServerLimitMessageFlowContracts = () => {
     expect(authSpy).toHaveBeenCalled();
     expect(subscribeSpy).toHaveBeenCalled();
     expect(unsubscribeSpy).toHaveBeenCalled();
-    expect(client.send).toHaveBeenCalledWith(JSON.stringify({ type: 'pong' }));
+    expect(client.send).toHaveBeenCalledWith(JSON.stringify({ type: 'pong' }), expect.any(Function));
   });
 
   it('ignores invalid JSON and explicit pong messages', async () => {

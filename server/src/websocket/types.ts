@@ -107,6 +107,7 @@ export interface AuthenticatedWebSocket extends WebSocket {
   // Bounded message queue for backpressure
   messageQueue: Array<string>;
   isProcessingQueue: boolean;
+  isQueueStopped: boolean;
   droppedMessages: number;
 }
 

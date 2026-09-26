@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe } from 'vitest';
 
+import { registerQueueLifecycleContracts } from './clientServerLimits/clientServerLimits.queue-lifecycle.contracts';
 import { registerClientServerLimitAuthUpgradeContracts } from './clientServerLimits/clientServerLimits.auth-upgrade.contracts';
 import { registerClientServerLimitBatchRateContracts } from './clientServerLimits/clientServerLimits.batch-rate.contracts';
 import { registerClientServerLimitBroadcastStatsLifecycleContracts } from './clientServerLimits/clientServerLimits.broadcast-stats-lifecycle.contracts';
@@ -14,6 +15,7 @@ describe('SanctauryWebSocketServer limits', () => {
   beforeEach(setupClientServerLimitMocks);
   afterEach(cleanupClientServerLimitMocks);
 
+  registerQueueLifecycleContracts();
   registerClientServerLimitBatchRateContracts();
   registerClientServerLimitAuthUpgradeContracts();
   registerClientServerLimitSubscriptionContracts();

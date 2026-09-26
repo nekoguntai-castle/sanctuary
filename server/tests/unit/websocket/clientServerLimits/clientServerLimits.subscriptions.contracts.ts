@@ -162,24 +162,26 @@ export const registerClientServerLimitSubscriptionContracts = () => {
     expect((server as any).subscriptions.get('system')?.has(other)).toBe(true);
   });
 
-  it('re-queues when socket buffer is full and resumes on drain', async () => {
+  it('uses send completion to resume delivery even when the socket reports buffering', async () => {
     const Server = await loadServer();
     const server = new Server();
     activeServers.push(server);
+    const callbacks: Array<() => void> = [];
     const client = createClient({
       bufferedAmount: 70000,
-      messageQueue: [JSON.stringify({ type: 'queued' })],
-      isProcessingQueue: false,
+      messageQueue: ['first', 'second'],
+      send: vi.fn((_data: string, callback: () => void) => callbacks.push(callback)),
     });
 
-    (server as any).processClientQueue(client);
-
-    expect(client.send).not.toHaveBeenCalled();
-    expect(client.once).toHaveBeenCalledWith('drain', expect.any(Function));
-    expect(client.messageQueue).toHaveLength(1);
-
-    client.bufferedAmount = 0;
-    client.emit('drain');
-    expect(client.send).toHaveBeenCalledWith(JSON.stringify({ type: 'queued' }));
+    server.processClientQueue(client);
+    expect(client.send).toHaveBeenCalledWith('first', expect.any(Function));
+    expect(client.messageQueue).toEqual(['second']);
+    callbacks[0]();
+    await Promise.resolve();
+    expect(client.send).toHaveBeenLastCalledWith('second', expect.any(Function));
+    callbacks[1]();
+    await Promise.resolve();
+    expect(client.isProcessingQueue).toBe(false);
+    expect(client.once).not.toHaveBeenCalledWith('drain', expect.any(Function));
   });
 };

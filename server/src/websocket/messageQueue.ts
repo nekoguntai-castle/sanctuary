@@ -4,12 +4,13 @@
  * Provides per-client message queuing with backpressure handling:
  * - Bounded queue size to prevent memory exhaustion
  * - Configurable overflow policies (drop_oldest, drop_newest, disconnect)
- * - Backpressure detection via socket buffer monitoring
- * - Drain event handling for slow consumers
+ * - One in-flight send with callback-driven backpressure
+ * - Terminal cleanup that prevents late callbacks from restarting delivery
  */
 
 import { WebSocket } from 'ws';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { websocketMessagesTotal } from '../observability/metrics';
 import {
   MAX_QUEUE_SIZE,
@@ -25,7 +26,7 @@ const log = createLogger('WS:QUEUE');
  * Returns false if message was dropped due to queue overflow.
  */
 export function sendToClient(client: AuthenticatedWebSocket, message: unknown): boolean {
-  if (client.readyState !== WebSocket.OPEN) {
+  if (client.isQueueStopped || client.readyState !== WebSocket.OPEN) {
     return false;
   }
 
@@ -68,6 +69,7 @@ export function sendToClient(client: AuthenticatedWebSocket, message: unknown): 
           'queue_overflow',
           `Queue full: ${client.messageQueue.length}/${MAX_QUEUE_SIZE} messages`
         );
+        stopClientQueue(client);
         client.closeReason = 'queue_overflow';
         client.close(4009, 'Message queue overflow');
         return false;
@@ -85,44 +87,55 @@ export function sendToClient(client: AuthenticatedWebSocket, message: unknown): 
   return true;
 }
 
-/**
- * Process queued messages for a client.
- * Uses drain event to handle backpressure from slow consumers.
- */
-export function processClientQueue(client: AuthenticatedWebSocket): void {
-  if (client.readyState !== WebSocket.OPEN || client.messageQueue.length === 0) {
-    client.isProcessingQueue = false;
+/** Discard pending payloads and prevent callbacks from reviving a retired queue. */
+export function stopClientQueue(client: AuthenticatedWebSocket): void {
+  client.isQueueStopped = true;
+  client.isProcessingQueue = false;
+  client.messageQueue.length = 0;
+}
+
+function failClientQueue(client: AuthenticatedWebSocket, error: unknown): void {
+  if (client.isQueueStopped) return;
+  stopClientQueue(client);
+  log.error('WebSocket send failed', { error: getErrorMessage(error) });
+  client.closeReason = 'error';
+  client.close(1011, 'Message delivery failed');
+}
+
+function completeClientSend(client: AuthenticatedWebSocket, error?: Error): void {
+  if (client.readyState !== WebSocket.OPEN) {
+    stopClientQueue(client);
     return;
   }
+  if (error) {
+    failClientQueue(client, error);
+    return;
+  }
+  // Retain ownership until this continuation runs. A synchronous callback must
+  // neither recurse through the queue nor let a second caller start a pump.
+  queueMicrotask(() => {
+    if (client.isQueueStopped) return;
+    client.isProcessingQueue = false;
+    processClientQueue(client);
+  });
+}
 
+/** Start one send; ws invokes its supported callback when the write settles. */
+export function processClientQueue(client: AuthenticatedWebSocket): void {
+  if (client.isQueueStopped || client.readyState !== WebSocket.OPEN) {
+    stopClientQueue(client);
+    return;
+  }
+  if (client.isProcessingQueue) return;
+  const message = client.messageQueue.shift();
+  if (message === undefined) return;
   client.isProcessingQueue = true;
 
-  // Send messages while socket buffer is not full
-  while (client.messageQueue.length > 0 && client.readyState === WebSocket.OPEN) {
-    const message = client.messageQueue.shift()!;
-
-    // Check if socket buffer is getting full (backpressure)
-    const bufferSize = client.bufferedAmount;
-    if (bufferSize > 64 * 1024) { // 64KB threshold
-      // Re-queue message and wait for drain
-      client.messageQueue.unshift(message);
-      log.debug('Socket buffer full, waiting for drain', {
-        userId: client.userId,
-        bufferSize,
-        queuedMessages: client.messageQueue.length,
-      });
-
-      // Wait for drain event before continuing
-      client.once('drain', () => {
-        processClientQueue(client);
-      });
-      return;
-    }
-
-    client.send(message);
-    // Track outgoing WebSocket message metric
+  try {
+    client.send(message, error => completeClientSend(client, error));
+    // Preserve the outgoing metric's send-invocation semantics.
     websocketMessagesTotal.inc({ type: 'main', direction: 'out' });
+  } catch (error) {
+    failClientQueue(client, error);
   }
-
-  client.isProcessingQueue = false;
 }

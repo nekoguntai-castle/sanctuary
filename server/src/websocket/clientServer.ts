@@ -40,7 +40,7 @@ import {
   getChannelsForEvent,
 } from './channels';
 import { checkRateLimit } from './rateLimiter';
-import { sendToClient, processClientQueue } from './messageQueue';
+import { sendToClient, processClientQueue, stopClientQueue } from './messageQueue';
 import type { WebSocketAuthorizationControl } from './authorizationControl';
 import { applyAuthorizationControlToClients, broadcastAuthorizedEvent } from './clientAuthorization';
 import { getClientWebSocketStats } from './clientStats';
@@ -106,6 +106,7 @@ export class SanctauryWebSocketServer {
     // Initialize bounded message queue
     client.messageQueue = [];
     client.isProcessingQueue = false;
+    client.isQueueStopped = false;
     client.droppedMessages = 0;
 
     // Check total connection limit
@@ -252,6 +253,7 @@ export class SanctauryWebSocketServer {
    * Handle client disconnect
    */
   private handleDisconnect(client: AuthenticatedWebSocket) {
+    stopClientQueue(client);
     // Clear any pending auth timeout
     if (client.authTimeout) {
       clearTimeout(client.authTimeout);
@@ -424,6 +426,7 @@ export class SanctauryWebSocketServer {
   }
 
   private revokeClient(client: AuthenticatedWebSocket): void {
+    stopClientQueue(client);
     client.closeReason = 'auth_revoked';
     client.close(4003, 'Authorization revoked');
     this.handleDisconnect(client);
@@ -452,6 +455,7 @@ export class SanctauryWebSocketServer {
         for (const client of this.clients) {
           if (!client.isAlive) {
             log.debug('Terminating dead connection');
+            stopClientQueue(client);
             client.terminate();
             this.handleDisconnect(client);
             continue;
@@ -482,6 +486,7 @@ export class SanctauryWebSocketServer {
    */
   public close() {
     for (const client of this.clients) {
+      stopClientQueue(client);
       client.close(1000, 'Server closing');
     }
     this.wss.close();
