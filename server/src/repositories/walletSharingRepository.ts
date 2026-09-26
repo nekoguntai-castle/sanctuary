@@ -5,10 +5,15 @@
  */
 
 import prisma from '../models/prisma';
-import type { WalletUser, GroupMember } from '../generated/prisma/client';
-import type { WalletRoleValue } from '@sanctuary/shared/constants/walletRoles';
+import type { WalletUser, GroupMember, Prisma } from '../generated/prisma/client';
+import { WALLET_APPROVE_ROLE_VALUES, type WalletRoleValue } from '@sanctuary/shared/constants/walletRoles';
 
 type WalletUserRole = WalletRoleValue;
+export interface EffectiveApproverDbClient {
+  user: {
+    findMany(args: { where: Prisma.UserWhereInput; select: { id: true } }): Promise<Array<{ id: string }>>;
+  };
+}
 
 /**
  * Find wallet user access record
@@ -186,6 +191,31 @@ export async function findWalletIdsByUserRole(
   return Array.from(walletIds);
 }
 
+/** Effective approving users, with direct grants overriding group membership. */
+export async function findEffectiveApproverIds(
+  walletId: string,
+  client: EffectiveApproverDbClient = prisma,
+): Promise<string[]> {
+  const roles = [...WALLET_APPROVE_ROLE_VALUES];
+  const users = await client.user.findMany({
+    where: {
+      OR: [
+        { wallets: { some: { walletId, role: { in: roles } } } },
+        {
+          wallets: { none: { walletId } },
+          groupMemberships: {
+            some: {
+              group: { wallets: { some: { id: walletId, groupRole: { in: roles } } } },
+            },
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  return users.map(user => user.id);
+}
+
 /**
  * Find all wallet users with username info
  * Used by mobile permission service
@@ -229,6 +259,7 @@ export const walletSharingRepository = {
   updateWalletGroupWithResult,
   getWalletSharingInfo,
   findWalletIdsByUserRole,
+  findEffectiveApproverIds,
   findWalletUsersWithUsername,
   findWalletUserByCompositeKey,
 };

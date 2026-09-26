@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
+    user: { findMany: vi.fn() },
     walletUser: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../../../src/models/prisma', () => ({
 import prisma from '../../../src/models/prisma';
 import {
   addUserToWallet,
+  findEffectiveApproverIds,
   findWalletIdsByUserRole,
   findWalletUserByCompositeKey,
   findWalletUsersWithUsername,
@@ -42,6 +44,31 @@ import {
 describe('walletSharingRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('findEffectiveApproverIds scopes both access paths and lets every direct role override group access', async () => {
+    (prisma.user.findMany as Mock).mockResolvedValueOnce([{ id: 'owner' }, { id: 'group-approver' }]);
+    await expect(findEffectiveApproverIds('wallet-1')).resolves.toEqual(['owner', 'group-approver']);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { OR: [
+        { wallets: { some: { walletId: 'wallet-1', role: { in: ['owner', 'approver'] } } } },
+        {
+          wallets: { none: { walletId: 'wallet-1' } },
+          groupMemberships: { some: { group: { wallets: { some: {
+            id: 'wallet-1', groupRole: { in: ['owner', 'approver'] },
+          } } } } },
+        },
+      ] },
+      select: { id: true },
+    });
+  });
+
+  it('findEffectiveApproverIds uses the supplied transaction and handles no eligible users', async () => {
+    const client = { user: { findMany: vi.fn().mockResolvedValue([]) } };
+    await expect(findEffectiveApproverIds('missing', client))
+      .resolves.toEqual([]);
+    expect(client.user.findMany).toHaveBeenCalledOnce();
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
   });
 
   it('findWalletUser and group lookup helpers query expected models', async () => {

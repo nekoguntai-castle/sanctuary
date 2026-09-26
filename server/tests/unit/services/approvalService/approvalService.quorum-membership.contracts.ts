@@ -4,7 +4,6 @@ import { expect, it } from 'vitest';
 import {
   draftId,
   makePendingRequest,
-  makeWalletUser,
   mockDraftRepo,
   mockPolicyRepo,
   mockWalletSharingRepo,
@@ -16,11 +15,43 @@ import {
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 /**
- * Non-regression contracts for the two P1 findings:
+ * Non-regression contracts for approval membership findings:
  * - approval-specific-quorum-ignores-specificapprovers
  * - vault-policy-all-quorum-requiredapprovals-static-not-membership
+ * - vault-policy-all-quorum-omits-group-approvers
  */
 export function registerQuorumMembershipContracts() {
+  it('all-quorum resolves when the only non-requester approver has group access', async () => {
+    const request = makePendingRequest({ quorumType: 'all' });
+    mockPolicyRepo.findApprovalRequestById
+      .mockResolvedValueOnce(request)
+      .mockResolvedValueOnce({ ...request, votes: [{ userId: otherUserId, decision: 'approve' }] });
+    mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
+    mockDraftRepo.findById.mockResolvedValue({ userId, walletId });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
+    mockPolicyRepo.createVote.mockResolvedValue({ id: 'group-vote', decision: 'approve' });
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([{ status: 'approved' }]);
+
+    await approvalService.castVote(requestId, otherUserId, 'approve');
+
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+  });
+
+  it('all-quorum waits for a group approver after the direct owner votes', async () => {
+    const request = makePendingRequest({ quorumType: 'all' });
+    mockPolicyRepo.findApprovalRequestById
+      .mockResolvedValueOnce(request)
+      .mockResolvedValueOnce({ ...request, votes: [{ userId, decision: 'approve' }] });
+    mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
+    mockDraftRepo.findById.mockResolvedValue({ userId: 'signer-creator', walletId });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
+    mockPolicyRepo.createVote.mockResolvedValue({ id: 'owner-vote', decision: 'approve' });
+
+    await approvalService.castVote(requestId, userId, 'approve');
+
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).not.toHaveBeenCalled();
+  });
+
   it('refuses a vote from a user not listed in specificApprovers (unlisted voter never accumulates)', async () => {
     const specificRequest = makePendingRequest({ quorumType: 'specific', requiredApprovals: 1 });
 
@@ -81,10 +112,10 @@ export function registerQuorumMembershipContracts() {
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // A third approver has since joined the wallet — the live eligible set is
     // now three, not the two present at request creation.
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser(otherUserId, 'approver'),
-      makeWalletUser(secondApproverId, 'approver'),
-      makeWalletUser(thirdApproverId, 'approver'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      otherUserId,
+      secondApproverId,
+      thirdApproverId,
     ]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v2', decision: 'approve' });
 
@@ -107,8 +138,8 @@ export function registerQuorumMembershipContracts() {
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // secondApproverId was removed from the wallet before voting — the live
     // eligible set now only contains otherUserId, who has already approved.
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser(otherUserId, 'approver'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      otherUserId,
     ]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
@@ -131,9 +162,9 @@ export function registerQuorumMembershipContracts() {
         expirationHours: 0,
       },
     });
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser(otherUserId, 'approver'),
-      makeWalletUser(userId, 'owner'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      otherUserId,
+      userId,
     ]);
     mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
 
@@ -158,8 +189,8 @@ export function registerQuorumMembershipContracts() {
         expirationHours: 0,
       },
     });
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser(userId, 'owner'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      userId,
     ]);
     mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
 
@@ -172,7 +203,7 @@ export function registerQuorumMembershipContracts() {
     expect(callArgs.requiredApprovals).toBe(1);
   });
 
-  it('all-quorum: viewer/signer roles are not eligible approvers and do not count toward resolution', async () => {
+  it('all-quorum resolves using only the effective eligible approvers', async () => {
     const allRequest = makePendingRequest({ quorumType: 'all', requiredApprovals: 1 });
 
     mockPolicyRepo.findApprovalRequestById
@@ -186,10 +217,8 @@ export function registerQuorumMembershipContracts() {
     // otherUserId (approver) approves; a viewer and a signer are also on the
     // wallet but neither holds an approving role, so they must not gate
     // resolution even though they have not voted.
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser(otherUserId, 'approver'),
-      makeWalletUser(faker.string.uuid(), 'viewer'),
-      makeWalletUser(faker.string.uuid(), 'signer'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      otherUserId,
     ]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
@@ -219,8 +248,8 @@ export function registerQuorumMembershipContracts() {
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // 'creator' is the requester and the only wallet member with an
     // approving role; excluded because allowSelfApproval is false.
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser('creator', 'owner'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      'creator',
     ]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
 

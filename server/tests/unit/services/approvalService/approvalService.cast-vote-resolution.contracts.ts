@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it } from 'vitest';
 
-import { makePendingRequest, makeWalletUser, mockDraftRepo, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { makePendingRequest, mockDraftRepo, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteResolutionContracts() {
@@ -93,9 +93,9 @@ export function registerCastVoteResolutionContracts() {
       .mockResolvedValueOnce(requestWithAllVotes);
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([
-      makeWalletUser(otherUserId, 'approver'),
-      makeWalletUser(secondApproverId, 'approver'),
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([
+      otherUserId,
+      secondApproverId,
     ]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v2', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([

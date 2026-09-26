@@ -14,8 +14,68 @@ import {
   addUserToGroup,
 } from './setup';
 
+import { findEffectiveApproverIds } from '../../../src/repositories/walletSharingRepository';
+
 describeIfDatabase('WalletSharingRepository Integration Tests', () => {
   setupRepositoryTests();
+
+  describe('findEffectiveApproverIds', () => {
+    it('includes group approvers once and honors direct viewer and signer overrides', async () => {
+      await withTestTransaction(async tx => {
+        const owner = await createTestUser(tx, { username: 'effective-owner' });
+        const approver = await createTestUser(tx, { username: 'effective-group' });
+        const viewer = await createTestUser(tx, { username: 'effective-viewer' });
+        const signer = await createTestUser(tx, { username: 'effective-signer' });
+        const outsider = await createTestUser(tx, { username: 'effective-outsider' });
+        const group = await createTestGroup(tx);
+        const wallet = await createTestWallet(tx, owner.id);
+        await tx.wallet.update({ where: { id: wallet.id }, data: { groupId: group.id, groupRole: 'approver' } });
+        for (const user of [owner, approver, viewer, signer]) await addUserToGroup(tx, user.id, group.id);
+        await tx.walletUser.createMany({ data: [
+          { walletId: wallet.id, userId: viewer.id, role: 'viewer' },
+          { walletId: wallet.id, userId: signer.id, role: 'signer' },
+        ] });
+        const otherWallet = await createTestWallet(tx, outsider.id);
+        await tx.walletUser.create({ data: { walletId: otherWallet.id, userId: approver.id, role: 'viewer' } });
+
+        expect((await findEffectiveApproverIds(wallet.id, tx)).sort()).toEqual([owner.id, approver.id].sort());
+        expect(await findEffectiveApproverIds('missing-wallet', tx)).toEqual([]);
+      });
+    });
+
+    it('retains a direct approver when group access is viewer and excludes other group members', async () => {
+      await withTestTransaction(async tx => {
+        const owner = await createTestUser(tx, { username: 'viewer-group-owner' });
+        const approver = await createTestUser(tx, { username: 'direct-approver' });
+        const viewer = await createTestUser(tx, { username: 'group-viewer' });
+        const group = await createTestGroup(tx);
+        const wallet = await createTestWallet(tx, owner.id);
+        await tx.wallet.update({ where: { id: wallet.id }, data: { groupId: group.id, groupRole: 'viewer' } });
+        await addUserToGroup(tx, approver.id, group.id);
+        await addUserToGroup(tx, viewer.id, group.id);
+        await tx.walletUser.create({ data: { walletId: wallet.id, userId: approver.id, role: 'approver' } });
+        expect((await findEffectiveApproverIds(wallet.id, tx)).sort()).toEqual([owner.id, approver.id].sort());
+      });
+    });
+
+    it('reflects membership changes and deleted users from the supplied transaction', async () => {
+      await withTestTransaction(async tx => {
+        const owner = await createTestUser(tx, { username: 'live-owner' });
+        const approver = await createTestUser(tx, { username: 'live-approver' });
+        const group = await createTestGroup(tx);
+        const wallet = await createTestWallet(tx, owner.id);
+        await tx.wallet.update({ where: { id: wallet.id }, data: { groupId: group.id, groupRole: 'approver' } });
+        expect(await findEffectiveApproverIds(wallet.id, tx)).toEqual([owner.id]);
+        await addUserToGroup(tx, approver.id, group.id);
+        expect((await findEffectiveApproverIds(wallet.id, tx)).sort()).toEqual([owner.id, approver.id].sort());
+        await tx.groupMember.deleteMany({ where: { groupId: group.id, userId: approver.id } });
+        expect(await findEffectiveApproverIds(wallet.id, tx)).toEqual([owner.id]);
+        await addUserToGroup(tx, approver.id, group.id);
+        await tx.user.delete({ where: { id: approver.id } });
+        expect(await findEffectiveApproverIds(wallet.id, tx)).toEqual([owner.id]);
+      });
+    });
+  });
 
   describe('findWalletUser', () => {
     it('should find wallet user access record', async () => {

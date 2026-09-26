@@ -29,7 +29,7 @@ const approvalMocks = vi.hoisted(() => ({
     notifyApprovalResolved: vi.fn().mockResolvedValue(undefined),
   },
   mockWalletSharingRepo: {
-    findWalletUsersWithUsername: vi.fn(),
+    findEffectiveApproverIds: vi.fn(),
   },
 }));
 
@@ -88,10 +88,6 @@ export function makePendingRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
-export function makeWalletUser(walletUserId: string, role: string) {
-  return { id: faker.string.uuid(), walletId, userId: walletUserId, role, user: { id: walletUserId, username: walletUserId } };
-}
-
 export function registerApprovalServiceTestHarness() {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -108,6 +104,6 @@ export function registerApprovalServiceTestHarness() {
     // Default to no wallet members so 'all'-quorum paths that don't set up
     // membership explicitly resolve to an empty eligible set rather than
     // throwing on an unmocked call.
-    mockWalletSharingRepo.findWalletUsersWithUsername.mockResolvedValue([]);
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([]);
   });
 }

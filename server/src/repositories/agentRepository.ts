@@ -134,6 +134,7 @@ export type AgentFundingTransactionClient = Pick<
   | 'draftTransaction'
   | 'draftUtxoLock'
   | 'uTXO'
+  | 'user'
   | 'vaultPolicy'
   | 'walletAgent'
 >;

@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it, vi } from 'vitest';
 
-import { draftId, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
+import { draftId, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, mockWalletSharingRepo, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
 import { approvalService, type ApprovalDbClient } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCreateApprovalRequestsForDraftContracts() {
@@ -303,19 +303,20 @@ export function registerCreateApprovalRequestsForDraftContracts() {
     });
   });
 
-  it('propagates composite client to policy find/create and draft approval status update', async () => {
-    const mockClient = { vaultPolicy: {}, approvalRequest: {}, draftTransaction: {} } as unknown as ApprovalDbClient;
+  it('propagates composite client to effective membership, policy writes, and draft approval status', async () => {
+    const mockClient = { vaultPolicy: {}, approvalRequest: {}, draftTransaction: {}, user: {} } as unknown as ApprovalDbClient;
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       id: policyId,
       config: {
         trigger: { always: true },
         requiredApprovals: 1,
-        quorumType: 'any_n',
+        quorumType: 'all',
         allowSelfApproval: false,
         expirationHours: 0,
       },
     });
 
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, 'group-approver']);
     mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
 
     const result = await approvalService.createApprovalRequestsForDraft(
@@ -325,9 +326,10 @@ export function registerCreateApprovalRequestsForDraftContracts() {
     );
 
     expect(result).toHaveLength(1);
+    expect(mockWalletSharingRepo.findEffectiveApproverIds).toHaveBeenCalledWith(walletId, mockClient);
     expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledWith(policyId, mockClient);
     expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ draftTransactionId: draftId, policyId }),
+      expect.objectContaining({ draftTransactionId: draftId, policyId, requiredApprovals: 1 }),
       mockClient
     );
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending', mockClient);

@@ -13,8 +13,7 @@ import { policyRepository } from '../../repositories/policyRepository';
 import type { PolicyDbClient } from '../../repositories/policyRepository';
 import { draftRepository } from '../../repositories/draftRepository';
 import type { DraftDbClient } from '../../repositories/draftRepository';
-import { walletSharingRepository } from '../../repositories/walletSharingRepository';
-import { WALLET_APPROVE_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
+import { walletSharingRepository, type EffectiveApproverDbClient } from '../../repositories/walletSharingRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -30,7 +29,7 @@ const log = createLogger('VAULT_POLICY:SVC_APPROVAL');
 
 type ApprovalRequestWithVotes = ApprovalRequest & { votes: ApprovalVote[] };
 type ApprovalDraft = Awaited<ReturnType<typeof draftRepository.findById>>;
-export type ApprovalDbClient = DraftDbClient & PolicyDbClient;
+export type ApprovalDbClient = DraftDbClient & PolicyDbClient & EffectiveApproverDbClient;
 
 /**
  * Narrow a policy's stored config (Prisma JSON) to ApprovalRequiredConfig
@@ -129,7 +128,7 @@ export async function createApprovalRequestsForDraft(
     // re-derives membership again (see checkAndResolveRequest) so a later
     // membership change is still honored correctly.
     const requiredApprovals = config.quorumType === 'all'
-      ? (await getEligibleApproverIds(walletId, createdByUserId, config.allowSelfApproval)).length
+      ? (await getEligibleApproverIds(walletId, createdByUserId, config.allowSelfApproval, client)).length
       : config.requiredApprovals;
 
     const requestData = {
@@ -458,13 +457,10 @@ export async function getApprovalsForDraft(
 async function getEligibleApproverIds(
   walletId: string,
   requesterId: string,
-  allowSelfApproval: boolean
+  allowSelfApproval: boolean,
+  client?: EffectiveApproverDbClient,
 ): Promise<string[]> {
-  const walletUsers = await walletSharingRepository.findWalletUsersWithUsername(walletId);
-  const approveRoles: readonly string[] = WALLET_APPROVE_ROLE_VALUES;
-  const eligible = walletUsers
-    .filter(wu => approveRoles.includes(wu.role))
-    .map(wu => wu.userId);
+  const eligible = await walletSharingRepository.findEffectiveApproverIds(walletId, client);
 
   if (allowSelfApproval) {
     return eligible;
