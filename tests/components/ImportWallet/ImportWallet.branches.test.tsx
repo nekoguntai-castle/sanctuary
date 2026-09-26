@@ -144,6 +144,14 @@ function createState(overrides: Record<string, unknown> = {}) {
     resetHardwareState: vi.fn(),
     resetQrState: vi.fn(),
     resetValidation: vi.fn(),
+    beginValidation: vi.fn((dataOverride?: string) => ({
+      owner: { network: 'mainnet', generation: 0 }, generation: 0,
+      data: dataOverride ?? overrides.importData ?? '', format: overrides.format ?? null,
+    })),
+    isValidationCurrent: vi.fn(() => true),
+    acceptValidation: vi.fn(),
+    validatedInput: { owner: { network: 'mainnet', generation: 0 }, generation: 0,
+      data: overrides.importData ?? '', format: overrides.format ?? null },
     ...overrides,
   };
 }

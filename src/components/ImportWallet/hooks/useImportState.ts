@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { ImportValidationResult } from '../../../api/wallets';
 import type { TabNetwork } from '../../../app/networks';
@@ -24,6 +24,21 @@ export interface BytesUrDecoderLike {
 export interface ImportNetworkOwner {
   network: TabNetwork;
   generation: number;
+}
+
+/** Exact input and ownership accepted by one validation request. */
+export interface ImportInputSnapshot {
+  owner: ImportNetworkOwner;
+  generation: number;
+  data: string;
+  format: ImportFormat | null;
+}
+
+function useInvalidatingSetter<T>(setter: Dispatch<SetStateAction<T>>, invalidate: () => void) {
+  return useCallback((value: SetStateAction<T>) => {
+    invalidate();
+    setter(value);
+  }, [invalidate, setter]);
 }
 
 export function useImportState(network: TabNetwork = 'mainnet') {
@@ -63,8 +78,27 @@ export function useImportState(network: TabNetwork = 'mainnet') {
 
   const ownerRef = useRef<ImportNetworkOwner>({ network, generation: 0 });
   const mountedRef = useRef(true);
+  const inputGenerationRef = useRef(0);
+  const [validatedInput, setValidatedInput] = useState<ImportInputSnapshot | null>(null);
+  // Every edit advances ownership, including A → B → A; equality cannot revive A.
+  const resetValidation = useCallback(() => {
+    inputGenerationRef.current += 1;
+    setValidatedInput(null);
+    setStep(current => current > 2 ? 2 : current);
+    setValidationResult(null);
+    setValidationError(null);
+    setIsValidating(false);
+  }, []);
+
+  const ownedSetImportData = useInvalidatingSetter(setImportData, resetValidation);
+  const ownedSetFormat = useInvalidatingSetter(setFormat, resetValidation);
+  const ownedSetScriptType = useInvalidatingSetter(setScriptType, resetValidation);
+  const ownedSetAccountIndex = useInvalidatingSetter(setAccountIndex, resetValidation);
+  const ownedSetHardwareDeviceType = useInvalidatingSetter(setHardwareDeviceType, resetValidation);
+  const ownedSetXpubData = useInvalidatingSetter(setXpubData, resetValidation);
 
   const resetNetworkOwnedState = () => {
+    resetValidation();
     setStep(1);
     setFormat(null);
     setImportData('');
@@ -102,6 +136,7 @@ export function useImportState(network: TabNetwork = 'mainnet') {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      inputGenerationRef.current += 1;
     };
   }, []);
 
@@ -131,15 +166,31 @@ export function useImportState(network: TabNetwork = 'mainnet') {
     bytesDecoderRef.current = null;
   };
 
-  const resetValidation = () => {
-    setValidationResult(null);
-    setValidationError(null);
+  // Retire prior work before capture. Hardware callers set the descriptor first
+  // and pass it explicitly because React has not rendered that write yet.
+  const beginValidation = (dataOverride?: string): ImportInputSnapshot => {
+    resetValidation();
+    return {
+      owner: getNetworkOwner(),
+      generation: inputGenerationRef.current,
+      data: dataOverride ?? importData,
+      format,
+    };
+  };
+  const isValidationCurrent = (snapshot: ImportInputSnapshot): boolean => (
+    isNetworkOwnerCurrent(snapshot.owner)
+    && snapshot.generation === inputGenerationRef.current
+  );
+  const acceptValidation = (snapshot: ImportInputSnapshot, result: ImportValidationResult | null) => {
+    if (!isValidationCurrent(snapshot)) return;
+    setValidationResult(result);
+    setValidatedInput(result?.valid ? snapshot : null);
   };
 
   return {
     step, setStep,
-    format, setFormat,
-    importData, setImportData,
+    format, setFormat: ownedSetFormat,
+    importData, setImportData: ownedSetImportData,
     walletName, setWalletName,
     network,
     validationResult, setValidationResult,
@@ -147,12 +198,12 @@ export function useImportState(network: TabNetwork = 'mainnet') {
     validationError, setValidationError,
     isImporting, setIsImporting,
     importError, setImportError,
-    hardwareDeviceType, setHardwareDeviceType,
+    hardwareDeviceType, setHardwareDeviceType: ownedSetHardwareDeviceType,
     deviceConnected, setDeviceConnected,
     deviceLabel, setDeviceLabel,
-    scriptType, setScriptType,
-    accountIndex, setAccountIndex,
-    xpubData, setXpubData,
+    scriptType, setScriptType: ownedSetScriptType,
+    accountIndex, setAccountIndex: ownedSetAccountIndex,
+    xpubData, setXpubData: ownedSetXpubData,
     isFetchingXpub, setIsFetchingXpub,
     isConnecting, setIsConnecting,
     hardwareError, setHardwareError,
@@ -166,5 +217,6 @@ export function useImportState(network: TabNetwork = 'mainnet') {
     resetHardwareState,
     resetQrState,
     resetValidation,
+    beginValidation, isValidationCurrent, acceptValidation, validatedInput,
   };
 }

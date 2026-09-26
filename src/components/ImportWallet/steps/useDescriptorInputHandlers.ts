@@ -1,18 +1,27 @@
-import type { ChangeEvent } from 'react';
+import { useEffect, type ChangeEvent } from 'react';
+import { useLatestRequest } from '../../../hooks/useLatestRequest';
 import { ImportFormat, MAX_FILE_SIZE, MAX_INPUT_SIZE, validateInputData } from '../importHelpers';
 
 export function useDescriptorInputHandlers({
   format,
   setImportData,
   setValidationError,
+  resetValidation,
 }: {
   format: ImportFormat | null;
   setImportData: (data: string) => void;
   setValidationError: (error: string | null) => void;
+  resetValidation: () => void;
 }) {
+  const reads = useLatestRequest();
+  // A late read must not write into another format or an unmounted input step.
+  useEffect(() => () => reads.invalidate(), [format, reads]);
+
   const handleFileUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const request = reads.begin();
+    resetValidation();
 
     const fileError = validateUploadedFile(file, format);
     if (fileError) {
@@ -21,8 +30,10 @@ export function useDescriptorInputHandlers({
       return;
     }
 
+    setImportData('');
     const reader = new FileReader();
     reader.onload = (readerEvent) => {
+      if (!reads.isCurrent(request)) return;
       const content = readerEvent.target?.result as string;
       const contentError = validateInputData(content, format);
 
@@ -35,12 +46,14 @@ export function useDescriptorInputHandlers({
       setValidationError(null);
     };
     reader.onerror = () => {
-      setValidationError('Failed to read file');
+      if (reads.isCurrent(request)) setValidationError('Failed to read file');
     };
     reader.readAsText(file);
   };
 
   const handleTextChange = (newValue: string) => {
+    reads.invalidate();
+    resetValidation();
     const sizeError = validateInputSize(newValue);
     if (sizeError) {
       setValidationError(sizeError);

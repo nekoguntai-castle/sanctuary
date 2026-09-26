@@ -13,6 +13,7 @@ function renderDescriptorInput(overrides: Partial<DescriptorInputProps> = {}) {
     importData: '',
     setImportData: vi.fn(),
     validationError: null,
+    resetValidation: vi.fn(),
     setValidationError: vi.fn(),
     ...overrides,
   };
@@ -212,7 +213,7 @@ describe('DescriptorInput', () => {
     fireEvent.change(input, { target: { files: [invalidFile] } });
 
     expect(setValidationError).toHaveBeenCalledWith('Invalid JSON format. Please check the file contents.');
-    expect(setImportData).not.toHaveBeenCalled();
+    expect(setImportData).toHaveBeenCalledExactlyOnceWith('');
   });
 
   it('renders textarea and error styles when validationError prop is provided', () => {

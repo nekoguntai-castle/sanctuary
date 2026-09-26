@@ -1,7 +1,7 @@
 import { ApiError } from '../../api/client';
 import { createLogger } from '../../utils/logger';
 import { buildDescriptorFromXpub, validateImportData } from './importHelpers';
-import type { ImportNetworkOwner } from './hooks/useImportState';
+import type { ImportInputSnapshot, ImportNetworkOwner } from './hooks/useImportState';
 import type { ImportWalletMutation, ImportWalletState } from './types';
 
 const log = createLogger('ImportWallet');
@@ -18,20 +18,24 @@ export function useImportWalletActions({
   const renderOwner = state.getNetworkOwner();
 
   const validateData = async (owner: ImportNetworkOwner, dataOverride?: string) => {
+    const snapshot = state.beginValidation(dataOverride);
     state.setIsValidating(true);
     try {
-      return await validateImportData(
-        state.format,
-        state.importData,
+      const valid = await validateImportData(
+        snapshot.format,
+        snapshot.data,
         state.walletName,
-        ownedSetter(state, owner, state.setValidationResult),
-        ownedSetter(state, owner, state.setValidationError),
-        ownedSetter(state, owner, state.setWalletName),
+        ownedSetter(state, snapshot, result => state.acceptValidation(snapshot, result)),
+        ownedSetter(state, snapshot, state.setValidationError),
+        ownedSetter(state, snapshot, state.setWalletName),
         owner.network,
         dataOverride,
       );
+      if (!valid || !state.isValidationCurrent(snapshot)) return false;
+      state.setStep(3);
+      return true;
     } finally {
-      if (state.isNetworkOwnerCurrent(owner)) {
+      if (state.isValidationCurrent(snapshot)) {
         state.setIsValidating(false);
       }
     }
@@ -57,16 +61,13 @@ export function useImportWalletActions({
   };
 
   const handleBack = () => {
+    if (state.step <= 3) state.resetValidation();
     if (state.step <= 1) {
       navigate('/wallets');
       return;
     }
 
     state.setStep(state.step - 1);
-
-    if (state.step === 3) {
-      state.resetValidation();
-    }
 
     if (state.step === 2) {
       state.resetHardwareState();
@@ -83,7 +84,9 @@ export function useImportWalletActions({
 
     try {
       const result = await importWalletMutation.mutateAsync({
-        data: state.importData,
+        // canSubmitImport requires this snapshot to remain current: submit the
+        // exact reviewed bytes, never a later value of the editable input.
+        data: state.validatedInput!.data,
         name: state.walletName.trim(),
         network: owner.network,
       });
@@ -126,7 +129,7 @@ async function handleStepTwoNext(
   }
 
   if (state.importData.trim()) {
-    await validateAndAdvance(state, owner, validateData);
+    await validateData(owner);
   }
 }
 
@@ -145,7 +148,7 @@ async function handleHardwareNext(
   );
 
   state.setImportData(descriptor);
-  await validateAndAdvance(state, owner, validateData, descriptor);
+  await validateData(owner, descriptor);
 }
 
 async function validateScannedQr(
@@ -154,35 +157,25 @@ async function validateScannedQr(
   validateData: (owner: ImportNetworkOwner, dataOverride?: string) => Promise<boolean>,
 ) {
   if (state.qrScanned && state.importData.trim()) {
-    await validateAndAdvance(state, owner, validateData);
-  }
-}
-
-async function validateAndAdvance(
-  state: ImportWalletState,
-  owner: ImportNetworkOwner,
-  validateData: (owner: ImportNetworkOwner, dataOverride?: string) => Promise<boolean>,
-  dataOverride?: string,
-) {
-  const isValid = await validateData(owner, dataOverride);
-  if (isValid && state.isNetworkOwnerCurrent(owner)) {
-    state.setStep(3);
+    await validateData(owner);
   }
 }
 
 function ownedSetter<T>(
   state: ImportWalletState,
-  owner: ImportNetworkOwner,
+  owner: ImportInputSnapshot,
   setter: (value: T) => void,
 ): (value: T) => void {
   return (value) => {
-    if (state.isNetworkOwnerCurrent(owner)) setter(value);
+    if (state.isValidationCurrent(owner)) setter(value);
   };
 }
 
 function canSubmitImport(state: ImportWalletState, owner: ImportNetworkOwner): boolean {
   return state.step === 4
     && Boolean(state.validationResult)
+    && state.validatedInput !== null
+    && state.isValidationCurrent(state.validatedInput)
     && !state.isValidating
     && !state.isImporting
     && Boolean(state.importData.trim())

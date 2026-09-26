@@ -16,6 +16,7 @@ interface DescriptorInputProps {
   setImportData: (data: string) => void;
   validationError: string | null;
   setValidationError: (error: string | null) => void;
+  resetValidation: () => void;
 }
 
 export const DescriptorInput: React.FC<DescriptorInputProps> = ({
@@ -24,11 +25,13 @@ export const DescriptorInput: React.FC<DescriptorInputProps> = ({
   setImportData,
   validationError,
   setValidationError,
+  resetValidation,
 }) => {
   const { handleFileUpload, handleTextChange } = useDescriptorInputHandlers({
     format,
     setImportData,
     setValidationError,
+    resetValidation,
   });
 
   return (

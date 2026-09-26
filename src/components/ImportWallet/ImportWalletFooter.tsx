@@ -40,6 +40,8 @@ export function ImportWalletFooter({
 function isImportReady(state: ImportWalletState): boolean {
   const owner = state.getNetworkOwner();
   return Boolean(state.validationResult)
+    && state.validatedInput !== null
+    && state.isValidationCurrent(state.validatedInput)
     && Boolean(state.importData.trim())
     && Boolean(state.walletName.trim())
     && !state.isValidating

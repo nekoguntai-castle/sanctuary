@@ -105,6 +105,7 @@ function ImportDataStep({
 
   return (
     <DescriptorInput
+      resetValidation={state.resetValidation}
       format={state.format}
       importData={state.importData}
       setImportData={state.setImportData}

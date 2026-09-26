@@ -48,7 +48,7 @@ Acceptance: ALL includes retained old history; invalid values cannot create dive
 - [x] Audit logs: independent log/stats generations; guard rows, totals, errors, logging, and loading/finally; invalidate on unmount. Keep filter/page/refresh behavior.
 - [x] Backup upload: increment owner before each file read, invalidate on clear/unmount, reset filename/validation/error/success/validating state, guard read/parse/validation success/failure/finally and input reset. Use existing safe JSON parsing utility when editing this boundary. Keep validation failure semantics.
 - [x] Currency providers: one generation and shared reload path for mount/events/manual reload; guard list/fallback/persistence/logging and invalidate on unmount. Preserve current selected-provider checks and fallback policy.
-- [ ] Verify 100% frontend coverage, typechecks, production build and static-server Playwright render checks. Review/deliver one frontend PR with exact target CI.
+- [x] Verify 100% frontend coverage, typechecks, production build and static-server Playwright render checks. Review/deliver one frontend PR with exact target CI.
 
 Acceptance: only current request/file owns results and terminal state; stale requests cannot persist provider changes or enable restore for another file.
 
@@ -57,15 +57,15 @@ Acceptance: only current request/file owns results and terminal state; stale req
 - [x] Add a failing regression using supported ws transport behavior, not a fabricated WebSocket drain event.
 - [x] Choose a supported send-completion or bounded retry mechanism; guarantee a single queue owner, ordered messages, retry cancellation on close, and bounded memory under sustained pressure. Inspect `clientServer` cleanup and the `AuthenticatedWebSocket` type before implementation.
 - [x] Test recovery, sustained/repeated pressure, close while waiting, send errors, and ordering; preserve existing overflow modes and metrics.
-- [ ] Verify/review and deliver one server PR with exact target CI.
+- [x] Verify/review and deliver one server PR with exact target CI.
 
 Acceptance: temporary backpressure resumes delivery without reconnect; closed clients retain no retry resources. No private ws fields or new unbounded polling.
 
 ### Phase 5 — Import validation tied to current input
 
-- [ ] Add deferred component/action regressions: same-network A-to-B edit, Back/format change, replacement file read, stale success/error, and unmount. Assert reviewed input equals submitted input.
-- [ ] Extend existing ownership to include import content/validation lifetime. Invalidate pending work at content/format/back changes and file read replacement; preserve network and hardware/QR ownership checks.
-- [ ] Require current validated input before advancing/importing. Ensure hardware-generated descriptor paths capture the new owner after setting content, avoiding self-invalidating successful validation.
+- [x] Add deferred component/action regressions: same-network A-to-B edit, Back/format change, replacement file read, stale success/error, and unmount. Assert reviewed input equals submitted input.
+- [x] Extend existing ownership to include import content/validation lifetime. Invalidate pending work at content/format/back changes and file read replacement; preserve network and hardware/QR ownership checks.
+- [x] Require current validated input before advancing/importing. Ensure hardware-generated descriptor paths capture the new owner after setting content, avoiding self-invalidating successful validation.
 - [ ] Verify frontend coverage, types, build/render checks and adversarial review; deliver a separate PR with exact target CI.
 
 Acceptance: replacing input requires validation of that input; old work never advances or rewrites a new wizard session. No backend import-policy change.
@@ -115,11 +115,21 @@ Two complete passes: coordinator source/contract review and independent read-onl
 - Tests-first regressions: six audit, nine backup ownership/privacy, and five provider cases failed before fixes. Expanded focused suites pass 135 tests.
 - Reused `createRequestOwnership` through a stable `useLatestRequest` lifecycle hook; cleanup invalidates old work while StrictMode replay accepts new work. Independent reviews of audit/helper, backup, and currency slices found no remaining actionable issues.
 - Browser JSON parsing reports failure without retaining syntax errors that may contain backup contents; the API remains authoritative for backup compatibility.
-- Full frontend: 669 files / 9,026 tests passed. Root app/test/all TypeScript checks passed. Frontend coverage passed at 100% statements, branches, functions, and lines. Production build, lint, complexity, architecture diagrams, and 177 static-build Chromium render/admin/settings tests passed. Full backend passed 16,503 tests (65 database-dependent suites skipped), and server source/test types passed. Delivery pending.
+- Full frontend: 669 files / 9,026 tests passed. Root app/test/all TypeScript checks passed. Frontend coverage passed at 100% statements, branches, functions, and lines. Production build, lint, complexity, architecture diagrams, and 177 static-build Chromium render/admin/settings tests passed. Full backend passed 16,503 tests (65 database-dependent suites skipped), and server source/test types passed. PR #1303 merged at `49a09cea5afbb6408e9add5570598035ff9c2ed7`; exact target push workflows 19031–19035 all passed, including hardware emulators.
 
 ## Phase 4 verification progress
 
 - Pre-fix high-buffer regression on the installed ws event surface sent zero messages. Replaced unsupported drain waiting with one send in flight, supported send completion, and a guarded microtask continuation.
 - Terminal cleanup covers disconnect, revocation, heartbeat termination, shutdown, overflow, and errors. New closing/error regression first reproduced overwritten auth-expiry close reason; the completion now retires non-OPEN transport before interpreting its error.
-- Focused queue/lifecycle suite: 88 tests passed. Full frontend: 9,026 tests passed. Root/server source/test types, lint, architecture/cycles/diagrams, complexity, and independent final review passed. Full backend: 723 files / 16,518 tests passed (65 database-dependent suites skipped). Unit-only coverage passed at 100% statements (41,105), branches (23,194), functions (8,752), and lines (38,289). Delivery pending.
+- Focused queue/lifecycle suite: 88 tests passed. Full frontend: 9,026 tests passed. Root/server source/test types, lint, architecture/cycles/diagrams, complexity, and independent final review passed. Full backend: 723 files / 16,518 tests passed (65 database-dependent suites skipped). Unit-only coverage passed at 100% statements (41,105), branches (23,194), functions (8,752), and lines (38,289). PR #1304 merged at `f4b2d04b1c41d70f697626d63457b9b8f17ec54c`; exact target push workflows 19041–19045 all passed.
 - Reviewed adjacent concerns: old queued wallet payloads are immutable and authorized at admission; new private events revalidate access/generation. Terminal error frames were already best-effort before immediate close; close code/reason and browser retry behavior remain unchanged. No additional P0-P2 was confirmed.
+
+## Phase 5 verification progress
+
+- Tests-first regressions: nine input-ownership failures and five file-read failures reproduced before fixes. A separate timing regression reproduced the intermediate boolean-handoff race before moving advancement into the snapshot-guarded continuation.
+- Validation snapshots retain exact input, format, network owner, and monotonic input generation. File selection invalidates before reading; imports submit only a current accepted snapshot. Hardware descriptor generation and Back from review to naming preserve valid behavior.
+- Focused ImportWallet suites: 166 tests passed. Full frontend: 671 files / 9,049 tests passed with 100% statements, branches, functions, and lines. Production build, lint, complexity, architecture/cycles/diagrams, and independent adversarial/simplification review passed. All frontend typechecks and 157 static-build Chromium import/render tests passed. Unchanged backend remains verified by the Phase 4 full 16,518-test suite and 100% unit coverage. Delivery pending.
+
+- Commit-hook feedback addressed with six additional real-owner negative tests: absent/stale snapshots disable import and prevent submission, edits of accepted input retire review, and Back 3→2 clears acceptance. Focused ownership suite now 23 tests; test typecheck passes. Added concise ownership/call-order comments; production behavior unchanged.
+
+- Phase 5 follow-up hook review passed all reviewers and the full frontend suite (671 files / 9,055 tests); focused import total is now 172 tests. Source behavior and the verified production build are unchanged.
