@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mockGetWalletStats, mockTransactionRepository, mockUtxoRepository, mockWalletCache, request, walletRouter } from './walletsTestHarness';
 
 export const registerWalletAnalyticsContracts = () => {
@@ -33,6 +33,58 @@ export const registerWalletAnalyticsContracts = () => {
   });
 
   describe('GET /wallets/:id/balance-history', () => {
+    it('ALL includes retained history older than five years with an epoch lower bound', async () => {
+      const old = { blockTime: new Date('2010-01-01T00:00:00.000Z'), balanceAfter: BigInt(42) };
+      mockTransactionRepository.findForBalanceHistory.mockImplementationOnce(async (_walletId: string, start: Date) =>
+        [old].filter(tx => tx.blockTime >= start));
+      mockUtxoRepository.getUnspentBalance.mockResolvedValueOnce(BigInt(42));
+
+      const response = await request(walletRouter).get('/api/v1/wallets/wallet-123/balance-history?timeframe=ALL');
+
+      expect(response.status).toBe(200);
+      expect(mockTransactionRepository.findForBalanceHistory).toHaveBeenCalledWith('wallet-123', new Date(0));
+      expect(response.body.dataPoints).toContainEqual({ timestamp: old.blockTime.toISOString(), balance: 42 });
+    });
+
+    it.each(['', '?timeframe=INVALID', '?timeframe=', '?timeframe=1D&timeframe=ALL'])(
+      'normalizes omitted or invalid query %s to the monthly response and cache identity', async query => {
+        mockTransactionRepository.findForBalanceHistory.mockResolvedValueOnce([]);
+        mockUtxoRepository.getUnspentBalance.mockResolvedValueOnce(BigInt(7));
+        const before = Date.now();
+        const response = await request(walletRouter).get(`/api/v1/wallets/wallet-123/balance-history${query}`);
+        const after = Date.now();
+
+        expect(response.status).toBe(200);
+        expect(response.body.timeframe).toBe('1M');
+        expect(mockWalletCache.get).toHaveBeenCalledWith('balance-history:wallet-123:1M');
+        expect(mockWalletCache.set).toHaveBeenCalledWith('balance-history:wallet-123:1M', {
+          currentBalance: 7, dataPoints: [],
+        }, 10);
+        const start = mockTransactionRepository.findForBalanceHistory.mock.calls[0][1] as Date;
+        expect(start.getTime()).toBeGreaterThanOrEqual(before - 30 * 86400000);
+        expect(start.getTime()).toBeLessThanOrEqual(after - 30 * 86400000);
+      },
+    );
+
+    it.each([['1D', 1], ['1W', 7], ['1M', 30], ['1Y', 365]] as const)(
+      'preserves the valid %s range', async (timeframe, days) => {
+        const now = Date.UTC(2026, 8, 26);
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+        try {
+          mockTransactionRepository.findForBalanceHistory.mockResolvedValueOnce([]);
+          mockUtxoRepository.getUnspentBalance.mockResolvedValueOnce(BigInt(0));
+          const response = await request(walletRouter).get(`/api/v1/wallets/wallet-123/balance-history?timeframe=${timeframe}`);
+          expect(response.status).toBe(200);
+          expect(response.body.timeframe).toBe(timeframe);
+          expect(mockTransactionRepository.findForBalanceHistory).toHaveBeenCalledWith(
+            'wallet-123', new Date(now - days * 86400000),
+          );
+        } finally {
+          clock.mockRestore();
+        }
+      },
+    );
+
     it('should return balance history data', async () => {
       mockTransactionRepository.findForBalanceHistory.mockResolvedValue([
         { txid: 'tx1', blockTime: new Date('2024-01-01'), balanceAfter: BigInt(50000) },
@@ -48,15 +100,17 @@ export const registerWalletAnalyticsContracts = () => {
       expect(response.body.dataPoints).toBeDefined();
     });
 
-    it('should use cached data when available', async () => {
+    it('uses the normalized monthly cache for invalid input', async () => {
       mockWalletCache.get.mockResolvedValueOnce({
         currentBalance: 200000,
         dataPoints: [{ timestamp: '2024-01-01', balance: 200000 }],
       });
 
-      const response = await request(walletRouter).get('/api/v1/wallets/wallet-123/balance-history');
+      const response = await request(walletRouter).get('/api/v1/wallets/wallet-123/balance-history?timeframe=INVALID');
 
       expect(response.status).toBe(200);
+      expect(response.body.timeframe).toBe('1M');
+      expect(mockWalletCache.get).toHaveBeenCalledWith('balance-history:wallet-123:1M');
       expect(response.body.currentBalance).toBe(200000);
       expect(mockTransactionRepository.findForBalanceHistory).not.toHaveBeenCalled();
     });
@@ -73,7 +127,7 @@ export const registerWalletAnalyticsContracts = () => {
       const response = await request(walletRouter).get('/api/v1/wallets/wallet-123/balance-history?timeframe=INVALID');
 
       expect(response.status).toBe(200);
-      expect(response.body.timeframe).toBe('INVALID');
+      expect(response.body.timeframe).toBe('1M');
       expect(response.body.currentBalance).toBe(999999);
       expect(response.body.dataPoints.length).toBe(103);
       expect(response.body.dataPoints.some((point: any) => point.timestamp === '')).toBe(true);

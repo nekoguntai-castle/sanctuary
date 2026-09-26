@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import express from 'express';
+import { parse as parseQuery } from 'node:querystring';
 import { WALLET_SCRIPT_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
 import { resetPrismaMocks } from '../../../mocks/prisma';
 
@@ -229,7 +230,7 @@ class RequestBuilder {
     const headers = Object.fromEntries(
       Object.entries(this.headers).map(([key, value]) => [key.toLowerCase(), value])
     );
-    const query = queryString ? Object.fromEntries(new URLSearchParams(queryString)) : {};
+    const query = parseQuery(queryString ?? '');
 
     return new Promise<HandlerResponse>((resolve, reject) => {
       const req: any = {

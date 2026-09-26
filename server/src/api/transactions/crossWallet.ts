@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { TimeframeSchema as HistoryTimeframeSchema } from '../schemas/timeframe';
 import { walletRepository, transactionRepository, utxoRepository } from '../../repositories';
 import { buildWalletAccessWhere } from '../../repositories/accessControl';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -48,7 +49,7 @@ const TotalBalanceSchema = z.coerce.number().int().catch(0);
  * the cached activity summary — mint an unbounded number of cache keys from a
  * caller-controlled string.
  */
-const TimeframeSchema = z.enum(['1D', '1W', '1M', '1Y', 'ALL']).catch('1W');
+const TimeframeSchema = HistoryTimeframeSchema.catch('1W');
 
 /**
  * Ceiling on how many wallet ids a caller may name at once.

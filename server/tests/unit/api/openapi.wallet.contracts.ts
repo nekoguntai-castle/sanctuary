@@ -469,6 +469,8 @@ export function registerOpenApiWalletTests() {
       expectDocumentedMethod(path, method);
     }
 
+    expect(openApiSpec.components.schemas.WalletBalanceHistoryResponse.properties.timeframe.enum)
+      .toEqual(['1D', '1W', '1M', '1Y', 'ALL']);
     expect(openApiSpec.components.schemas.WalletBalanceHistoryResponse.required).toEqual([
       'timeframe',
       'currentBalance',
@@ -477,7 +479,7 @@ export function registerOpenApiWalletTests() {
     expect(openApiSpec.paths['/wallets/{walletId}/balance-history'].get.parameters).toContainEqual(
       expect.objectContaining({
         name: 'timeframe',
-        schema: expect.objectContaining({ default: '1M' }),
+        schema: expect.objectContaining({ default: '1M', enum: ['1D', '1W', '1M', '1Y', 'ALL'] }),
       }),
     );
     expect(openApiSpec.paths['/wallets/{walletId}/addresses'].get.responses[200].content['application/json'].schema)

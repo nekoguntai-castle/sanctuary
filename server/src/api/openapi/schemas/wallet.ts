@@ -4,6 +4,7 @@
  * Schema definitions for wallet management.
  */
 
+import { TimeframeSchema } from '../../schemas/timeframe';
 import {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
@@ -402,7 +403,7 @@ export const walletSchemas = {
   WalletBalanceHistoryResponse: {
     type: 'object',
     properties: {
-      timeframe: { type: 'string' },
+      timeframe: { type: 'string', enum: TimeframeSchema.options },
       currentBalance: { type: 'number' },
       dataPoints: {
         type: 'array',

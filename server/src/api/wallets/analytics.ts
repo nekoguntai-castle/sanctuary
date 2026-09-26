@@ -5,6 +5,7 @@
  */
 
 import { Router } from 'express';
+import { TimeframeSchema } from '../schemas/timeframe';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { transactionRepository, utxoRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -13,6 +14,7 @@ import * as walletService from '../../services/wallet';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
+const WalletTimeframeSchema = TimeframeSchema.catch('1M');
 
 /**
  * GET /api/v1/wallets/:id/stats
@@ -34,7 +36,7 @@ router.get('/:id/stats', requireWalletAccess('view'), asyncHandler(async (req, r
  */
 router.get('/:id/balance-history', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const timeframe = (req.query.timeframe as string) || '1M';
+  const timeframe = WalletTimeframeSchema.parse(req.query.timeframe);
 
   // Check cache first
   const cacheKey = `balance-history:${walletId}:${timeframe}`;
@@ -52,15 +54,14 @@ router.get('/:id/balance-history', requireWalletAccess('view'), asyncHandler(asy
   // Calculate date range
   const now = Date.now();
   const day = 86400000;
-  const rangeMs: Record<string, number> = {
+  const rangeMs: Record<Exclude<typeof timeframe, 'ALL'>, number> = {
     '1D': day,
     '1W': 7 * day,
     '1M': 30 * day,
     '1Y': 365 * day,
-    'ALL': 5 * 365 * day,
   };
 
-  const startDate = new Date(now - (rangeMs[timeframe] || rangeMs['1M']));
+  const startDate = timeframe === 'ALL' ? new Date(0) : new Date(now - rangeMs[timeframe]);
 
   // Fetch only relevant transactions with balanceAfter
   const transactions = await transactionRepository.findForBalanceHistory(walletId, startDate);

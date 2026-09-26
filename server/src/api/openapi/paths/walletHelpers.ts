@@ -4,6 +4,7 @@
  * OpenAPI path definitions for wallet analytics and helper operations.
  */
 
+import { TimeframeSchema } from '../../schemas/timeframe';
 import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const walletIdParameter = {
@@ -56,7 +57,8 @@ export const walletHelperPaths = {
           schema: {
             type: 'string',
             default: '1M',
-            description: 'Common values are 1D, 1W, 1M, 1Y, and ALL.',
+            enum: TimeframeSchema.options,
+            description: 'ALL includes all retained history. Invalid values fall back to 1M.',
           },
         },
       ],

@@ -29,15 +29,15 @@ Fix seven confirmed P1/P2 defects without changing approval policy, transaction 
 - [x] Add a repository effective-approver query following existing direct-role-over-group precedence; reuse canonical role constants. Inspect `walletSharingRepository`, `accessControl`, and existing access-union helpers before choosing the query.
 - [x] Use this enumeration for initial all-quorum count and live all-quorum resolution. Preserve numeric/any quorum, veto, owner override, and empty eligible-set semantics.
 - [x] Add real PostgreSQL repository behavioral coverage using existing guarded integration harness; register any new integration file in `scripts/ci/backend-integration-groups.sh`.
-- [ ] Verify/review and deliver one server PR with exact merge-SHA target CI.
+- [x] Verify/review and deliver one server PR with exact merge-SHA target CI.
 
 Acceptance: every currently eligible effective approver must vote; group-only approval can complete; direct role precedence and requester exclusion match authorization. No membership or policy data mutation.
 
 ### Phase 2 — Wallet history timeframe contract
 
-- [ ] First add failing wallet route tests for ALL epoch bound and older-than-five-years retained data, invalid/omitted input default 1M, normalized response/cache key. Add an invalid aggregate timeframe regression preserving current 1W hourly behavior.
-- [ ] Parse wallet timeframe with the canonical schema and wallet-specific 1M fallback; map ALL to epoch. Preserve valid ranges, response shape, sampling, and ten-second cache TTL.
-- [ ] Tighten wallet OpenAPI enum/default and cover the contract. Use repository-bound filtering proof or guarded integration if the route test cannot demonstrate old-history inclusion.
+- [x] First add failing wallet route tests for ALL epoch bound and older-than-five-years retained data, invalid/omitted input default 1M, normalized response/cache key. Add an invalid aggregate timeframe regression preserving current 1W hourly behavior.
+- [x] Parse wallet timeframe with the canonical schema and wallet-specific 1M fallback; map ALL to epoch. Preserve valid ranges, response shape, sampling, and ten-second cache TTL.
+- [x] Tighten wallet OpenAPI enum/default and cover the contract. Use repository-bound filtering proof or guarded integration if the route test cannot demonstrate old-history inclusion.
 - [ ] Verify/review and deliver one independent server PR with exact target CI.
 
 Acceptance: ALL includes retained old history; invalid values cannot create divergent response/cache identities. No chart-sampling/accounting refactor.
@@ -101,4 +101,11 @@ Two complete passes: coordinator source/contract review and independent read-onl
 - Group-only quorum regression failed against pre-fix code; 166 focused tests pass after the fix.
 - Guarded PostgreSQL wallet-sharing suite: 19 tests passed, receipt state `cleaned` (`/tmp/sanctuary-cleanup-local.2sbFXj/artifacts/final-upload.json`).
 - Frontend: 665 files / 8,995 tests passed. Root and server source/test typechecks, server lint, architecture boundaries/cycles/diagrams, complexity and independent final review passed.
-- Backend full suite: 722 files / 16,493 tests passed (65 DB-dependent suites skipped; affected PostgreSQL suite executed separately). Scoped unit coverage passed: 100% statements, branches, functions, and lines. PR delivery pending.
+- Backend full suite: 722 files / 16,493 tests passed (65 DB-dependent suites skipped; affected PostgreSQL suite executed separately). Scoped unit coverage passed: 100% statements, branches, functions, and lines. PR #1301 merged at `f0c0c55da7c2d8e5a7f37e23a42feda04703c2f6`; exact target-main push workflows 19011–19015 all passed, including hardware emulators.
+
+## Phase 2 verification progress
+
+- Six pre-fix failures reproduced ALL truncation, invalid/repeated timeframe identities, cache-hit identity, and missing OpenAPI enum.
+- Focused wallet/aggregate/OpenAPI/repository suites: 284 tests passed. Old-history route fixture filters on the supplied lower bound; existing repository contract verifies forwarding into `blockTime.gte`.
+- Full frontend: 665 files / 8,995 tests passed. Root and server source/test typechecks, server lint, architecture boundaries/cycles/diagrams, complexity, and independent adversarial/simplification review passed.
+- Full backend: 722 files / 16,503 tests passed (65 database-dependent suites skipped). Unit-only coverage passed at 100% statements, branches, functions, and lines; delivery pending.

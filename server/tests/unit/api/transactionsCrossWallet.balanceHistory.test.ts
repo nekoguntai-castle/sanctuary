@@ -232,6 +232,7 @@ describe('GET /transactions/balance-history', () => {
   it.each([
     // Hour and day buckets are fine enough for the client to regroup them
     // into the reader's local hours, days, weeks and months exactly.
+    { timeframe: 'INVALID', expectedUnit: 'hour', expectedDays: 7 },
     { timeframe: '1D', expectedUnit: 'hour', expectedDays: 1 },
     { timeframe: '1W', expectedUnit: 'hour', expectedDays: 7 },
     { timeframe: '1M', expectedUnit: 'hour', expectedDays: 30 },
