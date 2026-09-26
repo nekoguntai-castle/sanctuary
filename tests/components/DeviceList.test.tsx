@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+import type { RenderOptions } from '@testing-library/react';
 /**
  * DeviceList Component Tests
  *
@@ -5,7 +7,7 @@
  * sorting, filtering, editing, and deletion.
  */
 
-import { render,screen,waitFor } from '@testing-library/react';
+import { render as rtlRender,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
@@ -13,9 +15,15 @@ import type { Device,HardwareDeviceModel } from '../../src/types';
 
 // Mock react-router-dom
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...await importOriginal<typeof import('react-router-dom')>(),
   useNavigate: () => mockNavigate,
 }));
+import { MemoryRouter } from 'react-router-dom';
+const render = (ui: ReactNode, options?: RenderOptions) => rtlRender(ui, {
+  wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+  ...options,
+});
 
 // Mock UserContext
 const mockUpdatePreferences = vi.fn();

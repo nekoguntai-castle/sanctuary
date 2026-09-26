@@ -1,14 +1,19 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import type { RenderOptions } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { fireEvent,render as rtlRender,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
 import { DeviceGroupedView } from '../../../src/components/DeviceList/DeviceGroupedView';
 import type { Device,HardwareDeviceModel } from '../../../src/types';
 
-const mockNavigate = vi.fn();
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
-vi.mock('react-router-dom', () => ({
-  useNavigate: () => mockNavigate,
-}));
+function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
+const render = (ui: ReactNode, options?: RenderOptions) => rtlRender(ui, {
+  wrapper: ({ children }) => <MemoryRouter>{children}<Location /></MemoryRouter>,
+  ...options,
+});
 
 vi.mock('lucide-react', () => ({
   HardDrive: (props: React.HTMLAttributes<HTMLSpanElement>) => (
@@ -155,8 +160,30 @@ describe('DeviceGroupedView', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(getDeviceIconMock).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText('My Device'));
-    expect(mockNavigate).toHaveBeenCalledWith('/devices/device-1');
+    const link = screen.getByRole('link', { name: 'My Device' });
+    expect(link).toHaveAttribute('href', '/devices/device-1');
+    expect(link.closest('li')).toHaveAttribute('class');
+    expect(link.querySelector('button')).toBeNull();
+    fireEvent.click(link);
+    expect(screen.getByTestId('location')).toHaveTextContent('/devices/device-1');
+  });
+
+  it('opens the named record with Tab and Enter while keeping owner actions separate', async () => {
+    const user = userEvent.setup();
+    renderGroupedView();
+    const link = screen.getByRole('link', { name: 'My Device' });
+    await user.tab();
+    expect(link).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('/devices/device-1');
+    expect(screen.getByRole('button', { name: 'Edit device' }).closest('a')).toBeNull();
+  });
+
+  it('keeps shared devices navigable without owner actions', () => {
+    renderGroupedView({ groupedDevices: { ledger: [makeDevice({ isOwner: false })] } });
+    expect(screen.getByRole('link', { name: 'My Device' })).toHaveAttribute('href', '/devices/device-1');
+    expect(screen.queryByRole('button', { name: 'Edit device' })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Delete device')).not.toBeInTheDocument();
   });
 
   it('renders editing controls and wires save/cancel/type handlers', () => {
@@ -178,6 +205,8 @@ describe('DeviceGroupedView', () => {
     expect(handlers.setEditType).toHaveBeenCalledWith('ledger-nano-s');
     expect(handlers.handleSave).toHaveBeenCalledWith(device);
     expect(handlers.setEditingId).toHaveBeenCalledWith(null);
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('handles owner edit/delete actions and delete confirmation controls', () => {
@@ -190,7 +219,10 @@ describe('DeviceGroupedView', () => {
 
     fireEvent.click(screen.getByTestId('icon-edit').closest('button') as HTMLButtonElement);
     expect(handlers.handleEdit).toHaveBeenCalledWith(device);
-    expect(mockNavigate).not.toHaveBeenCalledWith('/devices/device-delete');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+
+    fireEvent.click(screen.getByTitle('Delete device'));
+    expect(handlers.setDeleteConfirmId).toHaveBeenCalledWith('device-delete');
 
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
     expect(handlers.handleDelete).toHaveBeenCalledWith(device);
@@ -198,6 +230,7 @@ describe('DeviceGroupedView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'No' }));
     expect(handlers.setDeleteConfirmId).toHaveBeenCalledWith(null);
     expect(handlers.setDeleteError).toHaveBeenCalledWith(null);
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
   });
 
   it('renders shared device metadata and wallet badges by wallet type', () => {

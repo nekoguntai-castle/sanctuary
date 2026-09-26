@@ -56,7 +56,7 @@ export function WalletListHeader({
         </h2>
         <p className="text-sanctuary-500">Manage your {selectedNetwork} wallets and spending accounts</p>
       </div>
-      <div className="flex items-center space-x-2">
+      <div className="flex flex-wrap items-center gap-2">
         <GridSortControl
           viewMode={viewMode}
           sortBy={sortBy}

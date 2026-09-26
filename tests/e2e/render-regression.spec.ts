@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import * as listEntry from './render-regression/renderRegressionListEntry.contracts';
 import * as visualConsistency from './render-regression/renderRegressionVisualConsistency.contracts';
 
 import * as adminTests from './render-regression/renderRegressionAdmin.contracts';
@@ -81,6 +82,18 @@ for (const darkMode of [false, true]) {
       test('device identity and accounts fit the content', ({ page }) => visualConsistency.renderDeviceResponsiveLayout(page, darkMode));
       test('long device labels and multiple accounts stay bounded', ({ page }) => visualConsistency.renderDeviceResponsiveLayout(page, darkMode, true));
       test('relationship navigation supports keyboard and direct entry', ({ page }) => visualConsistency.renderRelationshipKeyboardJourney(page, darkMode));
+    });
+  }
+}
+
+for (const darkMode of [false, true]) {
+  for (const width of [1440, 390, 320]) {
+    test.describe(`list entry ${darkMode ? 'dark' : 'light'} ${width}`, () => {
+      test.use({ viewport: { width, height: 1000 } });
+      setupRenderRegressionErrorChecks();
+      test('wallet actions fit grid and table', ({ page }) => listEntry.renderWalletListActionsFit(page, darkMode));
+      test('wallet cards support keyboard and pointer entry', ({ page }) => listEntry.renderWalletCardEntry(page, darkMode));
+      test('grouped device cards separate entry from editing', ({ page }) => listEntry.renderGroupedDeviceEntry(page, darkMode));
     });
   }
 }

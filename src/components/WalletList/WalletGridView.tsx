@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { Wallet } from '../../api/wallets';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import type { WalletSparklineResult } from '../../hooks/queries/useWallets';
@@ -23,7 +22,6 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
   sparklineData = {},
   syncNow,
 }) => {
-  const navigate = useNavigate();
   const { format, formatFiat, showFiat } = useCurrency();
 
   return (
@@ -37,7 +35,6 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
           format={format}
           formatFiat={formatFiat}
           showFiat={showFiat}
-          onOpen={() => navigate(`/wallets/${wallet.id}`)}
           syncNow={syncNow}
         />
       ))}

@@ -6,7 +6,6 @@
 
 import React from 'react';
 import { HardwareDeviceModel, Device } from '../../types';
-import { useNavigate } from 'react-router-dom';
 import { DeviceTypeGroupCard } from './DeviceGroupedCards';
 import type { DeviceGroupedDeleteState, DeviceGroupedEditState } from './types';
 
@@ -37,8 +36,6 @@ export const DeviceGroupedView: React.FC<DeviceGroupedViewProps> = ({
   walletFilter,
   exclusiveDeviceIds,
 }) => {
-  const navigate = useNavigate();
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-fade-in">
       {(Object.entries(groupedDevices) as [string, Device[]][]).map(([type, groupDevices]) => (
@@ -56,7 +53,6 @@ export const DeviceGroupedView: React.FC<DeviceGroupedViewProps> = ({
           handleDelete={handleDelete}
           walletFilter={walletFilter}
           exclusiveDeviceIds={exclusiveDeviceIds}
-          onOpenDevice={(deviceId) => navigate(`/devices/${deviceId}`)}
         />
       ))}
     </div>

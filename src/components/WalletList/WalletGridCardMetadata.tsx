@@ -4,11 +4,11 @@ import { Tooltip } from '../ui/Tooltip';
 import { getWalletSyncPresentation } from '../../utils/walletSyncPresentation';
 import type { Wallet } from '../../api/wallets';
 
-export function WalletMetadata({ wallet, syncNow }: { wallet: Wallet; syncNow?: number }) {
+export function WalletMetadata({ wallet }: { wallet: Wallet }) {
   const deviceCount = wallet.deviceCount ?? 0;
 
   return (
-    <div className="flex items-center justify-between text-xs border-t border-sanctuary-100 dark:border-sanctuary-800 pt-3 mt-2">
+    <div className="flex items-center justify-between text-xs border-t border-sanctuary-100 dark:border-sanctuary-800 pt-3 mt-2 pr-6">
       <div className="flex items-center text-sanctuary-500">
         <span className="text-sanctuary-400 capitalize">{(wallet.scriptType ?? '').replace('_', ' ')}</span>
         <span className="mx-2 text-sanctuary-300">•</span>
@@ -20,12 +20,11 @@ export function WalletMetadata({ wallet, syncNow }: { wallet: Wallet; syncNow?: 
           </>
         )}
       </div>
-      <SyncStatusIcon wallet={wallet} syncNow={syncNow} />
     </div>
   );
 }
 
-function SyncStatusIcon({ wallet, syncNow }: { wallet: Wallet; syncNow?: number }) {
+export function WalletSyncStatus({ wallet, syncNow }: { wallet: Wallet; syncNow?: number }) {
   const presentation = getWalletSyncPresentation(wallet, null, syncNow);
 
   // States with something to explain get a focusable tooltip carrying the real

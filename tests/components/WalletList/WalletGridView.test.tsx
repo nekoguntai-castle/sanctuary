@@ -1,15 +1,21 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import type { RenderOptions } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { fireEvent,render as rtlRender,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletGridView } from '../../../src/components/WalletList/WalletGridView';
 
-const mockNavigate = vi.fn();
 const mockFormat = vi.fn((value: number) => `BTC ${value}`);
 const mockFormatFiat = vi.fn((value: number) => `$${value}`);
 let mockShowFiat = true;
 
-vi.mock('react-router-dom', () => ({
-  useNavigate: () => mockNavigate,
-}));
+import { MemoryRouter, useLocation } from 'react-router-dom';
+
+function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
+const render = (ui: ReactNode, options?: RenderOptions) => rtlRender(ui, {
+  wrapper: ({ children }) => <MemoryRouter>{children}<Location /></MemoryRouter>,
+  ...options,
+});
 
 vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getWalletIcon: () => <span data-testid="wallet-icon" />,
@@ -30,7 +36,8 @@ describe('WalletGridView', () => {
     mockFormatFiat.mockImplementation((value: number) => `$${value}`);
   });
 
-  it('renders card info and navigates to wallet details on click', () => {
+  it('renders card info and navigates to wallet details with Tab and Enter', async () => {
+    const user = userEvent.setup();
     render(
       <WalletGridView
         wallets={[
@@ -55,8 +62,13 @@ describe('WalletGridView', () => {
     expect(screen.getByText('native segwit')).toBeInTheDocument();
     expect(screen.getByText('1 device')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Primary Wallet'));
-    expect(mockNavigate).toHaveBeenCalledWith('/wallets/w-single');
+    const link = screen.getByRole('link', { name: 'Primary Wallet' });
+    expect(link).toHaveAttribute('href', '/wallets/w-single');
+    expect(link.querySelector('button')).toBeNull();
+    await user.tab();
+    expect(link).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('/wallets/w-single');
   });
 
   it('renders shared multisig wallet pending indicators and fiat net sign handling', () => {
@@ -196,7 +208,12 @@ describe('WalletGridView', () => {
 
     // The reason is reachable, not a bare "Sync failed" in a native title the
     // keyboard and touch cannot get at.
-    expect(screen.getByLabelText('Sync status: Failed')).toBeInTheDocument();
+    const tooltipTrigger = screen.getByRole('button', { name: 'Sync status: Failed' });
+    expect(tooltipTrigger.closest('a')).toBeNull();
+    fireEvent.focus(tooltipTrigger);
+    expect(tooltipTrigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(tooltipTrigger);
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
     expect(
       screen.getByText('connect ECONNREFUSED 127.0.0.1:50002')
     ).toBeInTheDocument();
@@ -239,6 +256,8 @@ describe('WalletGridView', () => {
     expect(paths?.[0].getAttribute('d')).toContain('Z');
     // Line path should have stroke but no fill
     expect(paths?.[1].getAttribute('fill')).toBe('none');
+    fireEvent.click(screen.getByRole('img', { name: 'Balance history for Spark Wallet' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/wallets/w-spark');
   });
 
   it('renders real sparkline for multisig wallet', () => {

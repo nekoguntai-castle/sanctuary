@@ -4,7 +4,7 @@
 
 import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletList } from '../../src/components/WalletList';
 import * as CurrencyContext from '../../src/contexts/CurrencyContext';
@@ -94,6 +94,8 @@ vi.mock('../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats} sats</span>,
 }));
 
+function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
+
 describe('WalletList', () => {
   afterEach(() => vi.useRealTimers());
   const mockWallets = [
@@ -180,7 +182,7 @@ describe('WalletList', () => {
   const renderWalletList = () => {
     return render(
       <MemoryRouter>
-        <WalletList />
+        <WalletList /><Location />
       </MemoryRouter>
     );
   };
@@ -303,7 +305,7 @@ describe('WalletList', () => {
 
       await user.click(screen.getByText('Main Wallet'));
 
-      expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1');
+      expect(screen.getByTestId('location')).toHaveTextContent('/wallets/wallet-1');
     });
   });
 

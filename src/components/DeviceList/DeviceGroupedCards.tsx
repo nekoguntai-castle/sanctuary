@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React from 'react';
 import { Edit2, HardDrive, Save, Trash2, Users, X } from 'lucide-react';
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
@@ -19,7 +20,6 @@ export function DeviceTypeGroupCard({
   handleDelete,
   walletFilter,
   exclusiveDeviceIds,
-  onOpenDevice,
 }: {
   type: string;
   devices: Device[];
@@ -33,7 +33,6 @@ export function DeviceTypeGroupCard({
   handleDelete: (device: Device) => void;
   walletFilter: string;
   exclusiveDeviceIds: Set<string>;
-  onOpenDevice: (deviceId: string) => void;
 }) {
   const deviceType = type as HardwareDevice;
 
@@ -66,7 +65,6 @@ export function DeviceTypeGroupCard({
               handleDelete={handleDelete}
               walletFilter={walletFilter}
               exclusiveDeviceIds={exclusiveDeviceIds}
-              onOpenDevice={onOpenDevice}
             />
           ))}
         </ul>
@@ -86,7 +84,6 @@ function GroupedDeviceCard({
   handleDelete,
   walletFilter,
   exclusiveDeviceIds,
-  onOpenDevice,
 }: {
   device: Device;
   editState: DeviceGroupedEditState;
@@ -98,14 +95,12 @@ function GroupedDeviceCard({
   handleDelete: (device: Device) => void;
   walletFilter: string;
   exclusiveDeviceIds: Set<string>;
-  onOpenDevice: (deviceId: string) => void;
 }) {
   const isEditing = editState.editingId === device.id;
 
   return (
     <li
-      onClick={() => onOpenDevice(device.id)}
-      className="p-3 rounded-lg border border-sanctuary-100 dark:border-sanctuary-800 hover:border-sanctuary-300 dark:hover:border-sanctuary-600 transition-colors surface-elevated cursor-pointer"
+      className="relative p-3 rounded-lg border border-sanctuary-100 dark:border-sanctuary-800 hover:border-sanctuary-300 dark:hover:border-sanctuary-600 transition-colors surface-elevated"
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1 min-w-0">
@@ -196,7 +191,7 @@ function DeviceEditForm({
   onSave: (device: Device) => void;
 }) {
   return (
-    <div className="flex flex-col space-y-1 mb-1" onClick={(event) => event.stopPropagation()}>
+    <div className="relative z-10 flex flex-col space-y-1 mb-1">
       <div className="flex items-center space-x-1">
         <input
           type="text"
@@ -245,7 +240,12 @@ function DeviceDisplayName({
   return (
     <div className="flex flex-col">
       <div className="flex items-center group">
-        <span className="font-medium text-sm text-sanctuary-900 dark:text-sanctuary-100 truncate mr-2">{device.label}</span>
+        <Link
+          to={`/devices/${device.id}`}
+          className="min-w-0 [overflow-wrap:anywhere] font-medium text-sm text-sanctuary-900 dark:text-sanctuary-100 mr-2 after:absolute after:inset-0 after:rounded-lg focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-primary-500"
+        >
+          {device.label}
+        </Link>
         {device.isOwner && (
           <DeviceOwnerActions
             canDelete={walletCount === 0}
@@ -275,13 +275,13 @@ function DeviceOwnerActions({
 }) {
   return (
     <>
-      <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-sanctuary-600 transition-opacity">
+      <button onClick={onEdit} aria-label="Edit device" className="relative z-10 shrink-0 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-sanctuary-600 transition-opacity">
         <Edit2 className="w-3 h-3" />
       </button>
       {canDelete && (
         <button
-          onClick={(event) => { event.stopPropagation(); onDeletePrompt(); }}
-          className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-rose-600 transition-opacity ml-1"
+          onClick={onDeletePrompt}
+          className="relative z-10 shrink-0 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-rose-600 transition-opacity ml-1"
           title="Delete device"
         >
           <Trash2 className="w-3 h-3" />
@@ -301,7 +301,7 @@ function DeleteConfirmation({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex items-center space-x-1" onClick={(event) => event.stopPropagation()}>
+    <div className="relative z-10 flex items-center space-x-1">
       <span className="text-[10px] text-rose-600">Delete?</span>
       <button
         onClick={() => onConfirm(device)}
