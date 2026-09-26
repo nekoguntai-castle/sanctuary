@@ -56,14 +56,14 @@ export const DeviceListHeader: React.FC<DeviceListHeaderProps> = ({
 
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div>
+      <div className="min-w-0">
         <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
           {formatNetworkTitle(selectedNetwork)} Hardware Devices
         </h2>
         <p className="text-sanctuary-500">Manage your {selectedNetwork} signers and keys</p>
         <p className="text-[11px] text-sanctuary-400 mt-0.5">Devices must be removed from all wallets before they can be deleted.</p>
       </div>
-      <div className="flex items-center space-x-3">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-3 md:justify-end">
           <OwnershipFilterControl
             deviceCount={deviceCount}
             ownedCount={ownedCount}
@@ -87,7 +87,7 @@ export const DeviceListHeader: React.FC<DeviceListHeaderProps> = ({
             onColumnVisibilityChange={onColumnVisibilityChange}
             onColumnReset={onColumnReset}
           />
-          <Button onClick={() => navigate('/devices/connect')}>
+          <Button className="shrink-0 whitespace-nowrap" onClick={() => navigate('/devices/connect')}>
               <Plus className="w-4 h-4 mr-2" />
               Connect New Device
           </Button>

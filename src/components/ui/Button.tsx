@@ -20,7 +20,7 @@ const buttonVariants: Record<ButtonVariant, string> = {
 
   danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-400 dark:hover:bg-rose-900/30",
 
-  ghost: "text-sanctuary-500 hover:text-primary-700 hover:bg-sanctuary-100 dark:text-sanctuary-400 dark:hover:text-primary-200 dark:hover:bg-sanctuary-800",
+  ghost: "text-sanctuary-500 hover:text-primary-700 hover:bg-sanctuary-100 dark:text-sanctuary-400 dark:hover:text-primary-700 dark:hover:bg-sanctuary-800",
 };
 
 // Touch floor: 44px is the Apple HIG target. We apply it only on touch

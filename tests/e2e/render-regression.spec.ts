@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import * as controlVisibility from './render-regression/renderRegressionControlVisibility.contracts';
 import * as listEntry from './render-regression/renderRegressionListEntry.contracts';
 import * as visualConsistency from './render-regression/renderRegressionVisualConsistency.contracts';
 
@@ -96,4 +97,34 @@ for (const darkMode of [false, true]) {
       test('grouped device cards separate entry from editing', ({ page }) => listEntry.renderGroupedDeviceEntry(page, darkMode));
     });
   }
+}
+
+for (const darkMode of [false, true]) {
+  for (const width of [1440, 390, 320]) {
+    test.describe(`control visibility ${darkMode ? 'dark' : 'light'} ${width}`, () => {
+      test.use({ viewport: { width, height: 1000 } });
+      setupRenderRegressionErrorChecks();
+      for (const action of ['Generate', 'Cancel'] as const) {
+        test(`${action} remains readable on hover`, ({ page }) => controlVisibility.renderGhostActionContrast(page, darkMode, action));
+      }
+      for (const [receiveCount, changeCount] of [[1, 1], [123, 0]]) {
+        test(`address labels and counts remain readable (${receiveCount}/${changeCount})`, ({ page }) => controlVisibility.renderAddressLabelContrast(page, darkMode, receiveCount, changeCount));
+      }
+      test('Generate fits before hidden ancestors scroll', ({ page }) => controlVisibility.renderAddressGenerateFits(page, darkMode));
+      for (const state of ['owned', 'shared', 'empty'] as const) {
+        test(`device toolbar fits with ${state} devices`, ({ page }) => controlVisibility.renderDeviceToolbarFits(page, darkMode, state));
+      }
+    });
+  }
+}
+
+// The filter menu also needs coverage between the sm control and md shell breakpoints.
+for (const darkMode of [false, true]) {
+  test.describe(`control visibility ${darkMode ? 'dark' : 'light'} 640`, () => {
+    test.use({ viewport: { width: 640, height: 1000 } });
+    setupRenderRegressionErrorChecks();
+    for (const state of ['owned', 'shared'] as const) {
+      test(`device filter menu stays within the toolbar (${state})`, ({ page }) => controlVisibility.renderDeviceToolbarFits(page, darkMode, state));
+    }
+  });
 }

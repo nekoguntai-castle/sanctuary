@@ -31,7 +31,7 @@ export function OwnershipFilterControl({
   if (sharedCount <= 0) return null;
 
   return (
-    <div className="flex surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
+    <div className="flex max-w-full flex-wrap surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
       <button
         type="button"
         onClick={() => onChange('all')}
@@ -91,19 +91,19 @@ export function WalletFilterDropdown({
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative w-full min-w-0 max-w-full sm:w-64" ref={dropdownRef}>
       <div className="flex surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
         <button
           type="button"
           onClick={() => setIsOpen(current => !current)}
           aria-expanded={isOpen}
           aria-haspopup="menu"
-          className={walletTriggerClass(walletFilter !== 'all')}
+          className={`${walletTriggerClass(walletFilter !== 'all')} w-full min-w-0 max-w-full`}
           title="Filter by wallet"
         >
-          <Wallet className="w-3 h-3" />
-          {selectedLabel}
-          <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <Wallet className="w-3 h-3 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>
+          <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
@@ -189,7 +189,7 @@ function WalletFilterMenu({
   onSelect: (filter: WalletFilter) => void;
 }) {
   return (
-    <div className="absolute right-0 mt-2 w-64 surface-elevated rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 shadow-lg z-50 py-1">
+    <div className="absolute left-0 mt-2 w-full surface-elevated rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 shadow-lg z-50 py-1">
       <WalletFilterMenuItem
         active={walletFilter === 'all'}
         count={deviceCount}

@@ -139,7 +139,7 @@ extract_json_object() {
     # Strategy 1: whole file is a single JSON object.
     out=$(_parse_single_object < "$1")
     if [ -n "$out" ]; then
-        echo "$out"
+        printf '%s\n' "$out"
         return
     fi
 
@@ -174,14 +174,14 @@ extract_json_object() {
     # Strategy 2: ```json ... ``` fenced block containing one object.
     out=$(sed -n '/^```json$/,/^```$/p' "$1" | sed '1d;$d' | _parse_single_object)
     if [ -n "$out" ]; then
-        echo "$out"
+        printf '%s\n' "$out"
         return
     fi
 
     # Strategy 3: unlabelled ``` ... ``` fenced block containing one object.
     out=$(sed -n '/^```$/,/^```$/p' "$1" | sed '1d;$d' | _parse_single_object)
     if [ -n "$out" ]; then
-        echo "$out"
+        printf '%s\n' "$out"
         return
     fi
 
@@ -214,7 +214,7 @@ derive_verdict_from_body() {
     # Single jq expression to detect any shape other than non-empty object.
     # Emits the object's length for valid shapes, -1 otherwise. Fallback -1
     # on jq error so a broken body is treated the same as malformed.
-    rubric_length=$(echo "$body" | jq -r '
+    rubric_length=$(printf '%s\n' "$body" | jq -r '
         if (.rubric // null) | type == "object"
         then (.rubric | length)
         else -1
@@ -230,20 +230,20 @@ derive_verdict_from_body() {
     # Rubric is a non-empty object. Collect values as uppercase strings so
     # comparison is case-insensitive; non-string values get stringified so
     # they land in the "invalid" bucket.
-    values=$(echo "$body" | jq -c '
+    values=$(printf '%s\n' "$body" | jq -c '
         .rubric | to_entries | map(
             .value | if type == "string" then ascii_upcase else tostring end
         )
     ' 2>/dev/null || echo '[]')
 
     # Precedence: BLOCK > invalid > WARN > OK
-    has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")' 2>/dev/null || echo false)
+    has_block=$(printf '%s\n' "$values" | jq -r 'any(. == "BLOCK")' 2>/dev/null || echo false)
     if [ "$has_block" = "true" ]; then echo "STOP"; return; fi
 
-    has_invalid=$(echo "$values" | jq -r 'any(. != "OK" and . != "WARN" and . != "BLOCK")' 2>/dev/null || echo false)
+    has_invalid=$(printf '%s\n' "$values" | jq -r 'any(. != "OK" and . != "WARN" and . != "BLOCK")' 2>/dev/null || echo false)
     if [ "$has_invalid" = "true" ]; then echo "UNKNOWN"; return; fi
 
-    has_warn=$(echo "$values" | jq -r 'any(. == "WARN")' 2>/dev/null || echo false)
+    has_warn=$(printf '%s\n' "$values" | jq -r 'any(. == "WARN")' 2>/dev/null || echo false)
     if [ "$has_warn" = "true" ]; then echo "REVIEW"; return; fi
 
     # Non-empty, all valid, no BLOCK, no WARN → all OK.
@@ -286,7 +286,7 @@ log_agent_run() {
     body=$(extract_json_object "$5")
     self_verdict="UNKNOWN"
     if [ "$body" != "null" ]; then
-        self_verdict=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+        self_verdict=$(printf '%s\n' "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
     fi
 
     if command -v jq >/dev/null 2>&1; then
@@ -331,7 +331,7 @@ render_agent_body() {
     # surface the disagreement so the author can see the agent contradicted
     # its own rubric.
     verdict=$(derive_verdict_from_body "$body")
-    self_verdict=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+    self_verdict=$(printf '%s\n' "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
     case "$verdict" in
         STOP)    printf '%b\n' "${RED}❌ RECOMMEND STOP${NC}" ;;
         REVIEW)  printf '%b\n' "${YELLOW}⚠️  SUGGEST REVIEW${NC}" ;;
@@ -342,11 +342,11 @@ render_agent_body() {
         printf '%b\n' "${YELLOW}(agent self-reported ${self_verdict}; overridden by rubric-derived ${verdict})${NC}"
     fi
 
-    rubric_entries=$(echo "$body" | jq -r '.rubric // {} | to_entries[] | "\(.key)|\(.value)"')
+    rubric_entries=$(printf '%s\n' "$body" | jq -r '.rubric // {} | to_entries[] | "\(.key)|\(.value)"')
     if [ -n "$rubric_entries" ]; then
         echo ""
         printf '%b\n' "${BLUE}Rubric:${NC}"
-        echo "$rubric_entries" | while IFS='|' read -r concern status; do
+        printf '%s\n' "$rubric_entries" | while IFS='|' read -r concern status; do
             case "$status" in
                 OK)    printf '  %b✓%b %s: OK\n' "$GREEN" "$NC" "$concern" ;;
                 WARN)  printf '  %b!%b %s: WARN\n' "$YELLOW" "$NC" "$concern" ;;
@@ -356,11 +356,11 @@ render_agent_body() {
         done
     fi
 
-    issue_count=$(echo "$body" | jq -r '.issues // [] | length')
+    issue_count=$(printf '%s\n' "$body" | jq -r '.issues // [] | length')
     if [ "$issue_count" -gt 0 ]; then
         echo ""
         printf '%b\n' "${BLUE}Issues (${issue_count}):${NC}"
-        echo "$body" | jq -r '.issues[] | "  [\(.severity // "?")] \(.file // "?"):\(.line // 0) — \(.note // "")"'
+        printf '%s\n' "$body" | jq -r '.issues[] | "  [\(.severity // "?")] \(.file // "?"):\(.line // 0) — \(.note // "")"'
     fi
 }
 
@@ -467,9 +467,9 @@ invoke_claude_agent() {
     local output_file="$3"
 
     if [ -n "$claude_agent" ]; then
-        echo "$prompt" | run_without_git_env claude --agent "$claude_agent" --print > "$output_file" 2>&1 || true
+        printf '%s\n' "$prompt" | run_without_git_env claude --agent "$claude_agent" --print > "$output_file" 2>&1 || true
     else
-        echo "$prompt" | run_without_git_env claude --print > "$output_file" 2>&1 || true
+        printf '%s\n' "$prompt" | run_without_git_env claude --print > "$output_file" 2>&1 || true
     fi
 }
 

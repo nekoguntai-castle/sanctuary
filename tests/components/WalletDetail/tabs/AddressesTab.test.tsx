@@ -102,6 +102,28 @@ describe('AddressesTab', () => {
     expect(baseProps.onLoadMoreAddresses).toHaveBeenCalled();
   });
 
+  it('prevents duplicate generation while populated addresses are loading', () => {
+    const addresses = [{
+      address: 'bc1qreceive000000000000000000000000000000001',
+      derivationPath: "m/84'/0'/0'/0/1",
+      index: 1,
+      used: false,
+      balance: 0,
+    }];
+    const { rerender } = render(
+      <AddressesTab {...baseProps} addresses={addresses} loadingAddresses />
+    );
+
+    const generate = screen.getByRole('button', { name: 'Generate' });
+    expect(generate).toBeDisabled();
+    fireEvent.click(generate);
+    expect(baseProps.onGenerateMoreAddresses).not.toHaveBeenCalled();
+
+    rerender(<AddressesTab {...baseProps} addresses={addresses} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    expect(baseProps.onGenerateMoreAddresses).toHaveBeenCalledTimes(1);
+  });
+
   it('switches address sub-tabs', () => {
     const addresses = [
       {

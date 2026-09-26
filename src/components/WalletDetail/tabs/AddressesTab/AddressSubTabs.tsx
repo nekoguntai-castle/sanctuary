@@ -33,9 +33,9 @@ export function AddressSubTabs({
   });
 
   return (
-    <div className="px-6 py-3 surface-muted border-b border-sanctuary-100 dark:border-sanctuary-800">
-      <div className="flex items-center justify-between">
-        <div {...getTabListProps('Address type')} className="flex space-x-1">
+    <div className="px-3 sm:px-6 py-3 surface-muted border-b border-sanctuary-100 dark:border-sanctuary-800">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div {...getTabListProps('Address type')} className="flex gap-1 p-1 max-w-full overflow-x-auto">
           <AddressSubTabButton
             active={addressSubTab === 'receive'}
             label="Receive"
@@ -76,9 +76,9 @@ function AddressSubTabButton({
   return (
     <button
       {...tabProps}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+      className={`flex shrink-0 items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
         active
-          ? 'bg-white dark:bg-sanctuary-800 text-primary-600 dark:text-primary-400 shadow-sm'
+          ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-700 shadow-sm'
           : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
       }`}
     >
@@ -86,8 +86,8 @@ function AddressSubTabButton({
       <span>{label}</span>
       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
         active
-          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
-          : 'bg-sanctuary-200 dark:bg-sanctuary-700 text-sanctuary-500'
+          ? 'bg-primary-100 dark:bg-primary-100 text-primary-700 dark:text-primary-700'
+          : 'bg-sanctuary-200 dark:bg-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-300'
       }`}>
         {count}
       </span>

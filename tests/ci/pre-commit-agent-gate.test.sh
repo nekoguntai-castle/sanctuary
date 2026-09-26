@@ -113,6 +113,43 @@ run_agent() {
   invoke_agent_with_cache "backend-quality" "lead-software-architect" "review this diff" 1 "backend-quality"
 }
 
+test_posix_json_transport() {
+  # Husky runs the hook with sh, while this test harness uses bash. Exercise
+  # the real interpreter: dash's echo decodes JSON and prompt backslashes.
+  reset_case "posix-json-transport"
+  local review='{"rubric":{"format":"WARN"},"verdict":"REVIEW","issues":[{"file":"fixture.ts","line":1,"severity":"low","note":"regex \\s and \\d; literal \\n; newline\nnext; quote \"ok\""}]}'
+  SANCTUARY_PRE_COMMIT_LIBRARY_ONLY=1 \
+  SANCTUARY_AGENT_LOG_DIR="$AGENT_LOG_DIR" \
+  SANCTUARY_AGENT_TMP_DIR="$AGENT_TMP_DIR" \
+    sh -s -- "$PRE_COMMIT_HOOK" "$CLAUDE_RESPONSE_DIR" "$review" <<'SH'
+set -eu
+. "$1"
+review_file="$2/review.json"
+printf '%s\n' "$3" > "$review_file"
+body=$(extract_json_object "$review_file")
+expected=$(jq -c . "$review_file")
+[ "$body" = "$expected" ] || { printf '%s\n' 'JSON extraction changed escape bytes' >&2; exit 1; }
+[ "$(derive_verdict_from_body "$body")" = REVIEW ]
+for rubric in OK BLOCK; do
+  variant=$(printf '%s\n' "$body" | jq -c --arg rubric "$rubric" '.rubric.format = $rubric')
+  verdict=$(derive_verdict_from_body "$variant")
+  if [ "$rubric" = OK ]; then
+    [ "$verdict" = PROCEED ]
+    ! verdict_blocks_commit "$verdict"
+  else
+    [ "$verdict" = STOP ]
+    verdict_blocks_commit "$verdict"
+  fi
+done
+render_agent_body "$review_file" > "$2/rendered.txt"
+grep -Fq 'regex \s and \d; literal \n; newline' "$2/rendered.txt"
+log_agent_run backend-quality REVIEW 0 1 "$review_file" 0
+jq -e --argjson expected "$expected" '.body == $expected and .verdict == "REVIEW"' "$AGENT_LOG_FILE" >/dev/null
+invoke_claude_agent "" "$3" "$2/prompt-output.txt"
+cmp "$review_file" "$CLAUDE_PROMPT_DIR/prompt-1.txt"
+SH
+}
+
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
@@ -132,6 +169,8 @@ main() {
   unset SANCTUARY_PRE_COMMIT_LIBRARY_ONLY
   unset SANCTUARY_AGENT_TMP_DIR
   trap cleanup EXIT
+
+  test_posix_json_transport
 
   is_precommit_release_path "tests/release/release-candidate-canary.test.mjs" \
     || fail "release contract path was not classified for the release suite"
