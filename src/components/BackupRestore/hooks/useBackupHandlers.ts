@@ -11,6 +11,9 @@ import type { SanctuaryBackup, ValidationResult, EncryptionKeysResponse } from '
 import { createLogger } from '../../../utils/logger';
 import { useAppNotifications } from '../../../contexts/AppNotificationContext';
 import { downloadText, downloadBlob } from '../../../utils/download';
+import { safeJsonParse } from '../../../utils/safeJson';
+import { useLatestRequest } from '../../../hooks/useLatestRequest';
+import type { FetchToken } from '../../../hooks/requestOwnership';
 
 const log = createLogger('BackupRestore');
 
@@ -28,6 +31,7 @@ function clearPendingTimeout(timeoutRef: MutableRefObject<TimeoutHandle | null>)
 
 export function useBackupHandlers(encryptionKeys: EncryptionKeysResponse | null) {
   const { addNotification } = useAppNotifications();
+  const uploadRequest = useLatestRequest();
 
   // Backup state
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
@@ -151,53 +155,58 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
     }
   };
 
-  /**
-   * Validate the uploaded backup
-   */
-  const validateBackup = async (backup: SanctuaryBackup) => {
-    setIsValidating(true);
+  const resetUploadState = () => {
+    setUploadedBackup(null);
+    setUploadedFileName(null);
+    setValidationResult(null);
     setRestoreError(null);
+    setRestoreSuccess(false);
+    setIsValidating(false);
+    setShowConfirmModal(false);
+    setConfirmText('');
+  };
 
+  /** Validate only for the file that still owns the upload workflow. */
+  const validateBackup = async (backup: SanctuaryBackup, token: FetchToken) => {
     try {
       const result = await adminApi.validateBackup(backup);
-      setValidationResult(result);
+      if (uploadRequest.isCurrent(token)) setValidationResult(result);
     } catch (error) {
+      if (!uploadRequest.isCurrent(token)) return;
       log.error('Validation failed', { error });
       setRestoreError('Failed to validate backup file');
-    } finally {
-      setIsValidating(false);
     }
   };
 
-  /**
-   * Handle file upload
-   */
+  /** Read, parse and validate one file under the same request owner. */
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Reset state
-    setUploadedBackup(null);
-    setValidationResult(null);
-    setRestoreError(null);
-    setRestoreSuccess(false);
+    const token = uploadRequest.begin();
+    resetUploadState();
+    setIsValidating(true);
 
     try {
       const text = await file.text();
-      const backup = JSON.parse(text) as SanctuaryBackup;
+      if (!uploadRequest.isCurrent(token)) return;
+      const parsed = safeJsonParse(text);
+      if (!parsed.success) throw new Error('Invalid backup JSON');
+      // The API remains authoritative for backup shape and compatibility.
+      const backup = parsed.data as SanctuaryBackup;
       setUploadedBackup(backup);
       setUploadedFileName(file.name);
-
-      // Auto-validate
-      await validateBackup(backup);
-    } catch (error) {
-      log.error('Failed to parse backup file', { error });
+      await validateBackup(backup, token);
+    } catch {
+      if (!uploadRequest.isCurrent(token)) return;
+      // Syntax and read errors may contain sensitive backup fragments.
+      log.error('Failed to parse backup file');
       setRestoreError('Invalid backup file format. Please select a valid Sanctuary backup JSON file.');
-    }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    } finally {
+      if (uploadRequest.isCurrent(token)) {
+        setIsValidating(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -255,10 +264,8 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
    * Clear uploaded backup
    */
   const handleClearUpload = () => {
-    setUploadedBackup(null);
-    setUploadedFileName(null);
-    setValidationResult(null);
-    setRestoreError(null);
+    uploadRequest.invalidate();
+    resetUploadState();
   };
 
   /**

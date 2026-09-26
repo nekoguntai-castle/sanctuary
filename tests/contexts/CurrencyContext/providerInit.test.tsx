@@ -1,9 +1,11 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as authApi from "../../../src/api/auth";
 import * as priceApi from "../../../src/api/price";
 import { useCurrencySettings } from "../../../src/contexts/CurrencyContext";
 import {
+  authenticatedUser,
   TestConsumer,
   makeAggregatedPrice,
   renderWithProviders,
@@ -11,11 +13,13 @@ import {
   setupDefaultMocks,
 } from "./helpers";
 
+const providerLog = vi.hoisted(() => ({ warn: vi.fn() }));
+
 vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: providerLog.warn,
     error: vi.fn(),
   }),
 }));
@@ -40,10 +44,96 @@ vi.mock("../../../src/api/refresh", () => ({
   triggerLogout: vi.fn(),
 }));
 
+
+type ProviderResponse = Awaited<ReturnType<typeof priceApi.getProviders>>;
+function deferredProviders() {
+  let resolve!: (value: ProviderResponse) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<ProviderResponse>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+function ProviderOwnerConsumer() {
+  const { availableProviders, priceProvider, reloadAvailableProviders } = useCurrencySettings();
+  return <>
+    <span data-testid="owned-providers">{availableProviders.join(",")}</span>
+    <span data-testid="owned-selection">{priceProvider}</span>
+    <button onClick={() => void reloadAvailableProviders()}>Reload owned providers</button>
+  </>;
+}
+async function renderKrakenOwner() {
+  vi.mocked(authApi.getCurrentUser).mockResolvedValue({
+    ...authenticatedUser,
+    preferences: { ...authenticatedUser.preferences, priceProvider: "kraken" },
+  });
+  const view = renderWithProviders(<ProviderOwnerConsumer />);
+  await waitFor(() => expect(screen.getByTestId("owned-selection")).toHaveTextContent("kraken"));
+  return view;
+}
+async function expectNoPreferencePersistence() {
+  await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+  expect(authApi.updatePreferences).not.toHaveBeenCalled();
+}
+
 describe("CurrencyContext - Provider initialization", () => {
   beforeEach(setupDefaultMocks);
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("keeps manual C after mount A and event B resolve in reverse order without persisting auto", async () => {
+    const requests = [deferredProviders(), deferredProviders(), deferredProviders()];
+    for (const pending of requests) vi.mocked(priceApi.getProviders).mockReturnValueOnce(pending.promise);
+    await renderKrakenOwner();
+    act(() => { window.dispatchEvent(new Event(priceApi.PRICE_PROVIDERS_CHANGED_EVENT)); });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByText("Reload owned providers"));
+    expect(priceApi.getProviders).toHaveBeenCalledTimes(3);
+    await act(async () => { requests[2].resolve({ providers: ["kraken", "coinbase"], count: 2 }); });
+    await act(async () => { requests[1].resolve({ providers: ["mempool"], count: 1 }); });
+    await act(async () => { requests[0].resolve({ providers: ["coingecko"], count: 1 }); });
+    expect(screen.getByTestId("owned-providers")).toHaveTextContent("auto,kraken,coinbase");
+    expect(screen.getByTestId("owned-selection")).toHaveTextContent("kraken");
+    await expectNoPreferencePersistence();
+  });
+
+  it("ignores stale mount and event failures after the latest manual success", async () => {
+    const requests = [deferredProviders(), deferredProviders(), deferredProviders()];
+    for (const pending of requests) vi.mocked(priceApi.getProviders).mockReturnValueOnce(pending.promise);
+    await renderKrakenOwner();
+    act(() => { window.dispatchEvent(new Event(priceApi.PRICE_PROVIDERS_CHANGED_EVENT)); });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByText("Reload owned providers"));
+    await act(async () => { requests[2].resolve({ providers: ["kraken"], count: 1 }); });
+    await act(async () => {
+      requests[1].reject(new Error("retired event"));
+      requests[0].reject(new Error("retired mount"));
+    });
+    expect(screen.getByTestId("owned-providers")).toHaveTextContent("auto,kraken");
+    expect(screen.getByTestId("owned-selection")).toHaveTextContent("kraken");
+    expect(providerLog.warn).not.toHaveBeenCalled();
+    await expectNoPreferencePersistence();
+  });
+
+  it.each(["success", "failure"])("ignores manual provider %s after unmount without persistence or logs", async outcome => {
+    const pending = deferredProviders();
+    const view = await renderKrakenOwner();
+    vi.mocked(priceApi.getProviders).mockReturnValueOnce(pending.promise);
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByText("Reload owned providers"));
+    view.unmount();
+    await act(async () => {
+      if (outcome === "success") pending.resolve({ providers: ["mempool"], count: 1 });
+      else pending.reject(new Error("retired reload"));
+    });
+    expect(providerLog.warn).not.toHaveBeenCalled();
+    await expectNoPreferencePersistence();
+  });
+
+  it("keeps the selected provider when the current request needs an offline fallback", async () => {
+    await renderKrakenOwner();
+    vi.mocked(priceApi.getProviders).mockRejectedValueOnce(new Error("current offline request"));
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByText("Reload owned providers"));
+    expect(screen.getByTestId("owned-providers")).toHaveTextContent("auto,mempool,coingecko,kraken,coinbase");
+    expect(screen.getByTestId("owned-selection")).toHaveTextContent("kraken");
+    expect(providerLog.warn).toHaveBeenCalledWith("Failed to load price providers", { error: expect.any(Error) });
+    await expectNoPreferencePersistence();
   });
 
   it("initializes with default values", async () => {
@@ -255,5 +345,6 @@ describe("CurrencyContext - Provider initialization", () => {
       rejectProviders(new Error("offline"));
       await Promise.resolve();
     });
+    expect(providerLog.warn).not.toHaveBeenCalled();
   });
 });

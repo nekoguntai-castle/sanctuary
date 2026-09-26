@@ -7,7 +7,8 @@ import {
   AuditLogQuery,
   AuditLogStats,
 } from '../../api/admin';
-import { useLoadingState } from '../../hooks/useLoadingState';
+import { useLatestRequest } from '../../hooks/useLatestRequest';
+import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import { createLogger } from '../../utils/logger';
 import { StatCards } from './StatCards';
 import { FilterPanel } from './FilterPanel';
@@ -133,21 +134,36 @@ export const AuditLogs: React.FC = () => {
   const [filterAction, setFilterAction] = useState('');
   const [filterSuccess, setFilterSuccess] = useState<string>('');
 
-  // Loading state using hook
-  const { loading, error, execute: runLoad } = useLoadingState({ initialLoading: true });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const logRequests = useLatestRequest();
+  const statsRequests = useLatestRequest();
 
-  const fetchLogs = () => runLoad(async () => {
-    const result = await getAuditLogs(buildAuditLogQuery(filters, currentPage));
-    setLogs(result.logs);
-    setTotal(result.total);
-  });
+  const fetchLogs = async () => {
+    const request = logRequests.begin();
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getAuditLogs(buildAuditLogQuery(filters, currentPage));
+      if (!logRequests.isCurrent(request)) return;
+      setLogs(result.logs);
+      setTotal(result.total);
+    } catch (err) {
+      if (logRequests.isCurrent(request)) setError(extractErrorMessage(err));
+    } finally {
+      if (logRequests.isCurrent(request)) setLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
+    const request = statsRequests.begin();
     try {
       const result = await getAuditLogStats(30);
-      setStats(result);
+      if (statsRequests.isCurrent(request)) setStats(result);
     } catch (err) {
-      log.error('Failed to load audit stats', { error: err });
+      if (statsRequests.isCurrent(request)) {
+        log.error('Failed to load audit stats', { error: err });
+      }
     }
   };
 

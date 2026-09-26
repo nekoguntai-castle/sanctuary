@@ -26,6 +26,7 @@ import React, {
   useRef,
 } from 'react';
 import { useUser } from './UserContext';
+import { useLatestRequest } from '../hooks/useLatestRequest';
 import * as priceApi from '../api/price';
 import { createLogger } from '../utils/logger';
 import { satsToBTC, formatBTC } from '@sanctuary/shared/utils/bitcoin';
@@ -215,38 +216,25 @@ export const CurrencyPreferencesProvider: React.FC<{
     }
   }, []);
 
+  const providerRequests = useLatestRequest();
   const reloadAvailableProviders = useCallback(async () => {
+    const request = providerRequests.begin();
     try {
       const { providers } = await priceApi.getProviders();
+      if (!providerRequests.isCurrent(request)) return;
       applyAvailableProviders(providers);
     } catch (error) {
+      if (!providerRequests.isCurrent(request)) return;
       log.warn('Failed to load price providers', { error });
       setAvailableProviders(FALLBACK_PRICE_PROVIDERS);
     }
-  }, [applyAvailableProviders]);
+  }, [applyAvailableProviders, providerRequests]);
 
   // Load enabled providers from the backend on mount, with a static
   // fallback so the settings screen still works offline.
   useEffect(() => {
-    let mounted = true;
-
-    priceApi
-      .getProviders()
-      .then(({ providers }) => {
-        if (!mounted) return;
-        applyAvailableProviders(providers);
-      })
-      .catch((error) => {
-        log.warn('Failed to load price providers', { error });
-        if (mounted) {
-          setAvailableProviders(FALLBACK_PRICE_PROVIDERS);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [applyAvailableProviders]);
+    void reloadAvailableProviders();
+  }, [reloadAvailableProviders]);
 
   useEffect(() => {
     const onProvidersChanged = () => {

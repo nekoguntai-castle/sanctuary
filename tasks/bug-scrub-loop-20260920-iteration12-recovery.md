@@ -38,16 +38,16 @@ Acceptance: every currently eligible effective approver must vote; group-only ap
 - [x] First add failing wallet route tests for ALL epoch bound and older-than-five-years retained data, invalid/omitted input default 1M, normalized response/cache key. Add an invalid aggregate timeframe regression preserving current 1W hourly behavior.
 - [x] Parse wallet timeframe with the canonical schema and wallet-specific 1M fallback; map ALL to epoch. Preserve valid ranges, response shape, sampling, and ten-second cache TTL.
 - [x] Tighten wallet OpenAPI enum/default and cover the contract. Use repository-bound filtering proof or guarded integration if the route test cannot demonstrate old-history inclusion.
-- [ ] Verify/review and deliver one independent server PR with exact target CI.
+- [x] Verify/review and deliver one independent server PR with exact target CI.
 
 Acceptance: ALL includes retained old history; invalid values cannot create divergent response/cache identities. No chart-sampling/accounting refactor.
 
 ### Phase 3 — Audit, backup, and provider request ownership
 
-- [ ] Add deferred reverse-success/reverse-error/unmount regressions for all three owners before production edits.
-- [ ] Audit logs: independent log/stats generations; guard rows, totals, errors, logging, and loading/finally; invalidate on unmount. Keep filter/page/refresh behavior.
-- [ ] Backup upload: increment owner before each file read, invalidate on clear/unmount, reset filename/validation/error/success/validating state, guard read/parse/validation success/failure/finally and input reset. Use existing safe JSON parsing utility when editing this boundary. Keep validation failure semantics.
-- [ ] Currency providers: one generation and shared reload path for mount/events/manual reload; guard list/fallback/persistence/logging and invalidate on unmount. Preserve current selected-provider checks and fallback policy.
+- [x] Add deferred reverse-success/reverse-error/unmount regressions for all three owners before production edits.
+- [x] Audit logs: independent log/stats generations; guard rows, totals, errors, logging, and loading/finally; invalidate on unmount. Keep filter/page/refresh behavior.
+- [x] Backup upload: increment owner before each file read, invalidate on clear/unmount, reset filename/validation/error/success/validating state, guard read/parse/validation success/failure/finally and input reset. Use existing safe JSON parsing utility when editing this boundary. Keep validation failure semantics.
+- [x] Currency providers: one generation and shared reload path for mount/events/manual reload; guard list/fallback/persistence/logging and invalidate on unmount. Preserve current selected-provider checks and fallback policy.
 - [ ] Verify 100% frontend coverage, typechecks, production build and static-server Playwright render checks. Review/deliver one frontend PR with exact target CI.
 
 Acceptance: only current request/file owns results and terminal state; stale requests cannot persist provider changes or enable restore for another file.
@@ -108,4 +108,11 @@ Two complete passes: coordinator source/contract review and independent read-onl
 - Six pre-fix failures reproduced ALL truncation, invalid/repeated timeframe identities, cache-hit identity, and missing OpenAPI enum.
 - Focused wallet/aggregate/OpenAPI/repository suites: 284 tests passed. Old-history route fixture filters on the supplied lower bound; existing repository contract verifies forwarding into `blockTime.gte`.
 - Full frontend: 665 files / 8,995 tests passed. Root and server source/test typechecks, server lint, architecture boundaries/cycles/diagrams, complexity, and independent adversarial/simplification review passed.
-- Full backend: 722 files / 16,503 tests passed (65 database-dependent suites skipped). Unit-only coverage passed at 100% statements, branches, functions, and lines; delivery pending.
+- Full backend: 722 files / 16,503 tests passed (65 database-dependent suites skipped). Unit-only coverage passed at 100% statements, branches, functions, and lines. PR #1302 merged at `ac4157d35ecb6207e26ece40429f8a372d5ac671`; exact target push workflows 19021–19025 all passed.
+
+## Phase 3 verification progress
+
+- Tests-first regressions: six audit, nine backup ownership/privacy, and five provider cases failed before fixes. Expanded focused suites pass 135 tests.
+- Reused `createRequestOwnership` through a stable `useLatestRequest` lifecycle hook; cleanup invalidates old work while StrictMode replay accepts new work. Independent reviews of audit/helper, backup, and currency slices found no remaining actionable issues.
+- Browser JSON parsing reports failure without retaining syntax errors that may contain backup contents; the API remains authoritative for backup compatibility.
+- Full frontend: 669 files / 9,026 tests passed. Root app/test/all TypeScript checks passed. Frontend coverage passed at 100% statements, branches, functions, and lines. Production build, lint, complexity, architecture diagrams, and 177 static-build Chromium render/admin/settings tests passed. Full backend passed 16,503 tests (65 database-dependent suites skipped), and server source/test types passed. Delivery pending.
