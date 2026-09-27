@@ -15,6 +15,8 @@ import {
   CreateDeviceRequest,
   DeviceConflictResponse,
 } from '../api/devices';
+import { useLatestRequest } from './useLatestRequest';
+import type { FetchToken } from './requestOwnership';
 import { useSidebar } from '../contexts/SidebarContext';
 import { createLogger } from '../utils/logger';
 
@@ -66,24 +68,44 @@ export function useDeviceSave(): UseDeviceSaveState {
   const [error, setError] = useState<string | null>(null);
   const [conflictData, setConflictData] = useState<DeviceConflictResponse | null>(null);
 
+  const operations = useLatestRequest();
+  const retireOperation = useCallback(() => {
+    operations.invalidate();
+    setSaving(false);
+    setMerging(false);
+  }, [operations]);
+
+  const beginOperation = useCallback((kind: 'save' | 'merge') => {
+    const token = operations.begin();
+    setSaving(kind === 'save');
+    setMerging(kind === 'merge');
+    setError(null);
+    return token;
+  }, [operations]);
+
+  const finishOperation = useCallback((token: FetchToken) => {
+    if (!operations.isCurrent(token)) return;
+    setSaving(false);
+    setMerging(false);
+  }, [operations]);
+
   const clearConflict = useCallback(() => {
+    retireOperation();
     setConflictData(null);
-  }, []);
+  }, [retireOperation]);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   const reset = useCallback(() => {
-    setSaving(false);
-    setMerging(false);
+    retireOperation();
     setError(null);
     setConflictData(null);
-  }, []);
+  }, [retireOperation]);
 
   const saveDevice = useCallback(async (request: CreateDeviceRequest) => {
-    setSaving(true);
-    setError(null);
+    const token = beginOperation('save');
     setConflictData(null);
 
     try {
@@ -99,15 +121,17 @@ export function useDeviceSave(): UseDeviceSaveState {
       if (result.status === 'created') {
         log.info('Device created successfully', { deviceId: result.device.id });
         refreshSidebar();
-        navigate('/devices');
+        // Accepted writes refresh application data even after their UI retires.
+        if (operations.isCurrent(token)) navigate('/devices');
       } else if (result.status === 'merged') {
         log.info('Accounts merged into existing device', {
           deviceId: result.result.device.id,
           added: result.result.added,
         });
         refreshSidebar();
-        navigate(`/devices/${result.result.device.id}`);
+        if (operations.isCurrent(token)) navigate(`/devices/${result.result.device.id}`);
       } else if (result.status === 'conflict') {
+        if (!operations.isCurrent(token)) return;
         log.info('Device conflict detected', {
           existingId: result.conflict.existingDevice.id,
           newAccounts: result.conflict.comparison.newAccounts.length,
@@ -117,16 +141,16 @@ export function useDeviceSave(): UseDeviceSaveState {
         setConflictData(result.conflict);
       }
     } catch (err) {
+      if (!operations.isCurrent(token)) return;
       log.error('Failed to save device', { error: err });
       setError(err instanceof Error ? err.message : 'Failed to save device. Please try again.');
     } finally {
-      setSaving(false);
+      finishOperation(token);
     }
-  }, [navigate, refreshSidebar]);
+  }, [beginOperation, finishOperation, navigate, operations, refreshSidebar]);
 
   const mergeDevice = useCallback(async (request: CreateDeviceRequest) => {
-    setMerging(true);
-    setError(null);
+    const token = beginOperation('merge');
 
     try {
       // Add merge flag to request
@@ -139,14 +163,15 @@ export function useDeviceSave(): UseDeviceSaveState {
       });
 
       refreshSidebar();
-      navigate(`/devices/${result.device.id}`);
+      if (operations.isCurrent(token)) navigate(`/devices/${result.device.id}`);
     } catch (err) {
+      if (!operations.isCurrent(token)) return;
       log.error('Failed to merge accounts', { error: err });
       setError(err instanceof Error ? err.message : 'Failed to merge accounts. Please try again.');
     } finally {
-      setMerging(false);
+      finishOperation(token);
     }
-  }, [navigate, refreshSidebar]);
+  }, [beginOperation, finishOperation, navigate, operations, refreshSidebar]);
 
   return {
     saving,

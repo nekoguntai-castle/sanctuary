@@ -1137,6 +1137,7 @@ n_src_hooks_useDeviceModels_ts-->n_src_api_devices_ts
 n_src_hooks_useDeviceModels_ts-->n_src_utils_logger_ts
 n_src_hooks_useDeviceSave_ts-->n_src_api_devices_ts
 n_src_hooks_useDeviceSave_ts-->n_src_contexts_SidebarContext_tsx
+n_src_hooks_useDeviceSave_ts-->n_src_hooks_useLatestRequest_ts
 n_src_hooks_useDeviceSave_ts-->n_src_utils_logger_ts
 n_src_hooks_useErrorHandler_ts-->n_src_api_client_ts
 n_src_hooks_useErrorHandler_ts-->n_src_hooks_useNotify_ts
