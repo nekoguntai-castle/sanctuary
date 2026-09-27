@@ -110,6 +110,16 @@ fi
 
 ci_emit_notice "lane=$lane tier=$tier coverage_required=$coverage_required files=${#files[@]}"
 
+normalize_related_files() {
+  local workspace="$1" normalized file
+  normalized="$(bash "$SCRIPT_DIR/related-test-args.sh" "$workspace" "${files[@]}")" || return $?
+  files=()
+  while IFS= read -r file; do
+    [ -n "$file" ] && files+=("$file")
+  done <<< "$normalized"
+  return 0
+}
+
 # Local helper: run vitest at $1 with related/run mode based on files.
 # Uses a single worker thread for generic local coverage runs; the Forgejo
 # frontend coverage shard script owns its stricter serialized fork policy.
@@ -140,11 +150,21 @@ run_vitest_in() {
   fi
 
   if [ "${#files[@]}" -gt 0 ] && [ "$coverage_required" != "true" ]; then
+    if [ "$dir" != '.' ]; then
+      normalize_related_files "$dir" || return $?
+    fi
+    local related_files=() file
+    for file in "${files[@]}"; do
+      # Vitest related consumes positional operands, not its separate `--` bag.
+      # Relative spelling keeps dash-leading filenames from becoming options.
+      case "$file" in -*) file="./$file" ;; esac
+      related_files+=("$file")
+    done
     # Change-scoped run on PR (no coverage). Slow tests still surface here
     # only if they are dependency-related to the changed files.
     (
       cd "$dir"
-      exec npx vitest related --run --passWithNoTests "${mode_args[@]}" "${extra_args[@]}" -- "${files[@]}"
+      exec npx vitest related --run --passWithNoTests "${mode_args[@]}" "${extra_args[@]}" "${related_files[@]}"
     )
   else
     # Full lane run (push/main/full or no specific files).
@@ -174,7 +194,7 @@ case "$lane" in
     (cd llm-egress-proxy && exec npm test)
     ;;
   critical_mutation)
-    (cd server && exec npm run test:critical-mutation)
+    (cd server && exec npm run test:mutation:critical:gate)
     ;;
   browser_smoke)
     exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium --grep '@smoke|browser-smoke'

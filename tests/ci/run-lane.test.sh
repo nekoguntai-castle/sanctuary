@@ -47,6 +47,68 @@ write_plan() {
 EOF
 }
 
+assert_related_workspace() {
+  local tmp="$1" stub_dir="$2" lane_name="$3" workspace="$4"
+  local prefix="$workspace/" expected_cwd="$ROOT_DIR/$workspace"
+  local expected_args=(vitest related --run --passWithNoTests)
+  case "$workspace" in
+    .) prefix=''; expected_cwd="$ROOT_DIR"; expected_args+=(--config config/tooling/vitest.config.ts) ;;
+    server) expected_args+=(--exclude 'tests/integration/**' --exclude '**/*.integration.test.*') ;;
+  esac
+  write_plan "$tmp/related.json" "$lane_name" true "${prefix}src/space name.ts" "${prefix}src/$workspace/nested.ts" "${prefix}-leading.ts"
+  STUB_OUT="$tmp/related.args" STUB_CWD="$tmp/related.cwd" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" "$lane_name" --plan "$tmp/related.json" >/dev/null 2>&1
+  assert_eq "$lane_name cwd" "$expected_cwd" "$(cat "$tmp/related.cwd")"
+  expected_args+=('src/space name.ts' "src/$workspace/nested.ts" './-leading.ts')
+  assert_eq "$lane_name exact related argv" "$(printf '%s\n' "${expected_args[@]}")" "$(cat "$tmp/related.args")"
+  local status=0
+  STUB_EXIT=23 STUB_OUT="$tmp/related.args" STUB_CWD="$tmp/related.cwd" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" "$lane_name" --plan "$tmp/related.json" >/dev/null 2>&1 || status=$?
+  assert_eq "$lane_name Vitest failure status" 23 "$status"
+}
+
+assert_mutation_dispatch() {
+  local tmp="$1" stub_dir="$2"
+  write_plan "$tmp/mutation.json" critical_mutation true
+  STUB_OUT="$tmp/mutation.args" STUB_CWD="$tmp/mutation.cwd" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" critical_mutation --plan "$tmp/mutation.json" >/dev/null 2>&1
+  assert_eq 'mutation cwd' "$ROOT_DIR/server" "$(cat "$tmp/mutation.cwd")"
+  assert_eq 'mutation exact argv' "$(printf '%s\n' run test:mutation:critical:gate)" "$(cat "$tmp/mutation.args")"
+  node -e 'const p = require(process.argv[1]); if (!p.scripts[process.argv[2]]) process.exit(1)' \
+    "$ROOT_DIR/server/package.json" test:mutation:critical:gate || fail 'mutation script missing from package'
+  local status=0
+  STUB_EXIT=37 STUB_OUT="$tmp/mutation.args" STUB_CWD="$tmp/mutation.cwd" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" critical_mutation --plan "$tmp/mutation.json" >/dev/null 2>&1 || status=$?
+  assert_eq 'mutation failing gate status' 37 "$status"
+}
+
+assert_workspace_modes() {
+  local tmp="$1" stub_dir="$2" lane_name="$3"
+  write_plan "$tmp/modes.json" "$lane_name" true
+  STUB_OUT="$tmp/modes.args" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" "$lane_name" --plan "$tmp/modes.json" >/dev/null 2>&1
+  assert_eq "$lane_name empty mode" run "$(sed -n '2p' "$tmp/modes.args")"
+  node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1])); p.coverage_required=true; p.lanes[process.argv[2]].files=["workspace/src/file.ts"]; fs.writeFileSync(process.argv[1],JSON.stringify(p));' \
+    "$tmp/modes.json" "$lane_name"
+  STUB_OUT="$tmp/modes.args" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" "$lane_name" --plan "$tmp/modes.json" >/dev/null 2>&1
+  assert_eq "$lane_name coverage mode" run "$(sed -n '2p' "$tmp/modes.args")"
+  grep -Fxq -- --coverage "$tmp/modes.args" || fail "$lane_name missing coverage flag"
+}
+
+assert_normalizer_failure() {
+  local tmp="$1" stub_dir="$2"
+  mkdir -p "$tmp/failing-runner"
+  cp "$RUN_LANE" "$ROOT_DIR/scripts/ci/provider-context.sh" "$tmp/failing-runner/"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 29' > "$tmp/failing-runner/related-test-args.sh"
+  write_plan "$tmp/failure.json" backend_unit true server/src/example.ts
+  local status=0
+  STUB_OUT="$tmp/forbidden.args" PATH="$stub_dir:$PATH" \
+    bash "$tmp/failing-runner/run-lane.sh" backend_unit --plan "$tmp/failure.json" >/dev/null 2>&1 || status=$?
+  assert_eq 'normalizer failure status' 29 "$status"
+  [ ! -e "$tmp/forbidden.args" ] || fail 'normalizer failure dispatched Vitest'
+}
+
 main() {
   local tmp
   tmp="$(mktemp -d)"
@@ -80,8 +142,11 @@ main() {
   cat > "$stub_dir/npx" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$STUB_OUT"
+if [ -n "${STUB_CWD:-}" ]; then pwd > "$STUB_CWD"; fi
+exit "${STUB_EXIT:-0}"
 EOF
   chmod +x "$stub_dir/npx"
+  cp "$stub_dir/npx" "$stub_dir/npm"
 
   write_plan "$tmp/plan-c.json" frontend_unit true src/components/Foo.tsx src/components/Bar.tsx
 
@@ -217,6 +282,15 @@ EOF
     *) fail "backend_unit should exclude **/*.integration.test.*:\n$args" ;;
   esac
 
+  local failures=0
+  (assert_related_workspace "$tmp" "$stub_dir" frontend_unit .) || failures=$((failures + 1))
+  (assert_related_workspace "$tmp" "$stub_dir" backend_unit server) || failures=$((failures + 1))
+  (assert_related_workspace "$tmp" "$stub_dir" gateway_unit gateway) || failures=$((failures + 1))
+  (assert_mutation_dispatch "$tmp" "$stub_dir") || failures=$((failures + 1))
+  (assert_workspace_modes "$tmp" "$stub_dir" backend_unit) || failures=$((failures + 1))
+  (assert_workspace_modes "$tmp" "$stub_dir" gateway_unit) || failures=$((failures + 1))
+  (assert_normalizer_failure "$tmp" "$stub_dir") || failures=$((failures + 1))
+  assert_eq 'new lane contract failures' 0 "$failures"
   echo "run-lane regression checks passed"
 }
 
