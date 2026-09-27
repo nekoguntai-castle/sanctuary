@@ -39,6 +39,7 @@ export const ChatMessagePane: React.FC<ChatMessagePaneProps> = ({
           messagesEndRef={messagesEndRef}
         />
         <ChatInputComposer
+          loadingMessages={loadingMessages}
           input={input}
           sending={sending}
           inputRef={inputRef}

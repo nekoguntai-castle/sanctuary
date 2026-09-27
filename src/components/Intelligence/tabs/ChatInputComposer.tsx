@@ -5,6 +5,7 @@ import { CHAT_MESSAGE_MAX_LENGTH } from '../../../api/intelligence';
 interface ChatInputComposerProps {
   input: string;
   sending: boolean;
+  loadingMessages: boolean;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   onInputChange: (value: string) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
@@ -14,6 +15,7 @@ interface ChatInputComposerProps {
 export const ChatInputComposer: React.FC<ChatInputComposerProps> = ({
   input,
   sending,
+  loadingMessages,
   inputRef,
   onInputChange,
   onKeyDown,
@@ -33,7 +35,7 @@ export const ChatInputComposer: React.FC<ChatInputComposerProps> = ({
       />
       <button
         onClick={onSend}
-        disabled={!input.trim() || sending}
+        disabled={!input.trim() || sending || loadingMessages}
         className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors hover:bg-primary-700 disabled:opacity-50 dark:bg-primary-200 dark:text-primary-900 dark:hover:bg-primary-300"
       >
         <Send className="h-3.5 w-3.5" />

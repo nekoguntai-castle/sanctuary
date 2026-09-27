@@ -43,13 +43,14 @@ export const useChatTabController = ({ walletId }: { walletId: string }) => {
   useEffect(() => { void loadConversations(); }, [loadConversations]);
 
   const selectConversation = useCallback((conversationId: string | null) => {
+    if (conversationId === selectedConversationId) return;
     conversationRequests.current.setRoute(`${walletId}:${conversationId ?? 'none'}`);
     setSelectedConversationId(conversationId);
     setMessages([]);
     setInput('');
     setLoadingMessages(Boolean(conversationId));
     setSending(false);
-  }, [walletId]);
+  }, [selectedConversationId, walletId]);
 
   useEffect(() => {
     if (!selectedConversationId) return;
@@ -103,7 +104,7 @@ export const useChatTabController = ({ walletId }: { walletId: string }) => {
 
   const handleSend = useCallback(async () => {
     const content = input.trim();
-    if (!content || !selectedConversationId || sending) return;
+    if (!content || !selectedConversationId || sending || loadingMessages) return;
     const token = conversationRequests.current.captureRoute(selectionKey);
     const tempUserMsg: AIMessage = {
       id: `temp-${Date.now()}`,
@@ -127,7 +128,7 @@ export const useChatTabController = ({ walletId }: { walletId: string }) => {
     } finally {
       if (conversationRequests.current.isRouteOwner(token)) setSending(false);
     }
-  }, [input, selectedConversationId, selectionKey, sending]);
+  }, [input, loadingMessages, selectedConversationId, selectionKey, sending]);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {

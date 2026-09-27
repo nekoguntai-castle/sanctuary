@@ -209,9 +209,12 @@ describe('ChatTab', () => {
     act(() => result.current.setSelectedConversationId('conv-2'));
     await act(async () => rejectLoad(new Error('stale load')));
 
+    vi.mocked(intelligenceApi.getConversationMessages).mockResolvedValue({ messages: [] });
     act(() => result.current.setSelectedConversationId('conv-1'));
+    await waitFor(() => expect(result.current.loadingMessages).toBe(false));
     act(() => result.current.setInput('Question'));
     act(() => { void result.current.handleSend(); });
+    expect(intelligenceApi.sendChatMessage).toHaveBeenCalledWith('conv-1', 'Question');
     act(() => result.current.setSelectedConversationId('conv-2'));
     await act(async () => rejectSend(new Error('stale send')));
     expect(result.current.input).toBe('');

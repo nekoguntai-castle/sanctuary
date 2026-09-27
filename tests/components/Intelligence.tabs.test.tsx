@@ -10,3 +10,5 @@ import './IntelligenceTabs/insightCard.contracts';
 import './IntelligenceTabs/chatTab.contracts';
 import './IntelligenceTabs/chatMessage.contracts';
 import './IntelligenceTabs/settingsTab.contracts';
+
+import './IntelligenceTabs/chatReadiness.contracts';
