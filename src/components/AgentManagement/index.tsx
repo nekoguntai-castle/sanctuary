@@ -8,6 +8,7 @@ import type {
   UpdateWalletAgentRequest,
   WalletAgentMetadata,
 } from '../../api/admin';
+import { useLatestRequest } from '../../hooks/useLatestRequest';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { Button } from '../ui/Button';
 import { ErrorAlert } from '../ui/ErrorAlert';
@@ -109,6 +110,7 @@ function buildUpdatePayload(form: AgentFormState): UpdateWalletAgentRequest {
 
 export function AgentManagement() {
   const navigate = useNavigate();
+  const createOwner = useLatestRequest();
   const [agents, setAgents] = useState<WalletAgentMetadata[]>([]);
   const [options, setOptions] = useState<AgentManagementOptions>(EMPTY_OPTIONS);
   const [loading, setLoading] = useState(true);
@@ -122,17 +124,18 @@ export function AgentManagement() {
   const [createdKey, setCreatedKey] = useState<CreatedAgentApiKey | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (isCurrent = () => true) => {
     setLoading(true);
     setLoadError(null);
     try {
       const [agentList, optionList] = await Promise.all([adminApi.getWalletAgents(), adminApi.getWalletAgentOptions()]);
+      if (!isCurrent()) return;
       setAgents(agentList);
       setOptions(optionList);
     } catch (error) {
-      setLoadError(extractErrorMessage(error, 'Failed to load wallet agents'));
+      if (isCurrent()) setLoadError(extractErrorMessage(error, 'Failed to load wallet agents'));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
 
@@ -163,12 +166,23 @@ export function AgentManagement() {
   };
 
   const handleCreateAgent = async (form: AgentFormState) => {
-    await runAction('create-agent', async () => {
+    const token = createOwner.begin();
+    const isCurrent = () => createOwner.isCurrent(token);
+    setBusyAction('create-agent');
+    setActionError(null);
+    try {
       await adminApi.createWalletAgent(buildCreatePayload(form));
+      if (!isCurrent()) return;
       setShowCreate(false);
-      await loadData();
-      navigate('/admin/agent-wallets');
-    });
+      await loadData(isCurrent);
+      if (isCurrent()) navigate('/admin/agent-wallets');
+    } catch (error) {
+      if (isCurrent()) setActionError(extractErrorMessage(error, 'Agent action failed'));
+    } finally {
+      if (isCurrent()) {
+        setBusyAction(current => current === 'create-agent' ? null : current);
+      }
+    }
   };
 
   const handleUpdateAgent = async (form: AgentFormState) => {
@@ -247,7 +261,7 @@ export function AgentManagement() {
     return (
       <div className="space-y-4">
         <ErrorAlert message={loadError} />
-        <Button onClick={loadData} variant="secondary">
+        <Button onClick={() => { void loadData(); }} variant="secondary">
           <RotateCcw className="w-4 h-4 mr-2" />
           Retry
         </Button>
