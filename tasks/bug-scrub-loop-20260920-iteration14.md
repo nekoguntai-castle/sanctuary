@@ -58,20 +58,24 @@ npm run typecheck:all
 
 ## Delivery and rollback
 
-- [ ] One standalone protected PR for this phase. Parent owns docs/state/integration/commit/push and delivery; implementation delegates do not commit or push.
-- [ ] Refresh target and open PRs before delivery. Pin reviewed implementation head and plan provenance. Wait all required PR checks, merge using the exact head with branch deletion disabled, verify actual merge object/tree/ancestry, then verify exact target-branch push CI before marking delivered.
-- [ ] Maintain caller-owned outer goal and `rebuild_policy: defer`; no intermediate deployment. Do not start a stopped stack or alter unrelated release/dependency work.
+- [x] One standalone protected PR for this phase. Parent owns docs/state/integration/commit/push and delivery; implementation delegates do not commit or push.
+- [x] Refresh target and open PRs before delivery. Pin reviewed implementation head and plan provenance. Wait all required PR checks, merge using the exact head with branch deletion disabled, verify actual merge object/tree/ancestry, then verify exact target-branch push CI before marking delivered.
+- [x] Maintain caller-owned outer goal and `rebuild_policy: defer`; no intermediate deployment. Do not start a stopped stack or alter unrelated release/dependency work.
 - [ ] Revert through a protected PR if required; rollback restores the late-navigation defect but needs no data or cache migration. Accepted draft requests cannot be rolled back by UI retirement or code revert.
-- [ ] Preserve owned branches/worktree and operational evidence until final loop completion and exact cleanup authorization. Record provenance and concrete per-resource cleanup commands; never claim unperformed cleanup. Stop only owned temporary servers.
+- [x] Preserve owned branches/worktree and operational evidence until final loop completion and exact cleanup authorization. Record provenance and concrete per-resource cleanup commands; never claim unperformed cleanup. Stop only owned temporary servers.
 
 ## Completion
 
-- [ ] Phase merged and exact target CI verified; finding attempts and immutable provenance recorded.
-- [ ] Run a new complete eight-domain scrub at new main. Any remaining P0–P2 findings require a newly reviewed plan; successful tests alone do not complete the loop.
+- [x] Phase merged and exact target CI verified; finding attempts and immutable provenance recorded.
+- [x] Run a new complete eight-domain scrub at new main. Any remaining P0–P2 findings require a newly reviewed plan; successful tests alone do not complete the loop.
 - [ ] Only after a validated clean pass, complete authorized owned cleanup and deferred crash-safe rebuild of the originally running stack via `./start.sh --rebuild`, with deployed identity/readiness evidence. Validate durable state before completing the existing outer goal.
 
 Recursive review: two complete clean passes, coordinator and independent source-backed review of this exact file. No verified actionable comments remain. Separate status/action ownership is retained to avoid a lookup canceling an action; hidden mounted tabs remain active. The reviewed implementation commit is pinned in durable state before code writes.
 
 ## Implementation verification progress
 
-Implemented only the transaction-actions hook with existing ownership helper and a 27-case ownership suite. Tests-first run failed17/passed4; final focused run passes71 tests. The original real-router scrub reproduction now passes. All frontend typechecks, production build, app/server lint, architecture boundaries/cycles/graphs and complexity pass. Independent production and final test reviews are clean. Full frontend coverage passed all9,102 tests/673files at100% statements26,084, branches16,582, functions7,224 and lines23,784. All144 static-build Chromium render regressions and generated architecture index check passed; delivery pending. Backend/shared/dependencies/config source is unchanged from verified6004978.
+Implemented only the transaction-actions hook with existing ownership helper and a 27-case ownership suite. Tests-first run failed17/passed4; final focused run passes71 tests. The original real-router scrub reproduction now passes. All frontend typechecks, production build, app/server lint, architecture boundaries/cycles/graphs and complexity pass. Independent production and final test reviews are clean. Full frontend coverage passed all9,102 tests/673files at100% statements26,084, branches16,582, functions7,224 and lines23,784. All144 static-build Chromium render regressions and generated architecture index check passed; delivery is verified below. Backend/shared/dependencies/config source is unchanged from verified6004978.
+
+## Verified delivery closeout
+
+PR #1308 merged at `4467e96e11ea914a0239d54f1fa4b7d053fd0747`; actual object, main ancestry and equality with tested head `1f5b8562543e94f47c48f6283e60a6155ef6ff52` verified. PR workflows19077–19081 and exact target-push workflows19083–19087 passed. Vectors required one user-started same-SHA retry after recorded debug-session failure and verified cleanup; attempt2 and target Trezor passed, without claiming a root-cause repair. Finding resolved at attempt1. New iteration15 fresh scrub confirms three separate creation-flow P2s. Owned cleanup and deployment remain deferred outer-loop obligations.

@@ -4,6 +4,7 @@ import * as devicesApi from '../../api/devices';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { Device, WalletType } from '../../types';
 import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
+import { useLatestRequest } from '../../hooks/useLatestRequest';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useCreateWallet } from '../../hooks/queries/useWallets';
 import { createLogger } from '../../utils/logger';
@@ -35,6 +36,15 @@ export function useCreateWalletController() {
   const [desiredQuorumM, setDesiredQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const previousNetwork = useRef(selectedNetwork);
+  const creation = useLatestRequest();
+  const scopeRef = useRef({ network: selectedNetwork });
+  if (scopeRef.current.network !== selectedNetwork) {
+    // Retire synchronously, including network A -> B -> A transitions.
+    scopeRef.current = { network: selectedNetwork };
+    creation.invalidate();
+    setIsSubmitting(false);
+  }
+  const renderScope = scopeRef.current;
 
   useEffect(() => {
     let isMounted = true;
@@ -135,13 +145,17 @@ export function useCreateWalletController() {
   );
 
   const handleBack = useCallback(() => {
+    // Back abandons this review; accepted creation still updates the query cache.
+    scopeRef.current = { network: selectedNetwork };
+    creation.invalidate();
+    setIsSubmitting(false);
     if (step > 1) {
       setStep((step - 1) as CreateWalletStep);
       return;
     }
 
     navigate('/wallets');
-  }, [navigate, step]);
+  }, [creation, navigate, selectedNetwork, step]);
 
   const handleNext = useCallback(() => {
     const result = getNextCreateWalletStep(step, createWalletState);
@@ -158,18 +172,22 @@ export function useCreateWalletController() {
     /* v8 ignore next -- UI navigation cannot reach create without a selected wallet type */
     if (!walletType) return;
 
+    if (scopeRef.current !== renderScope) return;
+    const token = creation.begin();
+    if (!creation.isCurrent(token)) return;
     setIsSubmitting(true);
 
     try {
       const created = await createWalletMutation.mutateAsync(buildCreateWalletPayload(createWalletState));
-      navigate(`/wallets/${created.id}`);
+      if (creation.isCurrent(token)) navigate(`/wallets/${created.id}`);
     } catch (error) {
+      if (!creation.isCurrent(token)) return;
       log.error('Failed to create wallet', { error });
       handleError(error, 'Failed to Create Wallet');
     } finally {
-      setIsSubmitting(false);
+      if (creation.isCurrent(token)) setIsSubmitting(false);
     }
-  }, [createWalletMutation, createWalletState, handleError, navigate, walletType]);
+  }, [creation, createWalletMutation, createWalletState, handleError, navigate, renderScope, walletType]);
 
   return {
     step,
