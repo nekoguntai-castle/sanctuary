@@ -100,7 +100,7 @@ describeWithDb('Internal receiving persistence integration', () => {
     mocks.recalculateWalletBalances.mockResolvedValue(undefined);
   });
 
-  it('persists a signed 2-of-2 P2WSH receive and reuses both wallet rows', async () => {
+  it.each([1, 2])('persists a signed 2-of-2 P2WSH receive and reuses both wallet rows (replay %i)', async () => {
     const [sender, receiver, otherNetworkReceiver] = await Promise.all([
       prisma.wallet.create({
         data: {

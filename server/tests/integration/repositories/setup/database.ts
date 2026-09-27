@@ -81,6 +81,7 @@ export async function cleanupTestData(): Promise<void> {
   await client.addressLabel.deleteMany();
   await client.label.deleteMany();
 
+  await client.transactionSigningIntent.deleteMany();
   await client.transactionInput.deleteMany();
   await client.transactionOutput.deleteMany();
   await client.draftUtxoLock.deleteMany();
