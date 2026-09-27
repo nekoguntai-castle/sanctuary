@@ -1,5 +1,7 @@
 export interface VariablesController {
   loading: boolean;
+  loadError: string | null;
+  retryLoad: () => Promise<void>;
   confirmationThreshold: number;
   deepConfirmationThreshold: number;
   dustThreshold: number;

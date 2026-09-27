@@ -448,8 +448,10 @@ describe('Variables', () => {
       render(<Variables />);
 
       await waitFor(() => {
-        // Should still render with default values
-        expect(screen.getByText('System Variables')).toBeInTheDocument();
+        expect(screen.getByText(/Failed to load system variables/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+        expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+        expect(adminApi.updateSystemSettings).not.toHaveBeenCalled();
       });
     });
   });
