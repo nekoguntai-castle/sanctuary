@@ -70,7 +70,6 @@ if [ -z "$base_sha" ]; then
 fi
 
 zero_sha='0000000000000000000000000000000000000000'
-origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 # Push from a fresh ref reports 0000... as the base; treat it as "from the
 # repo's first commit" so we don't fail the diff.
@@ -160,10 +159,20 @@ else
     local sha="$1"
     if ! git rev-parse --verify "$sha^{commit}" >/dev/null 2>&1; then
       git fetch --no-tags --depth=1 origin "$sha" || true
+      if ! git rev-parse --verify "$sha^{commit}" >/dev/null 2>&1; then
+        printf 'plan-test-run: unavailable comparison commit %s\n' "$sha" >&2
+        return 1
+      fi
     fi
   }
   ensure_commit "$base_sha"
   ensure_commit "$head_sha"
+
+  # Check the complete diff before classifying even a partial stdout result.
+  if ! changed_files="$(git diff --no-renames --name-only "$base_sha" "$head_sha")"; then
+    printf 'plan-test-run: comparison failed for %s..%s\n' "$base_sha" "$head_sha" >&2
+    exit 1
+  fi
 
   # Iterate diff. Anything that touches a global trigger forces full_scan.
   while IFS= read -r file; do
@@ -219,7 +228,7 @@ else
       build_run="true"
       build_files+=("$file")
     fi
-  done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
+  done <<< "$changed_files"
 fi
 
 # JSON emit. We hand-build the document so jq is not required at runtime.

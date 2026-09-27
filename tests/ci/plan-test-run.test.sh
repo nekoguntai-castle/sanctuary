@@ -73,6 +73,157 @@ run_planner() {
   )
 }
 
+# These wrappers intercept only fetch and selected diff failures. All object
+# resolution and successful comparisons use the captured real Git executable.
+create_failure_fixture() {
+  local repo="$1" bin="$2"
+  mkdir -p "$repo/scripts/ci" "$bin"
+  cp "$ROOT_DIR/scripts/run-tests.sh" "$repo/scripts/run-tests.sh"
+  cp "$PLANNER" "$repo/scripts/ci/plan-test-run.sh"
+  cp "$ROOT_DIR/scripts/ci/"{provider-context,classify-files-lib}.sh "$repo/scripts/ci/"
+  cat > "$repo/scripts/ci/run-lane.sh" <<'LANE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PROOF_DISPATCH_LOG"
+LANE
+  cat > "$bin/git" <<'GIT'
+#!/usr/bin/env bash
+set -eu
+printf '%q ' "$@" >> "$PROOF_GIT_LOG"
+printf '\n' >> "$PROOF_GIT_LOG"
+if [ "${1:-}" = fetch ]; then
+  case "$PROOF_MODE" in
+    recover)
+      test "$5" = refs/heads/recovered
+      test "$("$PROOF_REAL_GIT" rev-parse --show-toplevel)" = "$PROOF_ROOT"
+      "$PROOF_REAL_GIT" update-ref refs/heads/recovered "$PROOF_HEAD"
+      exit 0 ;;
+    fetch-empty) exit 0 ;;
+    *) printf 'fixture fetch failure\n' >&2; exit 17 ;;
+  esac
+fi
+if [ "${1:-}" = diff ]; then
+  case "$PROOF_MODE" in
+    diff-empty) printf 'fixture diff failure\n' >&2; exit 71 ;;
+    diff-source) printf 'server/src/api/push.ts\n'; printf 'fixture diff failure\n' >&2; exit 71 ;;
+    diff-global) printf 'package.json\n'; printf 'fixture diff failure\n' >&2; exit 71 ;;
+  esac
+fi
+exec "$PROOF_REAL_GIT" "$@"
+GIT
+  chmod +x "$bin/git"
+}
+
+run_failure_fixture() {
+  local mode="$1"
+  shift
+  : > "$PROOF_GIT_LOG"
+  : > "$PROOF_DISPATCH_LOG"
+  proof_status=0
+  (cd "$PROOF_ROOT" && PROOF_MODE="$mode" "$@") > "$PROOF_ROOT/out" 2> "$PROOF_ROOT/err" || proof_status=$?
+}
+
+assert_comparison_rejected() {
+  local label="$1"
+  [ "$proof_status" -ne 0 ] || fail "$label: unavailable comparison returned success"
+  [ -s "$PROOF_ROOT/err" ] || fail "$label: missing diagnostic"
+  [ ! -s "$PROOF_DISPATCH_LOG" ] || fail "$label: dispatched a lane"
+  if grep -q 'Nothing to test' "$PROOF_ROOT/out"; then fail "$label: claimed nothing to test"; fi
+  if PAYLOAD="$(cat "$PROOF_ROOT/out")" node -e 'JSON.parse(process.env.PAYLOAD)' >/dev/null 2>&1; then
+    fail "$label: emitted valid JSON despite failed comparison"
+  fi
+}
+
+check_anchor_failures() {
+  local missing=1234567890abcdef1234567890abcdef12345678 mode anchor
+  for mode in fetch-fail fetch-empty; do
+    for anchor in base head; do
+      local base="$PROOF_HEAD" head="$PROOF_HEAD"
+      if [ "$anchor" = base ]; then base="$missing"; else head="$missing"; fi
+      run_failure_fixture "$mode" bash scripts/ci/plan-test-run.sh --base "$base" --head "$head"
+      assert_comparison_rejected "$mode missing $anchor"
+      assert_eq "$mode $anchor fetch count" 1 "$(grep -c '^fetch ' "$PROOF_GIT_LOG")"
+    done
+  done
+  local blob
+  blob="$(printf 'not a commit\n' | "$PROOF_REAL_GIT" -C "$PROOF_ROOT" hash-object -w --stdin)"
+  assert_eq 'noncommit type' blob "$("$PROOF_REAL_GIT" -C "$PROOF_ROOT" cat-file -t "$blob")"
+  for anchor in "$blob" 'invalid^anchor'; do
+    run_failure_fixture fetch-fail bash scripts/ci/plan-test-run.sh --base "$anchor" --head "$PROOF_HEAD"
+    assert_comparison_rejected "noncommit/unresolvable $anchor"
+  done
+  run_failure_fixture fetch-fail bash scripts/run-tests.sh --since "$missing"
+  assert_comparison_rejected 'actual caller missing40hex'
+}
+
+check_diff_failures() {
+  local mode
+  for mode in diff-empty diff-source diff-global; do
+    run_failure_fixture "$mode" bash scripts/ci/plan-test-run.sh --base HEAD --head HEAD
+    assert_comparison_rejected "planner $mode"
+    if grep -q '^fetch ' "$PROOF_GIT_LOG"; then fail "$mode fetched valid anchors"; fi
+    run_failure_fixture "$mode" bash scripts/run-tests.sh --since HEAD
+    assert_comparison_rejected "actual caller $mode"
+  done
+}
+
+check_recovery_and_empty() {
+  run_failure_fixture recover bash scripts/ci/plan-test-run.sh --base refs/heads/recovered --head HEAD
+  assert_eq 'recovered plan exit' 0 "$proof_status"
+  assert_eq 'recovered actual commit' "$PROOF_HEAD" "$("$PROOF_REAL_GIT" -C "$PROOF_ROOT" rev-parse refs/heads/recovered)"
+  assert_eq 'recovery fetch count' 1 "$(grep -c '^fetch ' "$PROOF_GIT_LOG")"
+  assert_empty_plan 'recovered plan'
+  run_failure_fixture real bash scripts/ci/plan-test-run.sh --base HEAD --head HEAD
+  assert_empty_plan 'available empty plan'
+  if grep -q '^fetch ' "$PROOF_GIT_LOG"; then fail 'available anchors fetched'; fi
+  run_failure_fixture real bash scripts/run-tests.sh --since HEAD
+  assert_eq 'empty caller exit' 0 "$proof_status"
+  grep -q 'Nothing to test' "$PROOF_ROOT/out" || fail 'empty caller omitted no-op result'
+  [ ! -s "$PROOF_DISPATCH_LOG" ] || fail 'empty caller dispatched'
+  if grep -q '^fetch ' "$PROOF_GIT_LOG"; then fail 'empty caller fetched'; fi
+}
+
+check_changed_caller() {
+  mkdir -p "$PROOF_ROOT/src"
+  printf 'export const changed = true;\n' > "$PROOF_ROOT/src/Changed.ts"
+  "$PROOF_REAL_GIT" -C "$PROOF_ROOT" add src/Changed.ts
+  "$PROOF_REAL_GIT" -C "$PROOF_ROOT" commit -qm 'changed caller control'
+  run_failure_fixture real bash scripts/run-tests.sh --since "$PROOF_HEAD"
+  assert_eq 'changed caller exit' 0 "$proof_status"
+  grep -q '^frontend_unit --plan ' "$PROOF_DISPATCH_LOG" || fail 'changed caller did not dispatch frontend'
+  if grep -q 'Nothing to test' "$PROOF_ROOT/out"; then fail 'changed caller claimed no changes'; fi
+  if grep -q '^fetch ' "$PROOF_GIT_LOG"; then fail 'changed caller fetched available anchors'; fi
+}
+
+assert_empty_plan() {
+  assert_eq "$1 exit" 0 "$proof_status"
+  PAYLOAD="$(cat "$PROOF_ROOT/out")" node -e '
+    const p = JSON.parse(process.env.PAYLOAD);
+    if (p.full_scan || Object.values(p.lanes).some(lane => lane.run)) process.exit(1);
+  ' || fail "$1 selected lanes"
+}
+
+check_comparison_failures() (
+  local fixture="$1/failures" bin="$1/bin"
+  create_repo "$fixture"
+  create_failure_fixture "$fixture" "$bin"
+  export PROOF_REAL_GIT PROOF_ROOT PROOF_HEAD PROOF_GIT_LOG PROOF_DISPATCH_LOG
+  PROOF_REAL_GIT="$(command -v git)"
+  PROOF_ROOT="$fixture"
+  PROOF_HEAD="$(git -C "$fixture" rev-parse HEAD)"
+  PROOF_GIT_LOG="$fixture/git.log"
+  PROOF_DISPATCH_LOG="$fixture/dispatch.log"
+  export PATH="$bin:$PATH" TMPDIR="$fixture" EVENT_NAME=local
+  # The actual caller resolves its head from provider context. Keep inherited
+  # runner SHAs/event overrides from addressing objects outside this fixture.
+  export SANCTUARY_CI_EVENT_NAME_OVERRIDE=local SANCTUARY_CI_HEAD_SHA_OVERRIDE=HEAD
+  export SANCTUARY_CI_BASE_SHA_OVERRIDE='' WORKFLOW_SHA=HEAD
+  local proof_status
+  check_anchor_failures
+  check_diff_failures
+  check_recovery_and_empty
+  check_changed_caller
+)
+
 main() {
   local tmp repo
   tmp="$(mktemp -d)"
@@ -266,6 +417,14 @@ main() {
   plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
   assert_eq "renamed backend source -> backend_unit run" "true" \
     "$(json_query "$plan" lanes.backend_unit.run)"
+
+  # Exercise fixture isolation even under an unrelated CI event and SHA.
+  GITHUB_SHA=abcdefabcdefabcdefabcdefabcdefabcdefabcd \
+    WORKFLOW_SHA=abcdefabcdefabcdefabcdefabcdefabcdefabcd \
+    SANCTUARY_CI_EVENT_NAME_OVERRIDE=schedule \
+    SANCTUARY_CI_HEAD_SHA_OVERRIDE=abcdefabcdefabcdefabcdefabcdefabcdefabcd \
+    SANCTUARY_CI_BASE_SHA_OVERRIDE=abcdefabcdefabcdefabcdefabcdefabcdefabcd \
+    check_comparison_failures "$tmp"
 
   echo "plan-test-run regression checks passed"
 }
