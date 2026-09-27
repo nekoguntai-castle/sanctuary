@@ -39,7 +39,9 @@ export function registerAISettingsInitialLoadingContracts() {
       render(<AISettings />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI Settings')).toBeInTheDocument();
+        expect(screen.getByText(/Failed to load AI settings/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+        expect(screen.queryByText('Enable AI Features')).not.toBeInTheDocument();
       });
     });
   });

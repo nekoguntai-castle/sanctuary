@@ -12,6 +12,8 @@ export type AISettingsTab = "status" | "settings" | "models" | "mcp";
 
 export interface AISettingsController {
   featureUnavailable: boolean;
+  loadError: string | null;
+  retryLoad: () => void;
   providerProfiles: EditableProviderProfile[];
   activeProviderProfileId: string;
   providerName: string;

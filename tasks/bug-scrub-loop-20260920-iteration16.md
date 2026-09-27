@@ -74,10 +74,10 @@ Accepted stable finding `ai-settings--save-after-failed-settings-load`. Actual r
 
 Owner files: src/components/AISettings/hooks/useAISettingsBootstrap.ts, hooks/useAISettings.ts, types.ts and AISettings.tsx. Bootstrap owns new load-error/retry behavior; keep near-limit492line useAISettings owner below500 via existing bootstrap extraction/state ownership, not unrelated refactoring. Loading -> existing feature-unavailable -> explicit primary load-error/Retry -> normal page. All normal toggle/modal/settings/detect mutation controls remain inaccessible until baseline success. No useAIFeatureToggle policy change or redundant per-handler checks for inaccessible controls. Include loadError in MCP activation predicate if needed to prevent an already selected tab activating against failure.
 
-- [ ] Tests first using actual AISettings and stable API-boundary harness: failed primaryGET shows Retry/no Enable/save/detect controls and makes no PUT; repeated/deferred retry stays gated.
-- [ ] Retry returns multiple existing profiles; real enable/settings/endpoint/save keeps untouched profile IDs. Preserve successful legacy/default-profile normalization and existing configured flows.
-- [ ] Preserve feature-disabled/flags403 unavailable handling and non403 flags-fetch fallback. Optional model-discovery errors remain model feedback, not failed primary baseline.
-- [ ] Extend existing bootstrap effect lifetime for retry; stable retry generation plus active cleanup is sufficient. Guard obsolete post-await commits, preserve StrictMode/unmount, and avoid extra generic ownership machinery. Test genuine StrictMode overlaps.
+- [x] Tests first using actual AISettings and stable API-boundary harness: failed primaryGET shows Retry/no Enable/save/detect controls and makes no PUT; repeated/deferred retry stays gated.
+- [x] Retry returns multiple existing profiles; real enable/settings/endpoint/save keeps untouched profile IDs. Preserve successful legacy/default-profile normalization and existing configured flows.
+- [x] Preserve feature-disabled/flags403 unavailable handling and non403 flags-fetch fallback. Optional model-discovery errors remain model feedback, not failed primary baseline.
+- [x] Extend existing bootstrap effect lifetime for retry; stable retry generation plus active cleanup is sufficient. Guard obsolete post-await commits, preserve StrictMode/unmount, and avoid extra generic ownership machinery. Test genuine StrictMode overlaps.
 - [ ] Independent source/test review, phase gates, one protected PR and exact target CI. No backend/schema or unrelated settings mutation changes.
 
 ## Verification per phase
@@ -114,7 +114,7 @@ Each phase can be rolled back independently through a protected revert PR, with 
 - [x] Exact-file recursive review converged; pin reviewed revision before production changes.
 - [x] Phase1 Variables merged; actual merge and exact target CI verified.
 - [x] Phase2 Node configuration merged; actual merge and exact target CI verified.
-- [ ] Phase3 Wallet Telegram merged; actual merge and exact target CI verified.
+- [x] Phase3 Wallet Telegram merged; actual merge and exact target CI verified.
 - [ ] Phase4 AI settings merged; actual merge and exact target CI verified.
 - [ ] Return delivery evidence to the outer loop for a fresh full-repository scrub. Owned cleanup and final deferred deployment remain outer closeout requirements.
 
@@ -141,3 +141,9 @@ Phase2 delivered as PR1313, head `30b52bcdf55997d9b9c26deb60f1a7328a5c0633`, squ
 ## Phase3 implementation verification
 
 Wallet Telegram primary-read failures now retain a baseline gate with contextual error/Retry; successful retry initializes optimistic and confirmed settings before toggles are admitted. Global notices, backend defaults and existing optimistic save/rollback behavior remain. Tests-first red3fail/23pass; final focused29/3files with15new cases and app/tests/all typechecks pass. Independent adversarial/reuse review clean at controller `ace0e7a3cfdd8b66a62dcf8416e1eb25c97ddc7d`, page `32393e2cf045f5b466cfe28d1bba73178f024e5a`, types `ed3beba2fba82c9a33324263f6010d841a32972b`, newtests `b934b8924780ef4d19a8e136c30a6aca7ec0a88f`. Full frontend coverage100%:26,178statements/16,632branches/7,230functions/23,859lines; both changed executable files included and100%. Build7.14s,144Chromium render tests1.1m, app/server lint, architecture boundaries/cycles/generated graphs/index/diagram validation and lizard passed. Owned static server stopped; quality cleanup receipt no_op/success. Protected delivery pending under exact reviewed plan4b9f164; no deployment performed.
+
+Phase3 delivered as PR1314, head `14c24d007d8890ac4aa88b99b8e91fe0bd3b5b17`, squash merge `1bb115809135e1e479a3ab6dadfdbc6377b63f23`. Actual commit/main ancestry/tested-tree equality verified; PR19141–19145 and exact merge-push19146–19150 all passed first attempt. Finding resolved, attempt1, reviewed plan4b9f164 retained. Final controller `faad98a83be604cadedb94630fdf6d3fa02976c6` adds only two reviewed explanatory comments after local gates; amend hooks reran9,186tests successfully. Phase4 begins from verified1bb1158; relevant source/tests unchanged from accepted evidence. Owned cleanup and final deployment remain outer obligations.
+
+## Phase4 implementation verification
+
+AI primary settings reads now expose contextual failure/Retry before normal mutation controls. Existing effect lifetime retires obsolete flag/primary responses; successful retry retains recovered provider profiles. Feature availability and optional model discovery remain distinct from primary-read failure. Tests-first5expectedfail/163pass; final focused168/13files(new9), app/tests/all typechecks pass. Independent adversarial/reuse review clean: bootstrap `314a548db9dfc126e8b36b27a8aeedbb56deab27`, controller `e6824a28f491f1c87cc59030274f72ca34b079f5` (494lines), view `2a0b75a99620bb26a5431060ab802622ca3c8359`, types `04cc10625d91d1af879e51a77c24cb0f3a4b09e3`. Full frontend9,195tests/680files passed with100%coverage26,193statements/16,639branches/7,232functions/23,872lines; all3changed executable files included and100%. Build6.64s,144Chromium render tests1.2m, lint/boundaries/cycles/graphs/index/diagram/complexity checks passed. One expected generated errorHandler graph edge reviewed; static server stopped; quality cleanup no_op/success. Protected delivery pending under exact reviewed plan4b9f164; cleanup/deployment remain outer obligations.

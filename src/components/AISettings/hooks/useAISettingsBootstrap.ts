@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as adminApi from '../../../api/admin';
 import { ApiError } from '../../../api/client';
 import { createLogger } from '../../../utils/logger';
+import { extractErrorMessage } from '../../../utils/errorHandler';
 import type { ModelSourceSnapshot } from './useConfiguredModelDiscovery';
 
 const log = createLogger('AISettings:bootstrap');
@@ -20,7 +21,14 @@ export function useAISettingsBootstrap({
   loadModelsFromSource,
   setFeatureUnavailable,
   setLoading,
-}: AISettingsBootstrapOptions): void {
+}: AISettingsBootstrapOptions) {
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryGeneration, setRetryGeneration] = useState(0);
+  const retryLoad = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    setRetryGeneration(current => current + 1);
+  }, [setLoading]);
   useEffect(() => {
     let active = true;
 
@@ -39,15 +47,21 @@ export function useAISettingsBootstrap({
         }
       }
 
+      if (!active) return;
+      let settings: adminApi.SystemSettings;
       try {
-        const settings = await adminApi.getSystemSettings();
-        if (!active) return;
-        const source = applySettingsResponse(settings);
-        if (settings.aiEnabled && source.endpoint) {
-          await loadModelsFromSource(source);
-        }
+        settings = await adminApi.getSystemSettings();
       } catch (error) {
-        log.error('Failed to load AI settings', { error });
+        if (active) {
+          log.error('Failed to load AI settings', { error });
+          setLoadError(extractErrorMessage(error, 'Settings are unavailable'));
+        }
+        return;
+      }
+      if (!active) return;
+      const source = applySettingsResponse(settings);
+      if (settings.aiEnabled && source.endpoint) {
+        await loadModelsFromSource(source);
       }
     };
 
@@ -62,5 +76,8 @@ export function useAISettingsBootstrap({
     loadModelsFromSource,
     setFeatureUnavailable,
     setLoading,
+    retryGeneration,
   ]);
+
+  return { loadError, retryLoad };
 }

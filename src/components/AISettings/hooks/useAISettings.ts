@@ -149,7 +149,7 @@ export function useAISettings(): AISettingsController {
     capabilities: providerCapabilities,
   });
 
-  useAISettingsBootstrap({
+  const { loadError, retryLoad } = useAISettingsBootstrap({
     applySettingsResponse,
     loadModelsFromSource: modelDiscovery.loadModelsFromSource,
     setFeatureUnavailable,
@@ -449,6 +449,8 @@ export function useAISettings(): AISettingsController {
 
   return {
     featureUnavailable,
+    loadError,
+    retryLoad,
     providerProfiles,
     activeProviderProfileId,
     providerName,

@@ -11,6 +11,8 @@
  */
 
 import React, { useState } from "react";
+import { Button } from "../ui/Button";
+import { ErrorAlert } from "../ui/ErrorAlert";
 import {
   Brain,
   KeyRound,
@@ -46,7 +48,7 @@ export default function AISettings() {
     (profile) => profile.id === settings.activeProviderProfileId,
   );
   const mcpAccess = useMcpAccess(
-    activeTab === "mcp" && !settings.loading && !settings.featureUnavailable,
+    activeTab === "mcp" && !settings.loading && !settings.featureUnavailable && settings.loadError === null,
   );
 
   // AI feature toggle and enable modal
@@ -139,6 +141,15 @@ export default function AISettings() {
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (settings.loadError !== null) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-4">
+        <ErrorAlert message={`Failed to load AI settings: ${settings.loadError}`} />
+        <Button variant="secondary" onClick={settings.retryLoad}>Retry</Button>
       </div>
     );
   }
