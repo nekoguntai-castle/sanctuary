@@ -52,9 +52,9 @@ Accepted stable finding `node-config--save-after-failed-settings-load`. Primary 
 
 Owner files: src/components/NodeConfig/useNodeConfigData.ts and src/components/NodeConfig/NodeConfig.tsx. Existing useNodeConfigSave null-config admission guard already blocks unknown baseline; do not add redundant guards unless final source contradicts this. Failed primary read leaves config null and exposes loadError/Retry, not DEFAULT_NODE_CONFIG. Hide sections/Save until a successful baseline. Treat auxiliary Electrum/Tor/pool sources independently: tolerated auxiliary failures must not become baseline failures. Stable retry must preserve current initial-load behavior and prevent obsolete responses/finally from replacing a newer attempt; use existing lifetime/ownership mechanisms with minimal local adjustment, no generic loader rewrite.
 
-- [ ] Real component tests first: failed GET shows failure/Retry, no editable or Save controls; repeated failure remains blocked.
-- [ ] Retry returns nondefault host/network/custom URLs/proxy data; edit one field and assert unchanged unrelated payload fields. Deferred retry cannot admit save; successful first-setup default JSON remains editable.
-- [ ] Preserve existing configured saves/current errors and auxiliary-source tolerance. Exercise actual initial StrictMode overlap/unmount or newly admitted retry races without synthetic hidden controls.
+- [x] Real component tests first: failed GET shows failure/Retry, no editable or Save controls; repeated failure remains blocked.
+- [x] Retry returns nondefault host/network/custom URLs/proxy data; edit one field and assert unchanged unrelated payload fields. Deferred retry cannot admit save; successful first-setup default JSON remains editable.
+- [x] Preserve existing configured saves/current errors and auxiliary-source tolerance. Exercise actual initial StrictMode overlap/unmount or newly admitted retry races without synthetic hidden controls.
 - [ ] Implement only this owner, independent review, all phase gates, one protected PR and exact target CI before next phase.
 
 ## Phase 3: Wallet Telegram
@@ -112,7 +112,7 @@ Each phase can be rolled back independently through a protected revert PR, with 
 ## Review and completion record
 
 - [x] Exact-file recursive review converged; pin reviewed revision before production changes.
-- [ ] Phase1 Variables merged; actual merge and exact target CI verified.
+- [x] Phase1 Variables merged; actual merge and exact target CI verified.
 - [ ] Phase2 Node configuration merged; actual merge and exact target CI verified.
 - [ ] Phase3 Wallet Telegram merged; actual merge and exact target CI verified.
 - [ ] Phase4 AI settings merged; actual merge and exact target CI verified.
@@ -129,3 +129,9 @@ Three production files now retain an unknown-baseline gate until a current succe
 Independent implementation/reuse review clean at controller `38d2f718232ae8fd36d8cebe0b014131db496d6c`, view `5ec9d3f3c9b996fc1a26b65e2943ef681da51ef4`, types `b611aaf854994510fd576336afcf497ba755365e`, new tests `f9184cf9a65320cabc17c4adb306a699a95c0a18` and updated existing tests `25c140f90d9c797106e0da3a2ff0343cf7153cc1`. Backend/shared/dependency/tooling identities remain unchanged from verified6004978 baseline; exact target2468409 and separate scheduled19118 passed. Protected serial delivery pending under reviewed revision `4b9f164e9c133d3b8a3e284742deb8c0df526a6f`.
 
 Commit-hook documentation feedback addressed with two comments explaining the baseline guard and existing loading/Retry feedback. Controller final blob `e8e221b9a8e185da36692e27e16a64e25b90a33a`; executable behavior and test inputs are unchanged from the fully verified revision.
+
+Phase1 delivered as PR1312, head `384b0f85fdc3b24a762904cdfb3bfb25c192f0be`, squash merge `12359c8021def33c677edf9677f3539a51808031`. Actual commit/main ancestry/tested-tree equality verified; PR19119–19123 and exact merge-push19124–19128 all passed first attempt. Finding resolved, attempt1, reviewed plan4b9f164 retained. Owned cleanup and final deployment remain deferred outer obligations. Phase2 begins from verified12359c; relevant owner/test/backend sources unchanged from accepted evidence.
+
+## Phase2 implementation verification
+
+Node loader/view now retain null configuration after a failed primary read and expose contextual error/Retry before normal controls. Existing null-config save guard, successful first-setup defaults and auxiliary tolerance remain unchanged. Eleven new real UI/lifecycle cases plus updated old failure expectation: red4fail/78pass, then focused82/9files and app/tests/all typechecks pass. Independent adversarial/reuse review clean at data `57712e639770be74d017b63cb506a8c9ecb18ed4`, view `bf2067be2468dad562f302bab7dcb7f54dc3de41`, existing tests `e08135c745562ed7ad63f2a35c4e22d8c90cf9dc`, new tests `e2ee11ca3aebb1c5e9608859f3a2fe8437a49e03`. Broad verification passed:9,171frontend tests/678files,100%coverage26,160statements/16,626branches/7,228functions/23,843lines; both changed executable files included and100%. Build5.53s,144Chromium render tests, app/server lint, architecture boundaries/cycles/graphs/index/diagram validation and lizard passed. Static server stopped; quality receipt no_op/success. Delivery pending under exact reviewed plan4b9f164.

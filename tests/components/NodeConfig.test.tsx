@@ -495,7 +495,7 @@ describe('NodeConfig', () => {
   });
 
   describe('error handling', () => {
-    it('shows default config on API error', async () => {
+    it('shows Retry instead of writable defaults on API error', async () => {
       vi.mocked(adminApi.getNodeConfig).mockRejectedValue(new Error('API Error'));
       vi.mocked(adminApi.getElectrumServers).mockRejectedValue(new Error('API Error'));
       vi.mocked(adminApi.getTorContainerStatus).mockRejectedValue(new Error('API Error'));
@@ -503,11 +503,12 @@ describe('NodeConfig', () => {
       render(<NodeConfig />);
 
       await waitFor(() => {
-        expect(screen.getByText('Node Configuration')).toBeInTheDocument();
+        expect(screen.getByText(/Failed to load node configuration/)).toBeInTheDocument();
       });
 
-      // Should still render with default config
-      expect(screen.getByText('External Services')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+      expect(screen.queryByText('External Services')).not.toBeInTheDocument();
+      expect(adminApi.updateNodeConfig).not.toHaveBeenCalled();
     });
   });
 

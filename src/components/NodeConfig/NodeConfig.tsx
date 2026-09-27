@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
 import { ExternalServicesSection } from './ExternalServicesSection';
 import { NetworkConnectionsSection } from './NetworkConnectionsSection';
 import { ProxyTorSection } from './ProxyTorSection';
@@ -38,6 +39,15 @@ export const NodeConfig: React.FC = () => {
   };
 
   if (configData.loading) return <div className="p-8 text-center text-sanctuary-400">Loading node configuration...</div>;
+
+  if (configData.loadError !== null) {
+    return (
+      <div className="p-8 space-y-4">
+        <ErrorAlert message={`Failed to load node configuration: ${configData.loadError}`} />
+        <Button variant="secondary" onClick={() => { void configData.retryLoad(); }}>Retry</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 animate-fade-in pb-12">
