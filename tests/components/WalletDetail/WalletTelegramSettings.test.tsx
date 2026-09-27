@@ -173,7 +173,6 @@ describe('WalletTelegramSettings', () => {
       isLoading: false,
     } as never);
 
-    vi.mocked(walletsApi.getWalletTelegramSettings).mockRejectedValue(new Error('fetch failed'));
     vi.mocked(walletsApi.updateWalletTelegramSettings).mockRejectedValue(new Error('boom'));
 
     render(<WalletTelegramSettings walletId={walletId} />);

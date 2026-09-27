@@ -1,4 +1,6 @@
 import { Send } from 'lucide-react';
+import { Button } from '../../ui/Button';
+import { ErrorAlert } from '../../ui/ErrorAlert';
 import type { WalletTelegramSettingsController } from './types';
 import { TelegramAvailabilityNotice } from './TelegramAvailabilityNotice';
 import { WalletTelegramControls } from './WalletTelegramControls';
@@ -37,6 +39,15 @@ export function WalletTelegramSettingsPage({ controller }: WalletTelegramSetting
 function WalletTelegramSettingsBody({ controller }: WalletTelegramSettingsPageProps) {
   if (controller.availability !== 'available') {
     return <TelegramAvailabilityNotice availability={controller.availability} />;
+  }
+
+  if (controller.loadError !== null) {
+    return (
+      <div className="space-y-4">
+        <ErrorAlert message={`Failed to load Telegram settings: ${controller.loadError}`} />
+        <Button variant="secondary" onClick={controller.retryLoad}>Retry</Button>
+      </div>
+    );
   }
 
   return <WalletTelegramControls controller={controller} />;

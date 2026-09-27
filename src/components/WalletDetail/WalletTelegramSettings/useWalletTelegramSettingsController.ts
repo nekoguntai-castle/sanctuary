@@ -4,6 +4,7 @@ import type { WalletTelegramSettings as WalletTelegramSettingsType } from '../..
 import { useUser } from '../../../contexts/UserContext';
 import * as walletsApi from '../../../api/wallets';
 import { createLogger } from '../../../utils/logger';
+import { extractErrorMessage } from '../../../utils/errorHandler';
 import {
   DEFAULT_WALLET_TELEGRAM_SETTINGS,
   getTelegramAvailability,
@@ -17,6 +18,10 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
   const { user } = useUser();
   const [settings, setSettings] = useState<WalletTelegramSettingsType>(DEFAULT_WALLET_TELEGRAM_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryGeneration, setRetryGeneration] = useState(0);
+  // Toggles save the whole object, so placeholder defaults must never be writable.
+  const baselineReady = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -39,8 +44,16 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
 
   useEffect(() => clearSuccessTimeoutOnUnmount(successTimeoutRef), []);
 
+  const retryLoad = useCallback(() => {
+    baselineReady.current = false;
+    setLoading(true);
+    setRetryGeneration(current => current + 1);
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
+    baselineReady.current = false;
+    setLoadError(null);
     currentRequestIdRef.current += 1;
 
     // A wallet switch must not leave state (saving/error/success) from the
@@ -63,9 +76,13 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
           settingsRef.current = data;
           confirmedSettingsRef.current = data;
           setSettings(data);
+          baselineReady.current = true;
         }
       } catch (err) {
-        log.debug('Using default telegram settings', { error: err });
+        if (isMounted) {
+          log.debug('Failed to load telegram settings', { error: err });
+          setLoadError(extractErrorMessage(err, 'Settings are unavailable'));
+        }
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -77,10 +94,13 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
 
     return () => {
       isMounted = false;
+      baselineReady.current = false;
     };
-  }, [walletId]);
+  }, [walletId, retryGeneration]);
 
   const handleToggle = useCallback((field: WalletTelegramSettingKey) => {
+    // The view exposes loading or Retry until a current baseline is available.
+    if (!baselineReady.current) return;
     // Read/write settingsRef (not the `settings` closure) so a second toggle
     // queued before the first re-render sees the first toggle's change.
     const nextSettings = { ...settingsRef.current, [field]: !settingsRef.current[field] };
@@ -108,6 +128,8 @@ export function useWalletTelegramSettingsController(walletId: string): WalletTel
 
   return {
     loading,
+    loadError,
+    retryLoad,
     settings,
     saving,
     error,

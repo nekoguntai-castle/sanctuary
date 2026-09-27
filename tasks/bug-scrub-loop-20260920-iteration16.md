@@ -63,9 +63,9 @@ Accepted stable finding `wallet-telegram--toggle-after-failed-settings-load`. Fa
 
 Owner files: src/components/WalletDetail/WalletTelegramSettings/useWalletTelegramSettingsController.ts, types.ts and WalletTelegramSettingsPage.tsx. Preserve the notifications-subtab caller and global Telegram availability notices; do not change wallet-role authorization. Distinguish primary loadError/Retry from existing save errors; hide toggles until a successful response. Preserve successful new-wallet defaults returned by backend. Guard toggle admission with one loaded-baseline predicate; do not duplicate an implied loading guard. Synchronize settingsRef and confirmedSettingsRef only from current successful load. Reuse current wallet/request ownership and preserve same-wallet optimistic ordering, rollback, saving and success-timer behavior. No server PATCH changes or wholesale concurrency rewrite.
 
-- [ ] Real component tests first: globally configured Telegram, stored disabled wallet with false notification preferences, failedGET -> explicit failure/Retry and no toggles/mutation.
-- [ ] Retry success then Enable preserves untouched false fields; repeated failure/deferred retry stays blocked. Successful backend defaults for new wallet still enable/save.
-- [ ] Test wallet switch/ABA/unmount retirement and retry settlement against existing ownership. Preserve unavailable-global notices and existing optimistic-save failure rollback.
+- [x] Real component tests first: globally configured Telegram, stored disabled wallet with false notification preferences, failedGET -> explicit failure/Retry and no toggles/mutation.
+- [x] Retry success then Enable preserves untouched false fields; repeated failure/deferred retry stays blocked. Successful backend defaults for new wallet still enable/save.
+- [x] Test wallet switch/ABA/unmount retirement and retry settlement against existing ownership. Preserve unavailable-global notices and existing optimistic-save failure rollback.
 - [ ] Implement narrowly, independent review, complete phase gates, one protected PR and exact target CI before next phase.
 
 ## Phase 4: AI settings
@@ -113,7 +113,7 @@ Each phase can be rolled back independently through a protected revert PR, with 
 
 - [x] Exact-file recursive review converged; pin reviewed revision before production changes.
 - [x] Phase1 Variables merged; actual merge and exact target CI verified.
-- [ ] Phase2 Node configuration merged; actual merge and exact target CI verified.
+- [x] Phase2 Node configuration merged; actual merge and exact target CI verified.
 - [ ] Phase3 Wallet Telegram merged; actual merge and exact target CI verified.
 - [ ] Phase4 AI settings merged; actual merge and exact target CI verified.
 - [ ] Return delivery evidence to the outer loop for a fresh full-repository scrub. Owned cleanup and final deferred deployment remain outer closeout requirements.
@@ -135,3 +135,9 @@ Phase1 delivered as PR1312, head `384b0f85fdc3b24a762904cdfb3bfb25c192f0be`, squ
 ## Phase2 implementation verification
 
 Node loader/view now retain null configuration after a failed primary read and expose contextual error/Retry before normal controls. Existing null-config save guard, successful first-setup defaults and auxiliary tolerance remain unchanged. Eleven new real UI/lifecycle cases plus updated old failure expectation: red4fail/78pass, then focused82/9files and app/tests/all typechecks pass. Independent adversarial/reuse review clean at data `57712e639770be74d017b63cb506a8c9ecb18ed4`, view `bf2067be2468dad562f302bab7dcb7f54dc3de41`, existing tests `e08135c745562ed7ad63f2a35c4e22d8c90cf9dc`, new tests `e2ee11ca3aebb1c5e9608859f3a2fe8437a49e03`. Broad verification passed:9,171frontend tests/678files,100%coverage26,160statements/16,626branches/7,228functions/23,843lines; both changed executable files included and100%. Build5.53s,144Chromium render tests, app/server lint, architecture boundaries/cycles/graphs/index/diagram validation and lizard passed. Static server stopped; quality receipt no_op/success. Delivery pending under exact reviewed plan4b9f164.
+
+Phase2 delivered as PR1313, head `30b52bcdf55997d9b9c26deb60f1a7328a5c0633`, squash merge `ba89ad1e1cf1769922be581f5e7148d4bef2f5bb`. Actual commit/main ancestry/tested-tree equality verified; PR19131–19135 and exact merge-push19136–19140 all passed first attempt. Finding resolved, attempt1, reviewed plan4b9f164 retained. Owned cleanup and final deployment remain deferred outer obligations. Phase3 begins from verifiedba89ad; relevant owner/test/backend sources unchanged from accepted evidence.
+
+## Phase3 implementation verification
+
+Wallet Telegram primary-read failures now retain a baseline gate with contextual error/Retry; successful retry initializes optimistic and confirmed settings before toggles are admitted. Global notices, backend defaults and existing optimistic save/rollback behavior remain. Tests-first red3fail/23pass; final focused29/3files with15new cases and app/tests/all typechecks pass. Independent adversarial/reuse review clean at controller `ace0e7a3cfdd8b66a62dcf8416e1eb25c97ddc7d`, page `32393e2cf045f5b466cfe28d1bba73178f024e5a`, types `ed3beba2fba82c9a33324263f6010d841a32972b`, newtests `b934b8924780ef4d19a8e136c30a6aca7ec0a88f`. Full frontend coverage100%:26,178statements/16,632branches/7,230functions/23,859lines; both changed executable files included and100%. Build7.14s,144Chromium render tests1.1m, app/server lint, architecture boundaries/cycles/generated graphs/index/diagram validation and lizard passed. Owned static server stopped; quality cleanup receipt no_op/success. Protected delivery pending under exact reviewed plan4b9f164; no deployment performed.

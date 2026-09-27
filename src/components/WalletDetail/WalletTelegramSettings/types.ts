@@ -11,6 +11,8 @@ export interface NotificationToggleOption {
 
 export interface WalletTelegramSettingsController {
   loading: boolean;
+  loadError: string | null;
+  retryLoad: () => void;
   settings: WalletTelegramSettingsType;
   saving: boolean;
   error: string | null;
