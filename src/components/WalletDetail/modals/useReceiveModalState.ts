@@ -80,12 +80,14 @@ export function useReceiveModalState({
   useEffect(() => {
     if (!payjoinEnabled || !receiveAddress || !selectedReceiveAddress || !walletId) {
       setPayjoinUri(null);
+      setPayjoinLoading(false);
       return;
     }
 
     let cancelled = false;
 
     const generatePayjoinUri = async () => {
+      setPayjoinUri(null);
       setPayjoinLoading(true);
 
       try {
@@ -93,14 +95,11 @@ export function useReceiveModalState({
           getPayjoinAddressIdentifier(selectedReceiveAddress),
           getPayjoinUriOptions(receiveAmount)
         );
-        /* v8 ignore next -- unmount guard for an async Payjoin request race */
         if (!cancelled) setPayjoinUri(response.uri);
       } catch (error) {
         log.error('Failed to generate Payjoin URI', { error });
-        /* v8 ignore next -- unmount guard for an async Payjoin request race */
         if (!cancelled) setPayjoinUri(null);
       } finally {
-        /* v8 ignore next -- unmount guard for an async Payjoin request race */
         if (!cancelled) setPayjoinLoading(false);
       }
     };
@@ -126,8 +125,9 @@ export function useReceiveModalState({
   }, [handleClose, onNavigateToSettings]);
 
   const handleCopy = useCallback(() => {
+    if (payjoinLoading) return;
     copy(displayValue);
-  }, [copy, displayValue]);
+  }, [copy, displayValue, payjoinLoading]);
 
   return {
     unusedReceiveAddresses,

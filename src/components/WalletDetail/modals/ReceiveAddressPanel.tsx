@@ -63,6 +63,7 @@ export const ReceiveAddressPanel: React.FC<ReceiveAddressPanelProps> = ({
     )}
 
     <ReceiveValueBox
+      loading={payjoinLoading}
       displayValue={displayValue}
       payjoinEnabled={payjoinEnabled}
       isCopied={isCopied}

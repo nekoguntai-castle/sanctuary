@@ -7,6 +7,7 @@ import {
 
 interface ReceiveValueBoxProps {
   displayValue: string;
+  loading: boolean;
   payjoinEnabled: boolean;
   isCopied: (value: string) => boolean;
   onCopy: () => void;
@@ -14,6 +15,7 @@ interface ReceiveValueBoxProps {
 
 export const ReceiveValueBox: React.FC<ReceiveValueBoxProps> = ({
   displayValue,
+  loading,
   payjoinEnabled,
   isCopied,
   onCopy,
@@ -32,6 +34,7 @@ export const ReceiveValueBox: React.FC<ReceiveValueBoxProps> = ({
           </code>
           <button
             onClick={onCopy}
+            disabled={loading}
             className={`flex-shrink-0 p-2 rounded transition-colors ${
               copied
                 ? 'bg-success-100 dark:bg-success-500/20 text-success-600'
