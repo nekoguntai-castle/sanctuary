@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { draftId, makePendingRequest, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerUpdateDraftApprovalFromRequestsContracts() {
@@ -12,9 +12,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'reject' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'rejected',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'reject' });
@@ -33,9 +35,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'veto' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'vetoed',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'veto' });
@@ -54,9 +58,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById
       .mockResolvedValueOnce({ userId: 'creator', walletId })  // self-approval check
@@ -78,9 +84,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById
       .mockResolvedValueOnce({ userId: 'creator', walletId })  // self-approval check
@@ -102,9 +110,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'reject' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'rejected',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'reject' });
@@ -127,9 +137,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
@@ -154,9 +166,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById
       .mockResolvedValueOnce({ userId: 'creator', walletId })

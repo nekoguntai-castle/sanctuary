@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it } from 'vitest';
 
-import { draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteGuardContracts() {
@@ -72,12 +72,14 @@ export function registerCastVoteGuardContracts() {
       requiredApprovals: 1,
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(selfApprovalRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      selfApprovalRequest,
+      {
         ...selfApprovalRequest,
         votes: [{ id: 'v1', userId: creatorId, decision: 'approve' }],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: creatorId, walletId });
     mockPolicyRepo.createVote.mockResolvedValue({
@@ -93,12 +95,14 @@ export function registerCastVoteGuardContracts() {
   });
 
   it('records approve vote (happy path, quorum not yet met)', async () => {
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      pendingRequest,
+      {
         ...pendingRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
 
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'other-creator', walletId });
@@ -146,12 +150,14 @@ export function registerCastVoteGuardContracts() {
   });
 
   it('handles draft not found (draft is null) — uses empty walletId fallback', async () => {
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      pendingRequest,
+      {
         ...pendingRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     // Draft not found - so self-approval check does not block, and walletId will be ''
     mockDraftRepo.findById.mockResolvedValue(null);

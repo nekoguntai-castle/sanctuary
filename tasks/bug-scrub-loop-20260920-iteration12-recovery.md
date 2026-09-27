@@ -66,7 +66,7 @@ Acceptance: temporary backpressure resumes delivery without reconnect; closed cl
 - [x] Add deferred component/action regressions: same-network A-to-B edit, Back/format change, replacement file read, stale success/error, and unmount. Assert reviewed input equals submitted input.
 - [x] Extend existing ownership to include import content/validation lifetime. Invalidate pending work at content/format/back changes and file read replacement; preserve network and hardware/QR ownership checks.
 - [x] Require current validated input before advancing/importing. Ensure hardware-generated descriptor paths capture the new owner after setting content, avoiding self-invalidating successful validation.
-- [ ] Verify frontend coverage, types, build/render checks and adversarial review; deliver a separate PR with exact target CI.
+- [x] Verify frontend coverage, types, build/render checks and adversarial review; deliver a separate PR with exact target CI.
 
 Acceptance: replacing input requires validation of that input; old work never advances or rewrites a new wizard session. No backend import-policy change.
 
@@ -87,8 +87,8 @@ Use owned worktree only; never point integration tests at the running applicatio
 
 No migration required. Each PR can be reverted independently; rollback reintroduces its named defect. Existing approval requests derive membership live, so no backfill is needed. Wallet invalid cache keys age out in ten seconds. Async ownership affects only obsolete work, not API formats. WebSocket recovery must not alter public events.
 
-- [ ] Deliver all five phases and update findings with verified merge/test evidence.
-- [ ] Fresh complete eight-domain scrub of the new target SHA; repeat for any P0-P2.
+- [x] Deliver all five phases and update findings with verified merge/test evidence.
+- [x] Fresh complete eight-domain scrub of the new target SHA; repeat for any P0-P2.
 - [ ] Settle all owned PRs/resources, verify target ancestry/CI, record crash-safe final deployment operation and health/readiness/build identity.
 - [ ] Validate final durable state; only then complete outer goal.
 
@@ -133,3 +133,7 @@ Two complete passes: coordinator source/contract review and independent read-onl
 - Commit-hook feedback addressed with six additional real-owner negative tests: absent/stale snapshots disable import and prevent submission, edits of accepted input retire review, and Back 3→2 clears acceptance. Focused ownership suite now 23 tests; test typecheck passes. Added concise ownership/call-order comments; production behavior unchanged.
 
 - Phase 5 follow-up hook review passed all reviewers and the full frontend suite (671 files / 9,055 tests); focused import total is now 172 tests. Source behavior and the verified production build are unchanged.
+
+## Recovery delivery and next pass
+
+Phase 5 merged as PR #1305 at `e669657e6f966e86f183b9e3e9462bafbc92c295`; exact target workflows19051–19055 all passed. All five phases are delivered. Fresh eight-domain iteration13 scrub found three new P2 issues (vote return status, network sync roundtrip ownership, pending 2FA cancellation), with a separately reviewed plan required. Final loop cleanup/deployment remain pending; no clean claim.

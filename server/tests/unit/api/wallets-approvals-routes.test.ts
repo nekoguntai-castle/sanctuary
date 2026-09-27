@@ -182,6 +182,24 @@ describe('Wallet Approvals Routes', () => {
       },
     };
 
+    it.each(['pending', 'approved', 'rejected', 'vetoed', 'expired'])(
+      'returns and audits the same persisted %s service snapshot', async status => {
+        mockCastVote.mockResolvedValue({ ...mockVoteResult, request: {
+          ...mockVoteResult.request, status,
+          votes: [{ decision: 'approve' }, { decision: 'reject' }, { decision: 'approve' }],
+        } });
+        const response = await request(app).post(url).send({ decision: 'approve' });
+        expect(response.status).toBe(200);
+        expect(response.body.request).toEqual({
+          id: 'req-1', status, requiredApprovals: 2, currentApprovals: 2, totalVotes: 3,
+        });
+        expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
+          expect.anything(), 'wallet.policy_approval_vote', 'wallet',
+          expect.objectContaining({ details: expect.objectContaining({ requestStatus: status }) }),
+        );
+      },
+    );
+
     it('should cast an approve vote successfully', async () => {
       mockCastVote.mockResolvedValue(mockVoteResult);
 

@@ -1,18 +1,20 @@
 import { expect, it, vi } from 'vitest';
 
-import { draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, otherUserId, policyId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, otherUserId, policyId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteEventContracts() {
   const pendingRequest = makePendingRequest();
 
   it('logs policy event with correct eventType for approve', async () => {
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      pendingRequest,
+      {
         ...pendingRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
@@ -43,9 +45,11 @@ export function registerCastVoteEventContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'reject' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'rejected',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'reject' });
@@ -72,9 +76,11 @@ export function registerCastVoteEventContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'veto' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'vetoed',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'veto' });
@@ -90,12 +96,14 @@ export function registerCastVoteEventContracts() {
   });
 
   it('logs warning when createPolicyEvent fails', async () => {
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      pendingRequest,
+      {
         ...pendingRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
@@ -112,12 +120,14 @@ export function registerCastVoteEventContracts() {
   });
 
   it('does not call reason in event details when reason is undefined', async () => {
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      pendingRequest,
+      {
         ...pendingRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });

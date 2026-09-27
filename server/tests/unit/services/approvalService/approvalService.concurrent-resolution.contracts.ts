@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 /**
@@ -25,9 +25,11 @@ export function registerConcurrentResolutionContracts() {
       votes: [{ id: 'v-approve', userId: otherUserId, decision: 'approve' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(requestWithApprove);
+    mockVoteRequestReads(
+      pendingRequest,
+      requestWithApprove,
+      'rejected',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-approve', decision: 'approve' });
@@ -50,9 +52,11 @@ export function registerConcurrentResolutionContracts() {
       votes: [{ id: 'v-reject', userId: otherUserId, decision: 'reject' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(requestWithReject);
+    mockVoteRequestReads(
+      pendingRequest,
+      requestWithReject,
+      'rejected',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-reject', decision: 'reject' });
@@ -81,9 +85,7 @@ export function registerConcurrentResolutionContracts() {
         votes: [{ id: 'v1', userId: otherUserId, decision }],
       };
 
-      mockPolicyRepo.findApprovalRequestById
-        .mockResolvedValueOnce(pendingRequest)
-        .mockResolvedValueOnce(requestWithVote);
+      mockVoteRequestReads(pendingRequest, requestWithVote, 'approved');
       mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
       mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
       mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision });

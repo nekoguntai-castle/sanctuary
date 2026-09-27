@@ -190,10 +190,14 @@ export async function castVote(
   // Check if the request should be resolved
   await checkAndResolveRequest(updatedRequest, draft);
 
-  // Log policy event
-  logApprovalVoteEvent(request, updatedRequest, draft, userId, decision, reason);
+  // Resolution may have committed here or in a concurrent resolver. Return
+  // the persisted snapshot, not the pending snapshot used to evaluate quorum.
+  const finalRequest = await getApprovalRequestAfterVote(requestId);
 
-  return { vote, request: updatedRequest };
+  // Log policy event
+  logApprovalVoteEvent(request, finalRequest, draft, userId, decision, reason);
+
+  return { vote, request: finalRequest };
 }
 
 async function getPendingApprovalRequest(requestId: string): Promise<ApprovalRequestWithVotes> {

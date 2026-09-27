@@ -7,6 +7,7 @@ import {
   mockDraftRepo,
   mockPolicyRepo,
   mockWalletSharingRepo,
+  mockVoteRequestReads,
   otherUserId,
   requestId,
   userId,
@@ -23,9 +24,11 @@ import { approvalService } from '../../../../src/services/vaultPolicy/approvalSe
 export function registerQuorumMembershipContracts() {
   it('all-quorum resolves when the only non-requester approver has group access', async () => {
     const request = makePendingRequest({ quorumType: 'all' });
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(request)
-      .mockResolvedValueOnce({ ...request, votes: [{ userId: otherUserId, decision: 'approve' }] });
+    mockVoteRequestReads(
+      request,
+      { ...request, votes: [{ userId: otherUserId, decision: 'approve' }] },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId, walletId });
     mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
@@ -39,9 +42,11 @@ export function registerQuorumMembershipContracts() {
 
   it('all-quorum waits for a group approver after the direct owner votes', async () => {
     const request = makePendingRequest({ quorumType: 'all' });
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(request)
-      .mockResolvedValueOnce({ ...request, votes: [{ userId, decision: 'approve' }] });
+    mockVoteRequestReads(
+      request,
+      { ...request, votes: [{ userId, decision: 'approve' }] },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'signer-creator', walletId });
     mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
@@ -71,12 +76,14 @@ export function registerQuorumMembershipContracts() {
   it('allows a listed specific approver to vote and resolves once they approve', async () => {
     const specificRequest = makePendingRequest({ quorumType: 'specific', requiredApprovals: 1 });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(specificRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      specificRequest,
+      {
         ...specificRequest,
         votes: [{ id: 'v1', userId, decision: 'approve' }],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId] },
@@ -99,15 +106,17 @@ export function registerQuorumMembershipContracts() {
     const allRequest = makePendingRequest({ quorumType: 'all', requiredApprovals: 2 });
 
     // Both of the two original approvers vote approve.
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(allRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      allRequest,
+      {
         ...allRequest,
         votes: [
           { id: 'v1', userId: otherUserId, decision: 'approve' },
           { id: 'v2', userId: secondApproverId, decision: 'approve' },
         ],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // A third approver has since joined the wallet — the live eligible set is
@@ -128,12 +137,14 @@ export function registerQuorumMembershipContracts() {
     const secondApproverId = faker.string.uuid();
     const allRequest = makePendingRequest({ quorumType: 'all', requiredApprovals: 2 });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(allRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      allRequest,
+      {
         ...allRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // secondApproverId was removed from the wallet before voting — the live
@@ -206,12 +217,14 @@ export function registerQuorumMembershipContracts() {
   it('all-quorum resolves using only the effective eligible approvers', async () => {
     const allRequest = makePendingRequest({ quorumType: 'all', requiredApprovals: 1 });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(allRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      allRequest,
+      {
         ...allRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // otherUserId (approver) approves; a viewer and a signer are also on the
@@ -238,12 +251,14 @@ export function registerQuorumMembershipContracts() {
     // eligible voters.
     const allRequest = makePendingRequest({ quorumType: 'all', requiredApprovals: 0, allowSelfApproval: false });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(allRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      allRequest,
+      {
         ...allRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     // 'creator' is the requester and the only wallet member with an
@@ -292,12 +307,14 @@ export function registerQuorumMembershipContracts() {
   it('all-quorum: does not resolve when the backing draft is missing', async () => {
     const allRequest = makePendingRequest({ quorumType: 'all', requiredApprovals: 1 });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(allRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      allRequest,
+      {
         ...allRequest,
         votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     // The draft was deleted (or never existed) between request creation and
     // this vote, so there is no walletId to derive eligible approvers from.
@@ -320,15 +337,17 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 2,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(specificRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      specificRequest,
+      {
         ...specificRequest,
         votes: [
           { id: 'v-legacy', userId: otherUserId, decision: 'approve' },
           { id: 'v-new', userId, decision: 'approve' },
         ],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, thirdApproverId], requiredApprovals: 2 },
@@ -352,16 +371,18 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 2,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(specificRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      specificRequest,
+      {
         ...specificRequest,
         votes: [
           { id: 'v-legacy', userId: otherUserId, decision: 'approve' },
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-c', userId: thirdApproverId, decision: 'approve' },
         ],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, thirdApproverId] },
@@ -389,18 +410,20 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 3,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      {
         ...specificRequest,
         votes: [{ id: 'v-a', userId, decision: 'approve' }],
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
         ],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 2 },
@@ -432,22 +455,24 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 3,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
         ],
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
           { id: 'v-c', userId: thirdApproverId, decision: 'approve' },
         ],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: {
@@ -479,18 +504,20 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 3,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      {
         ...specificRequest,
         votes: [{ id: 'v-a', userId, decision: 'approve' }],
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
         ],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, otherUserId, thirdApproverId] },
@@ -514,12 +541,14 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 1,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(specificRequest)
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      specificRequest,
+      {
         ...specificRequest,
         votes: [{ id: 'v-a', userId, decision: 'approve' }],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById
       .mockResolvedValueOnce({
@@ -546,18 +575,20 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 0,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      {
         ...specificRequest,
         votes: [{ id: 'v-a', userId, decision: 'approve' }],
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
         ],
-      });
+      },
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 0 },
@@ -580,18 +611,20 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 2,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      {
         ...specificRequest,
         votes: [{ id: 'v-a', userId, decision: 'approve' }],
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
         ],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 2.5 },
@@ -616,18 +649,20 @@ export function registerQuorumMembershipContracts() {
       requiredApprovals: 2,
     });
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce({
+    mockVoteRequestReads(
+      {
         ...specificRequest,
         votes: [{ id: 'v-a', userId, decision: 'approve' }],
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         ...specificRequest,
         votes: [
           { id: 'v-a', userId, decision: 'approve' },
           { id: 'v-b', userId: otherUserId, decision: 'approve' },
         ],
-      });
+      },
+      'approved',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 5 },

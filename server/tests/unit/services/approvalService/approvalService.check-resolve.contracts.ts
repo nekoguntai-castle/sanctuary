@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCheckAndResolveRequestContracts() {
@@ -13,9 +13,11 @@ export function registerCheckAndResolveRequestContracts() {
       votes: [{ id: 'v1', userId: otherUserId, decision: 'approve' }],
     };
 
-    mockPolicyRepo.findApprovalRequestById
-      .mockResolvedValueOnce(pendingRequest)
-      .mockResolvedValueOnce(updatedReq);
+    mockVoteRequestReads(
+      pendingRequest,
+      updatedReq,
+      'pending',
+    );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });

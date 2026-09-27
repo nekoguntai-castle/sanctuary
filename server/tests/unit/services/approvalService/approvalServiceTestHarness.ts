@@ -91,6 +91,8 @@ export function makePendingRequest(overrides: Record<string, unknown> = {}) {
 export function registerApprovalServiceTestHarness() {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Each contract must provide its own ordered database snapshots.
+    mockPolicyRepo.findApprovalRequestById.mockReset();
     // Default to winning the conditional resolution. Tests that exercise the
     // lost-race path override this with `null`, which is what the repository
     // returns when the request was no longer pending at write time.
@@ -106,4 +108,16 @@ export function registerApprovalServiceTestHarness() {
     // throwing on an unmocked call.
     mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([]);
   });
+}
+
+/** Explicit independent snapshots for contracts whose vote list does not change during resolution. */
+export function mockVoteRequestReads(
+  initial: Record<string, unknown>,
+  afterVote: Record<string, unknown>,
+  finalStatus: 'pending' | 'approved' | 'rejected' | 'vetoed',
+): void {
+  mockPolicyRepo.findApprovalRequestById
+    .mockResolvedValueOnce(structuredClone(initial))
+    .mockResolvedValueOnce(structuredClone(afterVote))
+    .mockResolvedValueOnce(structuredClone({ ...afterVote, status: finalStatus }));
 }
