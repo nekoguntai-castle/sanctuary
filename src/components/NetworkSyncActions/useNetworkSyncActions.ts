@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLatestRequest } from '../../hooks/useLatestRequest';
+import type { FetchToken } from '../../hooks/requestOwnership';
 import type { TabNetwork } from '../NetworkTabs';
 import * as syncApi from '../../api/sync';
 import { formatNetworkTitle } from '../../app/networks';
@@ -175,27 +177,28 @@ export const useNetworkSyncActions = ({
   const [showResyncDialog, setShowResyncDialog] = useState(false);
   const [result, setResult] = useState<NetworkSyncResult | null>(null);
 
-  // Always reflects the most recently rendered `network`, independent of any
-  // stale closure a handler captured before an in-flight await resolved.
-  const currentNetworkRef = useRef(network);
-  currentNetworkRef.current = network;
-
+  const requests = useLatestRequest();
   const clearResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearResultTimer = useCallback(() => {
+    if (clearResultTimerRef.current !== null) {
+      clearTimeout(clearResultTimerRef.current);
+      clearResultTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearResultTimer, [clearResultTimer]);
 
   // Adjusting state during render (rather than in an effect) so a network
   // switch clears stale sync/resync state in the same render pass — no flash
   // of the previous network's spinner or banner under the new network.
   const [ownedNetwork, setOwnedNetwork] = useState(network);
   if (ownedNetwork !== network) {
+    requests.invalidate();
+    clearResultTimer();
     setOwnedNetwork(network);
     setResult(null);
     setSyncing(false);
     setResyncing(false);
     setShowResyncDialog(false);
-    if (clearResultTimerRef.current) {
-      clearTimeout(clearResultTimerRef.current);
-      clearResultTimerRef.current = null;
-    }
   }
 
   // An id the caller does not know about is still better named by its id than
@@ -203,17 +206,19 @@ export const useNetworkSyncActions = ({
   const nameOf = (walletId: string) =>
     wallets.find((wallet) => wallet.id === walletId)?.name ?? walletId;
 
-  // A network switch always clears `clearResultTimerRef` first (see the
-  // render-time reset above), so this timer only ever fires while its
-  // request's network is still current — no ownership check needed here.
-  const armResultAutoClear = (timeoutMs: number) => {
-    // A prior arm (from an earlier request on this same network) must not be
-    // left running — it would otherwise fire on its own schedule and clear a
-    // result this newer request just set.
-    if (clearResultTimerRef.current) {
-      clearTimeout(clearResultTimerRef.current);
-    }
+  const beginAction = (kind: 'sync' | 'resync') => {
+    clearResultTimer();
+    const token = requests.begin();
+    setSyncing(kind === 'sync');
+    setResyncing(kind === 'resync');
+    setResult(null);
+    return token;
+  };
+
+  const armResultAutoClear = (token: FetchToken, timeoutMs: number) => {
+    clearResultTimer();
     clearResultTimerRef.current = setTimeout(() => {
+      if (!requests.isCurrent(token)) return;
       setResult(null);
       clearResultTimerRef.current = null;
     }, timeoutMs);
@@ -221,23 +226,21 @@ export const useNetworkSyncActions = ({
 
   const handleSyncAll = async () => {
     const requestNetwork = network;
-    setSyncing(true);
-    setResult(null);
+    const token = beginAction('sync');
 
     try {
       const response = await syncApi.syncNetworkWallets(requestNetwork);
-      if (currentNetworkRef.current === requestNetwork) {
-        setResult(createSyncResult(response, nameOf));
-      }
+      if (!requests.isCurrent(token)) return;
+      setResult(createSyncResult(response, nameOf));
       onSyncStarted?.();
     } catch (error) {
-      if (currentNetworkRef.current === requestNetwork) {
+      if (requests.isCurrent(token)) {
         setResult(createErrorResult(error, 'Failed to queue wallets for sync'));
       }
     } finally {
-      if (currentNetworkRef.current === requestNetwork) {
+      if (requests.isCurrent(token)) {
         setSyncing(false);
-        armResultAutoClear(SYNC_RESULT_TIMEOUT_MS);
+        armResultAutoClear(token, SYNC_RESULT_TIMEOUT_MS);
       }
     }
   };
@@ -245,18 +248,20 @@ export const useNetworkSyncActions = ({
   const handleResyncAll = async () => {
     const requestNetwork = network;
     setShowResyncDialog(false);
-    setResyncing(true);
-    setResult(null);
+    const token = beginAction('resync');
 
     let outcome: NetworkSyncResult;
     try {
-      outcome = createResyncResult(await syncApi.resyncNetworkWallets(requestNetwork), nameOf);
+      const response = await syncApi.resyncNetworkWallets(requestNetwork);
+      if (!requests.isCurrent(token)) return;
+      outcome = createResyncResult(response, nameOf);
       onSyncStarted?.();
     } catch (error) {
+      if (!requests.isCurrent(token)) return;
       outcome = createErrorResult(error, 'Failed to resync wallets');
     }
 
-    if (currentNetworkRef.current !== requestNetwork) {
+    if (!requests.isCurrent(token)) {
       return;
     }
 
@@ -265,7 +270,7 @@ export const useNetworkSyncActions = ({
     // A partial failure is the one result the user most needs to read, and the
     // only one they cannot reproduce by clicking again. It stays until dismissed.
     if (outcome.type === 'success') {
-      armResultAutoClear(RESYNC_RESULT_TIMEOUT_MS);
+      armResultAutoClear(token, RESYNC_RESULT_TIMEOUT_MS);
     }
   };
 
