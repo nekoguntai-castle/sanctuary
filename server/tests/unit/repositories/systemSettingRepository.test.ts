@@ -20,6 +20,7 @@ import {
   deleteByPrefix,
   deleteSetting,
   exists,
+  findByKeys,
   get,
   getAll,
   getAllAsMap,
@@ -125,6 +126,23 @@ describe('systemSettingRepository', () => {
       where: { key: { startsWith: 'sync.' } },
       orderBy: { key: 'asc' },
     });
+  });
+
+  it.each([
+    { keys: ['confirmationThreshold', 'missing'], rows: [{ key: 'confirmationThreshold', value: '6' }] },
+    { keys: [], rows: [] },
+  ])('findByKeys returns the requested settings, including empty selections: $keys', async ({ keys, rows }) => {
+    (prisma.systemSetting.findMany as Mock).mockResolvedValueOnce(rows);
+
+    await expect(findByKeys(keys)).resolves.toEqual(rows);
+    expect(prisma.systemSetting.findMany).toHaveBeenCalledWith({ where: { key: { in: keys } } });
+  });
+
+  it('findByKeys propagates database failures instead of returning missing settings', async () => {
+    const failure = new Error('database unavailable');
+    (prisma.systemSetting.findMany as Mock).mockRejectedValueOnce(failure);
+
+    await expect(findByKeys(['confirmationThreshold'])).rejects.toBe(failure);
   });
 
   it('set and typed setters persist settings via upsert', async () => {

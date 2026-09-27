@@ -17,7 +17,6 @@ import {
   DEFAULT_SMTP_PORT,
 } from '../constants';
 import {
-  AI_PROVIDER_PROFILE_SETTING_KEYS,
   applyAIProviderProfileSettings,
   hasAIProviderProfileSettingUpdate,
   normalizeAIProviderProfileSettingsUpdate,
@@ -89,27 +88,19 @@ export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise
   if (operationalKey) {
     throw new InvalidInputError(`System setting '${operationalKey}' is managed by the runtime`);
   }
-  await validateConfirmationThresholds(updates);
   validateDustThreshold(updates);
-
-  const normalizedUpdates = await normalizeAdminSettingsUpdates(updates);
-  const smtpChanged = Object.keys(normalizedUpdates).some((key) => smtpKeys.includes(key));
-
-  for (const [key, value] of Object.entries(normalizedUpdates)) {
-    let valueToStore = value;
-
-    if (key === 'smtp.password' && typeof value === 'string' && value.length > 0 && !isEncrypted(value)) {
-      valueToStore = encrypt(value);
-    }
-
-    await systemSettingRepository.set(key, JSON.stringify(valueToStore));
-  }
-
-  if (smtpChanged) {
+  const committed = await systemSettingRepository.updateAtomically(current => {
+    validateConfirmationThresholds(updates, current);
+    const normalized = normalizeAdminSettingsUpdates(updates, current);
+    return Object.entries(normalized).map(([key, value]) => {
+      const serialized = serializeSetting(key, value);
+      return { key, value: serialized };
+    });
+  });
+  if (Object.keys(updates).some(key => smtpKeys.includes(key))) {
     clearTransporterCache();
   }
-
-  return getAdminSettings();
+  return buildAdminSettingsResponse(committed);
 }
 
 function validateDustThreshold(updates: AdminSettingsUpdate): void {
@@ -120,14 +111,13 @@ function validateDustThreshold(updates: AdminSettingsUpdate): void {
   }
 }
 
-async function normalizeAdminSettingsUpdates(updates: AdminSettingsUpdate): Promise<AdminSettingsUpdate> {
+function normalizeAdminSettingsUpdates(updates: AdminSettingsUpdate, currentSettings: StoredSetting[]): AdminSettingsUpdate {
   const sanitizedUpdates = sanitizeAIProviderProfileSettingsUpdate(updates);
 
   if (!hasAIProviderProfileSettingUpdate(sanitizedUpdates)) {
     return sanitizedUpdates;
   }
 
-  const currentSettings = await systemSettingRepository.findByKeys([...AI_PROVIDER_PROFILE_SETTING_KEYS]);
   const currentResponse = buildAdminSettingsResponse(currentSettings);
   const currentCredentials = currentSettings.find((setting) => setting.key === AI_PROVIDER_CREDENTIALS_KEY);
   if (currentCredentials) {
@@ -140,21 +130,18 @@ async function normalizeAdminSettingsUpdates(updates: AdminSettingsUpdate): Prom
   return normalizeAIProviderProfileSettingsUpdate(sanitizedUpdates, currentResponse);
 }
 
-async function validateConfirmationThresholds(updates: AdminSettingsUpdate): Promise<void> {
+function validateConfirmationThresholds(updates: AdminSettingsUpdate, currentSettings: StoredSetting[]): void {
   if (updates.confirmationThreshold === undefined && updates.deepConfirmationThreshold === undefined) {
     return;
   }
 
-  const currentSettings = await systemSettingRepository.findByKeys([
-    'confirmationThreshold',
-    'deepConfirmationThreshold',
-  ]);
   const currentValues: Record<string, number> = {
     confirmationThreshold: DEFAULT_CONFIRMATION_THRESHOLD,
     deepConfirmationThreshold: DEFAULT_DEEP_CONFIRMATION_THRESHOLD,
   };
 
   for (const setting of currentSettings) {
+    if (!(setting.key in currentValues)) continue;
     currentValues[setting.key] = safeJsonParseUntyped<number>(
       setting.value,
       currentValues[setting.key],
@@ -168,4 +155,11 @@ async function validateConfirmationThresholds(updates: AdminSettingsUpdate): Pro
   if (newDeepConfirmation < newConfirmation) {
     throw new InvalidInputError('Deep confirmation threshold must be greater than or equal to confirmation threshold');
   }
+}
+
+function serializeSetting(key: string, value: unknown): string {
+  if (key === 'smtp.password' && typeof value === 'string' && value.length > 0 && !isEncrypted(value)) {
+    return JSON.stringify(encrypt(value));
+  }
+  return JSON.stringify(value);
 }

@@ -115,8 +115,8 @@ Each phase can be rolled back independently through a protected revert PR, with 
 - [x] Phase1 Variables merged; actual merge and exact target CI verified.
 - [x] Phase2 Node configuration merged; actual merge and exact target CI verified.
 - [x] Phase3 Wallet Telegram merged; actual merge and exact target CI verified.
-- [ ] Phase4 AI settings merged; actual merge and exact target CI verified.
-- [ ] Return delivery evidence to the outer loop for a fresh full-repository scrub. Owned cleanup and final deferred deployment remain outer closeout requirements.
+- [x] Phase4 AI settings merged; actual merge and exact target CI verified.
+- [x] Return delivery evidence to the outer loop for a fresh full-repository scrub. Owned cleanup and final deferred deployment remain outer closeout requirements.
 
 
 Formal review: two complete clean passes (coordinator and independent source-backed reviewer). No verified actionable comments remained. Rejected expansions were generic loader/mutation frameworks, backend merge-policy changes, redundant implied loading guards, inaccessible-handler synthetic tests, and unrelated async-save changes. Existing test filenames and manifest production paths verified; git diff --check passed. Scope remains the four confirmed owners.
@@ -147,3 +147,5 @@ Phase3 delivered as PR1314, head `14c24d007d8890ac4aa88b99b8e91fe0bd3b5b17`, squ
 ## Phase4 implementation verification
 
 AI primary settings reads now expose contextual failure/Retry before normal mutation controls. Existing effect lifetime retires obsolete flag/primary responses; successful retry retains recovered provider profiles. Feature availability and optional model discovery remain distinct from primary-read failure. Tests-first5expectedfail/163pass; final focused168/13files(new9), app/tests/all typechecks pass. Independent adversarial/reuse review clean: bootstrap `314a548db9dfc126e8b36b27a8aeedbb56deab27`, controller `e6824a28f491f1c87cc59030274f72ca34b079f5` (494lines), view `2a0b75a99620bb26a5431060ab802622ca3c8359`, types `04cc10625d91d1af879e51a77c24cb0f3a4b09e3`. Full frontend9,195tests/680files passed with100%coverage26,193statements/16,639branches/7,232functions/23,872lines; all3changed executable files included and100%. Build6.64s,144Chromium render tests1.2m, lint/boundaries/cycles/graphs/index/diagram/complexity checks passed. One expected generated errorHandler graph edge reviewed; static server stopped; quality cleanup no_op/success. Protected delivery pending under exact reviewed plan4b9f164; cleanup/deployment remain outer obligations.
+
+Phase4 delivered as PR1315, head `35202de5a16027844dd779dcc8eb1b8e0eadff9b`, squash merge `ef70e322c9df9d6d2ee2245b4e5a99cdffba56b6`. Actual commit/main ancestry/tested-tree equality verified; PR19152–19156 and exact merge-push19157–19161 all passed first attempt. Finding resolved, attempt1, reviewed plan4b9f164 retained. Iteration17 fresh complete eight-domain whole-repository scrub found three distinct P2 issues (atomic admin settings and two local test-runner defects), with no recurrence of these four fixes;310focused repaired-seam tests passed. Next exact plan is tasks/bug-scrub-loop-20260920-iteration17.md. Owned cleanup and final deployment remain outer-loop obligations.

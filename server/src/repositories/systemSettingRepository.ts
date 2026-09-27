@@ -5,6 +5,8 @@
  */
 
 import prisma from '../models/prisma';
+import { ConflictError } from '../errors/ApiError';
+import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
 import type { SystemSetting } from '../generated/prisma/client';
 import {
   isOperationalSystemSettingKey,
@@ -251,6 +253,42 @@ export async function setMany(
   );
 }
 
+export type SettingValue = { key: string; value: string };
+
+/**
+ * Derive and commit related settings from one serializable snapshot.
+ * The synchronous derive callback must be free of side effects: conflicts replay
+ * it against a fresh snapshot, with ConflictError after three failed attempts.
+ * Returns only committed, non-operational settings.
+ */
+export async function updateAtomically(
+  derive: (current: SettingValue[]) => SettingValue[],
+): Promise<SettingValue[]> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const query = {
+          where: { key: { not: { startsWith: OPERATIONAL_SYSTEM_SETTING_PREFIX } } },
+          orderBy: { key: 'asc' as const },
+        };
+        const rows = derive(await tx.systemSetting.findMany(query));
+        for (const { key } of rows) assertGenericMutationAllowed(key);
+        for (const { key, value } of rows) {
+          await tx.systemSetting.upsert({
+            where: { key }, update: { value }, create: { key, value },
+          });
+        }
+        return tx.systemSetting.findMany(query);
+      }, { isolationLevel: 'Serializable' });
+    } catch (error) {
+      if (!isSerializableTransactionConflict(error)) throw error;
+      if (attempt === 3) {
+        throw new ConflictError('Settings changed concurrently; please retry');
+      }
+    }
+  }
+}
+
 /**
  * Delete a system setting
  */
@@ -315,6 +353,7 @@ export const systemSettingRepository = {
   setNumber,
   setJson,
   setMany,
+  updateAtomically,
   delete: deleteSetting,
   deleteByPrefix,
   exists,

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getAll: vi.fn(),
-  findByKeys: vi.fn(),
+  snapshot: vi.fn(),
+  updateAtomically: vi.fn(),
   set: vi.fn(),
   encrypt: vi.fn((value: string) => `enc:${value}`),
   isEncrypted: vi.fn((value: string) => value.startsWith('enc:')),
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../src/repositories', () => ({
   systemSettingRepository: {
     getAll: mocks.getAll,
-    findByKeys: mocks.findByKeys,
+    updateAtomically: mocks.updateAtomically,
     set: mocks.set,
   },
 }));
@@ -36,8 +37,13 @@ describe('adminSettingsService', () => {
     vi.clearAllMocks();
     mocks.encrypt.mockImplementation((value: string) => `enc:${value}`);
     mocks.isEncrypted.mockImplementation((value: string) => value.startsWith('enc:'));
-    mocks.findByKeys.mockResolvedValue([]);
+    mocks.snapshot.mockResolvedValue([]);
     mocks.set.mockResolvedValue(undefined);
+    mocks.updateAtomically.mockImplementation(async derive => {
+      const rows = derive(await mocks.snapshot());
+      for (const { key, value } of rows) await mocks.set(key, value);
+      return await mocks.getAll() ?? rows;
+    });
   });
 
   it('builds admin settings with defaults, stored values, and SMTP password redaction', async () => {
@@ -168,7 +174,7 @@ describe('adminSettingsService', () => {
   });
 
   it('persists encrypted AI provider credentials from write-only update payloads', async () => {
-    mocks.findByKeys.mockResolvedValueOnce([
+    mocks.snapshot.mockResolvedValueOnce([
       {
         key: 'aiProviderProfiles',
         value: JSON.stringify([
@@ -199,7 +205,7 @@ describe('adminSettingsService', () => {
   });
 
   it('preserves existing stored provider credentials when editing the active endpoint', async () => {
-    mocks.findByKeys.mockResolvedValueOnce([
+    mocks.snapshot.mockResolvedValueOnce([
       {
         key: 'aiProviderProfiles',
         value: JSON.stringify([
@@ -234,7 +240,7 @@ describe('adminSettingsService', () => {
   });
 
   it('rejects deep confirmation thresholds lower than confirmation thresholds', async () => {
-    mocks.findByKeys.mockResolvedValueOnce([
+    mocks.snapshot.mockResolvedValueOnce([
       { key: 'confirmationThreshold', value: '3' },
       { key: 'deepConfirmationThreshold', value: '6' },
     ]);
