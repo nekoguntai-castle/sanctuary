@@ -103,6 +103,8 @@ function mergePreferenceResponseForRequest(
   const baseUser: User = {
     ...currentUser,
     ...serverUser,
+    // Preference responses do not own the independently managed security flag.
+    twoFactorEnabled: currentUser.twoFactorEnabled,
     emailVerified: serverUser.emailVerified ?? currentUser.emailVerified,
     usingDefaultPassword: serverUser.usingDefaultPassword ?? currentUser.usingDefaultPassword,
   };

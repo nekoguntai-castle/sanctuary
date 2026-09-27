@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useUser } from '../../../contexts/UserContext';
+import { useLatestRequest } from '../../../hooks/useLatestRequest';
 import * as twoFactorApi from '../../../api/twoFactor';
 import { copyToClipboard as clipboardCopy } from '../../../utils/clipboard';
 import {
@@ -9,10 +11,11 @@ import {
 } from './twoFactorHelpers';
 import type { TwoFactorController } from './types';
 
-export const useTwoFactorController = (
-  initialTwoFactorEnabled: boolean
-): TwoFactorController => {
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(initialTwoFactorEnabled);
+export const useTwoFactorController = (): TwoFactorController => {
+  const { user, enableTwoFactor, disableTwoFactor: disableForSession } = useUser();
+  const twoFactorEnabled = user?.twoFactorEnabled ?? false;
+  const managementRequests = useLatestRequest();
+  const managementPending = useRef(false);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [showDisableModal, setShowDisableModal] = useState(false);
   const [showBackupCodesModal, setShowBackupCodesModal] = useState(false);
@@ -42,38 +45,46 @@ export const useTwoFactorController = (
   };
 
   const verifyAndEnable = async () => {
-    if (!canVerifySetupCode(setupVerifyCode)) return;
+    if (!canVerifySetupCode(setupVerifyCode) || managementPending.current) return;
+    managementPending.current = true;
+    const owner = managementRequests.begin();
     setIs2FALoading(true);
     setTwoFactorError(null);
 
     try {
-      const result = await twoFactorApi.enable2FA(setupVerifyCode);
+      const result = await enableTwoFactor(setupVerifyCode);
+      if (!managementRequests.isCurrent(owner) || result === null) return;
       setBackupCodes(result.backupCodes);
-      setTwoFactorEnabled(true);
       setSetupVerifyCode('');
       setSetupData(null);
     } catch (error) {
-      setTwoFactorError(getTwoFactorErrorMessage(error, 'Invalid verification code'));
+      if (managementRequests.isCurrent(owner)) setTwoFactorError(getTwoFactorErrorMessage(error, 'Invalid verification code'));
     } finally {
-      setIs2FALoading(false);
+      // Only the admitted operation reaches finally; duplicates cannot release it.
+      managementPending.current = false;
+      if (managementRequests.isCurrent(owner)) setIs2FALoading(false);
     }
   };
 
   const disableTwoFactor = async () => {
-    if (!canDisableTwoFactor(disablePassword, disableToken)) return;
+    if (!canDisableTwoFactor(disablePassword, disableToken) || managementPending.current) return;
+    managementPending.current = true;
+    const owner = managementRequests.begin();
     setIs2FALoading(true);
     setTwoFactorError(null);
 
     try {
-      await twoFactorApi.disable2FA({ password: disablePassword, token: disableToken });
-      setTwoFactorEnabled(false);
+      const result = await disableForSession({ password: disablePassword, token: disableToken });
+      if (!managementRequests.isCurrent(owner) || result === null) return;
       setShowDisableModal(false);
       setDisablePassword('');
       setDisableToken('');
     } catch (error) {
-      setTwoFactorError(getTwoFactorErrorMessage(error, 'Failed to disable 2FA'));
+      if (managementRequests.isCurrent(owner)) setTwoFactorError(getTwoFactorErrorMessage(error, 'Failed to disable 2FA'));
     } finally {
-      setIs2FALoading(false);
+      // Only the admitted operation reaches finally; duplicates cannot release it.
+      managementPending.current = false;
+      if (managementRequests.isCurrent(owner)) setIs2FALoading(false);
     }
   };
 

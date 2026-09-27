@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { User } from '../types';
 import { useAuthBootstrap, useTerminalLogoutSubscription } from './useUserAuthLifecycle';
+import { useUserTwoFactorActions } from './useUserTwoFactorActions';
 import { useUserAuthActions } from './useUserAuthActions';
 import { useUserPreferenceMutation } from './useUserPreferenceMutation';
 import { useUserTheme } from './useUserTheme';
@@ -67,6 +68,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     twoFactorPending,
   });
 
+  const { enableTwoFactor, disableTwoFactor } = useUserTwoFactorActions({ user, setUser, authEpochRef });
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -88,6 +91,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     register,
     logout,
     updatePreferences,
+    enableTwoFactor,
+    disableTwoFactor,
     clearError,
     clearNotice,
   }), [
@@ -102,6 +107,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     register,
     logout,
     updatePreferences,
+    enableTwoFactor,
+    disableTwoFactor,
     clearError,
     clearNotice,
   ]);

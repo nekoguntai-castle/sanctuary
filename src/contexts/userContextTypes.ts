@@ -1,3 +1,4 @@
+import type { TwoFactorDisableRequest, TwoFactorEnableResponse } from '../api/twoFactor';
 import type { User, UserPreferences } from '../types';
 import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
@@ -34,6 +35,10 @@ export interface UserContextType {
   register: (username: string, password: string, email: string) => Promise<RegistrationResult>;
   logout: () => void;
   updatePreferences: (prefs: Partial<UserPreferences>) => Promise<PreferenceSaveResult>;
+  /** Returns null for duplicate, retired or unauthenticated calls; current-session errors reject. */
+  enableTwoFactor: (code: string) => Promise<TwoFactorEnableResponse | null>;
+  /** Returns null for duplicate, retired or unauthenticated calls; current-session errors reject. */
+  disableTwoFactor: (data: TwoFactorDisableRequest) => Promise<{ success: boolean } | null>;
   clearError: () => void;
   clearNotice: () => void;
 }

@@ -6,7 +6,7 @@ import { useTwoFactorController } from './Account/useTwoFactorController';
 export const Account = () => {
   const { user } = useUser();
   const password = usePasswordChangeController();
-  const twoFactor = useTwoFactorController(user?.twoFactorEnabled || false);
+  const twoFactor = useTwoFactorController();
 
   return (
     <AccountView

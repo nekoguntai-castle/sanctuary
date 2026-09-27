@@ -23,6 +23,8 @@ vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockUser,
     updateUser: mockUpdateUser,
+    enableTwoFactor: async (code: string) => { const result = await mockEnable2FA(code); mockUser.twoFactorEnabled = true; return result; },
+    disableTwoFactor: async (data: unknown) => { const result = await mockDisable2FA(data); mockUser.twoFactorEnabled = false; return result; },
   }),
 }));
 
