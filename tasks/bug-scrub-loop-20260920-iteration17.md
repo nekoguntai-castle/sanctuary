@@ -67,8 +67,8 @@ Rollback is a protected revert PR per phase. No database migration to reverse; r
 
 - [x] Recursive plan review converged for amended implementation revision.
 - [x] Phase1 delivered and exact target CI verified.
-- [ ] Phase2 delivered and exact target CI verified.
-- [ ] Delivery evidence returned to outer loop; next full scrub completed.
+- [x] Phase2 delivered and exact target CI verified.
+- [x] Delivery evidence returned to outer loop; next full scrub completed (iteration18 found three new P2s).
 
 Review record: two recursive rounds with coordinator and independent backend/lifecycle source review. The sole accepted correction explicitly registers the new flow in backend-integration-groups.sh. Final whole-file rereads found no remaining actionable comments (substantive reviewed blob2fa873e623b70a4198723c68ac10d0b2cb432420). Rejected expansions: generic retries, process-local serialization, global settings-writer conversion, speculative credential-loss findings and migrations. Registration gates are `bash scripts/ci/backend-integration-groups.sh --check` and `bash tests/ci/backend-integration-groups.test.sh`; git diff --check passed. This paragraph/checkbox records review without changing implementation requirements.
 
@@ -110,3 +110,7 @@ Related-operand amendment review: coordinator and two independent whole-plan sou
 ## Phase2 local verification
 
 Implemented under reviewed pine58e842e03b71875623327fdc1c5af3536671468. Both initial and amended tests-first failures are retained. Four owning shell contracts, syntax, ShellCheck0.10.0, pinned lizard gate and independent adversarial review pass. Actual run-lane commands execute gateway11tests/1file, backend17tests/2files and frontend364tests/27files. Installed Vitest parser also confirms safe dash/space operands and empty related selection with the old separator. One overly broad backend related selection was interrupted and excluded; the bounded replacement passed. Exact unchanged application inputs and949non-shell test files substantiate reused broad backend/frontend receipts; no fresh full application/mutation run is claimed. Protected delivery and exact target CI remain pending.
+
+## Phase2 delivery and iteration18 handoff
+
+PR1317 head863ad7d438200929ca64b9eddd1b4c5f121811ae merged as7c51a686e8cfc9d7fb9aa126842261e2b2bc9d6d under reviewed pine58e842e03b71875623327fdc1c5af3536671468. Actual merge object/main ancestry and tested-tree equality verified. All four PR workflows19173–19176 and all three exact merge-push workflows19177–19179 passed first attempt. Both runner findings resolved with one immutable attempt record each. Earlier pending statements describe their historical stage; this closeout supersedes them. Complete iteration18 whole-repository coverage at this merge found three distinct new P2s, recorded in the next plan. Cleanup remains pending exact one-off approval; deployment stays deferred and the outer goal remains active.

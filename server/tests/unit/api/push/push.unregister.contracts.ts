@@ -1,16 +1,10 @@
 import { expect, it } from 'vitest';
 
-import { app, mockDeleteByToken, mockFindByToken, request, validAndroidToken } from './pushTestHarness';
+import { app, mockDeleteByTokenForUser, request, validAndroidToken } from './pushTestHarness';
 
 export function registerPushUnregisterContracts() {
   it('should unregister a device successfully', async () => {
-    mockFindByToken.mockResolvedValue({
-      id: 'device-1',
-      token: validAndroidToken,
-      platform: 'android',
-      userId: 'test-user-123',
-    });
-    mockDeleteByToken.mockResolvedValue(undefined);
+    mockDeleteByTokenForUser.mockResolvedValue(1);
 
     const res = await request(app)
       .delete('/api/v1/push/unregister')
@@ -20,11 +14,11 @@ export function registerPushUnregisterContracts() {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe('Device token removed');
-    expect(mockDeleteByToken).toHaveBeenCalledWith(validAndroidToken);
+    expect(mockDeleteByTokenForUser).toHaveBeenCalledWith(validAndroidToken, 'test-user-123');
   });
 
   it('should return success when token not found (idempotent)', async () => {
-    mockFindByToken.mockResolvedValue(null);
+    mockDeleteByTokenForUser.mockResolvedValue(0);
 
     const res = await request(app)
       .delete('/api/v1/push/unregister')
@@ -34,16 +28,11 @@ export function registerPushUnregisterContracts() {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe('Device token removed');
-    expect(mockDeleteByToken).not.toHaveBeenCalled();
+    expect(mockDeleteByTokenForUser).toHaveBeenCalled();
   });
 
   it('should return success when device owned by different user', async () => {
-    mockFindByToken.mockResolvedValue({
-      id: 'device-1',
-      token: validAndroidToken,
-      platform: 'android',
-      userId: 'other-user',
-    });
+    mockDeleteByTokenForUser.mockResolvedValue(0);
 
     const res = await request(app)
       .delete('/api/v1/push/unregister')
@@ -52,7 +41,17 @@ export function registerPushUnregisterContracts() {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(mockDeleteByToken).not.toHaveBeenCalled();
+    expect(mockDeleteByTokenForUser).toHaveBeenCalled();
+  });
+
+  it('keeps repeated unregister idempotent', async () => {
+    mockDeleteByTokenForUser.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await request(app).delete('/api/v1/push/unregister')
+        .set('Authorization', 'Bearer test-token').send({ token: validAndroidToken });
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    }
   });
 
   it('should return 400 when token is missing', async () => {
@@ -72,7 +71,7 @@ export function registerPushUnregisterContracts() {
   });
 
   it('should return 500 on service error', async () => {
-    mockFindByToken.mockRejectedValue(new Error('Database error'));
+    mockDeleteByTokenForUser.mockRejectedValue(new Error('Database error'));
 
     const res = await request(app)
       .delete('/api/v1/push/unregister')

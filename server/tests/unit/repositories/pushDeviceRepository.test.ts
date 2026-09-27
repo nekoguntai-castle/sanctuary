@@ -22,6 +22,8 @@ import {
   create,
   deleteById,
   deleteByToken,
+  deleteByIdForUser,
+  deleteByTokenForUser,
   deleteByUserId,
   deleteStale,
   findById,
@@ -152,6 +154,21 @@ describe('pushDeviceRepository', () => {
     });
     expect(byUser).toBe(2);
     expect(stale).toBe(1);
+  });
+
+  it.each([0, 1])('conditional deletes return affected count %s with owner predicates', async count => {
+    (prisma.pushDevice.deleteMany as Mock).mockResolvedValue({ count });
+    await expect(deleteByIdForUser('pd-1', 'user-1')).resolves.toBe(count);
+    await expect(deleteByTokenForUser('token-1', 'user-1')).resolves.toBe(count);
+    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(1, { where: { id: 'pd-1', userId: 'user-1' } });
+    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(2, { where: { token: 'token-1', userId: 'user-1' } });
+  });
+
+  it('propagates conditional deletion database failures', async () => {
+    const error = new Error('database unavailable');
+    (prisma.pushDevice.deleteMany as Mock).mockRejectedValue(error);
+    await expect(deleteByIdForUser('pd-1', 'user-1')).rejects.toBe(error);
+    await expect(deleteByTokenForUser('token-1', 'user-1')).rejects.toBe(error);
   });
 
   it('exports all operations via namespace and default object', () => {

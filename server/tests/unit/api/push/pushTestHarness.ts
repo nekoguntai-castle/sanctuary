@@ -15,6 +15,8 @@ vi.mock('../../../../src/repositories', () => ({
     findByUserId: vi.fn(),
     findById: vi.fn(),
     deleteByToken: vi.fn(),
+    deleteByTokenForUser: vi.fn(),
+    deleteByIdForUser: vi.fn(),
     deleteById: vi.fn(),
   },
   auditLogRepository: {
@@ -69,6 +71,8 @@ export const mockUpsert = pushDeviceRepository.upsert as ReturnType<typeof vi.fn
 export const mockFindByToken = pushDeviceRepository.findByToken as ReturnType<typeof vi.fn>;
 export const mockFindByUserId = pushDeviceRepository.findByUserId as ReturnType<typeof vi.fn>;
 export const mockFindById = pushDeviceRepository.findById as ReturnType<typeof vi.fn>;
+export const mockDeleteByTokenForUser = pushDeviceRepository.deleteByTokenForUser as ReturnType<typeof vi.fn>;
+export const mockDeleteByIdForUser = pushDeviceRepository.deleteByIdForUser as ReturnType<typeof vi.fn>;
 export const mockDeleteByToken = pushDeviceRepository.deleteByToken as ReturnType<typeof vi.fn>;
 export const mockDeleteById = pushDeviceRepository.deleteById as ReturnType<typeof vi.fn>;
 export const mockAuditLogCreate = auditLogRepository.create as ReturnType<typeof vi.fn>;

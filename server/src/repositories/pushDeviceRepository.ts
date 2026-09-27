@@ -135,6 +135,18 @@ export async function deleteByToken(token: string): Promise<void> {
   });
 }
 
+/** Delete only the registration still owned by the authenticated user. */
+export async function deleteByIdForUser(id: string, userId: string): Promise<number> {
+  const result = await prisma.pushDevice.deleteMany({ where: { id, userId } });
+  return result.count;
+}
+
+/** Token reassignment must not let an old owner's logout delete the new registration. */
+export async function deleteByTokenForUser(token: string, userId: string): Promise<number> {
+  const result = await prisma.pushDevice.deleteMany({ where: { token, userId } });
+  return result.count;
+}
+
 /**
  * Delete all push devices for a user
  */
@@ -169,6 +181,8 @@ export const pushDeviceRepository = {
   updateLastUsed,
   deleteById,
   deleteByToken,
+  deleteByIdForUser,
+  deleteByTokenForUser,
   deleteByUserId,
   deleteStale,
 };

@@ -1,15 +1,10 @@
 import { expect, it } from 'vitest';
 
-import { app, mockDeleteById, mockFindById, request } from './pushTestHarness';
+import { app, mockDeleteByIdForUser, request } from './pushTestHarness';
 
 export function registerPushDeviceDeleteContracts() {
   it('should delete a specific device', async () => {
-    mockFindById.mockResolvedValue({
-      id: 'device-1',
-      platform: 'android',
-      userId: 'test-user-123',
-    });
-    mockDeleteById.mockResolvedValue(undefined);
+    mockDeleteByIdForUser.mockResolvedValue(1);
 
     const res = await request(app)
       .delete('/api/v1/push/devices/device-1')
@@ -18,11 +13,11 @@ export function registerPushDeviceDeleteContracts() {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe('Device removed');
-    expect(mockDeleteById).toHaveBeenCalledWith('device-1');
+    expect(mockDeleteByIdForUser).toHaveBeenCalledWith('device-1', 'test-user-123');
   });
 
   it('should return 404 when device not found', async () => {
-    mockFindById.mockResolvedValue(null);
+    mockDeleteByIdForUser.mockResolvedValue(0);
 
     const res = await request(app)
       .delete('/api/v1/push/devices/non-existent')
@@ -34,11 +29,7 @@ export function registerPushDeviceDeleteContracts() {
   });
 
   it('should return 404 when device owned by different user', async () => {
-    mockFindById.mockResolvedValue({
-      id: 'device-1',
-      platform: 'android',
-      userId: 'other-user',
-    });
+    mockDeleteByIdForUser.mockResolvedValue(0);
 
     const res = await request(app)
       .delete('/api/v1/push/devices/device-1')
@@ -46,7 +37,7 @@ export function registerPushDeviceDeleteContracts() {
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Device not found');
-    expect(mockDeleteById).not.toHaveBeenCalled();
+    expect(mockDeleteByIdForUser).toHaveBeenCalled();
   });
 
   it('should return 401 without authentication', async () => {
@@ -56,7 +47,7 @@ export function registerPushDeviceDeleteContracts() {
   });
 
   it('should return 500 on service error', async () => {
-    mockFindById.mockRejectedValue(new Error('Database error'));
+    mockDeleteByIdForUser.mockRejectedValue(new Error('Database error'));
 
     const res = await request(app)
       .delete('/api/v1/push/devices/device-1')

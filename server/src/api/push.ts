@@ -211,21 +211,10 @@ router.delete('/unregister', authenticate, validate(
   const userId = requireAuthenticatedUser(req).userId;
   const { token } = req.body;
 
-  // Find the device by token
-  const device = await pushDeviceRepository.findByToken(token);
-
-  if (!device || device.userId !== userId) {
-    // Token not found or not owned by user - still return success
-    // This is idempotent behavior for sign-out scenarios
-    return res.json({
-      success: true,
-      message: 'Device token removed',
-    });
+  const deleted = await pushDeviceRepository.deleteByTokenForUser(token, userId);
+  if (deleted > 0) {
+    log.info(`Unregistered push device for user ${userId}`);
   }
-
-  await pushDeviceRepository.deleteByToken(token);
-
-  log.info(`Unregistered ${device.platform} device for user ${userId}`);
   res.json({
     success: true,
     message: 'Device token removed',
@@ -260,16 +249,12 @@ router.delete('/devices/:id', authenticate, asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
-  // Find device (must be owned by user)
-  const device = await pushDeviceRepository.findById(id);
-
-  if (!device || device.userId !== userId) {
+  const deleted = await pushDeviceRepository.deleteByIdForUser(id, userId);
+  if (deleted === 0) {
     throw new NotFoundError('Device not found');
   }
 
-  await pushDeviceRepository.deleteById(id);
-
-  log.info(`Removed ${device.platform} device ${id} for user ${userId}`);
+  log.info(`Removed push device ${id} for user ${userId}`);
   res.json({
     success: true,
     message: 'Device removed',
