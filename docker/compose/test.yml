@@ -54,14 +54,15 @@ services:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: sanctuary_test
     ports:
-      - "${TEST_POSTGRES_PORT:-55433}:5432"
+      - "${TEST_POSTGRES_PORT:-0}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U test -d sanctuary_test"]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
-      - test-network
+      test-network:
+        aliases: [postgres]
     # tmpfs for faster tests (data doesn't persist)
     tmpfs:
       - /var/lib/postgresql/data
@@ -71,67 +72,77 @@ services:
   # ============================================
   backend-test:
     labels: *sanctuary-container-ownership
+    image: sanctuary-backend-test:${SANCTUARY_IMAGE_TAG:-unprepared}
     build:
       context: .
-      dockerfile: server/Dockerfile
-      target: deps
-    working_dir: /app
+      dockerfile: docker/test/backend.Dockerfile
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:-}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:-}
+        SANCTUARY_BUILD_VERSION: ${SANCTUARY_VERSION:-}
+        SANCTUARY_BUILD_ID: ${SANCTUARY_BUILD_ID:-}
+    working_dir: /repo/server
     depends_on:
       test-db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://test:test@test-db:5432/sanctuary_test?schema=public
+      DATABASE_URL: postgresql://test:test@postgres:5432/sanctuary_test?schema=public
+      TEST_DATABASE_URL: postgresql://test:test@postgres:5432/sanctuary_test?schema=public
       JWT_SECRET: test-jwt-secret-for-docker-testing
       ENCRYPTION_KEY: test-encryption-key-32-chars-long!
       NODE_ENV: test
+      SANCTUARY_BACKEND_SOURCE_SHA: ${SANCTUARY_BACKEND_SOURCE_SHA:-unprepared}
     volumes:
-      - ./server/src:/app/src:ro
-      - ./server/tests:/app/tests:ro
-      - ./server/jest.config.js:/app/jest.config.js:ro
-      - ./server/tsconfig.json:/app/tsconfig.json:ro
-      - ./server/prisma:/app/prisma:ro
-      - ./shared:/shared:ro
-    command: >
-      sh -c "
-        npx prisma generate &&
-        npx prisma migrate deploy &&
-        npm test -- --ci
-      "
+      - type: bind
+        source: ${SANCTUARY_BACKEND_GIT_OBJECTS:-/nonexistent-sanctuary-git-objects}
+        target: /git-objects
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SANCTUARY_BACKEND_TEST_OUTPUT:-/nonexistent-sanctuary-test-output}
+        target: /test-output
+        bind:
+          create_host_path: false
+    command: [bash, /repo/scripts/ci/backend-docker-test.sh, full]
     networks:
       - test-network
 
-  # ============================================
-  # Backend Tests with Coverage
-  # ============================================
   backend-coverage:
     labels: *sanctuary-container-ownership
+    image: sanctuary-backend-test:${SANCTUARY_IMAGE_TAG:-unprepared}
     build:
       context: .
-      dockerfile: server/Dockerfile
-      target: deps
-    working_dir: /app
+      dockerfile: docker/test/backend.Dockerfile
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:-}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:-}
+        SANCTUARY_BUILD_VERSION: ${SANCTUARY_VERSION:-}
+        SANCTUARY_BUILD_ID: ${SANCTUARY_BUILD_ID:-}
+    working_dir: /repo/server
     depends_on:
       test-db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://test:test@test-db:5432/sanctuary_test?schema=public
+      DATABASE_URL: postgresql://test:test@postgres:5432/sanctuary_test?schema=public
+      TEST_DATABASE_URL: postgresql://test:test@postgres:5432/sanctuary_test?schema=public
       JWT_SECRET: test-jwt-secret-for-docker-testing
       ENCRYPTION_KEY: test-encryption-key-32-chars-long!
       NODE_ENV: test
+      SANCTUARY_BACKEND_SOURCE_SHA: ${SANCTUARY_BACKEND_SOURCE_SHA:-unprepared}
     volumes:
-      - ./server/src:/app/src:ro
-      - ./server/tests:/app/tests:ro
-      - ./server/jest.config.js:/app/jest.config.js:ro
-      - ./server/tsconfig.json:/app/tsconfig.json:ro
-      - ./server/prisma:/app/prisma:ro
-      - ./server/coverage:/app/coverage
-      - ./shared:/shared:ro
-    command: >
-      sh -c "
-        npx prisma generate &&
-        npx prisma migrate deploy &&
-        npm run test:coverage -- --ci
-      "
+      - type: bind
+        source: ${SANCTUARY_BACKEND_GIT_OBJECTS:-/nonexistent-sanctuary-git-objects}
+        target: /git-objects
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SANCTUARY_BACKEND_TEST_OUTPUT:-/nonexistent-sanctuary-test-output}
+        target: /test-output
+        bind:
+          create_host_path: false
+    command: [bash, /repo/scripts/ci/backend-docker-test.sh, unit-coverage]
     networks:
       - test-network
 

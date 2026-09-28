@@ -50,6 +50,11 @@
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
     },
     {
+      "file": "docker/test/backend.Dockerfile",
+      "executable": true,
+      "rationale": "Installs locked workspace dependencies in the disposable backend test image under npm strict lifecycle-script allowlisting."
+    },
+    {
       "file": "gateway/Dockerfile",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."

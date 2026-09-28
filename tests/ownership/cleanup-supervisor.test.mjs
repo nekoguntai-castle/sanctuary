@@ -30,10 +30,105 @@ async function waitFor(check, timeoutMs = 1_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try { if (check()) return; } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => nativeSetTimeout(resolve, 10));
   }
   assert.fail('condition did not become true before timeout');
 }
+
+const nativeSetTimeout = globalThis.setTimeout;
+const nativeClearTimeout = globalThis.clearTimeout;
+const FIXTURE_READY_MS = 5_000;
+const FIXTURE_FALLBACK_MS = 8_000;
+const FIXTURE_WATCHDOG_MS = 10_000;
+
+function hasReadyPid(marker) {
+  const pid = Number(readFileSync(marker, 'utf8'));
+  return Number.isSafeInteger(pid) && pid > 1;
+}
+
+function readySubject(delayMs = 0) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-supervisor-ready-'));
+  const marker = path.join(root, 'ready.pid');
+  const program = `const { writeFileSync } = require('node:fs');
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${delayMs});
+    process.on('SIGTERM', () => {});
+    writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)`;
+  return { marker, args: ['-e', program, marker] };
+}
+
+async function controlledDeadline(t, args, exercise, options = {}) {
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 100;
+  let callback; let fallback; let registrations = 0; let fired = false; let launcher; let active = true;
+  const timerMock = t.mock.method(globalThis, 'setTimeout', (fn, delay, ...values) => {
+    if (delay !== timeoutMs) return nativeSetTimeout(fn, delay, ...values);
+    registrations += 1;
+    assert.equal(registrations, 1, 'exactly one operation deadline');
+    callback = () => {
+      assert.equal(active, true, 'operation deadline belongs to active fixture');
+      assert.equal(fired, false, 'operation deadline fires once');
+      fired = true;
+      return fn.apply(fallback, values);
+    };
+    fallback = nativeSetTimeout(callback, FIXTURE_FALLBACK_MS);
+    return fallback;
+  });
+  const fire = () => {
+    assert.equal(registrations, 1);
+    nativeClearTimeout(fallback);
+    callback();
+  };
+  const running = runSupervisedCleanupCommand(node, args, {
+    timeoutMs, graceMs: 20, killWaitMs: 500, ...options, signal: controller.signal,
+    spawn: (...values) => { launcher = spawn(...values); return launcher; },
+  });
+  let watchdog;
+  const expired = new Promise((_, reject) => {
+    watchdog = nativeSetTimeout(() => {
+      controller.abort(); reject(new Error('fixture watchdog expired'));
+    }, FIXTURE_WATCHDOG_MS);
+  });
+  try {
+    assert.equal(registrations, 1);
+    return await Promise.race([(async () => { await exercise(fire, running); return running; })(), expired]);
+  } finally {
+    controller.abort();
+    let cleanupTimer;
+    try {
+      await Promise.race([running, new Promise((_, reject) => {
+        cleanupTimer = nativeSetTimeout(() => reject(new Error('fixture cleanup did not settle')), 2_000);
+      })]);
+      assert.equal(cleanupProcessGroupHasRunnableMember(launcher.pid), false);
+    } finally {
+      active = false;
+      nativeClearTimeout(cleanupTimer); nativeClearTimeout(watchdog);
+      nativeClearTimeout(fallback); timerMock.mock.restore();
+    }
+  }
+}
+
+test('operation deadline waits for deliberately delayed handler readiness', async (t) => {
+  const fixture = readySubject(350);
+  const result = await controlledDeadline(t, fixture.args, async (fire) => {
+    await waitFor(() => hasReadyPid(fixture.marker), FIXTURE_READY_MS);
+    fire();
+  });
+  assert.deepEqual(result, { outcome: 'timeout', exitCode: null, terminationSignal: 'SIGKILL' });
+  assert.equal(processCanRun(Number(readFileSync(fixture.marker, 'utf8'))), false);
+});
+
+test('readiness and assertion failures still settle the owned command', async (t) => {
+  for (const failure of ['readiness', 'before-fire', 'after-fire']) {
+    const fixture = readySubject();
+    await assert.rejects(controlledDeadline(t, fixture.args, async (fire) => {
+      await waitFor(() => hasReadyPid(fixture.marker), FIXTURE_READY_MS);
+      if (failure === 'readiness') await waitFor(() => false, 25);
+      if (failure === 'after-fire') fire();
+      assert.fail('fixture assertion failed');
+    }), failure === 'readiness' ? /condition did not become true/ : /fixture assertion failed/);
+    assert.equal(processCanRun(Number(readFileSync(fixture.marker, 'utf8'))), false);
+  }
+});
 
 test('successful and failed commands expose only categorical bounded results', async () => {
   const success = await runSupervisedCleanupCommand(node, [
@@ -75,21 +170,23 @@ test('supervisor uses the live Node inode after its launcher path is removed', {
   });
 });
 
-test('timeout and output caps terminate the dedicated process group', async () => {
+test('timeout and output caps terminate the dedicated process group', async (t) => {
   const timedOut = await runSupervisedCleanupCommand(node, ['-e', 'setInterval(() => {}, 1000)'], {
     timeoutMs: 25, graceMs: 20, killWaitMs: 500,
   });
   assert.equal(timedOut.outcome, 'timeout');
   assert.ok(['SIGTERM', 'SIGKILL'].includes(timedOut.terminationSignal));
 
-  const killed = await runSupervisedCleanupCommand(node, [
-    '-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)",
-  ], { timeoutMs: 100, graceMs: 20, killWaitMs: 500 });
+  const resistant = readySubject();
+  const killed = await controlledDeadline(t, resistant.args, async (fire) => {
+    await waitFor(() => hasReadyPid(resistant.marker), FIXTURE_READY_MS);
+    fire();
+  });
   assert.deepEqual(killed, { outcome: 'timeout', exitCode: null, terminationSignal: 'SIGKILL' });
 
-  const capped = await runSupervisedCleanupCommand(node, [
+  const capped = await controlledDeadline(t, [
     '-e', "process.stdout.write('x'.repeat(4096)); setInterval(() => {}, 1000)",
-  ], { maxOutputBytes: 128, timeoutMs: 1_000, graceMs: 20, killWaitMs: 500 });
+  ], async () => {}, { maxOutputBytes: 128, timeoutMs: 1_000 });
   assert.equal(capped.outcome, 'output_limit');
   assert.ok(['SIGTERM', 'SIGKILL'].includes(capped.terminationSignal));
 });
@@ -112,28 +209,27 @@ test('AbortSignal stops the command and waits for process-group exit', async () 
   );
 });
 
-test('timeout kills a grandchild in the supervised Linux process group', async () => {
+test('timeout kills a grandchild in the supervised Linux process group', async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-supervisor-'));
   const pidFile = path.join(root, 'grandchild.pid');
+  const descendantProgram = "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)";
   const parentProgram = [
     "const { spawn } = require('node:child_process')",
-    "const { writeFileSync } = require('node:fs')",
-    "const child = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' })",
-    'writeFileSync(process.argv[1], String(child.pid))',
+    `spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {});" + ${JSON.stringify(descendantProgram)}, process.argv[1]], { stdio: 'ignore' })`,
     'setInterval(() => {}, 1000)',
   ].join(';');
-  const running = runSupervisedCleanupCommand(node, ['-e', parentProgram, pidFile], {
-    timeoutMs: 100, graceMs: 20, killWaitMs: 500,
+  let grandchildPid;
+  const result = await controlledDeadline(t, ['-e', parentProgram, pidFile], async (fire) => {
+    await waitFor(() => hasReadyPid(pidFile), FIXTURE_READY_MS);
+    grandchildPid = Number(readFileSync(pidFile, 'utf8'));
+    assert.ok(Number.isSafeInteger(grandchildPid) && grandchildPid > 1);
+    fire();
   });
-  await waitFor(() => readFileSync(pidFile, 'utf8').length > 0);
-  const grandchildPid = Number(readFileSync(pidFile, 'utf8'));
-  assert.ok(Number.isSafeInteger(grandchildPid) && grandchildPid > 1);
-  const result = await running;
   assert.equal(result.outcome, 'timeout');
   await waitFor(() => !processCanRun(grandchildPid));
 });
 
-test('a normally exiting leader cannot leave a runnable process-group member behind', async () => {
+test('a normally exiting leader cannot leave a runnable process-group member behind', async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'cleanup-supervisor-orphan-'));
   const pidFile = path.join(root, 'grandchild.pid');
   const parentProgram = [
@@ -143,8 +239,8 @@ test('a normally exiting leader cannot leave a runnable process-group member beh
     'child.unref()',
     'writeFileSync(process.argv[1], String(child.pid))',
   ].join(';');
-  const result = await runSupervisedCleanupCommand(node, ['-e', parentProgram, pidFile], {
-    timeoutMs: 1_000, graceMs: 20, killWaitMs: 500,
+  const result = await controlledDeadline(t, ['-e', parentProgram, pidFile], async () => {}, {
+    timeoutMs: 1_000,
   });
   const grandchildPid = Number(readFileSync(pidFile, 'utf8'));
   assert.deepEqual(result, { outcome: 'quiescence_failed', exitCode: 0, terminationSignal: null });

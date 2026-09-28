@@ -45,7 +45,9 @@ test('main Compose smoke subjects share exact image and volume registration', ()
   assert.match(images, /wait_for_ci_compose_image_refs/);
   assert.match(e2e, /--expected-image sanctuary-backend/);
   assert.match(e2e, /--expected-image sanctuary-llm-egress-proxy/);
-  assert.match(dockerTest, /--allow-no-owned-images --/);
+  assert.match(dockerTest, /registration=\(--allow-no-owned-images\)/);
+  assert.match(dockerTest, /backend-test\|backend-coverage\|test-all\)[\s\S]*registration=\(--expected-image sanctuary-backend-test\)/);
+  assert.match(dockerTest, /"\$SCRIPT_DIR\/run-ci-compose-subject\.sh"[\s\S]*"\$\{registration\[@\]\}" --/);
   assert.match(hooks, /register_owned_resource compose_volume obsolete exact_delete name/);
   assert.match(hooks, /io\.sanctuary\.creation-run-id/);
 });

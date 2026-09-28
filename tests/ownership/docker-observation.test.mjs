@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { CleanupCommandError, runCleanupCommand } from '../../scripts/ownership/cleanup-command.mjs';
 import {
   dockerImmutableIdentity,
@@ -768,4 +769,41 @@ test('selector validation rejects intersected kinds and wrong resource kinds', (
   assert.throws(() => normalizeDockerSelectors({ oci_image: [{ reference: 'sanctuary:*' }] }), /exact tag or digest/);
   assert.throws(() => dockerImmutableIdentity('compose_container', { Id: 'mutable-name' }), /immutable ID/);
   assert.equal(dockerImmutableIdentity('oci_image', { Id: IMAGE.slice('sha256:'.length) }), IMAGE);
+});
+
+
+test('backend test Dockerfile provenance admits its exact lane image registration', () => {
+  const buildArgs = {
+    SANCTUARY_SOURCE_COMMIT: '9'.repeat(40),
+    SANCTUARY_IMAGE_LOCK_SHA256: '8'.repeat(64),
+    SANCTUARY_BUILD_VERSION: '0.8.69',
+    SANCTUARY_BUILD_ID: 'backend-test-run',
+  };
+  const dockerfile = readFileSync(new URL('../../docker/test/backend.Dockerfile', import.meta.url), 'utf8');
+  const imageLabels = {
+    'com.docker.compose.project': 'backend-test-run',
+    'com.docker.compose.service': 'backend-test',
+  };
+  const instructions = dockerfile.replace(/\\\n\s*/g, ' ').split('\n');
+  for (const instruction of instructions.filter((line) => line.startsWith('LABEL '))) {
+    for (const [, key, value] of instruction.matchAll(/([\w.-]+)="([^"]*)"/g)) {
+      imageLabels[key] = value.replace(/\$([A-Z0-9_]+)/g, (_, name) => buildArgs[name]);
+    }
+  }
+  const authority = tuple('oci_image', {
+    'io.sanctuary.lifecycle': 'obsolete',
+    'io.sanctuary.creation-run-id': 'backend-test-run',
+  });
+  const reference = 'sanctuary-backend-test:backend-test-run';
+  const fixture = fixtureRun({
+    imageTags: [reference], imageDigests: [], imageLabels, imageContainerReferences: [],
+  });
+  const result = observeDockerResources({
+    selectors: { oci_image: [{ reference }] },
+    registrations: [replayImageRegistration(authority, { locator: reference })],
+    runCommand: fixture.run,
+  });
+  assert.equal(result.complete, true);
+  assert.ok(result.resources[0].classifications.includes('externally_registered'));
+  assert.ok(!result.resources[0].classifications.includes('protected'));
 });

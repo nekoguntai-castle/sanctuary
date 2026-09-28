@@ -169,11 +169,7 @@ if [ "$USE_DOCKER" = true ]; then
 
     if [ "$INTEGRATION_MODE" = true ]; then
         # Run integration tests with database in Docker
-        "$DOCKER_TEST_SUBJECT" backend-test sh -c "
-            npx prisma generate &&
-            npx prisma migrate deploy &&
-            npm run test:integration -- --ci
-        "
+        "$DOCKER_TEST_SUBJECT" backend-test bash /repo/scripts/ci/backend-docker-test.sh integration
     elif [ "$WITH_COVERAGE" = true ]; then
         if [ "$RUN_BACKEND" = true ] && [ "$RUN_FRONTEND" = true ]; then
             npm run test:docker:coverage

@@ -852,6 +852,10 @@ jobs:
           npm run check:supply-chain-locks
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs
+          node --test tests/ci/backend-docker-test.test.mjs tests/ci/backend-docker-subject.test.mjs
+          bash -n scripts/ci/backend-docker-test.sh
+          bash -n scripts/ci/backend-docker-inputs.sh
+          bash -n scripts/ci/run-docker-test-subject.sh
           node tests/ci/provider-context-node.test.mjs
           node tests/ci/forward-live-annotations.test.mjs
           node --test tests/ci/report-commit-workflows.test.mjs tests/ci/report-commit-workflows.transport.test.mjs
