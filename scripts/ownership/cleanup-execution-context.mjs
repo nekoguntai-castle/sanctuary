@@ -2,7 +2,7 @@ import { canonicalSha256 } from './canonical-json.mjs';
 import { URL } from 'node:url';
 
 const DIGEST = /^[a-f0-9]{64}$/;
-export const DOCKER_DAEMON_AUTHORITY_POLICY = 'sanctuary.docker-daemon-authority.v2';
+export const DOCKER_DAEMON_AUTHORITY_POLICY = 'sanctuary.docker-daemon-authority.v3';
 
 function exactObject(value, keys, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -32,6 +32,11 @@ const VOLATILE_DAEMON_FIELDS = new Set([
   'containersstopped', 'images', 'driverstatus', 'uptime', 'uptimens',
   'nfd', 'ngoroutines', 'neventslistener', 'systemstatus', 'warnings',
 ]);
+const PODMAN_VOLATILE_INFO_PATHS = new Set([
+  'host.cpuUtilization', 'host.memFree', 'host.swapFree', 'host.uptime',
+  'store.graphRootUsed', 'store.containerStore.number', 'store.containerStore.paused',
+  'store.containerStore.running', 'store.containerStore.stopped', 'store.imageStore.number',
+].map((path) => JSON.stringify(path.split('.'))));
 
 function volatileDaemonField(currentPath, key, omitDockerRequestId) {
   const normalized = key.toLowerCase().replaceAll('_', '');
@@ -40,22 +45,27 @@ function volatileDaemonField(currentPath, key, omitDockerRequestId) {
 }
 
 function canonicalAuthority(output, label, {
-  omitVolatile = false, omitDockerRequestId = false, unorderedArrayPaths = new Set(),
+  omitVolatile = false, omitDockerRequestId = false, omitPodmanTelemetry = false,
+  unorderedArrayPaths = new Set(),
 } = {}) {
   let parsed;
   try { parsed = JSON.parse(output); } catch { throw new Error(`${label} returned malformed JSON`); }
-  const normalize = (value, currentPath = '') => {
+  const normalize = (value, currentPath = '', currentSegments = []) => {
     if (Array.isArray(value)) {
-      const normalized = value.map((child) => normalize(child, `${currentPath}[]`));
+      const normalized = value.map((child) => normalize(child, `${currentPath}[]`, [...currentSegments, '[]']));
       return unorderedArrayPaths.has(currentPath) ? normalized.sort((left, right) => (
         canonicalSha256(left).localeCompare(canonicalSha256(right))
       )) : normalized;
     }
     if (!value || typeof value !== 'object') return value;
     return Object.fromEntries(Object.entries(value)
-      .filter(([key]) => !omitVolatile
-        || !volatileDaemonField(currentPath, key, omitDockerRequestId))
-      .map(([key, child]) => [key, normalize(child, currentPath ? `${currentPath}.${key}` : key)]));
+      .filter(([key]) => {
+        const pathSegments = [...currentSegments, key];
+        return !(omitVolatile && volatileDaemonField(currentPath, key, omitDockerRequestId))
+          && !(omitPodmanTelemetry && PODMAN_VOLATILE_INFO_PATHS.has(JSON.stringify(pathSegments)));
+      })
+      .map(([key, child]) => [key, normalize(child,
+        currentPath ? `${currentPath}.${key}` : key, [...currentSegments, key])]));
   };
   return normalize(parsed);
 }
@@ -177,7 +187,8 @@ export function observeResolvedDockerDaemonEvidence({ engine = 'docker', runComm
     unorderedArrayPaths: DAEMON_SET_ARRAYS,
   });
   const normalizedInfo = canonicalAuthority(info, `${engine} daemon authority`, {
-    omitVolatile: true, omitDockerRequestId: engine === 'docker',
+    omitVolatile: engine === 'docker', omitDockerRequestId: engine === 'docker',
+    omitPodmanTelemetry: engine === 'podman',
     unorderedArrayPaths: DAEMON_SET_ARRAYS,
   });
   const fingerprint = canonicalSha256({

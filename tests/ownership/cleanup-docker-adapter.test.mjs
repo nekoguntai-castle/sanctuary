@@ -24,7 +24,13 @@ function podmanFixture(args) {
     return JSON.stringify([{ Name: 'fixture', Default: true, URI: 'unix:///run/podman-fixture.sock' }]);
   }
   if (args[0] === '--url' && args[1] === 'unix:///run/podman-fixture.sock') return podmanFixture(args.slice(2));
-  if (['version', 'info'].includes(args[0])) return JSON.stringify({ authority: 'podman' });
+  if (args[0] === 'version') return JSON.stringify({ Version: '5.4.2' });
+  if (args[0] === 'info') return JSON.stringify({
+    ID: 'podman-daemon', host: { memTotal: 64, swapTotal: 32, memFree: 12, swapFree: 8,
+      uptime: '1h', cpuUtilization: { userPercent: 7.84, systemPercent: 1.96, idlePercent: 90.2 } },
+    store: { graphRoot: '/var/lib/containers', graphRootAllocated: 931, graphRootUsed: 50,
+      containerStore: { number: 4, paused: 1, running: 2, stopped: 1 }, imageStore: { number: 9 } },
+  });
   if (args[0] === 'network' && args[1] === 'ls') return `${ID}\n`;
   if (args[0] === 'network' && args[1] === 'inspect') return JSON.stringify([{
     id: ID, labels: { 'com.docker.compose.project': 'legacy' }, name: 'legacy_default', driver: 'bridge',

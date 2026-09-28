@@ -287,6 +287,80 @@ test('top-level daemon ID churn is non-authoritative but stale authority policy 
   assert.equal(stale.resources.length, 0);
 });
 
+test('Podman telemetry drift preserves complete inventory and stable daemon drift fails closed', () => {
+  const networkId = 'a'.repeat(64);
+  const state = { telemetry: 1, stableConfig: 'systemd', lists: 0,
+    changeAfterList: false, changeTelemetryAfterList: false };
+  const info = () => ({
+    ID: 'podman-daemon', host: { memTotal: 64, swapTotal: 32, memFree: state.telemetry,
+      swapFree: state.telemetry, uptime: `${state.telemetry}h`,
+      cpuUtilization: { userPercent: 7.84 + state.telemetry, systemPercent: 1.96, idlePercent: 90.2 } },
+    store: { graphRoot: '/var/lib/containers', graphRootAllocated: 931, graphRootUsed: state.telemetry,
+      containerStore: { number: state.telemetry, paused: 0, running: state.telemetry, stopped: 0 },
+      imageStore: { number: state.telemetry } },
+    config: { cgroupManager: state.stableConfig },
+  });
+  const runCommand = (_engine, args) => {
+    if (args.join(' ') === 'system connection list --format json') return JSON.stringify([
+      { Name: 'fixture', Default: true, URI: 'unix:///run/podman-fixture.sock' },
+    ]);
+    const effective = args[0] === '--url' ? args.slice(2) : args;
+    const joined = effective.join(' ');
+    if (effective[0] === 'version') return JSON.stringify({ Version: '5.4.2' });
+    if (effective[0] === 'info') return JSON.stringify(info());
+    if (joined.startsWith('network ls')) {
+      state.lists += 1;
+      if (state.changeAfterList) state.stableConfig = 'cni';
+      if (state.changeTelemetryAfterList) state.telemetry += 1;
+      return `${networkId}\n`;
+    }
+    if (joined === `network inspect ${networkId}`) return JSON.stringify([{
+      id: networkId, name: 'fixture_default', driver: 'bridge', labels: {},
+    }]);
+    if (joined.startsWith('container ls')) return '';
+    throw new Error(`unexpected command: ${joined}`);
+  };
+  const authority = resolveDockerDaemonContext({ engine: 'podman', runCommand });
+  state.telemetry = 3;
+  state.changeTelemetryAfterList = true;
+  const result = observeDockerResources({ engine: 'podman', runCommand, daemonAuthority: authority,
+    selectors: { compose_network: [{ locator: networkId }] } });
+  assert.equal(result.complete, true);
+  assert.ok(state.lists >= 2, 'network inventory lists must execute');
+
+  const beforeQueries = state.lists;
+  state.stableConfig = 'cgroupfs';
+  const beforeDrift = observeDockerResources({ engine: 'podman', runCommand, daemonAuthority: authority,
+    selectors: { compose_network: [{ locator: networkId }] } });
+  assert.equal(beforeDrift.complete, false);
+  assert.equal(beforeDrift.ambiguities[0].category, 'identity_changed');
+  assert.equal(state.lists, beforeQueries, 'stable drift must fail before resource queries');
+
+  state.stableConfig = 'systemd';
+  state.changeAfterList = true;
+  const afterDrift = observeDockerResources({ engine: 'podman', runCommand, daemonAuthority: authority,
+    selectors: { compose_network: [{ locator: networkId }] } });
+  assert.equal(afterDrift.complete, false);
+  assert.equal(afterDrift.ambiguities.at(-1).category, 'inventory_drift');
+  assert.ok(state.lists > beforeQueries, 'post-observation check follows resource listing');
+
+  state.stableConfig = 'systemd';
+  state.changeAfterList = false;
+  state.changeTelemetryAfterList = false;
+  const currentAuthority = resolveDockerDaemonContext({ engine: 'podman', runCommand });
+  const valid = observeDockerResources({ engine: 'podman', runCommand, daemonAuthority: currentAuthority,
+    selectors: { compose_network: [{ locator: networkId }] } });
+  assert.equal(valid.complete, true);
+  const listsBeforeV2 = state.lists;
+  const v2 = observeDockerResources({ engine: 'podman', runCommand,
+    daemonAuthority: { ...currentAuthority, daemonAuthorityPolicy: 'sanctuary.docker-daemon-authority.v2' },
+    selectors: { compose_network: [{ locator: networkId }] } });
+  assert.equal(v2.complete, false);
+  assert.equal(v2.ambiguities[0].category, 'identity_changed');
+  assert.equal(v2.resources.length, 0);
+  assert.equal(state.lists, listsBeforeV2, 'v2 refusal must precede resource queries');
+});
+
 test('container observations reject missing or non-boolean running state as malformed', () => {
   for (const running of [undefined, 'false', null, 0]) {
     const fixture = fixtureRun();
