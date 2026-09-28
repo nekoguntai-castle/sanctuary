@@ -8,7 +8,7 @@ interface WalletSummaryCardsProps {
   balance: number;
   btcPrice: number | null;
   currencySymbol: string;
-  fiatBalance: number;
+  fiatBalance: number | null;
   fiatCurrency: string;
   firstActivityAgeDays: number | null;
   format: SatsFormatter;
@@ -52,12 +52,13 @@ function getBalanceCaption(showFiat: boolean, btcPrice: number | null, currencyS
 
 function getBalanceValue(
   showFiat: boolean,
-  fiatBalance: number,
+  fiatBalance: number | null,
   currencySymbol: string,
   balance: number,
   format: SatsFormatter
 ): string {
   if (showFiat) {
+    if (fiatBalance === null) return '-----';
     return `${currencySymbol}${fiatBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
   }
 

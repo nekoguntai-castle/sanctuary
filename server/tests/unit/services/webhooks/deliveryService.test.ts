@@ -518,8 +518,8 @@ describe('webhook delivery service', () => {
       makeEndpoint({ id: 'below-threshold', filters: { minAmountSats: '999999' } }),
     ]);
     mockCreateDelivery.mockResolvedValueOnce({
-      id: 'delivery-inline',
-      attemptCount: 0,
+      accepted: true,
+      delivery: { id: 'delivery-inline', attemptCount: 0 },
     });
     mockQueueWebhookDeliveryNotification.mockResolvedValueOnce(false);
     mockFindDeliveryById.mockResolvedValueOnce(makeDelivery({
@@ -556,7 +556,10 @@ describe('webhook delivery service', () => {
     ]);
     mockCreateDelivery
       .mockRejectedValueOnce(new Error('database unavailable'))
-      .mockResolvedValueOnce({ id: 'delivery-good', attemptCount: 0 });
+      .mockResolvedValueOnce({
+        accepted: true,
+        delivery: { id: 'delivery-good', attemptCount: 0 },
+      });
     mockQueueWebhookDeliveryNotification.mockResolvedValueOnce(true);
 
     await expect(queueWebhookEventsDeliveries([makeEvent()])).resolves.toEqual({
@@ -941,8 +944,11 @@ describe('webhook delivery service', () => {
       return [];
     });
     mockCreateDelivery.mockImplementation(async input => ({
-      id: `delivery-${input.endpointId}-${input.eventId}`,
-      attemptCount: 0,
+      accepted: true,
+      delivery: {
+        id: `delivery-${input.endpointId}-${input.eventId}`,
+        attemptCount: 0,
+      },
     }));
     mockQueueWebhookDeliveryNotification.mockResolvedValue(true);
 

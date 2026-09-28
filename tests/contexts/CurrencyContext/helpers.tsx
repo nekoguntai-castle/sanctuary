@@ -69,8 +69,14 @@ export function TestConsumer() {
       <span data-testid="fiat-currency">{currency.fiatCurrency}</span>
       <span data-testid="unit">{currency.unit}</span>
       <span data-testid="btc-price">{currency.btcPrice ?? "null"}</span>
+      <span data-testid="price-with-symbol">
+        {currency.currencySymbol}{currency.btcPrice ?? "-----"}
+      </span>
       <span data-testid="price-change">
         {currency.priceChange24h ?? "null"}
+      </span>
+      <span data-testid="last-price-update">
+        {currency.lastPriceUpdate?.toISOString() ?? "null"}
       </span>
       <span data-testid="price-loading">
         {currency.priceLoading.toString()}
@@ -108,6 +114,30 @@ export function TestConsumer() {
       </button>
     </div>
   );
+}
+
+export interface CurrencyRenderSnapshot {
+  fiatCurrency: string;
+  btcPrice: number | null;
+  priceChange24h: number | null;
+  lastPriceUpdate: string | null;
+  currencySymbol: string;
+}
+
+export function CurrencyRenderObserver({
+  onRender,
+}: {
+  onRender: (snapshot: CurrencyRenderSnapshot) => void;
+}) {
+  const currency = useCurrency();
+  onRender({
+    fiatCurrency: currency.fiatCurrency,
+    btcPrice: currency.btcPrice,
+    priceChange24h: currency.priceChange24h,
+    lastPriceUpdate: currency.lastPriceUpdate?.toISOString() ?? null,
+    currencySymbol: currency.currencySymbol,
+  });
+  return null;
 }
 
 export function renderWithProviders(ui: React.ReactNode) {

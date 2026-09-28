@@ -1969,6 +1969,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/prepare-integration-db.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/ci/provider-context.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",

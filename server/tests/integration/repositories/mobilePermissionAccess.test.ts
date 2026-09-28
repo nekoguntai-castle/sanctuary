@@ -1,6 +1,7 @@
 /** Exercise mobile permissions against committed direct and group relationships. */
 
 import { mobilePermissionService } from '../../../src/services/mobilePermissions';
+import { ForbiddenError } from '../../../src/errors';
 import {
   addUserToGroup,
   createTestGroup,
@@ -70,6 +71,84 @@ describeIfDatabase('mobile permission effective wallet access', () => {
       expect(await mobilePermissionService.getUserMobilePermissions(groupOnly.id)).toEqual([]);
       expect((await mobilePermissionService.getWalletPermissions(walletId, owner.id))
         .some(entry => entry.userId === groupOnly.id)).toBe(false);
+    } finally {
+      if (walletId) await db.wallet.deleteMany({ where: { id: walletId } });
+      if (groupId) await db.group.deleteMany({ where: { id: groupId } });
+      if (userIds.length) await db.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+  });
+
+  it('preserves owner caps during authorized resets and leaves outsiders unchanged', async () => {
+    const db = await getTestPrisma();
+    const userIds: string[] = [];
+    let groupId: string | undefined;
+    let walletId: string | undefined;
+    try {
+      const owner = await createTestUser(db, { username: 'mobile-reset-owner', email: 'mobile-reset-owner@example.com' });
+      const groupOnly = await createTestUser(db, { username: 'mobile-reset-group', email: 'mobile-reset-group@example.com' });
+      const mixed = await createTestUser(db, { username: 'mobile-reset-mixed', email: 'mobile-reset-mixed@example.com' });
+      const outsider = await createTestUser(db, { username: 'mobile-reset-outsider', email: 'mobile-reset-outsider@example.com' });
+      userIds.push(owner.id, groupOnly.id, mixed.id, outsider.id);
+
+      const group = await createTestGroup(db);
+      groupId = group.id;
+      await addUserToGroup(db, groupOnly.id, group.id);
+      await addUserToGroup(db, mixed.id, group.id);
+      const wallet = await createTestWallet(db, owner.id, { groupId: group.id });
+      walletId = wallet.id;
+      await db.wallet.update({ where: { id: walletId }, data: { groupRole: 'signer' } });
+      await db.walletUser.create({ data: { walletId, userId: mixed.id, role: 'viewer' } });
+
+      const ownerCap = { broadcast: false, createTransaction: false };
+      await db.mobilePermission.create({ data: {
+        walletId,
+        userId: groupOnly.id,
+        canBroadcast: false,
+        canCreateTransaction: false,
+        ownerMaxPermissions: ownerCap,
+      } });
+      await db.mobilePermission.create({ data: {
+        walletId,
+        userId: outsider.id,
+        canBroadcast: false,
+        ownerMaxPermissions: { broadcast: false },
+      } });
+
+      await mobilePermissionService.resetPermissions(walletId, groupOnly.id);
+      const resetRow = await db.mobilePermission.findUnique({
+        where: { walletId_userId: { walletId, userId: groupOnly.id } },
+      });
+      expect(resetRow).toMatchObject({
+        canBroadcast: true,
+        canCreateTransaction: true,
+        ownerMaxPermissions: ownerCap,
+        lastModifiedBy: groupOnly.id,
+      });
+      expect(await mobilePermissionService.checkForGateway(walletId, groupOnly.id, 'broadcast'))
+        .toMatchObject({ allowed: false });
+      expect(await mobilePermissionService.getEffectivePermissions(walletId, groupOnly.id))
+        .toMatchObject({ hasCustomRestrictions: false, hasOwnerRestrictions: true });
+
+      await mobilePermissionService.resetPermissions(walletId, groupOnly.id);
+      expect(await db.mobilePermission.findUnique({
+        where: { walletId_userId: { walletId, userId: groupOnly.id } },
+      })).toMatchObject({ ownerMaxPermissions: ownerCap });
+
+      await mobilePermissionService.resetPermissions(walletId, mixed.id);
+      expect(await db.mobilePermission.findUnique({
+        where: { walletId_userId: { walletId, userId: mixed.id } },
+      })).toBeNull();
+      expect((await mobilePermissionService.getEffectivePermissions(walletId, mixed.id)).role)
+        .toBe('viewer');
+
+      const outsiderBefore = await db.mobilePermission.findUnique({
+        where: { walletId_userId: { walletId, userId: outsider.id } },
+      });
+      await expect(mobilePermissionService.resetPermissions(walletId, outsider.id))
+        .rejects.toThrow(ForbiddenError);
+      expect(await db.mobilePermission.findUnique({
+        where: { walletId_userId: { walletId, userId: outsider.id } },
+      })).toEqual(outsiderBefore);
     } finally {
       if (walletId) await db.wallet.deleteMany({ where: { id: walletId } });
       if (groupId) await db.group.deleteMany({ where: { id: groupId } });

@@ -8,8 +8,10 @@ const { mockTx } = vi.hoisted(() => ({
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      upsert: vi.fn(),
     },
     webhookEndpoint: {
+      findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
     },
@@ -263,21 +265,38 @@ describe('webhookRepository', () => {
     }));
   });
 
-  it('upserts deliveries and applies optional request diagnostics', async () => {
-    (prisma.webhookDelivery.upsert as Mock).mockResolvedValue(makeDelivery());
-
-    await webhookRepository.createDelivery({
+  it('locks and checks the endpoint identity before idempotently upserting a delivery', async () => {
+    const callOrder: string[] = [];
+    mockTx.webhookDelivery.upsert.mockImplementationOnce(async () => {
+      callOrder.push('upsert');
+      return makeDelivery();
+    }).mockResolvedValueOnce(makeDelivery());
+    mockTx.$queryRaw.mockImplementationOnce(async query => {
+      callOrder.push('lock');
+      return [{ id: 'endpoint-1' }];
+    });
+    mockTx.webhookEndpoint.findUniqueOrThrow.mockImplementationOnce(async () => {
+      callOrder.push('identity');
+      return makeEndpoint({ secretEncrypted: 'ciphertext-A' });
+    });
+    const result = await webhookRepository.createDelivery({
       endpointId: 'endpoint-1',
       walletId: 'wallet-1',
+      expectedUrl: 'https://example.com/hook',
+      expectedSecretEncrypted: 'ciphertext-A',
       eventId: 'event-1',
       eventType: 'wallet.transaction.received',
       payloadProfile: 'sanctuary_wallet_event_v1',
       targetUrl: 'https://example.com/hook',
       eventPayload: { eventId: 'event-1' },
     });
+    mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+    mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(makeEndpoint({ secretEncrypted: 'ciphertext-A' }));
     await webhookRepository.createDelivery({
       endpointId: 'endpoint-1',
       walletId: 'wallet-1',
+      expectedUrl: 'https://example.com/hook',
+      expectedSecretEncrypted: 'ciphertext-A',
       eventId: 'event-2',
       eventType: 'wallet.transaction.sent',
       payloadProfile: 'mapped_json_v1',
@@ -287,13 +306,21 @@ describe('webhookRepository', () => {
       requestBodyHash: 'a'.repeat(64),
     });
 
-    expect(prisma.webhookDelivery.upsert).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    expect(result).toEqual({ accepted: true, delivery: makeDelivery() });
+    expect(mockTx.$queryRaw).toHaveBeenCalledTimes(2);
+    const lockQuery = mockTx.$queryRaw.mock.calls[0][0] as { sql: string; text: string; values: unknown[] };
+    expect(lockQuery.text).toContain('WHERE "id" = $1 AND "walletId" = $2');
+    expect(lockQuery.text).toContain('FOR NO KEY UPDATE');
+    expect(lockQuery.values).toEqual(['endpoint-1', 'wallet-1']);
+    expect(mockTx.webhookEndpoint.findUniqueOrThrow).toHaveBeenCalledTimes(2);
+    expect(callOrder).toEqual(['lock', 'identity', 'upsert']);
+    expect(mockTx.webhookDelivery.upsert).toHaveBeenNthCalledWith(1, expect.objectContaining({
       create: expect.objectContaining({
         requestBody: undefined,
         requestBodyHash: null,
       }),
     }));
-    expect(prisma.webhookDelivery.upsert).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(mockTx.webhookDelivery.upsert).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: {
         endpointId_eventId_payloadProfile: {
           endpointId: 'endpoint-1',
@@ -306,6 +333,53 @@ describe('webhookRepository', () => {
         requestBodyHash: 'a'.repeat(64),
       }),
     }));
+  });
+
+  it.each([
+    ['URL changed', 'https://other.example/hook', 'ciphertext-A'],
+    ['secret rotated', 'https://example.com/hook', 'ciphertext-B'],
+  ])('refuses automatic delivery admission when %s', async (_label, currentUrl, currentSecret) => {
+    mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+    mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(makeEndpoint({
+      url: currentUrl,
+      secretEncrypted: currentSecret,
+    }));
+
+    const result = await webhookRepository.createDelivery({
+      endpointId: 'endpoint-1',
+      walletId: 'wallet-1',
+      expectedUrl: 'https://example.com/hook',
+      expectedSecretEncrypted: 'ciphertext-A',
+      eventId: 'event-1',
+      eventType: 'wallet.transaction.received',
+      payloadProfile: 'sanctuary_wallet_event_v1',
+      targetUrl: 'https://example.com/hook',
+      eventPayload: { eventId: 'event-1' },
+    });
+
+    expect(result).toEqual({ accepted: false, reason: 'endpoint_identity_changed' });
+    expect(mockTx.webhookDelivery.upsert).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('ciphertext');
+  });
+
+  it('refuses admission when the endpoint is missing or outside the wallet scope', async () => {
+    mockTx.$queryRaw.mockResolvedValueOnce([]);
+
+    const result = await webhookRepository.createDelivery({
+      endpointId: 'endpoint-1',
+      walletId: 'wallet-1',
+      expectedUrl: 'https://example.com/hook',
+      expectedSecretEncrypted: null,
+      eventId: 'event-1',
+      eventType: 'wallet.transaction.received',
+      payloadProfile: 'sanctuary_wallet_event_v1',
+      targetUrl: 'https://example.com/hook',
+      eventPayload: { eventId: 'event-1' },
+    });
+
+    expect(result).toEqual({ accepted: false, reason: 'endpoint_unavailable' });
+    expect(mockTx.webhookEndpoint.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(mockTx.webhookDelivery.upsert).not.toHaveBeenCalled();
   });
 
   it('finds deliveries with endpoint config', async () => {
@@ -657,8 +731,8 @@ describe('webhookRepository', () => {
 
 function makeEndpoint(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'endpoint-1',
-    walletId: 'wallet-1',
+      id: 'endpoint-1',
+      walletId: 'wallet-1',
     name: 'Endpoint',
     enabled: true,
     url: 'https://example.com/hook',

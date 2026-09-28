@@ -36,13 +36,14 @@ EOF
 }
 
 fail() {
-  echo "sanctuary-backup: $*" >&2
+  local exit_status="${2:-1}"
+  echo "sanctuary-backup: ${1:-}" >&2
   # Leave the failure where an operator will actually see it. sanctuary#745:
   # the unit is StandardOutput=journal with no OnFailure=, so 44 consecutive
   # failures surfaced nothing, and the output directory looked untouched.
   # Best-effort only — a status write must never mask the real error.
-  write_status failed "$*" 2>/dev/null || true
-  exit 1
+  write_status failed "${1:-}" 2>/dev/null || true
+  exit "$exit_status"
 }
 
 log() {
@@ -245,7 +246,10 @@ acquire_lock() {
   chmod 600 "$lock_path"
   exec 9<>"$lock_path"
   if ! flock -n 9; then
-    fail "another backup is already running (lock: $lock_path)"
+    # Another live run owns the status file for this output directory. Do not
+    # overwrite its last-run record with this contender's lock refusal.
+    echo "sanctuary-backup: another backup is already running (lock: $lock_path)" >&2
+    exit 1
   fi
 }
 
@@ -265,11 +269,17 @@ dump_database() {
   tmp_path="$(mktemp "$daily_dir/.${filename}.tmp.XXXXXX")"
   # pg_dump streamed through gzip; both tools' exit codes are checked via
   # PIPESTATUS so a partial dump doesn't quietly produce a small valid gz.
-  docker exec "$postgres_container" pg_dump -U "$db_user" "$db_name" \
-    | gzip -9 > "$tmp_path"
-  local statuses=("${PIPESTATUS[@]}")
-  if [ "${statuses[0]}" -ne 0 ] || [ "${statuses[1]}" -ne 0 ]; then
-    fail "pg_dump failed (exit ${statuses[0]}/${statuses[1]})"
+  local -a statuses=()
+  if docker exec "$postgres_container" pg_dump -U "$db_user" "$db_name" \
+      | gzip -9 > "$tmp_path"; then
+    statuses=("${PIPESTATUS[@]}")
+  else
+    statuses=("${PIPESTATUS[@]}")
+    local pipeline_status="${statuses[1]}"
+    if [ "$pipeline_status" -eq 0 ]; then
+      pipeline_status="${statuses[0]}"
+    fi
+    fail "dump pipeline failed (pg_dump/gzip exit ${statuses[0]}/${statuses[1]})" "$pipeline_status"
   fi
   if ! gzip -t "$tmp_path" 2>/dev/null; then
     fail "gzip integrity check failed for temporary dump"

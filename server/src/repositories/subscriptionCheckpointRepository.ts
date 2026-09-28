@@ -120,11 +120,13 @@ export async function findSubscriptionCheckpointOwners(
   const cursor = options.cursor ?? '';
   const checkpointNetwork = persistedNetworkPredicate('"checkpoints"."network"', network);
   const walletNetwork = persistedNetworkPredicate('"wallets"."network"', network);
+  // LATERAL LIMIT 1 keeps address lookup checkpoint-driven when mixed-network
+  // wallet populations would otherwise make work follow one wallet's full address set.
   return prisma.$queryRaw<SubscriptionCheckpointOwner[]>(Prisma.sql`
     SELECT
       "checkpoints"."addressId",
-      "addresses"."walletId",
-      "addresses"."address",
+      "owner"."walletId",
+      "owner"."address",
       ${network} AS "network",
       "checkpoints"."scriptHash",
       "checkpoints"."statusKnown",
@@ -134,10 +136,18 @@ export async function findSubscriptionCheckpointOwners(
       "checkpoints"."processedEnrollmentGeneration",
       "checkpoints"."coverageGapStartedAt"
     FROM "address_subscription_checkpoints" AS "checkpoints"
-    INNER JOIN "addresses" ON "addresses"."id" = "checkpoints"."addressId"
-    INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
+    INNER JOIN LATERAL (
+      SELECT
+        "addresses"."walletId",
+        "addresses"."address",
+        "wallets"."network"
+      FROM "addresses"
+      INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
+      WHERE "addresses"."id" = "checkpoints"."addressId"
+        AND ${walletNetwork}
+      LIMIT 1
+    ) AS "owner" ON TRUE
     WHERE ${checkpointNetwork}
-      AND ${walletNetwork}
       AND "checkpoints"."scriptHash" = ${scriptHash}
       AND "checkpoints"."statusKnown" = TRUE
       AND "checkpoints"."addressId" > ${cursor}

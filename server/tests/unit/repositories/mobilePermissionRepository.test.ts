@@ -18,6 +18,7 @@ vi.mock('../../../src/models/prisma', () => ({
       create: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
       deleteMany: vi.fn(),
       count: vi.fn(),
@@ -44,6 +45,8 @@ describe('Mobile Permission Repository', () => {
     canManageDevices: false,
     canShareWallet: false,
     canDeleteWallet: false,
+    canApproveTransaction: false,
+    canManagePolicies: false,
     ownerMaxPermissions: null,
     lastModifiedBy: 'admin-user',
     createdAt: new Date(),
@@ -308,6 +311,65 @@ describe('Mobile Permission Repository', () => {
       });
 
       expect(result.ownerMaxPermissions).toEqual({ canBroadcast: false });
+    });
+
+    it('forwards policy capability fields supported by the permission schema', async () => {
+      (prisma.mobilePermission.create as Mock).mockResolvedValue(mockPermission);
+
+      await mobilePermissionRepository.create({
+        walletId: 'wallet-456',
+        userId: 'user-789',
+        canApproveTransaction: true,
+        canManagePolicies: true,
+      });
+
+      expect(prisma.mobilePermission.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          canApproveTransaction: true,
+          canManagePolicies: true,
+        }),
+      });
+    });
+  });
+
+  describe('resetCapabilitiesByWalletAndUser', () => {
+    it('updates all self capabilities without touching owner caps', async () => {
+      (prisma.mobilePermission.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      await expect(mobilePermissionRepository.resetCapabilitiesByWalletAndUser(
+        'wallet-456', 'user-789', 'user-789'
+      )).resolves.toBe(1);
+
+      expect(prisma.mobilePermission.updateMany).toHaveBeenCalledWith({
+        where: { walletId: 'wallet-456', userId: 'user-789' },
+        data: {
+          canViewBalance: true,
+          canViewTransactions: true,
+          canViewUtxos: true,
+          canCreateTransaction: true,
+          canBroadcast: true,
+          canSignPsbt: true,
+          canGenerateAddress: true,
+          canManageLabels: true,
+          canManageDevices: true,
+          canShareWallet: true,
+          canDeleteWallet: true,
+          canApproveTransaction: true,
+          canManagePolicies: true,
+          lastModifiedBy: 'user-789',
+        },
+      });
+      const [updateArgs] = (prisma.mobilePermission.updateMany as Mock).mock.calls[0];
+      expect(updateArgs.data).not.toHaveProperty('ownerMaxPermissions');
+    });
+
+    it('returns zero for a missing row without creating one', async () => {
+      (prisma.mobilePermission.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(mobilePermissionRepository.resetCapabilitiesByWalletAndUser(
+        'wallet-456', 'missing-user', 'missing-user'
+      )).resolves.toBe(0);
+      expect(prisma.mobilePermission.updateMany).toHaveBeenCalledTimes(1);
     });
   });
 

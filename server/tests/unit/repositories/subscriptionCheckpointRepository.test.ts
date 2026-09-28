@@ -142,6 +142,11 @@ describe('subscriptionCheckpointRepository readers', () => {
       'signet', 'signet', 'signet', SCRIPT_HASH, '', 200,
     ]);
     expect(sqlText(query)).toContain('"checkpoints"."statusKnown" = TRUE');
+    expect(sqlText(query)).toContain('INNER JOIN LATERAL');
+    expect(sqlText(query)).toContain('"addresses"."id" = "checkpoints"."addressId"');
+    expect(sqlText(query)).toContain('"wallets"."network" = ');
+    expect(sqlText(query)).toContain('"addresses"."walletId"');
+    expect(sqlText(query)).toContain('"addresses"."address"');
     expect(sqlText(query)).toContain('ORDER BY "checkpoints"."addressId" ASC');
     expect(sqlText(query)).toContain('LIMIT ');
   });

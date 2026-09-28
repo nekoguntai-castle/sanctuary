@@ -73,6 +73,7 @@ list_group_specs() {
         tests/integration/repositories/transactionRepository.test.ts \
         tests/integration/repositories/transactionSyncReconciliation.test.ts \
         tests/integration/repositories/utxoRepository.test.ts \
+        tests/integration/repositories/webhookEndpointEnqueueOrdering.integration.test.ts \
         tests/integration/repositories/walletRepository.test.ts \
         tests/integration/repositories/walletSyncCrossNetworkContract.test.ts \
         tests/integration/repositories/walletSyncRecoveryQueryPlans.test.ts \

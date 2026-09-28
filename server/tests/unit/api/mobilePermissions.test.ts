@@ -218,6 +218,7 @@ describe('Mobile Permissions API', () => {
           canDeleteWallet: true,
           canApproveTransaction: true,
           canManagePolicies: true,
+          ownerMaxPermissions: { broadcast: false },
           effectivePermissions: {
             viewBalance: true,
             viewTransactions: true,
@@ -240,6 +241,7 @@ describe('Mobile Permissions API', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.permissions[0].hasCustomRestrictions).toBe(false);
+      expect(response.body.permissions[0].hasOwnerRestrictions).toBe(true);
     });
 
     it.each([

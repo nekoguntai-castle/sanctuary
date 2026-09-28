@@ -73,15 +73,25 @@ export async function queueWebhookEventsDeliveries(
       }
 
       try {
-        const delivery = await webhookRepository.createDelivery({
+        const admission = await webhookRepository.createDelivery({
           endpointId: endpoint.id,
           walletId: event.wallet.id,
+          expectedUrl: endpoint.url,
+          expectedSecretEncrypted: endpoint.secretEncrypted,
           eventId: event.eventId,
           eventType: event.eventType,
           payloadProfile: endpoint.payloadProfile,
           targetUrl: endpoint.url,
           eventPayload: event as unknown as Prisma.InputJsonValue,
         });
+        if (!admission.accepted) {
+          errors.push(admission.reason === 'endpoint_identity_changed'
+            ? 'Webhook endpoint changed before delivery could be queued'
+            : 'Webhook endpoint is unavailable for delivery');
+          continue;
+        }
+
+        const { delivery } = admission;
         queued += 1;
 
         const queuedInWorker = await queueWebhookDeliveryNotification({

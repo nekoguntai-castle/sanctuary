@@ -22,6 +22,7 @@ const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip
 
 describeWithDatabase('address sync transaction reconciliation', () => {
   const userIds: string[] = [];
+  const walletIds: string[] = [];
   const factoryClient = prisma as unknown as PrismaClient;
 
   afterEach(async () => {
@@ -49,6 +50,9 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     await prisma.$executeRawUnsafe(
       'DROP FUNCTION IF EXISTS test_pause_balance_update()',
     );
+    if (walletIds.length > 0) {
+      await prisma.wallet.deleteMany({ where: { id: { in: walletIds.splice(0) } } });
+    }
     if (userIds.length > 0) {
       await prisma.user.deleteMany({ where: { id: { in: userIds.splice(0) } } });
     }
@@ -62,6 +66,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     const user = await createTestUser(factoryClient);
     userIds.push(user.id);
     const wallet = await createTestWallet(factoryClient, user.id);
+    walletIds.push(wallet.id);
     const address = await createTestAddress(factoryClient, wallet.id);
     return { user, wallet, address };
   }
@@ -340,6 +345,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       name: 'agent-funding-wallet',
       network: 'testnet3',
     });
+    walletIds.push(fundingWallet.id);
     await prisma.walletAgent.create({
       data: {
         userId: user.id,
@@ -375,6 +381,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       name: 'replaced-only-confirmation-candidate',
       network: 'testnet3',
     });
+    walletIds.push(replacedOnlyWallet.id);
     const replacedOnlyAddress = await createTestAddress(factoryClient, replacedOnlyWallet.id);
     await prisma.transaction.createMany({
       data: [
@@ -521,6 +528,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
   it('rejects cross-wallet replacement linkage without queuing a repair', async () => {
     const { user, wallet, address } = await createWalletFixture();
     const otherWallet = await createTestWallet(factoryClient, user.id);
+    walletIds.push(otherWallet.id);
     const transaction = await prisma.transaction.create({
       data: candidate(wallet.id, address.id, generateTxid(), 'received'),
     });

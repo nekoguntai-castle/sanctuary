@@ -20,6 +20,7 @@ vi.mock('../../../../src/repositories', () => ({
     findByWalletIdAndUserIds: vi.fn(),
     upsert: vi.fn(),
     updateByWalletAndUser: vi.fn(),
+    resetCapabilitiesByWalletAndUser: vi.fn(),
     deleteByWalletAndUser: vi.fn(),
   },
   walletSharingRepository: {
@@ -69,6 +70,8 @@ describe('MobilePermissionService', () => {
     canManageDevices: true,
     canShareWallet: true,
     canDeleteWallet: true,
+    canApproveTransaction: false,
+    canManagePolicies: false,
     ownerMaxPermissions: null,
     lastModifiedBy: null,
     createdAt: new Date(),
@@ -220,6 +223,33 @@ describe('MobilePermissionService', () => {
       expect(result.hasOwnerRestrictions).toBe(false);
     });
 
+    it('reports owner caps separately from self restrictions on an all-enabled row', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue({
+        ...mockPermission,
+        canViewBalance: true,
+        canViewTransactions: true,
+        canViewUtxos: true,
+        canCreateTransaction: true,
+        canBroadcast: true,
+        canSignPsbt: true,
+        canGenerateAddress: true,
+        canManageLabels: true,
+        canManageDevices: true,
+        canShareWallet: true,
+        canDeleteWallet: true,
+        canApproveTransaction: true,
+        canManagePolicies: true,
+        ownerMaxPermissions: { broadcast: false },
+      });
+
+      const result = await mobilePermissionService.getEffectivePermissions(walletId, userId);
+
+      expect(result.hasCustomRestrictions).toBe(false);
+      expect(result.hasOwnerRestrictions).toBe(true);
+      expect(result.permissions.broadcast).toBe(false);
+    });
+
     it('should throw ForbiddenError when user has no access', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue(null);
 
@@ -228,7 +258,7 @@ describe('MobilePermissionService', () => {
       ).rejects.toThrow(ForbiddenError);
     });
 
-    it('should indicate custom restrictions when permission record exists', async () => {
+    it('should indicate custom restrictions when a self capability is disabled', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
       (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue({
         ...mockPermission,
@@ -448,15 +478,64 @@ describe('MobilePermissionService', () => {
   });
 
   describe('resetPermissions', () => {
-    it('should delete the permission record', async () => {
-      (mobilePermissionRepository.deleteByWalletAndUser as Mock).mockResolvedValue(undefined);
+    it('keeps an owner cap effective through the actual gateway check', async () => {
+      type MutablePermission = Omit<typeof mockPermission, 'ownerMaxPermissions'> & {
+        ownerMaxPermissions: Record<string, boolean> | null;
+      };
+      let permission: MutablePermission | null = {
+        ...mockPermission,
+        canBroadcast: false,
+        ownerMaxPermissions: { broadcast: false },
+      };
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
+      (mobilePermissionRepository.findByWalletAndUser as Mock).mockImplementation(async () => permission);
+      (mobilePermissionRepository.deleteByWalletAndUser as Mock).mockImplementation(async () => {
+        permission = null;
+      });
+      (mobilePermissionRepository.resetCapabilitiesByWalletAndUser as Mock).mockImplementation(async () => {
+        if (permission) {
+          permission = { ...permission, canBroadcast: true };
+        }
+        return permission ? 1 : 0;
+      });
 
       await mobilePermissionService.resetPermissions(walletId, userId);
 
-      expect(mobilePermissionRepository.deleteByWalletAndUser).toHaveBeenCalledWith(
-        walletId,
-        userId
-      );
+      expect(permission?.canBroadcast).toBe(true);
+      expect(permission?.ownerMaxPermissions).toEqual({ broadcast: false });
+      expect(mobilePermissionRepository.resetCapabilitiesByWalletAndUser)
+        .toHaveBeenCalledWith(walletId, userId, userId);
+      await expect(mobilePermissionService.checkForGateway(walletId, userId, 'broadcast'))
+        .resolves.toMatchObject({ allowed: false });
+    });
+
+    it('allows a group-only user to reset their own capabilities', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue(null);
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue('signer');
+      (mobilePermissionRepository.resetCapabilitiesByWalletAndUser as Mock).mockResolvedValue(1);
+
+      await mobilePermissionService.resetPermissions(walletId, userId);
+
+      expect(mobilePermissionRepository.resetCapabilitiesByWalletAndUser)
+        .toHaveBeenCalledWith(walletId, userId, userId);
+    });
+
+    it('treats a missing permission row as a successful no-op', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
+      (mobilePermissionRepository.resetCapabilitiesByWalletAndUser as Mock).mockResolvedValue(0);
+
+      await expect(mobilePermissionService.resetPermissions(walletId, userId)).resolves.toBeUndefined();
+      expect(mobilePermissionRepository.resetCapabilitiesByWalletAndUser)
+        .toHaveBeenCalledWith(walletId, userId, userId);
+    });
+
+    it('rejects an outsider without mutating a stored permission row', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue(null);
+      (walletRepository.findGroupRoleByMembership as Mock).mockResolvedValue(null);
+
+      await expect(mobilePermissionService.resetPermissions(walletId, userId))
+        .rejects.toThrow(ForbiddenError);
+      expect(mobilePermissionRepository.resetCapabilitiesByWalletAndUser).not.toHaveBeenCalled();
     });
   });
 
@@ -600,6 +679,39 @@ describe('MobilePermissionService', () => {
       expect(result[0].hasCustomRestrictions).toBe(false);
       expect(result[1].hasCustomRestrictions).toBe(true);
       expect(result[1].effectivePermissions.broadcast).toBe(false);
+    });
+
+    it('reports an owner cap without marking an all-enabled row as self-restricted', async () => {
+      (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'owner' });
+      (mobilePermissionRepository.findWalletAccessUsers as Mock).mockResolvedValue([
+        { userId: 'user-1', role: 'owner', user: { id: 'user-1', username: 'alice' } },
+      ]);
+      (mobilePermissionRepository.findByWalletIdAndUserIds as Mock).mockResolvedValue(new Map([
+        ['user-1', {
+          ...mockPermission,
+          userId: 'user-1',
+          canViewBalance: true,
+          canViewTransactions: true,
+          canViewUtxos: true,
+          canCreateTransaction: true,
+          canBroadcast: true,
+          canSignPsbt: true,
+          canGenerateAddress: true,
+          canManageLabels: true,
+          canManageDevices: true,
+          canShareWallet: true,
+          canDeleteWallet: true,
+          canApproveTransaction: true,
+          canManagePolicies: true,
+          ownerMaxPermissions: { broadcast: false },
+        }],
+      ]));
+
+      const result = await mobilePermissionService.getWalletPermissions(walletId, userId);
+
+      expect(result[0].hasCustomRestrictions).toBe(false);
+      expect(result[0].hasOwnerRestrictions).toBe(true);
+      expect(result[0].effectivePermissions.broadcast).toBe(false);
     });
 
     it('should throw ForbiddenError when requester has no access', async () => {

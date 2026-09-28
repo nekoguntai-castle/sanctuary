@@ -76,11 +76,13 @@ class FeatureFlagService {
   private localCache: Map<string, boolean> = new Map();
   private eventListenerRegistered = false;
   private snapshot: FeatureRuntimeSnapshot | null = null;
+  private runtimeTransitionTail: Promise<void> = Promise.resolve();
   private runtimeRole: FeatureRuntimeRole = 'backend';
   private runtimeParticipant: FeatureRuntimeParticipants | null = null;
   private reconcileAfterInstall: (() => Promise<void>) | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
+  private pollInFlight = false;
 
   configureRuntime(
     role: FeatureRuntimeRole,
@@ -110,8 +112,6 @@ class FeatureFlagService {
     const state = await featureFlagRepository.ensureDefaults(defaults);
     this.runtimeParticipant = new FeatureRuntimeParticipants(this.runtimeRole);
     await this.installStateStrict(state);
-    await this.runtimeParticipant.heartbeat();
-    await this.runtimeParticipant.acknowledge(this.snapshot!);
     this.registerEventListener();
     this.startRuntimeTimers();
     this.initialized = true;
@@ -127,21 +127,52 @@ class FeatureFlagService {
   }
 
   private async installStateStrict(state: FeatureRuntimeState): Promise<FeatureRuntimeSnapshot> {
-    const next = this.createSnapshot(state);
-    if (this.snapshot && BigInt(next.generation) < BigInt(this.snapshot.generation)) {
-      return this.snapshot;
-    }
-    if (this.snapshot?.generation === next.generation && this.snapshot.digest !== next.digest) {
-      throw new Error(`Feature runtime digest mismatch at generation ${next.generation}`);
-    }
-    if (this.snapshot?.digest === next.digest && this.snapshot.generation === next.generation) {
-      return this.snapshot;
-    }
-    this.localCache = new Map(Object.entries(next.flags));
-    await getDistributedCache().set(CACHE_KEY, next, CACHE_TTL);
-    if (this.reconcileAfterInstall) await this.reconcileAfterInstall();
-    this.snapshot = next;
-    return next;
+    return this.enqueueRuntimeTransition(async () => {
+      const next = this.createSnapshot(state);
+      const current = this.snapshot;
+      if (current && BigInt(next.generation) < BigInt(current.generation)) {
+        await this.publishRuntimeSnapshot(current);
+        return current;
+      }
+      // One generation identifies one snapshot; conflicting content fails closed.
+      if (current?.generation === next.generation && current.digest !== next.digest) {
+        throw new Error(`Feature runtime digest mismatch at generation ${next.generation}`);
+      }
+      if (current?.digest === next.digest && current.generation === next.generation) {
+        await this.publishRuntimeSnapshot(current);
+        return current;
+      }
+
+      // Reconciliation reads through isEnabled(), so expose candidate flags locally first.
+      // Restore this process's prior view if cache write or reconciliation fails.
+      const previousCache = this.localCache;
+      this.localCache = new Map(Object.entries(next.flags));
+      try {
+        await getDistributedCache().set(CACHE_KEY, next, CACHE_TTL);
+        if (this.reconcileAfterInstall) await this.reconcileAfterInstall();
+      } catch (error) {
+        this.localCache = previousCache;
+        this.snapshot = current;
+        throw error;
+      }
+
+      this.snapshot = next;
+      await this.publishRuntimeSnapshot(next);
+      return next;
+    });
+  }
+
+  private enqueueRuntimeTransition<T>(operation: () => Promise<T>): Promise<T> {
+    // Serialize through acknowledgement; recover the tail so one rejected transition
+    // reaches its caller without blocking the transitions queued after it.
+    const transition = this.runtimeTransitionTail.then(operation);
+    this.runtimeTransitionTail = transition.then(() => undefined, () => undefined);
+    return transition;
+  }
+
+  private async publishRuntimeSnapshot(snapshot: FeatureRuntimeSnapshot): Promise<void> {
+    await this.runtimeParticipant?.heartbeat();
+    await this.runtimeParticipant?.acknowledge(snapshot);
   }
 
   async isEnabled(key: FeatureFlagKey): Promise<boolean> {
@@ -192,7 +223,6 @@ class FeatureFlagService {
     }
 
     const snapshot = await this.installStateStrict(result);
-    await this.runtimeParticipant?.acknowledge(snapshot);
 
     // Emit cross-process event for cache coherence and worker reactions
     const bus = getDistributedEventBus();
@@ -219,8 +249,6 @@ class FeatureFlagService {
     if (!this.runtimeParticipant) throw new Error('Feature runtime is not initialized');
     const roster = await this.runtimeParticipant.freezeLiveRoster();
     const snapshot = await this.installStateStrict(state);
-    await this.runtimeParticipant.heartbeat();
-    await this.runtimeParticipant.acknowledge(snapshot);
     await getDistributedEventBus().emitAsync('system:featureFlag.changed', {
       key: '*',
       enabled: false,
@@ -259,9 +287,7 @@ class FeatureFlagService {
       generation: snapshot.generation,
       flags: Object.entries(snapshot.flags).map(([key, enabled]) => ({ key, enabled })),
     } as FeatureRuntimeState;
-    const installed = await this.installStateStrict(state);
-    await this.runtimeParticipant?.heartbeat();
-    await this.runtimeParticipant?.acknowledge(installed);
+    await this.installStateStrict(state);
   }
 
   private registerEventListener(): void {
@@ -297,14 +323,14 @@ class FeatureFlagService {
   }
 
   private async pollRuntimeState(): Promise<void> {
-    const state = await featureFlagRepository.loadRuntimeState();
-    if (!this.snapshot || BigInt(state.generation) > BigInt(this.snapshot.generation)) {
+    if (this.pollInFlight) return;
+    this.pollInFlight = true;
+    try {
+      const state = await featureFlagRepository.loadRuntimeState();
       await this.installStateStrict(state);
+    } finally {
+      this.pollInFlight = false;
     }
-    // The branch above either retained an existing snapshot or installed one.
-    const snapshot = this.snapshot!;
-    await this.runtimeParticipant?.heartbeat();
-    await this.runtimeParticipant?.acknowledge(snapshot);
   }
 
   async getAllFlags(): Promise<FeatureFlagInfo[]> {

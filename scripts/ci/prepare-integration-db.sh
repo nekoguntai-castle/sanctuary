@@ -46,6 +46,11 @@ if ! node "$guard" "$resolved_url"; then
   exit 1
 fi
 
+# Keep Prisma, readiness, schema verification and integration tests on the
+# exact URL that passed the guard, even when the caller supplied two URLs.
+export TEST_DATABASE_URL="$resolved_url"
+export DATABASE_URL="$resolved_url"
+
 # 1) Real readiness gate.
 if ! node "$check" wait --timeout="$wait_seconds"; then
   exit 1
@@ -54,7 +59,13 @@ fi
 # 2-4) migrate + verify, retrying the pair on a missing schema.
 for attempt in $(seq 1 "$attempts"); do
   echo "prepare-integration-db: prisma migrate deploy (attempt ${attempt}/${attempts})"
-  npx prisma migrate deploy
+  if npx prisma migrate deploy; then
+    :
+  else
+    migration_status=$?
+    echo "::error::prepare-integration-db: prisma migrate deploy failed (exit ${migration_status})" >&2
+    exit "$migration_status"
+  fi
 
   if node "$check" assert --table="$table"; then
     echo "prepare-integration-db: schema verified after attempt ${attempt}."

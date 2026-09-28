@@ -67,6 +67,13 @@ function getPermissionField(
   return permission[field] as boolean;
 }
 
+/** Whether a saved row disables any capability the user can self-configure. */
+function hasSelfRestrictions(permission: MobilePermission | null): boolean {
+  return permission !== null && ALL_MOBILE_ACTIONS.some(
+    (action) => getPermissionField(permission, action) !== true
+  );
+}
+
 /**
  * Get owner max permission for an action
  */
@@ -187,8 +194,8 @@ class MobilePermissionService {
     // Calculate effective permissions
     const permissions = calculateAllEffectivePermissions(role, permission);
 
-    // Determine if there are custom restrictions
-    const hasCustomRestrictions = permission !== null;
+    // Owner caps are separate from restrictions set by the user.
+    const hasCustomRestrictions = hasSelfRestrictions(permission);
     const hasOwnerRestrictions = permission?.ownerMaxPermissions != null;
 
     return {
@@ -359,10 +366,16 @@ class MobilePermissionService {
   }
 
   /**
-   * Reset all mobile permissions to defaults (all enabled)
+   * Reset the user's self-controlled capabilities to enabled defaults.
+   * Requires wallet access and preserves any owner-set capability caps.
    */
   async resetPermissions(walletId: string, userId: string): Promise<void> {
-    await mobilePermissionRepository.deleteByWalletAndUser(walletId, userId);
+    const role = await this.getWalletRole(walletId, userId);
+    if (!role) {
+      throw new ForbiddenError('User does not have access to this wallet');
+    }
+
+    await mobilePermissionRepository.resetCapabilitiesByWalletAndUser(walletId, userId, userId);
     log.info('Reset mobile permissions to defaults', { walletId, userId });
   }
 
@@ -400,7 +413,7 @@ class MobilePermissionService {
         username: wu.user.username,
         role,
         effectivePermissions,
-        hasCustomRestrictions: permission !== null,
+        hasCustomRestrictions: hasSelfRestrictions(permission),
         hasOwnerRestrictions: permission?.ownerMaxPermissions != null,
       };
     });

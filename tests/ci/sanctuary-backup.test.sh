@@ -133,6 +133,42 @@ FAKE
   chmod +x "$bin_dir/date"
 }
 
+stage_fake_gzip() {
+  local bin_dir="$1"
+  local real_gzip
+  real_gzip="$(command -v gzip)"
+  mkdir -p "$bin_dir"
+  cat > "$bin_dir/gzip" <<'FAKE'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-9" ] && [ "${FAKE_GZIP_FAIL:-false}" = true ]; then
+  "${FAKE_GZIP_REAL:?}" "$@"
+  exit "${FAKE_GZIP_EXIT_CODE:-73}"
+fi
+exec "${FAKE_GZIP_REAL:?}" "$@"
+FAKE
+  chmod +x "$bin_dir/gzip"
+  export FAKE_GZIP_REAL="$real_gzip"
+}
+
+stage_failing_mv() {
+  local bin_dir="$1"
+  local real_mv
+  real_mv="$(command -v mv)"
+  mkdir -p "$bin_dir"
+  cat > "$bin_dir/mv" <<'FAKE'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "$arg" == */last-run ]]; then
+    echo "fake mv: refusing status publication" >&2
+    exit 81
+  fi
+done
+exec "${FAKE_MV_REAL:?}" "$@"
+FAKE
+  chmod +x "$bin_dir/mv"
+  export FAKE_MV_REAL="$real_mv"
+}
+
 run_backup() {
   local bin_dir="$TEST_TMP/bin"
   PATH="$bin_dir:$PATH" HOME="$TEST_TMP" "$BACKUP_SCRIPT" "$@"
@@ -230,6 +266,107 @@ test_failed_dump_leaves_no_published_or_temp_files() {
   if find "$out/daily" -name '.sanctuary-*' -type f 2>/dev/null | grep -q .; then
     fail "failed dump left a hidden temporary file"
   fi
+}
+
+seed_previous_success_status() {
+  local out="$1"
+  mkdir -p "$out"
+  cat > "$out/last-run" <<'STATUS'
+timestamp=2000-01-01T00:00:00Z
+outcome=ok
+detail=previous-success
+stale_before_run=false
+newest_daily_age_hours=unknown
+max_age_hours=26
+STATUS
+  chmod 600 "$out/last-run"
+}
+
+assert_no_published_or_temp_dump() {
+  local out="$1"
+  if find "$out/daily" "$out/weekly" -name 'sanctuary-*.sql.gz' -type f 2>/dev/null | grep -q .; then
+    fail "failed dump published a daily or weekly backup"
+  fi
+  if find "$out/daily" "$out/weekly" -name '.sanctuary-*' -type f 2>/dev/null | grep -q .; then
+    fail "failed dump left a hidden temporary file"
+  fi
+}
+
+test_dump_pipeline_failures_replace_previous_success_status() {
+  local out="$TEST_TMP/dump-status"
+  local failures=()
+  seed_previous_success_status "$out"
+
+  local docker_status=0
+  if FAKE_DATE_TIMESTAMP=20260102-000000 FAKE_DOCKER_FAIL_AFTER_OUTPUT=true \
+      run_backup --output-dir "$out" --weekly-day 7 > "$TEST_TMP/dump-status-docker.log" 2>&1; then
+    fail "expected a nonzero status when pg_dump fails"
+  else
+    docker_status=$?
+  fi
+  if [ "$docker_status" -ne 42 ]; then failures+=("pg_dump exit: expected 42, got $docker_status"); fi
+  if ! grep -Fq "outcome=failed" "$out/last-run"; then failures+=("pg_dump left status not failed"); fi
+  if ! grep -Fq "dump pipeline failed (pg_dump/gzip exit 42/0)" "$out/last-run"; then failures+=("pg_dump failure detail was not recorded"); fi
+  if grep -Fq "previous-success" "$out/last-run"; then failures+=("pg_dump retained stale success detail"); fi
+  if ! grep -Fq "timestamp=2026-01-01T00:00:00Z" "$out/last-run"; then failures+=("pg_dump failure status was not refreshed"); fi
+  assert_no_published_or_temp_dump "$out"
+
+  seed_previous_success_status "$out"
+  local gzip_status=0
+  if FAKE_DATE_TIMESTAMP=20260103-000000 FAKE_GZIP_FAIL=true FAKE_GZIP_EXIT_CODE=73 \
+      run_backup --output-dir "$out" --weekly-day 7 > "$TEST_TMP/dump-status-gzip.log" 2>&1; then
+    fail "expected a nonzero status when gzip fails"
+  else
+    gzip_status=$?
+  fi
+  if [ "$gzip_status" -ne 73 ]; then failures+=("gzip exit: expected 73, got $gzip_status"); fi
+  if ! grep -Fq "outcome=failed" "$out/last-run"; then failures+=("gzip left status not failed"); fi
+  if ! grep -Fq "dump pipeline failed (pg_dump/gzip exit 0/73)" "$out/last-run"; then failures+=("gzip failure detail was not recorded"); fi
+  if grep -Fq "previous-success" "$out/last-run"; then failures+=("gzip retained stale success detail"); fi
+  if ! grep -Fq "timestamp=2026-01-01T00:00:00Z" "$out/last-run"; then failures+=("gzip failure status was not refreshed"); fi
+  assert_no_published_or_temp_dump "$out"
+  if [ "${#failures[@]}" -gt 0 ]; then
+    fail "${failures[*]}"
+  fi
+}
+
+test_failed_status_publication_preserves_pipeline_status() {
+  local out="$TEST_TMP/status-write-fail"
+  local bad="$TEST_TMP/status-write-fail-bin"
+  seed_previous_success_status "$out"
+  stage_failing_mv "$bad"
+
+  local status=0
+  if PATH="$bad:$TEST_TMP/bin:$PATH" HOME="$TEST_TMP" \
+      FAKE_DATE_TIMESTAMP=20260104-000000 FAKE_DOCKER_FAIL_AFTER_OUTPUT=true \
+      "$BACKUP_SCRIPT" --output-dir "$out" --weekly-day 7 \
+      > "$TEST_TMP/status-write-fail.log" 2>&1; then
+    fail "expected pg_dump failure when failed-status publication is unavailable"
+  else
+    status=$?
+  fi
+  assert_eq 42 "$status" "status publication failure must not replace pg_dump exit status"
+  assert_file_contains "$out/last-run" "outcome=ok"
+  assert_file_contains "$out/last-run" "previous-success"
+  assert_no_published_or_temp_dump "$out"
+}
+
+test_lock_contention_does_not_replace_previous_status() {
+  local out="$TEST_TMP/contention-status"
+  seed_previous_success_status "$out"
+  local before
+  before="$(file_digest "$out/last-run")"
+
+  (
+    exec 8>"$out/.sanctuary-backup.lock"
+    flock -n 8
+    if run_backup --output-dir "$out" --weekly-day 7 > "$TEST_TMP/contention-status.log" 2>&1; then
+      fail "expected the run to fail while another process owns the lock"
+    fi
+  )
+  assert_file_contains "$TEST_TMP/contention-status.log" "another backup is already running"
+  assert_eq "$before" "$(file_digest "$out/last-run")" \
+    "lock contention must not replace the previous run status"
 }
 
 test_lock_contention_fails_without_touching_snapshot() {
@@ -480,12 +617,18 @@ main() {
   bash -n "$INSTALL_SCRIPT"
   stage_fake_docker "$TEST_TMP/bin"
   stage_fake_date "$TEST_TMP/bin"
+  stage_fake_gzip "$TEST_TMP/bin"
 
   test_writes_dump_and_creates_dirs
   test_permissions_under_permissive_umask
   test_rotates_dailies_keeping_only_n
   test_same_second_no_clobber_keeps_existing_snapshot
   test_failed_dump_leaves_no_published_or_temp_files
+  local failed_status_regressions=0
+  (test_dump_pipeline_failures_replace_previous_success_status) || failed_status_regressions=1
+  (test_failed_status_publication_preserves_pipeline_status) || failed_status_regressions=1
+  (test_lock_contention_does_not_replace_previous_status) || failed_status_regressions=1
+  [ "$failed_status_regressions" -eq 0 ] || fail "failed-status regression checks did not pass"
   test_lock_contention_fails_without_touching_snapshot
   test_requires_flock_before_dumping
   test_weekly_copy_uses_published_basename_and_mode

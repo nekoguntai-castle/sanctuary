@@ -22,7 +22,9 @@ export type MobilePermissionCapability =
   | 'canManageLabels'
   | 'canManageDevices'
   | 'canShareWallet'
-  | 'canDeleteWallet';
+  | 'canDeleteWallet'
+  | 'canApproveTransaction'
+  | 'canManagePolicies';
 
 /**
  * Create mobile permission input
@@ -41,6 +43,8 @@ export interface CreateMobilePermissionInput {
   canManageDevices?: boolean;
   canShareWallet?: boolean;
   canDeleteWallet?: boolean;
+  canApproveTransaction?: boolean;
+  canManagePolicies?: boolean;
   ownerMaxPermissions?: Record<string, boolean>;
   lastModifiedBy?: string;
 }
@@ -60,6 +64,8 @@ export interface UpdateMobilePermissionInput {
   canManageDevices?: boolean;
   canShareWallet?: boolean;
   canDeleteWallet?: boolean;
+  canApproveTransaction?: boolean;
+  canManagePolicies?: boolean;
   ownerMaxPermissions?: Record<string, boolean> | null;
   lastModifiedBy?: string;
 }
@@ -199,10 +205,43 @@ export async function create(input: CreateMobilePermissionInput): Promise<Mobile
       canManageDevices: input.canManageDevices,
       canShareWallet: input.canShareWallet,
       canDeleteWallet: input.canDeleteWallet,
+      canApproveTransaction: input.canApproveTransaction,
+      canManagePolicies: input.canManagePolicies,
       ownerMaxPermissions: input.ownerMaxPermissions as Prisma.InputJsonValue,
       lastModifiedBy: input.lastModifiedBy,
     },
   });
+}
+
+/**
+ * Reset only the user's mobile capability choices, preserving owner-set caps.
+ * A missing permission row is a successful no-op; reset must never create one.
+ */
+export async function resetCapabilitiesByWalletAndUser(
+  walletId: string,
+  userId: string,
+  modifiedBy: string
+): Promise<number> {
+  const result = await prisma.mobilePermission.updateMany({
+    where: { walletId, userId },
+    data: {
+      canViewBalance: true,
+      canViewTransactions: true,
+      canViewUtxos: true,
+      canCreateTransaction: true,
+      canBroadcast: true,
+      canSignPsbt: true,
+      canGenerateAddress: true,
+      canManageLabels: true,
+      canManageDevices: true,
+      canShareWallet: true,
+      canDeleteWallet: true,
+      canApproveTransaction: true,
+      canManagePolicies: true,
+      lastModifiedBy: modifiedBy,
+    },
+  });
+  return result.count;
 }
 
 /**
@@ -377,6 +416,7 @@ export const mobilePermissionRepository = {
   findWalletAccessUsers,
   findByWalletIdAndUserIds,
   create,
+  resetCapabilitiesByWalletAndUser,
   upsert,
   updateById,
   updateByWalletAndUser,

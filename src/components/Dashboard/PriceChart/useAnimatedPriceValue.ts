@@ -21,13 +21,21 @@ export function useAnimatedPriceValue(value: number | null): AnimatedPriceState 
   const animationRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (value !== null && previousValueRef.current === null) {
+    if (value === null) {
+      setDisplayValue(null);
+      setIsAnimating(false);
+      previousValueRef.current = null;
+      animationRef.current = undefined;
+      return;
+    }
+
+    if (previousValueRef.current === null) {
       setDisplayValue(value);
       previousValueRef.current = value;
       return;
     }
 
-    if (value === null || previousValueRef.current === null || previousValueRef.current === value) {
+    if (previousValueRef.current === value) {
       return;
     }
 
@@ -48,6 +56,7 @@ export function useAnimatedPriceValue(value: number | null): AnimatedPriceState 
         return;
       }
 
+      animationRef.current = undefined;
       setIsAnimating(false);
       previousValueRef.current = value;
     };
@@ -55,14 +64,15 @@ export function useAnimatedPriceValue(value: number | null): AnimatedPriceState 
     animationRef.current = requestAnimationFrame(animate);
 
     return () => {
-      if (animationRef.current) {
+      if (animationRef.current !== undefined) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = undefined;
       }
     };
   }, [value]);
 
   return {
-    displayValue,
+    displayValue: value === null ? null : displayValue,
     direction: getPriceDirection(value, previousValueRef.current),
     isAnimating,
   };

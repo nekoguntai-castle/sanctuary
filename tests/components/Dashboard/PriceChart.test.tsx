@@ -202,6 +202,42 @@ describe('AnimatedPrice', () => {
     expect(screen.queryByText('↓')).not.toBeInTheDocument();
   });
 
+  it('masks null synchronously, cancels the prior frame, and seeds the next quote without animation', () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    });
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const { rerender } = render(<AnimatedPrice value={100} symbol="$" />);
+
+    rerender(<AnimatedPrice value={200} symbol="$" />);
+    expect(rafSpy).toHaveBeenCalledTimes(1);
+
+    rerender(<AnimatedPrice value={null} symbol="€" />);
+    expect(screen.getByText('€-----')).toBeInTheDocument();
+    expect(cancelSpy).toHaveBeenCalledWith(1);
+    expect(screen.queryByText('↑')).not.toBeInTheDocument();
+    expect(screen.queryByText('↓')).not.toBeInTheDocument();
+
+    rerender(<AnimatedPrice value={50} symbol="€" />);
+    expect(screen.getByText('€50')).toBeInTheDocument();
+    expect(screen.queryByText('↑')).not.toBeInTheDocument();
+    expect(screen.queryByText('↓')).not.toBeInTheDocument();
+    expect(rafSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves zero as a valid price before and after an unavailable quote', () => {
+    const { rerender } = render(<AnimatedPrice value={0} symbol="$" />);
+    expect(screen.getByText('$0')).toBeInTheDocument();
+
+    rerender(<AnimatedPrice value={null} symbol="€" />);
+    expect(screen.getByText('€-----')).toBeInTheDocument();
+
+    rerender(<AnimatedPrice value={0} symbol="€" />);
+    expect(screen.getByText('€0')).toBeInTheDocument();
+  });
+
   it('shows formatted value when present', () => {
     render(<AnimatedPrice value={12345} symbol="$" />);
     expect(screen.getByText('$12,345')).toBeInTheDocument();
@@ -255,7 +291,7 @@ describe('AnimatedPrice', () => {
     expect(cancelSpy).toHaveBeenCalled();
   });
 
-  it('does not call cancelAnimationFrame when animation id is 0', () => {
+  it('cancels animation frame id 0 as a valid pending frame', () => {
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
     const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 
@@ -263,7 +299,7 @@ describe('AnimatedPrice', () => {
     rerender(<AnimatedPrice value={200} symbol="$" />);
     unmount();
 
-    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(cancelSpy).toHaveBeenCalledWith(0);
   });
 });
 

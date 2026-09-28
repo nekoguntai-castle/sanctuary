@@ -36,6 +36,8 @@ export type BuildWebhookEndpointUpdate = (
 export interface CreateWebhookDeliveryInput {
   endpointId: string;
   walletId: string;
+  expectedUrl: string;
+  expectedSecretEncrypted: string | null;
   eventId: string;
   eventType: string;
   payloadProfile: string;
@@ -44,6 +46,11 @@ export interface CreateWebhookDeliveryInput {
   requestBody?: Prisma.InputJsonValue | null;
   requestBodyHash?: string | null;
 }
+
+/** Expected enqueue admission result; endpoint unavailability or rotation is a normal refusal. */
+export type CreateWebhookDeliveryResult =
+  | { accepted: true; delivery: WebhookDelivery }
+  | { accepted: false; reason: 'endpoint_unavailable' | 'endpoint_identity_changed' };
 
 export interface MarkDeliveryFailedInput {
   deliveryId: string;
@@ -274,28 +281,56 @@ export async function listSupportPackageEndpoints() {
 
 export async function createDelivery(
   input: CreateWebhookDeliveryInput,
-): Promise<WebhookDelivery> {
-  return prisma.webhookDelivery.upsert({
-    where: {
-      endpointId_eventId_payloadProfile: {
-        endpointId: input.endpointId,
-        eventId: input.eventId,
-        payloadProfile: input.payloadProfile,
+): Promise<CreateWebhookDeliveryResult> {
+  return prisma.$transaction(async tx => {
+    // Match endpoint-update locking to serialize rotation with enqueue, while allowing
+    // the delivery foreign key's KEY SHARE lock to coexist.
+    const lockedRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "webhook_endpoints"
+      WHERE "id" = ${input.endpointId} AND "walletId" = ${input.walletId}
+      FOR NO KEY UPDATE
+    `);
+    if (lockedRows.length === 0) {
+      return { accepted: false, reason: 'endpoint_unavailable' };
+    }
+
+    const endpoint = await tx.webhookEndpoint.findUniqueOrThrow({
+      where: { id: input.endpointId },
+    });
+    // The event snapshot may predate rotation; refuse it instead of enqueueing
+    // an event for the old identity at the endpoint's new URL or secret.
+    if (
+      endpoint.url !== input.expectedUrl ||
+      endpoint.secretEncrypted !== input.expectedSecretEncrypted
+    ) {
+      return { accepted: false, reason: 'endpoint_identity_changed' };
+    }
+
+    const delivery = await tx.webhookDelivery.upsert({
+      where: {
+        endpointId_eventId_payloadProfile: {
+          endpointId: input.endpointId,
+          eventId: input.eventId,
+          payloadProfile: input.payloadProfile,
+        },
       },
-    },
-    update: {},
-    create: {
-      endpointId: input.endpointId,
-      walletId: input.walletId,
-      eventId: input.eventId,
-      eventType: input.eventType,
-      payloadProfile: input.payloadProfile,
-      targetUrl: input.targetUrl,
-      eventPayload: input.eventPayload,
-      requestBody: input.requestBody ?? undefined,
-      requestBodyHash: input.requestBodyHash ?? null,
-      nextAttemptAt: new Date(),
-    },
+      update: {},
+      create: {
+        endpointId: input.endpointId,
+        walletId: input.walletId,
+        eventId: input.eventId,
+        eventType: input.eventType,
+        payloadProfile: input.payloadProfile,
+        targetUrl: input.targetUrl,
+        eventPayload: input.eventPayload,
+        requestBody: input.requestBody ?? undefined,
+        requestBodyHash: input.requestBodyHash ?? null,
+        nextAttemptAt: new Date(),
+      },
+    });
+
+    return { accepted: true, delivery };
   });
 }
 

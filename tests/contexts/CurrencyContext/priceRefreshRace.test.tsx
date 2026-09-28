@@ -3,10 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as priceApi from "../../../src/api/price";
 import {
+  CurrencyRenderObserver,
   TestConsumer,
   makeAggregatedPrice,
   renderWithProviders,
   setupDefaultMocks,
+  type CurrencyRenderSnapshot,
 } from "./helpers";
 
 vi.mock("../../../src/utils/logger", () => ({
@@ -103,6 +105,138 @@ describe("CurrencyContext - Price refresh race safety", () => {
       expect(screen.getByTestId("btc-price").textContent).toBe("60000");
     });
     expect(screen.getByTestId("price-loading").textContent).toBe("false");
+  });
+
+  it("masks a settled quote immediately when currency changes and keeps it masked after failure", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const nextCurrency = createDeferred<Awaited<ReturnType<typeof priceApi.getPrice>>>();
+    const renderSnapshots: CurrencyRenderSnapshot[] = [];
+    const usdTimestamp = "2026-01-01T12:00:00.000Z";
+    vi.mocked(priceApi.getPrice)
+      .mockResolvedValueOnce(makeAggregatedPrice({ timestamp: usdTimestamp }))
+      .mockImplementationOnce(() => nextCurrency.promise);
+
+    renderWithProviders(
+      <>
+        <TestConsumer />
+        <CurrencyRenderObserver onRender={(snapshot) => renderSnapshots.push(snapshot)} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("btc-price").textContent).toBe("50000");
+      expect(screen.getByTestId("last-price-update").textContent).toBe(usdTimestamp);
+    });
+
+    renderSnapshots.length = 0;
+    await user.click(screen.getByTestId("set-eur"));
+
+    const firstEurRender = renderSnapshots.find((snapshot) => snapshot.fiatCurrency === "EUR");
+    expect(firstEurRender).toMatchObject({
+      btcPrice: null,
+      priceChange24h: null,
+      lastPriceUpdate: null,
+    });
+    expect(renderSnapshots).not.toContainEqual(expect.objectContaining({
+      fiatCurrency: "EUR",
+      btcPrice: 50000,
+    }));
+
+    expect(screen.getByTestId("fiat-currency").textContent).toBe("EUR");
+    expect(screen.getByTestId("btc-price").textContent).toBe("null");
+    expect(screen.getByTestId("price-change").textContent).toBe("null");
+    expect(screen.getByTestId("last-price-update").textContent).toBe("null");
+    expect(screen.getByTestId("price-with-symbol").textContent).toBe("€-----");
+    expect(renderSnapshots).not.toContainEqual(expect.objectContaining({
+      fiatCurrency: "EUR",
+      btcPrice: 50000,
+    }));
+
+    await act(async () => {
+      nextCurrency.reject(new Error("EUR request failed"));
+    });
+
+    expect(screen.getByTestId("price-error").textContent).toBe("Failed to fetch price");
+    expect(screen.getByTestId("btc-price").textContent).toBe("null");
+    expect(screen.getByTestId("price-change").textContent).toBe("null");
+    expect(screen.getByTestId("last-price-update").textContent).toBe("null");
+    expect(screen.getByTestId("price-with-symbol").textContent).toBe("€-----");
+    expect(renderSnapshots).not.toContainEqual(expect.objectContaining({
+      fiatCurrency: "EUR",
+      btcPrice: 50000,
+    }));
+  });
+
+  it("restores only the matching quote when the new currency request succeeds", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const eurRequest = createDeferred<Awaited<ReturnType<typeof priceApi.getPrice>>>();
+    const eurTimestamp = "2026-01-02T12:00:00.000Z";
+    vi.mocked(priceApi.getPrice)
+      .mockResolvedValueOnce(makeAggregatedPrice({ timestamp: "2026-01-01T12:00:00.000Z" }))
+      .mockImplementationOnce(() => eurRequest.promise);
+
+    renderWithProviders(<TestConsumer />);
+    await waitFor(() => expect(screen.getByTestId("btc-price").textContent).toBe("50000"));
+
+    await user.click(screen.getByTestId("set-eur"));
+    expect(screen.getByTestId("btc-price").textContent).toBe("null");
+
+    await act(async () => {
+      eurRequest.resolve(makeAggregatedPrice({
+        price: 60000,
+        currency: "EUR",
+        change24h: -3,
+        timestamp: eurTimestamp,
+      }));
+    });
+
+    expect(screen.getByTestId("btc-price").textContent).toBe("60000");
+    expect(screen.getByTestId("price-change").textContent).toBe("-3");
+    expect(screen.getByTestId("last-price-update").textContent).toBe(eurTimestamp);
+    expect(screen.getByTestId("price-with-symbol").textContent).toBe("€60000");
+  });
+
+  it("keeps a matching quote visible during same-currency refresh and provider change", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const sameCurrencyRequest = createDeferred<Awaited<ReturnType<typeof priceApi.getPrice>>>();
+    const providerRequest = createDeferred<Awaited<ReturnType<typeof priceApi.getPriceFromProvider>>>();
+    const usdTimestamp = "2026-01-01T12:00:00.000Z";
+    vi.mocked(priceApi.getPrice)
+      .mockResolvedValueOnce(makeAggregatedPrice({ timestamp: usdTimestamp }))
+      .mockImplementationOnce(() => sameCurrencyRequest.promise);
+    vi.mocked(priceApi.getPriceFromProvider).mockImplementationOnce(() => providerRequest.promise);
+
+    renderWithProviders(<TestConsumer />);
+    await waitFor(() => expect(screen.getByTestId("btc-price").textContent).toBe("50000"));
+
+    await user.click(screen.getByTestId("refresh-price"));
+    expect(screen.getByTestId("btc-price").textContent).toBe("50000");
+    expect(screen.getByTestId("price-change").textContent).toBe("2.5");
+    expect(screen.getByTestId("last-price-update").textContent).toBe(usdTimestamp);
+
+    await act(async () => {
+      sameCurrencyRequest.resolve(makeAggregatedPrice({
+        price: 51000,
+        timestamp: "2026-01-01T12:05:00.000Z",
+      }));
+    });
+    expect(screen.getByTestId("btc-price").textContent).toBe("51000");
+
+    await user.click(screen.getByTestId("set-provider"));
+    expect(screen.getByTestId("btc-price").textContent).toBe("51000");
+    expect(screen.getByTestId("price-with-symbol").textContent).toBe("$51000");
+    expect(screen.getByTestId("price-loading").textContent).toBe("true");
+
+    await act(async () => {
+      providerRequest.resolve({
+        provider: "kraken",
+        price: 52000,
+        currency: "USD",
+        timestamp: "2026-01-01T12:10:00.000Z",
+        change24h: 4,
+      });
+    });
+    expect(screen.getByTestId("btc-price").textContent).toBe("52000");
   });
 
   it("ignores a stale rejection from a superseded currency request", async () => {

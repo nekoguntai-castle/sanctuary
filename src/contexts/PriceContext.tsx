@@ -36,6 +36,13 @@ interface PriceContextType {
   refreshPrice: () => Promise<void>;
 }
 
+interface PriceQuote {
+  currency: string;
+  price: number;
+  change24h: number | null;
+  updatedAt: Date;
+}
+
 const PriceContext = createContext<PriceContextType | undefined>(undefined);
 
 export const PriceProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -43,13 +50,11 @@ export const PriceProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { fiatCurrency, priceProvider } = useCurrencyPreferencesContext();
 
-  // Start with null until the first real price is fetched — components
-  // render "-----" instead of stale fallback values.
-  const [btcPrice, setBtcPrice] = useState<number | null>(null);
-  const [priceChange24h, setPriceChange24h] = useState<number | null>(null);
+  // Keep quote values and their currency together so render can hide a quote
+  // immediately when the selected fiat currency changes.
+  const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
   const [priceError, setPriceError] = useState<string | null>(null);
-  const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
 
   // Bumped on every refreshPrice() call and whenever fiatCurrency or
   // priceProvider changes (via the effect's cleanup). A response that
@@ -74,9 +79,12 @@ export const PriceProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const priceData = await fetchPrice();
       if (isCurrent()) {
-        setBtcPrice(priceData.price);
-        setPriceChange24h(priceData.change24h ?? null);
-        setLastPriceUpdate(new Date(priceData.timestamp));
+        setQuote({
+          currency: fiatCurrency,
+          price: priceData.price,
+          change24h: priceData.change24h ?? null,
+          updatedAt: new Date(priceData.timestamp),
+        });
       }
     } catch (error) {
       if (isCurrent()) {
@@ -86,7 +94,7 @@ export const PriceProvider: React.FC<{ children: React.ReactNode }> = ({
     } finally {
       if (isCurrent()) setPriceLoading(false);
     }
-  }, [fetchPrice]);
+  }, [fetchPrice, fiatCurrency]);
 
   // Refresh on mount and whenever fiatCurrency or priceProvider changes;
   // then on a 60-second interval. The cleanup bumps the request id so any
@@ -102,21 +110,21 @@ export const PriceProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [refreshPrice]);
 
+  const quoteMatchesCurrency = quote?.currency === fiatCurrency;
   const value = useMemo<PriceContextType>(
     () => ({
-      btcPrice,
-      priceChange24h,
+      btcPrice: quoteMatchesCurrency ? quote.price : null,
+      priceChange24h: quoteMatchesCurrency ? quote.change24h : null,
       priceLoading,
       priceError,
-      lastPriceUpdate,
+      lastPriceUpdate: quoteMatchesCurrency ? quote.updatedAt : null,
       refreshPrice,
     }),
     [
-      btcPrice,
-      priceChange24h,
+      quote,
+      quoteMatchesCurrency,
       priceLoading,
       priceError,
-      lastPriceUpdate,
       refreshPrice,
     ],
   );
