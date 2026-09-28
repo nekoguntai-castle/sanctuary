@@ -18,6 +18,7 @@ import { ErrorCodes, InvalidInputError, NotFoundError } from '../errors/ApiError
 import { findByIdWithAccess } from '../repositories/walletRepository';
 import { findByIdWithAccess as findAddressByIdWithAccess } from '../repositories/addressRepository';
 import { countEligibility } from '../repositories/utxoRepository';
+import { requireWalletEditAccess } from '../services/accessControl';
 import { createLogger } from '../utils/logger';
 import { getConfig } from '../config';
 import { rateLimitByIpAndKey } from '../middleware/rateLimit';
@@ -286,6 +287,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   const userId = requireAuthenticatedUser(req).userId;
   const wallet = await findByIdWithAccess(walletId, userId);
   if (!wallet) throw new NotFoundError('Wallet not found or access denied');
+  await requireWalletEditAccess(walletId, userId);
   const originalIntent = await loadSigningIntent({ intentId, intentDigest }, walletId);
   if (unsignedPsbtSha256(psbt) !== originalIntent.unsignedPsbtSha256) {
     throw new InvalidInputError('Payjoin PSBT does not match its signing intent', 'psbt');

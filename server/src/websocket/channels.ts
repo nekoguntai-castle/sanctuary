@@ -27,6 +27,7 @@ import {
   bumpSubscriptionGeneration,
 } from './types';
 import { recordRateLimitEvent } from './rateLimiter';
+import { isClientLiveForAdmission } from './clientAdmission';
 
 const log = createLogger('WS:CHANNELS');
 
@@ -49,6 +50,7 @@ export async function handleSubscribe(
   data: { channel: string },
   callbacks: ChannelCallbacks
 ): Promise<void> {
+  if (!isClientLiveForAdmission(client)) return;
   const { channel } = data;
   const subscriptions = callbacks.getSubscriptions();
 
@@ -93,6 +95,7 @@ export async function handleSubscribe(
     const walletId = getWalletIdFromWebSocketChannel(channel);
     if (walletId) {
       const access = await checkWalletAccessUncached(walletId, client.userId);
+      if (!isClientLiveForAdmission(client)) return;
       if (!access.hasAccess) {
         log.warn(`User ${client.userId} denied access to wallet ${walletId}`);
         callbacks.sendToClient(client, {
@@ -166,6 +169,7 @@ export async function handleSubscribeBatch(
   data: { channels: string[] },
   callbacks: ChannelCallbacks
 ): Promise<void> {
+  if (!isClientLiveForAdmission(client)) return;
   const { channels } = data;
   const subscriptions = callbacks.getSubscriptions();
   const subscribed: string[] = [];
@@ -195,6 +199,7 @@ export async function handleSubscribeBatch(
       const walletId = getWalletIdFromWebSocketChannel(channel);
       if (walletId) {
         const access = await checkWalletAccessUncached(walletId, client.userId);
+        if (!isClientLiveForAdmission(client)) return;
         if (!access.hasAccess) {
           errors.push({ channel, reason: 'Access denied' });
           continue;

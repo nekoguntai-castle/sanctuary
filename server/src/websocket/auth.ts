@@ -31,6 +31,7 @@ import {
   MAX_WEBSOCKET_PER_USER,
   AuthenticatedWebSocket,
 } from './types';
+import { isClientLiveForAdmission } from './clientAdmission';
 
 const log = createLogger('WS:AUTH');
 
@@ -139,14 +140,15 @@ export function extractToken(request: IncomingMessage): string | null {
  * If token is present, verifies it asynchronously and completes registration on success.
  * If no token, sets up an auth timeout and completes registration immediately.
  *
- * @returns true if auth is being handled asynchronously (caller should not register),
- *          false if no token was found (caller should register synchronously)
+ * @returns true if auth is asynchronous or the client is already terminal
+ *          (caller should not register), false if no token was found
  */
 export function authenticateOnUpgrade(
   client: AuthenticatedWebSocket,
   request: IncomingMessage,
   callbacks: AuthCallbacks
 ): boolean {
+  if (!isClientLiveForAdmission(client)) return true;
   const token = extractToken(request);
 
   log.info(`WebSocket connection attempt from ${request.socket.remoteAddress}`);
@@ -154,6 +156,7 @@ export function authenticateOnUpgrade(
   if (token) {
     verifyWebSocketAccessToken(token)
       .then((decoded) => {
+        if (!isClientLiveForAdmission(client)) return;
         storeVerifiedClaims(client, decoded);
 
         // Check per-user connection limit
@@ -175,6 +178,7 @@ export function authenticateOnUpgrade(
         callbacks.completeClientRegistration(client);
       })
       .catch((err) => {
+        if (!isClientLiveForAdmission(client)) return;
         log.error('WebSocket authentication failed', { error: String(err) });
         client.close(1008, 'Authentication failed');
       });
@@ -202,6 +206,7 @@ export async function handleAuthMessage(
   data: { token: string },
   callbacks: AuthCallbacks
 ): Promise<void> {
+  if (!isClientLiveForAdmission(client)) return;
   const { token } = data;
 
   // Don't allow re-authentication
@@ -215,6 +220,7 @@ export async function handleAuthMessage(
 
   try {
     const decoded = await verifyWebSocketAccessToken(token);
+    if (!isClientLiveForAdmission(client)) return;
     const userId = decoded.userId;
 
     // Check per-user connection limit
@@ -246,6 +252,7 @@ export async function handleAuthMessage(
       data: { success: true, userId: client.userId },
     });
   } catch (err) {
+    if (!isClientLiveForAdmission(client)) return;
     log.error('WebSocket authentication failed', { error: String(err) });
     callbacks.sendToClient(client, {
       type: 'error',

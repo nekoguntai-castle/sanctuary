@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { WebSocket } from 'ws';
 
 import {
   activeServers,
@@ -6,9 +7,18 @@ import {
   createRequest,
   flushMicrotasks,
   loadServer,
+  metricMocks,
+  mockCheckWalletAccess,
+  mockResolveCurrentAccessTokenPayload,
   mockVerifyToken,
   parseLastSend,
 } from './clientServerLimitsTestHarness';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 export const registerClientServerLimitAuthUpgradeContracts = () => {
   it('extracts auth token from Authorization header first, then sanctuary_access cookie (ADR 0001/0002 Phase 3)', async () => {
@@ -100,6 +110,66 @@ export const registerClientServerLimitAuthUpgradeContracts = () => {
     const payload = parseLastSend(client);
     expect(payload.type).toBe('connected');
     expect(payload.data.authenticated).toBe(true);
+  });
+
+  it('does not admit auth-message completion after error cleanup leaves transport OPEN', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient();
+    (server as any).handleConnection(client, createRequest());
+    client.send.mockClear();
+    metricMocks.websocketConnections.inc.mockClear();
+    const check = deferred<any>();
+    mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+
+    client.emit('message', Buffer.from(JSON.stringify({ type: 'auth', data: { token: 'slow-token' } })));
+    await flushMicrotasks();
+    client.emit('error', new Error('transport error'));
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(client.isQueueStopped).toBe(true);
+
+    check.resolve({
+      userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+      jti: 'late-auth', exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    await flushMicrotasks();
+
+    expect(client.authClaims).toBeUndefined();
+    expect(client.authExpiryTimeout).toBeUndefined();
+    expect((server as any).clients.has(client)).toBe(false);
+    expect((server as any).connectionsPerUser.has('user-1')).toBe(false);
+    expect(metricMocks.websocketConnections.inc).not.toHaveBeenCalled();
+    expect(client.send).not.toHaveBeenCalled();
+  });
+
+  it('does not admit pending wallet access after token revocation stops the OPEN socket', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient({ userId: 'user-1', authJti: 'j1' });
+    (server as any).handleConnection(client, createRequest());
+    client.send.mockClear();
+    metricMocks.websocketSubscriptions.inc.mockClear();
+    const check = deferred<any>();
+    mockCheckWalletAccess.mockImplementationOnce(() => check.promise);
+
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'subscribe', data: { channel: 'wallet:deadbeef' },
+    })));
+    await flushMicrotasks();
+    await server.applyAuthorizationControl({ version: 1, type: 'access-token-revoked', jti: 'j1' });
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(client.isQueueStopped).toBe(true);
+
+    check.resolve({ hasAccess: true, canEdit: false, role: 'viewer' });
+    await flushMicrotasks();
+
+    expect(client.subscriptions.has('wallet:deadbeef')).toBe(false);
+    expect((server as any).subscriptions.has('wallet:deadbeef')).toBe(false);
+    expect(client.subscriptionGeneration).toBe(0);
+    expect(metricMocks.websocketSubscriptions.inc).not.toHaveBeenCalled();
+    expect(client.send).not.toHaveBeenCalled();
   });
 
   it('reuses existing per-user connection set for token-auth upgrades', async () => {

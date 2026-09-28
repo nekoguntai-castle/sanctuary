@@ -41,6 +41,7 @@ vi.mock('../../../src/middleware/rateLimit', () => ({
 // Mock Prisma
 vi.mock('../../../src/models/prisma', () => {
   const mockWallet = { findFirst: vi.fn(), findUnique: vi.fn() };
+  const mockWalletUser = { findFirst: vi.fn() };
   const mockUTXO = { count: vi.fn() };
   const mockAddress = { findFirst: vi.fn() };
 
@@ -48,6 +49,7 @@ vi.mock('../../../src/models/prisma', () => {
     __esModule: true,
     default: {
       wallet: mockWallet,
+      walletUser: mockWalletUser,
       uTXO: mockUTXO,
       address: mockAddress,
     },
@@ -163,7 +165,7 @@ import {
   attemptPayjoinSend,
 } from '../../../src/services/payjoinService';
 import { assertFreshReceiveAddressSafeForDisplay } from '../../../src/services/addressDisplaySafety';
-import { loadSigningIntent } from '../../../src/services/bitcoin/signingIntent/service';
+import { createSigningIntent, loadSigningIntent } from '../../../src/services/bitcoin/signingIntent/service';
 import {
   derivePayjoinInputRoles,
   unsignedPsbtSha256,
@@ -182,6 +184,7 @@ const mockPrisma = prisma as unknown as {
     findFirst: ReturnType<typeof vi.fn>;
     findUnique: ReturnType<typeof vi.fn>;
   };
+  walletUser: { findFirst: ReturnType<typeof vi.fn> };
   uTXO: { count: ReturnType<typeof vi.fn> };
   address: { findFirst: ReturnType<typeof vi.fn> };
 };
@@ -193,9 +196,21 @@ const mockAssertFreshReceiveAddressSafeForDisplay = vi.mocked(
 );
 const mockAttemptPayjoinSend = attemptPayjoinSend as ReturnType<typeof vi.fn>;
 const mockLoadSigningIntent = vi.mocked(loadSigningIntent);
+const mockCreateSigningIntent = vi.mocked(createSigningIntent);
+const mockWalletUser = mockPrisma.walletUser;
 const mockUnsignedPsbtSha256 = vi.mocked(unsignedPsbtSha256);
 const mockDerivePayjoinInputRoles = vi.mocked(derivePayjoinInputRoles);
 const mockBindPsbtAccount = vi.mocked(bindPsbtAccount);
+
+const submitPayjoinAttempt = (app: Express, userId = 'user-123') => request(app)
+  .post('/api/v1/payjoin/attempt')
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-user-id', userId)
+  .send({
+    ...ATTEMPT_AUTH,
+    psbt: VALID_PSBT_BASE64,
+    payjoinUrl: 'https://example.com/pj',
+  });
 
 // Test constants
 const TEST_ADDRESS = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
@@ -244,6 +259,9 @@ describe('Payjoin API Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWalletUser.findFirst.mockReset();
+    mockPrisma.wallet.findFirst.mockReset();
+    mockWalletUser.findFirst.mockResolvedValue({ role: 'owner' });
     mockPrisma.wallet.findUnique.mockResolvedValue({
       id: TEST_WALLET_ID,
       devices: [{ device: { type: 'coldcard', model: null } }],
@@ -946,6 +964,155 @@ describe('Payjoin API Routes', () => {
   });
 
   describe('POST /attempt', () => {
+    it('rejects a viewer before negotiating or replacing the signing intent', async () => {
+      const userId = 'viewer-user';
+      mockWalletUser.findFirst.mockResolvedValueOnce({ role: 'viewer' });
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: true,
+        proposalPsbt: PROPOSAL_PSBT_BASE64,
+        isPayjoin: true,
+      });
+
+      const res = await submitPayjoinAttempt(app, userId);
+
+      expect(res.status).toBe(403);
+      expect(mockWalletUser.findFirst).toHaveBeenCalledWith({
+        where: { walletId: TEST_WALLET_ID, userId },
+      });
+      expect(mockLoadSigningIntent).not.toHaveBeenCalled();
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+      expect(mockBindPsbtAccount).not.toHaveBeenCalled();
+      expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+    });
+
+    it.each(['owner', 'signer'] as const)(
+      'allows a directly authorized %s to negotiate and issue a replacement intent',
+      async (role) => {
+        mockWalletUser.findFirst.mockResolvedValueOnce({ role });
+        mockAttemptPayjoinSend.mockResolvedValue({
+          success: true,
+          proposalPsbt: PROPOSAL_PSBT_BASE64,
+          isPayjoin: true,
+        });
+
+        const res = await submitPayjoinAttempt(app);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ success: true, intentId: 'intent-2' });
+        expect(mockWalletUser.findFirst).toHaveBeenCalledWith({
+          where: { walletId: TEST_WALLET_ID, userId: 'user-123' },
+        });
+        expect(mockAttemptPayjoinSend).toHaveBeenCalledOnce();
+        expect(mockCreateSigningIntent).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('allows a signer with edit access inherited from the wallet group', async () => {
+      mockWalletUser.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.wallet.findFirst
+        .mockResolvedValueOnce({ id: TEST_WALLET_ID, network: 'mainnet' })
+        .mockResolvedValueOnce({ groupRole: 'signer' });
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: true,
+        proposalPsbt: PROPOSAL_PSBT_BASE64,
+        isPayjoin: true,
+      });
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, intentId: 'intent-2' });
+      expect(mockPrisma.wallet.findFirst).toHaveBeenNthCalledWith(2, {
+        where: {
+          id: TEST_WALLET_ID,
+          group: { members: { some: { userId: 'user-123' } } },
+        },
+        select: { groupRole: true },
+      });
+      expect(mockAttemptPayjoinSend).toHaveBeenCalledOnce();
+      expect(mockCreateSigningIntent).toHaveBeenCalledOnce();
+    });
+
+    it('prefers a direct viewer role over an inherited group signer role', async () => {
+      mockWalletUser.findFirst.mockResolvedValueOnce({ role: 'viewer' });
+      mockPrisma.wallet.findFirst.mockResolvedValueOnce({
+        id: TEST_WALLET_ID,
+        network: 'mainnet',
+        groupRole: 'signer',
+      });
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(403);
+      expect(mockPrisma.wallet.findFirst).toHaveBeenCalledOnce();
+      expect(mockLoadSigningIntent).not.toHaveBeenCalled();
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+      expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+    });
+
+    it.each(['viewer', 'approver'] as const)(
+      'denies an authorized-but-read-only %s before Payjoin side effects',
+      async (role) => {
+        const userId = `${role}-user`;
+        mockWalletUser.findFirst.mockResolvedValueOnce({ role });
+
+        const res = await submitPayjoinAttempt(app, userId);
+
+        expect(res.status).toBe(403);
+        expect(mockWalletUser.findFirst).toHaveBeenCalledWith({
+          where: { walletId: TEST_WALLET_ID, userId },
+        });
+        expect(mockLoadSigningIntent).not.toHaveBeenCalled();
+        expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+        expect(mockBindPsbtAccount).not.toHaveBeenCalled();
+        expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+      },
+    );
+
+    it('preserves a sender failure for an authorized role without creating a replacement intent', async () => {
+      mockWalletUser.findFirst.mockResolvedValueOnce({ role: 'owner' });
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: false,
+        isPayjoin: false,
+        error: 'Endpoint returned error',
+      });
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: false, isPayjoin: false });
+      expect(mockAttemptPayjoinSend).toHaveBeenCalledOnce();
+      expect(mockBindPsbtAccount).not.toHaveBeenCalled();
+      expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+    });
+
+    it('conceals missing access before Payjoin negotiation', async () => {
+      mockPrisma.wallet.findFirst.mockResolvedValueOnce(null);
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(404);
+      expect(mockWalletUser.findFirst).not.toHaveBeenCalled();
+      expect(mockLoadSigningIntent).not.toHaveBeenCalled();
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+      expect(mockBindPsbtAccount).not.toHaveBeenCalled();
+      expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+    });
+
+    it('conceals a wallet with no direct or group role before negotiation', async () => {
+      mockWalletUser.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.wallet.findFirst
+        .mockResolvedValueOnce({ id: TEST_WALLET_ID, network: 'mainnet' })
+        .mockResolvedValueOnce(null);
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(404);
+      expect(mockLoadSigningIntent).not.toHaveBeenCalled();
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+      expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+    });
+
     it('should attempt Payjoin and return proposal', async () => {
       mockAttemptPayjoinSend.mockResolvedValue({
         success: true,

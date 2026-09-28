@@ -1,4 +1,5 @@
 import { IncomingMessage } from 'http';
+import { WebSocket } from 'ws';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedWebSocket } from '../../../src/websocket/types';
 
@@ -40,14 +41,30 @@ function createClient(): AuthenticatedWebSocket {
     totalMessageCount: 0,
     messageQueue: [],
     isProcessingQueue: false,
+    isQueueStopped: false,
     droppedMessages: 0,
+    readyState: WebSocket.OPEN,
   } as unknown as AuthenticatedWebSocket;
 }
 
-function createRequest(token = 'access-token'): IncomingMessage {
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function setReadyState(client: AuthenticatedWebSocket, readyState: number): void {
+  Object.defineProperty(client, 'readyState', { configurable: true, value: readyState });
+}
+
+function createRequest(token: string | null = 'access-token'): IncomingMessage {
   return {
     headers: {
-      authorization: `Bearer ${token}`,
+      ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
       host: 'localhost',
     },
     url: '/ws',
@@ -99,6 +116,84 @@ describe('websocket auth', () => {
     expect(client.authExpiresAt).toBeGreaterThan(Date.now());
     expect(client.authExpiryTimeout).toBeDefined();
     clearTimeout(client.authExpiryTimeout);
+  });
+
+  it.each([WebSocket.CLOSING, WebSocket.CLOSED])(
+    'does not admit upgrade auth after the socket enters terminal state %i', async (readyState) => {
+      const check = deferred<any>();
+      mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+      const client = createClient();
+      const callbacks = createCallbacks();
+      authenticateOnUpgrade(client, createRequest(), callbacks);
+      await flushMicrotasks();
+
+      setReadyState(client, readyState);
+      check.resolve({
+        userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+        jti: 'late-upgrade', exp: Math.floor(Date.now() / 1000) + 60,
+      });
+      await flushMicrotasks();
+
+      expect(client.authClaims).toBeUndefined();
+      expect(client.authExpiryTimeout).toBeUndefined();
+      expect(callbacks.getUserConnections).not.toHaveBeenCalled();
+      expect(callbacks.trackUserConnection).not.toHaveBeenCalled();
+      expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not admit upgrade auth when queue shutdown leaves the socket OPEN', async () => {
+    const check = deferred<any>();
+    mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+    const client = createClient();
+    const callbacks = createCallbacks();
+    authenticateOnUpgrade(client, createRequest(), callbacks);
+    await flushMicrotasks();
+
+    client.isQueueStopped = true;
+    check.resolve({
+      userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+      jti: 'late-upgrade-stopped', exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    await flushMicrotasks();
+
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(client.authClaims).toBeUndefined();
+    expect(client.authExpiryTimeout).toBeUndefined();
+    expect(callbacks.trackUserConnection).not.toHaveBeenCalled();
+    expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
+  });
+
+  it('does not close or mutate an upgrade client when verification fails after disconnect', async () => {
+    const check = deferred<any>();
+    mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+    const client = createClient();
+    const callbacks = createCallbacks();
+    authenticateOnUpgrade(client, createRequest(), callbacks);
+    await flushMicrotasks();
+
+    setReadyState(client, WebSocket.CLOSED);
+    check.reject(new Error('session lookup failed'));
+    await flushMicrotasks();
+
+    expect(client.close).not.toHaveBeenCalled();
+    expect(client.authClaims).toBeUndefined();
+    expect(client.authExpiryTimeout).toBeUndefined();
+    expect(callbacks.getUserConnections).not.toHaveBeenCalled();
+    expect(callbacks.trackUserConnection).not.toHaveBeenCalled();
+    expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule unauthenticated timeout or registration for an already terminal socket', () => {
+    const client = createClient();
+    setReadyState(client, WebSocket.CLOSED);
+    const callbacks = createCallbacks();
+
+    const isAsync = authenticateOnUpgrade(client, createRequest(null), callbacks);
+
+    expect(isAsync).toBe(true);
+    expect(client.authTimeout).toBeUndefined();
+    expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
   });
 
   it('rejects stale session-version tokens during upgrade authentication', async () => {
@@ -160,6 +255,82 @@ describe('websocket auth', () => {
       client,
       expect.objectContaining({ type: 'authenticated' })
     );
+  });
+
+  it.each([WebSocket.CLOSING, WebSocket.CLOSED])(
+    'does not mutate auth-message state after the socket enters terminal state %i', async (readyState) => {
+      const check = deferred<any>();
+      mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+      const client = createClient();
+      const callbacks = createCallbacks();
+      const pending = handleAuthMessage(client, { token: 'late-message-token' }, callbacks);
+      await flushMicrotasks();
+      setReadyState(client, readyState);
+      check.resolve({
+        userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+        jti: 'late-message', exp: Math.floor(Date.now() / 1000) + 60,
+      });
+      await pending;
+
+      expect(client.authClaims).toBeUndefined();
+      expect(client.authExpiryTimeout).toBeUndefined();
+      expect(callbacks.getUserConnections).not.toHaveBeenCalled();
+      expect(callbacks.trackUserConnection).not.toHaveBeenCalled();
+      expect(callbacks.sendToClient).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not mutate auth-message state after queue shutdown with the socket OPEN', async () => {
+    const check = deferred<any>();
+    mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+    const client = createClient();
+    const callbacks = createCallbacks();
+    const pending = handleAuthMessage(client, { token: 'late-message-stopped-token' }, callbacks);
+    await flushMicrotasks();
+    client.isQueueStopped = true;
+    check.resolve({
+      userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+      jti: 'late-message-stopped', exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    await pending;
+
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(client.authClaims).toBeUndefined();
+    expect(client.authExpiryTimeout).toBeUndefined();
+    expect(callbacks.getUserConnections).not.toHaveBeenCalled();
+    expect(callbacks.trackUserConnection).not.toHaveBeenCalled();
+    expect(callbacks.sendToClient).not.toHaveBeenCalled();
+  });
+
+  it('does not answer or mutate auth-message state when verification fails after queue shutdown', async () => {
+    const check = deferred<any>();
+    mockResolveCurrentAccessTokenPayload.mockImplementationOnce(() => check.promise);
+    const client = createClient();
+    const callbacks = createCallbacks();
+    const pending = handleAuthMessage(client, { token: 'late-failure-token' }, callbacks);
+    await flushMicrotasks();
+
+    client.isQueueStopped = true;
+    check.reject(new Error('session lookup failed'));
+    await pending;
+
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(client.authClaims).toBeUndefined();
+    expect(client.authExpiryTimeout).toBeUndefined();
+    expect(callbacks.getUserConnections).not.toHaveBeenCalled();
+    expect(callbacks.trackUserConnection).not.toHaveBeenCalled();
+    expect(callbacks.sendToClient).not.toHaveBeenCalled();
+  });
+
+  it('does not answer an already-authenticated terminal socket', async () => {
+    const client = createClient();
+    client.userId = 'user-1';
+    setReadyState(client, WebSocket.CLOSING);
+    const callbacks = createCallbacks();
+
+    await handleAuthMessage(client, { token: 'ignored-token' }, callbacks);
+
+    expect(callbacks.sendToClient).not.toHaveBeenCalled();
   });
 
   it('closes an authenticated connection when its access token expires', async () => {

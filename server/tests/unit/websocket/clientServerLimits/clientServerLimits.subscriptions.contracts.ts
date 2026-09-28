@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { WebSocket } from 'ws';
 
 import {
   activeServers,
@@ -8,7 +9,14 @@ import {
   mockCheckWalletAccess,
   mockCheckWalletAccessCached,
   parseLastSend,
+  flushMicrotasks,
 } from './clientServerLimitsTestHarness';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 export const registerClientServerLimitSubscriptionContracts = () => {
   it('enforces single subscribe limit and rejects extra subscriptions', async () => {
@@ -84,6 +92,105 @@ export const registerClientServerLimitSubscriptionContracts = () => {
     const payload = parseLastSend(client);
     expect(payload.type).toBe('subscribed');
     expect(payload.data.channel).toBe('wallet:deadbeef');
+  });
+
+  it.each([WebSocket.CLOSING, WebSocket.CLOSED])(
+    'does not admit a single wallet subscription after close state %i', async (readyState) => {
+      const Server = await loadServer();
+      const server = new Server();
+      activeServers.push(server);
+      const client = createClient({ userId: 'user-1' });
+      (server as any).handleConnection(client, { headers: {}, socket: { remoteAddress: '127.0.0.1' } });
+      client.send.mockClear();
+      const check = deferred<any>();
+      mockCheckWalletAccess.mockImplementationOnce(() => check.promise);
+      const pending = (server as any).handleSubscribe(client, { channel: 'wallet:deadbeef' });
+      await flushMicrotasks();
+
+      client.readyState = readyState;
+      client.emit('close');
+      check.resolve({ hasAccess: true, canEdit: false, role: 'viewer' });
+      await pending;
+
+      expect(client.isQueueStopped).toBe(true);
+      expect(client.subscriptions.has('wallet:deadbeef')).toBe(false);
+      expect((server as any).subscriptions.has('wallet:deadbeef')).toBe(false);
+      expect(client.subscriptionGeneration).toBe(0);
+      expect(metricMocks.websocketSubscriptions.inc).not.toHaveBeenCalled();
+      expect(client.send).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['close', 'queue shutdown'] as const)(
+    'does not admit a batch wallet or later global channel after %s', async (terminalAction) => {
+      const Server = await loadServer();
+      const server = new Server();
+      activeServers.push(server);
+      const client = createClient({ userId: 'user-1' });
+      (server as any).handleConnection(client, { headers: {}, socket: { remoteAddress: '127.0.0.1' } });
+      client.send.mockClear();
+      const check = deferred<any>();
+      mockCheckWalletAccess.mockImplementationOnce(() => check.promise);
+      const pending = (server as any).handleSubscribeBatch(client, {
+        channels: ['wallet:deadbeef', 'system'],
+      });
+      await flushMicrotasks();
+
+      if (terminalAction === 'close') {
+        client.readyState = WebSocket.CLOSED;
+        client.emit('close');
+      } else {
+        client.isQueueStopped = true;
+      }
+      check.resolve({ hasAccess: true, canEdit: false, role: 'viewer' });
+      await pending;
+
+      expect(client.isQueueStopped).toBe(true);
+      expect(client.subscriptions.size).toBe(0);
+      expect((server as any).subscriptions.size).toBe(0);
+      expect(client.subscriptionGeneration).toBe(0);
+      expect(metricMocks.websocketSubscriptions.inc).not.toHaveBeenCalled();
+      expect(mockCheckWalletAccess).toHaveBeenCalledTimes(1);
+      expect(client.send).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not admit global channels for clients already terminal at entry', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const singleClient = createClient({ readyState: WebSocket.CLOSED });
+    const batchClient = createClient({ readyState: WebSocket.CLOSING });
+
+    await (server as any).handleSubscribe(singleClient, { channel: 'system' });
+    await (server as any).handleSubscribeBatch(batchClient, { channels: ['system', 'blocks'] });
+
+    expect(singleClient.subscriptions.size).toBe(0);
+    expect(batchClient.subscriptions.size).toBe(0);
+    expect((server as any).subscriptions.size).toBe(0);
+    expect(metricMocks.websocketSubscriptions.inc).not.toHaveBeenCalled();
+    expect(singleClient.send).not.toHaveBeenCalled();
+    expect(batchClient.send).not.toHaveBeenCalled();
+  });
+
+  it('does not admit single or batch channels while an OPEN client queue is terminal', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const singleClient = createClient({ isQueueStopped: true });
+    const batchClient = createClient({ isQueueStopped: true });
+
+    await (server as any).handleSubscribe(singleClient, { channel: 'system' });
+    await (server as any).handleSubscribeBatch(batchClient, { channels: ['system', 'blocks'] });
+
+    expect(singleClient.readyState).toBe(WebSocket.OPEN);
+    expect(batchClient.readyState).toBe(WebSocket.OPEN);
+    expect(singleClient.subscriptions.size).toBe(0);
+    expect(batchClient.subscriptions.size).toBe(0);
+    expect((server as any).subscriptions.size).toBe(0);
+    expect(metricMocks.websocketSubscriptions.inc).not.toHaveBeenCalled();
+    expect(singleClient.send).not.toHaveBeenCalled();
+    expect(batchClient.send).not.toHaveBeenCalled();
   });
 
   it('acknowledges an existing subscription without duplicating it', async () => {
