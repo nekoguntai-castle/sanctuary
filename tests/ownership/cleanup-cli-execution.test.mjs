@@ -14,6 +14,7 @@ import { DeploymentStore } from '../../scripts/ownership/deployment-store.mjs';
 import { verifySignedArtifact } from '../../scripts/ownership/cleanup-evidence.mjs';
 import { createCleanupJournal } from '../../scripts/ownership/cleanup-journal.mjs';
 import { registerResource } from '../../scripts/ownership/registration.mjs';
+import { childClockArguments } from './fixtures/child-clock.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const CLI = path.join(ROOT, 'scripts/ownership/cleanup-cli.mjs');
@@ -91,8 +92,8 @@ esac
   return executable;
 }
 
-function invoke(command, requestPath, env) {
-  return spawnSync(process.execPath, [CLI, command, requestPath], {
+function invoke(command, requestPath, env, clockEpoch) {
+  return spawnSync(process.execPath, [...childClockArguments(clockEpoch), CLI, command, requestPath], {
     cwd: ROOT, env, encoding: 'utf8', timeout: 20_000,
   });
 }
@@ -257,7 +258,8 @@ function executionFixture(name, {
   });
   const authorized = invoke('authorize', authorizeRequest, env);
   assert.equal(authorized.status, 0, authorized.stderr);
-  const approvalDigest = canonicalSha256(parseStrictJson(readFileSync(approvalPath)));
+  const approval = parseStrictJson(readFileSync(approvalPath));
+  const approvalDigest = canonicalSha256(approval);
   const receiptOutputPath = path.join(
     runtimeDirectory, 'ownership/cleanup-executions', approvalDigest, 'cleanup-receipt.json',
   );
@@ -278,13 +280,13 @@ function executionFixture(name, {
   writeCanonical(applyRequest, request);
   return {
     root, env, request, applyRequest, runtimeDirectory, deploymentId, evidence,
-    approvalDigest, receiptOutputPath,
+    approval, approvalDigest, receiptOutputPath,
     statePath, markerPath, dockerPidPath, dockerLogPath, holdPath, projectLockRoot,
   };
 }
 
-function spawnCli(command, requestPath, env) {
-  const child = spawn(process.execPath, [CLI, command, requestPath], {
+function spawnCli(command, requestPath, env, clockEpoch) {
+  const child = spawn(process.execPath, [...childClockArguments(clockEpoch), CLI, command, requestPath], {
     cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdoutText = '';
@@ -346,7 +348,10 @@ test('witness-backed legacy resource is approved, journaled, executed, and recei
 
 test('CLI SIGKILL recovery preserves subject status, rejects a concurrent apply, and resumes after expiry',
   { timeout: 30_000 }, async (t) => {
-    const fixture = executionFixture('kill-recover', { expiresInMs: 1_000, subjectExitStatus: 23 });
+    const fixture = executionFixture('kill-recover', { subjectExitStatus: 23 });
+    const admissionClock = Date.parse(fixture.approval.issuedAt) + 100;
+    const recoveryClock = Date.parse(fixture.approval.expiresAt) + 100;
+    assert.ok(admissionClock < Date.parse(fixture.approval.expiresAt));
     let apply;
     let recover;
     t.after(() => {
@@ -358,13 +363,14 @@ test('CLI SIGKILL recovery preserves subject status, rejects a concurrent apply,
     });
     apply = spawnCli('apply', fixture.applyRequest, {
       ...fixture.env, FAKE_DOCKER_MODE: 'crash_after_remove',
-    });
+    }, admissionClock);
     await waitForFile(fixture.markerPath, apply);
     apply.kill('SIGKILL');
     assert.deepEqual(await waitForExit(apply), { code: null, signal: 'SIGKILL' });
     exactKillFrom(fixture.dockerPidPath);
     assert.equal(existsSync(fixture.statePath), false);
-    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    // Advance only the fixture child calendar; production expiry checks stay intact.
+    assert.ok(recoveryClock > Date.parse(fixture.approval.expiresAt));
 
     const recoveryRequestPath = path.join(fixture.root, 'evidence/recover-request.json');
     const { subjectExitStatus: _omitted, ...recoveryRequest } = fixture.request;
@@ -386,18 +392,19 @@ test('CLI SIGKILL recovery preserves subject status, rejects a concurrent apply,
       payload: genesis.checkpoint.payload,
     });
     writeFileSync(journalPath, readFileSync(wrong.journalPath), { mode: 0o600 });
-    const wrongRecovery = invoke('recover', recoveryRequestPath, fixture.env);
+    const wrongRecovery = invoke('recover', recoveryRequestPath, fixture.env, recoveryClock);
     assert.equal(wrongRecovery.status, 2, wrongRecovery.stderr);
     assert.match(wrongRecovery.stderr, /genesis|journal|identity|operation/);
     writeFileSync(journalPath, correctJournal, { mode: 0o600 });
     unlinkSync(fixture.markerPath);
     if (existsSync(fixture.dockerPidPath)) unlinkSync(fixture.dockerPidPath);
     writeFileSync(fixture.holdPath, 'hold\n', { mode: 0o600 });
+    const recoveryStarted = performance.now();
     recover = spawnCli('recover', recoveryRequestPath, {
       ...fixture.env, FAKE_DOCKER_MODE: 'hold_context',
-    });
+    }, recoveryClock);
     await waitForFile(fixture.markerPath, recover);
-    const competing = invoke('apply', fixture.applyRequest, fixture.env);
+    const competing = invoke('apply', fixture.applyRequest, fixture.env, recoveryClock);
     assert.equal(competing.status, 3, competing.stderr);
     unlinkSync(fixture.holdPath);
     const recoveredStatus = await waitForExit(recover);
@@ -406,6 +413,7 @@ test('CLI SIGKILL recovery preserves subject status, rejects a concurrent apply,
       inputPath: fixture.receiptOutputPath,
       publicKeyPath: fixture.evidence.publicKeyPath,
       expectedFingerprint: fixture.evidence.fingerprint, checkoutRoot: ROOT,
+      now: new Date(recoveryClock + Math.ceil(performance.now() - recoveryStarted)),
     }).artifact;
     assert.equal(receipt.state, 'recovered');
     assert.equal(receipt.subjectExitStatus, 23);
@@ -416,6 +424,21 @@ test('CLI SIGKILL recovery preserves subject status, rejects a concurrent apply,
     assert.equal(inspectFixtureProjectLock(fixture).state, 'unlocked');
     assert.equal((readFileSync(fixture.dockerLogPath, 'utf8').match(/network rm/g) ?? []).length, 1);
   });
+
+test('CLI rejects an expired unused approval without mutation', () => {
+  const fixture = executionFixture('expired-unused');
+  try {
+    const expiredClock = Date.parse(fixture.approval.expiresAt) + 100;
+    const applied = invoke('apply', fixture.applyRequest, fixture.env, expiredClock);
+    assert.equal(applied.status, 2, applied.stderr);
+    assert.match(applied.stderr, /cleanup approval has expired/);
+    assert.equal(existsSync(fixture.statePath), true);
+    assert.equal(existsSync(fixture.markerPath), false);
+    assert.equal((readFileSync(fixture.dockerLogPath, 'utf8').match(/network rm/g) ?? []).length, 0);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
 
 test('CLI SIGKILL before mutation response finalizes ambiguous without replaying the open intent',
   { timeout: 30_000 }, async (t) => {
