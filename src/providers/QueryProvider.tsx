@@ -17,8 +17,8 @@ const queryClient = new QueryClient({
       refetchOnReconnect: false,
     },
     mutations: {
-      // Retry mutations once
-      retry: 1,
+      // Mutations may have committed before a transport failure, so replay is unsafe.
+      retry: false,
     },
   },
 });
