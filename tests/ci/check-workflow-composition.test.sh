@@ -2748,12 +2748,17 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "needs.detect-changes.outputs.full_scan == 'true'" \
   "needs.detect-changes.outputs.test_suite_changed == 'true'" \
   "full-render-e2e-tests:" \
-  "needs.detect-changes.outputs.browser_smoke_changed != 'true'" \
-  "needs.detect-changes.outputs.full_scan != 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
   "needs.detect-changes.outputs.render_changed == 'true'" \
   "needs.detect-changes.outputs.full_scan == 'true'" \
   "needs.detect-changes.outputs.test_suite_changed == 'true'"
+
+# The render lane runs beside the browser lane, not after it; gating it on
+# the browser result re-creates the serial critical path removed in R2 of
+# tasks/ci-speedup-analysis-2026-09-29.md.
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "full-render-e2e-tests" \
+  "render E2E does not wait on the browser E2E result" \
+  'needs.full-browser-e2e-tests'
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full summary requires full-scan E2E lanes" \

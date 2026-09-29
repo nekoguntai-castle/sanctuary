@@ -273,6 +273,11 @@ function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
     ['full-critical-mutation', 'full-llm-egress-proxy-tests'],
     ['full-browser-e2e-tests', 'full-critical-mutation'],
     ['full-build-check', 'full-render-e2e-tests'],
+    // DIND-era co-residence orderings. Each Playwright lane runs in its own
+    // job container under rootless Podman and peaks at 3-5 GiB, so these
+    // edges only put an idle wait on the critical path.
+    ['full-browser-e2e-tests', 'full-backend-unit-coverage-shards'],
+    ['full-render-e2e-tests', 'full-browser-e2e-tests'],
   ];
 
   for (const [jobId, forbiddenNeed] of forbiddenNeeds) {

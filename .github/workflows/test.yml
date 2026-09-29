@@ -1654,14 +1654,12 @@ jobs:
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4
     timeout-minutes: 90
-    # Serialized after full-backend-unit-coverage-shards so the two heavy full
-    # lanes do not co-reside on the shared DIND daemon (see the
-    # full-backend-integration-tests needs: comment for the OOM root cause).
-    # The shards no longer hold a Postgres, so this is now about general runner
-    # load rather than database memory, but the ordering still earns its keep:
-    # this lane boots the real backend and a browser.
-    # Ordering only; the always()-guarded `if:` above is unchanged.
-    needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards]
+    # Deliberately not ordered after full-backend-unit-coverage-shards. That
+    # edge kept heavy lanes off the shared DIND daemon; every job now runs in
+    # its own rootless Podman container, this lane peaks near 4 GiB, and the
+    # wait sat on the critical path (tasks/ci-speedup-analysis-2026-09-29.md,
+    # R2). action-runtime-workflow-guards.mjs forbids re-adding it.
+    needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
       # A starved e2e lock wait must fail inside the job budget so the
@@ -1867,11 +1865,6 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-browser-e2e-tests.result == 'success' ||
-       (needs.full-browser-e2e-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.browser_smoke_changed != 'true' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true')) &&
       (needs.detect-changes.outputs.render_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
@@ -1881,7 +1874,12 @@ jobs:
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4
     timeout-minutes: 60
-    needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
+    # Runs beside full-browser-e2e-tests rather than after it: each lane has
+    # its own job container, and the ordering only added the browser lane's
+    # duration to the frontend critical path (R2 of
+    # tasks/ci-speedup-analysis-2026-09-29.md). A browser failure still
+    # fails full-test-summary on its own.
+    needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/render-e2e
       # See full-browser-e2e-tests: bound the shared e2e lock wait below the

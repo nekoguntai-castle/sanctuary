@@ -604,7 +604,7 @@ jobs:
   full-render-e2e-tests:
     name: Full Render E2E Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
+    needs: [detect-changes, full-lane-ready]
     steps:
       - run: echo render
   full-build-check:
@@ -877,6 +877,28 @@ jobs: {}
   );
 }
 
+async function assertBlocksSerializedPlaywrightLanes() {
+  let workflow = validTestSuiteWorkflow();
+  const edges = [
+    ['full-browser-e2e-tests', 'full-backend-unit-coverage-shards'],
+    ['full-render-e2e-tests', 'full-browser-e2e-tests'],
+  ];
+  for (const [jobId, need] of edges) {
+    workflow = workflow.replace(
+      new RegExp(`(  ${jobId}:[\\s\\S]*?    needs: )\\[detect-changes, full-lane-ready\\]`),
+      `$1[detect-changes, full-lane-ready, ${need}]`,
+    );
+  }
+  const result = await runFixture('name: Runtime Check\non: pull_request\njobs: {}\n', (rootDir) => {
+    writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
+  });
+
+  assert.equal(result.findings.length, 0);
+  for (const [jobId, need] of edges) {
+    assert.match(result.errors.join('\n'), new RegExp(`workflow job "${jobId}" must not need "${need}"`));
+  }
+}
+
 async function assertBlocksRenamedTestSuiteWorkflow() {
   const result = await runFixture(
     `
@@ -959,6 +981,7 @@ await assertBlocksBrowserE2eMatrixFanout();
 await assertBlocksMissingFrontendCoverageShard();
 await assertBlocksCoverageShardSelfDependency();
 await assertBlocksFalseFullLaneDependency();
+await assertBlocksSerializedPlaywrightLanes();
 await assertBlocksRenamedTestSuiteWorkflow();
 await assertBlocksBackendIntegrationMatrix();
 await assertAllowsRealFullTestSummaryGate();
