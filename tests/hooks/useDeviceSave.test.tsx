@@ -8,6 +8,13 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
+const mockInvalidateDevices = vi.fn();
+const mockQueryClient = { invalidateQueries: mockInvalidateDevices };
+vi.mock('@tanstack/react-query', async importOriginal => ({
+  ...await importOriginal<typeof import('@tanstack/react-query')>(),
+  useQueryClient: () => mockQueryClient,
+}));
+
 // Mock navigate
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
@@ -520,5 +527,34 @@ describe('useDeviceSave', () => {
       expect(result.current.clearError).toBe(clearError1);
       expect(result.current.reset).toBe(reset1);
     });
+  });
+
+  it.each(['created', 'merged', 'explicit merge'] as const)('calls the contextual completion for current %s writes', async outcome => {
+    const onSuccess = vi.fn();
+    mockCreateDeviceWithConflictHandling.mockResolvedValue(outcome === 'created'
+      ? { status: 'created', device: mockCreatedDevice }
+      : { status: 'merged', result: { device: mockCreatedDevice, added: 1, message: 'merged' } });
+    mockMergeDeviceAccounts.mockResolvedValue({ device: mockCreatedDevice, added: 1, message: 'merged' });
+    const { result } = renderHook(() => useDeviceSave({ onSuccess }));
+    await act(async () => {
+      if (outcome === 'explicit merge') await result.current.mergeDevice(mockCreateRequest);
+      else await result.current.saveDevice(mockCreateRequest);
+    });
+    expect(onSuccess).toHaveBeenCalledExactlyOnceWith(mockCreatedDevice.id);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockInvalidateDevices).toHaveBeenCalledWith({ queryKey: ['devices'] });
+  });
+
+  it('invalidates an accepted retired write without calling stale completion', async () => {
+    const onSuccess = vi.fn();
+    let resolve!: (value: unknown) => void;
+    mockCreateDeviceWithConflictHandling.mockReturnValue(new Promise(yes => { resolve = yes; }));
+    const { result } = renderHook(() => useDeviceSave({ onSuccess }));
+    act(() => { void result.current.saveDevice(mockCreateRequest); });
+    act(() => result.current.reset());
+    await act(async () => { resolve({ status: 'created', device: mockCreatedDevice }); });
+    expect(mockInvalidateDevices).toHaveBeenCalledWith({ queryKey: ['devices'] });
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

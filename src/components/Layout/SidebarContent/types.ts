@@ -3,6 +3,7 @@ import type { Wallet as ApiWallet } from '../../../api/wallets';
 import type { AppCapabilityStatus } from '../../../app/capabilities';
 import type { TabNetwork } from '../../../app/networks';
 import type { ExpandedState } from '../types';
+import type { MouseEventHandler } from 'react';
 
 export interface SidebarContentProps {
   user: { username: string; isAdmin?: boolean } | null;
@@ -18,8 +19,8 @@ export interface SidebarContentProps {
   logout: () => void;
   getWalletCount: (walletId: string) => number;
   getDeviceCount: (deviceId: string) => number;
-  onVersionClick: () => void;
+  onVersionClick: MouseEventHandler<HTMLButtonElement>;
   onOpenConsole: () => void;
-  onOpenShortcuts: () => void;
+  onOpenShortcuts: MouseEventHandler<HTMLButtonElement>;
   capabilities?: AppCapabilityStatus;
 }

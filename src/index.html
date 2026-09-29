@@ -1348,10 +1348,26 @@
         scroll-margin-top: 2rem;
       }
 
-      /* Focus ring consistency */
+      /* Paired neutral focus strokes keep a contrasting edge across every
+         registered palette. Controls that locally suppress focus can opt in
+         explicitly with .focus-contrast. */
+      :root {
+        --focus-indicator-inner: #18181b;
+        --focus-indicator-outer: #fff;
+      }
+      .dark {
+        --focus-indicator-inner: #fff;
+        --focus-indicator-outer: #18181b;
+      }
       :focus-visible {
-        outline: 2px solid var(--color-primary-500);
-        outline-offset: 2px;
+        outline: 2px solid var(--focus-indicator-inner);
+        outline-offset: 0;
+        box-shadow: 0 0 0 4px var(--focus-indicator-outer);
+      }
+      html body .focus-contrast:focus-visible {
+        outline: 2px solid var(--focus-indicator-inner);
+        outline-offset: 0;
+        box-shadow: 0 0 0 4px var(--focus-indicator-outer);
       }
     </style>
 </head>

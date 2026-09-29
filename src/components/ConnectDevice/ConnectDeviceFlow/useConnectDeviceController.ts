@@ -9,11 +9,11 @@ import { getAvailableMethods } from '../../../utils/deviceConnection';
 import { useDeviceForm } from '../hooks/useDeviceForm';
 import { useOptionalActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 
-export function useConnectDeviceController() {
+export function useConnectDeviceController(onComplete?: (deviceId: string) => void) {
   const selectedNetwork = useOptionalActiveNetwork()?.selectedNetwork;
   const [selectedModel, setSelectedModel] = useState<HardwareDeviceModel | null>(null);
   const models = useDeviceModels();
-  const save = useDeviceSave();
+  const save = useDeviceSave({ onSuccess: onComplete });
   const qr = useQrScanner();
   const usb = useDeviceConnection();
   const form = useDeviceForm({

@@ -19,6 +19,7 @@ import { useLatestRequest } from './useLatestRequest';
 import type { FetchToken } from './requestOwnership';
 import { useSidebar } from '../contexts/SidebarContext';
 import { createLogger } from '../utils/logger';
+import { useInvalidateDevices } from './queries/useInvalidateDevices';
 
 const log = createLogger('useDeviceSave');
 
@@ -59,9 +60,11 @@ export interface UseDeviceSaveState {
  *   });
  * };
  */
-export function useDeviceSave(): UseDeviceSaveState {
+export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void } = {}): UseDeviceSaveState {
   const navigate = useNavigate();
   const { refreshSidebar } = useSidebar();
+  const invalidateDevices = useInvalidateDevices();
+  const onSuccess = options.onSuccess;
 
   const [saving, setSaving] = useState(false);
   const [merging, setMerging] = useState(false);
@@ -120,16 +123,24 @@ export function useDeviceSave(): UseDeviceSaveState {
 
       if (result.status === 'created') {
         log.info('Device created successfully', { deviceId: result.device.id });
+        invalidateDevices();
         refreshSidebar();
         // Accepted writes refresh application data even after their UI retires.
-        if (operations.isCurrent(token)) navigate('/devices');
+        if (operations.isCurrent(token)) {
+          if (onSuccess) onSuccess(result.device.id);
+          else navigate('/devices');
+        }
       } else if (result.status === 'merged') {
         log.info('Accounts merged into existing device', {
           deviceId: result.result.device.id,
           added: result.result.added,
         });
+        invalidateDevices();
         refreshSidebar();
-        if (operations.isCurrent(token)) navigate(`/devices/${result.result.device.id}`);
+        if (operations.isCurrent(token)) {
+          if (onSuccess) onSuccess(result.result.device.id);
+          else navigate(`/devices/${result.result.device.id}`);
+        }
       } else if (result.status === 'conflict') {
         if (!operations.isCurrent(token)) return;
         log.info('Device conflict detected', {
@@ -147,7 +158,7 @@ export function useDeviceSave(): UseDeviceSaveState {
     } finally {
       finishOperation(token);
     }
-  }, [beginOperation, finishOperation, navigate, operations, refreshSidebar]);
+  }, [beginOperation, finishOperation, invalidateDevices, navigate, onSuccess, operations, refreshSidebar]);
 
   const mergeDevice = useCallback(async (request: CreateDeviceRequest) => {
     const token = beginOperation('merge');
@@ -162,8 +173,12 @@ export function useDeviceSave(): UseDeviceSaveState {
         added: result.added,
       });
 
+      invalidateDevices();
       refreshSidebar();
-      if (operations.isCurrent(token)) navigate(`/devices/${result.device.id}`);
+      if (operations.isCurrent(token)) {
+        if (onSuccess) onSuccess(result.device.id);
+        else navigate(`/devices/${result.device.id}`);
+      }
     } catch (err) {
       if (!operations.isCurrent(token)) return;
       log.error('Failed to merge accounts', { error: err });
@@ -171,7 +186,7 @@ export function useDeviceSave(): UseDeviceSaveState {
     } finally {
       finishOperation(token);
     }
-  }, [beginOperation, finishOperation, navigate, operations, refreshSidebar]);
+  }, [beginOperation, finishOperation, invalidateDevices, navigate, onSuccess, operations, refreshSidebar]);
 
   return {
     saving,

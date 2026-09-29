@@ -1,6 +1,7 @@
 import type React from 'react';
 import { Shield } from 'lucide-react';
 import { useTabsA11y } from '../../ui/useTabsA11y';
+import { getChoiceLabelClassName } from '../../ui/choiceLabelStyles';
 import type { DeviceDetailTab } from './types';
 
 type DeviceDetailTabsProps = {
@@ -51,8 +52,8 @@ function DeviceTabButton({
   tabProps: DeviceDetailTabButtonProps;
 }) {
   const className = active
-    ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-    : 'border-transparent text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300 hover:border-sanctuary-300 dark:hover:border-sanctuary-600';
+    ? `border-primary-500 ${getChoiceLabelClassName(true)}`
+    : `border-transparent ${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-200 hover:border-sanctuary-300 dark:hover:border-sanctuary-600`;
 
   return (
     <button

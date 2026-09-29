@@ -13,6 +13,7 @@ import {
   getNextCreateWalletStep,
   getNextSelectedSigners,
   getRequiredAccountPurpose,
+  reconcileSelectedSigners,
 } from '../../../src/components/CreateWallet/createWalletData';
 
 const singleMainnetDevice = {
@@ -42,6 +43,12 @@ const multisigTestnetDevice = {
 };
 
 describe('createWalletData', () => {
+  it('drops a selected signer when its device disappeared on refresh', () => {
+    expect(reconcileSelectedSigners(
+      [{ deviceId: 'removed-device', deviceAccountId: 'old-account' }],
+      [], WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet'
+    )).toEqual([]);
+  });
   it('derives required device account purpose from canonical wallet type mapping', () => {
     expect(getRequiredAccountPurpose(WalletType.SINGLE_SIG)).toBe(DeviceAccountPurpose.SINGLE_SIG);
     expect(getRequiredAccountPurpose(WalletType.MULTI_SIG)).toBe(DeviceAccountPurpose.MULTISIG);

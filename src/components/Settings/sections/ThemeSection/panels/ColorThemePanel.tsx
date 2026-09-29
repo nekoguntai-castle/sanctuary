@@ -6,6 +6,7 @@
 
 import React from 'react';
 import type { ThemeOption } from '../../../../../types';
+import { getChoiceLabelClassName } from '../../../../ui/choiceLabelStyles';
 
 interface ThemeInfo {
   id: ThemeOption;
@@ -36,6 +37,7 @@ export const ColorThemePanel: React.FC<ColorThemePanelProps> = ({
             <button
               key={theme.id}
               onClick={() => onSelect(theme.id)}
+              aria-pressed={currentTheme === theme.id}
               className={`
                 relative rounded-lg border transition-all min-h-10 flex flex-col
                 ${currentTheme === theme.id
@@ -48,7 +50,7 @@ export const ColorThemePanel: React.FC<ColorThemePanelProps> = ({
               <div className="h-1.5 w-full flex-shrink-0 rounded-t-lg" style={{ backgroundColor: theme.color }} />
               {/* Theme name */}
               <div className="px-1 py-0.5 flex-1 flex items-start justify-center">
-                <span className={`text-[10px] font-medium leading-tight text-center ${currentTheme === theme.id ? 'text-primary-700 dark:text-primary-300' : 'text-sanctuary-600 dark:text-sanctuary-300'}`}>
+                <span className={`text-[10px] font-medium leading-tight text-center ${getChoiceLabelClassName(currentTheme === theme.id)}`}>
                   {theme.name}
                 </span>
               </div>

@@ -6,6 +6,7 @@ import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { AddAccountFlow } from '../accounts/AddAccountFlow';
 import { getAccountTypeInfo } from '../accountTypes';
 import { useTabsA11y } from '../../ui/useTabsA11y';
+import { getChoiceLabelClassName } from '../../ui/choiceLabelStyles';
 import {
   groupAccountsByNetwork,
   groupAccountsByPurpose,
@@ -205,8 +206,8 @@ function NetworkAccountTabButton({
   const isMainnet = tab === 'mainnet';
   const label = isMainnet ? 'Mainnet' : 'Testnet-family / Signet';
   const activeClass = isMainnet
-    ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border-mainnet-200 dark:border-mainnet-700'
-    : 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border-testnet-200 dark:border-testnet-700';
+    ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 border-mainnet-200 dark:border-mainnet-700'
+    : 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 border-testnet-200 dark:border-testnet-700';
 
   return (
     <button
@@ -214,10 +215,10 @@ function NetworkAccountTabButton({
       className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
         active
           ? activeClass
-          : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
+          : `border-sanctuary-200 dark:border-sanctuary-800 ${getChoiceLabelClassName(false)} hover:border-sanctuary-400`
       }`}
     >
-      {label} <span className="text-[10px] opacity-70">({count})</span>
+      {label} <span className="text-[10px]">({count})</span>
     </button>
   );
 }
@@ -242,10 +243,10 @@ function PurposeAccountTabButton({
           ? 'surface-secondary text-sanctuary-900 dark:text-sanctuary-100 border-sanctuary-300 dark:border-sanctuary-700'
           : disabled
           ? 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-300 dark:text-sanctuary-600 cursor-not-allowed'
-          : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
+          : `border-sanctuary-200 dark:border-sanctuary-800 ${getChoiceLabelClassName(false)} hover:border-sanctuary-400`
       }`}
     >
-      {purpose === DeviceAccountPurposeValue.MULTISIG ? 'Multisig' : 'Single-sig'} <span className="text-[10px] opacity-70">({count})</span>
+      {purpose === DeviceAccountPurposeValue.MULTISIG ? 'Multisig' : 'Single-sig'} <span className="text-[10px]">({count})</span>
     </button>
   );
 }

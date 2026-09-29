@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -49,9 +50,20 @@ function renderFlow(strict = false) {
     { path: '/devices', element: <div>Device list</div> },
     { path: '/devices/existing', element: <div>Existing device</div> },
   ], { initialEntries: ['/elsewhere', '/devices/connect'], initialIndex: 1 });
-  const content = <RouterProvider router={router} />;
+  const content = <QueryClientProvider client={new QueryClient()}><RouterProvider router={router} /></QueryClientProvider>;
   const view = render(strict ? <StrictMode>{content}</StrictMode> : content);
   return { ...view, router, user: userEvent.setup() };
+}
+
+function renderEmbeddedFlow() {
+  const onBack = vi.fn();
+  const onComplete = vi.fn();
+  const router = createMemoryRouter([
+    { path: '/wallets/create', element: <ConnectDevice embedded onBack={onBack} onComplete={onComplete} /> },
+    { path: '/devices/existing', element: <div>Existing device</div> },
+  ], { initialEntries: ['/wallets/create'] });
+  const view = render(<QueryClientProvider client={new QueryClient()}><RouterProvider router={router} /></QueryClientProvider>);
+  return { ...view, router, user: userEvent.setup(), onBack, onComplete };
 }
 async function importAndSave(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByText('Coldcard MK4'));
@@ -172,4 +184,32 @@ it.each(['created', 'merged', 'manual-merge'] as const)('does not redirect after
   });
   expect(refreshSidebar).toHaveBeenCalledTimes(1);
   expect(router.state.location.pathname).toBe('/elsewhere');
+});
+
+it('offers Return to Signers while embedded device models load', async () => {
+  vi.mocked(devicesApi.getDeviceModels).mockReturnValueOnce(new Promise(() => {}));
+  const { user, onBack } = renderEmbeddedFlow();
+  await user.click(screen.getByRole('button', { name: 'Return to Signers' }));
+  expect(onBack).toHaveBeenCalledOnce();
+});
+
+it('uses embedded completion after saving and keeps its wallet route', async () => {
+  const { user, onComplete, router, onBack } = renderEmbeddedFlow();
+  expect(await screen.findByText('Creating a wallet · select signers after connecting')).toBeVisible();
+  await importAndSave(user);
+  await waitFor(() => expect(onComplete).toHaveBeenCalledExactlyOnceWith('new'));
+  expect(router.state.location.pathname).toBe('/wallets/create');
+  expect(screen.getByRole('button', { name: 'Return to Signers' })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Return to Signers' }));
+  expect(onBack).toHaveBeenCalledOnce();
+});
+
+it('keeps an explicit Return to Signers action in an embedded conflict', async () => {
+  vi.mocked(devicesApi.createDeviceWithConflictHandling).mockResolvedValueOnce(conflict);
+  const { user, onBack, router } = renderEmbeddedFlow();
+  await importAndSave(user);
+  expect(await screen.findByRole('heading', { name: 'Device Already Exists' })).toBeVisible();
+  await user.click(screen.getAllByRole('button', { name: 'Return to Signers' }).at(-1)!);
+  expect(onBack).toHaveBeenCalledOnce();
+  expect(router.state.location.pathname).toBe('/wallets/create');
 });

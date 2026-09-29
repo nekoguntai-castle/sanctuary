@@ -18,6 +18,8 @@ export const WalletTypeStep: React.FC<WalletTypeStepProps> = ({ walletType, setW
       <h2 className="text-xl font-medium text-center text-sanctuary-900 dark:text-sanctuary-50 mb-8">Select Wallet Topology</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <button
+              type="button"
+              aria-pressed={walletType === WalletType.SINGLE_SIG}
               onClick={() => setWalletType(WalletType.SINGLE_SIG)}
               className={`p-6 rounded-xl border-2 transition-all duration-200 flex flex-col items-center text-center space-y-4 active:scale-[0.98] ${walletType === WalletType.SINGLE_SIG ? 'border-emerald-600 bg-emerald-50 dark:border-emerald-400 dark:bg-emerald-900/20 shadow-md shadow-emerald-100 dark:shadow-emerald-900/20' : 'border-sanctuary-200 dark:border-sanctuary-800 hover:border-sanctuary-400 hover:shadow-sm'}`}
           >
@@ -31,6 +33,8 @@ export const WalletTypeStep: React.FC<WalletTypeStepProps> = ({ walletType, setW
           </button>
 
           <button
+              type="button"
+              aria-pressed={walletType === WalletType.MULTI_SIG}
               onClick={() => setWalletType(WalletType.MULTI_SIG)}
               className={`p-6 rounded-xl border-2 transition-all duration-200 flex flex-col items-center text-center space-y-4 active:scale-[0.98] ${walletType === WalletType.MULTI_SIG ? 'border-warning-600 bg-warning-50 dark:bg-warning-900/20 shadow-md shadow-warning-100 dark:shadow-warning-900/20' : 'border-sanctuary-200 dark:border-sanctuary-800 hover:border-sanctuary-400 hover:shadow-sm'}`}
           >

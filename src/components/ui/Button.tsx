@@ -10,10 +10,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
 }
 
-const baseButtonStyles = "inline-flex items-center justify-center rounded-md transition-all duration-200 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+const baseButtonStyles = "inline-flex items-center justify-center rounded-md transition-all duration-200 font-medium focus-contrast disabled:opacity-50 disabled:cursor-not-allowed";
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-200 dark:text-white dark:hover:bg-primary-300 focus:ring-primary-500",
+  primary: "bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-200 dark:text-white dark:hover:bg-primary-300",
 
   // Secondary uses neutral Sanctuary palette — subtle border that stays neutral on hover
   secondary: "bg-white text-sanctuary-700 border border-sanctuary-200 hover:border-sanctuary-300 hover:text-sanctuary-900 dark:bg-sanctuary-800 dark:text-sanctuary-300 dark:border-sanctuary-700/50 dark:hover:border-sanctuary-500 dark:hover:text-sanctuary-100",

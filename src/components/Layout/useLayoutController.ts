@@ -88,6 +88,8 @@ export const useLayoutController = () => {
     capabilities,
     expanded,
     isMobileMenuOpen: chrome.isMobileMenuOpen,
+    mobileMenuTriggerRef: chrome.mobileMenuTriggerRef,
+    modalReturnFocusRef: chrome.modalReturnFocusRef,
     isConsoleOpen: chrome.isConsoleOpen,
     showVersionModal: chrome.showVersionModal,
     showKeyboardShortcutsModal: chrome.showKeyboardShortcutsModal,

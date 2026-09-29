@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useRef, type RefObject } from 'react';
 import { Keyboard, X } from 'lucide-react';
 import {
   appShortcuts,
   getShortcutDisplayLabel,
   type AppShortcutDefinition,
 } from '../../app/shortcuts';
+import { useNativeDialogLifecycle } from './useNativeDialogLifecycle';
 
 interface KeyboardShortcutsModalProps {
   show: boolean;
   consoleAvailable: boolean;
   onClose: () => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 function isShortcutVisible(
@@ -23,7 +25,13 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   show,
   consoleAvailable,
   onClose,
+  returnFocusRef,
 }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const localReturnFocusRef = useRef<HTMLElement>(null);
+  const focusReturn = returnFocusRef ?? localReturnFocusRef;
+  useNativeDialogLifecycle({ isOpen: show, dialogRef, initialFocusRef: closeRef, returnFocusRef: focusReturn });
   if (!show) return null;
 
   const shortcuts = appShortcuts.filter((shortcut) =>
@@ -31,11 +39,14 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+    <dialog
+      ref={dialogRef}
+      aria-label="Keyboard shortcuts"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 m-0 flex h-screen max-h-none w-screen max-w-none items-center justify-center border-0 bg-black/40 px-4 backdrop:backdrop-blur-sm"
+    >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Keyboard shortcuts"
         className="surface-elevated w-full max-w-md rounded-lg border border-sanctuary-200 shadow-2xl dark:border-sanctuary-800"
       >
         <header className="flex items-center justify-between border-b border-sanctuary-200 px-4 py-3 dark:border-sanctuary-800">
@@ -48,11 +59,12 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
             </h2>
           </div>
           <button
+            ref={closeRef}
             type="button"
             title="Close keyboard shortcuts"
             aria-label="Close keyboard shortcuts"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100 focus-visible:ring-2 focus-visible:ring-primary-500"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100 focus-contrast"
           >
             <X className="h-4 w-4" />
           </button>
@@ -74,6 +86,6 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           ))}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

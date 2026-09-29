@@ -45,6 +45,7 @@ describe('SignerSelectionStep', () => {
   });
 
   it('renders plural incompatible warning and compatible-device helper hint', () => {
+    const onConnectDevice = vi.fn();
     render(
       <SignerSelectionStep
         walletType={WalletType.MULTI_SIG}
@@ -63,6 +64,7 @@ describe('SignerSelectionStep', () => {
         selectedDeviceIds={new Set(['device-2'])}
         toggleDevice={vi.fn()}
         getDisplayAccount={() => ({ derivationPath: "m/48'/0'/0'/2'" } as any)}
+        onConnectDevice={onConnectDevice}
       />
     );
 
@@ -72,6 +74,6 @@ describe('SignerSelectionStep', () => {
     expect(screen.queryByText(/No devices with exactly one matching multisig account found/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /connect new device/i }));
-    expect(navigateMock).toHaveBeenCalledWith('/devices/connect');
+    expect(onConnectDevice).toHaveBeenCalledOnce();
   });
 });

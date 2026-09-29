@@ -1,6 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+// jsdom models dialog markup but not the browser's modal lifecycle. These
+// mocks model only the open/close state; Playwright contracts verify trapping.
+Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+  configurable: true,
+  value: vi.fn(function (this: HTMLDialogElement) { this.setAttribute('open', ''); }),
+});
+Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+  configurable: true,
+  value: vi.fn(function (this: HTMLDialogElement) { this.removeAttribute('open'); }),
+});
+
 // Stub the Treasury Intelligence status probe globally so tests that mount
 // Layout/Dashboard via useAppCapabilities don't fire real ApiClient calls.
 // Without this, the unmocked /intelligence/status request retries with

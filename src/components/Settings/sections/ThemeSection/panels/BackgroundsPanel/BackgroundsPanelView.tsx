@@ -1,6 +1,7 @@
 import { Calendar, ChevronDown, Heart, Search, Sparkles, X } from 'lucide-react';
 import type { ChangeEvent, MouseEvent } from 'react';
 import { themeRegistry } from '../../../../../../themes';
+import { getChoiceLabelClassName } from '../../../../../ui/choiceLabelStyles';
 import type { BackgroundsPanelController } from './useBackgroundsPanelController';
 import type { BackgroundsPanelProps, BackgroundTileModel, CategoryTabModel, SeasonRowModel } from './types';
 
@@ -111,11 +112,12 @@ function CategoryTabButton({
   return (
     <button
       onClick={onClick}
+      aria-pressed={tab.isActive}
       className={`
         inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium transition-all
         ${tab.isActive
-          ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 ring-1 ring-primary-300 dark:ring-primary-700'
-          : 'bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-200 dark:hover:bg-sanctuary-700'
+          ? `bg-primary-100 dark:bg-primary-900/50 ${getChoiceLabelClassName(true)} ring-1 ring-primary-300 dark:ring-primary-700`
+          : `bg-sanctuary-100 dark:bg-sanctuary-800 ${getChoiceLabelClassName(false)} hover:bg-sanctuary-200 dark:hover:bg-sanctuary-700`
         }
       `}
     >
@@ -224,10 +226,11 @@ function BackgroundTile({
     >
       <button
         onClick={() => onSelectBackground(background.id)}
+        aria-pressed={background.isCurrent}
         className="w-full h-full p-3 flex flex-col items-center justify-center text-center"
       >
         <Icon className={`w-5 h-5 mb-2 ${background.isCurrent ? 'text-primary-600 dark:text-primary-400' : 'text-sanctuary-400'}`} />
-        <span className={`text-[10px] font-medium ${background.isCurrent ? 'text-primary-700 dark:text-primary-300' : 'text-sanctuary-500'}`}>
+        <span className={`text-[10px] font-medium ${getChoiceLabelClassName(background.isCurrent)}`}>
           {background.name}
         </span>
       </button>

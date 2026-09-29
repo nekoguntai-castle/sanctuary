@@ -7,7 +7,6 @@
 
 import React from 'react';
 import { Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { WalletType, Device, DeviceAccount } from '../../types';
 import { SignerCompatibilityWarning } from './SignerCompatibilityWarning';
 import { SignerDeviceCard } from './SignerDeviceCard';
@@ -27,6 +26,10 @@ interface SignerSelectionStepProps {
   selectedDeviceIds: Set<string>;
   toggleDevice: (id: string) => void;
   getDisplayAccount: (device: Device, type: WalletType) => DeviceAccount | null;
+  onConnectDevice?: () => void;
+  refreshError?: string | null;
+  refreshing?: boolean;
+  onRetryRefresh?: () => void;
 }
 
 export const SignerSelectionStep: React.FC<SignerSelectionStepProps> = ({
@@ -36,8 +39,11 @@ export const SignerSelectionStep: React.FC<SignerSelectionStepProps> = ({
   selectedDeviceIds,
   toggleDevice,
   getDisplayAccount,
+  onConnectDevice,
+  refreshError,
+  refreshing,
+  onRetryRefresh,
 }) => {
-  const navigate = useNavigate();
   const accountTypeLabel = getSignerAccountTypeLabel(walletType);
 
   return (
@@ -52,6 +58,14 @@ export const SignerSelectionStep: React.FC<SignerSelectionStepProps> = ({
           accountTypeLabel={accountTypeLabel}
         />
 
+        {refreshing && <p role="status">Refreshing available signers...</p>}
+        {refreshError && (
+          <div role="alert" className="rounded-lg border border-rose-400 p-3 text-rose-700 dark:text-rose-300">
+            {refreshError}
+            <button type="button" onClick={onRetryRefresh} className="ml-3 underline">Retry signer refresh</button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2">
             {compatibleDevices.map(device => (
                 <SignerDeviceCard
@@ -65,7 +79,9 @@ export const SignerSelectionStep: React.FC<SignerSelectionStepProps> = ({
             ))}
              {/* Add New Device Option */}
              <button
-                onClick={() => navigate('/devices/connect')}
+                id="create-wallet-connect-device"
+                type="button"
+                onClick={onConnectDevice}
                 className="p-4 rounded-lg border border-dashed border-sanctuary-300 dark:border-sanctuary-700 flex items-center justify-center text-sanctuary-500 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 transition-colors"
              >
                 <Plus className="w-5 h-5 mr-2" />

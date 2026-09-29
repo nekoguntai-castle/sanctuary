@@ -18,6 +18,7 @@ import {
   getIncompatibleDevices,
   getNextCreateWalletStep,
   getNextSelectedSigners,
+  reconcileSelectedSigners,
 } from './createWalletData';
 
 const log = createLogger('CreateWallet');
@@ -29,14 +30,20 @@ export function useCreateWalletController() {
   const createWalletMutation = useCreateWallet();
   const [step, setStep] = useState<CreateWalletStep>(1);
   const [availableDevices, setAvailableDevices] = useState<Device[]>([]);
+  const [refreshStatus, setRefreshStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [connectingDevice, setConnectingDevice] = useState(false);
+  const returnFocus = useRef(false);
   const [walletType, setWalletType] = useState<WalletType | null>(null);
   const [selectedSigners, setSelectedSigners] = useState<CreateWalletState['selectedSigners']>([]);
   const [walletName, setWalletName] = useState('');
   const [scriptType, setScriptType] = useState<ScriptType>(WalletScriptType.NATIVE_SEGWIT);
+  const selectionPolicy = useRef({ walletType, scriptType, selectedNetwork });
+  selectionPolicy.current = { walletType, scriptType, selectedNetwork };
   const [desiredQuorumM, setDesiredQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const previousNetwork = useRef(selectedNetwork);
   const creation = useLatestRequest();
+  const deviceRefresh = useLatestRequest();
   const scopeRef = useRef({ network: selectedNetwork });
   if (scopeRef.current.network !== selectedNetwork) {
     // Retire synchronously, including network A -> B -> A transitions.
@@ -46,27 +53,32 @@ export function useCreateWalletController() {
   }
   const renderScope = scopeRef.current;
 
+  const refreshDevices = useCallback(async () => {
+    const token = deviceRefresh.begin();
+    setRefreshStatus('loading');
+    try {
+      const devices = await devicesApi.getDevices();
+      if (!deviceRefresh.isCurrent(token)) return;
+      setAvailableDevices(devices);
+      setSelectedSigners(current => {
+        const policy = selectionPolicy.current;
+        return reconcileSelectedSigners(current, devices, policy.walletType, policy.scriptType, policy.selectedNetwork);
+      });
+      setRefreshStatus('ready');
+    } catch (error) {
+      if (!deviceRefresh.isCurrent(token)) return;
+      logError(log, error, 'Failed to load devices');
+      setRefreshStatus('error');
+    }
+  }, [deviceRefresh]);
+
+  useEffect(() => { void refreshDevices(); }, [refreshDevices]);
+
   useEffect(() => {
-    let isMounted = true;
-
-    const loadDevices = async () => {
-      try {
-        const apiDevices = await devicesApi.getDevices();
-        /* v8 ignore next -- unmount guard for an async load race */
-        if (isMounted) setAvailableDevices(apiDevices);
-      } catch (error) {
-        logError(log, error, 'Failed to load devices');
-        /* v8 ignore next -- unmount guard for an async load race */
-        if (isMounted) setAvailableDevices([]);
-      }
-    };
-
-    void loadDevices();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    if (connectingDevice || !returnFocus.current) return;
+    returnFocus.current = false;
+    document.getElementById('create-wallet-connect-device')?.focus();
+  }, [connectingDevice]);
 
   useEffect(() => {
     if (previousNetwork.current === selectedNetwork) return;
@@ -109,7 +121,17 @@ export function useCreateWalletController() {
     () => new Set(selectedSigners.map(signer => signer.deviceId)),
     [selectedSigners]
   );
-  const canContinue = canAdvanceCreateWalletStep(step, createWalletState);
+  const canContinue = (step === 1 || refreshStatus === 'ready') && canAdvanceCreateWalletStep(step, createWalletState);
+
+  const beginDeviceConnection = useCallback(() => {
+    deviceRefresh.invalidate();
+    setConnectingDevice(true);
+  }, [deviceRefresh]);
+  const returnToSigners = useCallback(() => {
+    returnFocus.current = true;
+    setConnectingDevice(false);
+    void refreshDevices();
+  }, [refreshDevices]);
 
   const selectWalletType = useCallback((nextWalletType: WalletType) => {
     if (walletType !== nextWalletType) {
@@ -127,7 +149,7 @@ export function useCreateWalletController() {
   }, [scriptType]);
   const toggleDevice = useCallback(
     (deviceId: string) => {
-      if (!walletType) return;
+      if (!walletType || refreshStatus !== 'ready') return;
       const device = availableDevices.find(candidate => candidate.id === deviceId);
       if (!device) return;
       const account = getExactAccount(device, walletType, scriptType, selectedNetwork);
@@ -137,7 +159,7 @@ export function useCreateWalletController() {
         deviceAccountId: account.id,
       }));
     },
-    [availableDevices, scriptType, selectedNetwork, walletType]
+    [availableDevices, refreshStatus, scriptType, selectedNetwork, walletType]
   );
   const getDisplayAccountForNetwork = useCallback(
     (device: Device, type: WalletType) => getExactAccount(device, type, scriptType, selectedNetwork),
@@ -158,6 +180,7 @@ export function useCreateWalletController() {
   }, [creation, navigate, selectedNetwork, step]);
 
   const handleNext = useCallback(() => {
+    if (step > 1 && refreshStatus !== 'ready') return;
     const result = getNextCreateWalletStep(step, createWalletState);
 
     if (result.error) {
@@ -166,11 +189,10 @@ export function useCreateWalletController() {
     }
 
     if (result.nextStep) setStep(result.nextStep);
-  }, [createWalletState, handleError, step]);
+  }, [createWalletState, handleError, refreshStatus, step]);
 
   const handleCreate = useCallback(async () => {
-    /* v8 ignore next -- UI navigation cannot reach create without a selected wallet type */
-    if (!walletType) return;
+    if (!walletType || refreshStatus !== 'ready') return;
 
     if (scopeRef.current !== renderScope) return;
     const token = creation.begin();
@@ -187,7 +209,7 @@ export function useCreateWalletController() {
     } finally {
       if (creation.isCurrent(token)) setIsSubmitting(false);
     }
-  }, [creation, createWalletMutation, createWalletState, handleError, navigate, renderScope, walletType]);
+  }, [creation, createWalletMutation, createWalletState, handleError, navigate, refreshStatus, renderScope, walletType]);
 
   return {
     step,
@@ -212,5 +234,11 @@ export function useCreateWalletController() {
     handleBack,
     handleNext,
     handleCreate,
+    connectingDevice,
+    beginDeviceConnection,
+    returnToSigners,
+    refreshingDevices: refreshStatus === 'loading',
+    refreshError: refreshStatus === 'error' ? 'Could not refresh available signers. Retry before continuing.' : null,
+    refreshDevices,
   };
 }

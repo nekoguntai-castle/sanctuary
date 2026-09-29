@@ -2,6 +2,9 @@ import { test } from '@playwright/test';
 import * as controlVisibility from './render-regression/renderRegressionControlVisibility.contracts';
 import * as listEntry from './render-regression/renderRegressionListEntry.contracts';
 import * as visualConsistency from './render-regression/renderRegressionVisualConsistency.contracts';
+import * as walletConnection from './render-regression/renderRegressionWalletConnection.contracts';
+import * as choiceFocus from './render-regression/renderRegressionChoiceFocus.contracts';
+import * as mobileDrawer from './render-regression/renderRegressionMobileDrawer.contracts';
 
 import * as adminTests from './render-regression/renderRegressionAdmin.contracts';
 import * as coreTests from './render-regression/renderRegressionCore.contracts';
@@ -78,11 +81,18 @@ for (const darkMode of [false, true]) {
     test.describe(`visual consistency ${darkMode ? 'dark' : 'light'} ${width}`, () => {
       test.use({ viewport: { width, height: 1000 } });
       setupRenderRegressionErrorChecks();
+      test('enabled choices expose state and readable labels', ({ page }) => choiceFocus.renderChoiceContrastAndSemantics(page, darkMode));
+      test('shared actions show readable keyboard focus', ({ page }) => choiceFocus.renderSharedActionKeyboardFocus(page, darkMode));
       test('selected settings tabs remain readable', ({ page }) => visualConsistency.renderSettingsSelectedContrast(page, darkMode));
       test('wallet settings overflow stays local', ({ page }) => visualConsistency.renderWalletSettingsOverflow(page, darkMode));
       test('device identity and accounts fit the content', ({ page }) => visualConsistency.renderDeviceResponsiveLayout(page, darkMode));
       test('long device labels and multiple accounts stay bounded', ({ page }) => visualConsistency.renderDeviceResponsiveLayout(page, darkMode, true));
       test('relationship navigation supports keyboard and direct entry', ({ page }) => visualConsistency.renderRelationshipKeyboardJourney(page, darkMode));
+      test('wallet connection preserves the keyboard-selected signer draft', ({ page }) => walletConnection.renderWalletConnectionKeepsSignerDraft(page, darkMode));
+      test('wallet signer refresh failure offers recovery', ({ page }) => walletConnection.renderWalletRefreshRetry(page, darkMode));
+      for (const outcome of ['created', 'auto-merged', 'explicit-merge', 'conflict-return'] as const) {
+        test(`embedded device connection returns after ${outcome}`, ({ page }) => walletConnection.renderWalletEmbeddedSave(page, darkMode, outcome));
+      }
     });
   }
 }
@@ -127,4 +137,34 @@ for (const darkMode of [false, true]) {
       test(`device filter menu stays within the toolbar (${state})`, ({ page }) => controlVisibility.renderDeviceToolbarFits(page, darkMode, state));
     }
   });
+}
+
+// Shared focus owners affect every registered palette; this narrow contract
+// supplements the representative Sanctuary UI matrix.
+for (const darkMode of [false, true]) {
+  test.describe(`shared palette focus ${darkMode ? 'dark' : 'light'}`, () => {
+    test.use({ viewport: { width: 1440, height: 1000 } });
+    setupRenderRegressionErrorChecks();
+    test('all palettes retain readable action focus', async ({ page }) => {
+      test.setTimeout(120000);
+      await choiceFocus.renderAllPaletteSharedActionFocus(page, darkMode);
+    });
+  });
+}
+
+for (const darkMode of [false, true]) {
+  for (const width of [390, 320]) {
+    test.describe(`mobile drawer ${darkMode ? 'dark' : 'light'} ${width}`, () => {
+      test.use({ viewport: { width, height: 1000 } });
+      setupRenderRegressionErrorChecks();
+      test('keyboard focus stays inside navigation', ({ page }) => mobileDrawer.renderMobileDrawerKeyboardLifecycle(page, darkMode, width));
+      test('close paths restore the menu trigger', ({ page }) => mobileDrawer.renderMobileDrawerClosePaths(page, darkMode, width));
+      test('navigation focuses the destination', ({ page }) => mobileDrawer.renderMobileDrawerNavigationFocus(page, darkMode, width));
+      if (width === 390) {
+        test('About and shortcuts receive and return focus', ({ page }) => mobileDrawer.renderMobileDrawerSiblingDialogs(page, darkMode));
+        test('notifications remain usable inside navigation', ({ page }) => mobileDrawer.renderMobileDrawerNotificationsRemainInline(page, darkMode));
+        test('desktop resize retires the mobile modal', ({ page }) => mobileDrawer.renderMobileDrawerResizeCleanup(page, darkMode));
+      }
+    });
+  }
 }

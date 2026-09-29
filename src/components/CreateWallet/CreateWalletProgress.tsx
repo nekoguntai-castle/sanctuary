@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { CreateWalletStep } from './types';
+import { getChoiceLabelClassName } from '../ui/choiceLabelStyles';
 
 interface StepDescriptor {
   num: CreateWalletStep;
@@ -29,7 +30,7 @@ const STEPS: StepDescriptor[] = [
 ];
 
 function getConnectorClass(isCompleted: boolean, isCurrent: boolean): string {
-  const classes = ['w-8 h-px mx-1 transition-colors duration-300'];
+  const classes = ['w-8 max-[360px]:w-5 h-px mx-1 max-[360px]:mx-0.5 transition-colors duration-300'];
   classes.push(isCompleted ? 'bg-success-500' : 'bg-sanctuary-200 dark:bg-sanctuary-800');
   if (isCurrent) classes.push('bg-gradient-to-r from-success-500 to-sanctuary-200 dark:to-sanctuary-800');
   return classes.join(' ');
@@ -41,7 +42,7 @@ function getStepCircleClass(isCompleted: boolean, isCurrent: boolean): string {
   if (isCompleted) {
     classes.push('w-8 h-8 bg-success-500 text-white');
   } else if (isCurrent) {
-    classes.push('w-9 h-9 border-2 border-primary-500 text-primary-600 dark:text-primary-400 shadow-sm');
+    classes.push(`w-9 h-9 border-2 border-primary-500 ${getChoiceLabelClassName(true)} shadow-sm`);
   } else {
     classes.push('w-8 h-8 border border-sanctuary-300 dark:border-sanctuary-700 text-sanctuary-400');
   }
@@ -53,11 +54,11 @@ function getStepLabelClass(isCompleted: boolean, isCurrent: boolean): string {
   const classes = ['text-[10px] mt-1 font-medium transition-colors'];
 
   if (isCurrent) {
-    classes.push('text-primary-600 dark:text-primary-400');
+    classes.push(getChoiceLabelClassName(true));
   } else if (isCompleted) {
-    classes.push('text-success-600');
+    classes.push('text-success-700');
   } else {
-    classes.push('text-sanctuary-400');
+    classes.push(getChoiceLabelClassName(false));
   }
 
   return classes.join(' ');
@@ -84,7 +85,7 @@ export const CreateWalletProgress: React.FC<CreateWalletProgressProps> = ({ step
               <div className={getStepCircleClass(isCompleted, isCurrent)}>
                 {isCompleted ? <Check className="w-4 h-4" /> : <StepIcon className="w-4 h-4" />}
               </div>
-              <span className={getStepLabelClass(isCompleted, isCurrent)}>
+              <span aria-current={isCurrent ? 'step' : undefined} className={getStepLabelClass(isCompleted, isCurrent)}>
                 {stepDescriptor.label}
               </span>
             </div>

@@ -93,6 +93,19 @@ export function getNextSelectedSigners(
   return [...selectedSigners, signer];
 }
 
+/** Retain only bindings whose exact device account still matches the current policy. */
+export function reconcileSelectedSigners(
+  selected: SelectedSigner[], devices: Device[], walletType: WalletType | null,
+  scriptType: ScriptType, network: TabNetwork
+): SelectedSigner[] {
+  if (!walletType) return [];
+  return selected.filter(signer => {
+    const device = devices.find(candidate => candidate.id === signer.deviceId);
+    if (!device) return false;
+    return getExactAccount(device, walletType, scriptType, network)?.id === signer.deviceAccountId;
+  });
+}
+
 function quorumExceedsSelectedSigners(
   state: Pick<CreateWalletState, 'walletType' | 'selectedSigners' | 'quorumM'>
 ): boolean {

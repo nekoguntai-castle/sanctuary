@@ -1,6 +1,11 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
+vi.mock('@tanstack/react-query', async importOriginal => ({
+  ...await importOriginal<typeof import('@tanstack/react-query')>(),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
+
 const mockNavigate = vi.fn();
 const mockRefreshSidebar = vi.fn();
 const mockCreateDeviceWithConflictHandling = vi.fn();

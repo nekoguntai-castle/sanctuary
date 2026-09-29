@@ -233,7 +233,7 @@ className="bg-primary-600 text-white dark:bg-primary-100 dark:text-primary-700"
 className="bg-primary-600 text-white dark:bg-primary-950 dark:text-primary-200"
 ```
 
-**Not inverted (standard Tailwind behavior):** `sanctuary-*`, `emerald-*`, `rose-*`, `mainnet-*`, `testnet-*`.
+**Not inverted (standard Tailwind behavior):** `sanctuary-*`, `emerald-*`, `rose-*`. Mainnet and testnet semantic scales are also inverted in dark mode, so higher shades are the readable foreground there.
 
 The `sanctuary-*` palette maps to `--color-bg-*` CSS variables — it is the structural palette used for backgrounds, borders, and neutral text, and it follows normal Tailwind direction.
 

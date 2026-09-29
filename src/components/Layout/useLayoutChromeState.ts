@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useAppShortcuts } from '../../hooks/useAppShortcuts';
 import * as adminApi from '../../api/admin';
 import type { AppCapabilityStatus } from '../../app/capabilities';
@@ -25,6 +25,8 @@ export function useLayoutChromeState({
   const [versionInfo, setVersionInfo] = useState<adminApi.VersionInfo | null>(null);
   const [versionLoading, setVersionLoading] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const modalReturnFocusRef = useRef<HTMLElement>(null);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
@@ -33,7 +35,17 @@ export function useLayoutChromeState({
     }
   }, []);
 
-  const handleVersionClick = useCallback(async () => {
+  const rememberModalReturnFocus = useCallback((target?: HTMLElement | null) => {
+    const openedFromMobileMenu = !!target?.closest('[data-testid="mobile-sidebar-panel"]')
+      || (!target && isMobileMenuOpen);
+    modalReturnFocusRef.current = openedFromMobileMenu
+      ? mobileMenuTriggerRef.current
+      : target ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    if (openedFromMobileMenu) setIsMobileMenuOpen(false);
+  }, [isMobileMenuOpen]);
+
+  const handleVersionClick = useCallback(async (event?: MouseEvent<HTMLButtonElement>) => {
+    rememberModalReturnFocus(event?.currentTarget);
     setShowVersionModal(true);
     if (versionInfo) return;
 
@@ -46,7 +58,7 @@ export function useLayoutChromeState({
     } finally {
       setVersionLoading(false);
     }
-  }, [versionInfo]);
+  }, [rememberModalReturnFocus, versionInfo]);
 
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
@@ -74,15 +86,17 @@ export function useLayoutChromeState({
     setIsConsoleOpen(false);
   }, []);
 
-  const openKeyboardShortcuts = useCallback(() => {
+  const openKeyboardShortcuts = useCallback((event?: MouseEvent<HTMLButtonElement>) => {
+    rememberModalReturnFocus(event?.currentTarget);
     setIsMobileMenuOpen(false);
     setShowKeyboardShortcutsModal(true);
-  }, []);
+  }, [rememberModalReturnFocus]);
 
   const toggleKeyboardShortcuts = useCallback(() => {
+    if (!showKeyboardShortcutsModal) rememberModalReturnFocus();
     setIsMobileMenuOpen(false);
     setShowKeyboardShortcutsModal((isOpen) => !isOpen);
-  }, []);
+  }, [rememberModalReturnFocus, showKeyboardShortcutsModal]);
 
   const closeKeyboardShortcuts = useCallback(() => {
     setShowKeyboardShortcutsModal(false);
@@ -114,6 +128,8 @@ export function useLayoutChromeState({
     handleVersionClick,
     isConsoleOpen,
     isMobileMenuOpen,
+    mobileMenuTriggerRef,
+    modalReturnFocusRef,
     openConsole,
     openKeyboardShortcuts,
     setIsMobileMenuOpen,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useCurrencySettings, FiatCurrency } from '../../../contexts/CurrencyContext';
 import { DollarSign, Globe } from 'lucide-react';
+import { getChoiceLabelClassName } from '../../ui/choiceLabelStyles';
 
 const DisplayTab: React.FC = () => {
   const { showFiat, toggleShowFiat, fiatCurrency, setFiatCurrency, unit, setUnit } = useCurrencySettings();
@@ -22,13 +23,15 @@ const DisplayTab: React.FC = () => {
             <div className="flex items-center surface-secondary rounded-lg p-1">
               <button
                 onClick={() => setUnit('sats')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${unit === 'sats' ? 'bg-white dark:bg-sanctuary-700 text-primary-700 dark:text-primary-300 shadow-sm' : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'}`}
+                aria-pressed={unit === 'sats'}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${unit === 'sats' ? `bg-white dark:bg-sanctuary-700 shadow-sm ${getChoiceLabelClassName(true)}` : getChoiceLabelClassName(false)}`}
               >
                 Sats
               </button>
               <button
                 onClick={() => setUnit('btc')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${unit === 'btc' ? 'bg-white dark:bg-sanctuary-700 text-primary-700 dark:text-primary-300 shadow-sm' : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'}`}
+                aria-pressed={unit === 'btc'}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${unit === 'btc' ? `bg-white dark:bg-sanctuary-700 shadow-sm ${getChoiceLabelClassName(true)}` : getChoiceLabelClassName(false)}`}
               >
                 BTC
               </button>

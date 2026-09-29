@@ -191,3 +191,98 @@ it.each(['Back', 'network ABA', 'unmount'] as const)('refuses retained submit ad
   await act(async () => { await retained(); });
   expect(walletsApi.createWallet).not.toHaveBeenCalled();
 });
+
+it('retains the wallet draft but removes a signer whose refreshed account identity changed', async () => {
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}><ActiveNetworkProvider><MemoryRouter>{children}</MemoryRouter></ActiveNetworkProvider></QueryClientProvider>
+  );
+  const view = renderHook(useCreateWalletController, { wrapper });
+  await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(1));
+  act(() => {
+    view.result.current.setWalletType(WalletType.SINGLE_SIG);
+    view.result.current.setWalletName('Retained Draft');
+  });
+  act(() => view.result.current.toggleDevice('device-1'));
+  expect(view.result.current.selectedSigners).toHaveLength(1);
+  act(() => view.result.current.beginDeviceConnection());
+  vi.mocked(devicesApi.getDevices).mockResolvedValueOnce([{
+    id: 'device-1', label: 'Test Ledger', type: 'ledger', accounts: [
+      { id: 'changed-account', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'" },
+    ],
+  }] as never);
+  act(() => view.result.current.returnToSigners());
+  await waitFor(() => expect(view.result.current.refreshingDevices).toBe(false));
+  expect(view.result.current.selectedSigners).toEqual([]);
+  expect(view.result.current.walletName).toBe('Retained Draft');
+  expect(view.result.current.walletType).toBe(WalletType.SINGLE_SIG);
+});
+
+it('blocks stale signer submission after refresh failure and allows retry', async () => {
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}><ActiveNetworkProvider><MemoryRouter>{children}</MemoryRouter></ActiveNetworkProvider></QueryClientProvider>
+  );
+  const view = renderHook(useCreateWalletController, { wrapper });
+  await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(1));
+  act(() => {
+    view.result.current.setWalletType(WalletType.SINGLE_SIG);
+  });
+  act(() => view.result.current.toggleDevice('device-1'));
+  act(() => view.result.current.handleNext());
+  expect(view.result.current.step).toBe(2);
+  act(() => view.result.current.beginDeviceConnection());
+  vi.mocked(devicesApi.getDevices).mockRejectedValueOnce(new Error('offline'));
+  act(() => view.result.current.returnToSigners());
+  await waitFor(() => expect(view.result.current.refreshError).toMatch(/Retry/));
+  expect(view.result.current.canContinue).toBe(false);
+  await act(async () => { await view.result.current.handleCreate(); });
+  expect(walletsApi.createWallet).not.toHaveBeenCalled();
+  act(() => view.result.current.handleNext());
+  expect(view.result.current.step).toBe(2);
+  act(() => { void view.result.current.refreshDevices(); });
+  await waitFor(() => expect(view.result.current.refreshError).toBeNull());
+});
+
+it('ignores an obsolete device-load failure after a newer refresh succeeds', async () => {
+  let rejectOld!: (error: Error) => void;
+  vi.mocked(devicesApi.getDevices).mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }));
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}><ActiveNetworkProvider><MemoryRouter>{children}</MemoryRouter></ActiveNetworkProvider></QueryClientProvider>
+  );
+  const view = renderHook(useCreateWalletController, { wrapper });
+  await waitFor(() => expect(devicesApi.getDevices).toHaveBeenCalledOnce());
+  act(() => { void view.result.current.refreshDevices(); });
+  await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(1));
+  await act(async () => { rejectOld(new Error('obsolete offline')); });
+  expect(view.result.current.refreshError).toBeNull();
+  expect(logError).not.toHaveBeenCalled();
+});
+
+it('refuses submission without topology or while signer refresh is unresolved', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}><ActiveNetworkProvider><MemoryRouter>{children}</MemoryRouter></ActiveNetworkProvider></QueryClientProvider>
+  );
+  const view = renderHook(useCreateWalletController, { wrapper });
+  await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(1));
+  await act(async () => { await view.result.current.handleCreate(); });
+  expect(walletsApi.createWallet).not.toHaveBeenCalled();
+
+  act(() => view.result.current.setWalletType(WalletType.SINGLE_SIG));
+  act(() => view.result.current.toggleDevice('device-1'));
+  act(() => view.result.current.setWalletName('Pending Refresh'));
+  let resolveRefresh!: (devices: Awaited<ReturnType<typeof devicesApi.getDevices>>) => void;
+  vi.mocked(devicesApi.getDevices).mockReturnValueOnce(new Promise(resolve => { resolveRefresh = resolve; }));
+  const devices = view.result.current.availableDevices;
+  act(() => { void view.result.current.refreshDevices(); });
+  expect(view.result.current.refreshingDevices).toBe(true);
+  await act(async () => { await view.result.current.handleCreate(); });
+  expect(walletsApi.createWallet).not.toHaveBeenCalled();
+
+  await act(async () => { resolveRefresh(devices); });
+  await waitFor(() => expect(view.result.current.refreshingDevices).toBe(false));
+  await act(async () => { await view.result.current.handleCreate(); });
+  expect(walletsApi.createWallet).toHaveBeenCalledOnce();
+});

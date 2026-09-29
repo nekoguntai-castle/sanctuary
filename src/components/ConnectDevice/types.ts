@@ -114,6 +114,7 @@ export interface ConflictDialogProps {
   onMerge: () => void;
   onViewExisting: () => void;
   onCancel: () => void;
+  onReturn?: () => void;
 }
 
 /** Account for display in accounts selector */

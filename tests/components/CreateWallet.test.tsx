@@ -8,6 +8,7 @@ import { QueryClient,QueryClientProvider } from '@tanstack/react-query';
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import * as devicesApi from '../../src/api/devices';
 import { BrowserRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
@@ -132,6 +133,16 @@ vi.mock('../../src/components/ui/Button', () => ({
   ),
 }));
 
+vi.mock('../../src/components/ConnectDevice/ConnectDevice', () => ({
+  ConnectDevice: ({ onBack, onComplete }: { onBack: () => void; onComplete: (id: string) => void }) => (
+    <div>
+      <h1>Embedded device connection</h1>
+      <button onClick={onBack}>Return to Signers</button>
+      <button onClick={() => onComplete('new-device')}>Finish connection</button>
+    </div>
+  ),
+}));
+
 const createWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -166,6 +177,38 @@ describe('CreateWallet Component', () => {
     expect(screen.getByText(/select wallet topology/i)).toBeInTheDocument();
     expect(screen.getByText(/single signature/i)).toBeInTheDocument();
     expect(screen.getByText(/multi signature/i)).toBeInTheDocument();
+  });
+
+  it('lets a failed initial device load reach a visible retry on the signer step', async () => {
+    vi.mocked(devicesApi.getDevices).mockRejectedValueOnce(new Error('offline'));
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
+    const user = userEvent.setup();
+    await renderCreateWallet(CreateWallet);
+    await user.click(screen.getByRole('button', { name: /Single Signature/ }));
+    await user.click(screen.getByRole('button', { name: /Next Step/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/retry before continuing/i);
+    expect(screen.getByRole('button', { name: /Next Step/ })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Retry signer refresh' }));
+    await waitFor(() => expect(screen.getByText('Test Ledger')).toBeInTheDocument());
+  });
+
+  it.each(['return', 'completion'] as const)('keeps a named wallet draft through embedded device %s', async outcome => {
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
+    const user = userEvent.setup();
+    await renderCreateWallet(CreateWallet);
+    await user.click(screen.getByRole('button', { name: /Single Signature/ }));
+    await user.click(screen.getByRole('button', { name: /Next Step/ }));
+    await user.click(await screen.findByRole('button', { name: /Select signer Test Ledger/ }));
+    await user.click(screen.getByRole('button', { name: /Next Step/ }));
+    await user.type(screen.getByPlaceholderText('e.g., My ColdCard Wallet'), 'Unfinished wallet');
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Connect New Device' }));
+    expect(await screen.findByRole('heading', { name: 'Embedded device connection' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Next Step/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: outcome === 'return' ? 'Return to Signers' : 'Finish connection' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Select signer Test Ledger/ })).toHaveAttribute('aria-pressed', 'true'));
+    await user.click(screen.getByRole('button', { name: /Next Step/ }));
+    expect(screen.getByPlaceholderText('e.g., My ColdCard Wallet')).toHaveValue('Unfinished wallet');
   });
 
   it('should highlight single-sig option when selected', async () => {
@@ -272,12 +315,10 @@ describe('CreateWallet Component', () => {
       expect(screen.getByText('Test Ledger')).toBeInTheDocument();
     });
 
-    // Devices are div elements, not buttons
-    const deviceDiv = screen.getByText('Test Ledger').closest('div[class*="cursor-pointer"]');
+    const deviceDiv = screen.getByText('Test Ledger').closest('button');
     await user.click(deviceDiv!);
 
-    // Device should be selected - has ring-1 class when selected
-    expect(deviceDiv).toHaveClass('ring-1');
+    expect(deviceDiv).toHaveAttribute('aria-pressed', 'true');
   });
 });
 
@@ -324,7 +365,7 @@ describe('CreateWallet Component - Multi-step Navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('Test Ledger')).toBeInTheDocument();
     });
-    const deviceDiv = screen.getByText('Test Ledger').closest('div[class*="cursor-pointer"]');
+    const deviceDiv = screen.getByText('Test Ledger').closest('button');
     await user.click(deviceDiv!);
     await user.click(screen.getByText(/next/i));
 
@@ -385,7 +426,7 @@ describe('CreateWallet Component - Multi-sig Validation', () => {
     await waitFor(() => {
       expect(screen.getByText('Test Trezor')).toBeInTheDocument();
     });
-    const deviceDiv = screen.getByText('Test Trezor').closest('div[class*="cursor-pointer"]');
+    const deviceDiv = screen.getByText('Test Trezor').closest('button');
     await user.click(deviceDiv!);
 
     // Try to proceed - should show error
@@ -411,14 +452,14 @@ describe('CreateWallet Component - Multi-sig Validation', () => {
     await user.click(multiSigButton!);
     await user.click(screen.getByText(/next/i));
 
-    // Select two multisig-compatible devices - devices are div elements
+    // Select two multisig-compatible devices
     await waitFor(() => {
       expect(screen.getByText('Test Trezor')).toBeInTheDocument();
       expect(screen.getByText('Test Coldcard')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Test Trezor').closest('div[class*="cursor-pointer"]')!);
-    await user.click(screen.getByText('Test Coldcard').closest('div[class*="cursor-pointer"]')!);
+    await user.click(screen.getByText('Test Trezor').closest('button')!);
+    await user.click(screen.getByText('Test Coldcard').closest('button')!);
 
     // Try to proceed - should work
     await user.click(screen.getByText(/next/i));

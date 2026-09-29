@@ -3,7 +3,6 @@ import {
   createListQuery,
   createDetailQuery,
   createMutation,
-  createInvalidateAll,
 } from './factory';
 import { deviceKeys } from './deviceKeys';
 
@@ -40,4 +39,4 @@ export const useDeleteDevice = createMutation(
 /**
  * Helper to invalidate all device data
  */
-export const useInvalidateDevices = createInvalidateAll(deviceKeys);
+export { useInvalidateDevices } from './useInvalidateDevices';

@@ -11,6 +11,7 @@ interface ConflictDialogActionsProps {
   onMerge: () => void;
   onViewExisting: () => void;
   onCancel: () => void;
+  onReturn?: () => void;
 }
 
 export const ConflictDialogActions: React.FC<ConflictDialogActionsProps> = ({
@@ -20,6 +21,7 @@ export const ConflictDialogActions: React.FC<ConflictDialogActionsProps> = ({
   onMerge,
   onViewExisting,
   onCancel,
+  onReturn,
 }) => {
   const hasNewAccounts = comparison.newAccounts.length > 0;
   const hasConflictingAccounts = comparison.conflictingAccounts.length > 0;
@@ -47,6 +49,7 @@ export const ConflictDialogActions: React.FC<ConflictDialogActionsProps> = ({
         >
           Cancel
         </button>
+        {onReturn && <button type="button" onClick={onReturn} className="w-full px-4 py-2 text-sm underline">Return to Signers</button>}
       </div>
 
       {error && <p className="text-center text-xs text-rose-600 dark:text-rose-400 mt-3">{error}</p>}

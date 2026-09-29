@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useRef, type RefObject } from 'react';
 import { X, ExternalLink, Heart, Zap, Copy, Check, FileText } from 'lucide-react';
 import { SanctuaryLogo } from '../ui/CustomIcons';
 import { version } from '../../../package.json';
 import { QRCodeSVG } from 'qrcode.react';
 import * as adminApi from '../../api/admin';
+import { useNativeDialogLifecycle } from './useNativeDialogLifecycle';
 
 interface AboutModalProps {
   show: boolean;
@@ -12,6 +13,7 @@ interface AboutModalProps {
   versionLoading: boolean;
   copiedAddress: string | null;
   onCopyAddress: (text: string, type: string) => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 export const AboutModal: React.FC<AboutModalProps> = ({
@@ -21,15 +23,23 @@ export const AboutModal: React.FC<AboutModalProps> = ({
   versionLoading,
   copiedAddress,
   onCopyAddress,
+  returnFocusRef,
 }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const localReturnFocusRef = useRef<HTMLElement>(null);
+  const focusReturn = returnFocusRef ?? localReturnFocusRef;
+  useNativeDialogLifecycle({ isOpen: show, dialogRef, initialFocusRef: closeRef, returnFocusRef: focusReturn });
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <dialog
+      ref={dialogRef}
+      aria-label="About Sanctuary"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 m-0 flex h-screen max-h-none w-screen max-w-none items-center justify-center border-0 bg-black/50 p-4 backdrop:backdrop-blur-sm"
+    >
       <div className="relative surface-elevated rounded-xl shadow-2xl border border-sanctuary-200 dark:border-sanctuary-700 max-w-md w-full max-h-[90vh] overflow-y-auto animate-modal-enter">
         {/* Header */}
         <div className="p-6 border-b border-sanctuary-200 dark:border-sanctuary-800">
@@ -46,6 +56,9 @@ export const AboutModal: React.FC<AboutModalProps> = ({
               </div>
             </div>
             <button
+              ref={closeRef}
+              type="button"
+              aria-label="Close about"
               onClick={onClose}
               className="p-2 rounded-lg text-sanctuary-400 hover:text-sanctuary-600 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 transition-colors"
             >
@@ -199,7 +212,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
           </p>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };
 

@@ -11,19 +11,21 @@ interface ConnectDeviceContentProps {
   controller: ConnectDeviceController;
   onBack: () => void;
   onViewExistingDevice: (deviceId: string) => void;
+  embedded?: boolean;
 }
 
 export const ConnectDeviceContent: React.FC<ConnectDeviceContentProps> = ({
   controller,
   onBack,
   onViewExistingDevice,
+  embedded = false,
 }) => {
   const { connectUsb, form, models, qr, save, selectedModel, setSelectedModel, usb } = controller;
   const conflictData = save.conflictData;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
-      <ConnectDeviceHeader onBack={onBack} />
+      <ConnectDeviceHeader onBack={onBack} embedded={embedded} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
@@ -102,6 +104,7 @@ export const ConnectDeviceContent: React.FC<ConnectDeviceContentProps> = ({
           onMerge={form.handleMerge}
           onViewExisting={() => onViewExistingDevice(conflictData.existingDevice.id)}
           onCancel={save.clearConflict}
+          onReturn={embedded ? onBack : undefined}
         />
       )}
     </div>

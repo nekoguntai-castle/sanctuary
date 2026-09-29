@@ -757,7 +757,7 @@ test.describe('Create wallet flow', () => {
 
   // --- Connect New Device ---
 
-  test('connect new device button navigates to device connection', async ({ page }) => {
+  test('connect new device embeds the connection flow and returns to the preserved signer draft', async ({ page }) => {
     const unhandledRequests = await mockCreateWalletApi(page);
     const main = page.getByRole('main');
 
@@ -765,11 +765,25 @@ test.describe('Create wallet flow', () => {
     await main.getByRole('button', { name: 'Single Signature' }).click();
     await main.getByRole('button', { name: 'Next Step' }).click();
 
+    const signer = main.getByRole('button', { name: /Select signer Create Coldcard/ });
+    await signer.click();
+    await expect(signer).toHaveAttribute('aria-pressed', 'true');
+
     const connectButton = main.getByRole('button', { name: /Connect New Device/i });
     await expect(connectButton).toBeVisible();
     await connectButton.click();
 
-    await expect(page).toHaveURL(/#\/devices\/connect/);
+    await expect(page).toHaveURL(/#\/wallets\/create$/);
+    await expect(main.getByRole('heading', { name: 'Connect Hardware Device' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Return to Signers' })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Return to Signers' }).click();
+
+    await expect(main.getByRole('heading', { name: 'Select Signers' })).toBeVisible();
+    await expect(signer).toHaveAttribute('aria-pressed', 'true');
+    await expect(connectButton).toBeFocused();
+    await expect(page).toHaveURL(/#\/wallets\/create$/);
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- API Error ---

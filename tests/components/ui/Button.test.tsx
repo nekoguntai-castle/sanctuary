@@ -21,6 +21,16 @@ describe('Button', () => {
     expect(btn).toHaveClass('dark:bg-primary-200');
   });
 
+  it('uses the shared focus indicator for primary and secondary actions', () => {
+    const { rerender } = render(<Button variant="primary">Primary</Button>);
+    const primary = screen.getByRole('button', { name: 'Primary' });
+    expect(primary).toHaveClass('focus-contrast');
+    expect(primary.className).not.toContain('focus:ring-primary-500');
+
+    rerender(<Button variant="secondary">Secondary</Button>);
+    expect(screen.getByRole('button', { name: 'Secondary' })).toHaveClass('focus-contrast');
+  });
+
   it('disables the button when isLoading is true even with disabled={false}', () => {
     // Regression: a prior implementation spread `{...props}` after the
     // computed `disabled` attribute, so a caller passing both

@@ -5,6 +5,7 @@ import { AccessControlTab } from './AccessControlTab';
 import { WebSocketStatsCard } from './WebSocketStatsCard';
 import { SupportPackageCard } from './SupportPackageCard';
 import { useTabsA11y } from '../ui/useTabsA11y';
+import { getChoiceLabelClassName } from '../ui/choiceLabelStyles';
 
 // Tab type definition
 type SystemSettingsTab = 'access' | 'websocket' | 'support';
@@ -44,8 +45,8 @@ export const SystemSettings: React.FC = () => {
               {...getTabProps(tab.id)}
               className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.id
-                  ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'
-                  : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+                  ? `bg-white dark:bg-sanctuary-800 shadow-sm ${getChoiceLabelClassName(true)}`
+                  : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-200`
               }`}
             >
               <tab.icon className="w-4 h-4" />

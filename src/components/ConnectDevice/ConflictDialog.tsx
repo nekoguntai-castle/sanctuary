@@ -19,6 +19,7 @@ export const ConflictDialog: React.FC<ConflictDialogProps> = ({
   onMerge,
   onViewExisting,
   onCancel,
+  onReturn,
 }) => (
   <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
@@ -33,6 +34,7 @@ export const ConflictDialog: React.FC<ConflictDialogProps> = ({
           onMerge={onMerge}
           onViewExisting={onViewExisting}
           onCancel={onCancel}
+          onReturn={onReturn}
         />
       </div>
     </div>

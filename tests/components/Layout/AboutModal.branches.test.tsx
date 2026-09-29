@@ -1,4 +1,4 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
 import { AboutModal } from '../../../src/components/Layout/AboutModal';
@@ -14,6 +14,50 @@ vi.mock('../../../src/components/ui/CustomIcons', () => ({
 }));
 
 describe('AboutModal branch coverage', () => {
+  it('focuses its close control and supports cancel, backdrop, and inside clicks', async () => {
+    const onClose = vi.fn();
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    const returnFocusRef = { current: opener };
+    const view = render(
+      <AboutModal
+        show
+        onClose={onClose}
+        versionLoading={false}
+        copiedAddress={null}
+        onCopyAddress={vi.fn()}
+        versionInfo={null}
+        returnFocusRef={returnFocusRef}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'About Sanctuary' });
+    const close = screen.getByRole('button', { name: 'Close about' });
+
+    await waitFor(() => expect(close).toHaveFocus());
+    fireEvent.click(dialog.querySelector('h2')!);
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    onClose.mockClear();
+    fireEvent.click(dialog);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <AboutModal
+        show={false}
+        onClose={onClose}
+        versionLoading={false}
+        copiedAddress={null}
+        onCopyAddress={vi.fn()}
+        versionInfo={null}
+        returnFocusRef={returnFocusRef}
+      />,
+    );
+    await waitFor(() => expect(opener).toHaveFocus());
+    opener.remove();
+  });
+
   it('covers update-available and release-name branches plus copied-state branch', () => {
     const onClose = vi.fn();
     const onCopyAddress = vi.fn();

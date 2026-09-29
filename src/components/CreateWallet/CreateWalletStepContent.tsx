@@ -24,6 +24,10 @@ interface CreateWalletStepContentProps {
   quorumM: number;
   setQuorumM: (quorumM: number) => void;
   availableDevices: Device[];
+  onConnectDevice?: () => void;
+  refreshError?: string | null;
+  refreshing?: boolean;
+  onRetryRefresh?: () => void;
 }
 
 export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = ({
@@ -44,6 +48,10 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
   quorumM,
   setQuorumM,
   availableDevices,
+  onConnectDevice,
+  refreshError,
+  refreshing,
+  onRetryRefresh,
 }) => {
   if (step === 1) return <WalletTypeStep walletType={walletType} setWalletType={setWalletType} />;
 
@@ -56,6 +64,10 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
         selectedDeviceIds={selectedDeviceIds}
         toggleDevice={toggleDevice}
         getDisplayAccount={getDisplayAccount}
+        onConnectDevice={onConnectDevice}
+        refreshError={refreshError}
+        refreshing={refreshing}
+        onRetryRefresh={onRetryRefresh}
       />
     );
   }

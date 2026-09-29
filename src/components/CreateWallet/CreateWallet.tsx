@@ -4,11 +4,19 @@ import { CreateWalletProgress } from './CreateWalletProgress';
 import { CreateWalletStepContent } from './CreateWalletStepContent';
 import { CreateWalletFooter } from './CreateWalletFooter';
 
+const ConnectDevice = React.lazy(() => import('../ConnectDevice/ConnectDevice').then(module => ({ default: module.ConnectDevice })));
+
 export const CreateWallet: React.FC = () => {
   const wallet = useCreateWalletController();
 
   return (
     <div className="max-w-4xl mx-auto pb-12">
+      {wallet.connectingDevice ? (
+        <React.Suspense fallback={<p role="status">Loading device connection...</p>}>
+          <ConnectDevice embedded onBack={wallet.returnToSigners} onComplete={wallet.returnToSigners} />
+        </React.Suspense>
+      ) : (
+      <>
         <CreateWalletProgress step={wallet.step} onBack={wallet.handleBack} />
 
         <div className="min-h-[400px] flex flex-col justify-between">
@@ -31,6 +39,10 @@ export const CreateWallet: React.FC = () => {
                   quorumM={wallet.quorumM}
                   setQuorumM={wallet.setQuorumM}
                   availableDevices={wallet.availableDevices}
+                  onConnectDevice={wallet.beginDeviceConnection}
+                  refreshing={wallet.refreshingDevices}
+                  refreshError={wallet.refreshError}
+                  onRetryRefresh={wallet.refreshDevices}
                 />
             </div>
 
@@ -42,6 +54,8 @@ export const CreateWallet: React.FC = () => {
               onCreate={wallet.handleCreate}
             />
         </div>
+      </>
+      )}
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import React from 'react';
+import type { MouseEventHandler } from 'react';
 import { Brain, Keyboard } from 'lucide-react';
 import {
   getAppShortcut,
@@ -8,7 +9,7 @@ import {
 interface SidebarConsoleQuickActionsProps {
   consoleAvailable: boolean;
   onOpenConsole?: () => void;
-  onOpenShortcuts: () => void;
+  onOpenShortcuts: MouseEventHandler<HTMLButtonElement>;
 }
 
 export const SidebarConsoleQuickActions: React.FC<

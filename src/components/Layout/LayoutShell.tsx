@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Menu, X } from 'lucide-react';
 import { SanctuaryLogo } from '../ui/CustomIcons';
 import { AboutModal } from './AboutModal';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { MobileMenuOverlay } from './MobileMenuOverlay';
 import type { LayoutController } from './useLayoutController';
 import type { PageContentWidth } from '../../app/appRouteTypes';
 
@@ -23,12 +25,7 @@ interface LayoutShellProps {
 interface MobileHeaderProps {
   isOpen: boolean;
   onToggle: () => void;
-}
-
-interface MobileMenuOverlayProps {
-  isOpen: boolean;
-  onClose: () => void;
-  sidebarContent: React.ReactNode;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 }
 
 // Icon-only rail between md and lg (768–1024px); full labeled sidebar at lg+.
@@ -51,48 +48,25 @@ const DesktopSidebar: React.FC<{ sidebarContent: React.ReactNode }> = ({ sidebar
   </div>
 );
 
-const MobileHeader: React.FC<MobileHeaderProps> = ({ isOpen, onToggle }) => (
+const MobileHeader: React.FC<MobileHeaderProps> = ({ isOpen, onToggle, triggerRef }) => (
   <div className="md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 surface-elevated border-b border-sanctuary-200 dark:border-sanctuary-800 flex justify-between items-center px-4 h-16">
     <div className="flex items-center">
       <SanctuaryLogo className="h-6 w-6 text-primary-700 dark:text-primary-500 mr-2" />
       <span className="text-lg font-semibold tracking-tight text-sanctuary-800 dark:text-sanctuary-200">Sanctuary</span>
     </div>
     <button
+      ref={triggerRef}
       onClick={onToggle}
-      className="-ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-sanctuary-500 hover:text-sanctuary-900 dark:hover:text-sanctuary-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 transition-colors"
+      type="button"
+      aria-expanded={isOpen}
+      aria-controls="mobile-sidebar-dialog"
+      aria-label={isOpen ? 'Close sidebar' : 'Open sidebar'}
+      className="-ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-sanctuary-500 hover:text-sanctuary-900 dark:hover:text-sanctuary-100 focus-contrast transition-colors"
     >
-      <span className="sr-only">Open sidebar</span>
       {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
     </button>
   </div>
 );
-
-const MobileMenuOverlay: React.FC<MobileMenuOverlayProps> = ({
-  isOpen,
-  onClose,
-  sidebarContent,
-}) => {
-  if (!isOpen) return null;
-
-  const handlePanelClick: React.MouseEventHandler<HTMLDivElement> = (event) => {
-    if (event.target instanceof Element && event.target.closest('a[href]')) {
-      onClose();
-    }
-  };
-
-  return (
-    <div className="md:hidden fixed inset-0 z-40 flex" data-testid="mobile-sidebar-overlay">
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
-      <div
-        className="relative flex-1 flex flex-col max-w-xs w-full surface-elevated"
-        data-testid="mobile-sidebar-panel"
-        onClick={handlePanelClick}
-      >
-        {sidebarContent}
-      </div>
-    </div>
-  );
-};
 
 const DefaultPasswordWarning: React.FC<{ show: boolean }> = ({ show }) => {
   if (!show) return null;
@@ -126,7 +100,22 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
   sidebarContent,
   children,
   contentWidth,
-}) => (
+}) => {
+  const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const desktopQuery = window.matchMedia('(min-width: 768px)');
+    const closeOnDesktop = () => {
+      if (desktopQuery.matches && controller.isMobileMenuOpen) {
+        controller.modalReturnFocusRef.current = mainRef.current;
+        controller.setIsMobileMenuOpen(false);
+      }
+    };
+    desktopQuery.addEventListener('change', closeOnDesktop);
+    return () => desktopQuery.removeEventListener('change', closeOnDesktop);
+  }, [controller.isMobileMenuOpen, controller.modalReturnFocusRef, controller.setIsMobileMenuOpen]);
+
+  return (
   <div
     className="flex h-screen overflow-hidden text-sanctuary-900 dark:text-sanctuary-100 transition-colors duration-500 noise-overlay"
     style={{
@@ -136,20 +125,30 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
       paddingRight: 'env(safe-area-inset-right)',
     }}
   >
-    <DesktopSidebar sidebarContent={sidebarContent} />
+    {!controller.isMobileMenuOpen && <DesktopSidebar sidebarContent={sidebarContent} />}
 
     <div className="flex flex-col flex-1 w-0 overflow-hidden bg-transparent">
       <MobileHeader
         isOpen={controller.isMobileMenuOpen}
-        onToggle={() => controller.setIsMobileMenuOpen(!controller.isMobileMenuOpen)}
+        onToggle={() => {
+          if (!controller.isMobileMenuOpen) {
+            controller.modalReturnFocusRef.current = controller.mobileMenuTriggerRef.current;
+          }
+          controller.setIsMobileMenuOpen(!controller.isMobileMenuOpen);
+        }}
+        triggerRef={controller.mobileMenuTriggerRef}
       />
       <MobileMenuOverlay
         isOpen={controller.isMobileMenuOpen}
         onClose={() => controller.setIsMobileMenuOpen(false)}
+        onNavigate={() => controller.setIsMobileMenuOpen(false)}
         sidebarContent={sidebarContent}
+        triggerRef={controller.mobileMenuTriggerRef}
+        returnFocusRef={controller.modalReturnFocusRef}
+        mainRef={mainRef}
       />
 
-      <main className="flex-1 relative overflow-y-auto focus:outline-none content-atmosphere">
+      <main ref={mainRef} tabIndex={-1} className="flex-1 relative overflow-y-auto focus:outline-none content-atmosphere">
         <DefaultPasswordWarning
           show={!!controller.user?.isAdmin && !!controller.user?.usingDefaultPassword}
         />
@@ -162,10 +161,18 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
     <AboutModal
       show={controller.showVersionModal}
       onClose={() => controller.setShowVersionModal(false)}
+      returnFocusRef={controller.modalReturnFocusRef}
       versionInfo={controller.versionInfo}
       versionLoading={controller.versionLoading}
       copiedAddress={controller.copiedAddress}
       onCopyAddress={controller.copyToClipboard}
     />
+    <KeyboardShortcutsModal
+      show={controller.showKeyboardShortcutsModal}
+      consoleAvailable={!!controller.capabilities.console}
+      onClose={controller.closeKeyboardShortcuts}
+      returnFocusRef={controller.modalReturnFocusRef}
+    />
   </div>
-);
+  );
+};

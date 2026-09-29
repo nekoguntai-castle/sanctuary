@@ -2,7 +2,7 @@
  * Tests for Layout component
  */
 
-import { cleanup,render,screen,waitFor,within } from '@testing-library/react';
+import { act, cleanup,render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
@@ -193,6 +193,20 @@ describe('Layout', () => {
       expect(screen.getByTestId('notification-bell')).toBeInTheDocument();
     });
 
+    it('keeps one sidebar notification owner while the mobile menu opens and closes', async () => {
+      const user = userEvent.setup();
+      renderLayout('/wallets');
+
+      expect(screen.getAllByTestId('notification-bell')).toHaveLength(1);
+      await user.click(screen.getByRole('button', { name: 'Open sidebar' }));
+      expect(screen.getByRole('dialog', { name: 'Main navigation' })).toBeInTheDocument();
+      expect(screen.getAllByTestId('notification-bell')).toHaveLength(1);
+
+      await user.click(screen.getByRole('button', { name: 'Close navigation' }));
+      await waitFor(() => expect(screen.getAllByTestId('notification-bell')).toHaveLength(1));
+      expect(screen.queryByRole('dialog', { name: 'Main navigation' })).not.toBeInTheDocument();
+    });
+
     it('renders theme toggle button', () => {
       renderLayout();
 
@@ -367,6 +381,83 @@ describe('Layout', () => {
   });
 
   describe('Mobile menu', () => {
+    it('closes the modal and focuses main when the desktop breakpoint is crossed', async () => {
+      const listeners = new Set<(event: MediaQueryListEvent) => void>();
+      let matches = false;
+      const mediaQuery = {
+        matches,
+        media: '(min-width: 768px)',
+        onchange: null,
+        addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
+        removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(() => true),
+      } as unknown as MediaQueryList;
+      const matchMediaMock = vi.mocked(window.matchMedia);
+      const defaultMatchMedia = matchMediaMock.getMockImplementation();
+      matchMediaMock.mockReturnValue(mediaQuery);
+      try {
+        const view = renderLayout('/wallets');
+        const trigger = screen.getByRole('button', { name: 'Open sidebar' });
+        act(() => {
+          for (const listener of listeners) listener(new Event('change') as MediaQueryListEvent);
+        });
+        matches = true;
+        Object.defineProperty(mediaQuery, 'matches', { value: true });
+        act(() => {
+          for (const listener of listeners) listener(new Event('change') as MediaQueryListEvent);
+        });
+        matches = false;
+        Object.defineProperty(mediaQuery, 'matches', { value: false });
+        await userEvent.setup().click(trigger);
+        expect(screen.getByRole('dialog', { name: 'Main navigation' })).toBeInTheDocument();
+
+        matches = true;
+        Object.defineProperty(mediaQuery, 'matches', { value: true });
+        act(() => {
+          for (const listener of listeners) listener(new Event('change') as MediaQueryListEvent);
+        });
+
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Main navigation' })).not.toBeInTheDocument());
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+        expect(listeners.size).toBe(1);
+        view.unmount();
+        expect(listeners.size).toBe(0);
+      } finally {
+        if (defaultMatchMedia) matchMediaMock.mockImplementation(defaultMatchMedia);
+      }
+    });
+
+    it('exposes modal state and restores focus from its explicit close control', async () => {
+      const user = userEvent.setup();
+      renderLayout('/wallets');
+      const trigger = screen.getByRole('button', { name: 'Open sidebar' });
+
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('dialog', { name: 'Main navigation' })).toBeInTheDocument();
+      const closeButton = screen.getByRole('button', { name: 'Close navigation' });
+      await waitFor(() => expect(closeButton).toHaveFocus());
+
+      await user.click(closeButton);
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await waitFor(() => expect(trigger).toHaveFocus());
+    });
+
+    it('closes the mobile drawer when its header toggle is activated again', async () => {
+      const user = userEvent.setup();
+      renderLayout('/wallets');
+      await user.click(screen.getByRole('button', { name: 'Open sidebar' }));
+
+      const toggle = screen.getByRole('button', { name: 'Close sidebar' });
+      await user.click(toggle);
+
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Main navigation' })).not.toBeInTheDocument());
+      expect(screen.getByRole('button', { name: 'Open sidebar' })).toHaveAttribute('aria-expanded', 'false');
+    });
+
     it('toggles mobile menu when clicking menu button', async () => {
       const user = userEvent.setup();
       renderLayout();

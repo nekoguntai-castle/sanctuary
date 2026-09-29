@@ -1,4 +1,5 @@
 import React from 'react';
+import type { MouseEventHandler } from 'react';
 import { LogOut, Moon, Sun } from 'lucide-react';
 import { version } from '../../../../package.json';
 import { NotificationBell } from '../../NotificationPanel';
@@ -9,7 +10,7 @@ interface SidebarFooterProps {
   darkMode: boolean;
   toggleTheme: () => void;
   logout: () => void;
-  onVersionClick: () => void;
+  onVersionClick: MouseEventHandler<HTMLButtonElement>;
 }
 
 export const SidebarFooter: React.FC<SidebarFooterProps> = ({

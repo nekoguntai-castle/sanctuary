@@ -18,18 +18,29 @@ import { ConnectDeviceContent } from './ConnectDeviceFlow/ConnectDeviceContent';
 import { ConnectDeviceLoadingState } from './ConnectDeviceFlow/ConnectDeviceLoadingState';
 import { useConnectDeviceController } from './ConnectDeviceFlow/useConnectDeviceController';
 
-export const ConnectDevice: React.FC = () => {
+interface ConnectDeviceProps {
+  embedded?: boolean;
+  onBack?: () => void;
+  onComplete?: (deviceId: string) => void;
+}
+
+export const ConnectDevice: React.FC<ConnectDeviceProps> = ({ embedded = false, onBack, onComplete }) => {
   const navigate = useNavigate();
-  const controller = useConnectDeviceController();
+  const controller = useConnectDeviceController(onComplete);
+  const handleBack = onBack ?? (() => navigate('/devices'));
 
   if (controller.models.loading) {
-    return <ConnectDeviceLoadingState />;
+    return <>
+      {embedded && <button type="button" onClick={handleBack}>Return to Signers</button>}
+      <ConnectDeviceLoadingState />
+    </>;
   }
 
   return (
     <ConnectDeviceContent
       controller={controller}
-      onBack={() => navigate('/devices')}
+      onBack={handleBack}
+      embedded={embedded}
       onViewExistingDevice={(deviceId) => navigate(`/devices/${deviceId}`)}
     />
   );

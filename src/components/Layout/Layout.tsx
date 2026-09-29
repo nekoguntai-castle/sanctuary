@@ -2,7 +2,6 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { ConsoleDrawer } from '../ConsoleDrawer';
 import { SidebarContent } from './SidebarContent';
-import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { LayoutShell } from './LayoutShell';
 import { LayoutProps } from './types';
 import { useLayoutController } from './useLayoutController';
@@ -49,11 +48,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
         wallets={controller.activeWallets}
         selectedNetwork={controller.selectedNetwork}
         isAdmin={!!controller.user?.isAdmin}
-      />
-      <KeyboardShortcutsModal
-        show={controller.showKeyboardShortcutsModal}
-        consoleAvailable={!!controller.capabilities.console}
-        onClose={controller.closeKeyboardShortcuts}
       />
     </>
   );
