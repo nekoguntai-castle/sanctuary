@@ -16,12 +16,27 @@ recorded reason for not combining them into one PR.
 | Item | Status | PR | Merge |
 |---|---|---|---|
 | R2 — drop the DIND-era Playwright ordering edges | merged | #1335 | `b6fb458621` |
-| R1 + R3 — render E2E workers; concurrent frontend coverage shards (combined by request) | in review | — | — |
-| R4 — concurrent verify-vectors mutation groups | pending | — | — |
-| R5-A — parallel upgrade baselines | pending | — | — |
-| R5-B — install image cache design | pending (design only) | — | — |
+| R1 + R3 — render E2E workers; concurrent frontend coverage shards (combined by request) | merged | #1336 | `064e8854b4` |
+| R4 — concurrent verify-vectors mutation groups | **deferred, still wanted** — ship with the next `verify-vectors.yml` change | — | — |
+| R5-A — parallel upgrade baselines | dropped — PRs already run one baseline | — | — |
+| R5-B — install-lane speed-up | redesigned: see `tasks/ci-install-lane-speedup-design-2026-09-29.md` | — | — |
 | R6/R7 | optional | — | — |
 | R8, §6 | out of scope (runner-infra / deferred decision) | — | — |
+
+**R4 deferral.** `.github/workflows/verify-vectors.yml` is listed in
+`scripts/verify-addresses/sourceManifest.ts`, so any edit to it must ship with
+regenerated address vectors (`tests/scripts/verifyAddressesGenerated.test.ts`).
+The concurrent layout was proven locally: fee-policy alone beside the other six
+proofs (root proofs first, so fee-policy's sandbox exists before any other server
+proof ends), 470 s on 8 CPUs against 11–14 min sequential in CI, peak RSS
+6.1 GiB (sora's job limit is 10 GiB), and mutant-for-mutant identical results on
+all seven reports. Bundle it with the next change that regenerates vectors
+anyway (for example the `npm ci` retry deferred in #1009).
+
+**R5-A drop.** `PR_UPGRADE_BASELINE_REFS='latest-stable'` already limits PRs to one
+baseline. Two baselines run only on release, push and schedule runs, so
+parallelising them gives no PR benefit and adds collision risk on the shared
+per-host Podman socket.
 
 The R2 PR also carries an unrelated one-line changelog fix: the v0.8.75 stable
 tag was created 2026-09-29, but its heading said 2026-09-25, so
