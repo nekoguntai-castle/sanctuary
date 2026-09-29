@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { secondaryActionClassName } from '../../ui/secondaryActionStyles';
 
 interface ConnectDeviceHeaderProps {
   onBack: () => void;
@@ -11,7 +12,7 @@ export const ConnectDeviceHeader: React.FC<ConnectDeviceHeaderProps> = ({ onBack
     <button
       type="button"
       onClick={onBack}
-      className="flex items-center text-sanctuary-500 hover:text-sanctuary-900 dark:hover:text-sanctuary-100 transition-colors"
+      className={`flex items-center ${secondaryActionClassName} hover:text-sanctuary-900 dark:hover:text-sanctuary-100 transition-colors`}
     >
       <ArrowLeft className="w-4 h-4 mr-1" /> {embedded ? 'Return to Signers' : 'Back to Devices'}
     </button>

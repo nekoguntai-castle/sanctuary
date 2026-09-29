@@ -4,6 +4,7 @@ import type { Device, HardwareDevice, HardwareDeviceModel } from '../../../types
 import { Button } from '../../ui/Button';
 import { getDeviceIcon } from '../../ui/CustomIcons';
 import { Card } from '../../ui/Card';
+import { secondaryActionClassName } from '../../ui/secondaryActionStyles';
 
 type DeviceDetailHeaderProps = {
   device: Device;
@@ -100,7 +101,7 @@ function BackToDevicesButton({ onBack }: { onBack: () => void }) {
   return (
     <button
       onClick={onBack}
-      className="flex items-center text-sanctuary-500 hover:text-sanctuary-900 dark:hover:text-sanctuary-100 transition-colors"
+      className={`flex items-center ${secondaryActionClassName} hover:text-sanctuary-900 dark:hover:text-sanctuary-100 transition-colors`}
     >
       <ArrowLeft className="w-4 h-4 mr-1" />
       Back to Devices

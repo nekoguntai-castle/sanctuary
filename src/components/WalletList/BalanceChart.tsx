@@ -7,6 +7,7 @@ import { useDelayedRender } from '../../hooks/useDelayedRender';
 import type { Timeframe } from '../../api/transactions/types';
 import { BALANCE_TIMEFRAMES, buildBalanceSeries, buildBalanceTimeAxis } from '../../utils/balanceHistorySeries';
 import { Card } from '../ui/Card';
+import { getChoiceLabelClassName } from '../ui/choiceLabelStyles';
 
 interface BalanceChartProps {
   totalBalance: number;
@@ -72,7 +73,7 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
                   key={tf}
                   aria-pressed={timeframe === tf}
                   onClick={() => onTimeframeChange(tf)}
-                  className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${timeframe === tf ? 'bg-white dark:bg-sanctuary-600 text-sanctuary-900 dark:text-sanctuary-50 shadow-sm' : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'}`}
+                  className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${timeframe === tf ? 'bg-white dark:bg-sanctuary-600 text-sanctuary-900 dark:text-sanctuary-50 shadow-sm' : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-300`}`}
                 >
                   {tf}
                 </button>

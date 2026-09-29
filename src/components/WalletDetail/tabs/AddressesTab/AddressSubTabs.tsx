@@ -2,6 +2,7 @@ import type React from 'react';
 import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react';
 import { Button } from '../../../ui/Button';
 import { useTabsA11y } from '../../../ui/useTabsA11y';
+import { getChoiceLabelClassName } from '../../../ui/choiceLabelStyles';
 import type { AddressSubTab } from '../../types';
 
 type AddressSubTabsProps = {
@@ -79,7 +80,7 @@ function AddressSubTabButton({
       className={`flex shrink-0 items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
         active
           ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-700 shadow-sm'
-          : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+          : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-300`
       }`}
     >
       {icon}

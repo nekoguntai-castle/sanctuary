@@ -7,6 +7,7 @@ import { AddAccountFlow } from '../accounts/AddAccountFlow';
 import { getAccountTypeInfo } from '../accountTypes';
 import { useTabsA11y } from '../../ui/useTabsA11y';
 import { getChoiceLabelClassName } from '../../ui/choiceLabelStyles';
+import { secondaryActionClassName } from '../../ui/secondaryActionStyles';
 import {
   groupAccountsByNetwork,
   groupAccountsByPurpose,
@@ -328,7 +329,7 @@ function AddAccountButton({ onShowAddAccount }: { onShowAddAccount: () => void }
   return (
     <button
       onClick={onShowAddAccount}
-      className="mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg border border-dashed border-sanctuary-300 dark:border-sanctuary-700 text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300 hover:border-sanctuary-400 dark:hover:border-sanctuary-600 transition-colors"
+      className={`mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg border border-dashed border-sanctuary-300 dark:border-sanctuary-700 ${secondaryActionClassName} hover:text-sanctuary-700 dark:hover:text-sanctuary-300 hover:border-sanctuary-400 dark:hover:border-sanctuary-600 transition-colors`}
     >
       <Plus className="w-4 h-4" />
       <span className="text-sm font-medium">Add Derivation Path</span>

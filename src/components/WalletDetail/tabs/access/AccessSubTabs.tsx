@@ -2,6 +2,7 @@ import React from 'react';
 import { useTabsA11y } from '../../../ui/useTabsA11y';
 import type { AccessSubTab } from '../../types';
 import { ACCESS_SUB_TABS } from './accessTabData';
+import { getChoiceLabelClassName } from '../../../ui/choiceLabelStyles';
 
 interface AccessSubTabsProps {
   activeTab: AccessSubTab;
@@ -30,7 +31,7 @@ export const AccessSubTabs: React.FC<AccessSubTabsProps> = ({
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
             activeTab === tab
               ? 'bg-white dark:bg-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 shadow-sm'
-              : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+              : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-300`
           }`}
         >
           {tab}

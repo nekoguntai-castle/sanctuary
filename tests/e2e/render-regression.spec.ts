@@ -5,6 +5,7 @@ import * as visualConsistency from './render-regression/renderRegressionVisualCo
 import * as walletConnection from './render-regression/renderRegressionWalletConnection.contracts';
 import * as choiceFocus from './render-regression/renderRegressionChoiceFocus.contracts';
 import * as mobileDrawer from './render-regression/renderRegressionMobileDrawer.contracts';
+import * as secondaryText from './render-regression/renderRegressionSecondaryText.contracts';
 
 import * as adminTests from './render-regression/renderRegressionAdmin.contracts';
 import * as coreTests from './render-regression/renderRegressionCore.contracts';
@@ -82,6 +83,10 @@ for (const darkMode of [false, true]) {
       test.use({ viewport: { width, height: 1000 } });
       setupRenderRegressionErrorChecks();
       test('enabled choices expose state and readable labels', ({ page }) => choiceFocus.renderChoiceContrastAndSemantics(page, darkMode));
+      if (width !== 320) {
+        test('VC28-10 selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondarySelectorContrast(page, darkMode));
+        test('VC28-10 secondary actions meet contrast and preserve outcomes', ({ page }) => secondaryText.renderSecondaryActionContrast(page, darkMode));
+      }
       test('shared actions show readable keyboard focus', ({ page }) => choiceFocus.renderSharedActionKeyboardFocus(page, darkMode));
       test('selected settings tabs remain readable', ({ page }) => visualConsistency.renderSettingsSelectedContrast(page, darkMode));
       test('wallet settings overflow stays local', ({ page }) => visualConsistency.renderWalletSettingsOverflow(page, darkMode));

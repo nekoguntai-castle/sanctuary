@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { selectedSettingsTabClassName } from '../tabStyles';
+import { getChoiceLabelClassName } from '../../ui/choiceLabelStyles';
 import { Volume2, Send } from 'lucide-react';
 import { NotificationSoundSettings } from './SoundSection';
 import { TelegramSettings } from './TelegramSection';
@@ -29,7 +30,7 @@ const NotificationsTab: React.FC = () => {
           className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
             activeSubTab === 'sound'
               ? selectedSettingsTabClassName
-              : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+              : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-300`
           }`}
         >
           <Volume2 className="w-4 h-4" />
@@ -40,7 +41,7 @@ const NotificationsTab: React.FC = () => {
           className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
             activeSubTab === 'telegram'
               ? selectedSettingsTabClassName
-              : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+              : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-300`
           }`}
         >
           <Send className="w-4 h-4" />

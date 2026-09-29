@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { CreateWalletStep } from './types';
 import { getChoiceLabelClassName } from '../ui/choiceLabelStyles';
+import { secondaryActionClassName } from '../ui/secondaryActionStyles';
 
 interface StepDescriptor {
   num: CreateWalletStep;
@@ -68,7 +69,7 @@ export const CreateWalletProgress: React.FC<CreateWalletProgressProps> = ({ step
   <div className="flex items-center justify-between mb-8">
     <button
       onClick={onBack}
-      className="flex items-center text-sanctuary-500 hover:text-sanctuary-900 dark:hover:text-sanctuary-100 transition-colors"
+      className={`flex items-center ${secondaryActionClassName} hover:text-sanctuary-900 dark:hover:text-sanctuary-100 transition-colors`}
     >
       <ArrowLeft className="w-4 h-4 mr-1" /> {step === 1 ? 'Cancel' : 'Back'}
     </button>

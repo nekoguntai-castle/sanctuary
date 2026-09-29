@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { selectedSettingsTabClassName } from './tabStyles';
+import { getChoiceLabelClassName } from '../ui/choiceLabelStyles';
 import { Monitor, Globe, Palette, Volume2 } from 'lucide-react';
 import { AppearanceTab } from './sections/ThemeSection';
 import { DisplayTab } from './sections/DisplaySection';
@@ -47,7 +48,7 @@ export const Settings: React.FC = () => {
               className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.id
                   ? selectedSettingsTabClassName
-                  : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+                  : `${getChoiceLabelClassName(false)} hover:text-sanctuary-700 dark:hover:text-sanctuary-300`
               }`}
             >
               <tab.icon className="w-4 h-4" />
