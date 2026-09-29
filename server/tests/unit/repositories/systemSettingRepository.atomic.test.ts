@@ -42,6 +42,29 @@ it('bounds conflicts to three attempts', async () => {
   await expect(repository.updateAtomically(() => [])).rejects.toMatchObject({ statusCode: 409 });
   expect(mocks.transaction).toHaveBeenCalledTimes(3);
 });
+// A retry that starts in the same tick as the conflict can take its snapshot
+// before the conflicting peer's commit is visible, conflict again, and exhaust
+// every attempt: the CI flake in adminSettingsConcurrency (run 19449). Each
+// retry must wait a bounded backoff first.
+it('backs off before replaying a conflicted attempt', async () => {
+  vi.useFakeTimers();
+  try {
+    mocks.transaction
+      .mockRejectedValueOnce(conflict('P2034'))
+      .mockRejectedValueOnce(conflict('P2034'))
+      .mockImplementation(async operation => operation({ systemSetting: { findMany: mocks.findMany, upsert: mocks.upsert } }));
+    const pending = repository.updateAtomically(() => []);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(9);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.transaction).toHaveBeenCalledTimes(3);
+    await expect(pending).resolves.toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 it('does not retry other database or derivation failures', async () => {
   const failure = new Error('derive failed');
   await expect(repository.updateAtomically(() => { throw failure; })).rejects.toBe(failure);

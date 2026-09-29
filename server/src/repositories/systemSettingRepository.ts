@@ -255,11 +255,25 @@ export async function setMany(
 
 export type SettingValue = { key: string; value: string };
 
+const ATOMIC_UPDATE_BACKOFF_MS = 10;
+const ATOMIC_UPDATE_BACKOFF_JITTER_MS = 20;
+
+/**
+ * Wait before replaying a conflicted attempt. An immediate retry can take its
+ * snapshot before the conflicting peer's commit is visible, conflict again and
+ * exhaust every attempt (the adminSettingsConcurrency CI flake, run 19449).
+ */
+function conflictBackoff(attempt: number): Promise<void> {
+  const delayMs = ATOMIC_UPDATE_BACKOFF_MS * attempt
+    + Math.floor(Math.random() * ATOMIC_UPDATE_BACKOFF_JITTER_MS);
+  return new Promise(resolve => setTimeout(resolve, delayMs));
+}
+
 /**
  * Derive and commit related settings from one serializable snapshot.
  * The synchronous derive callback must be free of side effects: conflicts replay
- * it against a fresh snapshot, with ConflictError after three failed attempts.
- * Returns only committed, non-operational settings.
+ * it against a fresh snapshot after a short jittered backoff, with ConflictError
+ * after three failed attempts. Returns only committed, non-operational settings.
  */
 export async function updateAtomically(
   derive: (current: SettingValue[]) => SettingValue[],
@@ -285,6 +299,7 @@ export async function updateAtomically(
       if (attempt === 3) {
         throw new ConflictError('Settings changed concurrently; please retry');
       }
+      await conflictBackoff(attempt);
     }
   }
 }
