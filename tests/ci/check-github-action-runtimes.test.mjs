@@ -566,9 +566,8 @@ jobs:
     needs: [detect-changes, full-lane-ready]
     steps:
       - run: |
-          npm run test:coverage:shard -- 1 2
+          npm run test:coverage:shards
           test -s .vitest-reports/blob-1-2.json
-          npm run test:coverage:shard -- 2 2
           test -s .vitest-reports/blob-2-2.json
           npm run test:coverage:merge -- .vitest-reports
   full-frontend-tests:
@@ -810,7 +809,7 @@ jobs:
 
 async function assertBlocksMissingFrontendCoverageShard() {
   const workflow = validTestSuiteWorkflow().replace(
-    '          npm run test:coverage:shard -- 2 2\n',
+    '          test -s .vitest-reports/blob-2-2.json\n',
     '',
   );
   const result = await runFixture(
@@ -827,7 +826,7 @@ jobs: {}
   assert.equal(result.findings.length, 0);
   assert.match(
     result.errors.join('\n'),
-    /must run both frontend coverage shards sequentially/,
+    /must run both frontend coverage shards concurrently in this job/,
   );
 }
 

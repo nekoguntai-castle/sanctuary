@@ -1190,28 +1190,21 @@ jobs:
           scripts/ci/time-command.sh "frontend coverage verifier npm ci"
           bash scripts/ci/setup-verifier-test-dependencies.sh
 
-      # The two logical shards remain sequential and independently proven. A
-      # single job avoids repeating checkout/install/artifact round trips; it
-      # does not remove tests or weaken the merged 100% coverage threshold.
-      - name: Run frontend coverage shard 1
+      # The two logical shards run as concurrent processes in this one job;
+      # each keeps its single-worker contract, report directory, blob and
+      # log (scripts/ci/frontend-coverage-shards.sh). Separate matrix jobs
+      # lost the gain to runner queueing (PR #884). Nothing is removed and
+      # the merged 100% coverage threshold is unchanged.
+      - name: Run frontend coverage shards
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shards.log"
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "frontend coverage shard 1/2"
-          npm run test:coverage:shard -- 1 2
+          npm run test:coverage:shards
 
-      - name: Verify frontend coverage blob 1
-        run: test -s .vitest-reports/blob-1-2.json
-
-      - name: Run frontend coverage shard 2
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "frontend coverage shard 2/2"
-          npm run test:coverage:shard -- 2 2
-
-      - name: Verify frontend coverage blob 2
-        run: test -s .vitest-reports/blob-2-2.json
+      - name: Verify frontend coverage blobs
+        run: |
+          test -s .vitest-reports/blob-1-2.json
+          test -s .vitest-reports/blob-2-2.json
 
       - name: Upload frontend coverage shard evidence
         if: always()
@@ -1918,13 +1911,18 @@ jobs:
         env:
           VITE_API_URL: http://localhost:3001
 
+      # Three workers: the render routes are independent and run against a
+      # mocked API. One worker took 12-15 minutes; locally, three workers
+      # finished all 220 tests in about 5 minutes with no retries and matching
+      # snapshots across repeated runs (R1 of
+      # tasks/ci-speedup-analysis-2026-09-29.md).
       - name: Run render regression E2E tests
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/render-regression-e2e.log"
           scripts/ci/with-runner-lock.sh e2e
           scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"
           scripts/ci/time-command.sh "render regression E2E"
-          npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts
+          npm run test:e2e -- --project=chromium --workers=3 tests/e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test

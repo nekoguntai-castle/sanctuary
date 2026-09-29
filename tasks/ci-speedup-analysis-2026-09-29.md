@@ -9,15 +9,14 @@ is measured unless marked *estimate*.
 
 ## Implementation status
 
-Accepted 2026-09-29. Delivered one PR per item in §8 order, because each change
+Accepted 2026-09-29. Delivered one PR per item in §8 order (R1 and R3 later combined at the user's request, as both only touch the frontend lanes of `test.yml` and each job reports its own timings), because each change
 needs its own before/after timing so a regression is attributable. That is the
 recorded reason for not combining them into one PR.
 
 | Item | Status | PR | Merge |
 |---|---|---|---|
-| R2 — drop the DIND-era Playwright ordering edges | in review | — | — |
-| R1 — render E2E workers | pending | — | — |
-| R3 — concurrent frontend coverage shards | pending | — | — |
+| R2 — drop the DIND-era Playwright ordering edges | merged | #1335 | `b6fb458621` |
+| R1 + R3 — render E2E workers; concurrent frontend coverage shards (combined by request) | in review | — | — |
 | R4 — concurrent verify-vectors mutation groups | pending | — | — |
 | R5-A — parallel upgrade baselines | pending | — | — |
 | R5-B — install image cache design | pending (design only) | — | — |

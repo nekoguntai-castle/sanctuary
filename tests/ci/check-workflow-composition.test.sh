@@ -2352,7 +2352,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "scripts/ci/with-runner-lock.sh e2e" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
   'scripts/ci/time-command.sh "render regression E2E"' \
-  "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts" \
+  "npm run test:e2e -- --project=chromium --workers=3 tests/e2e/render-regression.spec.ts" \
   "Write render E2E diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Render E2E"' \
   "Upload render E2E diagnostics" \
@@ -2630,20 +2630,25 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full render Playwright infrastructure retry" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
   'scripts/ci/time-command.sh "render regression E2E"' \
-  "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts"
+  "npm run test:e2e -- --project=chromium --workers=3 tests/e2e/render-regression.spec.ts"
+
+# The render routes are independent and run against a mocked API; one worker
+# took 12-15 minutes on idle 16-core hosts (R1 of
+# tasks/ci-speedup-analysis-2026-09-29.md).
+assert_named_job_contains "$TEST_WORKFLOW" \
+  "full-render-e2e-tests" \
+  "render E2E runs three Playwright workers" \
+  "--workers=3"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage single-job chain" \
   "full-frontend-coverage-merge:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"' \
   "bash scripts/ci/setup-verifier-test-dependencies.sh" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"' \
-  'scripts/ci/time-command.sh "frontend coverage shard 1/2"' \
-  "npm run test:coverage:shard -- 1 2" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shards.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  "npm run test:coverage:shards" \
   "test -s .vitest-reports/blob-1-2.json" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"' \
-  'scripts/ci/time-command.sh "frontend coverage shard 2/2"' \
-  "npm run test:coverage:shard -- 2 2" \
   "test -s .vitest-reports/blob-2-2.json" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-merge.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \

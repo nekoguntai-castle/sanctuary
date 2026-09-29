@@ -671,6 +671,7 @@ jobs:
           npm run check:resource-ownership-contract
           npm run test:ownership
           bash -n scripts/ci/frontend-coverage-shard.sh
+          bash -n scripts/ci/frontend-coverage-shards.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/install-test-ports.sh
           bash -n scripts/ci/docker-endpoint-lib.sh

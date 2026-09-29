@@ -183,13 +183,12 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
     state,
     'full-frontend-coverage-merge',
     [
-      'npm run test:coverage:shard -- 1 2',
+      'npm run test:coverage:shards',
       'test -s .vitest-reports/blob-1-2.json',
-      'npm run test:coverage:shard -- 2 2',
       'test -s .vitest-reports/blob-2-2.json',
       'npm run test:coverage:merge -- .vitest-reports',
     ],
-    'must run both frontend coverage shards sequentially, verify both blobs, and merge them',
+    'must run both frontend coverage shards concurrently in this job, verify both blobs, and merge them',
   );
 
   const frontendAggregateBody = requireJobBody(

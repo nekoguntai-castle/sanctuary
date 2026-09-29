@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHARD_SCRIPT="$ROOT_DIR/scripts/ci/frontend-coverage-shard.sh"
 MERGE_SCRIPT="$ROOT_DIR/scripts/ci/frontend-coverage-merge.sh"
+SHARDS_SCRIPT="$ROOT_DIR/scripts/ci/frontend-coverage-shards.sh"
 SETUP_VERIFIER_SCRIPT="$ROOT_DIR/scripts/ci/setup-verifier-test-dependencies.sh"
 TEST_TEMP_DIR=''
 
@@ -52,6 +53,7 @@ main() {
 
   bash -n "$SHARD_SCRIPT"
   bash -n "$MERGE_SCRIPT"
+  bash -n "$SHARDS_SCRIPT"
   bash -n "$SETUP_VERIFIER_SCRIPT"
 
   local setup_fixture="$TEST_TEMP_DIR/setup-repo"
@@ -354,7 +356,80 @@ MERGE_VITEST
   [ "$(cat "$captured_merge_reports_dir")" != "$reports_with_stale_blob" ] || \
     fail 'expected merge script to use a sanitized report directory'
 
+  assert_concurrent_shards_runner
+
   echo 'frontend coverage script regression checks passed'
+}
+
+# frontend-coverage-shards.sh must overlap the shard processes (R3 of
+# tasks/ci-speedup-analysis-2026-09-29.md), wait for every shard even after
+# one fails, and fail when any shard fails.
+assert_concurrent_shards_runner() {
+  local fixture="$TEST_TEMP_DIR/shards-fixture"
+  local markers="$TEST_TEMP_DIR/shard-markers"
+  mkdir -p "$fixture/scripts/ci" "$markers"
+  cp "$SHARDS_SCRIPT" "$fixture/scripts/ci/frontend-coverage-shards.sh"
+  cat >"$fixture/scripts/ci/run-with-log.sh" <<'FAKE_RUN_WITH_LOG'
+#!/usr/bin/env bash
+set -euo pipefail
+log="$1"
+shift
+mkdir -p "$(dirname "$log")"
+"$@" >"$log" 2>&1
+FAKE_RUN_WITH_LOG
+  cat >"$fixture/scripts/ci/time-command.sh" <<'FAKE_TIME_COMMAND'
+#!/usr/bin/env bash
+set -euo pipefail
+shift
+exec "$@"
+FAKE_TIME_COMMAND
+  # Each fake shard records its start, then waits for every shard to start.
+  # A sequential runner would never start shard 2 while shard 1 waits.
+  cat >"$fixture/scripts/ci/frontend-coverage-shard.sh" <<'FAKE_SHARD'
+#!/usr/bin/env bash
+set -euo pipefail
+: >"$SHARD_MARKERS/started-$1"
+printf '%s' "${SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR:-}" >"$SHARD_MARKERS/reports-$1"
+for _ in $(seq 100); do
+  [ -e "$SHARD_MARKERS/started-1" ] && [ -e "$SHARD_MARKERS/started-2" ] && break
+  sleep 0.1
+done
+[ -e "$SHARD_MARKERS/started-1" ] && [ -e "$SHARD_MARKERS/started-2" ] || {
+  echo "shard $1 never overlapped its sibling" >&2
+  exit 90
+}
+echo "shard $1/$2 ran"
+if [ "$1" = "${FAIL_SHARD:-}" ]; then
+  exit 7
+fi
+: >"$SHARD_MARKERS/finished-$1"
+FAKE_SHARD
+  chmod +x "$fixture/scripts/ci/"*.sh
+
+  (
+    cd "$fixture"
+    SHARD_MARKERS="$markers" DIAGNOSTIC_DIR="$fixture/logs" \
+      bash scripts/ci/frontend-coverage-shards.sh
+  ) || fail 'expected both overlapping frontend coverage shards to pass'
+  assert_file_contains 'shard 1/2 ran' "$fixture/logs/frontend-coverage-shard-1.log"
+  assert_file_contains 'shard 2/2 ran' "$fixture/logs/frontend-coverage-shard-2.log"
+  assert_file_equals 'coverage-shards/shard-1-2/reports' "$markers/reports-1"
+  assert_file_equals 'coverage-shards/shard-2-2/reports' "$markers/reports-2"
+
+  rm -rf "$markers" "$fixture/logs"
+  mkdir -p "$markers"
+  assert_fails_with 'shard 2/2 failed with exit 7' \
+    env SHARD_MARKERS="$markers" DIAGNOSTIC_DIR="$fixture/logs" FAIL_SHARD=2 \
+      bash -c "cd '$fixture' && bash scripts/ci/frontend-coverage-shards.sh"
+  [ -e "$markers/finished-1" ] || fail 'shard 1 was not awaited after shard 2 failed'
+
+  rm -rf "$markers" "$fixture/logs"
+  mkdir -p "$markers"
+  assert_fails_with 'shard 1/2 failed with exit 7' \
+    env SHARD_MARKERS="$markers" DIAGNOSTIC_DIR="$fixture/logs" FAIL_SHARD=1 \
+      bash -c "cd '$fixture' && bash scripts/ci/frontend-coverage-shards.sh"
+  [ -e "$markers/finished-2" ] || fail 'shard 2 was not awaited after shard 1 failed'
+
 }
 
 main "$@"

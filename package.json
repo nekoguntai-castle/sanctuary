@@ -68,6 +68,7 @@
     "coverage:summary": "node scripts/ci/coverage-summary.mjs",
     "test:coverage": "vitest run --config config/tooling/vitest.config.ts --coverage",
     "test:coverage:shard": "bash scripts/ci/frontend-coverage-shard.sh",
+    "test:coverage:shards": "bash scripts/ci/frontend-coverage-shards.sh",
     "test:coverage:merge": "bash scripts/ci/frontend-coverage-merge.sh",
     "test:coverage:full": "npm run test:coverage && npm run test:backend:coverage && npm run test:coverage:gateway && npm run test:coverage:llm-egress-proxy",
     "test:coverage:gateway": "npm --prefix gateway run test:coverage",
