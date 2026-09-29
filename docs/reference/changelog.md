@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Improve keyboard and mobile navigation across wallet and device flows, keep
+  wallet creation controls available during asynchronous updates, and improve
+  contrast for secondary controls.
 - The wallet list's balance period (1D/1W/1M/1Y/All) now also drives every
   wallet card's sparkline, and is remembered with the list's other view
   settings.
@@ -32,6 +35,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enforce Payjoin sender authorization, admit authenticated WebSocket clients
+  safely, retire stale Payjoin receive URIs, and restore receive QR readiness.
+- Disable automatic write retries because a failed response may follow a
+  committed change; inspect current state before manually retrying. Apply
+  administrator settings changes atomically.
+- Preserve two-factor status, backup codes, AI profiles, Telegram preferences,
+  node settings, and saved variables when their initial loads fail.
+- Keep asynchronous wallet, device, transaction, chat, and settings results
+  owned by the current request or view so late responses cannot replace newer
+  state or discard history.
+- Preserve complete wallet history, normalize timeframe cache keys, retain push
+  registrations after owner reassignment, and count effective group approvers
+  in quorum decisions.
+- Resume bounded WebSocket queues after sends complete and return persisted
+  approval state after a vote resolves.
 - Plot the Total Balance charts and wallet sparklines against real time in the
   reader's timezone, with hours, weekdays, dates or months on the axis for the
   selected period, instead of evenly spacing only the periods that had
