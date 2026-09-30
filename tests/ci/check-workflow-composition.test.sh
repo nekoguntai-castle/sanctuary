@@ -150,6 +150,34 @@ assert_event_paths_equal() {
   fi
 }
 
+# Pass when a workflow's parsed `on:` block has no push trigger that a push to
+# main would fire (CI speed-up plan section 6, option 2). A push trigger
+# limited to tags passes.
+assert_no_push_to_main() {
+  local file="$1"
+  local label="$2"
+  local verdict
+  verdict="$(node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    const { default: YAML } = await import(process.argv[1] + "/tests/ci/lib/yaml.mjs");
+    const on = YAML.parse(readFileSync(process.argv[2], "utf8")).on ?? {};
+    const push = on.push;
+    if (push === undefined) { console.log("ok"); process.exit(0); }
+    if (push === null || typeof push !== "object") { console.log("push has no filters"); process.exit(0); }
+    const branches = push.branches ?? push["branches-ignore"];
+    if (branches === undefined && push.tags !== undefined) { console.log("ok"); process.exit(0); }
+    console.log("push trigger can fire for main");
+  ' "$REPO_ROOT" "$file" 2>&1)"
+  if [ "$verdict" = ok ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: $verdict in $file")
+    echo "FAIL: $label" >&2
+  fi
+}
+
 assert_active_yaml_line_count() {
   local file="$1"
   local label="$2"
@@ -2976,7 +3004,7 @@ for docker_input in \
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
     "docker-build triggers for $docker_input" \
     "$docker_input" \
-    2
+    1
 done
 
 for docker_ownership_input in \
@@ -2988,7 +3016,7 @@ for docker_ownership_input in \
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
     "docker-build triggers for ownership input $docker_ownership_input" \
     "$docker_ownership_input" \
-    2
+    1
 done
 
 assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
@@ -3017,10 +3045,23 @@ assert_not_contains "$REPO_ROOT/.github/workflows/install-test.yml" \
   "install-test omits retired root frontend Dockerfile trigger" \
   "'Dockerfile'"
 
-assert_occurrence_count "$TEST_WORKFLOW" \
-  "test workflow uses canonical frontend Dockerfile trigger" \
-  "'docker/frontend/Dockerfile'" \
-  1
+# Section 6, option 2: these lanes do not re-run on push to main; the tree
+# that lands is the tree a green PR run proved, and the schedules re-prove
+# main. verify-vectors keeps its push trigger: funds-safety evidence is
+# required for landed main-branch commits (check-wallet-safety-classifier.mjs).
+for push_free_workflow in test.yml docker-build.yml install-test.yml; do
+  assert_no_push_to_main "$REPO_ROOT/.github/workflows/$push_free_workflow" \
+    "$push_free_workflow does not re-run on push to main"
+done
+assert_contains_in_order "$REPO_ROOT/.github/workflows/install-test.yml" \
+  "install-test still runs on prerelease tag pushes" \
+  "push:" \
+  "tags:" \
+  "'v*.*.*-rc*'"
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "test workflow re-proves main nightly" \
+  "schedule:" \
+  "- cron: '0 7 * * *'"
 
 for retired_frontend_input in \
   "'App.tsx'" \
@@ -3475,7 +3516,7 @@ for grafana_image_path in \
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
     "docker-build triggers for $grafana_image_path" \
     "$grafana_image_path" \
-    2
+    1
 done
 
 for grafana_owned_path in \

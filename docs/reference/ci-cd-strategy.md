@@ -65,8 +65,7 @@ PRs where the workflow never starts.
 - Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
 - Confirm `Full Test Summary` runs and succeeds on the pull request before merge.
 - Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
-- Confirm the post-merge `main` full lane runs only for the touched package unless the test workflow, schedule, or manual dispatch requires an exhaustive run.
-- After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
+- After merge, confirm the push-to-`main` runs that remain (`Architecture`, path-gated; `Code Quality`; `Verify Bitcoin Vectors`) pass. `Test Suite`, `Validate Docker Images` and `Install Tests` no longer run on push to `main`; see "Tier 2 - Main Confidence Backstop".
 
 ## First PR Validation Result
 
@@ -170,12 +169,12 @@ The lizard cleanup loop now uses the same PR-first workflow as other development
 2. Refactor the next highest-value complexity target with focused tests and local lizard verification.
 3. Update `docs/plans/codebase-health-assessment.md`, grade history, and `tasks/todo.md` with the new warning count and verification evidence.
 4. Open a PR and wait for `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-5. Merge only after required checks pass, then wait for the post-merge full lane on `main`.
+5. Merge only after required checks pass, then wait for the post-merge `Architecture`, `Code Quality` and `Verify Bitcoin Vectors` runs on `main`.
 6. Rebase or recreate the next batch branch from the updated `main`.
 
 Validated loop sample: PR #42, `chore/lizard-batch-43-final-warnings`, passed `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick Backend, Quick Backend Integration Smoke, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, vector verification, and Docker builds before merge. `Full Test Summary` appeared as skipped/success on the PR. After merge, the push-to-`main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds; the lizard loop ended at 0 warnings.
 
-Operational note: scheduled `Test Suite` runs share the same `main` concurrency group as push backstops. During PR #18 validation, a scheduled run began immediately before the merge and blocked the push backstop until it was canceled. If a scheduled run is already being canceled in favor of a higher-priority push run but a long-running job delays handoff, cancel the scheduled run and keep the merge backstop as the source of truth.
+Operational note: `Test Suite` no longer runs on push to `main`, so its scheduled run no longer shares a concurrency group with a push backstop (the contention seen during PR #18 validation cannot recur).
 
 ## CI Tiers
 
@@ -288,13 +287,31 @@ run both because they are architecture evidence and published site input.
 
 ### Tier 2 - Main Confidence Backstop
 
-The post-merge `main` gate proves the final merged commit after the same
-path-aware full checks have already protected the pull request.
+Pushes to `main` do not re-run the heavy lanes (CI speed-up plan section 6,
+option 2, 2026-09-30). Every PR merges by squash under
+`block_on_outdated_branch: true`, so the tree that lands on `main` is exactly
+the tree its green PR run proved. Before this change, 106 of 106 sampled main
+pushes repeated an already-green PR tree, which cost about 29% of workflow
+time and competed with the next PR in the serial merge queue.
 
-`Test Suite` full lane runs on pull requests, `main`, schedule, and manual
-dispatch. Pull requests and pushes classify changed paths and run only the
-relevant full lanes. Schedule and manual dispatch set `full_scan=true` and
-remain exhaustive.
+| Workflow | Push to `main` | What proves `main` |
+| --- | --- | --- |
+| `Architecture` | runs (path-gated) | its push run; generated graphs can go stale only on `main` |
+| `Code Quality` | runs (diff-classified) | its push run, plus the Monday full run |
+| `Test Suite` | no | the PR run, plus the nightly exhaustive run (07:00 UTC) |
+| `Verify Bitcoin Vectors` | runs | its push run: funds-safety evidence for every landed commit, which `check-wallet-safety-classifier.mjs` requires; plus the Sunday run |
+| `Validate Docker Images` | no | the PR run (it never publishes) |
+| `Install Tests` | no (prerelease tags still run it) | the PR run, the nightly unit run, and the release-candidate nightly Fresh Install E2E |
+
+Inside a scheduled job `github.event_name` is `schedule`, so the classifiers
+select the exhaustive scan. Only the runs API reports scheduled runs as
+`event: push` (with `trigger_event: schedule`). `tests/ci/check-workflow-composition.test.sh`
+fails if `Test Suite`, `Validate Docker Images` or `Install Tests` regains a
+trigger that fires on a push to `main`.
+
+`Test Suite` full lane runs on pull requests, schedule, and manual dispatch.
+Pull requests classify changed paths and run only the relevant full lanes.
+Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
 
 Markdown and MDX files are docs-only for the test classifiers, including package-local docs under `server/`, `gateway/`, `llm-egress-proxy/`, and `tests/install/`. A docs-only change may still get required aggregate/no-op checks on PRs, but it must not start source tests, DB-backed tests, E2E lanes, install tests, or image builds.
 
@@ -333,8 +350,8 @@ Thresholds must not be lowered merely to reduce validation time. A later change
 requires mutation and escaped-defect evidence, a named replacement invariant,
 and a non-decreasing ratchet for any scope that is not held at 100%.
 
-Push-to-main full-lane runs are the path-aware backstop for the final merged
-commit; scheduled and manual runs provide periodic exhaustive proof.
+The PR run proves the exact tree that lands on `main`; scheduled and manual
+runs provide periodic exhaustive proof of `main` itself.
 
 `Architecture` uses the same trigger paths for PR and `main` events. A merge
 therefore receives the same specialized backstop that validated its source
@@ -390,7 +407,7 @@ Use this only when production or release infrastructure is blocked and waiting f
 1. Temporarily bypass Forgejo branch protection as an administrator.
 2. Make the smallest safe fix.
 3. Run the focused local command that covers the failure mode.
-4. Push the hotfix and wait for the full `main` gate.
+4. Push the hotfix, wait for the push-to-`main` runs (`Verify Bitcoin Vectors`, `Code Quality`, and `Architecture` when its paths match), and dispatch `test.yml`, `docker-build.yml` and `install-test.yml` on `main` (`workflow_dispatch`) and wait for them too. A direct push never had a PR run, and those three no longer run on push to `main`.
 5. Open a follow-up PR that documents the bypass, adds missing regression coverage if needed, and updates `tasks/lessons.md` if the issue was caused by a preventable process mistake.
 6. Re-enable the normal branch protection state immediately.
 
@@ -448,7 +465,7 @@ SANCTUARY_FORGE_API_URL=https://forge.example \
 SANCTUARY_FORGE_OWNER=owner \
 SANCTUARY_FORGE_REPO=sanctuary \
 SANCTUARY_FORGE_TOKEN=... \
-  bash scripts/ci/measure-wallclock.sh --workflow test.yml --event push --branch main --limit 20
+  bash scripts/ci/measure-wallclock.sh --workflow test.yml --event pull_request --limit 20
 ```
 
 Use the trend helper before changing a workflow shape:
@@ -457,7 +474,7 @@ Use the trend helper before changing a workflow shape:
 FORGEJO_API_URL=https://forge.example/api/v1 \
 FORGEJO_REPOSITORY=owner/sanctuary \
 FORGEJO_TOKEN=... \
-  bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event push --branch main --limit 20
+  bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event schedule --branch main --limit 20
 ```
 
 The Forgejo-native trend helper performs GET-only API calls and reports

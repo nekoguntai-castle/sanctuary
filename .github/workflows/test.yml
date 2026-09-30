@@ -7,43 +7,10 @@ on:
   merge_group:
     types:
       - checks_requested
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'shared/**'
-      - 'tests/**'
-      - '!tests/*.md'
-      - '!tests/**/*.md'
-      - 'llm-egress-proxy/**'
-      - '!llm-egress-proxy/*.md'
-      - '!llm-egress-proxy/**/*.md'
-      - '!llm-egress-proxy/*.mdx'
-      - '!llm-egress-proxy/**/*.mdx'
-      - 'server/**'
-      - '!server/*.md'
-      - '!server/**/*.md'
-      - '!server/*.mdx'
-      - '!server/**/*.mdx'
-      - 'gateway/**'
-      - '!gateway/*.md'
-      - '!gateway/**/*.md'
-      - '!gateway/*.mdx'
-      - '!gateway/**/*.mdx'
-      - 'scripts/**'
-      - 'package*.json'
-      - 'server/package*.json'
-      - 'gateway/package*.json'
-      - 'config/tooling/**'
-      - 'server/tsconfig*.json'
-      - 'server/vitest.config.ts'
-      - 'gateway/vitest.config.ts'
-      - 'docker/frontend/Dockerfile'
-      - 'server/Dockerfile'
-      - '.github/mutation-baseline.json'
-      - '.github/actions/**'
-      - '.github/workflows/test.yml'
+  # No push trigger for main (CI speed-up plan section 6, option 2): with
+  # squash merges and block_on_outdated_branch, the tree that lands on main is
+  # the tree its green PR run already proved. The nightly schedule below runs
+  # every full lane on main (event_name is "schedule" inside the job).
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:

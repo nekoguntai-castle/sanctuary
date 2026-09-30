@@ -1,9 +1,13 @@
 name: Install Tests
 
 on:
+  # Pushes to main do not run this workflow (CI speed-up plan section 6,
+  # option 2): the tree that lands on main is the tree its green PR run proved.
+  # main is re-proven by this workflow's nightly unit run and by
+  # release-candidate.yml's nightly Fresh Install E2E. Prerelease tag pushes
+  # still run it, because release publication requires this workflow's
+  # push-event run at the RC tag.
   push:
-    branches:
-      - main
     tags:
       # The accepted RC is the canonical install/upgrade evidence for the exact
       # commit promoted to stable. Do not rerun the identical two-hour matrix

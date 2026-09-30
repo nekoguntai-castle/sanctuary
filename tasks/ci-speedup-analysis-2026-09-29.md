@@ -21,8 +21,22 @@ recorded reason for not combining them into one PR.
 | R5-A — parallel upgrade baselines | dropped — PRs already run one baseline | — | — |
 | R5-B — install-lane speed-up | redesigned: see `tasks/ci-install-lane-speedup-design-2026-09-29.md` | — | — |
 | R6 — deduplicate install unit tests | dropped — neither workflow's PR scope covers the other's | — | — |
-| R7 — parallel shell suites | in review | this PR | — |
-| R8, §6 | out of scope (runner-infra / deferred decision) | — | — |
+| R7 — parallel shell suites | merged | #1345 | `e62b5101fe` |
+| R8 — runner capacity 2 → 3 on kumo and x300 | merged and rolled out (lifecycle canary run 19596 green) | runner-infra #95 | `e6a038d0e1` |
+| §6 option 2 — no heavy re-runs on push to `main` | in review | this PR | — |
+
+**§6 option 2.** Pushes to `main` no longer run `Test Suite`, `Validate Docker
+Images` or `Install Tests` (install-test keeps its prerelease tag trigger, which
+release publication requires). The squash-merged tree is the tree its green PR
+run proved; the nightly `Test Suite` schedule runs every full lane on `main`
+(inside the job `event_name` is `schedule`, so the classifier selects the
+exhaustive scan). `Architecture`, `Code Quality` and `Verify Bitcoin Vectors`
+still run on push: vectors because `check-wallet-safety-classifier.mjs` requires
+funds-safety evidence for every landed commit. Emergency hotfixes pushed
+directly must dispatch the three workflows by hand (`ci-cd-strategy.md`).
+Follow-up, not in this PR: nothing stops a release from being cut while the
+push-to-`main` verify-vectors run for its commit is red, and verify-vectors is
+not a required PR check.
 
 **R4 drop.** #1344 ran fee-policy alone beside the other six proofs in sequence
 (fee-policy got its own `tempDirName` parent so the groups could not race).

@@ -1365,11 +1365,9 @@ jobs:
           }
 
           collect_cohort test-pr test.yml pull_request ''
-          collect_cohort test-main test.yml push main
           collect_cohort test-schedule test.yml schedule main
           collect_cohort vectors-pr verify-vectors.yml pull_request ''
           collect_cohort install-pr install-test.yml pull_request ''
-          collect_cohort install-main install-test.yml push main
           collect_cohort install-schedule install-test.yml schedule main
           collect_cohort release-tag release-candidate.yml push ''
           collect_cohort release-manual release-candidate.yml workflow_dispatch ''

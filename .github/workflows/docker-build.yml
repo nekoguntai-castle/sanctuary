@@ -4,49 +4,9 @@ name: Validate Docker Images
 # Versioned release images are published only by the trusted operator command.
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'shared/**'
-      - 'server/**'
-      - '!server/*.md'
-      - '!server/**/*.md'
-      - '!server/*.mdx'
-      - '!server/**/*.mdx'
-      - 'docker/**'
-      - '.dockerignore'
-      - 'docker-compose.yml'
-      - 'gateway/package.json'
-      - 'gateway/**'
-      - 'llm-egress-proxy/**'
-      - 'package*.json'
-      - 'config/tooling/**'
-      - 'config/container-image-lock.json'
-      - 'config/resource-ownership-contract.json'
-      - 'config/operator-recovery-contract.json'
-      - 'config/operator-recovery-incident.json'
-      - 'scripts/ci/build-runtime-image.sh'
-      - 'scripts/ci/cleanup-ci-callsite.sh'
-      - 'scripts/ci/write-runtime-image-evidence.mjs'
-      - 'scripts/ci/classify-docker-build-images.sh'
-      - 'scripts/ci/validate-docker-build-results.sh'
-      - 'scripts/ci/docker-endpoint-lib.sh'
-      - 'scripts/ci/provider-context.sh'
-      - 'scripts/ci/run-with-log.sh'
-      - 'scripts/ci/wait-for-docker.sh'
-      - 'scripts/ci/redactor.sh'
-      - 'scripts/ci/write-diagnostic-summary.sh'
-      - 'scripts/ownership/**'
-      - 'scripts/ops/migrate-grafana-password.sh'
-      - 'scripts/ops/run-grafana-password-migration.sh'
-      - 'scripts/ops/grafana-quiescence-records.sh'
-      - 'scripts/offline/bundle-common.sh'
-      - 'scripts/offline/create-bundle.sh'
-      - '.github/actions/verify-cleanup-receipt/**'
-      - '.github/actions/upload-cleanup-evidence/**'
-      - '.github/workflows/docker-build.yml'
+  # No push trigger for main (CI speed-up plan section 6, option 2): this
+  # workflow never publishes, and the tree that lands on main is the tree its
+  # green PR run already built and smoke-tested.
   pull_request:
     branches:
       - main
