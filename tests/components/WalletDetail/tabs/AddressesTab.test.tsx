@@ -65,6 +65,32 @@ describe('AddressesTab', () => {
     expect(screen.queryByText('Generate Addresses')).not.toBeInTheDocument();
   });
 
+  // Non-regression: the address list can be withheld (e.g. the wallet-safety display
+  // gate returns 403 and the wallet's descriptor is redacted) while the summary still
+  // counts the addresses. The empty state must not blame a missing descriptor then.
+  it.each([
+    ['without a visible descriptor', null],
+    ['with a descriptor', 'wpkh(...)'],
+  ])('explains withheld addresses %s when the summary counts some', (_label, descriptor) => {
+    render(
+      <AddressesTab
+        {...baseProps}
+        descriptor={descriptor}
+        addressSummary={{ ...baseProps.addressSummary, totalAddresses: 40, usedCount: 21, unusedCount: 19 }}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Addresses Unavailable' })).toBeInTheDocument();
+    expect(screen.getByText(/has 40 addresses, but they can't be shown right now/)).toBeInTheDocument();
+    expect(screen.queryByText(/doesn't have a descriptor/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Generate Addresses')).not.toBeInTheDocument();
+  });
+
+  it('keeps the generate path when the address summary has not loaded', () => {
+    render(<AddressesTab {...baseProps} descriptor="wpkh(...)" addressSummary={null} />);
+    expect(screen.getByRole('heading', { name: 'No Addresses Available' })).toBeInTheDocument();
+    expect(screen.getByText('Generate Addresses')).toBeInTheDocument();
+  });
+
   it('shows generate button for wallets with descriptors', () => {
     render(<AddressesTab {...baseProps} descriptor="wpkh(...)" />);
     fireEvent.click(screen.getByText('Generate Addresses'));

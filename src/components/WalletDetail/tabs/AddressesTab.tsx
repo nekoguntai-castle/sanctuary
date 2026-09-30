@@ -48,6 +48,7 @@ export const AddressesTab: React.FC<AddressesTabProps> = ({
       {addresses.length === 0 ? (
         <EmptyAddressesState
           descriptor={descriptor}
+          knownAddressCount={addressSummary?.totalAddresses ?? 0}
           loadingAddresses={loadingAddresses}
           onGenerateMoreAddresses={onGenerateMoreAddresses}
         />
