@@ -10,6 +10,7 @@ interface Shot {
   route: string;
   overlay?: string;
   click?: string;
+  themes?: Array<'dark' | 'light'>;
 }
 
 interface ShotManifest {
@@ -66,7 +67,9 @@ async function settle(page: Page): Promise<void> {
 
 for (const shot of manifest.shots) {
   test(shot.name, async ({ page }, testInfo) => {
-    const dark = testInfo.project.name === 'dark';
+    const theme = testInfo.project.name as 'dark' | 'light';
+    test.skip(!(shot.themes ?? ['dark', 'light']).includes(theme), `${shot.name} has no ${theme} variant`);
+    const dark = theme === 'dark';
     await setDarkMode(page.request, dark);
     if (shot.overlay) {
       const overlay = manifest.overlays[shot.overlay];

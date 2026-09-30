@@ -34,6 +34,8 @@ Do not expose the MCP port directly to the public internet. Use expiring, wallet
 
 The preferred key-management path is **Administration -> AI Settings -> MCP Access**. The admin UI shows server status, creates scoped keys, displays the one-time token, lists key metadata, and revokes keys.
 
+![MCP Access key management in AI Settings](../assets/screenshots/admin-ai-mcp-access.png)
+
 Create keys from the admin API when automation needs it:
 
 ```bash

@@ -24,6 +24,8 @@ Both paths are read-only in this release. They can answer questions about wallet
    - `aiAssistant` for **Administration -> AI Settings** and provider configuration.
    - `sanctuaryConsole` for the in-app Console backend and drawer.
 
+   ![Administration -> Feature Flags with aiAssistant and sanctuaryConsole enabled](../assets/screenshots/admin-feature-flags.png)
+
 3. For direct MCP clients, start the MCP profile too:
 
    ```bash
@@ -35,6 +37,8 @@ Both paths are read-only in this release. They can answer questions about wallet
 ## Configure A Trusted Model Provider
 
 Open **Administration -> AI Settings**.
+
+![Administration -> AI Settings, Status tab](../assets/screenshots/admin-ai-settings.png)
 
 1. In **Status**, enable AI features.
 2. In **Settings**, configure the active provider profile:
@@ -70,6 +74,8 @@ The Console is not an operating-system terminal. It is a chat-style investigatio
 ## Manage Direct MCP Keys
 
 Open **Administration -> AI Settings -> MCP Access**.
+
+![Administration -> AI Settings -> MCP Access](../assets/screenshots/admin-ai-mcp-access.png)
 
 Use this tab to:
 

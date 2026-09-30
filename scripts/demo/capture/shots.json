@@ -1,5 +1,5 @@
 {
-  "$comment": "Docs screenshot manifest for npm run demo:capture. Routes may reference seeded wallets as {wallet:<name>} (names from scripts/demo/manifest.json). overlay=funded swaps in the balances below for wallet list/detail and balance history only; every other response is the live demo instance's real data.",
+  "$comment": "Docs screenshot manifest for npm run demo:capture. Routes may reference seeded wallets as {wallet:<name>} (names from scripts/demo/manifest.json). click opens a tab or button by its visible name. themes defaults to both; README shots need both (<picture> pairs), docs pages embed the dark image with Markdown syntax so Docusaurus bundles it. overlay=funded swaps in the balances below for wallet list/detail and balance history only; every other response is the live demo instance's real data.",
   "overlays": {
     "funded": {
       "balances": {
@@ -10,12 +10,74 @@
     }
   },
   "shots": [
-    { "name": "dashboard", "route": "/", "overlay": "funded" },
-    { "name": "wallet", "route": "/wallets/{wallet:Everyday spending}" },
-    { "name": "wallet-utxos", "route": "/wallets/{wallet:Family vault}", "click": "UTXOs" },
-    { "name": "wallet-addresses", "route": "/wallets/{wallet:Everyday spending}", "click": "Addresses" },
-    { "name": "devices", "route": "/devices" },
-    { "name": "settings", "route": "/settings" },
-    { "name": "admin-node-config", "route": "/admin/node-config" }
+    {
+      "name": "dashboard",
+      "route": "/",
+      "overlay": "funded"
+    },
+    {
+      "name": "wallet",
+      "route": "/wallets/{wallet:Everyday spending}"
+    },
+    {
+      "name": "wallet-utxos",
+      "route": "/wallets/{wallet:Family vault}",
+      "click": "UTXOs"
+    },
+    {
+      "name": "send",
+      "route": "/wallets/{wallet:Family vault}/send"
+    },
+    {
+      "name": "devices",
+      "route": "/devices"
+    },
+    {
+      "name": "device-connect",
+      "route": "/devices/connect",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "name": "settings",
+      "route": "/settings"
+    },
+    {
+      "name": "admin-feature-flags",
+      "route": "/admin/feature-flags",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "name": "admin-ai-settings",
+      "route": "/admin/ai",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "name": "admin-ai-mcp-access",
+      "route": "/admin/ai",
+      "click": "MCP Access",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "name": "admin-agents",
+      "route": "/admin/agents",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "name": "admin-agent-wallets",
+      "route": "/admin/agent-wallets",
+      "themes": [
+        "dark"
+      ]
+    }
   ]
 }

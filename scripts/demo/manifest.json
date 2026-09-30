@@ -40,6 +40,11 @@
       ]
     }
   ],
+  "featureFlags": [
+    "aiAssistant",
+    "sanctuaryConsole",
+    "treasuryIntelligence"
+  ],
   "devices": [
     {
       "fingerprint": "73c5da0a",
@@ -121,6 +126,19 @@
           "role": "approver"
         }
       ]
+    }
+  ],
+  "agents": [
+    {
+      "name": "Payroll agent",
+      "fundingWallet": "Family vault",
+      "operationalWallet": "Taproot savings",
+      "maxFundingAmountSats": 2500000,
+      "dailyFundingLimitSats": 5000000,
+      "weeklyFundingLimitSats": 15000000,
+      "cooldownMinutes": 60,
+      "minOperationalBalanceSats": 250000,
+      "largeOperationalSpendSats": 1000000
     }
   ]
 }

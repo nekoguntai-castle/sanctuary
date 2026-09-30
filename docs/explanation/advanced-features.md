@@ -6,6 +6,8 @@ This document describes the advanced Bitcoin transaction features that are imple
 
 ### Advanced Send Flow (Overview)
 
+![Send flow: standard send, consolidation, or sweep](../assets/screenshots/send.png)
+
 ```
 User selects outputs & fee
         │

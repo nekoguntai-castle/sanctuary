@@ -134,6 +134,30 @@ async function ensureLabels(api, manifest, walletIds, log) {
   }
 }
 
+/** Instance-wide flags the documented screens need; reset restores their defaults. */
+async function ensureFeatureFlags(api, manifest, log) {
+  for (const key of manifest.featureFlags ?? []) {
+    const flag = await api.get(`/admin/features/${key}`);
+    if (flag.enabled) continue;
+    await api.patch(`/admin/features/${key}`, { enabled: true, reason: 'demo instance' });
+    log(`enabled feature flag ${key}`);
+  }
+}
+
+async function ensureAgents(api, manifest, userId, walletIds, log) {
+  const existing = await api.get('/admin/agents');
+  for (const { fundingWallet, operationalWallet, ...agent } of manifest.agents ?? []) {
+    if (byName(existing, agent.name)) continue;
+    await api.post('/admin/agents', {
+      ...agent,
+      userId,
+      fundingWalletId: walletIds.get(fundingWallet),
+      operationalWalletId: walletIds.get(operationalWallet),
+    });
+    log(`registered agent ${agent.name}`);
+  }
+}
+
 export async function seed(api, manifest, log) {
   await api.patch('/auth/me/preferences', manifest.demoUser.preferences);
   const userIds = await ensureUsers(api, manifest, log);
@@ -142,6 +166,9 @@ export async function seed(api, manifest, log) {
   await ensureDeviceLabels(api, manifest, log);
   await ensureShares(api, manifest, walletIds, userIds, log);
   await ensureLabels(api, manifest, walletIds, log);
+  await ensureFeatureFlags(api, manifest, log);
+  const me = await api.get('/auth/me');
+  await ensureAgents(api, manifest, me.id, walletIds, log);
 }
 
 export async function status(api, log) {
@@ -162,11 +189,21 @@ async function deleteEach(items, remove, describe, log) {
 }
 
 /**
- * Removes only what the manifest seeds: its wallets (by name, owned by the demo
- * login), their devices (by fingerprint), and its users and groups. Never the
+ * Removes only what the manifest seeds: its agents, its feature flags (back to
+ * their defaults), its wallets (by name, owned by the demo login), their devices
+ * (by fingerprint), and its users and groups. Never the
  * stack, volumes, or anything else the account can see.
  */
 export async function reset(api, manifest, log) {
+  const agentNames = new Set((manifest.agents ?? []).map((a) => a.name));
+  const agents = (await api.get('/admin/agents')).filter((a) => agentNames.has(a.name));
+  await deleteEach(agents, (a) => api.delete(`/admin/agents/${a.id}`), (a) => `agent ${a.name}`, log);
+
+  for (const key of manifest.featureFlags ?? []) {
+    await api.post(`/admin/features/${key}/reset`);
+    log(`reset feature flag ${key}`);
+  }
+
   const walletNames = new Set(manifest.wallets.map((w) => w.name));
   const wallets = (await api.get('/wallets')).filter((w) => w.userRole === 'owner' && walletNames.has(w.name));
   await deleteEach(wallets, (w) => api.delete(`/wallets/${w.id}`), (w) => `wallet ${w.name}`, log);

@@ -23,6 +23,9 @@ Agent credentials cannot broadcast, approve vault policies, manage wallet settin
 ## Register An Agent
 
 1. Open `Admin -> Wallet Agents`.
+
+   ![Admin -> Wallet Agents with one registered agent](../assets/screenshots/admin-agents.png)
+
 2. Create an agent with:
    - Target human owner.
    - Funding wallet.
@@ -33,6 +36,8 @@ Agent credentials cannot broadcast, approve vault policies, manage wallet settin
    - Operational balance and spend alert thresholds.
 3. Confirm the agent is `active`.
 4. Open `Admin -> Agent Wallets` and confirm the dashboard row shows the funding wallet, operational wallet, status, active key count, alert count, and pending draft count.
+
+   ![Admin -> Agent Wallets dashboard](../assets/screenshots/admin-agent-wallets.png)
 
 ## Issue A Runtime Key
 

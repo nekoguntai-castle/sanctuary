@@ -19,6 +19,7 @@ interface DemoWallet {
 
 interface DemoManifest {
   testVectorMnemonics: Record<string, string>;
+  agents?: Array<{ name: string; fundingWallet: string; operationalWallet: string }>;
   users: Array<{ username: string }>;
   groups: Array<{ members: string[] }>;
   devices: Array<{ fingerprint: string }>;
@@ -100,6 +101,15 @@ describe('demo manifest', () => {
   it('never gives two wallets the same device-fingerprint set (wallet import rejects it)', () => {
     const sets = manifest.wallets.map((w) => keyExpressions(w.descriptor).map((k) => k.fingerprint).sort().join(','));
     expect(new Set(sets).size).toBe(sets.length);
+  });
+
+  it('points every agent at two distinct seeded wallets', () => {
+    const walletNames = new Set(manifest.wallets.map((w) => w.name));
+    for (const agent of manifest.agents ?? []) {
+      expect(walletNames.has(agent.fundingWallet)).toBe(true);
+      expect(walletNames.has(agent.operationalWallet)).toBe(true);
+      expect(agent.fundingWallet).not.toBe(agent.operationalWallet);
+    }
   });
 
   it('references only declared users, devices and well-formed txids', () => {

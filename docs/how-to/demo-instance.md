@@ -31,6 +31,11 @@ keeps to the screenshot rules in
   that have no physical-device evidence.
 - **A few transaction labels**.
 - **Vault sharing**: alice is a signer and bob is an approver.
+- **Feature flags** `aiAssistant`, `sanctuaryConsole` and `treasuryIntelligence`,
+  so the AI and Console admin screens render. These flags are instance-wide;
+  `reset` puts them back to their defaults.
+- **A wallet agent**, "Payroll agent" (funding: Family vault, operational:
+  Taproot savings), so the agent screens show a real row.
 
 Anyone can spend from these seeds, and bots sweep deposits within minutes, so
 the single-sig balances sit near zero. Never send funds to them.
@@ -45,7 +50,7 @@ or remove data.
 ```bash
 npm run demo:seed     # idempotent; the first run creates config/demo/demo.local.env
 npm run demo:status   # wallets, balances, sync state
-npm run demo:reset    # delete the seeded wallets/devices + alice, bob, Family
+npm run demo:reset    # delete the seeded agent, wallets, devices, users and group; reset the flags
 node scripts/demo/demo.mjs reset --purge   # ...and the demo login itself
 ```
 
@@ -96,8 +101,7 @@ no `webServer`. It never starts `npm run dev`.
 
 ### Embedding
 
-Dark is the default. Light-mode readers get the alternate on Forgejo, GitHub
-and Docusaurus:
+The README gets dark/light pairs; Forgejo and GitHub both render the `<picture>`:
 
 ```html
 <picture>
@@ -106,6 +110,18 @@ and Docusaurus:
 </picture>
 ```
 
-From pages under `docs/`, use `../assets/screenshots/...`. The README is
-generated: edit `scripts/templates/README.template.md`, then run
+Pages under `docs/` embed the dark image with Markdown syntax:
+`![Alt](../assets/screenshots/<name>.png)`. The Docusaurus site treats `.md`
+as CommonMark and only bundles Markdown images, so a raw `<picture>` would break
+there. Shots used only in docs set `"themes": ["dark"]` in `shots.json`, which
+skips the light capture.
+
+The README is generated: edit `scripts/templates/README.template.md`, then run
 `scripts/generate-readme.sh`.
+
+Some screens can't be shown with the demo data, so they have no shots:
+
+- **Wallet Addresses tab**: the wallet-safety gate blocks address display for
+  watch-only devices.
+- **Console drawer**: it needs a configured model provider.
+- **Intelligence**: it needs a configured model provider.

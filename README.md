@@ -203,24 +203,57 @@ Sanctuary is a **watch-only wallet coordinator** that helps you manage Bitcoin w
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/screenshots/dashboard.png" alt="Dashboard" width="800" />
-  <br/><em>Dashboard - Overview of your wallets and recent activity</em>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/dashboard-light.png" />
+    <img src="docs/assets/screenshots/dashboard.png" alt="Dashboard" width="800" />
+  </picture>
+  <br/><em>Dashboard — every wallet, total balance history, and recent activity at a glance</em>
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/wallet.png" alt="Wallet Detail" width="800" />
-  <br/><em>Wallet Detail - Addresses, UTXOs, and transaction history</em>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/wallet-light.png" />
+    <img src="docs/assets/screenshots/wallet.png" alt="Wallet detail" width="800" />
+  </picture>
+  <br/><em>Wallet detail — full transaction history with labels, confirmations, and running balance</em>
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/send.png" alt="Send Transaction" width="800" />
-  <br/><em>Send Transaction - Build and sign transactions with your hardware wallet</em>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/wallet-utxos-light.png" />
+    <img src="docs/assets/screenshots/wallet-utxos.png" alt="UTXOs" width="800" />
+  </picture>
+  <br/><em>Coin control — each UTXO with its age, privacy score, and freeze/lock state</em>
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/settings.png" alt="Settings" width="800" />
-  <br/><em>Settings - Customize themes and preferences</em>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/send-light.png" />
+    <img src="docs/assets/screenshots/send.png" alt="Send transaction" width="800" />
+  </picture>
+  <br/><em>Send — standard, consolidation, and sweep flows for single-sig and multisig wallets</em>
 </p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/devices-light.png" />
+    <img src="docs/assets/screenshots/devices.png" alt="Hardware devices" width="800" />
+  </picture>
+  <br/><em>Devices — signers, their accounts, and the wallets each one backs</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/settings-light.png" />
+    <img src="docs/assets/screenshots/settings.png" alt="Settings" width="800" />
+  </picture>
+  <br/><em>Settings — themes, backgrounds, display units, and notifications</em>
+</p>
+
+<sub>Captured from a demo instance of watch-only wallets built from published BIP39
+test vectors, with real mainnet history. Dashboard balances are illustrative. See
+<a href="docs/how-to/demo-instance.md">Demo instance and docs screenshots</a> to
+regenerate them.</sub>
 
 ## Features
 
