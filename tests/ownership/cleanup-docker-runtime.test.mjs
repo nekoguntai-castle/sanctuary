@@ -286,3 +286,34 @@ test('an A-to-B-to-A context race cannot authorize mutation on the briefly pinne
   assert.equal(inventoryLoads, 0);
   assert.equal(supervisorCalls, 0);
 });
+
+test('the runtime shares one daemon evidence chain across its pinned observations', async () => {
+  let versionCalls = 0;
+  const runCommand = (_engine, args) => {
+    if (args.join(' ') === 'context show') return 'default\n';
+    const effectiveArgs = args[0] === '--host' ? args.slice(2) : args;
+    if (effectiveArgs[0] === 'version') { versionCalls += 1; return '{}\n'; }
+    if (effectiveArgs[0] === 'info') return '{}\n';
+    if (effectiveArgs[0] === 'context') return JSON.stringify({
+      Name: 'default', Endpoints: { docker: { Host: 'unix:///run/docker-fixture.sock', SkipTLSVerify: false } },
+      TLSMaterial: {},
+    });
+    if (['network', 'container'].includes(effectiveArgs[0]) && effectiveArgs[1] === 'ls') return '';
+    throw new Error(`unexpected query: ${args.join(' ')}`);
+  };
+  const plan = approvedPlan(runCommand);
+  const runtime = createCleanupDockerRuntime({
+    plan, deploymentManifest, loadInventory: async () => inventory(plan),
+    loadRegistrations: () => [], observationOptions: { runCommand },
+    withRegistrationFence: async (_operationRunId, callback) => callback(),
+    supervisor: async () => ({ outcome: 'success', exitCode: 0, terminationSignal: null }),
+  });
+  const selectors = {
+    compose_container: [], compose_network: [{ locator: ID }], compose_volume: [], oci_image: [], buildkit_cache: [],
+  };
+  const baseline = versionCalls;
+  assert.equal((await runtime.observeAction({ action, selectors })).complete, true);
+  assert.equal((await runtime.observeAction({ action, selectors })).complete, true);
+  // Before and after for the first; the second reuses the first's after-check.
+  assert.equal(versionCalls - baseline, 3);
+});

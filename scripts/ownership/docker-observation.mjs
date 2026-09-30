@@ -635,6 +635,43 @@ function observeBuilders(context, selectors) {
   return observations;
 }
 
+const DEFAULT_DAEMON_EVIDENCE_MAX_AGE_MS = 2000;
+
+/**
+ * Per-runtime chain of daemon identity checks (R5-B phase 2b of
+ * tasks/ci-install-lane-speedup-design-2026-09-29.md). A pinned observation
+ * that ends with a matching after-check records it; the next pinned
+ * observation may use that record, once and only while it is fresh, as its
+ * before-check. Every observation still ends with its own after-check, so a
+ * daemon swapped between observations is detected and fails closed.
+ */
+export function createDaemonEvidenceChain({
+  maxAgeMs = DEFAULT_DAEMON_EVIDENCE_MAX_AGE_MS,
+  now = () => performance.now(), wallNow = () => Date.now(),
+} = {}) {
+  if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 1) throw new TypeError('maxAgeMs must be a positive integer');
+  let verified = null;
+  const fresh = (entry) => {
+    // Both clocks must agree: the monotonic clock does not advance while a
+    // host is suspended, and the wall clock alone can be stepped.
+    const monotonicAge = now() - entry.stamp.monotonic;
+    const wallAge = wallNow() - entry.stamp.wall;
+    return monotonicAge >= 0 && monotonicAge <= maxAgeMs && wallAge >= 0 && wallAge <= maxAgeMs;
+  };
+  return Object.freeze({
+    /** Time an after-check begins; its record ages from this instant. */
+    stamp() { return Object.freeze({ monotonic: now(), wall: wallNow() }); },
+    /** Record a matching after-check that began at `stamp` for the pinned daemon fingerprint. */
+    record(fingerprint, stamp) { verified = { fingerprint, stamp }; },
+    /** Always consume the record; true only for an exact, fresh fingerprint match. */
+    claim(fingerprint) {
+      const entry = verified;
+      verified = null;
+      return entry !== null && entry.fingerprint === fingerprint && fresh(entry);
+    },
+  });
+}
+
 function resolvedObservationAuthority(options, engine, baseRun) {
   const authority = options.daemonAuthority
     ?? resolveDockerDaemonContext({ engine, runCommand: baseRun });
@@ -642,6 +679,9 @@ function resolvedObservationAuthority(options, engine, baseRun) {
       || !DIGEST_PATTERN.test(authority?.fingerprint ?? '')
       || !DIGEST_PATTERN.test(authority?.daemonFingerprint ?? '')) {
     throw Object.assign(new Error('Docker pinned daemon authority is invalid'), { category: 'identity_changed' });
+  }
+  if (options.daemonAuthority && options.daemonEvidenceChain?.claim(authority.daemonFingerprint)) {
+    return authority;
   }
   const currentDaemon = observeResolvedDockerDaemonEvidence({
     engine, runCommand: baseRun, engineGlobalArgs: authority.engineGlobalArgs,
@@ -660,6 +700,10 @@ function unavailableObservation(engine, selectors, ambiguities) {
   };
 }
 function recheckResolvedDaemon(context, authority) {
+  // A pinned observation always consumed any record when it began (claim), so
+  // the chain is empty here; only a clean, matching after-check re-arms it.
+  const chain = context.options.daemonAuthority ? context.options.daemonEvidenceChain : undefined;
+  const stamp = chain?.stamp();
   try {
     const daemonAfter = observeResolvedDockerDaemonEvidence({
       engine: context.engine, runCommand: context.baseRun, engineGlobalArgs: authority.engineGlobalArgs,
@@ -667,6 +711,8 @@ function recheckResolvedDaemon(context, authority) {
     if (daemonAfter.fingerprint !== authority.daemonFingerprint) {
       context.ambiguities.push({ category: 'inventory_drift',
         operation: dockerDaemonDriftOperation(authority, daemonAfter) });
+    } else if (context.ambiguities.length === 0) {
+      chain?.record(authority.daemonFingerprint, stamp);
     }
   } catch (error) {
     context.ambiguities.push(commandAmbiguity(error, { operation: 'Docker daemon/context authority reinspection' }));

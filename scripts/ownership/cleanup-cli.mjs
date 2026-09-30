@@ -329,6 +329,22 @@ function executionInputs(request) {
   };
 }
 
+/**
+ * Docker observation options for one inventory load. The pinned daemon
+ * authority and the runtime's daemon evidence chain (R5-B phase 2b) are
+ * forwarded exactly as the runtime supplied them.
+ */
+export function dockerInventoryOptions(request, inventoryRequest, engine) {
+  return {
+    engine, sharedImmutableIdentities: request.sharedImmutableIdentities,
+    protectedProjects: request.protectedProjects, dataVolumeNames: request.dataVolumeNames,
+    legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
+    daemonAuthority: inventoryRequest.daemonAuthority,
+    daemonEvidenceChain: inventoryRequest.daemonEvidenceChain,
+    commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
+  };
+}
+
 function inventoryLoader(request, inputs, lockOwnerDigest) {
   const engine = executionEngine(request.engine);
   assertHostOnlyOptions(request, engine);
@@ -340,13 +356,7 @@ function inventoryLoader(request, inputs, lockOwnerDigest) {
     ownershipContract: inputs.ownershipContract,
     ownershipContractDigest: inputs.ownershipContractDigest,
     dockerAdapter: cleanupInventoryAdapter(engine),
-    dockerOptions: {
-      engine, sharedImmutableIdentities: request.sharedImmutableIdentities,
-      protectedProjects: request.protectedProjects, dataVolumeNames: request.dataVolumeNames,
-      legacyFixtureWitnessDigest: request.legacyFixtureWitnessDigest,
-      daemonAuthority: inventoryRequest.daemonAuthority,
-      commandOptions: { timeoutMs: request.timeoutMs, maxOutputBytes: request.maxOutputBytes },
-    },
+    dockerOptions: dockerInventoryOptions(request, inventoryRequest, engine),
     registrationRoot: path.join(path.resolve(request.runtimeDirectory), 'ownership'),
     hostOptions: {
       runtimeDirectory: request.runtimeDirectory, checkoutRoot: request.checkoutRoot,

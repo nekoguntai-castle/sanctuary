@@ -1,7 +1,7 @@
 # Install and release-lane speed-up — design (R5-B)
 
 **Date:** 2026-09-29
-**Status:** phase 1 merged (#1339); phase 2a in review; phases 2b and 3 not started.
+**Status:** phase 1 merged (#1339); phase 2a merged (#1341); phase 2b in review; phase 3 not started.
 **Parent plan:** `tasks/ci-speedup-analysis-2026-09-29.md`, item R5-B.
 
 The plan scoped R5-B as "cache the old-release image builds with the gha
@@ -185,6 +185,34 @@ reinspection inside the runtime's `mutate`. All three runtimes that drive
 - Contract for any future runtime: `mutate` must call `reinspectBeforeMutation`
   or `authorizeReinspection` immediately before mutating, inside its fence
   where it has one.
+
+### Phase 2b — as implemented: chained daemon identity checks
+
+After 2a, Upgrade Baseline cleanup took 277 s over 4,398 engine calls, of
+which about 179 s went to 214 daemon identity checks (`version` + `info`, about
+0.4 s each on rootless Podman even with only 26 images). Every observation
+proved the daemon both before and after.
+
+- `docker-observation.mjs` adds `createDaemonEvidenceChain({ maxAgeMs = 2000 })`.
+  A pinned observation (with `daemonAuthority`) that ends with a clean,
+  matching after-check records it. The next pinned observation may claim that
+  record once, only for the same daemon fingerprint and only within
+  `maxAgeMs`, as its before-check.
+- Every observation still runs its own after-check. Claiming always empties
+  the chain, so the only way to re-arm it is a clean, matching after-check.
+  After any mismatch, error or other ambiguity, the next observation re-proves
+  the daemon before observing.
+- Freshness is measured from when the after-check *began*, and must hold on
+  both the monotonic and the wall clock. The monotonic clock does not advance
+  while a host (for example sora) is suspended.
+- The Docker runtime creates one chain and passes it to `observeAction` and,
+  through the `loadInventory` request, to the authoritative inventory
+  (`cleanup-cli.mjs` `dockerInventoryOptions`, which is unit-tested to forward
+  both the pinned authority and the chain). Unpinned observations, operator recovery and pre-approval
+  inventories keep full brackets.
+- Residual gap, accepted: a daemon swapped A→B→A entirely between one
+  observation's after-check and the next observation's after-check, within
+  `maxAgeMs`. The former before-check covered only part of that window.
 
 ### Phase 3 — Gateway production-dependency stage
 

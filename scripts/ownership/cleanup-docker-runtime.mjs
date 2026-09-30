@@ -4,7 +4,7 @@ import { executeDockerMutation } from './cleanup-docker-executor.mjs';
 import { canonicalSha256 } from './canonical-json.mjs';
 import { runCleanupCommand } from './cleanup-command.mjs';
 import { resolveDockerDaemonContext } from './cleanup-execution-context.mjs';
-import { observeDockerResources } from './docker-observation.mjs';
+import { createDaemonEvidenceChain, observeDockerResources } from './docker-observation.mjs';
 import { buildCleanupInventoryExecutionContext } from './cleanup-inventory.mjs';
 import { acquireRegistrationFence, releaseRegistrationFence } from './registration.mjs';
 import { runSupervisedCleanupCommand } from './cleanup-supervisor.mjs';
@@ -105,6 +105,9 @@ export function createCleanupDockerRuntime({
     plan, deploymentManifest, initialRegistrations, authority, engine, observationOptions,
   );
   const fenced = registrationFence(registrationRoot, withRegistrationFence);
+  // One chain per runtime: consecutive pinned observations share daemon
+  // identity checks (docker-observation.mjs createDaemonEvidenceChain).
+  const daemonEvidenceChain = createDaemonEvidenceChain();
   const registrations = () => loadRegistrations();
   const loadVolumeRegistrationProof = async ({ action }) => volumeRegistrationProof(
     withDeploymentId(action, plan.deploymentId), registrations(), deploymentManifest.composeProjectName,
@@ -114,12 +117,12 @@ export function createCleanupDockerRuntime({
       plan, deploymentManifest, registrations(), authority, engine, observationOptions,
     );
     return exactInventoryBinding(
-      await loadInventory(Object.freeze({ ...request, daemonAuthority: authority })), plan,
+      await loadInventory(Object.freeze({ ...request, daemonAuthority: authority, daemonEvidenceChain })), plan,
     );
   };
   const observeAction = async ({ action, selectors }) => observeDockerResources({
     ...observationOptions, engine, selectors, registrations: registrations(),
-    daemonAuthority: authority,
+    daemonAuthority: authority, daemonEvidenceChain,
   });
   const reloadAuthority = createDockerAuthorityReloader({
     approvedActions: plan.actions, loadInventory: authoritativeInventory,
