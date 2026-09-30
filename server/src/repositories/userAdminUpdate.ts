@@ -5,9 +5,8 @@ import {
   getAdminSessionInvalidationReason,
   type AdminUpdateTransitions,
 } from '../utils/adminSessionInvalidation';
-import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../utils/prismaSerializableConflict';
 
-const MAX_ADMIN_FLOOR_ATTEMPTS = 3;
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -116,21 +115,9 @@ async function attemptAdminSecurityUpdate<T extends Prisma.UserSelect>(
 async function executeWithAdminFloorRetry<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
-  for (let attempt = 1; attempt <= MAX_ADMIN_FLOOR_ATTEMPTS; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)) throw error;
-      if (attempt === MAX_ADMIN_FLOOR_ATTEMPTS) {
-        throw new ConflictError(
-          'Administrator roles changed concurrently; please retry',
-        );
-      }
-    }
-  }
-
-  /* v8 ignore next -- every loop path returns or throws */
-  throw new ConflictError('Administrator roles changed concurrently; please retry');
+  return withSerializableConflictRetry(operation, {
+    onExhausted: () => new ConflictError('Administrator roles changed concurrently; please retry'),
+  });
 }
 
 /**

@@ -1,11 +1,10 @@
 import { ConflictError } from '../../errors';
 import { transferRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
-import { isSerializableTransactionConflict } from '../../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../../utils/prismaSerializableConflict';
 import type { PrismaTx } from './types';
 
 const log = createLogger('TRANSFER:SVC');
-const MAX_SERIALIZABLE_ATTEMPTS = 3;
 
 interface SerializableRetryOptions {
   operation: 'initiation' | 'confirmation';
@@ -21,21 +20,14 @@ export async function withSerializableRetry<T>(
   options: SerializableRetryOptions,
   attemptTransaction: (tx: PrismaTx) => Promise<T>,
 ): Promise<T> {
-  for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
-    try {
-      return await transferRepository.withSerializableTransaction(attemptTransaction);
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)) throw error;
-      if (attempt === MAX_SERIALIZABLE_ATTEMPTS) {
-        throw new ConflictError(options.exhaustedMessage);
-      }
-      log.debug('Retrying serializable transfer transaction', {
+  return withSerializableConflictRetry(
+    () => transferRepository.withSerializableTransaction(attemptTransaction),
+    {
+      onExhausted: () => new ConflictError(options.exhaustedMessage),
+      onRetry: attempt => log.debug('Retrying serializable transfer transaction', {
         operation: options.operation,
         attempt,
-      });
-    }
-  }
-
-  /* v8 ignore next -- every loop path returns or throws */
-  throw new ConflictError(options.exhaustedMessage);
+      }),
+    },
+  );
 }

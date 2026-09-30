@@ -1,7 +1,7 @@
 import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Group, GroupMember } from '../generated/prisma/client';
 import { ConflictError } from '../errors/ApiError';
-import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../utils/prismaSerializableConflict';
 
 export interface SetMembersResult {
   addedUserIds: string[];
@@ -14,7 +14,6 @@ export interface AtomicGroupResult {
   affectedWalletIds: string[];
 }
 
-const MAX_GROUP_TRANSACTION_ATTEMPTS = 3;
 
 const membersInclude = {
   members: {
@@ -160,18 +159,9 @@ async function replaceMembersInTransaction(
 }
 
 async function withGroupTransactionRetry<T>(operation: () => Promise<T>): Promise<T> {
-  for (let attempt = 1; attempt <= MAX_GROUP_TRANSACTION_ATTEMPTS; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)) throw error;
-      if (attempt === MAX_GROUP_TRANSACTION_ATTEMPTS) {
-        throw new ConflictError('Group changed concurrently; please retry');
-      }
-    }
-  }
-  /* v8 ignore next -- every loop path returns or throws. */
-  throw new ConflictError('Group changed concurrently; please retry');
+  return withSerializableConflictRetry(operation, {
+    onExhausted: () => new ConflictError('Group changed concurrently; please retry'),
+  });
 }
 
 export async function update(

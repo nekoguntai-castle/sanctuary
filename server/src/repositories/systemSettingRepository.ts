@@ -6,7 +6,7 @@
 
 import prisma from '../models/prisma';
 import { ConflictError } from '../errors/ApiError';
-import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../utils/prismaSerializableConflict';
 import type { SystemSetting } from '../generated/prisma/client';
 import {
   isOperationalSystemSettingKey,
@@ -255,20 +255,6 @@ export async function setMany(
 
 export type SettingValue = { key: string; value: string };
 
-const ATOMIC_UPDATE_BACKOFF_MS = 10;
-const ATOMIC_UPDATE_BACKOFF_JITTER_MS = 20;
-
-/**
- * Wait before replaying a conflicted attempt. An immediate retry can take its
- * snapshot before the conflicting peer's commit is visible, conflict again and
- * exhaust every attempt (the adminSettingsConcurrency CI flake, run 19449).
- */
-function conflictBackoff(attempt: number): Promise<void> {
-  const delayMs = ATOMIC_UPDATE_BACKOFF_MS * attempt
-    + Math.floor(Math.random() * ATOMIC_UPDATE_BACKOFF_JITTER_MS);
-  return new Promise(resolve => setTimeout(resolve, delayMs));
-}
-
 /**
  * Derive and commit related settings from one serializable snapshot.
  * The synchronous derive callback must be free of side effects: conflicts replay
@@ -278,30 +264,23 @@ function conflictBackoff(attempt: number): Promise<void> {
 export async function updateAtomically(
   derive: (current: SettingValue[]) => SettingValue[],
 ): Promise<SettingValue[]> {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await prisma.$transaction(async (tx) => {
-        const query = {
-          where: { key: { not: { startsWith: OPERATIONAL_SYSTEM_SETTING_PREFIX } } },
-          orderBy: { key: 'asc' as const },
-        };
-        const rows = derive(await tx.systemSetting.findMany(query));
-        for (const { key } of rows) assertGenericMutationAllowed(key);
-        for (const { key, value } of rows) {
-          await tx.systemSetting.upsert({
-            where: { key }, update: { value }, create: { key, value },
-          });
-        }
-        return tx.systemSetting.findMany(query);
-      }, { isolationLevel: 'Serializable' });
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)) throw error;
-      if (attempt === 3) {
-        throw new ConflictError('Settings changed concurrently; please retry');
+  return withSerializableConflictRetry(
+    () => prisma.$transaction(async (tx) => {
+      const query = {
+        where: { key: { not: { startsWith: OPERATIONAL_SYSTEM_SETTING_PREFIX } } },
+        orderBy: { key: 'asc' as const },
+      };
+      const rows = derive(await tx.systemSetting.findMany(query));
+      for (const { key } of rows) assertGenericMutationAllowed(key);
+      for (const { key, value } of rows) {
+        await tx.systemSetting.upsert({
+          where: { key }, update: { value }, create: { key, value },
+        });
       }
-      await conflictBackoff(attempt);
-    }
-  }
+      return tx.systemSetting.findMany(query);
+    }, { isolationLevel: 'Serializable' }),
+    { onExhausted: () => new ConflictError('Settings changed concurrently; please retry') },
+  );
 }
 
 /**

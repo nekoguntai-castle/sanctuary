@@ -10,7 +10,7 @@ import type { User } from '../generated/prisma/client';
 import { ConflictError, NotFoundError } from '../errors';
 import { normalizeEmail } from '../utils/email';
 import { normalizeUsername } from '../utils/username';
-import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../utils/prismaSerializableConflict';
 import {
   executeAdminUserDelete,
   executeAdminUserUpdate,
@@ -21,7 +21,6 @@ import { buildUserWalletAccessWhere } from './userWalletAccessQuery';
 export type { AdminUpdateTransitions } from '../utils/adminSessionInvalidation';
 export type { AdminUserUpdateData } from './userAdminUpdate';
 
-const MAX_PREFERENCE_UPDATE_ATTEMPTS = 3;
 const PREFERENCE_USER_SELECT = {
   id: true,
   username: true,
@@ -271,19 +270,9 @@ export async function updatePreferencesAtomically<T>(
   id: string,
   updater: PreferenceUpdater<T>,
 ) {
-  for (let attempt = 1; attempt <= MAX_PREFERENCE_UPDATE_ATTEMPTS; attempt += 1) {
-    try {
-      return await attemptPreferenceUpdate(id, updater);
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)) throw error;
-      if (attempt === MAX_PREFERENCE_UPDATE_ATTEMPTS) {
-        throw new ConflictError('Preferences changed concurrently; please retry');
-      }
-    }
-  }
-
-  /* v8 ignore next -- every loop path returns or throws */
-  throw new ConflictError('Preferences changed concurrently; please retry');
+  return withSerializableConflictRetry(() => attemptPreferenceUpdate(id, updater), {
+    onExhausted: () => new ConflictError('Preferences changed concurrently; please retry'),
+  });
 }
 
 /**

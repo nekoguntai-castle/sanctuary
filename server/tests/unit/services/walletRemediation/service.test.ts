@@ -220,6 +220,58 @@ describe('wallet remediation service', () => {
     }));
   });
 
+  function approvalConflictFixture() {
+    const legacy = snapshot();
+    const document = buildWalletRemediationDocument(legacy);
+    const digest = remediationDigest(document);
+    const proposalId = remediationProposalId(digest);
+    repository.lockApprovalGraph.mockResolvedValue({
+      id: proposalId, walletId: legacy.wallet.id, proposalDigest: digest,
+      document, createdAt: new Date('2026-08-11T00:00:00Z'), events: [],
+    });
+    repository.appendEvent.mockResolvedValue({ createdAt: new Date('2026-08-11T00:01:00Z') });
+    return { legacy, digest, proposalId };
+  }
+  const serializationConflict = () => Object.assign(new Error('could not serialize access'), {
+    name: 'DriverAdapterError',
+    cause: { kind: 'TransactionWriteConflict', originalCode: '40001' },
+  });
+
+  it('replays a conflicted approval from a fresh transaction without recording failure', async () => {
+    const { legacy, digest, proposalId } = approvalConflictFixture();
+    repository.loadSnapshot.mockResolvedValueOnce(legacy).mockResolvedValueOnce(snapshot(true));
+    repository.withSerializableTransaction
+      .mockRejectedValueOnce(serializationConflict())
+      .mockImplementation((callback) => callback({ tx: true }));
+
+    await expect(approveWalletRemediationProposal(
+      legacy.wallet.id, proposalId, digest, actor,
+    )).resolves.toMatchObject({ state: 'applied' });
+    expect(repository.withSerializableTransaction).toHaveBeenCalledTimes(2);
+    expect(repository.appendEvent).not.toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining({ kind: 'failed' }),
+    );
+  });
+
+  it('records one failure and asks for a fresh preview after every approval attempt conflicts', async () => {
+    const { legacy, digest, proposalId } = approvalConflictFixture();
+    repository.loadSnapshot.mockResolvedValue(legacy);
+    repository.withSerializableTransaction
+      .mockRejectedValueOnce(serializationConflict())
+      .mockRejectedValueOnce(serializationConflict())
+      .mockRejectedValueOnce(serializationConflict())
+      .mockImplementation((callback) => callback({ tx: true }));
+
+    await expect(approveWalletRemediationProposal(
+      legacy.wallet.id, proposalId, digest, actor,
+    )).rejects.toThrow('Remediation approval conflicted; create a fresh preview');
+    expect(repository.withSerializableTransaction).toHaveBeenCalledTimes(4);
+    expect(repository.appendEvent).toHaveBeenCalledTimes(1);
+    expect(repository.appendEvent).toHaveBeenCalledWith({ tx: true }, expect.objectContaining({
+      kind: 'failed', details: { reasonCode: 'approval_rejected' },
+    }));
+  });
+
   it('exports the recoverable original state only with a verified event chain', async () => {
     const legacy = snapshot();
     const document = buildWalletRemediationDocument(legacy);

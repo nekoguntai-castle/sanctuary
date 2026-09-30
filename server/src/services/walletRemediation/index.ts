@@ -1,6 +1,6 @@
 import { ConflictError, InvalidInputError, NotFoundError, WalletNotFoundError } from '../../errors';
 import { walletRemediationRepository } from '../../repositories';
-import { isSerializableTransactionConflict } from '../../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../../utils/prismaSerializableConflict';
 import { createLogger } from '../../utils/logger';
 import {
   remediationDigest,
@@ -19,7 +19,6 @@ import type {
   WalletRemediationProposalView,
 } from './types';
 
-const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const log = createLogger('WALLET_REMEDIATION:SVC');
 
 function validateProposalIdentity(proposalId: string, proposalDigest: string): void {
@@ -237,21 +236,16 @@ export async function approveWalletRemediationProposal(
   actor: WalletRemediationActor,
 ): Promise<WalletRemediationProposalView> {
   validateProposalIdentity(proposalId, proposalDigest);
-  for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
-    try {
-      return await approveAttempt(walletId, proposalId, proposalDigest, actor);
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)) {
-        await recordFailedApproval(walletId, proposalId, proposalDigest, actor);
-        throw error;
-      }
-      if (attempt === MAX_SERIALIZABLE_ATTEMPTS) {
-        await recordFailedApproval(walletId, proposalId, proposalDigest, actor);
-        throw new ConflictError('Remediation approval conflicted; create a fresh preview');
-      }
-    }
+  try {
+    return await withSerializableConflictRetry(
+      () => approveAttempt(walletId, proposalId, proposalDigest, actor),
+      { onExhausted: () => new ConflictError('Remediation approval conflicted; create a fresh preview') },
+    );
+  } catch (error) {
+    // Reached only by a non-conflict failure or an exhausted conflict retry.
+    await recordFailedApproval(walletId, proposalId, proposalDigest, actor);
+    throw error;
   }
-  throw new ConflictError('Remediation approval conflicted');
 }
 
 export async function cancelWalletRemediationProposal(

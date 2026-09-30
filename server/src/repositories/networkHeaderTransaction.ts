@@ -1,8 +1,7 @@
 import { Prisma } from '../generated/prisma/client';
 import prisma, { type PrismaTxClient } from '../models/prisma';
-import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+import { withSerializableConflictRetry } from '../utils/prismaSerializableConflict';
 
-const MAX_NETWORK_HEADER_TRANSACTION_ATTEMPTS = 3;
 let transactionTail: Promise<void> = Promise.resolve();
 
 async function withLocalTransactionSlot<T>(operation: () => Promise<T>): Promise<T> {
@@ -28,21 +27,14 @@ async function withLocalTransactionSlot<T>(operation: () => Promise<T>): Promise
 export async function withNetworkHeaderSerializableTransaction<T>(
   operation: (tx: PrismaTxClient) => Promise<T>,
 ): Promise<T> {
-  for (let attempt = 1; attempt <= MAX_NETWORK_HEADER_TRANSACTION_ATTEMPTS; attempt += 1) {
-    try {
-      return await withLocalTransactionSlot(() => (
-        prisma.$transaction(operation, {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        })
-      ));
-    } catch (error) {
-      if (!isSerializableTransactionConflict(error)
-        || attempt === MAX_NETWORK_HEADER_TRANSACTION_ATTEMPTS) {
-        throw error;
-      }
-    }
-  }
-
-  /* v8 ignore next -- every loop path returns or throws. */
-  throw new Error('Network-header transaction retry exhausted');
+  // The backoff between attempts runs outside the local transaction slot, so a
+  // waiting retry never holds up another network's header transaction.
+  return withSerializableConflictRetry(
+    () => withLocalTransactionSlot(() => (
+      prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      })
+    )),
+    { onExhausted: error => error },
+  );
 }
