@@ -18,7 +18,8 @@
 # v0.8.64-rc1 and cost the release four more candidates.
 #
 # A script file cannot reproduce that: it runs under this shebang with
-# `set -euo pipefail`, so the first failure stops the run and propagates.
+# `set -euo pipefail`, and run-parallel-suites.sh fails the run if any suite
+# fails, so every failure propagates.
 #
 # The list is a glob, not an enumeration, for the second half of the same bug:
 # install-test.yml listed fifteen suites while release-candidate.yml listed ten,
@@ -42,12 +43,6 @@ export SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime
 # one-package, lifecycle-disabled parser boundary instead of the monorepo tree.
 scripts/ci/retry-command.sh "CI YAML parser dependencies" npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false
 
-run_suite() {
-  local suite="$1"
-  echo "=== ${suite}"
-  scripts/ci/run-install-unit-suite.sh "$suite"
-}
-
 shopt -s nullglob
 suites=(tests/install/unit/*.test.sh)
 shopt -u nullglob
@@ -57,18 +52,21 @@ if [ "${#suites[@]}" -eq 0 ]; then
   exit 1
 fi
 
-for suite in "${suites[@]}"; do
-  run_suite "$suite"
-done
-
 # CI-composition suites install-test.yml has always run alongside the install
 # ones. They are named explicitly because they are not install unit tests and
 # tests/ci/ holds many more that belong to other lanes.
-for suite in \
-  tests/ci/check-workflow-composition.test.sh \
+ci_suites=(
+  tests/ci/check-workflow-composition.test.sh
   tests/ci/relay-job-diagnosability.test.sh
-do
-  run_suite "$suite"
-done
+)
 
-echo "install unit suites passed (${#suites[@]} install + 2 ci-composition)"
+# The suites are independent (each keeps its fixtures, project locks and fake
+# endpoints under its own temp dirs), so they run four at a time with one log
+# each (R7 of tasks/ci-speedup-analysis-2026-09-29.md). Every suite still runs,
+# and the run fails, naming each failed suite and printing its log, if any of
+# them failed.
+for suite in "${suites[@]}" "${ci_suites[@]}"; do
+  printf 'scripts/ci/run-install-unit-suite.sh %q\n' "$suite"
+done | scripts/ci/run-parallel-suites.sh "${SANCTUARY_INSTALL_UNIT_LOG_DIR:-.tmp/install-unit-suites}"
+
+echo "install unit suites passed (${#suites[@]} install + ${#ci_suites[@]} ci-composition)"

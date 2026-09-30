@@ -17,21 +17,50 @@ recorded reason for not combining them into one PR.
 |---|---|---|---|
 | R2 — drop the DIND-era Playwright ordering edges | merged | #1335 | `b6fb458621` |
 | R1 + R3 — render E2E workers; concurrent frontend coverage shards (combined by request) | merged | #1336 | `064e8854b4` |
-| R4 — concurrent verify-vectors mutation groups | **deferred, still wanted** — ship with the next `verify-vectors.yml` change | — | — |
+| R4 — concurrent verify-vectors mutation groups | dropped — measured no gain under the job's 8-CPU cap | #1344 (closed) | — |
 | R5-A — parallel upgrade baselines | dropped — PRs already run one baseline | — | — |
 | R5-B — install-lane speed-up | redesigned: see `tasks/ci-install-lane-speedup-design-2026-09-29.md` | — | — |
-| R6/R7 | optional | — | — |
+| R6 — deduplicate install unit tests | dropped — neither workflow's PR scope covers the other's | — | — |
+| R7 — parallel shell suites | in review | this PR | — |
 | R8, §6 | out of scope (runner-infra / deferred decision) | — | — |
 
-**R4 deferral.** `.github/workflows/verify-vectors.yml` is listed in
-`scripts/verify-addresses/sourceManifest.ts`, so any edit to it must ship with
-regenerated address vectors (`tests/scripts/verifyAddressesGenerated.test.ts`).
-The concurrent layout was proven locally: fee-policy alone beside the other six
-proofs (root proofs first, so fee-policy's sandbox exists before any other server
-proof ends), 470 s on 8 CPUs against 11–14 min sequential in CI, peak RSS
-6.1 GiB (sora's job limit is 10 GiB), and mutant-for-mutant identical results on
-all seven reports. Bundle it with the next change that regenerates vectors
-anyway (for example the `npm ci` retry deferred in #1009).
+**R4 drop.** #1344 ran fee-policy alone beside the other six proofs in sequence
+(fee-policy got its own `tempDirName` parent so the groups could not race).
+Results were identical and every check passed, but on kumo the mutation phase
+took 10:19, against 10:20 sequential on main (run 19547, same host). kumo's
+snapshots show why:
+
+| Layout | CPU use | CPU work | Throttling |
+|---|---|---|---|
+| Sequential (main) | ~5.3 of the job's 8 CPUs on average | ~3.3k CPU-s | ~2 s |
+| Concurrent (#1344) | the full 8.0-CPU cap from 07:10 to 07:17 | ~4.9k CPU-s | 351 s |
+
+The host was not saturated (load ~12 on 16 CPUs); the job's `--cpus=8` quota was
+the limit. The local 482 s measurement pinned the run to 8 host CPUs with
+`taskset`, which is not the same as a cgroup CPU quota, so it did not predict CI.
+Revisit only with a larger per-job CPU quota, and measure under
+`systemd-run --user -p CPUQuota=800%` rather than `taskset`.
+
+**R6 drop.** Neither workflow's PR path filter covers the other's:
+- `release-candidate.yml` has no `tests/ci/**` path, so
+  `tests/ci/check-workflow-composition.test.sh` triggers only install-test.
+- install-test's filter lists `scripts/ci/` files individually and omits
+  `scripts/ci/run-install-unit-suite.sh`, which triggers only release-candidate.
+
+Removing either copy would lose coverage, and R7 halves the duplicated cost
+anyway.
+
+**R7 delivery.** `scripts/ci/run-parallel-suites.sh` runs independent suites four
+at a time, one log per suite. It runs every suite to completion, names each
+failure and prints its log, and fails if any suite failed or did not finish. It
+is used by quality.yml's "CI classifier tests" (80 commands; the dependency
+install and syntax sweep stay serial ahead of it) and by
+`run-install-unit-tests.sh` (20 suites).
+
+Measured locally on the same host:
+- Classifier step: 317 s → 173 s. The parallel block itself took 61–63 s.
+- Install unit runner: 262 s → 134–140 s.
+- Four consecutive runs of each passed.
 
 **R5-A drop.** `PR_UPGRADE_BASELINE_REFS='latest-stable'` already limits PRs to one
 baseline. Two baselines run only on release, push and schedule runs, so

@@ -1319,8 +1319,9 @@ assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
   'tests/install/unit/*.test.sh'
 
 assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
-  "the suite runner aborts on the first failing suite" \
-  'set -euo pipefail'
+  "the suite runner fails when any suite fails" \
+  'set -euo pipefail' \
+  '| scripts/ci/run-parallel-suites.sh'
 
 # Production retains `unless-stopped` by default, while CI can atomically
 # override every long-running Sanctuary service to `no`. This prevents an

@@ -672,6 +672,7 @@ jobs:
           npm run test:ownership
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-shards.sh
+          bash -n scripts/ci/run-parallel-suites.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/install-test-ports.sh
           bash -n scripts/ci/docker-endpoint-lib.sh
@@ -771,6 +772,7 @@ jobs:
           bash -n tests/ci/check-integration-db-guard.test.sh
           bash -n tests/ci/ensure-toolchains.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
+          bash -n tests/ci/run-parallel-suites.test.sh
           bash -n tests/ci/install-test-ports.test.sh
           bash -n tests/ci/integration-compose-isolation.test.sh
           bash -n tests/ci/install-semgrep.test.sh
@@ -863,6 +865,11 @@ jobs:
           node tests/ci/forward-live-annotations.test.mjs
           node --test tests/ci/report-commit-workflows.test.mjs tests/ci/report-commit-workflows.transport.test.mjs
           node --test tests/ci/cleanup-docker-real-image-age.test.mjs
+          # Independent suites run four at a time, one log per suite under
+          # $DIAGNOSTIC_DIR/ci-classifier-suites (R7 of
+          # tasks/ci-speedup-analysis-2026-09-29.md). Every suite must use its
+          # own temp dirs, locks and ports; shared setup belongs above this line.
+          scripts/ci/run-parallel-suites.sh "$DIAGNOSTIC_DIR/ci-classifier-suites" <<'QUALITY_CI_CLASSIFIER_SUITES'
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
           bash tests/ci/registered-staging.test.sh
@@ -876,10 +883,8 @@ jobs:
           bash tests/ci/plan-test-run.test.sh
           bash tests/ci/run-lane.test.sh
           # portability.test.sh has explicit PROBE markers added at each
-          # stage (see tests/ci/portability.test.sh) so a Forgejo-runner
-          # failure surfaces the last marker before death in the step log.
-          # If the runner reproduces the earlier 5-7s failure, the user
-          # can paste the truncated log to identify the failing stage.
+          # stage (see tests/ci/portability.test.sh); on failure its whole log,
+          # ending at the last marker, is printed in the step log.
           bash tests/ci/portability.test.sh
           bash tests/ci/check-provider-leaks.test.sh
           bash scripts/ci/check-provider-leaks.sh
@@ -900,6 +905,7 @@ jobs:
           bash tests/ci/check-integration-db-guard.test.sh
           bash tests/ci/ensure-toolchains.test.sh
           bash tests/ci/frontend-coverage-scripts.test.sh
+          bash tests/ci/run-parallel-suites.test.sh
           bash tests/ci/install-test-ports.test.sh
           bash tests/ci/integration-compose-isolation.test.sh
           bash tests/ci/install-semgrep.test.sh
@@ -952,6 +958,7 @@ jobs:
           # One canonical aggregate owns every release policy/distribution test.
           # Keep this invocation converged with package.json as the suite grows.
           npm run test:release-distribution
+          QUALITY_CI_CLASSIFIER_SUITES
           QUALITY_CI_CLASSIFIER_TESTS
 
       - name: Write CI classifier failure breadcrumb
