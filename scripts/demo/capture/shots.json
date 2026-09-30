@@ -1,0 +1,21 @@
+{
+  "$comment": "Docs screenshot manifest for npm run demo:capture. Routes may reference seeded wallets as {wallet:<name>} (names from scripts/demo/manifest.json). overlay=funded swaps in the balances below for wallet list/detail and balance history only; every other response is the live demo instance's real data.",
+  "overlays": {
+    "funded": {
+      "balances": {
+        "Everyday spending": 4210337,
+        "Taproot savings": 58400000,
+        "Family vault": 125000000
+      }
+    }
+  },
+  "shots": [
+    { "name": "dashboard", "route": "/", "overlay": "funded" },
+    { "name": "wallet", "route": "/wallets/{wallet:Everyday spending}" },
+    { "name": "wallet-utxos", "route": "/wallets/{wallet:Family vault}", "click": "UTXOs" },
+    { "name": "wallet-addresses", "route": "/wallets/{wallet:Everyday spending}", "click": "Addresses" },
+    { "name": "devices", "route": "/devices" },
+    { "name": "settings", "route": "/settings" },
+    { "name": "admin-node-config", "route": "/admin/node-config" }
+  ]
+}

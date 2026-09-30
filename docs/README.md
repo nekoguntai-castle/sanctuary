@@ -32,6 +32,7 @@ Procedural guides for operators and developers.
 - [Runtime secrets](how-to/runtime-secrets.md) — runtime secret management
 - [Docker deployment](how-to/docker.md) — container build, runtime, HTTPS, and troubleshooting guidance
 - [Release-candidate canary](how-to/release-candidate-canary.md) — validate an exact RC against an affected fleet and produce external signoff evidence
+- [Demo instance and docs screenshots](how-to/demo-instance.md) — seed public test-vector wallets into a local stack and regenerate README/docs screenshots
 
 ## Reference
 

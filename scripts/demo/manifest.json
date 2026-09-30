@@ -1,0 +1,126 @@
+{
+  "$comment": "Demo instance seed. PUBLIC data only: every key below is derived from a published BIP39 test vector (see docs/how-to/demo-instance.md). Anyone can spend from these seeds, so they must never hold real funds. tests/scripts/demoManifest.test.ts re-derives every xpub and fingerprint from the mnemonics listed here. Each single-sig wallet uses a different seed because wallet import rejects a second wallet with the same device-fingerprint set (server/src/services/walletImport/deviceResolution.ts checkDuplicateWallet).",
+  "testVectorMnemonics": {
+    "73c5da0a": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "b8688df1": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+    "28645006": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above"
+  },
+  "demoUser": {
+    "username": "demo",
+    "preferences": {
+      "darkMode": true,
+      "theme": "sanctuary",
+      "background": "zen",
+      "unit": "sats",
+      "fiatCurrency": "USD",
+      "showFiat": true,
+      "priceProvider": "auto"
+    }
+  },
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@demo.invalid",
+      "isAdmin": false
+    },
+    {
+      "username": "bob",
+      "email": "bob@demo.invalid",
+      "isAdmin": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "Family",
+      "description": "Household signers for the family vault",
+      "purpose": "demo",
+      "members": [
+        "alice",
+        "bob"
+      ]
+    }
+  ],
+  "devices": [
+    {
+      "fingerprint": "73c5da0a",
+      "label": "Coldcard Mk4"
+    },
+    {
+      "fingerprint": "b8688df1",
+      "label": "Trezor Safe 5"
+    },
+    {
+      "fingerprint": "28645006",
+      "label": "Ledger Flex"
+    }
+  ],
+  "wallets": [
+    {
+      "name": "Everyday spending",
+      "network": "mainnet",
+      "descriptor": "wpkh([73c5da0a/84h/0h/0h]xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/<0;1>/*)",
+      "firstAddress": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+      "labels": [
+        {
+          "name": "First deposit",
+          "color": "#22c55e",
+          "txids": [
+            "0aa80eddc9a0af25709dae5db5f270ac39a9ecf210c2a0bed5b1f9a70c8b0fa5"
+          ]
+        },
+        {
+          "name": "Exchange withdrawal",
+          "color": "#3b82f6",
+          "txids": [
+            "8a9cc9253407b3f5842a3a7bd1308f9ae84a79c51126af48abe5ec16284c8cdf"
+          ]
+        },
+        {
+          "name": "UTXO cleanup",
+          "color": "#a855f7",
+          "txids": [
+            "9f3dbe0da718398178955cbe386813f8f6ed709f525fb5bf2885ba3545276ed3"
+          ]
+        },
+        {
+          "name": "Swept",
+          "color": "#f97316",
+          "txids": [
+            "9fe5136fd7fd122f2f10112027b902dc6ec9394f08aeea7e2f41a01a00b787ca"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Taproot savings",
+      "network": "mainnet",
+      "descriptor": "tr([b8688df1/86h/0h/0h]xpub6BkxazXaWjQEtREs1W3b33tTiuiKJfeyaE7LZgLNBjLcKh9s3d5U6r5tM3Fuuk5UDX4fUji9GAwo7vqGGMRVnDaj52W2ANPCyLHNmkbZL4H/<0;1>/*)",
+      "firstAddress": "bc1pgp80xvc97ssyphukzd5w6gmz2z45dzawl8sn3g6r9e95l90yvdfqa9879z",
+      "labels": []
+    },
+    {
+      "name": "Family vault",
+      "network": "mainnet",
+      "descriptor": "wsh(sortedmulti(2,[73c5da0a/48h/0h/0h/2h]xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf/<0;1>/*,[b8688df1/48h/0h/0h/2h]xpub6FQya7zGhR92kacYsNnjreouvnHJMpXYsUXnW6NJJAJRCKsa26TzDy4LdnGhEurr3d6y1J8PJ7EEMKQp74XTqYvmGJNogYXSKDszYHtF8mX/<0;1>/*,[28645006/48h/0h/0h/2h]xpub6DnEBNkSJKBYQmsbhS1sP9cNdtU5c9PLFGCjTJmxicxc13WB8zNNGQazabQpyFAGW5bV9tMko4uBxDxjUKL6dSAcx1tEbgEHtgSqyRsekh6/<0;1>/*))",
+      "labels": [
+        {
+          "name": "Gift from grandma",
+          "color": "#ec4899",
+          "txids": [
+            "5c984b5feb9407dd0376259910839e73b4bb54ef9b6415b8b1d019f323f443e6"
+          ]
+        }
+      ],
+      "shares": [
+        {
+          "username": "alice",
+          "role": "signer"
+        },
+        {
+          "username": "bob",
+          "role": "approver"
+        }
+      ]
+    }
+  ]
+}
