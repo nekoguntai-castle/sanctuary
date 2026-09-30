@@ -9,6 +9,7 @@ import {
   setupDeviceMocks,
   mockCurrentDeviceRole,
 } from '../walletImport.setup';
+import { ConflictError } from '../../../../src/errors/ApiError';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import * as walletImport from '../../../../src/services/walletImport';
 import type { ParsedDescriptor, Network, ScriptType } from '../../../../src/services/bitcoin/descriptorParser';
@@ -545,7 +546,11 @@ export const registerWalletImportDescriptorContracts = () => {
           descriptor,
           name: 'Duplicate Wallet',
         })
-      ).rejects.toThrow('A wallet with these devices already exists: "Existing Wallet"');
+      ).rejects.toSatisfy((error: unknown) =>
+        // A duplicate is a client conflict: it must surface as HTTP 409, not 500.
+        error instanceof ConflictError
+        && error.statusCode === 409
+        && error.message === 'A wallet with these devices already exists: "Existing Wallet"');
     });
 
     it('should allow same device in different wallet configurations', async () => {

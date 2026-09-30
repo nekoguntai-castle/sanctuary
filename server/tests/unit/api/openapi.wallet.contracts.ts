@@ -412,6 +412,8 @@ export function registerOpenApiWalletTests() {
     for (const [path, method] of routes) {
       expectDocumentedMethod(path, method);
     }
+    // A duplicate device set is a client conflict (checkDuplicateWallet → ConflictError).
+    expect(openApiSpec.paths['/wallets/import'].post.responses[409]).toBeDefined();
 
     expect(openApiSpec.components.schemas.WalletImportValidationResponse.properties.format.enum).toEqual([
       ...WALLET_IMPORT_FORMAT_VALUES,

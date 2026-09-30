@@ -5,6 +5,7 @@
  * resolution against existing user devices during wallet import.
  */
 
+import { ConflictError } from '../../errors/ApiError';
 import { deviceRepository, walletRepository } from '../../repositories';
 import type { ParsedDevice, JsonImportDevice } from '../bitcoin/descriptorParser';
 import type { DeviceResolution } from './types';
@@ -119,7 +120,7 @@ export async function checkDuplicateWallet(
     // Check if same set of devices
     if (existingFingerprints.size === newFingerprints.size &&
         [...newFingerprints].every(fp => existingFingerprints.has(fp))) {
-      throw new Error(`A wallet with these devices already exists: "${wallet.name}"`);
+      throw new ConflictError(`A wallet with these devices already exists: "${wallet.name}"`);
     }
   }
 }

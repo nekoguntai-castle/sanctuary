@@ -73,6 +73,7 @@ export const walletImportPaths = {
         201: jsonResponse('Wallet imported', '#/components/schemas/WalletImportResponse'),
         400: apiErrorResponse,
         401: apiErrorResponse,
+        409: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
