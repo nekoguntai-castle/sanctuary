@@ -23,7 +23,7 @@ recorded reason for not combining them into one PR.
 | R6 — deduplicate install unit tests | dropped — neither workflow's PR scope covers the other's | — | — |
 | R7 — parallel shell suites | merged | #1345 | `e62b5101fe` |
 | R8 — runner capacity 2 → 3 on kumo and x300 | merged and rolled out (lifecycle canary run 19596 green) | runner-infra #95 | `e6a038d0e1` |
-| §6 option 2 — no heavy re-runs on push to `main` | in review | this PR | — |
+| §6 option 2 — no heavy re-runs on push to `main` | merged | #1347 | `b910967953` |
 
 **§6 option 2.** Pushes to `main` no longer run `Test Suite`, `Validate Docker
 Images` or `Install Tests` (install-test keeps its prerelease tag trigger, which
@@ -34,9 +34,9 @@ exhaustive scan). `Architecture`, `Code Quality` and `Verify Bitcoin Vectors`
 still run on push: vectors because `check-wallet-safety-classifier.mjs` requires
 funds-safety evidence for every landed commit. Emergency hotfixes pushed
 directly must dispatch the three workflows by hand (`ci-cd-strategy.md`).
-Follow-up, not in this PR: nothing stops a release from being cut while the
-push-to-`main` verify-vectors run for its commit is red, and verify-vectors is
-not a required PR check.
+Follow-up closed 2026-09-30: `Verify Bitcoin Vectors / summary (pull_request)`
+is now a required context on both the `main` and `main-protection` rules, so no
+commit reaches `main` (or a release) without a green verify-vectors PR run.
 
 **R4 drop.** #1344 ran fee-policy alone beside the other six proofs in sequence
 (fee-policy got its own `tempDirName` parent so the groups could not race).

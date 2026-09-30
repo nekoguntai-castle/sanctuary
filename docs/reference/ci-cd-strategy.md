@@ -27,7 +27,8 @@ Because this repository currently has a single human collaborator, the branch pr
 
 Forgejo pull requests are the active merge model for protected `main`. A PR may
 merge only after the exact required contexts `PR Required Checks`,
-`Full Test Summary`, and `Code Quality Required Checks` succeed. The repository
+`Full Test Summary`, `Code Quality Required Checks`, and
+`Verify Bitcoin Vectors / summary` succeed. The repository
 may retain compatibility handling for `merge_group` event payloads, but GitHub
 merge queue is not an operational or authoritative path.
 
@@ -35,29 +36,37 @@ merge queue is not an operational or authoritative path.
 
 Use stable aggregate jobs as branch-protection targets. Do not require path-conditional leaf jobs directly, because docs-only or unrelated PRs can leave those checks absent.
 
-Required for PRs:
+Required for PRs (both the `main` and `main-protection` rules):
 
 - `PR Required Checks`
 - `Full Test Summary`
 - `Code Quality Required Checks`
+- `Verify Bitcoin Vectors / summary` (required since 2026-09-30)
 
-Required for `main` confidence:
+Push runs on `main` (see "Tier 2 - Main Confidence Backstop"):
 
-- `Full Test Summary`
 - `Code Quality Required Checks`
+- `Verify Bitcoin Vectors / summary`
+- `Architecture`, when its paths match
 
 `PR Required Checks` and `Full Test Summary` live in the same `Test Suite`
 workflow. Forgejo pull requests run both the changed-file quick lane and the
 path-aware full lane; `PR Required Checks` fails unless `Full Test Summary`
-succeeds. Pushes to `main` repeat the path-aware full lane against the immutable
-merged commit. This intentionally keeps exhaustive pre-merge validation while
-Forgejo pull requests, rather than a merge queue, are the active merge model.
+succeeds. Pushes to `main` do not repeat it: the squash-merged tree is the tree
+the PR run proved, and the nightly schedule re-proves `main`. This intentionally
+keeps exhaustive pre-merge validation while Forgejo pull requests, rather than a
+merge queue, are the active merge model.
 
-Do not globally require `Validate Docker Images`, `Install Test Summary`, or
-`Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or
-release-gated. They should run when their trigger paths match, including changes
-to their own workflow files, but requiring them globally would block unrelated
-PRs where the workflow never starts.
+`Verify Bitcoin Vectors / summary` can be required because the workflow has no
+path filter, so it starts on every PR, and its `summary` job runs `if: always()`:
+it passes when every proof lane succeeded, or when the scope classifier proved the
+change documentation-only and every lane skipped. Emulator flakes therefore block
+a merge until the whole workflow is re-run under the retrigger discipline in
+`CLAUDE.md`; Forgejo has no single-job re-run.
+
+Do not globally require `Validate Docker Images` or `Install Test Summary`. Those
+workflows are path-gated or release-gated, and requiring them would block
+unrelated PRs where the workflow never starts.
 
 ## PR validation checklist
 
