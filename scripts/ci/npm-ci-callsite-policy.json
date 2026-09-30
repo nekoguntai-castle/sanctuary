@@ -153,6 +153,12 @@
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
     },
     {
+      "file": "tests/ci/gateway-runtime-dependencies.test.cjs",
+      "executable": false,
+      "expectedMatches": 1,
+      "rationale": "Asserts the gateway Dockerfile's scoped npm ci in a regular expression; the test itself cannot run npm ci."
+    },
+    {
       "file": "tests/ci/report-timing-notices.test.sh",
       "executable": false,
       "expectedMatches": 1,

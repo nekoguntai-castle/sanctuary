@@ -1,7 +1,7 @@
 # Install and release-lane speed-up — design (R5-B)
 
 **Date:** 2026-09-29
-**Status:** phase 1 merged (#1339); phase 2a merged (#1341); phase 2b in review; phase 3 not started.
+**Status:** phases 1, 2a and 2b merged (#1339, #1341, #1342; Upgrade Baseline cleanup 380.5 s → 197.8 s); phase 3 in review.
 **Parent plan:** `tasks/ci-speedup-analysis-2026-09-29.md`, item R5-B.
 
 The plan scoped R5-B as "cache the old-release image builds with the gha
@@ -229,6 +229,28 @@ proved the daemon both before and after.
   `check:supply-chain-locks`, and install-script policy. It also shortens users'
   real upgrades, which is why it's worth doing but also why it must be a PR of
   its own.
+
+### Phase 3 — as implemented: scoped, lockfile-projected gateway runtime
+
+The gateway image pruned a full workspace-root install
+(`npm prune --production --omit=optional --include-workspace-root`). That
+step took 196 s of an uncached build and kept every workspace's production
+dependencies: 657 packages, including frontend and backend-only ones.
+
+- A new `gateway-runtime-deps` stage reuses the backend image's
+  `server/scripts/project-runtime-dependencies.cjs application` projection:
+  production edges only, re-resolved offline against the reviewed lockfile and
+  asserted to be in it. It then runs `npm ci --workspace gateway --workspace
+  shared --omit=dev --omit=optional --ignore-scripts`. The runner copies
+  `node_modules` only from that stage, and the builder no longer prunes.
+- Measured locally from the reviewed lockfile: 194 packages instead of 657,
+  installed in about 1 s. Every direct and transitive non-optional dependency
+  of gateway and shared resolves (219 packages walked). Everything is hoisted,
+  with no nested workspace `node_modules`. `@sanctuary/shared` is still
+  materialized by the runner from `shared/package.json` and `shared/dist`.
+- `tests/ci/gateway-runtime-dependencies.test.cjs` pins the contract. The
+  OS-package lock review (`config/container-image-lock.json`) was repeated: no
+  `apk` line changed, so the digest is re-pinned.
 
 ### Not doing
 

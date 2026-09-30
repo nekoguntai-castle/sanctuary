@@ -21,7 +21,23 @@ COPY gateway/package.json ./gateway/
 # (typescript, vitest, etc.) so the builder stage can compile.
 RUN npm ci --strict-allow-scripts --include-workspace-root --ignore-scripts
 
-# Stage 2: Builder
+# Stage 2: Runtime dependencies. The reviewed lockfile is projected to
+# production edges (the same projection as the backend image) and installed
+# for the gateway and shared workspaces only, so the image carries no other
+# workspace's dependencies. Optional packages (the firebase-admin firestore and
+# storage chain) are not used by gateway push flows.
+FROM node-toolchain AS gateway-runtime-deps
+WORKDIR /repo
+COPY package*.json ./
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
+COPY gateway/package.json ./gateway/
+COPY server/scripts/project-runtime-dependencies.cjs ./server/scripts/
+RUN node server/scripts/project-runtime-dependencies.cjs /runtime application
+WORKDIR /runtime
+RUN npm ci --workspace gateway --workspace shared --omit=dev --omit=optional --ignore-scripts --audit=false --fund=false
+
+# Stage 3: Builder
 FROM node-toolchain AS builder
 WORKDIR /repo
 
@@ -43,12 +59,7 @@ COPY gateway/src ./gateway/src
 WORKDIR /repo/gateway
 RUN npm run build
 
-# Prune dev + optional dependencies. firebase-admin optional packages
-# (firestore/storage chain) are not used by gateway push flows.
-WORKDIR /repo
-RUN npm prune --production --omit=optional --include-workspace-root --ignore-scripts
-
-# Stage 3: Production
+# Stage 4: Production
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runner
 # Runtime entrypoints use Node or the locally installed Prisma CLI, never npm.
 # Exclude the base image's unused package manager and its vulnerable bundle.
@@ -85,7 +96,7 @@ COPY --chown=gateway:nodejs --from=builder /repo/gateway/package.json ./
 
 # Strategy (c) per v3.1 plan: materialize the workspace symlink as a real
 # directory containing only what shared exports (package.json + dist/).
-COPY --chown=gateway:nodejs --from=builder /repo/node_modules ./node_modules
+COPY --chown=gateway:nodejs --from=gateway-runtime-deps /runtime/node_modules ./node_modules
 RUN rm -rf /app/node_modules/@sanctuary/shared && \
     install -d -o gateway -g nodejs /app/node_modules/@sanctuary/shared
 COPY --chown=gateway:nodejs --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
