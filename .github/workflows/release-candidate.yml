@@ -648,6 +648,10 @@ jobs:
       GATEWAY_PORT: '15100'
       PORT_OFFSET: '0'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/fresh-install
+      # Opt-in cleanup engine trace (R5-B phase 1 of
+      # tasks/ci-install-lane-speedup-design-2026-09-29.md): attributes the
+      # full-stack cleanup's wall time to the operations that spawn the engine.
+      SANCTUARY_CLEANUP_ENGINE_TRACE_FILE: ${{ github.workspace }}/.tmp/job-logs/fresh-install/cleanup-engine-trace.jsonl
       # Fail a starved e2e lock wait inside the 60-minute job budget so the
       # diagnostics upload runs and the log names the lock (v0.8.70-rc3/rc4).
       # 30 minutes covers install-test's fresh install plus install script.
@@ -752,6 +756,13 @@ jobs:
                 export GITHUB_WORKSPACE="$SANCTUARY_INSTALL_WORKSPACE"
                 cd "$SANCTUARY_INSTALL_WORKSPACE" && ./tests/install/e2e/fresh-install.test.sh --verbose
               '
+
+      - name: Summarize cleanup engine trace
+        if: always()
+        continue-on-error: true
+        run: |
+          node scripts/ci/summarize-cleanup-engine-trace.mjs "$SANCTUARY_CLEANUP_ENGINE_TRACE_FILE" \
+            | tee "$JOB_LOG_DIR/cleanup-engine-trace.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Show container logs on failure
         if: failure()

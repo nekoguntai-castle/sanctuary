@@ -1,7 +1,7 @@
 # Install and release-lane speed-up — design (R5-B)
 
 **Date:** 2026-09-29
-**Status:** design only. Nothing here is implemented.
+**Status:** phase 1 (engine-call trace) in review; phases 2–3 not started.
 **Parent plan:** `tasks/ci-speedup-analysis-2026-09-29.md`, item R5-B.
 
 The plan scoped R5-B as "cache the old-release image builds with the gha

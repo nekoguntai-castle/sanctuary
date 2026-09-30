@@ -2179,6 +2179,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/ci/summarize-cleanup-engine-trace.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/ci/time-command.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
@@ -2621,6 +2628,13 @@
     },
     {
       "path": "tests/ownership/cleanup-cli-execution.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ownership/cleanup-command-trace.test.mjs",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
       "disposition": "exempt",

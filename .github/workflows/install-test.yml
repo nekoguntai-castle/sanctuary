@@ -858,6 +858,10 @@ jobs:
     timeout-minutes: 120
     env:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-baseline
+      # Opt-in cleanup engine trace (R5-B phase 1 of
+      # tasks/ci-install-lane-speedup-design-2026-09-29.md): attributes the
+      # full-stack cleanup's wall time to the operations that spawn the engine.
+      SANCTUARY_CLEANUP_ENGINE_TRACE_FILE: ${{ github.workspace }}/.tmp/job-logs/upgrade-baseline/cleanup-engine-trace.jsonl
       SANCTUARY_CI_DEBUG_TRACE: '1'
       # PRs newly reach this lock user via the release-surface smoke path
       # (tests/install/utils/classify-install-scope.sh,
@@ -924,6 +928,13 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-upgrade-dind.log" \
             scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Summarize cleanup engine trace
+        if: always()
+        continue-on-error: true
+        run: |
+          node scripts/ci/summarize-cleanup-engine-trace.mjs "$SANCTUARY_CLEANUP_ENGINE_TRACE_FILE" \
+            | tee "$JOB_LOG_DIR/cleanup-engine-trace.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify upgrade baseline cleanup receipts
         id: verify_cleanup_receipt

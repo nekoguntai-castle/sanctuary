@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
+import path from 'node:path';
 
 export const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 export const DEFAULT_COMMAND_OUTPUT_LIMIT = 8 * 1024 * 1024;
@@ -46,16 +48,62 @@ function commandOptions(executable, options) {
   };
 }
 
+/**
+ * Opt-in diagnostics (R5-B phase 1 of tasks/ci-install-lane-speedup-design-2026-09-29.md):
+ * when set, every engine invocation appends one JSON line naming its operation,
+ * subcommand, outcome and duration. Option values (sockets, filters, names) are
+ * never recorded, and a trace write failure never changes a command's result.
+ */
+export const CLEANUP_ENGINE_TRACE_FILE_ENV = 'SANCTUARY_CLEANUP_ENGINE_TRACE_FILE';
+const OPTIONS_WITH_VALUES = new Set([
+  '--host', '-H', '--url', '--context', '--connection', '--filter', '-f', '--format',
+  '-p', '--project-name', '--project-directory', '--env-file', '--profile', '--file',
+  '--config', '-c', '-l', '--log-level',
+]);
+let traceWriteFailed = false;
+
+function traceCommandWords(args) {
+  const words = [];
+  for (let index = 0; index < args.length && words.length < 2; index += 1) {
+    const arg = args[index];
+    if (OPTIONS_WITH_VALUES.has(arg)) index += 1;
+    else if (!arg.startsWith('-')) words.push(arg);
+  }
+  return words;
+}
+
+function recordEngineTrace(executable, args, operation, startedAt, outcome) {
+  const traceFile = process.env[CLEANUP_ENGINE_TRACE_FILE_ENV];
+  if (!traceFile || traceWriteFailed) return;
+  const record = {
+    executable: path.basename(executable), operation, command: traceCommandWords(args), outcome,
+    durationMs: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6),
+  };
+  try {
+    appendFileSync(traceFile, `${JSON.stringify(record)}\n`);
+  } catch {
+    // Diagnostics are best effort: stop tracing rather than fail cleanup.
+    traceWriteFailed = true;
+  }
+}
+
 /** Run one bounded argv command directly. A shell is never involved. */
 export function runCleanupCommand(executable, args, options = {}) {
   validateCommand(executable, args);
   const { operation, run, spawn } = commandOptions(executable, options);
+  const startedAt = process.hrtime.bigint();
+  let output;
   try {
-    return run(executable, args, spawn);
+    output = run(executable, args, spawn);
   } catch (error) {
-    if (error instanceof CleanupCommandError) throw error;
-    throw new CleanupCommandError(commandCategory(error), operation, error);
+    const classified = error instanceof CleanupCommandError
+      ? error
+      : new CleanupCommandError(commandCategory(error), operation, error);
+    recordEngineTrace(executable, args, operation, startedAt, classified.category);
+    throw classified;
   }
+  recordEngineTrace(executable, args, operation, startedAt, 'success');
+  return output;
 }
 
 export function commandAmbiguity(error, details = {}) {
