@@ -1,4 +1,5 @@
 import { canonicalSha256 } from './canonical-json.mjs';
+import { reinspectBeforeMutation } from './cleanup-action-runner.mjs';
 import { acquireRegistrationFence, releaseRegistrationFence } from './registration.mjs';
 import { validateArtifact } from './schemas.mjs';
 
@@ -159,12 +160,10 @@ export function createCleanupHostRuntime({
   const mutate = async ({
     action, intentCheckpointDigest, signal, predecessorResultDigest, authorityRowDigest,
   }) => fenced(plan.operationRunId, async () => {
-    const fresh = await reloadAuthority({
-      action, phase: 'pre_mutation_reinspection', predecessorResultDigest, signal,
+    const refusal = await reinspectBeforeMutation(reloadAuthority, {
+      action, predecessorResultDigest, authorityRowDigest, signal,
     });
-    if (fresh.state !== 'eligible' || canonicalSha256(fresh.row) !== authorityRowDigest) {
-      return { outcome: 'not_started', refusalClass: fresh.failureClass ?? 'identity_changed' };
-    }
+    if (refusal) return refusal;
     const registration = findRegistration(action, loadRegistrations());
     return categoricalMutation(await hostOperations.mutate(Object.freeze({
       action, registration, intentCheckpointDigest, signal,

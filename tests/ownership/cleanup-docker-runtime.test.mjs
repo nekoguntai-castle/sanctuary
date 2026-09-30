@@ -122,7 +122,8 @@ test('the registration fence rechecks authority and refuses drift before mutatio
     loadInventory: async () => {
       inventoryLoads += 1;
       const result = inventory(plan);
-      if (inventoryLoads >= 3) {
+      // Load 1 is fresh eligibility; load 2 is mutate's fenced reinspection.
+      if (inventoryLoads >= 2) {
         result.resources[0].observationDigest = 'e'.repeat(64);
       }
       return result;
@@ -149,7 +150,61 @@ test('the registration fence rechecks authority and refuses drift before mutatio
   assert.equal(result.results[0].result, 'refused');
   assert.equal(result.results[0].failureClass, 'identity_changed');
   assert.equal(result.results[0].mutationOutcome, 'not_started');
-  assert.equal(inventoryLoads, 3);
+  assert.equal(result.results[0].reconciliationState, 'not_started');
+  // The drift is caught by the one authorizing reinspection, inside the fence.
+  assert.equal(inventoryLoads, 2);
+  assert.equal(fenceCalls, 1);
+  assert.equal(supervisorCalls, 0);
+});
+test('an unavailable inventory inside the fence is journalled ambiguous without mutation', async () => {
+  let inventoryLoads = 0;
+  let supervisorCalls = 0;
+  let fenceCalls = 0;
+  const runCommand = (_engine, args) => {
+    if (args.join(' ') === 'context show') return 'default\n';
+    const effectiveArgs = args[0] === '--host' ? args.slice(2) : args;
+    if (['version', 'info'].includes(effectiveArgs[0])) return '{}\n';
+    if (effectiveArgs[0] === 'context') return JSON.stringify({
+      Name: 'default', Endpoints: { docker: { Host: 'unix:///run/docker-fixture.sock', SkipTLSVerify: false } },
+      TLSMaterial: {},
+    });
+    throw new Error(`unexpected query: ${args.join(' ')}`);
+  };
+  const plan = approvedPlan(runCommand);
+  const runtime = createCleanupDockerRuntime({
+    plan, deploymentManifest,
+    loadInventory: async () => {
+      inventoryLoads += 1;
+      const result = inventory(plan);
+      // Load 2 is mutate's fenced reinspection: the inventory is unavailable.
+      if (inventoryLoads >= 2) throw new Error('daemon unavailable');
+      return result;
+    },
+    loadRegistrations: () => [], observationOptions: { runCommand },
+    withRegistrationFence: async (operationRunId, callback) => {
+      assert.equal(operationRunId, plan.operationRunId);
+      fenceCalls += 1;
+      return callback();
+    },
+    supervisor: async () => {
+      supervisorCalls += 1;
+      return { outcome: 'success', exitCode: 0, terminationSignal: null };
+    },
+  });
+  let checkpoint = 0;
+  const result = await runCleanupActions({
+    actions: [action], reloadAuthority: runtime.reloadAuthority,
+    mutate: runtime.mutate, reconcile: runtime.reconcile,
+    appendCheckpoint: async () => ({
+      checkpointDigest: canonicalSha256({ checkpoint: checkpoint++ }), signed: true, synced: true,
+    }),
+  });
+  assert.equal(result.results[0].result, 'ambiguous');
+  assert.equal(result.results[0].failureClass, 'query_failed');
+  assert.equal(result.results[0].mutationOutcome, 'not_started');
+  assert.equal(result.results[0].reconciliationState, 'not_started');
+  // The drift is caught by the one authorizing reinspection, inside the fence.
+  assert.equal(inventoryLoads, 2);
   assert.equal(fenceCalls, 1);
   assert.equal(supervisorCalls, 0);
 });

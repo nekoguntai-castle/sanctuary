@@ -1,7 +1,7 @@
 # Install and release-lane speed-up — design (R5-B)
 
 **Date:** 2026-09-29
-**Status:** phase 1 (engine-call trace) in review; phases 2–3 not started.
+**Status:** phase 1 merged (#1339); phase 2a in review; phases 2b and 3 not started.
 **Parent plan:** `tasks/ci-speedup-analysis-2026-09-29.md`, item R5-B.
 
 The plan scoped R5-B as "cache the old-release image builds with the gha
@@ -148,6 +148,43 @@ absence verified after, signed receipts unchanged in content.
   (see `reaper-run-id-name-heuristic-incident`). Every change needs its own
   review, and must be rolled out to Upgrade Baseline first, then Fresh Install
   E2E.
+
+### Phase 2a — as implemented: one fenced authorizing reinspection
+
+Phase 1's trace (Upgrade Baseline run 19495: 6,350 engine calls, 378.5 s of a
+380.5 s cleanup) showed each mutated action reloading the full inventory three
+times: fresh eligibility, an unfenced runner reinspection, and the fenced
+reinspection inside the runtime's `mutate`. All three runtimes that drive
+`runCleanupActions` (Docker, host, operator recovery) already reinspected inside
+`mutate`, so the runner's unfenced pass was redundant for every one of them.
+
+- `cleanup-action-runner.mjs` now owns the single authorization definition:
+  `normalizeAuthorityResponse` (used by the runner's own reloads),
+  `reinspectBeforeMutation` (reload + authorize, called by the Docker and host
+  runtimes inside their registration fence), and `authorizeReinspection` (the
+  same authorization for a runtime that already holds the raw response; used by
+  operator recovery so its volume proof reuses the same observation).
+- For eligible actions the runner no longer reinspects. `mutate` returns
+  `{ outcome: 'not_started', reinspection }` on refusal, and the runner journals
+  it through the same mapping as the former second-phase refusal. A script run
+  against the pre-change runner showed byte-identical journal payloads, versus
+  that former second phase, for every refusal shape: refused, ambiguous, absent,
+  changed observation, drifted row, malformed, and invalid failure class.
+- One narrow case now journals differently, by design: drift that appeared
+  after the old unfenced check but before the fenced one. The old code recorded
+  it through the mutation-refusal path (`result: refused`,
+  `reconciliationState: refused`, failure class passed through). It now uses the
+  runner's established reinspection mapping (`ambiguous` for ambiguous, absent
+  or drifted-eligible authority), so the CI coordinator exits 4 rather than 5.
+  Nothing is mutated in either version; the old label was an artifact of having
+  two redundant check paths.
+- A malformed `reinspection` value is never trusted as "nothing happened". Like a
+  bare `not_started` without a valid refusal class, it becomes an `unknown`
+  outcome and is reconciled.
+- Absent targets keep their stability reload, since they are never mutated.
+- Contract for any future runtime: `mutate` must call `reinspectBeforeMutation`
+  or `authorizeReinspection` immediately before mutating, inside its fence
+  where it has one.
 
 ### Phase 3 — Gateway production-dependency stage
 

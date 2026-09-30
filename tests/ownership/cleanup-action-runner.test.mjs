@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { canonicalSha256 } from '../../scripts/ownership/canonical-json.mjs';
-import { runCleanupActions } from '../../scripts/ownership/cleanup-action-runner.mjs';
+import { reinspectBeforeMutation, runCleanupActions } from '../../scripts/ownership/cleanup-action-runner.mjs';
 import { validateCheckpointPayload } from '../../scripts/ownership/cleanup-journal-protocol.mjs';
 
 const A = 'a'.repeat(64);
+const B = 'b'.repeat(64);
 const C = 'c'.repeat(64);
 
 function ownership(resourceClass, immutableIdentity) {
@@ -84,10 +85,12 @@ test('serial execution permits only explicit immediate container stop to remove 
   assert.equal(result.processedActionCount, 2);
   assert.deepEqual(result.results.map((entry) => entry.result), ['cleaned', 'cleaned']);
   assert.doesNotMatch(JSON.stringify(result), /secret|raw/);
+  // The runner reloads once per mutated action; the fenced reinspection belongs to mutate.
+  assert.equal(events.filter((event) => event.endsWith(':pre_mutation_reinspection')).length, 0);
   for (const candidate of actions) {
     const prefix = [
       `reload:${candidate.sequence}:fresh_eligibility`, `checkpoint:intent:${candidate.sequence}`,
-      `reload:${candidate.sequence}:pre_mutation_reinspection`, `mutate:${candidate.sequence}`,
+      `mutate:${candidate.sequence}`,
       `reconcile:${candidate.sequence}`, `checkpoint:result:${candidate.sequence}`,
     ];
     let cursor = -1;
@@ -120,6 +123,7 @@ test('dependency actions derive authority from every signed successful container
     action(3, 'compose_network', 'remove', A, { dependencyIdentities: [A] }),
   ];
   const predecessorDigests = [];
+  const mutatedWith = [];
   const result = await runCleanupActions({
     actions, appendCheckpoint: checkpointRecorder([]),
     reloadAuthority: async ({ action: candidate, predecessorResultDigest }) => {
@@ -129,14 +133,19 @@ test('dependency actions derive authority from every signed successful container
         derivedFromResultDigest: predecessorResultDigest,
       };
     },
-    mutate: async () => ({ outcome: 'success' }),
+    mutate: async ({ action: candidate, predecessorResultDigest }) => {
+      mutatedWith.push([candidate.sequence, predecessorResultDigest]);
+      return { outcome: 'success' };
+    },
     reconcile: async ({ action: candidate }) => reconciliation(candidate, 'satisfied'),
   });
   assert.equal(result.terminalState, 'completed');
   assert.deepEqual(result.results.map((entry) => entry.result), ['cleaned', 'cleaned', 'cleaned']);
-  assert.equal(predecessorDigests.filter(([sequence]) => sequence === 3).length, 2);
-  assert.ok(predecessorDigests.filter(([sequence]) => sequence === 3)
-    .every(([, digest]) => /^[a-f0-9]{64}$/.test(digest)));
+  const reloadedDependency = predecessorDigests.filter(([sequence]) => sequence === 3);
+  assert.equal(reloadedDependency.length, 1);
+  assert.match(reloadedDependency[0][1], /^[a-f0-9]{64}$/);
+  // mutate's fenced reinspection is bound to the same derived predecessor.
+  assert.deepEqual(mutatedWith.find(([sequence]) => sequence === 3), reloadedDependency[0]);
 });
 
 test('stable proven absence is intent-bound and journaled without mutation', async () => {
@@ -257,17 +266,21 @@ test('an unsynced intent or caught callback error cannot mutate or leak raw outp
   assert.doesNotMatch(JSON.stringify(result), /secret|raw/);
 });
 
-test('cancellation during the second reinspection stops before mutation', async () => {
+test('cancellation after the durable intent stops before mutation', async () => {
   const controller = new AbortController();
   let mutations = 0;
   const events = [];
+  const record = checkpointRecorder(events);
   const result = await runCleanupActions({
     actions: [action(1, 'compose_network', 'remove')], signal: controller.signal,
-    appendCheckpoint: checkpointRecorder(events),
-    reloadAuthority: async ({ action: candidate, phase }) => {
-      if (phase === 'pre_mutation_reinspection') controller.abort();
-      return { state: 'eligible', row: row(candidate), derivedFromResultDigest: null };
+    appendCheckpoint: async (checkpoint) => {
+      const ack = await record(checkpoint);
+      if (checkpoint.checkpointType === 'intent') controller.abort();
+      return ack;
     },
+    reloadAuthority: async ({ action: candidate }) => (
+      { state: 'eligible', row: row(candidate), derivedFromResultDigest: null }
+    ),
     mutate: async () => { mutations += 1; return { outcome: 'success' }; },
     reconcile: async ({ action: candidate }) => reconciliation(candidate),
   });
@@ -318,4 +331,151 @@ test('an approved no-op action list is immediately journal-complete', async () =
   assert.equal(result.journalComplete, true);
   assert.equal(result.terminalState, 'completed');
   assert.deepEqual(result.results, []);
+});
+
+// R5-B phase 2a (tasks/ci-install-lane-speedup-design-2026-09-29.md): the only
+// authorizing reinspection is the runtime's fenced one inside mutate. The
+// runner no longer repeats it unfenced for eligible actions.
+test('eligible actions are reinspected once, by the fenced mutate, not again by the runner', async () => {
+  const actions = [action(1, 'compose_container', 'stop')];
+  const phases = [];
+  const result = await runCleanupActions({
+    actions, appendCheckpoint: checkpointRecorder([]),
+    reloadAuthority: async ({ action: candidate, phase }) => {
+      phases.push(phase);
+      return { state: 'eligible', row: row(candidate), derivedFromResultDigest: null };
+    },
+    mutate: async () => ({ outcome: 'success' }),
+    reconcile: async ({ action: candidate }) => reconciliation(candidate, 'satisfied'),
+  });
+  assert.deepEqual(phases, ['fresh_eligibility']);
+  assert.equal(result.results[0].result, 'cleaned');
+});
+
+// Each fenced reinspection outcome must be journalled exactly as the former
+// unfenced second-phase reinspection recorded the same authority response.
+for (const [label, response, expected] of [
+  ['refused', { state: 'refused', failureClass: 'shared' }, { result: 'refused', failureClass: 'shared' }],
+  ['ambiguous', { state: 'ambiguous', failureClass: 'query_failed' }, { result: 'ambiguous', failureClass: 'query_failed' }],
+  ['absent', 'absent', { result: 'ambiguous', failureClass: 'identity_changed' }],
+  ['an eligible row with a changed observation', 'changed', { result: 'refused', failureClass: 'identity_changed' }],
+  ['a valid eligible row with a different digest', 'drifted', { result: 'ambiguous', failureClass: 'identity_changed' }],
+  ['malformed', { state: 'eligible' }, { result: 'ambiguous', failureClass: 'query_failed' }],
+]) {
+  test(`a fenced reinspection that is ${label} is journalled like the former second phase`, async () => {
+    const candidate = action(1, 'compose_container', 'stop');
+    const records = [];
+    let mutations = 0;
+    const fresh = response === 'absent'
+      ? { state: 'absent', postconditionDigest: A, derivedFromResultDigest: null }
+      : response === 'changed'
+        ? { state: 'eligible', row: row(candidate, 'e'.repeat(64)), derivedFromResultDigest: null }
+        : response === 'drifted'
+          ? { state: 'eligible', row: { ...row(candidate), running: false }, derivedFromResultDigest: null }
+          : response;
+    const result = await runCleanupActions({
+      actions: [candidate],
+      appendCheckpoint: async (record) => {
+        records.push(record);
+        return checkpointRecorder([])(record);
+      },
+      reloadAuthority: async ({ action: current, phase }) => (phase === 'fresh_eligibility'
+        ? { state: 'eligible', row: row(current), derivedFromResultDigest: null }
+        : fresh),
+      mutate: async ({ action: current, predecessorResultDigest, authorityRowDigest, signal }) => {
+        const refusal = await reinspectBeforeMutation(async (request) => (request.phase === 'pre_mutation_reinspection'
+          ? fresh : null), { action: current, predecessorResultDigest, authorityRowDigest, signal });
+        if (refusal) return refusal;
+        mutations += 1;
+        return { outcome: 'success' };
+      },
+      reconcile: async ({ action: current }) => reconciliation(current, 'satisfied'),
+    });
+    assert.equal(mutations, 0);
+    assert.equal(result.results[0].result, expected.result);
+    assert.equal(result.results[0].failureClass, expected.failureClass);
+    const resultRecord = records.find((record) => record.checkpointType === 'result');
+    const intentIndex = records.findIndex((record) => record.checkpointType === 'intent');
+    assert.notEqual(intentIndex, -1);
+    // Exactly the payload the former unfenced second-phase branch recorded.
+    assert.deepEqual(resultRecord.payload, {
+      actionSequence: 1, resourceClass: candidate.resourceClass,
+      immutableIdentity: candidate.immutableIdentity,
+      result: expected.result, failureClass: expected.failureClass,
+      mutationOutcome: 'not_started', reconciliationState: 'not_started',
+      intentCheckpointDigest: canonicalSha256({ sequence: intentIndex + 1, record: records[intentIndex] }),
+      postconditionDigest: null,
+    });
+  });
+}
+
+test('reinspectBeforeMutation authorizes only the normalized approved row', async () => {
+  const candidate = action(1, 'compose_container', 'stop');
+  const approved = row(candidate);
+  const approvedDigest = canonicalSha256(approved);
+  const eligible = async () => ({ state: 'eligible', row: approved, derivedFromResultDigest: null });
+  assert.equal(await reinspectBeforeMutation(eligible, {
+    action: candidate, predecessorResultDigest: null, authorityRowDigest: approvedDigest,
+  }), null);
+  assert.deepEqual(await reinspectBeforeMutation(eligible, {
+    action: candidate, predecessorResultDigest: null, authorityRowDigest: 'b'.repeat(64),
+  }), { outcome: 'not_started', reinspection: { state: 'eligible', failureClass: null } });
+  const active = async () => ({ state: 'eligible', row: { ...approved, active: true }, derivedFromResultDigest: null });
+  assert.deepEqual(await reinspectBeforeMutation(active, {
+    action: candidate, predecessorResultDigest: null, authorityRowDigest: canonicalSha256({ ...approved, active: true }),
+  }), { outcome: 'not_started', reinspection: { state: 'refused', failureClass: 'identity_changed' } });
+  const thrown = async () => { throw new Error('daemon unavailable'); };
+  assert.deepEqual(await reinspectBeforeMutation(thrown, {
+    action: candidate, predecessorResultDigest: null, authorityRowDigest: approvedDigest,
+  }), { outcome: 'not_started', reinspection: { state: 'ambiguous', failureClass: 'query_failed' } });
+});
+
+// A malformed reinspection value is not trusted as "nothing happened": like a
+// bare not_started without a valid refusal class, it is treated as an unknown
+// outcome and reconciled, so the journal records what was actually observed.
+for (const [label, value] of [
+  ['null', { outcome: 'not_started', reinspection: null }],
+  ['unknown state', { outcome: 'not_started', reinspection: { state: 'vanished', failureClass: 'shared' } }],
+  ['non-object', { outcome: 'not_started', reinspection: 'refused' }],
+]) {
+  test(`a malformed reinspection (${label}) is reconciled as an unknown mutation outcome`, async () => {
+    const candidate = action(1, 'compose_container', 'stop');
+    const reconciled = [];
+    const result = await runCleanupActions({
+      actions: [candidate], appendCheckpoint: checkpointRecorder([]),
+      reloadAuthority: async ({ action: current }) => ({ state: 'eligible', row: row(current), derivedFromResultDigest: null }),
+      mutate: async () => value,
+      reconcile: async ({ action: current, mutationOutcome }) => {
+        reconciled.push(mutationOutcome);
+        return reconciliation(current, 'satisfied');
+      },
+    });
+    assert.deepEqual(reconciled, ['unknown']);
+    assert.equal(result.results[0].mutationOutcome, 'unknown');
+  });
+}
+
+test('cancellation during an absent target stability reload mutates nothing and stops the next action', async () => {
+  const controller = new AbortController();
+  const actions = [action(1, 'compose_network', 'remove'), action(2, 'compose_network', 'remove', B)];
+  const phases = [];
+  let mutations = 0;
+  const result = await runCleanupActions({
+    actions, signal: controller.signal, appendCheckpoint: checkpointRecorder([]),
+    reloadAuthority: async ({ action: candidate, phase }) => {
+      phases.push(`${candidate.sequence}:${phase}`);
+      if (candidate.sequence === 1) {
+        if (phase === 'pre_mutation_reinspection') controller.abort();
+        return { state: 'absent', postconditionDigest: A, derivedFromResultDigest: null };
+      }
+      return { state: 'eligible', row: row(candidate), derivedFromResultDigest: null };
+    },
+    mutate: async () => { mutations += 1; return { outcome: 'success' }; },
+    reconcile: async ({ action: candidate }) => reconciliation(candidate),
+  });
+  assert.equal(mutations, 0);
+  assert.deepEqual(phases, ['1:fresh_eligibility', '1:pre_mutation_reinspection']);
+  assert.deepEqual(result.results.map((entry) => [entry.result, entry.failureClass]), [
+    ['absent', 'none'], ['failed', 'cancelled'],
+  ]);
 });

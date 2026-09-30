@@ -1,4 +1,5 @@
 import { createDockerActionReconciler, createDockerAuthorityReloader } from './cleanup-docker-reconciler.mjs';
+import { reinspectBeforeMutation } from './cleanup-action-runner.mjs';
 import { executeDockerMutation } from './cleanup-docker-executor.mjs';
 import { canonicalSha256 } from './canonical-json.mjs';
 import { runCleanupCommand } from './cleanup-command.mjs';
@@ -131,13 +132,10 @@ export function createCleanupDockerRuntime({
   const mutate = async ({ action, signal, predecessorResultDigest, authorityRowDigest }) => fenced(
     plan.operationRunId,
     async () => {
-      const finalAuthority = await reloadAuthority({
-        action, phase: 'pre_mutation_reinspection', predecessorResultDigest, signal,
+      const refusal = await reinspectBeforeMutation(reloadAuthority, {
+        action, predecessorResultDigest, authorityRowDigest, signal,
       });
-      if (finalAuthority.state !== 'eligible'
-          || canonicalSha256(finalAuthority.row) !== authorityRowDigest) {
-        return { outcome: 'not_started', refusalClass: finalAuthority.failureClass ?? 'identity_changed' };
-      }
+      if (refusal) return refusal;
       let freshVolumeProof;
       if (action.resourceClass === 'compose_volume') {
         const observed = await observeAction({ action, selectors: {

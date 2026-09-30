@@ -1,4 +1,5 @@
 import { canonicalSha256 } from './canonical-json.mjs';
+import { authorizeReinspection } from './cleanup-action-runner.mjs';
 import { executeDockerMutation } from './cleanup-docker-executor.mjs';
 import { runSupervisedCleanupCommand } from './cleanup-supervisor.mjs';
 
@@ -148,12 +149,20 @@ export function createOperatorRecoveryRuntime({
   ]));
   const observe = async (action) => observeAction(Object.freeze({ action }));
 
-  const reloadAuthority = async ({ action, predecessorResultDigest = null }) => {
-    if (!exactApprovedAction(action, actions)) return Object.freeze({ state: 'ambiguous', failureClass: 'query_failed' });
+  // One observation yields both the authority response and, for mutate, the
+  // observed resource its volume proof needs.
+  const inspect = async (action, predecessorResultDigest) => {
+    if (!exactApprovedAction(action, actions)) {
+      return { response: Object.freeze({ state: 'ambiguous', failureClass: 'query_failed' }) };
+    }
     let observed;
     try { observed = await observe(action); } catch {
-      return Object.freeze({ state: 'ambiguous', failureClass: 'query_failed' });
+      return { response: Object.freeze({ state: 'ambiguous', failureClass: 'query_failed' }) };
     }
+    return { observed, response: authorityFromObservation(action, observed, predecessorResultDigest) };
+  };
+
+  const authorityFromObservation = (action, observed, predecessorResultDigest) => {
     if (observed === null) {
       if (predecessorResultDigest === null) return Object.freeze({ state: 'refused', failureClass: 'identity_changed' });
       return Object.freeze({
@@ -176,19 +185,15 @@ export function createOperatorRecoveryRuntime({
     });
   };
 
-  const mutate = async ({ action, authorityRowDigest }) => {
-    let observed;
-    try { observed = await observe(action); } catch {
-      return { outcome: 'not_started', refusalClass: 'query_failed' };
-    }
+  const reloadAuthority = async ({ action, predecessorResultDigest = null }) => (
+    (await inspect(action, predecessorResultDigest)).response
+  );
+
+  const mutate = async ({ action, predecessorResultDigest = null, authorityRowDigest }) => {
+    const { observed, response } = await inspect(action, predecessorResultDigest);
+    const refusal = authorizeReinspection(response, { action, predecessorResultDigest, authorityRowDigest });
+    if (refusal) return refusal;
     const expected = resources.get(`${action.resourceClass}:${action.locator}`);
-    if (!expected || !sameIdentity(expected, observed)) {
-      return { outcome: 'not_started', refusalClass: 'identity_changed' };
-    }
-    const row = authorityRow(action, observed, scopeDigest);
-    if (canonicalSha256(row) !== authorityRowDigest) {
-      return { outcome: 'not_started', refusalClass: 'identity_changed' };
-    }
     let freshVolumeProof;
     try {
       freshVolumeProof = action.resourceClass === 'compose_volume'

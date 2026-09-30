@@ -108,11 +108,13 @@ function validateAuthorityRow(row, action) {
   validateAuthorityRunning(row);
 }
 
-async function reload(reloadAuthority, action, phase, predecessorResultDigest, signal) {
+/**
+ * The single definition of what an authority response authorizes. The runner's
+ * own reloads and every runtime's fenced pre-mutation reinspection
+ * (reinspectBeforeMutation) apply exactly this normalization.
+ */
+function normalizeAuthorityResponse(response, action, predecessorResultDigest) {
   try {
-    const response = await reloadAuthority(Object.freeze({
-      action, phase, predecessorResultDigest, signal,
-    }));
     if (response?.state === 'refused' || response?.state === 'ambiguous') {
       exactKeys(response, ['state', 'failureClass'], 'authority refusal');
       return { state: response.state, failureClass: validateFailureClass(response.failureClass) };
@@ -150,6 +152,59 @@ async function reload(reloadAuthority, action, phase, predecessorResultDigest, s
   } catch (error) {
     return authorityFailure(error);
   }
+}
+
+async function reload(reloadAuthority, action, phase, predecessorResultDigest, signal) {
+  try {
+    const response = await reloadAuthority(Object.freeze({
+      action, phase, predecessorResultDigest, signal,
+    }));
+    return normalizeAuthorityResponse(response, action, predecessorResultDigest);
+  } catch (error) {
+    return authorityFailure(error);
+  }
+}
+
+/**
+ * The fenced pre-mutation reinspection every runtime's mutate callback must
+ * perform, inside its registration fence, immediately before mutating. Returns
+ * null when the freshly normalized authority is still exactly the approved
+ * eligible row, or the not_started refusal mutate must return unchanged.
+ */
+export async function reinspectBeforeMutation(reloadAuthority, {
+  action, predecessorResultDigest, authorityRowDigest, signal,
+}) {
+  const fresh = await reload(
+    reloadAuthority, action, 'pre_mutation_reinspection', predecessorResultDigest, signal,
+  );
+  return reinspectionOutcome(fresh, authorityRowDigest);
+}
+
+/**
+ * The same authorization for a runtime that has already fetched the raw
+ * pre-mutation authority response itself (for example to reuse its
+ * observation): null when authorized, otherwise the not_started refusal.
+ */
+export function authorizeReinspection(response, { action, predecessorResultDigest, authorityRowDigest }) {
+  return reinspectionOutcome(
+    normalizeAuthorityResponse(response, action, predecessorResultDigest), authorityRowDigest,
+  );
+}
+
+function reinspectionOutcome(fresh, authorityRowDigest) {
+  if (fresh.state === 'eligible' && fresh.rowDigest === authorityRowDigest) return null;
+  return {
+    outcome: 'not_started',
+    reinspection: { state: fresh.state, failureClass: fresh.failureClass ?? null },
+  };
+}
+
+/** Journal fields for an authority that changed between eligibility and mutation. */
+function reinspectionRefusal({ state, failureClass }) {
+  return {
+    result: state === 'refused' ? 'refused' : 'ambiguous',
+    failureClass: ['refused', 'ambiguous'].includes(state) ? failureClass : 'identity_changed',
+  };
 }
 
 function checkpointAck(value) {
@@ -190,7 +245,22 @@ function predecessorDigest(actions, completed, index) {
   return proof.some((entry) => entry === null) ? undefined : canonicalSha256(proof);
 }
 
+const REINSPECTION_STATES = new Set(['eligible', 'absent', 'refused', 'ambiguous']);
+
 function categoricalMutation(value) {
+  if (value?.outcome === 'not_started' && value.reinspection !== undefined) {
+    const { state, failureClass } = value.reinspection ?? {};
+    // A malformed refusal is not trusted as "nothing happened": treat it as an
+    // unknown outcome so reconciliation observes what actually happened.
+    if (!REINSPECTION_STATES.has(state)) return { outcome: 'unknown', refusalClass: null };
+    return {
+      outcome: 'not_started', refusalClass: null,
+      reinspection: {
+        state,
+        failureClass: ['refused', 'ambiguous'].includes(state) ? validateFailureClass(failureClass) : null,
+      },
+    };
+  }
   if (value?.outcome === 'not_started' && CLEAN_FAILURES.has(value.refusalClass)
       && value.refusalClass !== 'none') {
     return { outcome: 'not_started', refusalClass: value.refusalClass };
@@ -370,8 +440,9 @@ export async function runCleanupActions({
       results.push(publicResult(action, recorded));
       break;
     }
-    const second = await reload(reloadAuthority, action, 'pre_mutation_reinspection', derived, signal);
     if (first.state === 'absent') {
+      // An absent target is never mutated, so its stability proof is this reload.
+      const second = await reload(reloadAuthority, action, 'pre_mutation_reinspection', derived, signal);
       const stableAbsence = second.state === 'absent'
         && second.postconditionDigest === first.postconditionDigest;
       const recorded = await recordResult(appendCheckpoint, action, stableAbsence ? {
@@ -388,26 +459,18 @@ export async function runCleanupActions({
       if (!recorded.advance) break;
       continue;
     }
-    if (second.state !== 'eligible' || second.rowDigest !== first.rowDigest) {
-      const recorded = await recordResult(appendCheckpoint, action, {
-        result: second.state === 'refused' ? 'refused' : 'ambiguous',
-        failureClass: ['refused', 'ambiguous'].includes(second.state)
-          ? second.failureClass : 'identity_changed',
-        advance: false, intentCheckpointDigest,
-      });
-      results.push(publicResult(action, recorded));
-      break;
-    }
-    if (signal?.aborted) {
-      const recorded = await recordResult(appendCheckpoint, action, {
-        result: 'failed', failureClass: 'cancelled', advance: false, intentCheckpointDigest,
-      });
-      results.push(publicResult(action, recorded));
-      break;
-    }
+    // The runtime's mutate performs the one authorizing reinspection, under its
+    // registration fence (reinspectBeforeMutation), immediately before mutating.
     const mutation = await mutateOnce(
-      mutate, action, intentCheckpointDigest, signal, second,
+      mutate, action, intentCheckpointDigest, signal, first,
     );
+    if (mutation.reinspection) {
+      const recorded = await recordResult(appendCheckpoint, action, {
+        ...reinspectionRefusal(mutation.reinspection), advance: false, intentCheckpointDigest,
+      });
+      results.push(publicResult(action, recorded));
+      break;
+    }
     const reconciliation = mutation.refusalClass ? {
       state: 'refused', resourceClass: action.resourceClass,
       immutableIdentity: action.immutableIdentity, postconditionDigest: null,

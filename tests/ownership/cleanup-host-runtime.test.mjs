@@ -106,3 +106,45 @@ test('host runtime refuses drift, active rows, and missing dependency proof', as
     action: dependentAction, phase: 'fresh_eligibility', predecessorResultDigest: B,
   })).state, 'eligible');
 });
+
+test('host mutate refuses drift through the shared fenced reinspection', async () => {
+  const value = fixture();
+  let loads = 0;
+  let hostMutations = 0;
+  const events = [];
+  const runtime = createCleanupHostRuntime({
+    plan: { operationRunId: 'run-1', actions: [value.action] },
+    loadInventory: async () => {
+      loads += 1;
+      // Load 2 is mutate's fenced reinspection: the item was replaced in place.
+      return loads === 1 ? value.inventory : {
+        ...value.inventory, resources: [{ ...value.row, contentDigests: [A, C].sort() }],
+      };
+    },
+    loadRegistrations: () => [value.registration],
+    registrationRoot: '/unused',
+    withRegistrationFence: async (_run, callback) => {
+      events.push('fence:enter');
+      const outcome = await callback();
+      events.push('fence:exit');
+      return outcome;
+    },
+    hostOperations: {
+      mutate: async () => { hostMutations += 1; return { outcome: 'success' }; },
+      reconcile: async () => null,
+    },
+  });
+  const authority = await runtime.reloadAuthority({
+    action: value.action, phase: 'fresh_eligibility', predecessorResultDigest: null,
+  });
+  assert.equal(authority.state, 'eligible');
+  const mutation = await runtime.mutate({
+    action: value.action, intentCheckpointDigest: A,
+    predecessorResultDigest: null, authorityRowDigest: canonicalSha256(authority.row),
+  });
+  assert.equal(mutation.outcome, 'not_started');
+  assert.deepEqual(mutation.reinspection, { state: 'refused', failureClass: 'identity_changed' });
+  assert.equal(hostMutations, 0);
+  assert.equal(loads, 2);
+  assert.deepEqual(events, ['fence:enter', 'fence:exit']);
+});

@@ -244,19 +244,18 @@ async function exercisePredicateFlip({ boundary, flip }) {
     ownershipDigest: canonicalSha256(ownership('compose_network', B)),
   });
   const actions = boundary === 'first' ? [candidate] : [first, candidate];
-  const changedAtLoad = boundary === 'first' ? 1 : 3;
   const checkpoints = [];
   const mutations = [];
-  let loads = 0;
   const result = await runCleanupActions({
     actions,
     reloadAuthority: createDockerAuthorityReloader({
       approvedActions: actions,
-      loadInventory: async ({ action: current }) => {
-        loads += 1;
-        return loads === changedAtLoad ? changedInventory(current)
-          : inventory([authorityRow(current)]);
-      },
+      // Flip exactly at the candidate's eligibility boundary, independent of how
+      // many reloads earlier actions performed.
+      loadInventory: async ({ action: current, phase }) => (
+        current.sequence === candidate.sequence && phase === 'fresh_eligibility'
+          ? changedInventory(current) : inventory([authorityRow(current)])
+      ),
       loadVolumeRegistrationProof: async ({ action: current }) => volumeProof(current),
     }),
     appendCheckpoint: async (checkpoint) => {
