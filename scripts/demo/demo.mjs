@@ -53,7 +53,15 @@ async function main(argv) {
   } else if (command === 'status') {
     await status(await login(config, sessionFile), log);
   } else {
-    await reset(await login(config, sessionFile), manifest, log);
+    // The release-candidate canary fleet (scripts/release/canary) shares this login and
+    // the test-vector devices; keep both while it exists so releases need no re-seeding.
+    const api = await login(config, sessionFile);
+    const fleetNames = new Set(JSON.parse(readFileSync(path.join(here, '../release/canary/fleet-manifest.json'), 'utf8')).wallets.map((w) => w.name));
+    const fleetWallets = (await api.get('/wallets')).filter((w) => w.userRole === 'owner' && fleetNames.has(w.name)).length;
+    if (flags.includes('--purge') && fleetWallets > 0) {
+      throw new Error(`the demo login owns ${fleetWallets} canary fleet wallet(s); run npm run canary:fleet:reset before --purge`);
+    }
+    await reset(api, manifest, log, { keepDevices: fleetWallets > 0 });
     if (flags.includes('--purge')) {
       deleteDemoUser(findBackendContainer(config.project), config.username);
       log(`deleted demo login ${config.username}`);

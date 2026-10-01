@@ -14,6 +14,7 @@ import path from 'node:path';
 import {
   CANARY_ADMIN_SQL,
   createCanaryRuntime,
+  fleetReadiness,
   parseJsonOr,
   parseMetrics,
   readCgroup,
@@ -48,7 +49,8 @@ const token = mintAccessToken({ userId: adminId, username: adminName, sessionVer
 const h = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
 
 const wallets = await timedFetch(`${backendBase}/api/v1/wallets`, { headers: h }, 10000);
-const walletCount = parseJsonOr(wallets.text)?.length ?? null;
+const walletList = parseJsonOr(wallets.text);
+const walletCount = walletList?.length ?? null;
 const status = await timedFetch(`${backendBase}/api/v1/bitcoin/status?network=mainnet`, { headers: h }, 10000);
 const parsedStatus = parseJsonOr(status.text);
 const op = parsedStatus ? (parsedStatus.operational ?? 'absent') : null;
@@ -74,6 +76,7 @@ console.log(JSON.stringify({
   diag,
   metrics: { families: [...parsed.families], activeStageAge: parsed.activeStageAge, fallback: parsed.fallback },
   fleet: fleet.summary,
+  fleetReadiness: fleetReadiness(fleet.summary.total, Array.isArray(walletList) ? walletList.filter((w) => w.network === 'mainnet').length : null),
   ui,
   worker: {
     ...worker,

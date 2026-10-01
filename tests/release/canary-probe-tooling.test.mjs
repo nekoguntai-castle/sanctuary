@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CANARY_ADMIN_SQL,
+  CANARY_MIN_FLEET,
   FAMILIES,
+  fleetReadiness,
   parseJsonOr,
   parseMetrics,
   readCgroup,
@@ -171,6 +173,22 @@ test('the probe and selftest act as the admin who can access the most mainnet wa
   assert.match(CANARY_ADMIN_SQL, /"isAdmin" = true/);
   assert.match(CANARY_ADMIN_SQL, /from wallet_users wu join wallets w on w\.id = wu\."walletId"/);
   assert.match(CANARY_ADMIN_SQL, /w\.network = 'mainnet'\) desc, u\."createdAt", u\.id limit 1$/);
+});
+
+test('the canary fleet minimum matches the receipt validator', () => {
+  const validator = readFileSync(path.resolve(HERE, '../../scripts/release/verify-release-candidate-canary.mjs'), 'utf8');
+  assert.equal(Number(/fleet\.total < (\d+)\)/.exec(validator)?.[1]), CANARY_MIN_FLEET);
+});
+
+test('fleetReadiness refuses an undersized or partly invisible fleet before arming', () => {
+  assert.deepEqual(fleetReadiness(15, 15), { minimum: 12, total: 15, accessible: 15, ready: true, problems: [] });
+  const small = fleetReadiness(3, 3);
+  assert.equal(small.ready, false);
+  assert.match(small.problems[0], /3 mainnet wallets; the canary needs 12/);
+  assert.match(small.hint, /npm run canary:fleet:seed/);
+  assert.match(fleetReadiness(15, 0).problems[0], /can access 0 of 15/);
+  assert.equal(fleetReadiness(12, null).ready, true);
+  for (const tool of [PROBE, SELFTEST]) assert.match(readFileSync(tool, 'utf8'), /fleetReadiness\(/);
 });
 
 test('parseMetrics accepts both bare and sanctuary_-prefixed family names', () => {

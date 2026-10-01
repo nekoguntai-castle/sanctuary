@@ -194,7 +194,7 @@ async function deleteEach(items, remove, describe, log) {
  * (by fingerprint), and its users and groups. Never the
  * stack, volumes, or anything else the account can see.
  */
-export async function reset(api, manifest, log) {
+export async function reset(api, manifest, log, { keepDevices = false } = {}) {
   const agentNames = new Set((manifest.agents ?? []).map((a) => a.name));
   const agents = (await api.get('/admin/agents')).filter((a) => agentNames.has(a.name));
   await deleteEach(agents, (a) => api.delete(`/admin/agents/${a.id}`), (a) => `agent ${a.name}`, log);
@@ -208,9 +208,13 @@ export async function reset(api, manifest, log) {
   const wallets = (await api.get('/wallets')).filter((w) => w.userRole === 'owner' && walletNames.has(w.name));
   await deleteEach(wallets, (w) => api.delete(`/wallets/${w.id}`), (w) => `wallet ${w.name}`, log);
 
-  const fingerprints = new Set(manifest.devices.map((d) => d.fingerprint));
-  const devices = (await api.get('/devices')).filter((d) => d.isOwner && fingerprints.has(d.fingerprint));
-  await deleteEach(devices, (d) => api.delete(`/devices/${d.id}`), (d) => `device ${d.label}`, log);
+  if (keepDevices) {
+    log('kept test-vector devices: the release-candidate canary fleet still uses them');
+  } else {
+    const fingerprints = new Set(manifest.devices.map((d) => d.fingerprint));
+    const devices = (await api.get('/devices')).filter((d) => d.isOwner && fingerprints.has(d.fingerprint));
+    await deleteEach(devices, (d) => api.delete(`/devices/${d.id}`), (d) => `device ${d.label}`, log);
+  }
 
   const groupNames = new Set(manifest.groups.map((g) => g.name));
   const groups = (await api.get('/admin/groups')).filter((g) => groupNames.has(g.name));

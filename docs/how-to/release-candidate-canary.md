@@ -77,8 +77,17 @@ npm run canary:fleet:status   # fleet and mainnet wallet counts
 npm run canary:fleet:reset    # removes only the fleet wallets
 ```
 
-Seed the fleet before deploying the candidate, so the wallets are already
-synced and stale when the canary window opens. The fleet uses the demo login and
+The fleet is seeded once and stays: it lives in the stack's database, which
+redeploys (`./start.sh --rebuild`) keep, so later releases reuse it. Before each
+canary, confirm it with `canary-selftest.mjs`; its `fleetReadiness` must be
+`ready: true`. If it is not, run `npm run canary:fleet:seed`, which only adds
+missing wallets. The probe makes the same check and refuses to start, before
+arming, when the fleet has fewer than 12 mainnet wallets or the canary admin
+cannot see all of them.
+
+`npm run demo:reset` keeps the shared test-vector devices while fleet wallets
+exist, and `demo:reset --purge` refuses until `npm run canary:fleet:reset` has
+removed the fleet, because purging the demo login would delete it. The fleet uses the demo login and
 coexists with the demo wallets. The probe and selftest act as the administrator
 who can access the most mainnet wallets, so an operator admin with no wallets
 never becomes the canary's caller. `tests/scripts/canaryFleetManifest.test.ts`

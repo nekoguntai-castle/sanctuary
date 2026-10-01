@@ -147,6 +147,21 @@ export const CANARY_ADMIN_SQL = `select u.id, u.username, u."sessionVersion" fro
   order by (select count(*) from wallet_users wu join wallets w on w.id = wu."walletId"
     where wu."userId" = u.id and w.network = 'mainnet') desc, u."createdAt", u.id limit 1`;
 
+/** The validator's minimum fleet (verify-release-candidate-canary.mjs). */
+export const CANARY_MIN_FLEET = 12;
+
+/**
+ * Whether the canary can run: enough mainnet wallets, all visible to the canary
+ * admin. Pure; exported for tests. `accessible` may be null when unknown.
+ */
+export function fleetReadiness(total, accessible) {
+  const problems = [];
+  if (total < CANARY_MIN_FLEET) problems.push(`fleet has ${total} mainnet wallets; the canary needs ${CANARY_MIN_FLEET}`);
+  if (accessible !== null && accessible < total) problems.push(`canary admin can access ${accessible} of ${total} mainnet wallets`);
+  return { minimum: CANARY_MIN_FLEET, total, accessible, ready: problems.length === 0, problems,
+    ...(problems.length ? { hint: 'seed the public test-vector fleet: npm run canary:fleet:seed' } : {}) };
+}
+
 export const FLEET_SQL = `select id, network, "lastSyncStatus", "syncInProgress", "syncRetryCount", "syncActionRequiredAt" is not null,
   "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration" or "requestedFullResyncGeneration" > "processedFullResyncGeneration",
   "incrementalSyncLeaseToken" is not null, coalesce(to_char("lastSyncedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), ''), "lastSyncFailureClass"

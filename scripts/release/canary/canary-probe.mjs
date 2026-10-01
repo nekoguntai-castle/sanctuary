@@ -15,6 +15,7 @@ import {
   CANARY_ADMIN_SQL,
   FAMILIES,
   createCanaryRuntime,
+  fleetReadiness,
   nowIso,
   parseJsonOr,
   parseMetrics,
@@ -90,6 +91,10 @@ const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'applica
 const api = (p, init = {}, t = 10_000) => timedFetch(`${backendBase}/api/v1${p}`, { ...init, headers: { ...authHeaders, ...(init.headers || {}) } }, t);
 
 const initialFleet = await fleetSnapshot();
+// Fail before arming: an undersized or invisible fleet cannot produce an accepted receipt.
+const visible = parseJsonOr((await api('/wallets')).text);
+const readiness = fleetReadiness(initialFleet.summary.total, Array.isArray(visible) ? visible.filter((w) => w.network === 'mainnet').length : null);
+if (!readiness.ready) { console.error(`canary fleet not ready: ${readiness.problems.join('; ')}; ${readiness.hint}`); process.exit(2); }
 initialFleet.wallets.forEach((w, i) => walletRefs.set(w.id, `wallet-${String(i + 1).padStart(2, '0')}`));
 record({ type: 'armed', startedAt, fleetTotal: initialFleet.summary.total, releaseCandidate: { tag: TAG, commit: COMMIT }, backendReachable: true, workerReachable: true });
 record({ type: 'fleet_before', ...initialFleet.summary, staleWallets: initialFleet.wallets.filter((w) => !w.lastSyncedAt || Date.now() - Date.parse(w.lastSyncedAt) > 3600_000).length, oldestLastSyncedAt: initialFleet.wallets.map((w) => w.lastSyncedAt).filter(Boolean).sort()[0] || null });

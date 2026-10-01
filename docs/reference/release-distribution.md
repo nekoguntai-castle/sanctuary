@@ -125,15 +125,21 @@ matching tag or Release object when reconciliation is needed.
    ```
 
 8. Prepare the complete signed release asset set outside the checkout. The
-   output directory must be new and empty:
+   output directory must be new and empty. The bundle is assembled in a
+   `--staging-root` that must be an existing owner-only (`0700`) directory at
+   its canonical path, not a symlink. Promotion creates its own; here, make a
+   private one and remove it afterwards:
 
    ```bash
+   STAGING="$(cd "$(mktemp -d)" && pwd -P)"
    npm run release:prepare-assets -- \
      --tag v0.8.57 \
      --output-dir /secure/release-assets/v0.8.57 \
      --signing-key /secure/sanctuary-offline-release-private.pem \
      --public-key /secure/sanctuary-offline-release-public.pem \
-     --run-id operator-20260731-01
+     --run-id operator-20260731-01 \
+     --staging-root "$STAGING"
+   rm -rf "$STAGING"
    ```
 
 9. Publish the stable Release objects:
