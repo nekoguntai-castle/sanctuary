@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.8.76] - 2026-09-30
+
+### Changed
+
+- Wallet import treats a wallet as a duplicate only when it uses the same
+  script type and the same key origins (fingerprint and derivation path). One
+  signer can now back a native segwit and a taproot wallet, or several accounts
+  of one script type, and a duplicate import returns 409 Conflict naming the
+  existing wallet instead of an unexpected 500 error.
+- The Bitcoin donation address in the About dialog and README is now
+  `bc1p26ul26xlyc909nnpzr8azsg3vq8uwhduw0tkcs4cln0vpsvmg5tskfpvs4`.
+- The gateway image installs only its own production dependencies, which makes
+  it smaller and speeds up builds and upgrades.
+
+### Fixed
+
+- Importing a Sanctuary JSON wallet backup now runs the same duplicate check as
+  other imports, so the same wallet can no longer be imported twice.
+- The Addresses tab of a watch-only wallet no longer says the wallet has no
+  descriptor when hardware-wallet address display is temporarily unavailable,
+  and it keeps showing the address summary in that case.
+- Concurrent administrator settings changes back off before retrying a
+  conflicted update, so the losing change is revalidated instead of failing
+  with a conflict.
+
 ## [0.8.75] - 2026-09-29
 
 ### Changed
@@ -979,7 +1004,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.75...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.76...HEAD
+[0.8.76]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.75...v0.8.76
 [0.8.75]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.74...v0.8.75
 [0.8.74]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.73...v0.8.74
 [0.8.73]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.72...v0.8.73
