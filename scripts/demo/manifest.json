@@ -1,5 +1,5 @@
 {
-  "$comment": "Demo instance seed. PUBLIC data only: every key below is derived from a published BIP39 test vector (see docs/how-to/demo-instance.md). Anyone can spend from these seeds, so they must never hold real funds. tests/scripts/demoManifest.test.ts re-derives every xpub and fingerprint from the mnemonics listed here. Wallet import rejects a second wallet with the same script type and device-fingerprint set (server/src/services/walletImport/deviceResolution.ts checkDuplicateWallet).",
+  "$comment": "Demo instance seed. PUBLIC data only: every key below is derived from a published BIP39 test vector (see docs/how-to/demo-instance.md). Anyone can spend from these seeds, so they must never hold real funds. tests/scripts/demoManifest.test.ts re-derives every xpub and fingerprint from the mnemonics listed here. Wallet import rejects a second wallet with the same script type and key origins (fingerprint + derivation path) (server/src/services/walletImport/deviceResolution.ts checkDuplicateWallet).",
   "testVectorMnemonics": {
     "73c5da0a": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     "b8688df1": "legal winner thank year wave sausage worth useful legal winner thank yellow",

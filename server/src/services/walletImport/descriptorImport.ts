@@ -41,8 +41,7 @@ export async function importFromDescriptor(
   const network = resolveImportNetwork(parsed.network, input.network);
 
   // Check for duplicate wallet
-  const newFingerprints = new Set(parsed.devices.map(d => d.fingerprint.toLowerCase()));
-  await checkDuplicateWallet(userId, newFingerprints, parsed.scriptType);
+  await checkDuplicateWallet(userId, parsed.devices, parsed.scriptType);
 
   // Resolve devices
   const resolutions = await resolveDevices(userId, parsed.devices);
@@ -75,8 +74,7 @@ export async function importFromParsedData(
   const network = resolveImportNetwork(parsed.network, input.network);
 
   // Check for duplicate wallet
-  const newFingerprints = new Set(parsed.devices.map(d => d.fingerprint.toLowerCase()));
-  await checkDuplicateWallet(userId, newFingerprints, parsed.scriptType);
+  await checkDuplicateWallet(userId, parsed.devices, parsed.scriptType);
 
   // Resolve devices
   const resolutions = await resolveDevices(userId, parsed.devices);

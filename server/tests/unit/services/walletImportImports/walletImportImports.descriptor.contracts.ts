@@ -609,6 +609,92 @@ export const registerWalletImportDescriptorContracts = () => {
       expect(result.wallet.id).toBe('wallet-taproot');
     });
 
+    // Non-regression: separate accounts (m/84'/0'/0' vs m/84'/0'/1') of one signer
+    // are different wallets with different addresses, not duplicates.
+    it('allows the same device set and script type under a different account index', async () => {
+      const descriptor = "wpkh([abcd1234/84'/0'/1']xpubAccount1.../<0;1>/*)";
+
+      mockParseImportInput.mockReturnValue({
+        format: 'descriptor',
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          devices: [
+            { fingerprint: 'abcd1234', xpub: 'xpubAccount1...', derivationPath: "m/84'/0'/1'" },
+          ],
+          network: 'mainnet' as Network,
+          isChange: false,
+        },
+      });
+
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        {
+          id: 'wallet-account-0',
+          name: 'Account 0',
+          scriptType: 'native_segwit',
+          descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
+        },
+      ]);
+      setupDeviceMocks([
+        {
+          id: 'device-001',
+          userId,
+          type: 'unknown',
+          label: 'Imported Device 1',
+          fingerprint: 'abcd1234',
+          derivationPath: "m/84'/0'/1'",
+          xpub: 'xpubAccount1...',
+        },
+      ]);
+      mockPrismaClient.wallet.create.mockResolvedValue({
+        id: 'wallet-account-1',
+        name: 'Account 1',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        descriptor: 'wpkh([abcd1234/84h/0h/1h]xpubAccount1.../<0;1>/*)',
+        fingerprint: 'abcd1234',
+      });
+
+      const result = await walletImport.importFromDescriptor(userId, {
+        descriptor,
+        name: 'Account 1',
+      });
+
+      expect(result.wallet.id).toBe('wallet-account-1');
+    });
+
+    it("treats h/' notation, case, and the m/ prefix as the same key origin", async () => {
+      mockParseImportInput.mockReturnValue({
+        format: 'descriptor',
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          devices: [
+            // Unprefixed, h-notation path: must still match the stored [abcd1234/84h/0h/0h].
+            { fingerprint: 'ABCD1234', xpub: 'xpub6Dz...', derivationPath: '84h/0h/0h' },
+          ],
+          network: 'mainnet' as Network,
+          isChange: false,
+        },
+      });
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        {
+          id: 'wallet-existing-h',
+          name: 'Existing H Wallet',
+          scriptType: 'native_segwit',
+          descriptor: 'wpkh([abcd1234/84h/0h/0h]xpub6Dz.../<0;1>/*)',
+        },
+      ]);
+
+      await expect(
+        walletImport.importFromDescriptor(userId, {
+          descriptor: "wpkh([ABCD1234/84'/0'/0']xpub6Dz.../<0;1>/*)",
+          name: 'Same Origin',
+        }),
+      ).rejects.toBeInstanceOf(ConflictError);
+    });
+
     it('should allow same device in different wallet configurations', async () => {
       const descriptor = "wsh(sortedmulti(2,[abcd1234/48'/0'/0'/2']xpub6E1.../<0;1>/*,[efef5678/48'/0'/0'/2']xpub6E2.../<0;1>/*))";
 

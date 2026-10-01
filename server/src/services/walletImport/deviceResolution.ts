@@ -94,15 +94,32 @@ export async function resolveDevices(
   });
 }
 
+/** Key origin `fingerprint/path`, lowercased with hardened steps written as `'`. */
+function keyOrigin(fingerprint: string, derivationPath: string): string {
+  const steps = derivationPath.replace(/^m\/?/i, '').replace(/^\//, '');
+  return `${fingerprint.toLowerCase()}/${steps.replace(/[hH]/g, "'")}`;
+}
+
+/** Key origins (`[fingerprint/path]`) of a stored descriptor. */
+function descriptorKeyOrigins(descriptor: string): Set<string> {
+  return new Set(
+    [...descriptor.matchAll(/\[([a-f0-9]{8})((?:\/\d+['hH]?)+)\]/gi)]
+      .map(([, fingerprint, path]) => keyOrigin(fingerprint, path))
+  );
+}
+
 /**
  * Check for a duplicate wallet: an accessible wallet with the same script type
- * and the same set of device fingerprints. Throws ConflictError (409) if found.
+ * and the same set of key origins (device fingerprint + derivation path).
+ * One signer may back several script types and several accounts, so only an
+ * exact match is a duplicate. Throws ConflictError (409) if found.
  */
 export async function checkDuplicateWallet(
   userId: string,
-  newFingerprints: Set<string>,
+  devices: ReadonlyArray<Pick<ParsedDevice, 'fingerprint' | 'derivationPath'>>,
   scriptType: ScriptType
 ): Promise<void> {
+  const newOrigins = new Set(devices.map(d => keyOrigin(d.fingerprint, d.derivationPath)));
   const userWallets = await walletRepository.findAccessibleWithSelect(userId, {
     id: true,
     name: true,
@@ -111,20 +128,11 @@ export async function checkDuplicateWallet(
   }, { descriptor: { not: null } });
 
   for (const wallet of userWallets) {
-    if (!wallet.descriptor) continue;
-    // One signer legitimately backs e.g. a native segwit and a taproot wallet;
-    // only the same device set under the same script type is a duplicate.
-    if (wallet.scriptType !== scriptType) continue;
+    if (!wallet.descriptor || wallet.scriptType !== scriptType) continue;
 
-    // Extract fingerprints from existing wallet descriptor
-    const existingFingerprints = new Set(
-      (wallet.descriptor.match(/\[([a-f0-9]{8})\//gi) || [])
-        .map(m => m.slice(1, 9).toLowerCase())
-    );
-
-    // Check if same set of devices
-    if (existingFingerprints.size === newFingerprints.size &&
-        [...newFingerprints].every(fp => existingFingerprints.has(fp))) {
+    const existingOrigins = descriptorKeyOrigins(wallet.descriptor);
+    if (existingOrigins.size === newOrigins.size &&
+        [...newOrigins].every(origin => existingOrigins.has(origin))) {
       throw new ConflictError(`A wallet with these devices already exists: "${wallet.name}"`);
     }
   }

@@ -98,12 +98,12 @@ describe('demo manifest', () => {
     },
   );
 
-  it('never gives two wallets the same script type and device set (wallet import rejects it)', () => {
-    // Mirrors checkDuplicateWallet: the same signers may back wallets of different script types.
+  it('never gives two wallets the same script type and key origins (wallet import rejects it)', () => {
+    // Mirrors checkDuplicateWallet: the same signers may back other script types and accounts.
     const scriptType = (descriptor: string) => descriptor.slice(0, descriptor.indexOf('('));
     const identities = manifest.wallets.map((w) => [
       scriptType(w.descriptor),
-      ...keyExpressions(w.descriptor).map((k) => k.fingerprint).sort(),
+      ...keyExpressions(w.descriptor).map((k) => `${k.fingerprint}${k.path}`).sort(),
     ].join(','));
     expect(new Set(identities).size).toBe(identities.length);
   });
