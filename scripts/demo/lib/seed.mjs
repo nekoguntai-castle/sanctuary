@@ -45,7 +45,7 @@ async function waitForSync(api, walletId, name, log) {
   log(`warning: ${name} still syncing after ${SYNC_TIMEOUT_MS / 1000}s; rerun seed to finish labels`);
 }
 
-async function ensureWallets(api, manifest, log) {
+export async function ensureWallets(api, manifest, log) {
   const wallets = new Map((await api.get('/wallets')).map((w) => [w.name, w.id]));
   for (const wallet of manifest.wallets) {
     if (!wallets.has(wallet.name)) {

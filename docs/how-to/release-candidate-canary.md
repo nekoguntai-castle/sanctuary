@@ -58,11 +58,35 @@ after a deploy survives the wait rather than aborting with `fleet admission
 never accepted (activation gate)`. Starting the probe about an hour after the
 deploy still costs less wall-clock than letting it idle through the gate.
 
+## Canary fleet
+
+Run the canary on the release host's local stack, never on a production
+instance. Production instances are not part of the release flow, and the
+release must not depend on private wallets being present.
+
+The fleet comes from `scripts/release/canary/fleet-manifest.json`: 12 watch-only
+mainnet wallets from the published BIP39 test vectors that the
+[demo instance](demo-instance.md) also uses. They cover legacy, nested SegWit,
+native SegWit and taproot script types across three keys, all with real
+on-chain history, so the canary exercises real Electrum sync. The validator
+requires at least 12 wallets, and the fleet alone meets that.
+
+```bash
+npm run canary:fleet:seed     # idempotent; creates the demo login if needed and waits for each sync
+npm run canary:fleet:status   # fleet and mainnet wallet counts
+npm run canary:fleet:reset    # removes only the fleet wallets
+```
+
+Seed the fleet before deploying the candidate, so the wallets are already
+synced and stale when the canary window opens. The fleet uses the demo login and
+coexists with the demo wallets. `tests/scripts/canaryFleetManifest.test.ts`
+re-derives every descriptor from its test-vector seed.
+
 ## Exercise the exact candidate
 
 1. Confirm the deployed tag and full commit SHA match the accepted RC.
-2. On the affected instance with at least 12 wallets, record the redacted fleet
-   total before the exercise.
+2. On the release host's stack, seeded with the [canary fleet](#canary-fleet)
+   (at least 12 wallets), record the redacted fleet total before the exercise.
 3. Run one complete all-wallet sync and one repeat sync of a previously stale
    wallet.
 4. Observe phase names, live stage time, known address/candidate/batch counts,

@@ -9,38 +9,18 @@
  *
  * Stack lifecycle stays with ./start.sh. See docs/how-to/demo-instance.md.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainModule } from '../lib/is-main-module.mjs';
-import { ApiError, createApiClient } from './lib/api-client.mjs';
 import { deleteDemoUser, findBackendContainer, upsertDemoUser } from './lib/container.mjs';
 import { createEnvFile, DEFAULT_ENV_FILE, readDemoConfig } from './lib/env.mjs';
 import { reset, seed, status } from './lib/seed.mjs';
+import { login } from './lib/session.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const COMMANDS = { seed: [], status: [], reset: ['--purge'] };
 const USAGE = 'usage: node scripts/demo/demo.mjs <seed|status|reset [--purge]>\n';
-
-/**
- * Reuses the previous run's session cookies (gitignored, 0600) while they are
- * still valid: the login limiter allows 5 attempts per 15 minutes, successes included.
- */
-async function login(config, sessionFile) {
-  if (existsSync(sessionFile)) {
-    const api = createApiClient(config.url, JSON.parse(readFileSync(sessionFile, 'utf8')));
-    try {
-      const me = await api.get('/auth/me');
-      if (me?.username === config.username) return api;
-    } catch (error) {
-      if (!(error instanceof ApiError)) throw error;
-    }
-  }
-  const api = createApiClient(config.url);
-  await api.post('/auth/login', { username: config.username, password: config.password });
-  writeFileSync(sessionFile, JSON.stringify(api.cookies()), { mode: 0o600 });
-  return api;
-}
 
 async function main(argv) {
   const [command, ...flags] = argv;

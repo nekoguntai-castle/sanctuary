@@ -88,7 +88,9 @@ matching tag or Release object when reconciliation is needed.
    use a new RC number.
 4. Run the affected-fleet
    [release-candidate canary](../how-to/release-candidate-canary.md) against the
-   exact accepted RC tag and commit. Keep its receipt outside the checkout.
+   exact accepted RC tag and commit, on the release host's stack seeded with the
+   public test-vector canary fleet (never a production instance). Keep its
+   receipt outside the checkout.
 5. Promote only through the fail-closed operator command. It revalidates the
    exact RC tag and commit, successful push runs for both
    `release-candidate.yml` and `install-test.yml`, the strict canary receipt and

@@ -37,6 +37,9 @@ keeps to the screenshot rules in
 - **A wallet agent**, "Payroll agent" (funding: Family vault, operational:
   Taproot savings), so the agent screens show a real row.
 
+The release-candidate canary seeds a further 12 test-vector wallets on the same
+login; see [Canary fleet](release-candidate-canary.md#canary-fleet).
+
 Anyone can spend from these seeds, and bots sweep deposits within minutes, so
 the single-sig balances sit near zero. Never send funds to them.
 `tests/scripts/demoManifest.test.ts` re-derives every key from the listed

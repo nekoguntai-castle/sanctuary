@@ -1,0 +1,78 @@
+{
+  "$comment": "Release-candidate canary fleet: watch-only mainnet wallets from the published BIP39 test vectors in scripts/demo/manifest.json. Script types and accounts avoid the demo wallets so both can coexist. See docs/how-to/release-candidate-canary.md.",
+  "minimumWallets": 12,
+  "wallets": [
+    {
+      "name": "Canary fleet 73c5da0a Legacy #0",
+      "network": "mainnet",
+      "descriptor": "pkh([73c5da0a/44h/0h/0h]xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj/<0;1>/*)",
+      "firstAddress": "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
+    },
+    {
+      "name": "Canary fleet 73c5da0a Nested SegWit #0",
+      "network": "mainnet",
+      "descriptor": "sh(wpkh([73c5da0a/49h/0h/0h]xpub6C6nQwHaWbSrzs5tZ1q7m5R9cPK9eYpNMFesiXsYrgc1P8bvLLAet9JfHjYXKjToD8cBRswJXXbbFpXgwsswVPAZzKMa1jUp2kVkGVUaJa7/<0;1>/*))",
+      "firstAddress": "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"
+    },
+    {
+      "name": "Canary fleet 73c5da0a Taproot #0",
+      "network": "mainnet",
+      "descriptor": "tr([73c5da0a/86h/0h/0h]xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/<0;1>/*)",
+      "firstAddress": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+    },
+    {
+      "name": "Canary fleet 73c5da0a Native SegWit #1",
+      "network": "mainnet",
+      "descriptor": "wpkh([73c5da0a/84h/0h/1h]xpub6CatWdiZiodmYVtWLtEQsAg1H9ooS1bmsJUBwQ83FE1Fyk386FWcyicJgEZv3quZSJKA5dh5Lo2PbubMGxCfZtRthV6ST2qquL9w3HSzcUn/<0;1>/*)",
+      "firstAddress": "bc1qku0qh0mc00y8tk0n65x2tqw4trlspak0fnjmfz"
+    },
+    {
+      "name": "Canary fleet b8688df1 Legacy #0",
+      "network": "mainnet",
+      "descriptor": "pkh([b8688df1/44h/0h/0h]xpub6DRjAgkh3vGTWDcEmDp4TPwy48Nu8yrp6swCEdCCLL615CgnZon7r3vXYr8LYibMLJh5DriGSito1FRBwVoBkjD1ZWG4dmgiC935wLj3nQC/<0;1>/*)",
+      "firstAddress": "1EBuf21icKTE5m3HWVndKx2bTxvqrWCqV6"
+    },
+    {
+      "name": "Canary fleet b8688df1 Nested SegWit #0",
+      "network": "mainnet",
+      "descriptor": "sh(wpkh([b8688df1/49h/0h/0h]xpub6CUhAuTW3q9eycj23w1fihQLfmoMfbLWokH6mr4jEwo4ECdXLAt4S8VvVJ5BaTNmByP1Cpfi8F48n2oWji5vCc4JgZW2jH7Wbfdb4tNjTR7/<0;1>/*))",
+      "firstAddress": "362rpGzFSAYLPEbHpKDsUezXUhXFVsDCDV"
+    },
+    {
+      "name": "Canary fleet b8688df1 Native SegWit #0",
+      "network": "mainnet",
+      "descriptor": "wpkh([b8688df1/84h/0h/0h]xpub6DNfJehqF1LUs9kwaqDu12Ajpz9psYVtbGhTykQo1CYdkkqV2vAyR4DiWXSTTDujWHzVy1AtV6ENGKWgwbLWqa4wXMZR4ZmdpRjQBG5EgTV/<0;1>/*)",
+      "firstAddress": "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98"
+    },
+    {
+      "name": "Canary fleet b8688df1 Taproot #1",
+      "network": "mainnet",
+      "descriptor": "tr([b8688df1/86h/0h/1h]xpub6BkxazXaWjQEvpEMMzmP6DMaSSpZzdpPekggGe3RFhRqtSrFumjwW3UJ49byfzUR57m818g4z9KWSdPDGUvUNBKyRTHoisDxDSEsjSH52YT/<0;1>/*)",
+      "firstAddress": "bc1pqv88kn52snq4pay8kqqfm5yc3dlp06txdjtcyjr42scj77cwk7sq3jxhja"
+    },
+    {
+      "name": "Canary fleet 28645006 Legacy #0",
+      "network": "mainnet",
+      "descriptor": "pkh([28645006/44h/0h/0h]xpub6Ckc5ZiE7H6pKsFstoAWHrwwVwCJYnM2B4CzuZNdRvoYQwAZ5bSDQbpqiHp93xKB5UBtqkgJ2sfKr8Qk5ZFWh8cSqMoEtRhpy3LhA9F7x7R/<0;1>/*)",
+      "firstAddress": "1McjtxpqQQYR59v2cDp5HtjgbjrAr7Wmub"
+    },
+    {
+      "name": "Canary fleet 28645006 Nested SegWit #0",
+      "network": "mainnet",
+      "descriptor": "sh(wpkh([28645006/49h/0h/0h]xpub6Cr687nfJDKXpFP7wCm6FVNB2V9NJgggVBfy1fbipj1u6WpZszCr5djqBKxqy5r4JqVFccDRh2vx1FVJkTxfV3FdkyYLwtPARokXjXcFTmA/<0;1>/*))",
+      "firstAddress": "3MxPhoNbL9vKsaHHzuEtdPpVC1PhzoPENr"
+    },
+    {
+      "name": "Canary fleet 28645006 Native SegWit #0",
+      "network": "mainnet",
+      "descriptor": "wpkh([28645006/84h/0h/0h]xpub6DBbzvudcQg2nS4tHSkrm7FGkXL6arWxEYoZ1g1GWbaNdWRobcJmxH8KQdjuzTZJtwDveibGd83eGzdGCR6NjSqpU8p2Xx4wWQK7iGBycAm/<0;1>/*)",
+      "firstAddress": "bc1q4f2e4sm7w094l7t6w6vtgynjw7q3987lgx9ssj"
+    },
+    {
+      "name": "Canary fleet 28645006 Taproot #0",
+      "network": "mainnet",
+      "descriptor": "tr([28645006/86h/0h/0h]xpub6C9H9yHn4WRw3HqX1T9JVM6iNoYTq3ijj4uizXP5ib1NxMwfzkm4jweDar9m7R9epp9eUWt3evR1T5N3r181rmG2wGqhuVUdmNmd8Gi3CQo/<0;1>/*)",
+      "firstAddress": "bc1pcfwj4qert95tj5z5zt0g6td69kckt6t2qk3rgm4dmguuctzyl7msqgd5dw"
+    }
+  ]
+}
