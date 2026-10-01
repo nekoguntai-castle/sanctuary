@@ -15,6 +15,7 @@ import {
   parseMetrics,
   readCgroup,
   readEnvFile,
+  shouldSeedFleet,
   summarizeFleet,
 } from '../../scripts/release/canary/lib/canary-runtime.mjs';
 
@@ -189,6 +190,21 @@ test('fleetReadiness refuses an undersized or partly invisible fleet before armi
   assert.match(fleetReadiness(15, 0).problems[0], /can access 0 of 15/);
   assert.equal(fleetReadiness(12, null).ready, true);
   for (const tool of [PROBE, SELFTEST]) assert.match(readFileSync(tool, 'utf8'), /fleetReadiness\(/);
+});
+
+test('the probe seeds a short fleet before arming unless CANARY_SEED_FLEET=0', () => {
+  assert.equal(shouldSeedFleet(3, {}), true);
+  assert.equal(shouldSeedFleet(11, { CANARY_SEED_FLEET: '1' }), true);
+  assert.equal(shouldSeedFleet(12, {}), false);
+  assert.equal(shouldSeedFleet(3, { CANARY_SEED_FLEET: '0' }), false);
+  const probe = readFileSync(PROBE, 'utf8');
+  const at = (pattern) => probe.search(pattern);
+  const seed = at(/canary-fleet\.mjs['"]\)\s*,\s*['"]seed['"]/);
+  assert.ok(seed > 0, 'the probe runs canary-fleet.mjs seed');
+  // Seeding must precede admin selection so the fleet owner can become the canary admin,
+  // and arming, so it never enters the evidence.
+  assert.ok(at(/psql\(CANARY_ADMIN_SQL\)/) > seed, 'seeding runs before the canary admin is chosen');
+  assert.ok(at(/type:\s*['"]armed['"]/) > seed, 'seeding runs before arming');
 });
 
 test('parseMetrics accepts both bare and sanctuary_-prefixed family names', () => {

@@ -80,10 +80,13 @@ npm run canary:fleet:reset    # removes only the fleet wallets
 The fleet is seeded once and stays: it lives in the stack's database, which
 redeploys (`./start.sh --rebuild`) keep, so later releases reuse it. Before each
 canary, confirm it with `canary-selftest.mjs`; its `fleetReadiness` must be
-`ready: true`. If it is not, run `npm run canary:fleet:seed`, which only adds
-missing wallets. The probe makes the same check and refuses to start, before
-arming, when the fleet has fewer than 12 mainnet wallets or the canary admin
-cannot see all of them.
+`ready: true`. You do not need to fix a short fleet by hand: when the fleet has
+fewer than 12 mainnet wallets, the probe runs `canary-fleet.mjs seed` itself
+before choosing its admin and before arming, so seeding never enters the
+evidence. Set `CANARY_SEED_FLEET=0` to turn that off. Seeding only adds missing
+test-vector wallets and waits for their first sync, so expect a few extra
+minutes on that run. If the fleet is still short afterwards, or the canary
+admin cannot see every mainnet wallet, the probe refuses to start.
 
 `npm run demo:reset` keeps the shared test-vector devices while fleet wallets
 exist, and `demo:reset --purge` refuses until `npm run canary:fleet:reset` has

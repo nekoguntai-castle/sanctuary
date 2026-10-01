@@ -162,6 +162,14 @@ export function fleetReadiness(total, accessible) {
     ...(problems.length ? { hint: 'seed the public test-vector fleet: npm run canary:fleet:seed' } : {}) };
 }
 
+/**
+ * Whether the probe seeds the public test-vector fleet (canary-fleet.mjs) before
+ * arming: only when the fleet is short, unless CANARY_SEED_FLEET=0. Pure; exported for tests.
+ */
+export function shouldSeedFleet(total, env) {
+  return total < CANARY_MIN_FLEET && env.CANARY_SEED_FLEET !== '0';
+}
+
 export const FLEET_SQL = `select id, network, "lastSyncStatus", "syncInProgress", "syncRetryCount", "syncActionRequiredAt" is not null,
   "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration" or "requestedFullResyncGeneration" > "processedFullResyncGeneration",
   "incrementalSyncLeaseToken" is not null, coalesce(to_char("lastSyncedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), ''), "lastSyncFailureClass"

@@ -8,6 +8,7 @@
 // docs/how-to/release-candidate-canary.md is the runbook, and
 // scripts/release/verify-release-candidate-canary.mjs is what validates the
 // result before a stable tag may be cut.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +21,7 @@ import {
   parseJsonOr,
   parseMetrics,
   readCgroup,
+  shouldSeedFleet,
   sleep,
   timedFetch,
   timedHttpsInsecure,
@@ -85,12 +87,22 @@ for (const ip of backendIps) {
 const [workerIp] = await containerIps(`${PROJECT}-worker-1`);
 const workerBase = `http://${workerIp}:3002`;
 if (!backendBase || !workerIp) { console.error('backend or worker unreachable'); process.exit(2); }
+// A short fleet is seeded before the canary admin is chosen, so the seeded wallets'
+// owner (the demo login) can become that admin. Nothing here is evidence: it runs before arming,
+// and its output goes to stderr so stdout keeps only the probe's own report.
+if (shouldSeedFleet((await fleetSnapshot()).summary.total, process.env)) {
+  console.error('canary fleet is short; seeding the public test-vector fleet (CANARY_SEED_FLEET=0 disables)');
+  // Bounded: the seeder waits up to 5 minutes for each of the 12 wallets' first sync.
+  const seeded = spawnSync(process.execPath, [path.join(import.meta.dirname, 'canary-fleet.mjs'), 'seed'], { stdio: ['ignore', 2, 2], timeout: 75 * 60_000 });
+  if (seeded.error || seeded.status === null) { console.error(`canary fleet seeding did not finish: ${seeded.error?.message ?? seeded.signal}`); process.exit(2); }
+  if (seeded.status !== 0) console.error(`canary fleet seeding exited ${seeded.status}; the readiness check below decides`);
+}
 const [[adminId, adminName, adminSessionVersion]] = await psql(CANARY_ADMIN_SQL);
 const token = mintAccessToken({ userId: adminId, username: adminName, sessionVersion: Number(adminSessionVersion) });
 const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' };
 const api = (p, init = {}, t = 10_000) => timedFetch(`${backendBase}/api/v1${p}`, { ...init, headers: { ...authHeaders, ...(init.headers || {}) } }, t);
 
-const initialFleet = await fleetSnapshot();
+const initialFleet = await fleetSnapshot(); // re-read: seeding above may have added wallets
 // Fail before arming: an undersized or invisible fleet cannot produce an accepted receipt.
 const visible = parseJsonOr((await api('/wallets')).text);
 const readiness = fleetReadiness(initialFleet.summary.total, Array.isArray(visible) ? visible.filter((w) => w.network === 'mainnet').length : null);
