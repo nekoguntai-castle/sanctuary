@@ -1427,11 +1427,11 @@ If you find Sanctuary useful and want to support its development, consider sendi
 ### Bitcoin (on-chain)
 
 <p align="center">
-  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin%3Abc1qhxsgrh8v3awf3pyc42847z2e7zgygqe05lgekn" alt="Bitcoin QR Code" />
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin%3Abc1p26ul26xlyc909nnpzr8azsg3vq8uwhduw0tkcs4cln0vpsvmg5tskfpvs4" alt="Bitcoin QR Code" />
 </p>
 
 ```
-bc1qhxsgrh8v3awf3pyc42847z2e7zgygqe05lgekn
+bc1p26ul26xlyc909nnpzr8azsg3vq8uwhduw0tkcs4cln0vpsvmg5tskfpvs4
 ```
 
 ### Lightning Address

@@ -169,8 +169,8 @@ export const AboutModal: React.FC<AboutModalProps> = ({
               {/* Bitcoin Address */}
               <DonationSection
                 label="Bitcoin"
-                address="bc1qhxsgrh8v3awf3pyc42847z2e7zgygqe05lgekn"
-                qrValue="bitcoin:bc1qhxsgrh8v3awf3pyc42847z2e7zgygqe05lgekn"
+                address="bc1p26ul26xlyc909nnpzr8azsg3vq8uwhduw0tkcs4cln0vpsvmg5tskfpvs4"
+                qrValue="bitcoin:bc1p26ul26xlyc909nnpzr8azsg3vq8uwhduw0tkcs4cln0vpsvmg5tskfpvs4"
                 copyType="btc"
                 copiedAddress={copiedAddress}
                 onCopy={onCopyAddress}
