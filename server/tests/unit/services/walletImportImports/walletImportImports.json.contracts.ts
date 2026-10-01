@@ -7,6 +7,7 @@ import {
   setupDeviceMocks,
   mockCurrentDeviceRole,
 } from '../walletImport.setup';
+import { ConflictError } from '../../../../src/errors/ApiError';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import * as walletImport from '../../../../src/services/walletImport';
 import type { ParsedDescriptor, Network, ScriptType } from '../../../../src/services/bitcoin/descriptorParser';
@@ -15,6 +16,45 @@ export const registerWalletImportJsonContracts = () => {
   const userId = 'user-123';
 
   describe('importFromJson', () => {
+    // Non-regression: JSON imports skipped the duplicate check that descriptor and
+    // parsed imports run, so the same wallet could be imported twice this way.
+    it('rejects a JSON import that duplicates an existing wallet', async () => {
+      const jsonConfig = {
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        devices: [
+          { type: 'coldcard', label: 'Coldcard', fingerprint: 'abcd1234', derivationPath: "m/84'/0'/0'", xpub: 'xpub6Dz...' },
+        ],
+      };
+      mockParseJsonImport.mockReturnValue({
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        devices: [
+          { fingerprint: 'abcd1234', xpub: 'xpub6Dz...', derivationPath: "m/84'/0'/0'" },
+        ],
+        network: 'mainnet' as Network,
+        isChange: false,
+      });
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        {
+          id: 'wallet-existing',
+          name: 'Existing Wallet',
+          scriptType: 'native_segwit',
+          descriptor: 'wpkh([abcd1234/84h/0h/0h]xpub6Dz.../<0;1>/*)',
+        },
+      ]);
+
+      await expect(
+        walletImport.importFromJson(userId, { json: JSON.stringify(jsonConfig), name: 'Duplicate JSON' }),
+      ).rejects.toSatisfy((error: unknown) =>
+        error instanceof ConflictError
+        && error.statusCode === 409
+        && error.message === 'A wallet with these devices already exists: "Existing Wallet"');
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
+    });
+
     it('should import wallet from JSON configuration', async () => {
       const jsonConfig = {
         type: 'single_sig',

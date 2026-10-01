@@ -7,7 +7,7 @@
 
 import type { JsonImportConfig, Network } from '../bitcoin/descriptorParser';
 import { parseJsonImport } from '../bitcoin/descriptorParser';
-import { resolveDevices } from './deviceResolution';
+import { checkDuplicateWallet, resolveDevices } from './deviceResolution';
 import { createWalletTransaction, resolveImportNetwork } from './walletImportService';
 import { createLogger } from '../../utils/logger';
 import { safeJsonParseUntyped } from '../../utils/safeJson';
@@ -39,6 +39,9 @@ export async function importFromJson(
   const jsonConfig = parseResult.data as JsonImportConfig;
   const parsed = parseJsonImport(jsonConfig);
   const network = resolveImportNetwork(parsed.network, input.network);
+
+  // Same duplicate rule as descriptor and parsed imports
+  await checkDuplicateWallet(userId, parsed.devices, parsed.scriptType);
 
   // Resolve devices with original labels/types from JSON
   const resolutions = await resolveDevices(
