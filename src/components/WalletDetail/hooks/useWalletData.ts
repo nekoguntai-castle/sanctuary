@@ -341,8 +341,11 @@ export function useWalletData({
         addressSummaryRef.current = aux.addressSummary;
         setAddressSummary(aux.addressSummary);
       }
-    } else {
-      addrList.failReplacement(replacements.addresses);
+    } else if (addrList.failReplacement(replacements.addresses)) {
+      // The page can be withheld (the wallet-safety display gate answers 403) while
+      // the summary still loads; keep it so the Addresses tab can say they exist.
+      addressSummaryRef.current = aux.addressSummary;
+      setAddressSummary(aux.addressSummary);
     }
     setDraftsCount(aux.drafts.length);
     if (aux.drafts.length > 0) {

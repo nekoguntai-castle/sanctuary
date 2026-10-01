@@ -1497,6 +1497,57 @@ describe('useWalletData', () => {
     await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledTimes(2));
   });
 
+  // Non-regression: the wallet-safety display gate answers the address page with 403
+  // while the summary still loads. The summary must survive so the Addresses tab can
+  // say the addresses exist instead of claiming the wallet has no descriptor.
+  it('keeps the address summary when the first address page is withheld', async () => {
+    const summary = {
+      totalAddresses: 40, usedCount: 21, unusedCount: 19,
+      totalBalance: 0, usedBalance: 0, unusedBalance: 0,
+    };
+    vi.mocked(transactionsApi.getAddressSummary).mockResolvedValueOnce(summary as never);
+    vi.mocked(transactionsApi.getAddresses).mockRejectedValueOnce(
+      new ApiError('Hardware wallet display is temporarily unavailable', 403),
+    );
+
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.addresses).toEqual([]);
+    expect(result.current.addressSummary).toEqual(summary);
+    expect(result.current.loadingAddresses).toBe(false);
+  });
+
+  it('ignores a withheld address page whose replacement was superseded', async () => {
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+
+    const withheldPage = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAddresses>>>();
+    const addressCalls = vi.mocked(transactionsApi.getAddresses).mock.calls.length;
+    vi.mocked(transactionsApi.getAddressSummary)
+      .mockResolvedValueOnce({ totalAddresses: 999 } as never)
+      .mockResolvedValueOnce({ totalAddresses: 3 } as never);
+    vi.mocked(transactionsApi.getAddresses)
+      .mockReturnValueOnce(withheldPage.promise)
+      .mockResolvedValueOnce([makeAddress('fresh-a')] as never);
+
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = view.result.current.fetchData(true);
+    });
+    await waitFor(() => expect(transactionsApi.getAddresses).toHaveBeenCalledTimes(addressCalls + 1));
+    await act(async () => {
+      await view.result.current.loadAddresses('wallet-1', 25, 0, true);
+    });
+    await act(async () => {
+      withheldPage.reject(new ApiError('Hardware wallet display is temporarily unavailable', 403));
+      await refresh;
+    });
+
+    expect(view.result.current.addressSummary?.totalAddresses).toBe(3);
+    expect(view.result.current.addresses.map((a) => a.id)).toEqual(['fresh-a']);
+  });
+
   it('returns early when required id or user is missing', async () => {
     const { result } = renderHook(() => useWalletData({ id: undefined, user: null }));
     await act(async () => {
