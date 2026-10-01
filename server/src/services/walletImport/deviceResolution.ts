@@ -7,7 +7,7 @@
 
 import { ConflictError } from '../../errors/ApiError';
 import { deviceRepository, walletRepository } from '../../repositories';
-import type { ParsedDevice, JsonImportDevice } from '../bitcoin/descriptorParser';
+import type { ParsedDevice, JsonImportDevice, ScriptType } from '../bitcoin/descriptorParser';
 import type { DeviceResolution } from './types';
 
 /**
@@ -95,21 +95,26 @@ export async function resolveDevices(
 }
 
 /**
- * Check for duplicate wallet by comparing device fingerprints
- * against existing user wallets. Throws if a duplicate is found.
+ * Check for a duplicate wallet: an accessible wallet with the same script type
+ * and the same set of device fingerprints. Throws ConflictError (409) if found.
  */
 export async function checkDuplicateWallet(
   userId: string,
-  newFingerprints: Set<string>
+  newFingerprints: Set<string>,
+  scriptType: ScriptType
 ): Promise<void> {
   const userWallets = await walletRepository.findAccessibleWithSelect(userId, {
     id: true,
     name: true,
+    scriptType: true,
     descriptor: true,
   }, { descriptor: { not: null } });
 
   for (const wallet of userWallets) {
     if (!wallet.descriptor) continue;
+    // One signer legitimately backs e.g. a native segwit and a taproot wallet;
+    // only the same device set under the same script type is a duplicate.
+    if (wallet.scriptType !== scriptType) continue;
 
     // Extract fingerprints from existing wallet descriptor
     const existingFingerprints = new Set(

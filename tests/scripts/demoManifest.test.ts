@@ -98,9 +98,14 @@ describe('demo manifest', () => {
     },
   );
 
-  it('never gives two wallets the same device-fingerprint set (wallet import rejects it)', () => {
-    const sets = manifest.wallets.map((w) => keyExpressions(w.descriptor).map((k) => k.fingerprint).sort().join(','));
-    expect(new Set(sets).size).toBe(sets.length);
+  it('never gives two wallets the same script type and device set (wallet import rejects it)', () => {
+    // Mirrors checkDuplicateWallet: the same signers may back wallets of different script types.
+    const scriptType = (descriptor: string) => descriptor.slice(0, descriptor.indexOf('('));
+    const identities = manifest.wallets.map((w) => [
+      scriptType(w.descriptor),
+      ...keyExpressions(w.descriptor).map((k) => k.fingerprint).sort(),
+    ].join(','));
+    expect(new Set(identities).size).toBe(identities.length);
   });
 
   it('points every agent at two distinct seeded wallets', () => {

@@ -532,11 +532,12 @@ export const registerWalletImportDescriptorContracts = () => {
       });
 
 
-      // Mock existing wallet with same device fingerprint
+      // Mock existing wallet with same device fingerprint and script type
       mockPrismaClient.wallet.findMany.mockResolvedValue([
         {
           id: 'wallet-existing',
           name: 'Existing Wallet',
+          scriptType: 'native_segwit',
           descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
         },
       ]);
@@ -551,6 +552,61 @@ export const registerWalletImportDescriptorContracts = () => {
         error instanceof ConflictError
         && error.statusCode === 409
         && error.message === 'A wallet with these devices already exists: "Existing Wallet"');
+    });
+
+    // Non-regression: one signer legitimately backs a native segwit and a taproot
+    // wallet. Only the same device set under the same script type is a duplicate.
+    it('allows the same device set under a different script type', async () => {
+      const descriptor = "tr([abcd1234/86'/0'/0']xpubTaproot.../<0;1>/*)";
+
+      mockParseImportInput.mockReturnValue({
+        format: 'descriptor',
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'taproot',
+          devices: [
+            { fingerprint: 'abcd1234', xpub: 'xpubTaproot...', derivationPath: "m/86'/0'/0'" },
+          ],
+          network: 'mainnet' as Network,
+          isChange: false,
+        },
+      });
+
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        {
+          id: 'wallet-segwit',
+          name: 'Segwit Wallet',
+          scriptType: 'native_segwit',
+          descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
+        },
+      ]);
+      setupDeviceMocks([
+        {
+          id: 'device-001',
+          userId,
+          type: 'unknown',
+          label: 'Imported Device 1',
+          fingerprint: 'abcd1234',
+          derivationPath: "m/86'/0'/0'",
+          xpub: 'xpubTaproot...',
+        },
+      ]);
+      mockPrismaClient.wallet.create.mockResolvedValue({
+        id: 'wallet-taproot',
+        name: 'Taproot Wallet',
+        type: 'single_sig',
+        scriptType: 'taproot',
+        network: 'mainnet',
+        descriptor: 'tr([abcd1234/86h/0h/0h]xpubTaproot.../<0;1>/*)',
+        fingerprint: 'abcd1234',
+      });
+
+      const result = await walletImport.importFromDescriptor(userId, {
+        descriptor,
+        name: 'Taproot Wallet',
+      });
+
+      expect(result.wallet.id).toBe('wallet-taproot');
     });
 
     it('should allow same device in different wallet configurations', async () => {

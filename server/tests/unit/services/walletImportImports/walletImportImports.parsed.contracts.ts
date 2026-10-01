@@ -36,6 +36,7 @@ export const registerWalletImportParsedContracts = () => {
         {
           id: 'wallet-existing',
           name: 'Existing Wallet',
+          scriptType: 'native_segwit',
           descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
         },
       ]);
@@ -56,6 +57,7 @@ export const registerWalletImportParsedContracts = () => {
       mockPrismaClient.wallet.findMany.mockResolvedValue([
         {
           id: 'wallet-no-fingerprint',
+          scriptType: 'native_segwit', // same type, so the descriptor is actually parsed
           name: 'No Fingerprint Wallet',
           descriptor: 'wpkh(xpub6NoFingerprint...)',
         },
