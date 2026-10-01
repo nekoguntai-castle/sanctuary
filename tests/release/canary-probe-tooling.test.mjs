@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  CANARY_ADMIN_SQL,
   FAMILIES,
   parseJsonOr,
   parseMetrics,
@@ -159,6 +160,19 @@ test('the canary tools share one runtime instead of copying it', () => {
 // exposed both the bare and the `sanctuary_`-prefixed family names across
 // releases, and a canary that matched only one spelling reported a healthy
 // fleet as missing its counters.
+test('the probe and selftest act as the admin who can access the most mainnet wallets', () => {
+  // An arbitrary admin (an operator account next to the seeded demo login that owns
+  // the canary fleet) admits no wallets, so the canary would wait out its timeout.
+  for (const tool of [PROBE, SELFTEST]) {
+    const source = readFileSync(tool, 'utf8');
+    assert.match(source, /psql\(CANARY_ADMIN_SQL\)/, `${path.basename(tool)} must use CANARY_ADMIN_SQL`);
+    assert.doesNotMatch(source, /"isAdmin" = true limit 1/, `${path.basename(tool)} picks an arbitrary admin`);
+  }
+  assert.match(CANARY_ADMIN_SQL, /"isAdmin" = true/);
+  assert.match(CANARY_ADMIN_SQL, /from wallet_users wu join wallets w on w\.id = wu\."walletId"/);
+  assert.match(CANARY_ADMIN_SQL, /w\.network = 'mainnet'\) desc, u\."createdAt", u\.id limit 1$/);
+});
+
 test('parseMetrics accepts both bare and sanctuary_-prefixed family names', () => {
   const bare = FAMILIES.map((f) => `# TYPE wallet_sync_${f}_total counter`).join('\n');
   const prefixed = FAMILIES.map((f) => `# TYPE sanctuary_wallet_sync_${f}_total counter`).join('\n');

@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  CANARY_ADMIN_SQL,
   FAMILIES,
   createCanaryRuntime,
   nowIso,
@@ -83,7 +84,7 @@ for (const ip of backendIps) {
 const [workerIp] = await containerIps(`${PROJECT}-worker-1`);
 const workerBase = `http://${workerIp}:3002`;
 if (!backendBase || !workerIp) { console.error('backend or worker unreachable'); process.exit(2); }
-const [[adminId, adminName, adminSessionVersion]] = await psql(`select id, username, "sessionVersion" from users where "isAdmin" = true limit 1`);
+const [[adminId, adminName, adminSessionVersion]] = await psql(CANARY_ADMIN_SQL);
 const token = mintAccessToken({ userId: adminId, username: adminName, sessionVersion: Number(adminSessionVersion) });
 const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' };
 const api = (p, init = {}, t = 10_000) => timedFetch(`${backendBase}/api/v1${p}`, { ...init, headers: { ...authHeaders, ...(init.headers || {}) } }, t);

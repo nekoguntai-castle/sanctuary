@@ -12,6 +12,7 @@
 // first rather than burning a canary window.
 import path from 'node:path';
 import {
+  CANARY_ADMIN_SQL,
   createCanaryRuntime,
   parseJsonOr,
   parseMetrics,
@@ -42,7 +43,7 @@ for (const ip of backendIps) {
 const [workerIp] = await containerIps(`${PROJECT}-worker-1`);
 if (!backendBase || !workerIp) { console.error('backend or worker unreachable'); process.exit(2); }
 
-const [[adminId, adminName, sv]] = await psql('select id, username, "sessionVersion" from users where "isAdmin" = true limit 1');
+const [[adminId, adminName, sv]] = await psql(CANARY_ADMIN_SQL);
 const token = mintAccessToken({ userId: adminId, username: adminName, sessionVersion: Number(sv) });
 const h = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
 

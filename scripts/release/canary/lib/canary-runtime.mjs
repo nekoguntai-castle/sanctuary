@@ -136,6 +136,17 @@ export function parseMetrics(text) {
   return { families, activeStageAge, fallback };
 }
 
+/**
+ * The admin the canary acts as. POST /sync/network/<network> admits only the
+ * caller's wallets, so an arbitrary admin with no wallets (an operator account
+ * next to the seeded demo login) admits nothing and the canary waits out its
+ * activation timeout. Choose the admin who can access the most mainnet wallets;
+ * ties go to the oldest account so the choice is deterministic.
+ */
+export const CANARY_ADMIN_SQL = `select u.id, u.username, u."sessionVersion" from users u where u."isAdmin" = true
+  order by (select count(*) from wallet_users wu join wallets w on w.id = wu."walletId"
+    where wu."userId" = u.id and w.network = 'mainnet') desc, u."createdAt", u.id limit 1`;
+
 export const FLEET_SQL = `select id, network, "lastSyncStatus", "syncInProgress", "syncRetryCount", "syncActionRequiredAt" is not null,
   "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration" or "requestedFullResyncGeneration" > "processedFullResyncGeneration",
   "incrementalSyncLeaseToken" is not null, coalesce(to_char("lastSyncedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), ''), "lastSyncFailureClass"

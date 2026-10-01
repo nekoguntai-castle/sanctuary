@@ -79,7 +79,9 @@ npm run canary:fleet:reset    # removes only the fleet wallets
 
 Seed the fleet before deploying the candidate, so the wallets are already
 synced and stale when the canary window opens. The fleet uses the demo login and
-coexists with the demo wallets. `tests/scripts/canaryFleetManifest.test.ts`
+coexists with the demo wallets. The probe and selftest act as the administrator
+who can access the most mainnet wallets, so an operator admin with no wallets
+never becomes the canary's caller. `tests/scripts/canaryFleetManifest.test.ts`
 re-derives every descriptor from its test-vector seed.
 
 ## Exercise the exact candidate
