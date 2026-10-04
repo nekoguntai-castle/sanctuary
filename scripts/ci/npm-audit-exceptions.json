@@ -1,4 +1,23 @@
 {
   "schemaVersion": 1,
-  "exceptions": []
+  "exceptions": [
+    {
+      "id": "node-forge-rsa-pkcs1-digestinfo-signature-forgery",
+      "ghsa": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "version": "1.4.0",
+      "lockfile": "package-lock.json",
+      "paths": [
+        [
+          "gateway",
+          "node_modules/@parse/node-apn",
+          "node_modules/node-forge"
+        ]
+      ],
+      "owner": "nekoguntai",
+      "rationale": "No fixed release exists: the advisory covers node-forge <= 1.4.0 with no patched version, and 1.4.0 is the latest published release, which @parse/node-apn@8.1.0 pins exactly. The vulnerable function is RSA PKCS#1 v1.5 signature verification (forge publicKey.verify), which accepts DigestInfo structures with extra nested DigestAlgorithm elements. Neither @parse/node-apn nor Sanctuary ever verifies an RSA signature with node-forge. node-apn calls it only from lib/credentials/certificate/* to decode PEM/PKCS#12 credentials and fingerprint keys, and initializeAPNs (gateway/src/services/push/apns.ts) always constructs the provider with `token` auth, which makes lib/config.js delete cert/key/pfx and skip prepareCertificate entirely.",
+      "trackingUrl": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+      "runtimeSurface": "Present at runtime; this is NOT a build-time-only waiver. node-forge ships in the gateway image as a dependency of @parse/node-apn. What bounds the risk is the call graph, not the location: the shipped gateway uses token (JWT) APNs auth only, so node-apn's certificate path, the only code that loads node-forge, never runs, and nothing anywhere calls node-forge signature verification. Re-check this waiver if the gateway ever accepts certificate/PFX APNs credentials (cert, key, pfx or pfxData options), or if any other package starts depending on node-forge (npm ls node-forge --all)."
+    }
+  ]
 }

@@ -1,16 +1,41 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "timezone": "Pacific/Honolulu",
-  "schedule": ["at any time"],
-  "minimumReleaseAge": "3 days",
   "prHourlyLimit": 1,
   "prConcurrentLimit": 2,
+  "rangeStrategy": "update-lockfile",
   "packageRules": [
     {
       "description": "Ignore the locally built Bitcoin Core verification image",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["sanctuary-bitcoind"],
       "enabled": false
+    },
+    {
+      "description": "One weekly PR for non-major devDependency updates instead of one full CI run per package. Funds-critical packages are excluded here; they stay behind dashboard approval below.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "!bitcoinjs-lib",
+        "!@ledgerhq/hw-transport-webusb",
+        "!@ledgerhq/ledger-bitcoin",
+        "!@ledgerhq/hw-transport-node-speculos",
+        "!@trezor/connect",
+        "!@trezor/connect-web",
+        "!cbor-x"
+      ],
+      "groupName": "non-major dev dependencies"
+    },
+    {
+      "description": "One weekly PR for non-major type-definition updates, wherever they are declared.",
+      "matchPackageNames": ["@types/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "type definitions"
+    },
+    {
+      "description": "Root overrides pin transitive packages exactly, and tests/ci/npmOverridesApplied.test.ts requires every lockfile copy to match. Renovate's lockfile update drops the overridden package's lock entry instead of moving it (#1334, #1361, #1364), so an override PR can never pass. List them on the dashboard; bump by hand, regenerating the lockfile until the test passes.",
+      "matchDepTypes": ["overrides"],
+      "dependencyDashboardApproval": true
     },
     {
       "description": "Funds-critical packages pinned in config/ci-toolchain-lock.json (fundsCriticalPackages): a Renovate PR can never pass scripts/ci/check-supply-chain-locks.mjs because the exact version and integrity must move together across every listed manifest and lockfile. List them on the dashboard instead of opening an unmergeable PR; bump them with scripts/bump-funds-critical.sh <package> <version> (see \"Bumping a funds-critical package\" in docs/reference/ci-cd-strategy.md), then approve the dashboard entry so Renovate can pick up the reviewed version.",
