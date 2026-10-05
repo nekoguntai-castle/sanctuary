@@ -72,7 +72,7 @@ test('renovate groups never batch a funds-critical package', () => {
   }
 });
 
-test('renovate never opens a PR for a root override pin', () => {
+test('renovate holds override pins for approval and repairs their lockfile', () => {
   const renovate = readJson(RENOVATE_PATH);
   const rule = (renovate.packageRules ?? []).find(
     (r) => Array.isArray(r.matchDepTypes) && r.matchDepTypes.includes('overrides'),
@@ -80,4 +80,16 @@ test('renovate never opens a PR for a root override pin', () => {
   assert.ok(rule, 'renovate.json must route overrides depType updates through the dashboard');
   assert.equal(rule.dependencyDashboardApproval, true);
   assert.equal(rule.matchPackageNames, undefined, 'the overrides rule must cover every override, not a list');
+  // Renovate's own lockfile update drops the overridden entry; these two steps
+  // are the repair, and each must match an allowedCommands pattern in
+  // security-monitoring-infra/config/renovate.cjs or Renovate skips it.
+  assert.deepEqual(rule.postUpgradeTasks, {
+    commands: [
+      'git checkout HEAD -- package-lock.json',
+      'npm update {{{depName}}} --package-lock-only --ignore-scripts',
+    ],
+    fileFilters: ['**/package-lock.json'],
+    workingDirTemplate: '{{{packageFileDir}}}',
+    executionMode: 'update',
+  });
 });

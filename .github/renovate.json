@@ -33,9 +33,18 @@
       "groupName": "type definitions"
     },
     {
-      "description": "Root overrides pin transitive packages exactly, and tests/ci/npmOverridesApplied.test.ts requires every lockfile copy to match. Renovate's lockfile update drops the overridden package's lock entry instead of moving it (#1334, #1361, #1364), so an override PR can never pass. List them on the dashboard; bump by hand: edit the pin, then run `npm update <package> --package-lock-only --ignore-scripts`, which moves every lock copy to the pinned version.",
+      "description": "Root overrides pin transitive packages exactly, and tests/ci/npmOverridesApplied.test.ts requires every lockfile copy to match. Renovate's own lockfile update drops the overridden package's lock entry instead of moving it (#1334, #1361, #1364). The post-upgrade task repairs that: it restores the base lockfile and lets npm move every copy to the new pin, the same steps as the hand bump in #1368 (the commands must stay inside allowedCommands in security-monitoring-infra/config/renovate.cjs). Updates stay behind dashboard approval until the first repaired PR has passed CI.",
       "matchDepTypes": ["overrides"],
-      "dependencyDashboardApproval": true
+      "dependencyDashboardApproval": true,
+      "postUpgradeTasks": {
+        "commands": [
+          "git checkout HEAD -- package-lock.json",
+          "npm update {{{depName}}} --package-lock-only --ignore-scripts"
+        ],
+        "fileFilters": ["**/package-lock.json"],
+        "workingDirTemplate": "{{{packageFileDir}}}",
+        "executionMode": "update"
+      }
     },
     {
       "description": "Funds-critical packages pinned in config/ci-toolchain-lock.json (fundsCriticalPackages): a Renovate PR can never pass scripts/ci/check-supply-chain-locks.mjs because the exact version and integrity must move together across every listed manifest and lockfile. List them on the dashboard instead of opening an unmergeable PR; bump them with scripts/bump-funds-critical.sh <package> <version> (see \"Bumping a funds-critical package\" in docs/reference/ci-cd-strategy.md), then approve the dashboard entry so Renovate can pick up the reviewed version.",
