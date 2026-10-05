@@ -26,6 +26,16 @@ export const DEFAULT_TARGETS = Object.freeze([
   { label: 'verify-psbt', cwd: 'scripts/verify-psbt', lockfile: 'scripts/verify-psbt/package-lock.json', roots: [''], args: ['audit', '--json'] },
 ]);
 
+// Lockfiles that never reach a shipped artifact. Only these may carry a
+// `"paths": "*"` waiver: a build-time advisory under a large toolchain can
+// reach the gate through hundreds of paths (braces under Docusaurus: 733),
+// and pinning each one turns every docs dependency bump into waiver churn.
+// Runtime lockfiles keep the exact-path rule.
+export const BUILD_TIME_LOCKFILES = Object.freeze([
+  'docs/site/package-lock.json',
+  'tests/ci/lib/package-lock.json',
+]);
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -71,11 +81,17 @@ function validateException(entry, index, currentDateMs) {
   if (!entry.lockfile.endsWith('package-lock.json') || entry.lockfile.startsWith('/') || entry.lockfile.includes('..')) {
     throw new Error(`${label}.lockfile must be a repository-relative package-lock.json path`);
   }
-  if (!Array.isArray(entry.paths) || entry.paths.length === 0) throw new Error(`${label}.paths must contain at least one exact path`);
-  entry.paths.forEach((path, pathIndex) => {
-    if (!Array.isArray(path) || path.length < 2) throw new Error(`${label}.paths[${pathIndex}] must contain a root and audited node`);
-    path.forEach((part, partIndex) => requireNonEmptyString(part, `${label}.paths[${pathIndex}][${partIndex}]`));
-  });
+  if (entry.paths === '*') {
+    if (!BUILD_TIME_LOCKFILES.includes(entry.lockfile)) {
+      throw new Error(`${label}.paths may be "*" only for a build-time lockfile (${BUILD_TIME_LOCKFILES.join(', ')})`);
+    }
+  } else {
+    if (!Array.isArray(entry.paths) || entry.paths.length === 0) throw new Error(`${label}.paths must contain at least one exact path`);
+    entry.paths.forEach((path, pathIndex) => {
+      if (!Array.isArray(path) || path.length < 2) throw new Error(`${label}.paths[${pathIndex}] must contain a root and audited node`);
+      path.forEach((part, partIndex) => requireNonEmptyString(part, `${label}.paths[${pathIndex}][${partIndex}]`));
+    });
+  }
   // Omit `expiresOn` for a waiver that stands until the advisory itself goes
   // away. A calendar deadline only buys anything if someone is obliged to
   // answer it; on a single-maintainer repo it just reddens CI on a date that
@@ -87,7 +103,7 @@ function validateException(entry, index, currentDateMs) {
     const expiresMs = parseUtcDate(entry.expiresOn, `${label}.expiresOn`);
     if (currentDateMs > expiresMs) throw new Error(`${label} expired on ${entry.expiresOn}`);
   }
-  return { ...entry, usedPaths: entry.paths.map(() => false) };
+  return { ...entry, usedPaths: entry.paths === '*' ? [false] : entry.paths.map(() => false) };
 }
 
 export function parseExceptionConfig(raw, currentDate = new Date()) {
@@ -108,6 +124,7 @@ export function parseExceptionConfig(raw, currentDate = new Date()) {
     const identity = JSON.stringify([entry.ghsa, entry.package, entry.version, entry.lockfile]);
     if (identities.has(identity)) throw new Error(`duplicate exception: ${entry.id}`);
     identities.add(identity);
+    if (entry.paths === '*') continue;
     const paths = new Set();
     entry.paths.forEach((path) => {
       const pathIdentity = JSON.stringify(path);
@@ -400,7 +417,9 @@ function approveLeaf({ leaf, vulnerability, target, lock, exceptions }) {
         entry.package === leaf.packageName &&
         entry.version === installed.version &&
         entry.lockfile === target.lockfile);
-      const pathIndex = match?.paths.findIndex((approvedPath) => pathEquals(approvedPath, path)) ?? -1;
+      const pathIndex = match?.paths === '*'
+        ? 0
+        : match?.paths.findIndex((approvedPath) => pathEquals(approvedPath, path)) ?? -1;
       if (!match || pathIndex < 0) {
         throw new Error(
           `${target.label}: unapproved high advisory ${ghsa} in ${leaf.packageName}@${installed.version} ` +

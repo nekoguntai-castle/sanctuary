@@ -5,6 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import {
+  BUILD_TIME_LOCKFILES,
   DEFAULT_TARGETS,
   evaluateReports,
   findLockPaths,
@@ -318,6 +319,58 @@ test('global unused validation occurs after all target reports', () => {
     ['package-lock.json', lock()],
   ]);
   assert.doesNotThrow(() => evaluateReports({ reports, targets, locks, exceptions: parsedExceptions() }));
+});
+
+test('build-time lockfiles are audited targets and never a shipped lockfile', () => {
+  const audited = new Set(DEFAULT_TARGETS.map(({ lockfile }) => lockfile));
+  assert.deepEqual([...BUILD_TIME_LOCKFILES].sort(), ['docs/site/package-lock.json', 'tests/ci/lib/package-lock.json']);
+  for (const lockfile of BUILD_TIME_LOCKFILES) assert.ok(audited.has(lockfile), `${lockfile} is not an audit target`);
+});
+
+test('a build-time lockfile waiver may cover every path with "*"', () => {
+  const buildTime = target({ lockfile: 'docs/site/package-lock.json' });
+  const manyPaths = lock({
+    '': { name: 'fixture', dependencies: { a: '1.0.0', b: '1.0.0' } },
+    'node_modules/a': { version: '1.0.0', dependencies: { leaf: '1.0.0' } },
+    'node_modules/b': { version: '1.0.0', dependencies: { leaf: '1.0.0' } },
+  });
+  const wildcard = exception({ lockfile: 'docs/site/package-lock.json', paths: '*' });
+  assert.doesNotThrow(() => evaluate({ packageLock: manyPaths, entries: [wildcard], targets: [buildTime] }));
+  // It still matches only its own advisory, package and version.
+  assert.throws(
+    () => evaluate({ audit: report({ leaf: vulnerability({ via: [advisory(GHSA_B)] }) }), entries: [wildcard], targets: [buildTime] }),
+    /unapproved high advisory GHSA-qwww-vcr4-c8h2/,
+  );
+  // And fails as unused once the advisory clears.
+  assert.throws(
+    () => evaluate({ audit: report({}), entries: [wildcard], targets: [buildTime] }),
+    /unused audit exceptions: fixture-exception/,
+  );
+});
+
+test('"*" paths are refused for any lockfile that is not build-time', () => {
+  assert.throws(() => parsedExceptions([exception({ paths: '*' })]), /"\*" only for a build-time lockfile/);
+  assert.throws(
+    () => parsedExceptions([exception({ lockfile: 'scripts/verify-psbt/package-lock.json', paths: '*' })]),
+    /"\*" only for a build-time lockfile/,
+  );
+  assert.throws(() => parsedExceptions([exception({ lockfile: 'docs/site/package-lock.json', paths: 'all' })]), /paths must/);
+});
+
+test('a "*" waiver keeps the expiry check', () => {
+  assert.throws(
+    () => parsedExceptions([exception({ lockfile: 'docs/site/package-lock.json', paths: '*', expiresOn: '2026-01-01' })], NOW),
+    /expired on 2026-01-01/,
+  );
+});
+
+test('a "*" waiver never excuses a critical finding', () => {
+  const buildTime = target({ lockfile: 'docs/site/package-lock.json' });
+  const wildcard = exception({ lockfile: 'docs/site/package-lock.json', paths: '*' });
+  assert.throws(
+    () => evaluate({ audit: report({ leaf: vulnerability({ severity: 'critical', via: [advisory(GHSA_A, 'critical')] }) }), entries: [wildcard], targets: [buildTime] }),
+    /critical/,
+  );
 });
 
 test('expiry is valid through its UTC date and invalid the following day', () => {

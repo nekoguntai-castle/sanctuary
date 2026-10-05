@@ -18,6 +18,49 @@
       "rationale": "No fixed release exists: the advisory covers node-forge <= 1.4.0 with no patched version, and 1.4.0 is the latest published release, which @parse/node-apn@8.1.0 pins exactly. The vulnerable function is RSA PKCS#1 v1.5 signature verification (forge publicKey.verify), which accepts DigestInfo structures with extra nested DigestAlgorithm elements. Neither @parse/node-apn nor Sanctuary ever verifies an RSA signature with node-forge. node-apn calls it only from lib/credentials/certificate/* to decode PEM/PKCS#12 credentials and fingerprint keys, and initializeAPNs (gateway/src/services/push/apns.ts) always constructs the provider with `token` auth, which makes lib/config.js delete cert/key/pfx and skip prepareCertificate entirely.",
       "trackingUrl": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
       "runtimeSurface": "Present at runtime; this is NOT a build-time-only waiver. node-forge ships in the gateway image as a dependency of @parse/node-apn. What bounds the risk is the call graph, not the location: the shipped gateway uses token (JWT) APNs auth only, so node-apn's certificate path, the only code that loads node-forge, never runs, and nothing anywhere calls node-forge signature verification. Re-check this waiver if the gateway ever accepts certificate/PFX APNs credentials (cert, key, pfx or pfxData options), or if any other package starts depending on node-forge (npm ls node-forge --all)."
+    },
+    {
+      "id": "braces-nested-pattern-stack-exhaustion-gateway",
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "version": "3.0.3",
+      "lockfile": "package-lock.json",
+      "paths": [
+        [
+          "gateway",
+          "node_modules/http-proxy-middleware",
+          "node_modules/micromatch",
+          "node_modules/braces"
+        ]
+      ],
+      "owner": "nekoguntai",
+      "rationale": "No fixed release exists: the advisory covers braces <= 3.0.3 with no patched version, and 3.0.3 is the latest published release. The vulnerable code is braces' recursive expansion of a deeply nested brace pattern. Its only shipped route is http-proxy-middleware's path filter (dist/path-filter.js), which calls micromatch only when pathFilter is a glob. The gateway's createProxyMiddleware (gateway/src/routes/proxy/proxyConfig.ts) sets no pathFilter, so the default '/' takes the plain-string branch and micromatch never runs. Even on the glob branch braces expands the pattern, which is code-supplied; the request path is only matched against the compiled result.",
+      "trackingUrl": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "runtimeSurface": "Present at runtime; this is NOT a build-time-only waiver. braces ships in the gateway image through http-proxy-middleware -> micromatch. What bounds the risk is the call graph: the shipped gateway never reaches micromatch, and no request data is ever parsed as a brace pattern. Re-check this waiver if the gateway proxy gains a pathFilter, or if any shipped code starts passing request-derived strings to micromatch, picomatch or braces as a pattern."
+    },
+    {
+      "id": "braces-nested-pattern-stack-exhaustion-docs-site",
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "version": "3.0.3",
+      "lockfile": "docs/site/package-lock.json",
+      "paths": "*",
+      "owner": "nekoguntai",
+      "rationale": "No fixed release exists: braces <= 3.0.3 is affected and 3.0.3 is the latest published release. Reached through Docusaurus' file globbing (micromatch, fast-glob, chokidar) by 733 distinct dependency paths, which is why this waiver covers the whole build-time lockfile. Exploiting it means committing a deeply nested brace glob to this repository's own docs configuration to crash your own docs build.",
+      "trackingUrl": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "runtimeSurface": "Documentation build only. braces sits under the Docusaurus toolchain in docs/site, a standalone lockfile that never reaches a runtime path: it is absent from the Sanctuary frontend bundle, the server, the gateway, and every shipped container."
+    },
+    {
+      "id": "http-cache-semantics-max-stale-docs-site",
+      "ghsa": "GHSA-ch52-4w7c-c8xp",
+      "package": "http-cache-semantics",
+      "version": "4.2.0",
+      "lockfile": "docs/site/package-lock.json",
+      "paths": "*",
+      "owner": "nekoguntai",
+      "rationale": "No fixed release exists: http-cache-semantics <= 4.2.0 is affected and 4.2.0 is the latest published release. The vulnerable behaviour leaks a shared HTTP cache entry to another user; the only caller is cacheable-request under got, which Docusaurus' update-notifier uses to ask the npm registry for a newer version from the developer's machine. No shared cache and no second user exist on that path.",
+      "trackingUrl": "https://github.com/advisories/GHSA-ch52-4w7c-c8xp",
+      "runtimeSurface": "Documentation build only. http-cache-semantics sits under the Docusaurus toolchain in docs/site, a standalone lockfile that never reaches a runtime path: it is absent from the Sanctuary frontend bundle, the server, the gateway, and every shipped container."
     }
   ]
 }
