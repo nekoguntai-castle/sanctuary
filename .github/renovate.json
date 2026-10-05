@@ -33,7 +33,7 @@
       "groupName": "type definitions"
     },
     {
-      "description": "Root overrides pin transitive packages exactly, and tests/ci/npmOverridesApplied.test.ts requires every lockfile copy to match. Renovate's lockfile update drops the overridden package's lock entry instead of moving it (#1334, #1361, #1364), so an override PR can never pass. List them on the dashboard; bump by hand, regenerating the lockfile until the test passes.",
+      "description": "Root overrides pin transitive packages exactly, and tests/ci/npmOverridesApplied.test.ts requires every lockfile copy to match. Renovate's lockfile update drops the overridden package's lock entry instead of moving it (#1334, #1361, #1364), so an override PR can never pass. List them on the dashboard; bump by hand: edit the pin, then run `npm update <package> --package-lock-only --ignore-scripts`, which moves every lock copy to the pinned version.",
       "matchDepTypes": ["overrides"],
       "dependencyDashboardApproval": true
     },
