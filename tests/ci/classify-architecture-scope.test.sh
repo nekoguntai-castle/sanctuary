@@ -68,6 +68,9 @@ assert_scope "shared workflow controls select both scopes" \
 assert_scope "runner lock aggregation selects both scopes" \
   $'core=true\ndocs=true' \
   "scripts/ci/aggregate-runner-locks.sh"
+assert_scope "the validation subject itself selects both scopes" \
+  $'core=true\ndocs=true' \
+  "scripts/ci/run-architecture-validation-subject.sh"
 assert_scope "docs timing controls select docs only" \
   $'core=false\ndocs=true' \
   "scripts/ci/record-command-timing.mjs" ".github/ci-performance-budget.json"

@@ -53,7 +53,8 @@ run_core_checks() {
     --audit=false --fund=false --cache "$WORKSPACE/.npm-cache/root"
   run_logged lint-diagrams npm run arch:lint
   run_logged runtime-boundaries npm run check:architecture-boundaries
-  run_logged wallet-sync-lifecycle-contract npm run check:wallet-sync-lifecycle-contract
+  run_logged wallet-sync-lifecycle-contract bash -euo pipefail -c \
+    'npm run check:wallet-sync-lifecycle-contract && node --test tests/ci/check-wallet-sync-lifecycle-contract.test.mjs'
   run_logged wallet-sync-mutation-boundaries bash -euo pipefail -c \
     'npm run check:wallet-sync-mutation-boundaries && node --test tests/ci/check-wallet-sync-mutation-boundaries.test.mjs'
   run_logged resource-ownership-contract bash -euo pipefail -c \

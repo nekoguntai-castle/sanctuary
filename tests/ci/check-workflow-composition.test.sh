@@ -1957,6 +1957,12 @@ for architecture_shared_input in \
     "$architecture_shared_input" 2
 done
 
+# Two trigger paths (PR and main push) plus the step that runs it: editing the
+# subject must re-run the lane that executes it.
+assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+  "architecture triggers for its own validation subject on PR and main push" \
+  "scripts/ci/run-architecture-validation-subject.sh" 3
+
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture uses one signed isolated validation subject" \
   "Run architecture validation in one signed isolated workspace" \
@@ -1980,7 +1986,8 @@ assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
 assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "wallet sync lifecycle contract gate composition" \
   "run_logged wallet-sync-lifecycle-contract" \
-  "npm run check:wallet-sync-lifecycle-contract"
+  "npm run check:wallet-sync-lifecycle-contract" \
+  "node --test tests/ci/check-wallet-sync-lifecycle-contract.test.mjs"
 
 assert_contains_in_order "$ARCHITECTURE_SUBJECT" \
   "resource ownership contract gate composition" \

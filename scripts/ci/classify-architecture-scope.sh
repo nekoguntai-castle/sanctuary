@@ -30,6 +30,7 @@ classify_path() {
       ;;
     .github/workflows/architecture.yml | \
       scripts/ci/classify-architecture-scope.sh | \
+      scripts/ci/run-architecture-validation-subject.sh | \
       scripts/ci/create-isolated-workspace.sh | \
       scripts/ci/retry-command.sh | \
       scripts/ci/run-with-log.sh | \

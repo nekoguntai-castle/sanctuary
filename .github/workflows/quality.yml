@@ -850,6 +850,10 @@ jobs:
           node tests/ci/check-npm-deprecations.test.mjs
           node --test tests/ci/check-supply-chain-locks.test.mjs
           node --test tests/ci/renovate-funds-critical.test.mjs
+          # Unit tests for CI scripts that previously ran only locally.
+          node --test tests/ci/npm-audit-gate.test.mjs
+          node --test tests/ci/check-wallet-safety-mutation-map.test.mjs
+          node --test tests/ci/is-main-module.test.mjs tests/ci/esm-main-guard-symlink.test.mjs
           node --test tests/ci/runtime-image-evidence.test.mjs
           node --test tests/ci/runtime-prisma-dependencies.test.cjs
           node --test tests/ci/gateway-runtime-dependencies.test.cjs
