@@ -170,6 +170,31 @@ procedure, including the vector regeneration and byte-identical proof.
 `scripts/verify-addresses/README.md` links back here for the vector side of
 the process.
 
+## Renovate preflight
+
+Renovate pushes a `renovate/**` branch but opens its pull request only after
+the branch's commit statuses are green (`prCreation: "status-success"` in
+`.github/renovate.json`). The status comes from `renovate-preflight.yml`, one
+validation-only job that runs the checks dependency updates have historically
+failed:
+
+- clean install, including `devEngines`;
+- install-script policy and supply-chain locks;
+- lockfile peer resolution;
+- `npmOverridesApplied` and the hardware-compatibility lockfile pin;
+- the frontend typechecks;
+- the npm audit gate.
+
+A branch that fails preflight never gets a pull request or a full CI run. It
+waits, and Renovate rechecks it when it rebases the branch (when `main` moves or
+the update changes). Override pins (`overrides` depType) also stay behind
+dashboard approval. Their lockfile repair runs as a Renovate post-upgrade
+task, allowed centrally in `security-monitoring-infra`.
+
+A red audit gate on `main` itself is reported by the daily Security Monitor
+in a dedicated "npm audit gate failing on main" issue. Fix it there first:
+until then every Renovate branch fails preflight.
+
 ## Lizard Remediation PR Loop
 
 The lizard cleanup loop now uses the same PR-first workflow as other development:

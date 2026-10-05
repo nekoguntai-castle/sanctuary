@@ -35,6 +35,11 @@
       "rationale": "Installs exact locked dependencies with lifecycle scripts disabled before generating release-bound hardware compatibility evidence."
     },
     {
+      "file": ".github/workflows/renovate-preflight.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
       "file": ".github/workflows/test.yml",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."

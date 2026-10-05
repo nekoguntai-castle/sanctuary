@@ -1,0 +1,113 @@
+name: Renovate Preflight
+
+# Cheap gate a Renovate branch must pass before Renovate opens its pull
+# request (`prCreation: "status-success"` in .github/renovate.json). It runs
+# the checks that dependency updates have historically failed on -- install
+# and devEngines, the npm audit gate, supply-chain and install-script policy,
+# lockfile peer resolution, override pins, the hardware-compatibility lockfile
+# pin, and the frontend typechecks -- so a doomed update costs one small job
+# instead of the full PR pipeline. Validation only: this workflow's job result
+# is the status Renovate reads; it writes nothing.
+on:
+  push:
+    branches:
+      - 'renovate/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+  NODE_VERSION: '24.21.0'
+  NPM_VERSION: '12.0.2'
+
+jobs:
+  preflight:
+    name: Renovate preflight
+    runs-on: ubuntu-22.04
+    # The audit gate alone can take ~19 minutes against a stalled advisory
+    # endpoint (see the dependency-audit job in quality.yml, issue #1012).
+    timeout-minutes: 45
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/renovate-preflight
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Install locked dependencies
+        id: install
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install.log"
+          scripts/ci/retry-command.sh "renovate preflight npm ci"
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
+
+      # --strict-allow-scripts does not run the workspace lifecycle hooks, so
+      # build what the tests and typechecks import, the same two steps as
+      # scripts/ci/setup-server-dependencies.sh.
+      - name: Build shared workspace and Prisma client
+        id: prepare
+        if: steps.install.outcome == 'success'
+        run: |
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prepare.log" bash -euo pipefail <<'RENOVATE_PREPARE'
+          npm --workspace shared run build
+          cd server
+          ../scripts/ci/retry-command.sh "renovate preflight prisma generate" npx prisma generate
+          RENOVATE_PREPARE
+
+      - name: Check dependency policy
+        if: always() && steps.prepare.outcome == 'success'
+        run: |
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/dependency-policy.log" bash -euo pipefail <<'RENOVATE_DEPENDENCY_POLICY'
+          node scripts/ci/check-npm-install-scripts.mjs --verify-installed
+          node scripts/ci/check-supply-chain-locks.mjs
+          bash scripts/quality/check-lockfile-peer-resolution.sh
+          npx vitest run --config config/tooling/vitest.config.ts tests/ci/npmOverridesApplied.test.ts tests/ci/hardwareCompatibilityReport.test.ts
+          RENOVATE_DEPENDENCY_POLICY
+
+      - name: Run frontend typechecks
+        if: always() && steps.prepare.outcome == 'success'
+        run: |
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/typechecks.log" bash -euo pipefail <<'RENOVATE_TYPECHECKS'
+          npm run typecheck:app
+          npm run typecheck:tests
+          RENOVATE_TYPECHECKS
+
+      - name: Run npm audit gate
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log" bash -euo pipefail <<'RENOVATE_NPM_AUDIT'
+          # Same aggregate retry as the dependency-audit job in quality.yml.
+          for attempt in 1 2 3; do
+            echo "npm audit aggregate gate, attempt $attempt"
+            if node scripts/ci/npm-audit-gate.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          RENOVATE_NPM_AUDIT
+
+      - name: Write preflight diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Renovate Preflight"
+
+      - name: Upload preflight diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-renovate-preflight
+          path: .tmp/ci-diagnostics/renovate-preflight/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14

@@ -4,6 +4,7 @@
   "prHourlyLimit": 1,
   "prConcurrentLimit": 2,
   "rangeStrategy": "update-lockfile",
+  "prCreation": "status-success",
   "packageRules": [
     {
       "description": "Ignore the locally built Bitcoin Core verification image",
