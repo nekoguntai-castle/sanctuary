@@ -19,7 +19,7 @@ is_frontend_file() {
       ;;
   esac
   case "$1" in
-    src/*|shared/*|config/tooling/vitest*.ts|scripts/ci/frontend-coverage-*.sh|scripts/ci/setup-verifier-test-dependencies.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
+    src/*|shared/*|config/tooling/vitest*.ts|scripts/ci/frontend-coverage-*.sh|scripts/ci/verify-jade-junit.mjs|scripts/perf/*|scripts/ci/setup-verifier-test-dependencies.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
       return 0
       ;;
   esac

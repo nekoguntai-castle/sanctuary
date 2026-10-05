@@ -640,6 +640,21 @@ EOF_DOC
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_contains_output "$output_file" "frontend_files" "src/components/RenameSource/RenameSource.tsx"
 
+  # Code whose tests run in the frontend lane: the Jade JUnit verifier (vitest
+  # suite) and the wallet-sync replay driver (node test in Full Frontend
+  # Typechecks). Editing either must run that lane.
+  for frontend_tested in scripts/ci/verify-jade-junit.mjs scripts/perf/wallet-sync-high-fanout-replay.mjs; do
+    base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    mkdir -p "$repo_dir/$(dirname "$frontend_tested")"
+    printf '// %s\n' "$frontend_tested" > "$repo_dir/$frontend_tested"
+    git -C "$repo_dir" add "$frontend_tested"
+    git -C "$repo_dir" commit -qm "touch $frontend_tested"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_exact_output "$output_file" "frontend_changed" "true"
+    assert_contains_output "$output_file" "frontend_files" "$frontend_tested"
+  done
+
   echo "classify-test-changes regression checks passed"
 }
 

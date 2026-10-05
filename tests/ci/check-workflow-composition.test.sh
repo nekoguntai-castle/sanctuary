@@ -2156,10 +2156,20 @@ assert_named_job_not_contains "$TEST_WORKFLOW" \
   "full frontend typechecks must share one checkout and install" \
   'matrix.target'
 
+# Three typechecks plus the dependency-backed CI script tests, each running
+# independently once the shared install succeeded.
 assert_occurrence_count "$TEST_WORKFLOW" \
   "all consolidated frontend typechecks preserve independent diagnostics" \
   "if: always() && steps.install-dependencies.outcome == 'success'" \
-  3
+  4
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "frontend typecheck job runs the dependency-backed CI script tests" \
+  "full-frontend-typechecks:" \
+  "npm run typecheck:all" \
+  "Run dependency-backed CI script tests" \
+  "node --test tests/ci/wallet-sync-persistence-replay-controller.test.mjs" \
+  "Write frontend typecheck diagnostic summary"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full backend typecheck diagnostics" \

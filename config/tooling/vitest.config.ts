@@ -34,7 +34,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
-    include: ['tests/**/*.test.{ts,tsx}'],
+    // verify-jade-junit.test.mjs is a vitest suite written as .mjs because it
+    // imports the plain-JS verifier the Jade emulator proof runs.
+    include: ['tests/**/*.test.{ts,tsx}', 'tests/ci/verify-jade-junit.test.mjs'],
     coverage: {
       provider: 'v8',
       reporter: coverageReporters(Boolean(process.env.CI)),
