@@ -539,10 +539,16 @@ jobs:
   # ============================================
   # Full Lane (pull requests, merge queue, main, nightly, manual)
   # ============================================
+  full-backend-unit-coverage-shards:
+    name: Full Backend Unit Coverage (shard \${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    steps:
+      - run: echo backend shard
   full-backend-integration-tests:
     name: Full Backend Integration Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: |
           for g in $(scripts/ci/backend-integration-groups.sh --groups); do
@@ -551,19 +557,19 @@ jobs:
   full-backend-tests:
     name: Full Backend Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-backend-integration-tests]
+    needs: [detect-changes, full-backend-integration-tests]
     steps:
       - run: echo backend aggregate
   full-frontend-typechecks:
     name: Full Frontend Typecheck
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo typecheck
   full-frontend-coverage-merge:
     name: Full Frontend Coverage Merge
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: |
           npm run test:coverage:shards
@@ -573,50 +579,50 @@ jobs:
   full-frontend-tests:
     name: Full Frontend Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-frontend-typechecks, full-frontend-coverage-merge]
+    needs: [detect-changes, full-frontend-typechecks, full-frontend-coverage-merge]
     steps:
       - run: echo frontend aggregate
   full-gateway-tests:
     name: Full Gateway Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo gateway
   full-llm-egress-proxy-tests:
     name: Full LLM Egress Proxy Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo ai proxy
   full-critical-mutation:
     name: Full Critical Mutation Gate
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo mutation
   full-browser-e2e-tests:
     name: Full Browser E2E Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo browser
   full-render-e2e-tests:
     name: Full Render E2E Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo render
   full-build-check:
     name: Full Build Check
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     steps:
       - run: echo build
   full-test-summary:
     name: Full Test Summary
     if: always()
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
     steps:
       - name: Checkout repository
         continue-on-error: true
@@ -832,8 +838,8 @@ jobs: {}
 
 async function assertBlocksCoverageShardSelfDependency() {
   const workflow = validTestSuiteWorkflow().replace(
-    /(  full-frontend-coverage-merge:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
-    '$1[detect-changes, full-lane-ready, full-frontend-coverage-merge]',
+    /(  full-frontend-coverage-merge:[\s\S]*?    needs: )\[detect-changes\]/,
+    '$1[detect-changes, full-frontend-coverage-merge]',
   );
   const result = await runFixture(
     `
@@ -855,8 +861,8 @@ jobs: {}
 
 async function assertBlocksFalseFullLaneDependency() {
   const workflow = validTestSuiteWorkflow().replace(
-    /(  full-gateway-tests:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
-    '$1[detect-changes, full-lane-ready, full-frontend-tests]',
+    /(  full-gateway-tests:[\s\S]*?    needs: )\[detect-changes\]/,
+    '$1[detect-changes, full-frontend-tests]',
   );
   const result = await runFixture(
     `
@@ -876,26 +882,30 @@ jobs: {}
   );
 }
 
-async function assertBlocksSerializedPlaywrightLanes() {
+async function assertBlocksSerializedFullLanes() {
   let workflow = validTestSuiteWorkflow();
   const edges = [
     ['full-browser-e2e-tests', 'full-backend-unit-coverage-shards'],
     ['full-render-e2e-tests', 'full-browser-e2e-tests'],
+    ['full-backend-integration-tests', 'full-backend-unit-coverage-shards'],
+    ['full-backend-integration-tests', 'full-browser-e2e-tests'],
+    ['full-backend-unit-coverage-shards', 'full-backend-typecheck'],
+    ['full-gateway-tests', 'full-lane-ready'],
   ];
   for (const [jobId, need] of edges) {
     workflow = workflow.replace(
-      new RegExp(`(  ${jobId}:[\\s\\S]*?    needs: )\\[detect-changes, full-lane-ready\\]`),
-      `$1[detect-changes, full-lane-ready, ${need}]`,
+      new RegExp(`(  ${jobId}:[\\s\\S]*?    needs: )\\[detect-changes([^\\]]*)\\]`),
+      `$1[detect-changes$2, ${need}]`,
     );
   }
-  const result = await runFixture('name: Runtime Check\non: pull_request\njobs: {}\n', (rootDir) => {
-    writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
-  });
-
+  const result = await runFixture('name: Runtime Check\non: pull_request\njobs: {}\n', (rootDir) =>
+    writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow));
   assert.equal(result.findings.length, 0);
-  for (const [jobId, need] of edges) {
-    assert.match(result.errors.join('\n'), new RegExp(`workflow job "${jobId}" must not need "${need}"`));
+  const errors = result.errors.join('\n');
+  for (const [jobId, need] of edges.slice(0, -1)) {
+    assert.match(errors, new RegExp(`workflow job "${jobId}" must not need "${need}"`));
   }
+  assert.match(errors, /do not reintroduce the full-lane-ready pass-through job/);
 }
 
 async function assertBlocksRenamedTestSuiteWorkflow() {
@@ -980,7 +990,7 @@ await assertBlocksBrowserE2eMatrixFanout();
 await assertBlocksMissingFrontendCoverageShard();
 await assertBlocksCoverageShardSelfDependency();
 await assertBlocksFalseFullLaneDependency();
-await assertBlocksSerializedPlaywrightLanes();
+await assertBlocksSerializedFullLanes();
 await assertBlocksRenamedTestSuiteWorkflow();
 await assertBlocksBackendIntegrationMatrix();
 await assertAllowsRealFullTestSummaryGate();

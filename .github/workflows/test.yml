@@ -478,23 +478,6 @@ jobs:
             exit 1
           fi
 
-  full-lane-ready:
-    name: Full Lane Ready
-    if: always()
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    needs: [detect-changes]
-    steps:
-      - name: Check full lane prerequisites
-        env:
-          DETECT_CHANGES: ${{ needs.detect-changes.result }}
-        run: |
-          if [ "$DETECT_CHANGES" != "success" ]; then
-            echo "::error::Detect Changed Files result was $DETECT_CHANGES; expected success"
-            exit 1
-          fi
-          echo "Detect Changed Files: $DETECT_CHANGES"
-
   # ============================================
   # Full Lane (pull requests, merge queue, main, nightly, manual)
   # ============================================
@@ -502,13 +485,13 @@ jobs:
     name: Full Backend Typecheck
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-typecheck
     defaults:
@@ -560,14 +543,16 @@ jobs:
     name: Full Backend Unit Coverage (shard ${{ matrix.shard }}/2)
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
-      needs.full-backend-typecheck.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 45
-    needs: [detect-changes, full-lane-ready, full-backend-typecheck]
+    # No typecheck gate: the shards start with the other full lanes. A type
+    # error still fails the backend lane through full-backend-tests, which
+    # requires the full-backend-typecheck result.
+    needs: [detect-changes]
     strategy:
       fail-fast: false
       matrix:
@@ -654,7 +639,7 @@ jobs:
        needs.full-backend-unit-coverage-shards.result == 'failure')
     runs-on: ubuntu-22.04
     timeout-minutes: 20
-    needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage-shards]
+    needs: [detect-changes, full-backend-unit-coverage-shards]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-unit-coverage
     defaults:
@@ -735,30 +720,21 @@ jobs:
     # backend-integration-groups.sh --groups (and its --check completeness guard).
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 75
-    # Serialized to run ALONE among the Postgres-holding full lanes. Root cause
-    # of the recurring "table public.users does not exist": the Forgejo runner
-    # v12.10.1 ignores job/matrix concurrency (only runner.capacity caps it), so
-    # every full lane starts together at full-lane-ready, and the resulting
-    # memory pressure OOM-killed this lane's `services: postgres`, which is
-    # recreated empty mid-run (schema verified by prepare-integration-db.sh,
-    # then gone).
-    #
-    # full-backend-unit-coverage-shards no longer holds a Postgres at all (its
-    # tests never opened one), so of the full lanes only this one and
-    # full-browser-e2e-tests still do. The dependency on the shards is retained
-    # purely as ORDERING to keep the two heavy Node lanes off the runner
-    # concurrently; it is no longer about Postgres.
-    #
-    # These needs add ORDERING ONLY — the always()-guarded `if:` above is
-    # unchanged, so a skipped/failed upstream lane never skips or blocks this
-    # one.
-    needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards, full-browser-e2e-tests]
+    # Starts with the other full lanes. It used to wait for the backend unit
+    # coverage shards and the browser lane, an ordering kept from the shared
+    # DIND daemon, where co-resident heavy lanes OOM-killed this job's
+    # `services: postgres` ("table public.users does not exist"). Each lane now
+    # runs in its own rootless Podman job container; with 3 jobs per host,
+    # MemAvailable stayed >= 16 GiB, and the ordering only made this the last
+    # job of every sampled run (reports/ci-speedup-analysis-2026-10-05.md).
+    # The single-job, single-Postgres shape above is unchanged.
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration
     defaults:
@@ -963,14 +939,14 @@ jobs:
     name: Full Backend Tests
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 15
-    needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
+    needs: [detect-changes, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
     steps:
       - name: Check backend lane result
         env:
@@ -1051,13 +1027,13 @@ jobs:
     name: Full Frontend Typechecks
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-typechecks
 
@@ -1134,13 +1110,13 @@ jobs:
     name: Full Frontend Coverage Merge
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-merge
 
@@ -1247,13 +1223,13 @@ jobs:
     name: Full Frontend Tests
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 15
-    needs: [detect-changes, full-lane-ready, full-frontend-typechecks, full-frontend-coverage-merge]
+    needs: [detect-changes, full-frontend-typechecks, full-frontend-coverage-merge]
 
     steps:
       - name: Check frontend lane result
@@ -1308,13 +1284,13 @@ jobs:
     name: Full Gateway Tests
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.gateway_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 25
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/gateway
     defaults:
@@ -1384,13 +1360,13 @@ jobs:
     name: Full LLM Egress Proxy Tests
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.llm_egress_proxy_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/llm-egress-proxy
 
@@ -1466,12 +1442,12 @@ jobs:
     name: Full Critical Mutation Gate (shard ${{ matrix.shard }})
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 60
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     strategy:
       fail-fast: false
       matrix:
@@ -1548,7 +1524,7 @@ jobs:
        needs.full-critical-mutation-shards.result == 'failure')
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    needs: [detect-changes, full-lane-ready, full-critical-mutation-shards]
+    needs: [detect-changes, full-critical-mutation-shards]
     defaults:
       run:
         working-directory: server
@@ -1601,7 +1577,7 @@ jobs:
     name: Full Browser E2E Tests
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.browser_smoke_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
@@ -1629,7 +1605,7 @@ jobs:
     # its own rootless Podman container, this lane peaks near 4 GiB, and the
     # wait sat on the critical path (tasks/ci-speedup-analysis-2026-09-29.md,
     # R2). action-runtime-workflow-guards.mjs forbids re-adding it.
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
       # A starved e2e lock wait must fail inside the job budget so the
@@ -1834,7 +1810,7 @@ jobs:
     name: Full Render E2E Tests
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.render_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
@@ -1849,7 +1825,7 @@ jobs:
     # duration to the frontend critical path (R2 of
     # tasks/ci-speedup-analysis-2026-09-29.md). A browser failure still
     # fails full-test-summary on its own.
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/render-e2e
       # See full-browser-e2e-tests: bound the shared e2e lock wait below the
@@ -1942,13 +1918,13 @@ jobs:
     name: Full Build Check
     if: >-
       always() &&
-      needs.full-lane-ready.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/build-check
 
@@ -2006,7 +1982,7 @@ jobs:
     if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 15
-    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:
       - name: Checkout repository
@@ -2157,7 +2133,6 @@ jobs:
       - name: Check full lane result
         env:
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
-          FULL_LANE_READY: ${{ needs.full-lane-ready.result }}
           FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
           TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
           FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
@@ -2283,7 +2258,6 @@ jobs:
           fi
 
           require_success "Detect Changed Files" "$DETECT_CHANGES"
-          require_success "Full Lane Ready" "$FULL_LANE_READY"
           require_when_relevant "Full Backend Tests" "$FULL_BACKEND_TESTS" "$backend_required"
           require_when_relevant "Full Frontend Tests" "$FULL_FRONTEND_TESTS" "$frontend_required"
           require_when_relevant "Full Gateway Tests" "$FULL_GATEWAY_TESTS" "$gateway_required"

@@ -95,6 +95,7 @@ export function inspectStrictFullTestSummaryGate(workflow, relativePath, state) 
   inspectFullLaneParallelization(workflow, relativePath, state);
   inspectExhaustivePrDeduplication(workflow, relativePath, state);
   inspectFalseFullLaneDependencies(workflow, relativePath, state);
+  inspectFullLaneReadyHop(workflow, relativePath, state);
 
   const browserJobBody =
     extractWorkflowJobBody(workflow, 'full-browser-e2e-tests');
@@ -277,6 +278,15 @@ function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
     // edges only put an idle wait on the critical path.
     ['full-browser-e2e-tests', 'full-backend-unit-coverage-shards'],
     ['full-render-e2e-tests', 'full-browser-e2e-tests'],
+    // The same DIND-era orderings on the backend tail: integration waited for
+    // the coverage shards and the browser lane, and so finished last in every
+    // sampled run. With 3 jobs per host, MemAvailable stayed >= 16 GiB
+    // (reports/ci-speedup-analysis-2026-10-05.md).
+    ['full-backend-integration-tests', 'full-backend-unit-coverage-shards'],
+    ['full-backend-integration-tests', 'full-browser-e2e-tests'],
+    // Typecheck is a fail-fast gate. It still blocks the backend lane through
+    // full-backend-tests; gating the shards on it only delayed them.
+    ['full-backend-unit-coverage-shards', 'full-backend-typecheck'],
   ];
 
   for (const [jobId, forbiddenNeed] of forbiddenNeeds) {
@@ -286,6 +296,18 @@ function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
       state,
       jobId,
       forbiddenNeed,
+    );
+  }
+}
+
+// Full Lane Ready only re-checked that Detect Changed Files succeeded, at the
+// cost of one runner dispatch in front of every full lane. Full lanes gate on
+// needs.detect-changes directly.
+function inspectFullLaneReadyHop(workflow, relativePath, state) {
+  if (/\bfull-lane-ready\b/.test(workflow)) {
+    addUniqueError(
+      state,
+      `${relativePath}: full lanes must gate on detect-changes directly; do not reintroduce the full-lane-ready pass-through job`,
     );
   }
 }

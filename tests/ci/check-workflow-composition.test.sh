@@ -2680,17 +2680,24 @@ assert_not_contains "$TEST_WORKFLOW" \
   "PR required checks must not no-op on merge group" \
   "Merge group no-op"
 
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "full lane starts directly after classification" \
-  "full-lane-ready:" \
-  "needs: [detect-changes]" \
-  "Check full lane prerequisites" \
-  'if [ "$DETECT_CHANGES" != "success" ]; then'
-
-assert_named_job_not_contains "$TEST_WORKFLOW" \
-  "full-lane-ready" \
-  "full lane ready does not wait for quick work" \
-  "quick-"
+# Full lanes start directly after classification and gate on its result; the
+# former full-lane-ready pass-through job cost one dispatch in front of each.
+for full_lane_job in full-backend-typecheck full-backend-unit-coverage-shards \
+  full-backend-integration-tests full-frontend-typechecks full-frontend-coverage-merge \
+  full-gateway-tests full-llm-egress-proxy-tests full-critical-mutation-shards \
+  full-browser-e2e-tests full-render-e2e-tests full-build-check; do
+  assert_named_job_contains "$TEST_WORKFLOW" \
+    "$full_lane_job" \
+    "$full_lane_job starts directly after classification" \
+    "needs.detect-changes.result == 'success'"
+  assert_named_job_contains "$TEST_WORKFLOW" \
+    "$full_lane_job" \
+    "$full_lane_job waits for nothing but classification" \
+    "needs: [detect-changes]"
+done
+assert_not_contains "$TEST_WORKFLOW" \
+  "full-lane-ready pass-through job is gone" \
+  "full-lane-ready"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full LLM egress proxy Vitest coverage retry composition" \
@@ -4258,7 +4265,7 @@ assert_jobs_use_node24_runners \
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \
   "test jobs select Node 24-capable runners" \
-  24
+  23
 
 assert_runner_parser_rejects_post_comment_drift
 assert_cache_calls_use_wrapper
