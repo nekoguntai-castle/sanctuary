@@ -554,12 +554,6 @@ jobs:
           for g in $(scripts/ci/backend-integration-groups.sh --groups); do
             scripts/ci/backend-integration-groups.sh "$g"
           done
-  full-backend-tests:
-    name: Full Backend Tests
-    runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-integration-tests]
-    steps:
-      - run: echo backend aggregate
   full-frontend-typechecks:
     name: Full Frontend Typecheck
     runs-on: ubuntu-latest
@@ -576,12 +570,6 @@ jobs:
           test -s .vitest-reports/blob-1-2.json
           test -s .vitest-reports/blob-2-2.json
           npm run test:coverage:merge -- .vitest-reports
-  full-frontend-tests:
-    name: Full Frontend Tests
-    runs-on: ubuntu-latest
-    needs: [detect-changes, full-frontend-typechecks, full-frontend-coverage-merge]
-    steps:
-      - run: echo frontend aggregate
   full-gateway-tests:
     name: Full Gateway Tests
     runs-on: ubuntu-latest
@@ -594,12 +582,6 @@ jobs:
     needs: [detect-changes]
     steps:
       - run: echo ai proxy
-  full-critical-mutation:
-    name: Full Critical Mutation Gate
-    runs-on: ubuntu-latest
-    needs: [detect-changes]
-    steps:
-      - run: echo mutation
   full-browser-e2e-tests:
     name: Full Browser E2E Tests
     runs-on: ubuntu-latest
@@ -622,14 +604,18 @@ jobs:
     name: Full Test Summary
     if: always()
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    needs: [detect-changes, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests, full-frontend-typechecks, full-frontend-coverage-merge, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation-shards, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
     steps:
       - name: Checkout repository
         continue-on-error: true
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - run: npm run mutation:merge-shards && node scripts/mutation/check-critical-mutation-gate.mjs
+      - name: Resolve lane results
+        run: echo lanes
       - name: Download backend coverage
         run: echo download
-      - run: echo full
+      - name: Check full lane result
+        run: echo full
 `;
 }
 
@@ -861,8 +847,8 @@ jobs: {}
 
 async function assertBlocksFalseFullLaneDependency() {
   const workflow = validTestSuiteWorkflow().replace(
-    /(  full-gateway-tests:[\s\S]*?    needs: )\[detect-changes\]/,
-    '$1[detect-changes, full-frontend-tests]',
+    /(  full-llm-egress-proxy-tests:[\s\S]*?    needs: )\[detect-changes\]/,
+    '$1[detect-changes, full-gateway-tests]',
   );
   const result = await runFixture(
     `
@@ -878,7 +864,7 @@ jobs: {}
   assert.equal(result.findings.length, 0);
   assert.match(
     result.errors.join('\n'),
-    /workflow job "full-gateway-tests" must not need "full-frontend-tests"/,
+    /workflow job "full-llm-egress-proxy-tests" must not need "full-gateway-tests"/,
   );
 }
 
@@ -906,6 +892,17 @@ async function assertBlocksSerializedFullLanes() {
     assert.match(errors, new RegExp(`workflow job "${jobId}" must not need "${need}"`));
   }
   assert.match(errors, /do not reintroduce the full-lane-ready pass-through job/);
+}
+
+async function assertBlocksReintroducedAggregateJob() {
+  const workflow = validTestSuiteWorkflow().replace(
+    '  full-test-summary:\n',
+    '  full-backend-tests:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hop\n  full-test-summary:\n',
+  );
+  const result = await runFixture('name: Runtime Check\non: pull_request\njobs: {}\n', (rootDir) =>
+    writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow));
+  assert.equal(result.findings.length, 0);
+  assert.match(result.errors.join('\n'), /full-backend-tests is folded into full-test-summary/);
 }
 
 async function assertBlocksRenamedTestSuiteWorkflow() {
@@ -991,6 +988,7 @@ await assertBlocksMissingFrontendCoverageShard();
 await assertBlocksCoverageShardSelfDependency();
 await assertBlocksFalseFullLaneDependency();
 await assertBlocksSerializedFullLanes();
+await assertBlocksReintroducedAggregateJob();
 await assertBlocksRenamedTestSuiteWorkflow();
 await assertBlocksBackendIntegrationMatrix();
 await assertAllowsRealFullTestSummaryGate();

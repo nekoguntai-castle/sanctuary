@@ -192,27 +192,6 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
     'must run both frontend coverage shards concurrently in this job, verify both blobs, and merge them',
   );
 
-  const frontendAggregateBody = requireJobBody(
-    workflow,
-    relativePath,
-    state,
-    'full-frontend-tests',
-  );
-  requireJobNeeds(
-    frontendAggregateBody,
-    relativePath,
-    state,
-    'full-frontend-tests',
-    'full-frontend-typechecks',
-  );
-  requireJobNeeds(
-    frontendAggregateBody,
-    relativePath,
-    state,
-    'full-frontend-tests',
-    'full-frontend-coverage-merge',
-  );
-
   const backendIntegrationBody = requireJobBody(
     workflow,
     relativePath,
@@ -249,29 +228,50 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
     'must loop all integration groups via backend-integration-groups.sh --groups',
   );
 
-  const backendAggregateBody = requireJobBody(
-    workflow,
-    relativePath,
-    state,
-    'full-backend-tests',
-  );
-  requireJobNeeds(
-    backendAggregateBody,
-    relativePath,
-    state,
-    'full-backend-tests',
+  // Full Test Summary reads the leaf lanes directly. The former aggregate jobs
+  // (full-backend-tests, full-frontend-tests, full-critical-mutation) were
+  // pure result checks, or a seconds-long report merge, that each waited for a
+  // runner slot in series: on run 20174 that tail added 12.6 min after the last
+  // real lane (reports/ci-speedup-analysis-2026-10-05.md).
+  const summaryBody = requireJobBody(workflow, relativePath, state, 'full-test-summary');
+  for (const leaf of [
+    'full-backend-typecheck',
+    'full-backend-unit-coverage',
     'full-backend-integration-tests',
+    'full-frontend-typechecks',
+    'full-frontend-coverage-merge',
+    'full-critical-mutation-shards',
+  ]) {
+    requireJobNeeds(summaryBody, relativePath, state, 'full-test-summary', leaf);
+  }
+  requireJobTextInOrder(
+    summaryBody,
+    relativePath,
+    state,
+    'full-test-summary',
+    [
+      'npm run mutation:merge-shards',
+      'node scripts/mutation/check-critical-mutation-gate.mjs',
+      'name: Resolve lane results',
+      'name: Check full lane result',
+    ],
+    'must merge and gate the critical mutation shards, then resolve lane results before checking them',
   );
+  for (const aggregate of ['full-backend-tests', 'full-frontend-tests', 'full-critical-mutation']) {
+    if (extractWorkflowJobBody(workflow, aggregate)) {
+      addUniqueError(
+        state,
+        `${relativePath}: ${aggregate} is folded into full-test-summary; do not reintroduce it as a separate job`,
+      );
+    }
+  }
 }
 
 function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
   const forbiddenNeeds = [
-    ['full-frontend-typechecks', 'full-backend-tests'],
     ['full-frontend-coverage-merge', 'full-frontend-typechecks'],
-    ['full-gateway-tests', 'full-frontend-tests'],
     ['full-llm-egress-proxy-tests', 'full-gateway-tests'],
-    ['full-critical-mutation', 'full-llm-egress-proxy-tests'],
-    ['full-browser-e2e-tests', 'full-critical-mutation'],
+    ['full-browser-e2e-tests', 'full-critical-mutation-shards'],
     ['full-build-check', 'full-render-e2e-tests'],
     // DIND-era co-residence orderings. Each Playwright lane runs in its own
     // job container under rootless Podman and peaks at 3-5 GiB, so these
@@ -285,7 +285,7 @@ function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
     ['full-backend-integration-tests', 'full-backend-unit-coverage-shards'],
     ['full-backend-integration-tests', 'full-browser-e2e-tests'],
     // Typecheck is a fail-fast gate. It still blocks the backend lane through
-    // full-backend-tests; gating the shards on it only delayed them.
+    // Full Test Summary; gating the shards on it only delayed them.
     ['full-backend-unit-coverage-shards', 'full-backend-typecheck'],
   ];
 
@@ -349,7 +349,9 @@ function forbidJobNeeds(jobBody, relativePath, state, jobId, forbiddenNeed) {
 
 function jobNeedsJob(jobBody, neededJob) {
   const needsMatch = jobBody.match(/\n\s+needs:\s*(?<needs>[^\n]*(?:\n\s+-\s*[A-Za-z0-9_-]+)*)/);
-  return new RegExp(`\\b${escapeRegExp(neededJob)}\\b`).test(needsMatch?.groups?.needs ?? '');
+  // Whole job ids only: `-` is not a word boundary, so full-backend-unit-coverage
+  // must not be satisfied by full-backend-unit-coverage-shards.
+  return new RegExp(`(?<![\\w-])${escapeRegExp(neededJob)}(?![\\w-])`).test(needsMatch?.groups?.needs ?? '');
 }
 
 function requireJobText(jobBody, relativePath, state, jobId, text, message) {

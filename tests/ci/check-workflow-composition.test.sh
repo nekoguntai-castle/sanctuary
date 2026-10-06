@@ -2451,17 +2451,36 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload critical mutation shard diagnostics" \
   "ci-diagnostics-critical-mutation-shard-"
 
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "full critical mutation aggregate" \
-  "full-critical-mutation:" \
-  "needs.full-critical-mutation-shards.result == 'success'" \
-  "Fail fast if any shard failed" \
-  "needs.full-critical-mutation-shards.result != 'success'" \
-  "Download shard 1 report" \
-  "Download shard 2 report" \
-  "Download shard 3 report" \
+# The critical mutation merge and gate run inside Full Test Summary, which
+# needs the shards directly; a failed or missing shard fails the gate.
+assert_named_job_contains_in_order "$TEST_WORKFLOW" \
+  "full-test-summary" \
+  "full critical mutation gate runs in the summary job" \
+  "full-critical-mutation-shards" \
+  "Download critical mutation shard 1 report" \
+  "Download critical mutation shard 2 report" \
+  "Download critical mutation shard 3 report" \
+  "id: critical_mutation_gate" \
+  "if: always() && needs.full-critical-mutation-shards.result == 'success'" \
   "npm run mutation:merge-shards" \
-  "node scripts/mutation/check-critical-mutation-gate.mjs"
+  "node scripts/mutation/check-critical-mutation-gate.mjs" \
+  "name: Resolve lane results" \
+  'CRITICAL_MUTATION_GATE: ${{ steps.critical_mutation_gate.outcome }}' \
+  "One or more Full Critical Mutation shards did not succeed" \
+  'FULL_CRITICAL_MUTATION: ${{ steps.lanes.outputs.critical_mutation }}' \
+  'require_when_relevant "Full Critical Mutation Gate" "$FULL_CRITICAL_MUTATION" "$critical_mutation_required"'
+assert_named_job_contains_in_order "$TEST_WORKFLOW" \
+  "full-test-summary" \
+  "summary resolves backend and frontend lanes with the former aggregate rules" \
+  'require_when_relevant "Full Backend Typecheck" "$BACKEND_TYPECHECK" "$source_required"' \
+  'require_when_relevant "Full Backend Unit Coverage" "$BACKEND_UNIT_COVERAGE" "$source_required"' \
+  'require_when_relevant "Full Backend Integration Tests" "$BACKEND_INTEGRATION_TESTS" "$integration_required"' \
+  'require_success "Full Frontend Typechecks" "$FRONTEND_TYPECHECKS"' \
+  'require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"' \
+  'FULL_BACKEND_TESTS: ${{ steps.lanes.outputs.backend }}' \
+  'FULL_FRONTEND_TESTS: ${{ steps.lanes.outputs.frontend }}' \
+  'require_when_relevant "Full Backend Tests" "$FULL_BACKEND_TESTS" "$backend_required"' \
+  'require_when_relevant "Full Frontend Tests" "$FULL_FRONTEND_TESTS" "$frontend_required"'
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full browser E2E diagnostics" \
@@ -2638,7 +2657,7 @@ full-frontend-coverage-merge|Upload frontend coverage
 full-gateway-tests|Upload gateway coverage
 full-llm-egress-proxy-tests|Upload LLM egress proxy coverage
 full-critical-mutation-shards|Upload critical mutation shard report
-full-critical-mutation|Upload merged critical mutation report
+full-test-summary|Upload merged critical mutation report
 full-browser-e2e-tests|Upload test results
 full-render-e2e-tests|Upload test results
 REQUIRED_EVIDENCE_UPLOADS
@@ -4299,7 +4318,7 @@ assert_jobs_use_node24_runners \
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \
   "test jobs select Node 24-capable runners" \
-  23
+  20
 
 assert_runner_parser_rejects_post_comment_drift
 assert_cache_calls_use_wrapper

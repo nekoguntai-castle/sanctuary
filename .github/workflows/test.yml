@@ -550,7 +550,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     # No typecheck gate: the shards start with the other full lanes. A type
-    # error still fails the backend lane through full-backend-tests, which
+    # error still fails the backend lane through Full Test Summary, which
     # requires the full-backend-typecheck result.
     needs: [detect-changes]
     strategy:
@@ -935,94 +935,6 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  full-backend-tests:
-    name: Full Backend Tests
-    if: >-
-      always() &&
-      needs.detect-changes.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.backend_changed == 'true' ||
-       needs.detect-changes.outputs.backend_integration_changed == 'true')
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    needs: [detect-changes, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
-    steps:
-      - name: Check backend lane result
-        env:
-          FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
-          TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
-          BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
-          BACKEND_INTEGRATION_CHANGED: ${{ needs.detect-changes.outputs.backend_integration_changed }}
-          BACKEND_TYPECHECK: ${{ needs.full-backend-typecheck.result }}
-          BACKEND_UNIT_COVERAGE: ${{ needs.full-backend-unit-coverage.result }}
-          BACKEND_INTEGRATION_TESTS: ${{ needs.full-backend-integration-tests.result }}
-        run: |
-          failed=false
-
-          require_success() {
-            name="$1"
-            result="$2"
-
-            if [ "$result" != "success" ]; then
-              echo "::error::$name result was $result; expected success"
-              failed=true
-            else
-              echo "$name: $result"
-            fi
-          }
-
-          allow_success_or_skipped() {
-            name="$1"
-            result="$2"
-
-            case "$result" in
-              success|skipped)
-                echo "$name: $result"
-                ;;
-              *)
-                echo "::error::$name result was $result; expected success or skipped"
-                failed=true
-                ;;
-            esac
-          }
-
-          require_when_relevant() {
-            name="$1"
-            result="$2"
-            relevant="$3"
-
-            if [ "$relevant" = "true" ]; then
-              require_success "$name" "$result"
-            else
-              allow_success_or_skipped "$name" "$result"
-            fi
-          }
-
-          source_required=false
-          integration_required=false
-
-          if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ]; then
-            source_required=true
-            integration_required=true
-          fi
-
-          if [ "$BACKEND_CHANGED" = "true" ]; then
-            source_required=true
-          fi
-
-          if [ "$BACKEND_INTEGRATION_CHANGED" = "true" ]; then
-            integration_required=true
-          fi
-
-          require_when_relevant "Full Backend Typecheck" "$BACKEND_TYPECHECK" "$source_required"
-          require_when_relevant "Full Backend Unit Coverage" "$BACKEND_UNIT_COVERAGE" "$source_required"
-          require_when_relevant "Full Backend Integration Tests" "$BACKEND_INTEGRATION_TESTS" "$integration_required"
-
-          if [ "$failed" = "true" ]; then
-            exit 1
-          fi
-
   full-frontend-typechecks:
     name: Full Frontend Typechecks
     if: >-
@@ -1219,67 +1131,6 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  full-frontend-tests:
-    name: Full Frontend Tests
-    if: >-
-      always() &&
-      needs.detect-changes.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    needs: [detect-changes, full-frontend-typechecks, full-frontend-coverage-merge]
-
-    steps:
-      - name: Check frontend lane result
-        env:
-          FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
-          TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
-          FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
-          FRONTEND_TYPECHECKS: ${{ needs.full-frontend-typechecks.result }}
-          FRONTEND_COVERAGE: ${{ needs.full-frontend-coverage-merge.result }}
-        run: |
-          failed=false
-
-          require_success() {
-            name="$1"
-            result="$2"
-
-            if [ "$result" != "success" ]; then
-              echo "::error::$name result was $result; expected success"
-              failed=true
-            else
-              echo "$name: $result"
-            fi
-          }
-
-          allow_success_or_skipped() {
-            name="$1"
-            result="$2"
-
-            case "$result" in
-              success|skipped)
-                echo "$name: $result"
-                ;;
-              *)
-                echo "::error::$name result was $result; expected success or skipped"
-                failed=true
-                ;;
-            esac
-          }
-
-          require_success "Full Frontend Typechecks" "$FRONTEND_TYPECHECKS"
-          if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ] || [ "$FRONTEND_CHANGED" = "true" ]; then
-            require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
-          else
-            allow_success_or_skipped "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
-          fi
-
-          if [ "$failed" = "true" ]; then
-            exit 1
-          fi
-
   full-gateway-tests:
     name: Full Gateway Tests
     if: >-
@@ -1435,9 +1286,8 @@ jobs:
           retention-days: 14
 
   # Sharded Stryker runs (full lane). Each shard mutates a disjoint subset of
-  # files so they can run in parallel. Reports are merged + gated by
-  # `full-critical-mutation` below, which downstream `needs:` keep referencing
-  # so existing branch protection / status checks need no changes.
+  # files so they can run in parallel. Full Test Summary merges the shard
+  # reports and runs the critical mutation gate.
   full-critical-mutation-shards:
     name: Full Critical Mutation Gate (shard ${{ matrix.shard }})
     if: >-
@@ -1511,66 +1361,6 @@ jobs:
           path: .tmp/ci-diagnostics/critical-mutation-shard-${{ matrix.shard }}/
           if-no-files-found: ignore
           include-hidden-files: true
-          retention-days: 14
-
-  full-critical-mutation:
-    name: Full Critical Mutation Gate
-    # Runs whenever the shards finished (success OR failure). The first step
-    # propagates a shard-level failure as a hard failure of the gate so a
-    # broken shard cannot be silently observed as 'skipped' by the umbrella.
-    if: >-
-      always() &&
-      (needs.full-critical-mutation-shards.result == 'success' ||
-       needs.full-critical-mutation-shards.result == 'failure')
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    needs: [detect-changes, full-critical-mutation-shards]
-    defaults:
-      run:
-        working-directory: server
-
-    steps:
-      - name: Fail fast if any shard failed
-        if: needs.full-critical-mutation-shards.result != 'success'
-        run: |
-          echo "::error::One or more Full Critical Mutation shards failed (result: ${{ needs.full-critical-mutation-shards.result }}). Refusing to run the aggregator so the gate cannot be silently bypassed."
-          exit 1
-
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Verify Node.js toolchain
-        uses: ./.github/actions/setup-node-toolchain
-
-      - name: Download shard 1 report
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report-shard-1
-          path: server/reports/mutation/
-
-      - name: Download shard 2 report
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report-shard-2
-          path: server/reports/mutation/
-
-      - name: Download shard 3 report
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report-shard-3
-          path: server/reports/mutation/
-
-      - name: Merge shard reports and run gate
-        run: |
-          npm run mutation:merge-shards
-          node scripts/mutation/check-critical-mutation-gate.mjs
-
-      - name: Upload merged critical mutation report
-        if: always()
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: critical-mutation-report
-          path: server/reports/mutation/critical-mutation-report.json
           retention-days: 14
 
   full-browser-e2e-tests:
@@ -1982,15 +1772,182 @@ jobs:
     if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 15
-    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    # Reads the leaf lanes directly. The former aggregate jobs (Full Backend
+    # Tests, Full Frontend Tests, Full Critical Mutation Gate) were result
+    # checks, or a seconds-long report merge, that each waited for a runner slot
+    # in series; their logic now runs in the steps below, unchanged.
+    needs: [detect-changes, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests, full-frontend-typechecks, full-frontend-coverage-merge, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation-shards, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:
       - name: Checkout repository
         continue-on-error: true
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Verify Node.js toolchain
+        id: critical_mutation_toolchain
+        if: needs.full-critical-mutation-shards.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Download critical mutation shard 1 report
+        if: needs.full-critical-mutation-shards.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-shard-1
+          path: server/reports/mutation/
+
+      - name: Download critical mutation shard 2 report
+        if: needs.full-critical-mutation-shards.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-shard-2
+          path: server/reports/mutation/
+
+      - name: Download critical mutation shard 3 report
+        if: needs.full-critical-mutation-shards.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-shard-3
+          path: server/reports/mutation/
+
+      # Any failure above (checkout, toolchain, a missing report) surfaces here:
+      # the merge reads all three reports, so the gate fails closed.
+      - name: Merge critical mutation shard reports and run gate
+        id: critical_mutation_gate
+        if: always() && needs.full-critical-mutation-shards.result == 'success'
+        continue-on-error: true
+        working-directory: server
+        run: |
+          npm run mutation:merge-shards
+          node scripts/mutation/check-critical-mutation-gate.mjs
+
+      - name: Upload merged critical mutation report
+        if: always() && needs.full-critical-mutation-shards.result == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: critical-mutation-report
+          path: server/reports/mutation/critical-mutation-report.json
+          retention-days: 14
+
+      # The backend, frontend and critical-mutation aggregate results, with the
+      # same rules the former aggregate jobs applied: skipped when the lane is
+      # out of scope, otherwise success only if every required leaf succeeded.
+      - name: Resolve lane results
+        id: lanes
+        if: always()
+        env:
+          FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
+          TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
+          FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
+          BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
+          BACKEND_INTEGRATION_CHANGED: ${{ needs.detect-changes.outputs.backend_integration_changed }}
+          BACKEND_TYPECHECK: ${{ needs.full-backend-typecheck.result }}
+          BACKEND_UNIT_COVERAGE: ${{ needs.full-backend-unit-coverage.result }}
+          BACKEND_INTEGRATION_TESTS: ${{ needs.full-backend-integration-tests.result }}
+          FRONTEND_TYPECHECKS: ${{ needs.full-frontend-typechecks.result }}
+          FRONTEND_COVERAGE: ${{ needs.full-frontend-coverage-merge.result }}
+          CRITICAL_MUTATION_SHARDS: ${{ needs.full-critical-mutation-shards.result }}
+          CRITICAL_MUTATION_TOOLCHAIN: ${{ steps.critical_mutation_toolchain.outcome }}
+          CRITICAL_MUTATION_GATE: ${{ steps.critical_mutation_gate.outcome }}
+        run: |
+          failed=false
+
+          require_success() {
+            if [ "$2" != "success" ]; then
+              echo "::error::$1 result was $2; expected success"
+              failed=true
+            else
+              echo "$1: $2"
+            fi
+          }
+
+          allow_success_or_skipped() {
+            case "$2" in
+              success|skipped) echo "$1: $2" ;;
+              *)
+                echo "::error::$1 result was $2; expected success or skipped"
+                failed=true
+                ;;
+            esac
+          }
+
+          require_when_relevant() {
+            if [ "$3" = "true" ]; then
+              require_success "$1" "$2"
+            else
+              allow_success_or_skipped "$1" "$2"
+            fi
+          }
+
+          backend_lane() {
+            failed=false
+            source_required=false
+            integration_required=false
+            if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ]; then
+              source_required=true
+              integration_required=true
+            fi
+            if [ "$BACKEND_CHANGED" = "true" ]; then
+              source_required=true
+            fi
+            if [ "$BACKEND_INTEGRATION_CHANGED" = "true" ]; then
+              integration_required=true
+            fi
+            require_when_relevant "Full Backend Typecheck" "$BACKEND_TYPECHECK" "$source_required"
+            require_when_relevant "Full Backend Unit Coverage" "$BACKEND_UNIT_COVERAGE" "$source_required"
+            require_when_relevant "Full Backend Integration Tests" "$BACKEND_INTEGRATION_TESTS" "$integration_required"
+            [ "$failed" = "false" ]
+          }
+
+          frontend_lane() {
+            failed=false
+            require_success "Full Frontend Typechecks" "$FRONTEND_TYPECHECKS"
+            require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
+            [ "$failed" = "false" ]
+          }
+
+          backend=skipped
+          if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ] \
+            || [ "$BACKEND_CHANGED" = "true" ] || [ "$BACKEND_INTEGRATION_CHANGED" = "true" ]; then
+            if (backend_lane); then backend=success; else backend=failure; fi
+          fi
+
+          frontend=skipped
+          if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ] || [ "$FRONTEND_CHANGED" = "true" ]; then
+            if (frontend_lane); then frontend=success; else frontend=failure; fi
+          fi
+
+          case "$CRITICAL_MUTATION_SHARDS" in
+            success)
+              if [ "$CRITICAL_MUTATION_TOOLCHAIN" = "success" ] && [ "$CRITICAL_MUTATION_GATE" = "success" ]; then
+                critical_mutation=success
+              else
+                echo "::error::Critical mutation toolchain/gate outcomes were $CRITICAL_MUTATION_TOOLCHAIN/$CRITICAL_MUTATION_GATE; expected success"
+                critical_mutation=failure
+              fi
+              ;;
+            skipped) critical_mutation=skipped ;;
+            *)
+              echo "::error::One or more Full Critical Mutation shards did not succeed (result: $CRITICAL_MUTATION_SHARDS)"
+              critical_mutation=failure
+              ;;
+          esac
+
+          echo "Full Backend Tests: $backend"
+          echo "Full Frontend Tests: $frontend"
+          echo "Full Critical Mutation Gate: $critical_mutation"
+          {
+            echo "backend=$backend"
+            echo "frontend=$frontend"
+            echo "critical_mutation=$critical_mutation"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Download backend coverage
-        if: needs.full-backend-tests.result == 'success' || needs.full-backend-tests.result == 'failure'
+        if: steps.lanes.outputs.backend == 'success' || steps.lanes.outputs.backend == 'failure'
         continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
@@ -1998,7 +1955,7 @@ jobs:
           path: backend-results/
 
       - name: Download frontend coverage
-        if: needs.full-frontend-tests.result == 'success' || needs.full-frontend-tests.result == 'failure'
+        if: steps.lanes.outputs.frontend == 'success' || steps.lanes.outputs.frontend == 'failure'
         continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
@@ -2026,9 +1983,9 @@ jobs:
           echo "## Full Test Results Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.full-backend-tests.result }}" = "success" ]; then
+          if [ "${{ steps.lanes.outputs.backend }}" = "success" ]; then
             echo "### Backend: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.full-backend-tests.result }}" = "skipped" ]; then
+          elif [ "${{ steps.lanes.outputs.backend }}" = "skipped" ]; then
             echo "### Backend: Skipped" >> $GITHUB_STEP_SUMMARY
           else
             echo "### Backend: Failed" >> $GITHUB_STEP_SUMMARY
@@ -2043,9 +2000,9 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.full-frontend-tests.result }}" = "success" ]; then
+          if [ "${{ steps.lanes.outputs.frontend }}" = "success" ]; then
             echo "### Frontend: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.full-frontend-tests.result }}" = "skipped" ]; then
+          elif [ "${{ steps.lanes.outputs.frontend }}" = "skipped" ]; then
             echo "### Frontend: Skipped" >> $GITHUB_STEP_SUMMARY
           else
             echo "### Frontend: Failed" >> $GITHUB_STEP_SUMMARY
@@ -2121,9 +2078,9 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.full-critical-mutation.result }}" = "success" ]; then
+          if [ "${{ steps.lanes.outputs.critical_mutation }}" = "success" ]; then
             echo "### Critical Mutation Gate: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.full-critical-mutation.result }}" = "skipped" ]; then
+          elif [ "${{ steps.lanes.outputs.critical_mutation }}" = "skipped" ]; then
             echo "### Critical Mutation Gate: Skipped" >> $GITHUB_STEP_SUMMARY
             echo "No critical mutation paths changed for this merge candidate." >> $GITHUB_STEP_SUMMARY
           else
@@ -2143,11 +2100,11 @@ jobs:
           BROWSER_SMOKE_CHANGED: ${{ needs.detect-changes.outputs.browser_smoke_changed }}
           RENDER_CHANGED: ${{ needs.detect-changes.outputs.render_changed }}
           BUILD_CHANGED: ${{ needs.detect-changes.outputs.build_changed }}
-          FULL_BACKEND_TESTS: ${{ needs.full-backend-tests.result }}
-          FULL_FRONTEND_TESTS: ${{ needs.full-frontend-tests.result }}
+          FULL_BACKEND_TESTS: ${{ steps.lanes.outputs.backend }}
+          FULL_FRONTEND_TESTS: ${{ steps.lanes.outputs.frontend }}
           FULL_GATEWAY_TESTS: ${{ needs.full-gateway-tests.result }}
           FULL_LLM_EGRESS_PROXY_TESTS: ${{ needs.full-llm-egress-proxy-tests.result }}
-          FULL_CRITICAL_MUTATION: ${{ needs.full-critical-mutation.result }}
+          FULL_CRITICAL_MUTATION: ${{ steps.lanes.outputs.critical_mutation }}
           FULL_BROWSER_E2E_TESTS: ${{ needs.full-browser-e2e-tests.result }}
           FULL_RENDER_E2E_TESTS: ${{ needs.full-render-e2e-tests.result }}
           FULL_BUILD_CHECK: ${{ needs.full-build-check.result }}
