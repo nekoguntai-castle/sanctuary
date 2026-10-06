@@ -64,6 +64,13 @@ change documentation-only and every lane skipped. Emulator flakes therefore bloc
 a merge until the whole workflow is re-run under the retrigger discipline in
 `CLAUDE.md`; Forgejo has no single-job re-run.
 
+Its proof lanes run as parallel jobs. `verify-vectors` runs the vector, derivation
+and live Bitcoin Core PSBT proofs, and the Trezor, Ledger and Jade emulator jobs
+start after it. `verify-vectors-mutation` runs the seven wallet-safety Stryker
+proofs and the mutation-map check beside them, in its own job: the proofs are
+CPU-bound, so they need their own job CPU quota to overlap the other lanes
+(`reports/ci-speedup-analysis-2026-10-05.md`).
+
 Do not globally require `Validate Docker Images` or `Install Test Summary`. Those
 workflows are path-gated or release-gated, and requiring them would block
 unrelated PRs where the workflow never starts.
@@ -692,7 +699,7 @@ Two engine differences these lanes depend on, both handled in-tree:
 
 ### Runner fleet and build paths
 
-The three `docker-socket` hosts, `x300`, `kumo` (capacity 2 each) and `sora`
+The three `docker-socket` hosts, `x300`, `kumo` (capacity 3 each) and `sora`
 (capacity 1), are provisioned from the same runner-infra bootstrap: rootless
 Podman 5.4 behind the compat socket, the crun OCI runtime, and buildx. None
 runs Docker Engine. The one build-relevant difference is that kumo's profile
