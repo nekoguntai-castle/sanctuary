@@ -50,6 +50,7 @@
     "colord": "2.10.0",
     "joi": "18.2.9",
     "qs": "6.16.0",
-    "minimizer-webpack-plugin": "5.10.1"
+    "minimizer-webpack-plugin": "5.10.1",
+    "tinypool": "2.2.0"
   }
 }

@@ -49,18 +49,6 @@
       "rationale": "No fixed release exists: braces <= 3.0.3 is affected and 3.0.3 is the latest published release. Reached through Docusaurus' file globbing (micromatch, fast-glob, chokidar) by 733 distinct dependency paths, which is why this waiver covers the whole build-time lockfile. Exploiting it means committing a deeply nested brace glob to this repository's own docs configuration to crash your own docs build.",
       "trackingUrl": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
       "runtimeSurface": "Documentation build only. braces sits under the Docusaurus toolchain in docs/site, a standalone lockfile that never reaches a runtime path: it is absent from the Sanctuary frontend bundle, the server, the gateway, and every shipped container."
-    },
-    {
-      "id": "http-cache-semantics-max-stale-docs-site",
-      "ghsa": "GHSA-ch52-4w7c-c8xp",
-      "package": "http-cache-semantics",
-      "version": "4.2.0",
-      "lockfile": "docs/site/package-lock.json",
-      "paths": "*",
-      "owner": "nekoguntai",
-      "rationale": "No fixed release exists: http-cache-semantics <= 4.2.0 is affected and 4.2.0 is the latest published release. The vulnerable behaviour leaks a shared HTTP cache entry to another user; the only caller is cacheable-request under got, which Docusaurus' update-notifier uses to ask the npm registry for a newer version from the developer's machine. No shared cache and no second user exist on that path.",
-      "trackingUrl": "https://github.com/advisories/GHSA-ch52-4w7c-c8xp",
-      "runtimeSurface": "Documentation build only. http-cache-semantics sits under the Docusaurus toolchain in docs/site, a standalone lockfile that never reaches a runtime path: it is absent from the Sanctuary frontend bundle, the server, the gateway, and every shipped container."
     }
   ]
 }

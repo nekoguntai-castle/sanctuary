@@ -46,3 +46,45 @@ test('cosmiconfig retains the TypeScript JavaScript API alongside the native com
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('Tinypool keeps the worker contract Docusaurus SSG relies on', async () => {
+  // Mirrors @docusaurus/core/lib/ssg/ssgExecutor.js and ssgWorkerThread.js:
+  // the options it passes, process.__tinypool_state__.workerId and
+  // workerData[1].params inside the worker, run() and destroy().
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { pathToFileURL } = require('node:url');
+  const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'sanctuary-docs-tinypool-'));
+  try {
+    const worker = path.join(directory, 'worker.cjs');
+    fs.writeFileSync(worker, [
+      "const { workerData } = require('node:worker_threads');",
+      'const workerId = process?.__tinypool_state__?.workerId;',
+      "if (!workerId) throw new Error('not in Tinypool context');",
+      'const params = workerData?.[1]?.params;',
+      "if (!params) throw new Error('workerData params missing');",
+      'module.exports = async (task) => ({ id: task.id, workerId, label: params.label, pages: task.pathnames.length });',
+    ].join('\n'));
+    const Tinypool = (await import('tinypool')).default;
+    const pool = new Tinypool({
+      filename: pathToFileURL(worker).pathname,
+      minThreads: 2,
+      maxThreads: 2,
+      concurrentTasksPerWorker: 1,
+      runtime: 'worker_threads',
+      isolateWorkers: false,
+      workerData: { params: { label: 'ssg' } },
+      maxMemoryLimitBeforeRecycle: 1000000000,
+      resourceLimits: {},
+    });
+    try {
+      const results = await Promise.all([1, 2, 3].map((id) => pool.run({ id, pathnames: ['/a', '/b'] })));
+      assert.deepEqual(results.map((r) => [r.id, r.label, r.pages]), [[1, 'ssg', 2], [2, 'ssg', 2], [3, 'ssg', 2]]);
+      for (const r of results) assert.ok(r.workerId);
+    } finally {
+      await pool.destroy();
+    }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
