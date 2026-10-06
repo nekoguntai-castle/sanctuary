@@ -1883,26 +1883,32 @@ assert_contains_in_order "$VV" \
   "Install server dependencies" \
   "Run cross-implementation address verifier"
 
-assert_named_job_contains "$VV" \
-  "verify-vectors-mutation" \
-  "verify-vectors-mutation needs only the scope classifier" \
-  "needs: [determine-verify-scope]"
-assert_named_job_contains "$VV" \
-  "verify-vectors-mutation" \
-  "verify-vectors-mutation skips only on documentation-only changes" \
-  "if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'"
-
-# The seven wallet-safety Stryker proofs run in their own job, beside the
-# vector lane rather than inside it. A separate job has its own CPU quota;
-# concurrency inside one job gained nothing (#1344). The proofs, their
-# bounds, the report set and the mutation-map check are unchanged.
+# The seven wallet-safety Stryker proofs run beside the vector lane in two
+# jobs, each with its own CPU quota: concurrency inside one job gained nothing
+# (#1344), and fee-policy alone is as long as the other five proofs together.
+# A join job runs the mutation-map check once over all seven reports. The
+# proofs, their bounds, the report set and the map check are unchanged.
 assert_named_job_not_contains "$VV" \
   "verify-vectors" \
   "verify-vectors no longer runs the mutation proofs inline" \
   "test:mutation:"
+for mutation_job in verify-vectors-mutation-binding verify-vectors-mutation-fee; do
+  assert_named_job_contains "$VV" \
+    "$mutation_job" \
+    "$mutation_job needs only the scope classifier" \
+    "needs: [determine-verify-scope]"
+  assert_named_job_contains "$VV" \
+    "$mutation_job" \
+    "$mutation_job skips only on documentation-only changes" \
+    "if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'"
+  assert_named_job_not_contains "$VV" \
+    "$mutation_job" \
+    "$mutation_job leaves the map check to the join job" \
+    "check-wallet-safety-mutation-map.mjs"
+done
 assert_named_job_contains_in_order "$VV" \
-  "verify-vectors-mutation" \
-  "verify-vectors-mutation runs every proof, then the mutation-map check, then uploads all reports" \
+  "verify-vectors-mutation-binding" \
+  "verify-vectors-mutation-binding runs the five binding and taproot proofs and uploads their reports" \
   "Install server dependencies" \
   "Prove PSBT account-binding invariants by mutation" \
   "npm run test:mutation:wallet-policy" \
@@ -1910,10 +1916,6 @@ assert_named_job_contains_in_order "$VV" \
   "npm --prefix server run test:mutation:psbt-account-binding" \
   "npm --prefix server run test:mutation:taproot-construction" \
   "npm --prefix server run test:mutation:taproot-artifact-finalization" \
-  "Prove exact transaction fee invariants by mutation" \
-  "npm --prefix server run test:mutation:fee-policy" \
-  "npm --prefix server run test:mutation:receive-evidence" \
-  "node scripts/ci/check-wallet-safety-mutation-map.mjs" \
   "Upload PSBT account-binding mutation reports" \
   "if: always()" \
   "reports/mutation/psbt-account-binding-browser.json" \
@@ -1921,21 +1923,51 @@ assert_named_job_contains_in_order "$VV" \
   "server/reports/mutation/psbt-account-binding-server.json" \
   "server/reports/mutation/taproot-construction.json" \
   "server/reports/mutation/taproot-artifact-finalization.json" \
-  "server/reports/mutation/fee-policy.json" \
-  "server/reports/mutation/receive-evidence.json" \
   "if-no-files-found: error"
 assert_named_job_step_contains "$VV" \
-  "verify-vectors-mutation" \
+  "verify-vectors-mutation-binding" \
   "Prove PSBT account-binding invariants by mutation" \
   "PSBT account-binding mutation proof keeps its bound" \
   "timeout-minutes: 8"
-# Running beside the vector lane is the point of the split: the exact needs
-# list above pins it, and summary must still require the job's result.
+assert_named_job_contains_in_order "$VV" \
+  "verify-vectors-mutation-fee" \
+  "verify-vectors-mutation-fee runs the fee and receive-evidence proofs and uploads their reports" \
+  "Install server dependencies" \
+  "Prove exact transaction fee invariants by mutation" \
+  "npm --prefix server run test:mutation:fee-policy" \
+  "npm --prefix server run test:mutation:receive-evidence" \
+  "Upload fee-policy mutation reports" \
+  "if: always()" \
+  "server/reports/mutation/fee-policy.json" \
+  "server/reports/mutation/receive-evidence.json" \
+  "if-no-files-found: error"
+assert_named_job_contains_in_order "$VV" \
+  "verify-vectors-mutation" \
+  "verify-vectors-mutation joins both proof jobs and checks the map over all seven reports" \
+  "needs: [determine-verify-scope, verify-vectors-mutation-binding, verify-vectors-mutation-fee]" \
+  "name: psbt-account-binding-mutation-reports" \
+  "name: fee-policy-mutation-reports" \
+  "path: server/reports/mutation" \
+  "node scripts/ci/check-wallet-safety-mutation-map.mjs"
+assert_occurrence_count "$VV" \
+  "the mutation-map check runs exactly once" \
+  "node scripts/ci/check-wallet-safety-mutation-map.mjs" 1
+for mutation_job in verify-vectors-mutation-binding verify-vectors-mutation-fee verify-vectors-mutation; do
+  assert_named_job_not_contains "$VV" \
+    "$mutation_job" \
+    "$mutation_job runs beside the vector lane, not after it" \
+    "needs: [verify-vectors]"
+done
+# summary requires every mutation job's result.
 assert_named_job_step_contains_in_order "$VV" \
   "summary" \
   "Check results" \
   "verify-vectors summary requires mutation proofs to pass, or to skip only on docs-only changes" \
+  '[ "$VERIFY_VECTORS_MUTATION_BINDING" == "success" ]' \
+  '[ "$VERIFY_VECTORS_MUTATION_FEE" == "success" ]' \
   '[ "$VERIFY_VECTORS_MUTATION" == "success" ]' \
+  '[ "$VERIFY_VECTORS_MUTATION_BINDING" == "skipped" ]' \
+  '[ "$VERIFY_VECTORS_MUTATION_FEE" == "skipped" ]' \
   '[ "$VERIFY_VECTORS_MUTATION" == "skipped" ]'
 assert_occurrence_count "$VV" \
   "verify-vectors binds every cleanup evidence upload to its verification root" \
@@ -2884,7 +2916,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 VV="$REPO_ROOT/.github/workflows/verify-vectors.yml"
 
 assert_named_job_step_contains "$VV" \
-  "verify-vectors-mutation" \
+  "verify-vectors-mutation-fee" \
   "Prove exact transaction fee invariants by mutation" \
   "verify-vectors fee-policy mutation proof has a contention-safe timeout" \
   "timeout-minutes: 15"
@@ -3372,10 +3404,12 @@ assert_named_job_step_contains "$VV" \
 assert_contains_in_order "$VV" \
   "vector summary requires the scope classifier, software, mutation, Trezor, Ledger, and Jade proofs" \
   "summary:" \
-  "needs: [determine-verify-scope, verify-vectors, verify-vectors-mutation, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]" \
+  "needs: [determine-verify-scope, verify-vectors, verify-vectors-mutation-binding, verify-vectors-mutation-fee, verify-vectors-mutation, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]" \
   '${{ needs.determine-verify-scope.outputs.run_verify_vectors }}' \
   '${{ needs.determine-verify-scope.result }}' \
   '${{ needs.verify-vectors.result }}' \
+  '${{ needs.verify-vectors-mutation-binding.result }}' \
+  '${{ needs.verify-vectors-mutation-fee.result }}' \
   '${{ needs.verify-vectors-mutation.result }}' \
   '${{ needs.verify-trezor-emulator.result }}' \
   '${{ needs.verify-ledger-emulator.result }}' \
@@ -3737,11 +3771,11 @@ assert_contains_in_order \
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0" 6
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0" 8
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
-  "install-npm: 'false'" 6
+  "install-npm: 'false'" 8
 
 GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \

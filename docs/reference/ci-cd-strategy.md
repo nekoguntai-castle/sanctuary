@@ -66,10 +66,12 @@ a merge until the whole workflow is re-run under the retrigger discipline in
 
 Its proof lanes run as parallel jobs. `verify-vectors` runs the vector, derivation
 and live Bitcoin Core PSBT proofs, and the Trezor, Ledger and Jade emulator jobs
-start after it. `verify-vectors-mutation` runs the seven wallet-safety Stryker
-proofs and the mutation-map check beside them, in its own job: the proofs are
-CPU-bound, so they need their own job CPU quota to overlap the other lanes
-(`reports/ci-speedup-analysis-2026-10-05.md`).
+start after it. The seven wallet-safety Stryker proofs run beside them in two
+jobs, `verify-vectors-mutation-binding` and `verify-vectors-mutation-fee`: the
+proofs are CPU-bound, so each job needs its own CPU quota to overlap the other
+lanes, and fee-policy alone takes about as long as the other five together.
+`verify-vectors-mutation` then runs the mutation-map check once over all seven
+reports (`reports/ci-speedup-analysis-2026-10-05.md`).
 
 Do not globally require `Validate Docker Images` or `Install Test Summary`. Those
 workflows are path-gated or release-gated, and requiring them would block

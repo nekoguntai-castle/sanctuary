@@ -473,24 +473,26 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  # The wallet-safety Stryker proofs run in their own job, beside the vector
-  # lane. They are CPU-bound (about 5.3 of a job's 8-CPU quota), so running
-  # them concurrently inside verify-vectors gained nothing (#1344); a separate
-  # job gets its own quota and lets the vector lane and the emulator proofs
-  # finish while the proofs run. Every proof, bound, report and the
-  # mutation-map check are unchanged, and summary requires this job.
-  verify-vectors-mutation:
-    name: Wallet-safety mutation proofs
+  # The wallet-safety Stryker proofs run beside the vector lane, in two jobs.
+  # They are CPU-bound (about 5.3 of a job's 8-CPU quota), so running them
+  # concurrently inside one job gained nothing (#1344); each job here gets its
+  # own quota. fee-policy alone takes about as long as the other five proofs
+  # together, so it and receive-evidence form one job and the binding and
+  # taproot proofs the other. verify-vectors-mutation joins them and runs the
+  # mutation-map check once over all seven reports. Every proof, bound and
+  # report is unchanged, and summary requires all three jobs.
+  verify-vectors-mutation-binding:
+    name: Wallet-safety mutation proofs (binding)
     needs: [determine-verify-scope]
     if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'
     runs-on: docker-socket
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0
-    # Above the sum of the step bounds (10 + 8 + 15) plus setup, so a run that
-    # hits a step bound still writes and uploads its diagnostics.
-    timeout-minutes: 45
+    # Above the step bounds (10 + 8) plus setup, so a run that hits a step
+    # bound still writes and uploads its diagnostics.
+    timeout-minutes: 30
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors-mutation
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors-mutation-binding
 
     steps:
       - name: Checkout repository
@@ -520,20 +522,6 @@ jobs:
               ${{ github.workspace }}/scripts/ci/time-command.sh "taproot-artifact-finalization mutation proof" npm --prefix server run test:mutation:taproot-artifact-finalization
             '
 
-      - name: Prove exact transaction fee invariants by mutation
-        # Two contended PR-event runs reached 91-92% before this step's former
-        # eight-minute bound; the same tree passed when run in isolation. Keep
-        # the proof blocking and finite while allowing that observed tail.
-        timeout-minutes: 15
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log" \
-            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              ${{ github.workspace }}/scripts/ci/time-command.sh "fee-policy mutation proof" npm --prefix server run test:mutation:fee-policy
-              ${{ github.workspace }}/scripts/ci/time-command.sh "receive-evidence mutation proof" npm --prefix server run test:mutation:receive-evidence
-              node scripts/ci/check-wallet-safety-mutation-map.mjs
-            '
-
       - name: Upload PSBT account-binding mutation reports
         if: always()
         uses: ./.github/actions/upload-artifact
@@ -545,6 +533,83 @@ jobs:
             server/reports/mutation/psbt-account-binding-server.json
             server/reports/mutation/taproot-construction.json
             server/reports/mutation/taproot-artifact-finalization.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write mutation proof failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "verify-vectors-mutation-binding-failure.log"
+          "Verify Bitcoin Vectors (binding mutation proofs)"
+
+      - name: Write mutation proof diagnostic summary
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors (binding mutation proofs)"
+
+      - name: Upload mutation proof diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-verify-vectors-mutation-binding
+          path: .tmp/ci-diagnostics/verify-vectors-mutation-binding/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
+  verify-vectors-mutation-fee:
+    name: Wallet-safety mutation proofs (fee)
+    needs: [determine-verify-scope]
+    if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'
+    runs-on: docker-socket
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0
+    # Above the step bounds (10 + 15) plus setup, so a run that hits a step
+    # bound still writes and uploads its diagnostics.
+    timeout-minutes: 35
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors-mutation-fee
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+        with:
+          install-npm: 'false'
+
+      - name: Install server dependencies
+        timeout-minutes: 10
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log"
+          ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+
+      - name: Prove exact transaction fee invariants by mutation
+        # Two contended PR-event runs reached 91-92% before this step's former
+        # eight-minute bound; the same tree passed when run in isolation. Keep
+        # the proof blocking and finite while allowing that observed tail.
+        timeout-minutes: 15
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              ${{ github.workspace }}/scripts/ci/time-command.sh "fee-policy mutation proof" npm --prefix server run test:mutation:fee-policy
+              ${{ github.workspace }}/scripts/ci/time-command.sh "receive-evidence mutation proof" npm --prefix server run test:mutation:receive-evidence
+            '
+
+      - name: Upload fee-policy mutation reports
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: fee-policy-mutation-reports
+          path: |
             server/reports/mutation/fee-policy.json
             server/reports/mutation/receive-evidence.json
           if-no-files-found: error
@@ -557,25 +622,62 @@ jobs:
         run: >
           ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
           "$DIAGNOSTIC_DIR"
-          "verify-vectors-mutation-failure.log"
-          "Verify Bitcoin Vectors (mutation proofs)"
+          "verify-vectors-mutation-fee-failure.log"
+          "Verify Bitcoin Vectors (fee mutation proofs)"
 
       - name: Write mutation proof diagnostic summary
         if: always()
         continue-on-error: true
         timeout-minutes: 2
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors (mutation proofs)"
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors (fee mutation proofs)"
 
       - name: Upload mutation proof diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: ci-diagnostics-verify-vectors-mutation
-          path: .tmp/ci-diagnostics/verify-vectors-mutation/
+          name: ci-diagnostics-verify-vectors-mutation-fee
+          path: .tmp/ci-diagnostics/verify-vectors-mutation-fee/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
+  verify-vectors-mutation:
+    name: Wallet-safety mutation map
+    needs: [determine-verify-scope, verify-vectors-mutation-binding, verify-vectors-mutation-fee]
+    if: needs.determine-verify-scope.outputs.run_verify_vectors != 'false'
+    runs-on: docker-socket
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+        with:
+          install-npm: 'false'
+
+      # Artifacts keep paths relative to their files' common parent: the
+      # binding reports span reports/ and server/reports/, so they download to
+      # the repository root; both fee reports share server/reports/mutation/.
+      - name: Download PSBT account-binding mutation reports
+        uses: ./.github/actions/download-artifact
+        with:
+          name: psbt-account-binding-mutation-reports
+          path: .
+
+      - name: Download fee-policy mutation reports
+        uses: ./.github/actions/download-artifact
+        with:
+          name: fee-policy-mutation-reports
+          path: server/reports/mutation
+
+      - name: Check the wallet-safety mutation map
+        timeout-minutes: 2
+        run: node scripts/ci/check-wallet-safety-mutation-map.mjs
 
   verify-trezor-emulator:
     # This proof was pinned to x300 while kumo's rootless Podman archive
@@ -589,7 +691,7 @@ jobs:
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0
     # The isolated lane begins as soon as the vector lane completes (about
-    # five minutes since the mutation proofs moved to verify-vectors-mutation).
+    # five minutes since the mutation proofs moved to their own jobs).
     # Its cold-cache fallback remains below the runner deadline.
     timeout-minutes: 48
     env:
@@ -1153,7 +1255,7 @@ jobs:
 
   # Summary job
   summary:
-    needs: [determine-verify-scope, verify-vectors, verify-vectors-mutation, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]
+    needs: [determine-verify-scope, verify-vectors, verify-vectors-mutation-binding, verify-vectors-mutation-fee, verify-vectors-mutation, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     if: always()
@@ -1164,6 +1266,8 @@ jobs:
           RUN_VERIFY_VECTORS: ${{ needs.determine-verify-scope.outputs.run_verify_vectors }}
           DETERMINE_VERIFY_SCOPE: ${{ needs.determine-verify-scope.result }}
           VERIFY_VECTORS: ${{ needs.verify-vectors.result }}
+          VERIFY_VECTORS_MUTATION_BINDING: ${{ needs.verify-vectors-mutation-binding.result }}
+          VERIFY_VECTORS_MUTATION_FEE: ${{ needs.verify-vectors-mutation-fee.result }}
           VERIFY_VECTORS_MUTATION: ${{ needs.verify-vectors-mutation.result }}
           VERIFY_TREZOR_EMULATOR: ${{ needs.verify-trezor-emulator.result }}
           VERIFY_LEDGER_EMULATOR: ${{ needs.verify-ledger-emulator.result }}
@@ -1172,6 +1276,8 @@ jobs:
           echo "RUN_VERIFY_VECTORS=$RUN_VERIFY_VECTORS"
           echo "DETERMINE_VERIFY_SCOPE=$DETERMINE_VERIFY_SCOPE"
           echo "VERIFY_VECTORS=$VERIFY_VECTORS"
+          echo "VERIFY_VECTORS_MUTATION_BINDING=$VERIFY_VECTORS_MUTATION_BINDING"
+          echo "VERIFY_VECTORS_MUTATION_FEE=$VERIFY_VECTORS_MUTATION_FEE"
           echo "VERIFY_VECTORS_MUTATION=$VERIFY_VECTORS_MUTATION"
           echo "VERIFY_TREZOR_EMULATOR=$VERIFY_TREZOR_EMULATOR"
           echo "VERIFY_LEDGER_EMULATOR=$VERIFY_LEDGER_EMULATOR"
@@ -1183,6 +1289,8 @@ jobs:
           fi
 
           if [ "$VERIFY_VECTORS" == "success" ] && \
+             [ "$VERIFY_VECTORS_MUTATION_BINDING" == "success" ] && \
+             [ "$VERIFY_VECTORS_MUTATION_FEE" == "success" ] && \
              [ "$VERIFY_VECTORS_MUTATION" == "success" ] && \
              [ "$VERIFY_TREZOR_EMULATOR" == "success" ] && \
              [ "$VERIFY_LEDGER_EMULATOR" == "success" ] && \
@@ -1193,6 +1301,8 @@ jobs:
 
           if [ "$RUN_VERIFY_VECTORS" == "false" ] && \
              [ "$VERIFY_VECTORS" == "skipped" ] && \
+             [ "$VERIFY_VECTORS_MUTATION_BINDING" == "skipped" ] && \
+             [ "$VERIFY_VECTORS_MUTATION_FEE" == "skipped" ] && \
              [ "$VERIFY_VECTORS_MUTATION" == "skipped" ] && \
              [ "$VERIFY_TREZOR_EMULATOR" == "skipped" ] && \
              [ "$VERIFY_LEDGER_EMULATOR" == "skipped" ] && \
