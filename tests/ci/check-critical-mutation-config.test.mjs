@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { checkCriticalMutationConfig } from '../../scripts/ci/check-critical-mutation-config.mjs';
+import {
+  assertShardFilePartition,
+  checkCriticalMutationConfig,
+} from '../../scripts/ci/check-critical-mutation-config.mjs';
 import { criticalMutationReporters } from '../../server/stryker.critical.config.mjs';
 
 function fixtureRoot(baseline) {
@@ -89,4 +92,54 @@ test('rejects server critical thresholds outside the score domain', () => {
     () => checkCriticalMutationConfig(root),
     /serverCritical baseline thresholds are missing or invalid/,
   );
+});
+
+function sourceFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'critical-mutation-sources-'));
+  for (const file of ['src/a.ts', 'src/b.ts', 'src/dir/x.ts', 'src/dir/y.ts', 'src/dir/z.d.ts']) {
+    mkdirSync(join(root, file, '..'), { recursive: true });
+    writeFileSync(join(root, file), '');
+  }
+  return root;
+}
+
+const ALL = ['src/a.ts', 'src/b.ts', 'src/dir/**/*.ts', 'src/dir/x.ts', '!src/**/*.d.ts'];
+
+test('accepts shards that split a glob with a negation', () => {
+  assert.doesNotThrow(() => assertShardFilePartition(sourceFixture(), {
+    1: ['src/dir/x.ts', 'src/a.ts'],
+    2: ['src/dir/**/*.ts', '!src/dir/x.ts', 'src/b.ts', '!src/**/*.d.ts'],
+  }, ALL));
+});
+
+test('rejects a file mutated by two shards', () => {
+  assert.throws(() => assertShardFilePartition(sourceFixture(), {
+    1: ['src/dir/x.ts', 'src/a.ts'],
+    2: ['src/dir/**/*.ts', 'src/b.ts', '!src/**/*.d.ts'],
+  }, ALL), /src\/dir\/x\.ts is mutated by shards 1 and 2/);
+});
+
+test('rejects a file the full run mutates but no shard does', () => {
+  assert.throws(() => assertShardFilePartition(sourceFixture(), {
+    1: ['src/dir/x.ts', 'src/a.ts'],
+    2: ['src/dir/**/*.ts', '!src/dir/x.ts', '!src/**/*.d.ts'],
+  }, ALL), /src\/b\.ts is in the full mutate set but in no shard/);
+});
+
+test('rejects a shard file outside the full run and an empty shard', () => {
+  assert.throws(() => assertShardFilePartition(sourceFixture(), {
+    1: ['src/dir/x.ts', 'src/a.ts', 'src/dir/z.d.ts'],
+    2: ['src/dir/**/*.ts', '!src/dir/x.ts', 'src/b.ts', '!src/**/*.d.ts'],
+  }, ALL), /src\/dir\/z\.d\.ts is mutated by a shard but not by the full run/);
+  assert.throws(() => assertShardFilePartition(sourceFixture(), {
+    1: ['src/missing/*.ts'],
+  }, ALL), /shard 1 resolves to no files/);
+});
+
+test('applies mutate patterns in order, as Stryker does', () => {
+  // A positive after a negation re-adds the file, so shard 2 overlaps shard 1.
+  assert.throws(() => assertShardFilePartition(sourceFixture(), {
+    1: ['src/dir/x.ts', 'src/a.ts'],
+    2: ['src/dir/**/*.ts', '!src/dir/x.ts', 'src/dir/*.ts', 'src/b.ts', '!src/**/*.d.ts'],
+  }, ALL), /src\/dir\/x\.ts is mutated by shards 1 and 2/);
 });

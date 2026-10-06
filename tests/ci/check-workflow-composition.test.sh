@@ -2451,6 +2451,22 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload critical mutation shard diagnostics" \
   "ci-diagnostics-critical-mutation-shard-"
 
+# A shard's Stryker incremental file carries results for every file it held
+# when it was written, and Stryker reports them even after a re-partition moves
+# those files to another shard; the merge then rejects the colliding reports
+# (PR #1377, run 20223). The shard layout hash is therefore part of the
+# restore prefix, so a new layout never restores another layout's cache.
+assert_named_job_step_contains_in_order "$TEST_WORKFLOW" \
+  "full-critical-mutation-shards" \
+  "Restore Stryker incremental cache (shard \${{ matrix.shard }})" \
+  "critical mutation incremental cache never crosses shard layouts" \
+  "key: stryker-critical-shard-\${{ matrix.shard }}-layout-\${{ hashFiles('server/scripts/mutation/shards.mjs') }}-" \
+  "restore-keys: |" \
+  "stryker-critical-shard-\${{ matrix.shard }}-layout-\${{ hashFiles('server/scripts/mutation/shards.mjs') }}-"
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "critical mutation incremental cache has no layout-blind restore prefix" \
+  "stryker-critical-shard-\${{ matrix.shard }}-" 2
+
 # The critical mutation merge and gate run inside Full Test Summary, which
 # needs the shards directly; a failed or missing shard fails the gate.
 assert_named_job_contains_in_order "$TEST_WORKFLOW" \
@@ -3511,6 +3527,20 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "runtime-image-evidence-frontend" \
   "Upload frontend cleanup evidence" \
   'cleanup-runtime-image-frontend-${{ github.run_id }}-${{ github.run_attempt }}'
+
+# The backend image build runs beside the frontend one. The ordering dated from
+# when docker-build published images (61c8b84270); validation-only builds each
+# get their own BuildKit container and cache scope, and a frontend+backend pair
+# peaked at about 10.5 GiB against at least 16 GiB available on the shared hosts
+# (2026-10-05 measurement).
+assert_named_job_contains "$DOCKER_BUILD_WORKFLOW" \
+  "build-backend" \
+  "docker-build backend image needs only the scope classifier" \
+  "needs: [detect-image-scope]"
+assert_named_job_not_contains "$DOCKER_BUILD_WORKFLOW" \
+  "build-backend" \
+  "docker-build backend image does not wait for the frontend image" \
+  "build-frontend"
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build backend endpoint resolution" \

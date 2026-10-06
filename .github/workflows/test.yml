@@ -1322,14 +1322,18 @@ jobs:
       # Stryker's `incremental: true` only helps when the cache file persists
       # across CI runs. Each shard has its own incremental file
       # (`.stryker-cache/critical-incremental.shard-N.json`) and its own cache
-      # key prefix so shards don't invalidate each other's caches.
+      # key prefix so shards don't invalidate each other's caches. The prefix
+      # also carries the shard layout: an incremental file keeps results for
+      # every file the shard held when it was written, and Stryker reports them
+      # even after a re-partition moves those files elsewhere, so the merge
+      # would reject colliding shard reports (PR #1377).
       - name: Restore Stryker incremental cache (shard ${{ matrix.shard }})
         uses: ./.github/actions/cache
         with:
           path: server/.stryker-cache
-          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/transactions/broadcasting.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/services/bitcoin/signingIntent/**', 'server/src/repositories/transactionSigningIntentRepository.ts', 'server/src/api/transactions/broadcasting.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
+          key: stryker-critical-shard-${{ matrix.shard }}-layout-${{ hashFiles('server/scripts/mutation/shards.mjs') }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/transactions/broadcasting.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/services/bitcoin/signingIntent/**', 'server/src/repositories/transactionSigningIntentRepository.ts', 'server/src/api/transactions/broadcasting.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
           restore-keys: |
-            stryker-critical-shard-${{ matrix.shard }}-
+            stryker-critical-shard-${{ matrix.shard }}-layout-${{ hashFiles('server/scripts/mutation/shards.mjs') }}-
 
       - name: Run critical mutation shard ${{ matrix.shard }}
         run: >

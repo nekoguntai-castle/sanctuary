@@ -169,13 +169,10 @@ jobs:
 
   build-backend:
     name: Validate backend image
-    if: |
-      always() &&
-      needs.detect-image-scope.outputs.backend_image == 'true' &&
-      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
+    if: needs.detect-image-scope.outputs.backend_image == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
-    needs: [detect-image-scope, build-frontend]
+    needs: [detect-image-scope]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-backend
 
