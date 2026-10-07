@@ -232,7 +232,7 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
   // (full-backend-tests, full-frontend-tests, full-critical-mutation) were
   // pure result checks, or a seconds-long report merge, that each waited for a
   // runner slot in series: on run 20174 that tail added 12.6 min after the last
-  // real lane (reports/ci-speedup-analysis-2026-10-05.md).
+  // real lane (tasks/ci-speedup-analysis-2026-10-05.md).
   const summaryBody = requireJobBody(workflow, relativePath, state, 'full-test-summary');
   for (const leaf of [
     'full-backend-typecheck',
@@ -281,7 +281,7 @@ function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
     // The same DIND-era orderings on the backend tail: integration waited for
     // the coverage shards and the browser lane, and so finished last in every
     // sampled run. With 3 jobs per host, MemAvailable stayed >= 16 GiB
-    // (reports/ci-speedup-analysis-2026-10-05.md).
+    // (tasks/ci-speedup-analysis-2026-10-05.md).
     ['full-backend-integration-tests', 'full-backend-unit-coverage-shards'],
     ['full-backend-integration-tests', 'full-browser-e2e-tests'],
     // Typecheck is a fail-fast gate. It still blocks the backend lane through

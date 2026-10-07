@@ -732,7 +732,7 @@ jobs:
     # `services: postgres` ("table public.users does not exist"). Each lane now
     # runs in its own rootless Podman job container; with 3 jobs per host,
     # MemAvailable stayed >= 16 GiB, and the ordering only made this the last
-    # job of every sampled run (reports/ci-speedup-analysis-2026-10-05.md).
+    # job of every sampled run (tasks/ci-speedup-analysis-2026-10-05.md).
     # The single-job, single-Postgres shape above is unchanged.
     needs: [detect-changes]
     env:
