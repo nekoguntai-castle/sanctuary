@@ -381,9 +381,10 @@ export async function findByIdWithSelect<T extends Prisma.WalletSelect>(
 export async function findAccessibleWithSelect<T extends Prisma.WalletSelect>(
   userId: string,
   select: T,
-  additionalWhere?: Prisma.WalletWhereInput
+  additionalWhere?: Prisma.WalletWhereInput,
+  client: PrismaTxClient = prisma,
 ): Promise<Prisma.WalletGetPayload<{ select: T }>[]> {
-  return prisma.wallet.findMany<{ select: T; where: Prisma.WalletWhereInput }>({
+  return client.wallet.findMany<{ select: T; where: Prisma.WalletWhereInput }>({
     where: {
       ...buildWalletAccessWhere(userId),
       ...additionalWhere,

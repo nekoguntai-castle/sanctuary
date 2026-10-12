@@ -8,6 +8,7 @@
 import { ConflictError } from '../../errors/ApiError';
 import { deviceRepository, walletRepository } from '../../repositories';
 import type { ParsedDevice, JsonImportDevice, ScriptType } from '../bitcoin/descriptorParser';
+import type { PrismaTxClient } from '../../models/prisma';
 import type { DeviceResolution } from './types';
 
 /**
@@ -117,7 +118,8 @@ function descriptorKeyOrigins(descriptor: string): Set<string> {
 export async function checkDuplicateWallet(
   userId: string,
   devices: ReadonlyArray<Pick<ParsedDevice, 'fingerprint' | 'derivationPath'>>,
-  scriptType: ScriptType
+  scriptType: ScriptType,
+  tx?: PrismaTxClient,
 ): Promise<void> {
   const newOrigins = new Set(devices.map(d => keyOrigin(d.fingerprint, d.derivationPath)));
   const userWallets = await walletRepository.findAccessibleWithSelect(userId, {
@@ -125,7 +127,7 @@ export async function checkDuplicateWallet(
     name: true,
     scriptType: true,
     descriptor: true,
-  }, { descriptor: { not: null } });
+  }, { descriptor: { not: null } }, tx);
 
   for (const wallet of userWallets) {
     if (!wallet.descriptor || wallet.scriptType !== scriptType) continue;

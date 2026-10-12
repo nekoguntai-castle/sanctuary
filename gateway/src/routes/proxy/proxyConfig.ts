@@ -46,12 +46,10 @@ function stripBrowserAuthCookies(proxyReq: ClientRequest, req: Request): void {
 export const proxy = createProxyMiddleware({
   target: config.backendUrl,
   changeOrigin: true,
+  // Express strips the mount prefix from default routes; restore it for the backend.
+  pathRewrite: (path, req) => `${(req as Request).baseUrl || ''}${path}`,
   on: {
     proxyReq: (proxyReq, req) => {
-      // Fix for body parsing: when express.json() parses the body,
-      // the raw stream is consumed. This re-attaches the parsed body
-      // to the proxy request so it can be forwarded to the backend.
-      fixRequestBody(proxyReq, req as Request);
       stripBrowserAuthCookies(proxyReq, req as Request);
 
       const authReq = req as AuthenticatedRequest;
@@ -70,6 +68,12 @@ export const proxy = createProxyMiddleware({
         path: req.url,
         userId: authReq.user?.userId,
       });
+
+      // Fix for body parsing: when express.json() parses the body,
+      // the raw stream is consumed. This re-attaches the parsed body
+      // to the proxy request so it can be forwarded to the backend.
+      // Keep this last because writing the body commits the outgoing headers.
+      fixRequestBody(proxyReq, req as Request);
     },
     proxyRes: (proxyRes, req) => {
       log.debug('Proxy response', {

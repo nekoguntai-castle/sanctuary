@@ -5,6 +5,7 @@ import { registerWalletImportAutoDetectContracts } from './walletImportImports/w
 import { registerWalletImportDescriptorContracts } from './walletImportImports/walletImportImports.descriptor.contracts';
 import { registerWalletImportJsonContracts } from './walletImportImports/walletImportImports.json.contracts';
 import { registerWalletImportParsedContracts } from './walletImportImports/walletImportImports.parsed.contracts';
+import { registerWalletImportConcurrencyContracts } from './walletImportConcurrency.contracts';
 
 describe('Wallet Import Service - Imports', () => {
   beforeEach(setupBeforeEach);
@@ -13,4 +14,5 @@ describe('Wallet Import Service - Imports', () => {
   registerWalletImportJsonContracts();
   registerWalletImportParsedContracts();
   registerWalletImportAutoDetectContracts();
+  registerWalletImportConcurrencyContracts();
 });

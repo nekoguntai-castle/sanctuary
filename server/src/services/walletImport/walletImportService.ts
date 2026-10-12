@@ -5,7 +5,8 @@
  * the top-level auto-detect import orchestrator.
  */
 
-import { withTransaction, type PrismaTxClient } from '../../models/prisma';
+import type { PrismaTxClient } from '../../models/prisma';
+import { withWalletImportTransaction } from '../../repositories/walletImportLock';
 import {
   WalletScriptType,
   WalletType,
@@ -19,7 +20,7 @@ import type {
 } from '../bitcoin/descriptorParser';
 import { getErrorMessage } from '../../utils/errors';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
-import { resolveDevices } from './deviceResolution';
+import { checkDuplicateWallet, resolveDevices } from './deviceResolution';
 import { reuseImportedDevice } from './deviceReuseAccess';
 import { importFromParsedData } from './descriptorImport';
 import { importFromJson } from './jsonImport';
@@ -213,7 +214,9 @@ export async function createWalletTransaction(
     canonicalIdentity,
   );
 
-  const result = await withTransaction(async (tx) => {
+  const result = await withWalletImportTransaction(userId, async (tx) => {
+    // Repeat the fast preflight check under the lock to close the check/insert race.
+    await checkDuplicateWallet(userId, parsed.devices, parsed.scriptType, tx);
     const createdDeviceIds: string[] = [];
     const reusedDeviceIds: string[] = [];
     // Track imported device info for building descriptor
