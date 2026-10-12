@@ -150,7 +150,7 @@ const ConsoleToolResultSchema = z
 
 export const ConsolePlanBodySchema = z
   .object({
-    prompt: NonEmptyStringSchema.max(12000),
+    prompt: z.string().trim().min(1).max(12000),
     scope: z.unknown().optional(),
     context: z.unknown().optional(),
     maxToolCalls: z.number().int().min(0).max(8).default(4),
@@ -160,7 +160,7 @@ export const ConsolePlanBodySchema = z
 
 export const ConsoleSynthesisBodySchema = z
   .object({
-    prompt: NonEmptyStringSchema.max(12000),
+    prompt: z.string().trim().min(1).max(12000),
     scope: z.unknown().optional(),
     context: z.unknown().optional(),
     planningWarnings: z

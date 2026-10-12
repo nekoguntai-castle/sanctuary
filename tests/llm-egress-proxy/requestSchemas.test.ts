@@ -46,6 +46,19 @@ function makeResponse(): {
   return res;
 }
 
+function makeConsolePromptBody(isPlan: boolean, prompt: string) {
+  return isPlan
+    ? { prompt, tools: [{
+        name: "get_fee_estimates",
+        title: "Fee estimates",
+        description: "Read fees",
+        sensitivity: "public",
+        requiredScope: "authenticated",
+        inputFields: [],
+      }] }
+    : { prompt, toolResults: [] };
+}
+
 describe("LLM egress proxy request schemas", () => {
   it("keeps the backend and egress chat message limits identical", () => {
     expect(EGRESS_CHAT_MESSAGE_MAX_LENGTH).toBe(readBackendChatMessageMaxLength());
@@ -334,4 +347,29 @@ describe("LLM egress proxy request schemas", () => {
       }),
     ).toThrow();
   });
+
+  it.each([
+    { name: "planning", schema: ConsolePlanBodySchema, isPlan: true },
+    { name: "synthesis", schema: ConsoleSynthesisBodySchema, isPlan: false },
+  ])(
+    "accepts $name prompts through the documented 12000-character limit",
+    ({ schema, isPlan }) => {
+      for (const length of [1024, 1025, 12000]) {
+        const body = makeConsolePromptBody(isPlan, "x".repeat(length));
+        expect(schema.parse(body).prompt).toHaveLength(length);
+      }
+
+      const overLimit = makeConsolePromptBody(isPlan, "x".repeat(12001));
+      expect(() => schema.parse(overLimit)).toThrow();
+
+      const emptyPrompt = makeConsolePromptBody(isPlan, "");
+      expect(() => schema.parse(emptyPrompt)).toThrow();
+
+      const whitespacePrompt = makeConsolePromptBody(isPlan, "   ");
+      expect(() => schema.parse(whitespacePrompt)).toThrow();
+
+      const trimmedPrompt = makeConsolePromptBody(isPlan, "  keep trim semantics  ");
+      expect(schema.parse(trimmedPrompt).prompt).toBe("keep trim semantics");
+    },
+  );
 });

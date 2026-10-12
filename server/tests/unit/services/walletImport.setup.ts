@@ -105,9 +105,8 @@ export const setupDeviceMocks = (devices: any[], existingDevices: any[] = []) =>
     mockPrismaClient.device.create.mockResolvedValueOnce(device);
   });
 
-  // Second call: lookup created/reused devices in transaction
-  const allDevices = [...existingDevices, ...devices];
-  mockPrismaClient.device.findMany.mockResolvedValueOnce(allDevices);
+  // The locked refresh sees only rows committed before the import begins.
+  mockPrismaClient.device.findMany.mockResolvedValueOnce(existingDevices);
 };
 
 /** Standard beforeEach setup for wallet import tests */

@@ -184,6 +184,24 @@ describe('Device Repository', () => {
         orderBy: { createdAt: 'desc' },
       });
     });
+
+    it('uses a supplied transaction client for import-time refreshes', async () => {
+      const tx = { device: { findMany: vi.fn().mockResolvedValue([]) } };
+
+      await deviceRepository.findByUserIdWithModel('user-456', tx as never);
+
+      expect(tx.device.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { userId: 'user-456' },
+            { users: { some: { userId: 'user-456' } } },
+          ],
+        },
+        include: { model: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(prisma.device.findMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('findByUserIdWithAssociations', () => {

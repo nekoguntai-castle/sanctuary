@@ -65,6 +65,14 @@ function accountAtPath() {
 describe('wallet import device reuse authorization', () => {
   beforeEach(() => {
     setupBeforeEach();
+    mockPrismaClient.device.findMany.mockResolvedValue([{
+      id: deviceId,
+      userId,
+      type: 'watch_only',
+      label: 'Shared Device',
+      fingerprint: 'abcd1234',
+      model: null,
+    }]);
     mockPrismaClient.wallet.create.mockResolvedValue({
       id: 'imported-wallet', name: 'Imported wallet',
       type: 'single_sig', scriptType: 'native_segwit',
@@ -127,7 +135,24 @@ describe('wallet import device reuse authorization', () => {
 
   it('denies reuse when the resolved device was deleted', async () => {
     accountAtPath();
-    await expect(importResolvedDevice()).rejects.toThrow(/device access/i);
+    mockPrismaClient.device.findMany.mockResolvedValueOnce([]);
+    await expect(importResolvedDevice()).rejects.toMatchObject({ statusCode: 403 });
+    expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
+    expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+  });
+
+  it('denies reuse when the device disappears after the locked refresh', async () => {
+    mockPrismaClient.device.findUnique.mockResolvedValue(null);
+
+    await expect(importResolvedDevice()).rejects.toMatchObject({ statusCode: 403 });
+
+    expect(mockPrismaClient.device.findMany).toHaveBeenCalled();
+    expect(mockPrismaClient.device.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: deviceId },
+    }));
+    expect(mockPrismaClient.deviceAccount.findMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
+    expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
     expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
   });
 

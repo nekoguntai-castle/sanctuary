@@ -100,8 +100,11 @@ export async function findByUserId(userId: string): Promise<Device[]> {
 }
 
 /** Find all accessible devices with canonical model identity for safety checks. */
-export async function findByUserIdWithModel(userId: string) {
-  return prisma.device.findMany({
+export async function findByUserIdWithModel(
+  userId: string,
+  client: PrismaTxClient = prisma,
+) {
+  return client.device.findMany({
     where: {
       OR: [
         { userId },

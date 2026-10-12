@@ -39,10 +39,11 @@ export function generateUniqueLabel(
 export async function resolveDevices(
   userId: string,
   parsedDevices: ParsedDevice[],
-  originalDevices?: JsonImportDevice[]
+  originalDevices?: JsonImportDevice[],
+  client?: PrismaTxClient,
 ): Promise<DeviceResolution[]> {
   // Fetch all user's existing devices
-  const existingDevices = await deviceRepository.findByUserIdWithModel(userId);
+  const existingDevices = await deviceRepository.findByUserIdWithModel(userId, client);
 
   // Create maps for quick lookup
   const deviceByFingerprint = new Map(

@@ -16,6 +16,7 @@ import {
 import { mockPrismaClient } from '../../mocks/prisma';
 import * as walletImport from '../../../src/services/walletImport';
 import { createWalletTransaction } from '../../../src/services/walletImport/walletImportService';
+import { reuseImportedDevice } from '../../../src/services/walletImport/deviceReuseAccess';
 import * as addressGeneration from '../../../src/services/wallet/addressGeneration';
 import type { Network } from '../../../src/services/bitcoin/descriptorParser';
 
@@ -496,24 +497,22 @@ describe('Wallet Import Service - Operations', () => {
     );
 
     it('throws when reuse resolution is missing an existing device id', async () => {
-      await expect(createWalletTransaction(userId, {
-        name: 'Broken import',
-        network: 'mainnet',
-        parsed: {
-          type: 'single_sig',
-          scriptType: 'native_segwit',
-          devices: [],
-          network: 'mainnet',
-          isChange: false,
-        },
-        resolutions: [{
-          fingerprint: 'abcd1234',
-          xpub: 'xpub6Dz...',
-          derivationPath: "m/84'/0'/0'",
-          willCreate: false,
-          existingType: 'coldcard',
-        } as any],
+      await expect(reuseImportedDevice(mockPrismaClient as never, {
+        fingerprint: 'abcd1234',
+        xpub: 'xpub6Dz...',
+        derivationPath: "m/84'/0'/0'",
+        existingDeviceId: null,
+        existingDeviceLabel: null,
+        willCreate: false,
+        existingType: 'coldcard',
+      }, {
+        userId,
+        accountPurpose: 'single_sig',
+        scriptType: 'native_segwit',
       })).rejects.toThrow('missing device id');
+      expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
     });
 
     it('throws when wallet export JSON lacks a descriptor', async () => {

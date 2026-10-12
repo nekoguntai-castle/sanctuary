@@ -98,6 +98,66 @@ describe("LLM egress proxy console routes", () => {
     });
   });
 
+  it("forwards long prompts to the model and rejects prompts over the limit before the model", async () => {
+    const { app, routes } = makeApp();
+    const longPrompt = "p".repeat(12000);
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: true,
+      content: JSON.stringify({ toolCalls: [] }),
+    });
+    registerConsoleRoutes(app as any, { getAiConfig: () => enabledConfig });
+
+    const validPlanRes = makeResponse();
+    await routes.get("/console/plan")!(
+      { body: { ...planningBody, prompt: longPrompt } },
+      validPlanRes,
+    );
+
+    expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledTimes(1);
+    expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledWith(
+      enabledConfig,
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: expect.stringContaining(longPrompt) }),
+      ]),
+      expect.any(Object),
+    );
+
+    mocks.callExternalAIWithMessagesResult.mockClear();
+    const validRes = makeResponse();
+    await routes.get("/console/synthesize")!(
+      { body: { prompt: longPrompt, toolResults: [] } },
+      validRes,
+    );
+
+    expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledTimes(1);
+    expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledWith(
+      enabledConfig,
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: expect.stringContaining(longPrompt) }),
+      ]),
+      expect.any(Object),
+    );
+
+    mocks.callExternalAIWithMessagesResult.mockClear();
+    const invalidPlanRes = makeResponse();
+    await routes.get("/console/plan")!(
+      { body: { ...planningBody, prompt: "p".repeat(12001) } },
+      invalidPlanRes,
+    );
+
+    expect(invalidPlanRes.status).toHaveBeenCalledWith(400);
+    expect(mocks.callExternalAIWithMessagesResult).not.toHaveBeenCalled();
+
+    const invalidRes = makeResponse();
+    await routes.get("/console/synthesize")!(
+      { body: { prompt: "p".repeat(12001), toolResults: [] } },
+      invalidRes,
+    );
+
+    expect(invalidRes.status).toHaveBeenCalledWith(400);
+    expect(mocks.callExternalAIWithMessagesResult).not.toHaveBeenCalled();
+  });
+
   it("synthesizes console answers from compact tool results", async () => {
     const { app, routes } = makeApp();
     const res = makeResponse();

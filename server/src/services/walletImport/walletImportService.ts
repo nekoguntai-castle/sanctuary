@@ -6,6 +6,7 @@
  */
 
 import type { PrismaTxClient } from '../../models/prisma';
+import { ForbiddenError } from '../../errors';
 import { withWalletImportTransaction } from '../../repositories/walletImportLock';
 import {
   WalletScriptType,
@@ -80,6 +81,33 @@ interface MaterializeDeviceContext {
 interface MaterializedDevice {
   info: ImportedDeviceInfo;
   created: boolean;
+}
+
+function assertImportCapabilities(resolutions: ReadonlyArray<DeviceResolution>): void {
+  for (const resolution of resolutions) {
+    if (resolution.originalType) {
+      assertHardwareWalletCapability({ type: resolution.originalType }, 'import');
+    }
+    if (!resolution.willCreate) {
+      assertHardwareWalletCapability({
+        type: resolution.existingType,
+        model: resolution.existingModel,
+      }, 'import');
+    }
+  }
+}
+
+function assertExistingDeviceBindingsUnchanged(
+  initial: ReadonlyArray<DeviceResolution>,
+  refreshed: ReadonlyArray<DeviceResolution>,
+): void {
+  // Both resolution lists map the same parsed-device slots in order.
+  for (let index = 0; index < initial.length; index++) {
+    const initialDeviceId = initial[index].existingDeviceId;
+    if (initialDeviceId && refreshed[index].existingDeviceId !== initialDeviceId) {
+      throw new ForbiddenError('Current device access is required for wallet import');
+    }
+  }
 }
 
 async function createInitialAddressesWithPendingCheckpoints(
@@ -174,18 +202,7 @@ export async function createWalletTransaction(
   input: CreateWalletTransactionInput
 ): Promise<ImportWalletResult> {
   const { parsed, resolutions, name, network, deviceLabels, jsonConfig } = input;
-
-  for (const resolution of resolutions) {
-    if (resolution.originalType) {
-      assertHardwareWalletCapability({ type: resolution.originalType }, 'import');
-    }
-    if (!resolution.willCreate) {
-      assertHardwareWalletCapability({
-        type: resolution.existingType,
-        model: resolution.existingModel,
-      }, 'import');
-    }
-  }
+  assertImportCapabilities(resolutions);
 
   // Determine account purpose from wallet type
   const accountPurpose = accountPurposeForWalletType(parsed.type);
@@ -217,6 +234,14 @@ export async function createWalletTransaction(
   const result = await withWalletImportTransaction(userId, async (tx) => {
     // Repeat the fast preflight check under the lock to close the check/insert race.
     await checkDuplicateWallet(userId, parsed.devices, parsed.scriptType, tx);
+    const freshResolutions = await resolveDevices(
+      userId,
+      parsed.devices,
+      jsonConfig?.devices,
+      tx,
+    );
+    assertExistingDeviceBindingsUnchanged(resolutions, freshResolutions);
+    assertImportCapabilities(freshResolutions);
     const createdDeviceIds: string[] = [];
     const reusedDeviceIds: string[] = [];
     // Track imported device info for building descriptor
@@ -228,8 +253,8 @@ export async function createWalletTransaction(
       scriptType: parsed.scriptType,
       deviceLabels,
     };
-    for (let i = 0; i < resolutions.length; i++) {
-      const resolution = resolutions[i];
+    for (let i = 0; i < freshResolutions.length; i++) {
+      const resolution = freshResolutions[i];
       const materialized = await materializeImportedDevice(
         tx,
         resolution,

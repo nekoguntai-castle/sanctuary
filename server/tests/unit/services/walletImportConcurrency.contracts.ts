@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   mockBuildDescriptorFromDevices,
   mockCurrentDeviceRole,
+  mockAssertHardwareWalletCapability,
 } from './walletImport.setup';
 import { ConflictError } from '../../../src/errors/ApiError';
 import { importFromParsedData } from '../../../src/services/walletImport/descriptorImport';
+import { resolveDevices } from '../../../src/services/walletImport/deviceResolution';
+import { deviceRepository } from '../../../src/repositories/deviceRepository';
 import { mockPrismaClient } from '../../mocks/prisma';
 import type { ParsedDescriptor } from '../../../src/services/bitcoin/descriptorParser';
 
@@ -61,6 +64,107 @@ function installAdvisoryLockTransactionMock(): void {
 }
 
 export const registerWalletImportConcurrencyContracts = () => describe('wallet import concurrency', () => {
+  it('resolves devices using the supplied import transaction snapshot', async () => {
+    const tx = { device: { findMany: vi.fn().mockResolvedValue([]) } };
+    const repositorySpy = vi.spyOn(deviceRepository, 'findByUserIdWithModel');
+    const parsed = makeParsedDescriptor();
+
+    try {
+      await resolveDevices(USER_ID, parsed.devices, undefined, tx as never);
+      expect(repositorySpy).toHaveBeenCalledWith(USER_ID, tx);
+    } finally {
+      repositorySpy.mockRestore();
+    }
+  });
+
+  it('reuses a signer discovered by the locked refresh instead of recreating it', async () => {
+    const existing = {
+      id: 'concurrent-existing-device',
+      userId: USER_ID,
+      type: 'coldcard',
+      label: 'Existing account zero',
+      fingerprint: FINGERPRINT,
+      xpub: 'root-xpub',
+      derivationPath: "m/84'/0'/0'",
+      model: null,
+    };
+    mockCurrentDeviceRole('owner');
+    mockPrismaClient.device.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([existing]);
+    mockPrismaClient.deviceAccount.findMany.mockResolvedValue([{
+      id: 'account-zero',
+      deviceId: existing.id,
+      purpose: 'single_sig',
+      scriptType: 'native_segwit',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'account-zero-xpub',
+    }]);
+
+    const result = await importFromParsedData(USER_ID, {
+      parsed: {
+        ...makeParsedDescriptor(),
+        devices: [{
+          fingerprint: FINGERPRINT,
+          derivationPath: "m/84'/0'/1'",
+          xpub: 'account-one-xpub',
+        }],
+      },
+      name: 'Account one import',
+    });
+
+    expect(result.devicesCreated).toBe(0);
+    expect(result.devicesReused).toBe(1);
+    expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
+    expect(mockPrismaClient.deviceAccount.create).toHaveBeenCalledWith({
+      data: {
+        deviceId: existing.id,
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/0'/1'",
+        xpub: 'account-one-xpub',
+      },
+    });
+  });
+
+  it('checks fresh hardware capability before reusing a newly visible signer', async () => {
+    const existing = {
+      id: 'unsupported-existing-device',
+      userId: USER_ID,
+      type: 'ledger',
+      label: 'Newly visible signer',
+      fingerprint: FINGERPRINT,
+      xpub: 'root-xpub',
+      derivationPath: "m/84'/0'/0'",
+      model: null,
+    };
+    mockPrismaClient.device.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([existing]);
+    mockAssertHardwareWalletCapability.mockImplementation(({ type }) => {
+      if (type === 'ledger') throw new Error('unsupported fresh signer');
+    });
+
+    await expect(importFromParsedData(USER_ID, {
+      parsed: {
+        ...makeParsedDescriptor(),
+        devices: [{
+          fingerprint: FINGERPRINT,
+          derivationPath: "m/84'/0'/1'",
+          xpub: 'account-one-xpub',
+        }],
+      },
+      name: 'Unsupported account one',
+    })).rejects.toThrow('unsupported fresh signer');
+
+    expect(mockAssertHardwareWalletCapability).toHaveBeenLastCalledWith({
+      type: 'ledger',
+      model: null,
+    }, 'import');
+    expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+    expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+  });
+
   it('admits at most one identical import after both preflight reads see no wallet', async () => {
     const barrier = createPreflightBarrier();
     const persistedWallets: Array<Record<string, unknown>> = [];
