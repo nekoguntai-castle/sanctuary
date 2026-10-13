@@ -704,10 +704,26 @@ main() {
   # an unrelated PR file does not pick up the carve-out.
   for release_surface_path in \
     "scripts/ci/observe-runtime-image-cves.sh" \
+    "scripts/ci/future-install-driver.sh" \
+    "scripts/ci/run-install-e2e-isolated-subject.sh" \
+    "scripts/ci/run-upgrade-baseline-isolated-subject.sh" \
+    "scripts/ownership/future-owner-driver.mjs" \
+    "tests/install/e2e/future-install-flow.test.sh" \
+    ".github/workflows/future-install-lane.yml" \
     ".github/actions/upload-artifact/action.yml" \
+    ".github/actions/future-install-action/action.yml" \
+    "Dockerfile" \
+    "server/Dockerfile" \
+    "gateway/Dockerfile" \
+    "docker/nested/Dockerfile" \
+    "future-component/nested/Dockerfile" \
+    "docker-compose.production.yml" \
     "scripts/setup.sh" \
     "docker/frontend/Dockerfile" \
-    "docker/compose/tor.yml"; do
+    "docker/compose/tor.yml" \
+    "docker/compose/future-overlay.yml" \
+    "start.sh" \
+    "install.sh"; do
     base_sha="$head_sha"
     commit_file "$repo_dir" "$release_surface_path" "# release surface fixture" "release surface: $release_surface_path"
     head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
@@ -734,6 +750,11 @@ main() {
     *,release-surface-pr-smoke,*) fail "unexpected release-surface-pr-smoke in scope for a non-release-surface PR" ;;
     *) ;;
   esac
+
+  # Keep the actual parsed outer workflow filters aligned with the paths that
+  # the classifier accepts. This prevents the classifier's promised bounded
+  # stack-smoke and latest-stable baseline lanes from being skipped entirely.
+  node "$ROOT_DIR/tests/install/unit/install-workflow-trigger-contract.test.mjs"
 
   echo "install scope classifier regression checks passed"
 }
