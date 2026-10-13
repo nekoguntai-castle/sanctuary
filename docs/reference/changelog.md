@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.8.77] - 2026-10-12
+
+### Fixed
+
+- Concurrent wallet imports now serialize admission and recheck duplicate
+  wallets, signer access, and device capabilities inside the transaction, so
+  parallel requests cannot create duplicate wallets or reuse stale signer data.
+- The gateway preserves the mounted API prefix and forwards parsed request
+  bodies with the gateway headers when proxying requests to the backend.
+- Console planning and synthesis accept prompts up to 12,000 characters after
+  trimming whitespace and reject whitespace-only input.
+- Demo reset preserves shared test-vector devices while canary fleet wallets
+  exist and refuses to purge their account until the fleet is removed.
+
+### Security
+
+- Update dependencies to address advisories in the MCP SDK, proxy-addr,
+  shell-quote, and tinypool.
+
+### Upgrade validation
+
+- No database migration, Compose topology change, new required runtime
+  environment variable, or persisted settings change is introduced. Existing
+  upgrade fixtures cover application data, secrets, and browser/proxy
+  authentication. The release still requires the latest-stable and n-2 upgrade
+  lanes, wallet-sync persistence replays, and automated wallet-safety proofs;
+  focused regression tests cover concurrent imports and gateway forwarding.
+
 ## [0.8.76] - 2026-10-01
 
 ### Changed
