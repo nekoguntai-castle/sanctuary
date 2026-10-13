@@ -112,12 +112,30 @@ export interface UseDeviceFormReturn {
   setShowQrDetails: (show: boolean) => void;
 }
 
+const IMPORTED_IDENTITY_DEFAULTS = {
+  xpub: '',
+  fingerprint: '',
+  derivationPath: "m/84'/0'/0'",
+} as const;
+
 function createInitialFormData(modelName?: string): DeviceFormData {
   return {
     label: modelName ? `My ${modelName}` : '',
-    xpub: '',
-    fingerprint: '',
-    derivationPath: "m/84'/0'/0'",
+    ...IMPORTED_IDENTITY_DEFAULTS,
+    parsedAccounts: [],
+    selectedAccounts: new Set(),
+  };
+}
+
+/**
+ * Clear every field an import supplies so a later import cannot inherit part of
+ * an earlier device's identity (e.g. A's accounts saved under B's fingerprint).
+ * The label is user-editable and is kept.
+ */
+function resetImportedIdentity(prev: DeviceFormData): DeviceFormData {
+  return {
+    ...prev,
+    ...IMPORTED_IDENTITY_DEFAULTS,
     parsedAccounts: [],
     selectedAccounts: new Set(),
   };
@@ -183,41 +201,28 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
     accounts?: DeviceAccount[];
   }) & { fingerprint: string }) => {
     setFormData(prev => {
-      const updates: Partial<DeviceFormData> = {};
+      const base = resetImportedIdentity(prev);
+      const updates: Partial<DeviceFormData> = { fingerprint: result.fingerprint };
 
-      if ('extractedFields' in result) {
-        // QR scan result
-        updates.xpub = result.xpub;
-        updates.fingerprint = result.fingerprint;
-        if (result.derivationPath) {
-          updates.derivationPath = result.derivationPath;
-        }
-        if (result.label && !prev.label.startsWith('My ')) {
-          updates.label = result.label;
-        }
-        if (result.accounts && result.accounts.length > 0) {
-          updates.parsedAccounts = result.accounts;
-          updates.selectedAccounts = new Set(result.accounts.map((_, i) => i));
-        }
-
-        setQrExtractedFields(result.extractedFields);
-        setWarning(result.warning);
-      } else {
-        // File parse result
-        if (result.xpub) updates.xpub = result.xpub;
-        updates.fingerprint = result.fingerprint;
-        if (result.derivationPath) updates.derivationPath = result.derivationPath;
-        if (result.label && !prev.label.startsWith('My ')) {
-          updates.label = result.label;
-        }
-        if (result.accounts && result.accounts.length > 0) {
-          updates.parsedAccounts = result.accounts;
-          updates.selectedAccounts = new Set(result.accounts.map((_, i) => i));
-        }
+      if (result.xpub) updates.xpub = result.xpub;
+      if (result.derivationPath) updates.derivationPath = result.derivationPath;
+      if (result.label && !prev.label.startsWith('My ')) {
+        updates.label = result.label;
+      }
+      if (result.accounts && result.accounts.length > 0) {
+        updates.parsedAccounts = result.accounts;
+        updates.selectedAccounts = new Set(result.accounts.map((_, i) => i));
       }
 
-      return { ...prev, ...updates };
+      return { ...base, ...updates };
     });
+
+    if ('extractedFields' in result) {
+      setQrExtractedFields(result.extractedFields);
+      setWarning(result.warning);
+    } else {
+      setQrExtractedFields(null);
+    }
   }, []);
 
   // Apply QR scan result to form
@@ -237,7 +242,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
     if (connectionResult && connectionResult.modelId === selectedModel?.id) {
       if (hasValidImportIdentity(connectionResult)) {
         setFormData(prev => ({
-          ...prev,
+          ...resetImportedIdentity(prev),
           fingerprint: connectionResult.fingerprint,
           parsedAccounts: connectionResult.accounts,
           selectedAccounts: new Set(connectionResult.accounts.map((_, i) => i)),
@@ -304,6 +309,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
     setScanned(false);
     setWarning(null);
     setQrExtractedFields(null);
+    setFormData(resetImportedIdentity);
     resetQr();
     resetUsb();
   }, [resetQr, resetUsb]);

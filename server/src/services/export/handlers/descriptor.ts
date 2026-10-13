@@ -12,6 +12,7 @@ import type {
   ExportOptions,
   ExportResult,
 } from '../types';
+import { singleLine } from './textLine';
 
 export const descriptorHandler: ExportFormatHandler = {
   id: 'descriptor',
@@ -24,7 +25,7 @@ export const descriptorHandler: ExportFormatHandler = {
     const lines: string[] = [];
 
     // Add header comment
-    lines.push(`# Wallet: ${wallet.name}`);
+    lines.push(`# Wallet: ${singleLine(wallet.name)}`);
     lines.push(`# Type: ${wallet.type === WalletType.MULTI_SIG ? `${wallet.quorum}-of-${wallet.totalSigners} Multisig` : 'Single Signature'}`);
     lines.push(`# Script Type: ${wallet.scriptType}`);
     lines.push(`# Network: ${wallet.network}`);
@@ -46,11 +47,11 @@ export const descriptorHandler: ExportFormatHandler = {
     if (options?.includeDevices && wallet.devices.length > 0) {
       lines.push('# Device Information');
       for (const device of wallet.devices) {
-        lines.push(`# - ${device.label} (${device.fingerprint})`);
+        lines.push(`# - ${singleLine(device.label)} (${singleLine(device.fingerprint)})`);
         if (device.derivationPath) {
-          lines.push(`#   Derivation: ${device.derivationPath}`);
+          lines.push(`#   Derivation: ${singleLine(device.derivationPath)}`);
         }
-        lines.push(`#   XPub: ${device.xpub}`);
+        lines.push(`#   XPub: ${singleLine(device.xpub)}`);
       }
       lines.push('');
     }

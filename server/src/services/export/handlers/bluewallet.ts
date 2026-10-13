@@ -15,6 +15,7 @@ import type {
   ExportOptions,
   ExportResult,
 } from '../types';
+import { singleLine } from './textLine';
 import {
   accountPathMatchesWalletPolicy,
 } from '@sanctuary/shared/constants/walletPolicy';
@@ -115,7 +116,7 @@ export const bluewalletHandler: ExportFormatHandler = {
     const lines: string[] = [];
 
     // Header
-    lines.push(`Name: ${wallet.name}`);
+    lines.push(`Name: ${singleLine(wallet.name)}`);
 
     if (wallet.type === WalletType.MULTI_SIG) {
       lines.push(`Policy: ${wallet.quorum} of ${wallet.totalSigners}`);
@@ -131,8 +132,8 @@ export const bluewalletHandler: ExportFormatHandler = {
     for (let i = 0; i < wallet.devices.length; i++) {
       const device = wallet.devices[i];
 
-      lines.push(`Derivation: ${device.derivationPath}`);
-      lines.push(`${device.fingerprint}: ${device.xpub}`);
+      lines.push(`Derivation: ${singleLine(device.derivationPath)}`);
+      lines.push(`${singleLine(device.fingerprint)}: ${singleLine(device.xpub)}`);
       lines.push('');
     }
 

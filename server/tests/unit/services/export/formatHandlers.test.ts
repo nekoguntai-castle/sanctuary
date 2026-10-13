@@ -161,6 +161,32 @@ describe('export format handlers', () => {
     });
   });
 
+  describe('line-break sanitisation', () => {
+    it('does not let a BlueWallet name inject a Policy line', () => {
+      const result = bluewalletHandler.export({ ...baseMultiSig, name: 'a\r\nPolicy: 1 of 1' });
+      const lines = result.content.split('\n');
+
+      expect(lines.filter(line => line.startsWith('Policy:'))).toEqual(['Policy: 2 of 2']);
+      expect(lines[0]).toBe('Name: a Policy: 1 of 1');
+    });
+
+    it('keeps the real descriptor as the only non-comment line in descriptor exports', () => {
+      const result = descriptorHandler.export(
+        {
+          ...baseSingleSig,
+          name: 'x\n' + 'wpkh(evil)',
+          devices: [{ ...baseSingleSig.devices[0], label: 'y\u2028wpkh(evil2)' }],
+        },
+        { includeDevices: true },
+      );
+
+      const nonComment = result.content
+        .split(/\r\n|\r|\n|\u2028|\u2029/)
+        .filter(line => line.trim() !== '' && !line.startsWith('#'));
+      expect(nonComment).toEqual([baseSingleSig.descriptor]);
+    });
+  });
+
   describe('sparrowHandler', () => {
     it('exports multisig JSON with mapped script/device types and optional metadata', () => {
       const result = sparrowHandler.export(baseMultiSig, {

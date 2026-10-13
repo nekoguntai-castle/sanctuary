@@ -140,6 +140,28 @@ describe('agentDashboardRepository', () => {
     expect(livePredicate?.sql).toBe(`"rbfStatus" <> 'replaced'`);
   });
 
+  it('scopes dashboard agents to wallets before applying the row limit', async () => {
+    prisma.walletAgent.findMany.mockResolvedValue([]);
+
+    await findDashboardRows({ limit: 5, walletIds: ['w1', 'w2'] });
+
+    expect(prisma.walletAgent.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        fundingWalletId: { in: ['w1', 'w2'] },
+        operationalWalletId: { in: ['w1', 'w2'] },
+      },
+      take: 5,
+    }));
+  });
+
+  it('adds no where clause when no wallet scope is supplied', async () => {
+    prisma.walletAgent.findMany.mockResolvedValue([]);
+
+    await findDashboardRows({ limit: 5 });
+
+    expect(prisma.walletAgent.findMany.mock.calls[0][0]).not.toHaveProperty('where');
+  });
+
   it('short-circuits dashboard aggregation when no agents are registered', async () => {
     prisma.walletAgent.findMany.mockResolvedValue([]);
 

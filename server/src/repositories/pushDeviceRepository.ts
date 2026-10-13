@@ -108,20 +108,20 @@ export async function create(input: CreatePushDeviceInput): Promise<PushDevice> 
 }
 
 /**
- * Update last used timestamp
+ * Update last used timestamp (idempotent: a concurrently removed row is ignored)
  */
 export async function updateLastUsed(id: string): Promise<void> {
-  await prisma.pushDevice.update({
+  await prisma.pushDevice.updateMany({
     where: { id },
     data: { lastUsedAt: new Date() },
   });
 }
 
 /**
- * Delete a push device by ID
+ * Delete a push device by ID (idempotent: an already-removed row is ignored)
  */
 export async function deleteById(id: string): Promise<void> {
-  await prisma.pushDevice.delete({
+  await prisma.pushDevice.deleteMany({
     where: { id },
   });
 }

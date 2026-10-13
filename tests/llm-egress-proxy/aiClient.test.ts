@@ -12,6 +12,7 @@ import {
   callExternalAI,
   callExternalAIWithMessages,
   callExternalAIWithMessagesResult,
+  parseStructuredResponse,
 } from "../../llm-egress-proxy/src/aiClient";
 
 function okChatResponse(content: string) {
@@ -308,5 +309,43 @@ describe("LLM egress proxy AI client", () => {
 
     expect(result).toBeNull();
     expect(mocks.requestProviderEndpoint).not.toHaveBeenCalled();
+  });
+
+  describe("parseStructuredResponse", () => {
+    it("keeps URLs inside strings in pretty-printed JSON", () => {
+      const raw = '{\n  "summary": "see https://x.y",\n  "n": 1\n}';
+      expect(parseStructuredResponse(raw)).toEqual({ summary: "see https://x.y", n: 1 });
+    });
+
+    it("preserves comment-like and comma-brace text inside strings", () => {
+      const raw = '{"a": "a /* b */ c", "b": ",}", "c": "a \\" // b"}';
+      expect(parseStructuredResponse(raw)).toEqual(JSON.parse(raw));
+    });
+
+    it("tolerates real comments and trailing commas outside strings", () => {
+      const raw = '{\n  // note\n  "a": 1, /* x */\n  "b": [1, 2,],\n}';
+      expect(parseStructuredResponse(raw)).toEqual({ a: 1, b: [1, 2] });
+    });
+
+    it("drops a trailing comma that is followed by a comment", () => {
+      const raw = '{\n  "a": 1, // last field\n  "b": [1, 2, /* end */]\n}';
+      expect(parseStructuredResponse(raw)).toEqual({ a: 1, b: [1, 2] });
+    });
+
+    it("keeps string contents intact when lenient cleanup is needed", () => {
+      const raw = '{"url": "https://x.y", "c": "a \\" /* b */ ,}", // note\n}';
+      expect(parseStructuredResponse(raw)).toEqual({
+        url: "https://x.y",
+        c: 'a " /* b */ ,}',
+      });
+    });
+
+    it("returns null for an unterminated block comment", () => {
+      expect(parseStructuredResponse('{"a": 1 /* oops }')).toBeNull();
+    });
+
+    it("returns null when no object is present", () => {
+      expect(parseStructuredResponse("no json")).toBeNull();
+    });
   });
 });

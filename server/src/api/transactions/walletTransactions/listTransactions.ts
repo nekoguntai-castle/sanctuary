@@ -117,6 +117,8 @@ export function createListTransactionsRouter(): Router {
           orderBy: [
             { blockTime: { sort: "desc", nulls: "first" } },
             { createdAt: "desc" },
+            // id tiebreaker keeps offset paging stable when timestamps tie
+            { id: "desc" },
           ],
           take: limit,
           skip: offset,

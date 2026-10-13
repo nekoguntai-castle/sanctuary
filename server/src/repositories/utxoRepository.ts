@@ -274,7 +274,8 @@ export async function findUnspentWithDraftLocks(
       walletId,
       spent: false,
     },
-    orderBy: { amount: 'desc' },
+    // id tiebreaker: equal-amount UTXOs would otherwise reorder between skip/take pages
+    orderBy: [{ amount: 'desc' }, { id: 'desc' }],
     include: {
       draftLock: {
         include: {

@@ -447,4 +447,57 @@ describeWithDatabase('wallet import concurrency', () => {
     ]);
     expect(await prisma.wallet.count({ where: { users: { some: { userId: user.id } } } })).toBe(2);
   });
+
+  it('reuses a group-shared signer instead of creating a duplicate device', async () => {
+    const owner = await createTestUser(prisma, getTestUser());
+    const member = await createTestUser(prisma, getTestUser());
+    const group = await prisma.group.create({ data: { name: 'import-shared-signers' } });
+    await prisma.groupMember.create({ data: { userId: member.id, groupId: group.id } });
+    await createExistingSigner(prisma, owner.id);
+    const shared = await prisma.device.findFirstOrThrow({ where: { fingerprint: FINGERPRINT } });
+    await prisma.device.update({
+      where: { id: shared.id },
+      data: { groupId: group.id, groupRole: 'viewer' },
+    });
+
+    const result = await importFromDescriptor(member.id, {
+      descriptor: RECEIVE_DESCRIPTOR,
+      changeDescriptor: CHANGE_DESCRIPTOR,
+      network: 'testnet3' as const,
+      name: 'group-shared-signer-import',
+    });
+
+    expect(result.wallet.id).toBeDefined();
+    await expect(prisma.device.count({ where: { fingerprint: FINGERPRINT } })).resolves.toBe(1);
+    const bindings = await prisma.walletDevice.findMany({ where: { walletId: result.wallet.id } });
+    expect(bindings.map(binding => binding.deviceId)).toEqual([shared.id]);
+  });
+
+  it('does not let a user outside the group bind a group-shared signer', async () => {
+    const owner = await createTestUser(prisma, getTestUser());
+    const outsider = await createTestUser(prisma, getTestUser());
+    const group = await prisma.group.create({ data: { name: 'import-private-signers' } });
+    await prisma.groupMember.create({ data: { userId: owner.id, groupId: group.id } });
+    await createExistingSigner(prisma, owner.id);
+    await prisma.device.updateMany({
+      where: { fingerprint: FINGERPRINT },
+      data: { groupId: group.id, groupRole: 'viewer' },
+    });
+
+    await expect(importFromDescriptor(outsider.id, {
+      descriptor: RECEIVE_DESCRIPTOR,
+      changeDescriptor: CHANGE_DESCRIPTOR,
+      network: 'testnet3' as const,
+      name: 'outsider-signer-import',
+      // The signer is invisible to a non-member, so creating it again hits the
+      // unique fingerprint (P2002, served as 409) instead of binding it.
+    })).rejects.toMatchObject({ code: 'P2002' });
+
+    await expect(prisma.device.count({ where: { fingerprint: FINGERPRINT } })).resolves.toBe(1);
+    await expect(prisma.deviceUser.count({ where: { userId: outsider.id } })).resolves.toBe(0);
+    await expect(prisma.walletDevice.count({ where: { wallet: { users: { some: { userId: outsider.id } } } } }))
+      .resolves.toBe(0);
+    await expect(prisma.wallet.count({ where: { users: { some: { userId: outsider.id } } } }))
+      .resolves.toBe(0);
+  });
 });

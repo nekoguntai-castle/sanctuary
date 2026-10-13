@@ -25,6 +25,7 @@ import type {
   ExportOptions,
   ExportResult,
 } from '../types';
+import { singleLine } from './textLine';
 import { convertXpubToFormat } from '../../bitcoin/addressDerivation';
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import {
@@ -101,7 +102,7 @@ export const coldcardHandler: ExportFormatHandler = {
     const lines: string[] = [];
 
     // Wallet name
-    lines.push(`Name: ${wallet.name}`);
+    lines.push(`Name: ${singleLine(wallet.name)}`);
 
     // Policy (M of N)
     lines.push(`Policy: ${wallet.quorum} of ${wallet.totalSigners}`);
@@ -109,7 +110,7 @@ export const coldcardHandler: ExportFormatHandler = {
 
     // Derivation path
     const derivationPath = extractDerivationPath(wallet);
-    lines.push(`Derivation: ${derivationPath}`);
+    lines.push(`Derivation: ${singleLine(derivationPath)}`);
 
     // Script type format
     lines.push(`Format: ${format}`);
@@ -125,7 +126,7 @@ export const coldcardHandler: ExportFormatHandler = {
       const fingerprint = device.fingerprint.toUpperCase();
       // Convert any format (Zpub, Ypub, etc.) to standard xpub for Coldcard compatibility
       const normalizedXpub = convertXpubToFormat(device.xpub, standardFormat);
-      lines.push(`${fingerprint}: ${normalizedXpub}`);
+      lines.push(`${singleLine(fingerprint)}: ${singleLine(normalizedXpub)}`);
     }
 
     const content = lines.join('\n');

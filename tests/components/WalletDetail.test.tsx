@@ -122,6 +122,7 @@ vi.mock('../../src/api/transactions', async (importOriginal) => {
     ...actual,
     getTransactions: vi.fn(),
     getUTXOs: vi.fn(),
+    getAllUTXOs: vi.fn(),
     getAddresses: vi.fn(),
     generateAddresses: vi.fn(),
     getTransactionStats: vi.fn(),
@@ -275,6 +276,11 @@ describe('WalletDetail', () => {
 
     vi.mocked(transactionsApi.getTransactions).mockResolvedValue(mockTransactions as any);
     vi.mocked(transactionsApi.getUTXOs).mockResolvedValue({
+      utxos: mockUtxos,
+      count: mockUtxos.length,
+      totalBalance: 50000,
+    } as any);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
       utxos: mockUtxos,
       count: mockUtxos.length,
       totalBalance: 50000,

@@ -3,6 +3,7 @@ import {
 fetchAuxiliaryData,
 loadAddressPage,
 loadGroups,
+loadUtxosForStats,
 } from '../../../../src/components/WalletDetail/hooks/walletDataLoaders';
 import * as adminApi from '../../../../src/api/admin';
 import * as authApi from '../../../../src/api/auth';
@@ -15,6 +16,7 @@ vi.mock('../../../../src/api/transactions', () => ({
   getAddressSummary: vi.fn(),
   getAddresses: vi.fn(),
   getUTXOs: vi.fn(),
+  getAllUTXOs: vi.fn(),
   getTransactions: vi.fn(),
   getTransactionStats: vi.fn(),
   getWalletPrivacy: vi.fn(),
@@ -72,6 +74,11 @@ describe('walletDataLoaders branch coverage', () => {
     vi.mocked(transactionsApi.getTransactions).mockResolvedValue([] as any);
     vi.mocked(transactionsApi.getTransactionStats).mockResolvedValue({ count: 0 } as any);
     vi.mocked(transactionsApi.getUTXOs).mockResolvedValue({
+      utxos: [],
+      count: 0,
+      totalBalance: 0,
+    } as any);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
       utxos: [],
       count: 0,
       totalBalance: 0,
@@ -161,5 +168,19 @@ describe('walletDataLoaders branch coverage', () => {
         memberIds: [],
       },
     ]);
+  });
+
+  it('loads every UTXO for stats through getAllUTXOs', async () => {
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
+      utxos: Array.from({ length: 1500 }, (_, i) => ({ id: `u-${i}` })),
+      count: 1500,
+      totalBalance: 1,
+    } as any);
+
+    const utxos = await loadUtxosForStats('wallet-1');
+
+    expect(transactionsApi.getAllUTXOs).toHaveBeenCalledWith('wallet-1');
+    expect(transactionsApi.getUTXOs).not.toHaveBeenCalled();
+    expect(utxos).toHaveLength(1500);
   });
 });

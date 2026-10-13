@@ -406,4 +406,15 @@ describe('Coldcard Export Handler', () => {
       expect(lines[7]).toMatch(/^BBBBBBBB: xpub/);
     });
   });
+
+  describe('line-break sanitisation', () => {
+    it('does not let a wallet name inject a Policy line', () => {
+      const wallet = createMockMultisigWallet({ name: 'a\nPolicy: 1 of 1' });
+
+      const lines = coldcardHandler.export(wallet).content.split('\n');
+
+      expect(lines.filter(line => line.startsWith('Policy:'))).toEqual(['Policy: 2 of 3']);
+      expect(lines[0]).toBe('Name: a Policy: 1 of 1');
+    });
+  });
 });

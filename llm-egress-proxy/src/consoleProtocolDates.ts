@@ -110,6 +110,27 @@ function parseSingleMonthYearRange(prompt: string): {
   };
 }
 
+const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Builds a UTC date, or null when the calendar date does not exist. */
+function parseCalendarDate(
+  text: string,
+  time: [number, number, number, number],
+): Date | null {
+  const match = ISO_DATE_PATTERN.exec(text);
+  if (!match) return null;
+  const [year, month, day] = [match[1], match[2], match[3]].map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, ...time));
+  // Date.UTC remaps years 0-99 to 1900-1999; restore the requested year. The
+  // round-trip check below rejects any date that does not exist as written.
+  date.setUTCFullYear(year);
+  const valid =
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
+  return valid ? date : null;
+}
+
 function parseIsoDateRange(prompt: string): {
   dateFrom: string;
   dateTo: string;
@@ -119,10 +140,11 @@ function parseIsoDateRange(prompt: string): {
   );
   if (!range) return null;
 
-  return {
-    dateFrom: new Date(`${range[1]}T00:00:00.000Z`).toISOString(),
-    dateTo: new Date(`${range[2]}T23:59:59.999Z`).toISOString(),
-  };
+  const from = parseCalendarDate(range[1], [0, 0, 0, 0]);
+  const to = parseCalendarDate(range[2], [23, 59, 59, 999]);
+  if (!from || !to) return null;
+
+  return { dateFrom: from.toISOString(), dateTo: to.toISOString() };
 }
 
 export function referenceYear(input: ConsolePlanInput): number {

@@ -130,7 +130,7 @@ describe('Push Service', () => {
       await sendPushNotification(userId, message);
 
       expect(mockProvider.send).toHaveBeenCalledWith('apns-token-123', message);
-      expect(mockPrismaClient.pushDevice.update).toHaveBeenCalledWith({
+      expect(mockPrismaClient.pushDevice.updateMany).toHaveBeenCalledWith({
         where: { id: 'device-1' },
         data: { lastUsedAt: expect.any(Date) },
       });
@@ -161,7 +161,7 @@ describe('Push Service', () => {
       await sendPushNotification(userId, message);
 
       expect(mockProvider.send).toHaveBeenCalledTimes(2);
-      expect(mockPrismaClient.pushDevice.update).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.pushDevice.updateMany).toHaveBeenCalledTimes(2);
     });
 
     it('should skip when user has no devices', async () => {
@@ -190,7 +190,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.updateMany).not.toHaveBeenCalled();
     });
 
     it('should remove device with invalid token (APNs 410)', async () => {
@@ -208,7 +208,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalledWith({
+      expect(mockPrismaClient.pushDevice.deleteMany).toHaveBeenCalledWith({
         where: { id: 'device-1' },
       });
     });
@@ -228,7 +228,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalledWith({
+      expect(mockPrismaClient.pushDevice.deleteMany).toHaveBeenCalledWith({
         where: { id: 'device-1' },
       });
     });
@@ -250,7 +250,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalledWith({
+      expect(mockPrismaClient.pushDevice.deleteMany).toHaveBeenCalledWith({
         where: { id: 'device-2' },
       });
     });
@@ -270,7 +270,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.deleteMany).not.toHaveBeenCalled();
     });
 
     it('should skip platforms without configured provider', async () => {
@@ -324,8 +324,8 @@ describe('Push Service', () => {
         }),
       );
       expect(mockLog.error).toHaveBeenCalled();
-      expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
-      expect(mockPrismaClient.pushDevice.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.updateMany).not.toHaveBeenCalled();
     });
 
     it('should fall back to a default message when a resolved failure has no error text', async () => {
@@ -361,8 +361,8 @@ describe('Push Service', () => {
         }),
       );
       expect(mockLog.error).toHaveBeenCalled();
-      expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
-      expect(mockPrismaClient.pushDevice.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.pushDevice.updateMany).not.toHaveBeenCalled();
     });
 
     it('should remove invalid token when provider returns unsuccessful invalid-token response', async () => {
@@ -383,7 +383,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalledWith({
+      expect(mockPrismaClient.pushDevice.deleteMany).toHaveBeenCalledWith({
         where: { id: 'device-1' },
       });
     });
@@ -407,7 +407,7 @@ describe('Push Service', () => {
 
       await sendPushNotification(userId, message);
 
-      expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalledWith({
+      expect(mockPrismaClient.pushDevice.deleteMany).toHaveBeenCalledWith({
         where: { id: 'device-1' },
       });
     });
@@ -901,9 +901,9 @@ describe('Push Service', () => {
         await sendPushNotification('user-1', { title: 'Test', body: 'Test' });
 
         if (shouldRemove) {
-          expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalled();
+          expect(mockPrismaClient.pushDevice.deleteMany).toHaveBeenCalled();
         } else {
-          expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
+          expect(mockPrismaClient.pushDevice.deleteMany).not.toHaveBeenCalled();
         }
       },
     );

@@ -196,7 +196,7 @@ async function collectAddressIdsByChain(
     const addresses = await prisma.address.findMany({
       where,
       select: { id: true, derivationPath: true },
-      orderBy: { index: "asc" },
+      orderBy: [{ index: "asc" }, { id: "asc" }],
       skip: dbSkip,
       take: ADDRESS_CHAIN_SCAN_PAGE_SIZE,
     });
@@ -271,7 +271,7 @@ export async function findByWalletId(
     where,
     skip: options?.skip,
     take: options?.take,
-    orderBy: { index: "asc" },
+    orderBy: [{ index: "asc" }, { id: "asc" }],
   });
 }
 
@@ -483,7 +483,7 @@ export async function findByWalletIdWithLabels(
     return prisma.address.findMany({
       where,
       include: addressLabelsInclude,
-      orderBy: { index: "asc" },
+      orderBy: [{ index: "asc" }, { id: "asc" }],
       take: options?.take,
       skip: options?.skip,
     });

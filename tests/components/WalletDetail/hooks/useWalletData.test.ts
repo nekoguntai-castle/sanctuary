@@ -77,6 +77,7 @@ vi.mock('../../../../src/api/transactions', () => ({
   getTransactions: vi.fn(),
   getTransactionStats: vi.fn(),
   getUTXOs: vi.fn(),
+  getAllUTXOs: vi.fn(),
   getWalletPrivacy: vi.fn(),
   getAddresses: vi.fn(),
   getAddressSummary: vi.fn(),
@@ -192,6 +193,11 @@ describe('useWalletData', () => {
       count: 300,
       totalBalance: 500000,
       utxos: Array.from({ length: 100 }, (_, i) => makeUtxo(`u-${i}`)),
+    } as never);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
+      count: 300,
+      totalBalance: 500000,
+      utxos: Array.from({ length: 300 }, (_, i) => makeUtxo(`u-${i}`)),
     } as never);
     vi.mocked(transactionsApi.getWalletPrivacy).mockResolvedValue({
       utxos: [{ id: 'u-1', score: 50 }],
@@ -701,14 +707,14 @@ describe('useWalletData', () => {
 
     view.rerender({ id: 'wallet-b' });
     await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-b'));
-    const utxoCalls = vi.mocked(transactionsApi.getUTXOs).mock.calls.length;
+    const utxoCalls = vi.mocked(transactionsApi.getAllUTXOs).mock.calls.length;
     const stats = view.result.current.utxoStats;
 
     await act(async () => {
       await retainedLoadStats('wallet-a');
     });
 
-    expect(transactionsApi.getUTXOs).toHaveBeenCalledTimes(utxoCalls);
+    expect(transactionsApi.getAllUTXOs).toHaveBeenCalledTimes(utxoCalls);
     expect(view.result.current.utxoStats).toEqual(stats);
     expect(view.result.current.loadingUtxoStats).toBe(false);
   });
@@ -1198,12 +1204,11 @@ describe('useWalletData', () => {
     await waitFor(() => expect(view.result.current.loading).toBe(false));
     const addressSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAddresses>>>();
     const utxoSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
-    const statsSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
+    const statsSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAllUTXOs>>>();
     const txSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getTransactions>>>();
     vi.mocked(transactionsApi.getAddresses).mockReturnValueOnce(addressSuccess.promise);
-    vi.mocked(transactionsApi.getUTXOs)
-      .mockReturnValueOnce(utxoSuccess.promise)
-      .mockReturnValueOnce(statsSuccess.promise);
+    vi.mocked(transactionsApi.getUTXOs).mockReturnValueOnce(utxoSuccess.promise);
+    vi.mocked(transactionsApi.getAllUTXOs).mockReturnValueOnce(statsSuccess.promise);
     vi.mocked(transactionsApi.getTransactions).mockReturnValueOnce(txSuccess.promise);
 
     let successes!: Promise<void>[];
@@ -1226,12 +1231,11 @@ describe('useWalletData', () => {
     await waitFor(() => expect(failedView.result.current.loading).toBe(false));
     const addressFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAddresses>>>();
     const utxoFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
-    const statsFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
+    const statsFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAllUTXOs>>>();
     const txFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getTransactions>>>();
     vi.mocked(transactionsApi.getAddresses).mockReturnValueOnce(addressFailure.promise);
-    vi.mocked(transactionsApi.getUTXOs)
-      .mockReturnValueOnce(utxoFailure.promise)
-      .mockReturnValueOnce(statsFailure.promise);
+    vi.mocked(transactionsApi.getUTXOs).mockReturnValueOnce(utxoFailure.promise);
+    vi.mocked(transactionsApi.getAllUTXOs).mockReturnValueOnce(statsFailure.promise);
     vi.mocked(transactionsApi.getTransactions).mockReturnValueOnce(txFailure.promise);
 
     let failures!: Promise<void>[];
@@ -1369,7 +1373,7 @@ describe('useWalletData', () => {
     const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    vi.mocked(transactionsApi.getUTXOs).mockResolvedValueOnce({
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValueOnce({
       count: 2,
       totalBalance: 2000,
       utxos: [makeUtxo('stats-1'), makeUtxo('stats-2')],
@@ -1381,7 +1385,7 @@ describe('useWalletData', () => {
     expect(result.current.utxoStats).toHaveLength(2);
     expect(result.current.loadingUtxoStats).toBe(false);
 
-    vi.mocked(transactionsApi.getUTXOs).mockRejectedValueOnce(new Error('stats fail'));
+    vi.mocked(transactionsApi.getAllUTXOs).mockRejectedValueOnce(new Error('stats fail'));
     await act(async () => {
       await result.current.loadUtxosForStats('wallet-1');
     });

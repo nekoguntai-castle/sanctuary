@@ -137,8 +137,26 @@ function buildDashboardRow(
   };
 }
 
-function findDashboardAgents(limit?: number): Promise<WalletAgentWithDetails[]> {
+interface DashboardRowsOptions {
+  limit?: number;
+  /** Only agents whose funding and operational wallets are both listed. */
+  walletIds?: string[];
+}
+
+function findDashboardAgents(
+  { limit, walletIds }: DashboardRowsOptions = {},
+): Promise<WalletAgentWithDetails[]> {
   return prisma.walletAgent.findMany({
+    // Both wallets must be in scope: each row exposes both wallets' summaries.
+    // Applied in the query (before `take`), never as a post-filter.
+    ...(walletIds
+      ? {
+          where: {
+            fundingWalletId: { in: walletIds },
+            operationalWalletId: { in: walletIds },
+          },
+        }
+      : {}),
     orderBy: { createdAt: 'desc' },
     ...(limit ? { take: limit } : {}),
     include: {
@@ -164,8 +182,10 @@ function findDashboardAgents(limit?: number): Promise<WalletAgentWithDetails[]> 
  * by the database, and recent samples use windowed queries to avoid per-agent
  * query fan-out as the agent list grows.
  */
-export async function findDashboardRows(options?: { limit?: number }): Promise<AgentWalletDashboardRow[]> {
-  const agents = await findDashboardAgents(options?.limit);
+export async function findDashboardRows(
+  options?: DashboardRowsOptions,
+): Promise<AgentWalletDashboardRow[]> {
+  const agents = await findDashboardAgents(options);
   if (agents.length === 0) return [];
 
   const now = new Date();

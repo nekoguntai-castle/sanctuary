@@ -412,6 +412,23 @@ describe('UTXO Repository', () => {
     });
   });
 
+  describe('findUnspentWithDraftLocks', () => {
+    it('orders by amount then id so skip/take pages never overlap on ties', async () => {
+      (prisma.uTXO.findMany as Mock).mockResolvedValue([]);
+
+      await utxoRepository.findUnspentWithDraftLocks('wallet-456', { take: 10, skip: 20 });
+
+      expect(prisma.uTXO.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { walletId: 'wallet-456', spent: false },
+          orderBy: [{ amount: 'desc' }, { id: 'desc' }],
+          take: 10,
+          skip: 20,
+        }),
+      );
+    });
+  });
+
   describe('findByOutpointsForWallet', () => {
     it('should find exact wallet UTXOs with draft lock state', async () => {
       (prisma.uTXO.findMany as Mock).mockResolvedValue([

@@ -4,6 +4,7 @@
  * Tests the push device repository against a real PostgreSQL database.
  */
 
+import { pushDeviceRepository } from '../../../src/repositories';
 import {
   describeIfDatabase,
   setupRepositoryTests,
@@ -244,6 +245,20 @@ describeIfDatabase('PushDeviceRepository Integration Tests', () => {
 
         expect(updated?.lastUsedAt.getTime()).toBeGreaterThan(originalLastUsed.getTime());
       });
+    });
+  });
+
+  describe('idempotent cleanup of a missing device', () => {
+    // A device removed while a push is in flight must not make the post-send
+    // bookkeeping throw (P2025), so call the repository itself, not raw Prisma.
+    const missingId = '00000000-0000-4000-8000-000000000000';
+
+    it('updateLastUsed resolves for a missing id', async () => {
+      await expect(pushDeviceRepository.updateLastUsed(missingId)).resolves.toBeUndefined();
+    });
+
+    it('deleteById resolves for a missing id', async () => {
+      await expect(pushDeviceRepository.deleteById(missingId)).resolves.toBeUndefined();
     });
   });
 

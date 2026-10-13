@@ -579,7 +579,7 @@ describe('read-tool parity batch 2', () => {
 
     const envelope = await assistantReadToolRegistry.execute('get_admin_operational_summary', {}, admin);
     const serialized = JSON.stringify(envelope.data);
-    expect(mocks.assistantReadRepository.findAdminAgentDashboardRowsForAssistant).toHaveBeenCalledWith(101);
+    expect(mocks.assistantReadRepository.findAdminAgentDashboardRowsForAssistant).toHaveBeenCalledWith(101, undefined);
     expect(envelope.data).toMatchObject({
       agentCount: 2,
       totalOperationalBalanceSats: '1234',

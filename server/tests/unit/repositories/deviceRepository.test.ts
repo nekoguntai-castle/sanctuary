@@ -178,6 +178,10 @@ describe('Device Repository', () => {
           OR: [
             { userId: 'user-456' },
             { users: { some: { userId: 'user-456' } } },
+            {
+              groupId: { not: null },
+              group: { members: { some: { userId: 'user-456' } } },
+            },
           ],
         },
         include: { model: true },
@@ -195,6 +199,10 @@ describe('Device Repository', () => {
           OR: [
             { userId: 'user-456' },
             { users: { some: { userId: 'user-456' } } },
+            {
+              groupId: { not: null },
+              group: { members: { some: { userId: 'user-456' } } },
+            },
           ],
         },
         include: { model: true },

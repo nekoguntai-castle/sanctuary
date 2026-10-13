@@ -10,6 +10,7 @@ vi.mock('../../../src/models/prisma', () => ({
       upsert: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
       deleteMany: vi.fn(),
     },
@@ -126,9 +127,10 @@ describe('pushDeviceRepository', () => {
   });
 
   it('update and delete helpers call Prisma operations', async () => {
-    (prisma.pushDevice.update as Mock).mockResolvedValue(undefined);
+    (prisma.pushDevice.updateMany as Mock).mockResolvedValue({ count: 0 });
     (prisma.pushDevice.delete as Mock).mockResolvedValue(undefined);
     (prisma.pushDevice.deleteMany as Mock)
+      .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ count: 2 })
       .mockResolvedValueOnce({ count: 1 });
 
@@ -138,16 +140,17 @@ describe('pushDeviceRepository', () => {
     const byUser = await deleteByUserId('user-1');
     const stale = await deleteStale(new Date('2025-01-01T00:00:00.000Z'));
 
-    expect(prisma.pushDevice.update).toHaveBeenCalledWith({
+    // updateLastUsed/deleteById are idempotent: a vanished row must not throw
+    expect(prisma.pushDevice.updateMany).toHaveBeenCalledWith({
       where: { id: 'pd-1' },
       data: { lastUsedAt: expect.any(Date) },
     });
-    expect(prisma.pushDevice.delete).toHaveBeenNthCalledWith(1, { where: { id: 'pd-1' } });
-    expect(prisma.pushDevice.delete).toHaveBeenNthCalledWith(2, { where: { token: 'token-1' } });
-    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(1, {
+    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(1, { where: { id: 'pd-1' } });
+    expect(prisma.pushDevice.delete).toHaveBeenCalledWith({ where: { token: 'token-1' } });
+    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(2, {
       where: { userId: 'user-1' },
     });
-    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(2, {
+    expect(prisma.pushDevice.deleteMany).toHaveBeenNthCalledWith(3, {
       where: {
         lastUsedAt: { lt: new Date('2025-01-01T00:00:00.000Z') },
       },

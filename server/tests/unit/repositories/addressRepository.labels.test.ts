@@ -82,7 +82,7 @@ describe("Address Repository label queries", () => {
       expect(prisma.address.findMany).toHaveBeenNthCalledWith(1, {
         where: { walletId: "wallet-456", used: false },
         select: { id: true, derivationPath: true },
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
         skip: 0,
         take: 200,
       });
@@ -138,14 +138,14 @@ describe("Address Repository label queries", () => {
       expect(prisma.address.findMany).toHaveBeenNthCalledWith(1, {
         where: { walletId: "wallet-456" },
         select: { id: true, derivationPath: true },
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
         skip: 0,
         take: 200,
       });
       expect(prisma.address.findMany).toHaveBeenNthCalledWith(2, {
         where: { walletId: "wallet-456" },
         select: { id: true, derivationPath: true },
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
         skip: 200,
         take: 200,
       });
@@ -189,7 +189,7 @@ describe("Address Repository label queries", () => {
       expect(prisma.address.findMany).toHaveBeenNthCalledWith(1, {
         where: { walletId: "wallet-456" },
         select: { id: true, derivationPath: true },
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
         skip: 0,
         take: 200,
       });
@@ -231,7 +231,7 @@ describe("Address Repository label queries", () => {
           scriptPubKey: { not: null },
         },
         select: { id: true, derivationPath: true },
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
         skip: 0,
         take: 200,
       });

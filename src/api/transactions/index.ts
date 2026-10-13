@@ -70,6 +70,7 @@ export {
 // UTXO operations
 export {
   getUTXOs,
+  getAllUTXOs,
   freezeUTXO,
   selectUtxos,
   compareStrategies,

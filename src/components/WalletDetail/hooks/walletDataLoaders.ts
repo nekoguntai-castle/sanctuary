@@ -100,7 +100,7 @@ export async function loadUtxoPage(
 export async function loadUtxosForStats(
   walletId: string,
 ): Promise<UTXO[]> {
-  const utxoData = await transactionsApi.getUTXOs(walletId);
+  const utxoData = await transactionsApi.getAllUTXOs(walletId);
   return utxoData.utxos.map(formatApiUtxo);
 }
 

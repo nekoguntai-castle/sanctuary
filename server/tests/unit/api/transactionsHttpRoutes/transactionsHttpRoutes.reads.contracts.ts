@@ -73,6 +73,11 @@ export function registerTransactionHttpReadTests(): void {
     expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ walletId }),
+        orderBy: [
+          { blockTime: { sort: "desc", nulls: "first" } },
+          { createdAt: "desc" },
+          { id: "desc" },
+        ],
         take: 2,
         skip: 1,
       }),

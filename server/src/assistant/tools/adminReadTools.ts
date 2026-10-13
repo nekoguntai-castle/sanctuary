@@ -75,6 +75,20 @@ function sumBalances(rows: any[]): string {
   return rows.reduce((total, row) => total + row.operationalBalanceSats, 0n).toString();
 }
 
+/**
+ * Wallet filter for the admin summary. Unlike the wallet tools, an empty
+ * `walletScopeIds` is not "nothing visible" for Console sources: Console encodes
+ * its general/admin scopes as `[]`. An MCP key, by contrast, leaves
+ * `walletScopeIds` undefined when unscoped, so any defined MCP list (including
+ * an empty one) restricts the rows and fails closed.
+ */
+function adminWalletFilter(context: AssistantToolContext): string[] | undefined {
+  const ids = context.walletScopeIds;
+  if (ids === undefined) return undefined;
+  if (context.source === 'mcp' || ids.length > 0) return ids;
+  return undefined;
+}
+
 export const adminOperationalSummaryTool: AssistantReadToolDefinition<typeof adminOperationalInputSchema> = {
   name: 'get_admin_operational_summary',
   title: 'Get Admin Operational Summary',
@@ -90,7 +104,10 @@ export const adminOperationalSummaryTool: AssistantReadToolDefinition<typeof adm
   async execute(input, context) {
     requireAdminContext(context);
     const rowLimit = parseToolLimit(input.limit, adminOperationalSummaryTool.budgets);
-    const found = await assistantReadRepository.findAdminAgentDashboardRowsForAssistant(rowLimit + 1);
+    const found = await assistantReadRepository.findAdminAgentDashboardRowsForAssistant(
+      rowLimit + 1,
+      adminWalletFilter(context),
+    );
     const { rows, truncation } = truncateRows(found, rowLimit);
     const agents = rows.map(summarizeDashboardRow);
 

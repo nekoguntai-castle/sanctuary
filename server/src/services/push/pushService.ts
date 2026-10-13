@@ -113,6 +113,34 @@ class PushService {
   }
 
   /**
+   * Run post-send device bookkeeping (last-used update, invalid-token removal).
+   * A failure here must never mark a delivered push as failed or abort the
+   * remaining devices/users, so it is logged and swallowed.
+   */
+  private async cleanupDevice(action: () => Promise<void>, deviceId: string): Promise<boolean> {
+    try {
+      await action();
+      return true;
+    } catch (err) {
+      log.warn(`Push device cleanup failed for device ${deviceId}: ${getErrorMessage(err)}`);
+      return false;
+    }
+  }
+
+  private async removeInvalidDevice(
+    device: { id: string; platform: string },
+    userId: string,
+  ): Promise<void> {
+    const removed = await this.cleanupDevice(
+      () => pushDeviceRepository.deleteById(device.id),
+      device.id,
+    );
+    if (removed) {
+      log.info(`Removed invalid ${device.platform} token for user ${userId}`);
+    }
+  }
+
+  /**
    * Send a push notification to all devices registered to a user
    *
    * @param userId - The user ID to send notifications to
@@ -143,16 +171,15 @@ class PushService {
 
         if (result.success) {
           // Update last used timestamp
-          await pushDeviceRepository.updateLastUsed(device.id);
+          await this.cleanupDevice(
+            () => pushDeviceRepository.updateLastUsed(device.id),
+            device.id,
+          );
         } else if (
           isInvalidTokenError(result) ||
           (result.error && isInvalidTokenError(new Error(result.error)))
         ) {
-          // Remove invalid tokens
-          await pushDeviceRepository.deleteById(device.id);
-          log.info(
-            `Removed invalid ${device.platform} token for user ${userId}`,
-          );
+          await this.removeInvalidDevice(device, userId);
         } else {
           // Provider resolved without throwing but did not succeed, and it
           // is not an invalid-token result: record it the same way a thrown
@@ -174,10 +201,7 @@ class PushService {
 
         // Remove invalid tokens
         if (isInvalidTokenError(err)) {
-          await pushDeviceRepository.deleteById(device.id);
-          log.info(
-            `Removed invalid ${device.platform} token for user ${userId}`,
-          );
+          await this.removeInvalidDevice(device, userId);
         } else {
           // Record non-token-related failures in dead letter queue
           await recordPushFailure(userId, device.token, errorMsg, 1, {

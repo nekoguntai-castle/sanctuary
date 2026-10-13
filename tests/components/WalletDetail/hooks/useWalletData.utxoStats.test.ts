@@ -78,6 +78,7 @@ vi.mock('../../../../src/api/transactions', () => ({
   getTransactions: vi.fn(),
   getTransactionStats: vi.fn(),
   getUTXOs: vi.fn(),
+  getAllUTXOs: vi.fn(),
   getWalletPrivacy: vi.fn(),
   getAddresses: vi.fn(),
   getAddressSummary: vi.fn(),
@@ -148,9 +149,8 @@ function createDeferred<T>() {
 
 const defaultUser = { id: 'user-1', isAdmin: true } as any;
 
-// The paginated UTXO loader always calls getUTXOs(walletId, { limit, offset }),
-// while loadUtxosForStats calls getUTXOs(walletId) with no options object —
-// distinguish the two call sites on that shape.
+// The paginated UTXO loader calls getUTXOs(walletId, { limit, offset }), while
+// loadUtxosForStats calls getAllUTXOs(walletId) — each has its own mock.
 const pagedUtxoPage = {
   count: 300,
   totalBalance: 500000,
@@ -181,9 +181,8 @@ describe('useWalletData UTXO stats attempted-tracking', () => {
 
     vi.mocked(transactionsApi.getTransactions).mockResolvedValue(Array.from({ length: 50 }, (_, i) => makeTx(`tx-${i}`)) as never);
     vi.mocked(transactionsApi.getTransactionStats).mockResolvedValue({ count: 50 } as never);
-    vi.mocked(transactionsApi.getUTXOs).mockImplementation((async (_walletId: string, options?: unknown) => (
-      options ? pagedUtxoPage : { count: 0, totalBalance: 0, utxos: [] }
-    )) as never);
+    vi.mocked(transactionsApi.getUTXOs).mockResolvedValue(pagedUtxoPage as never);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({ count: 0, totalBalance: 0, utxos: [] } as never);
     vi.mocked(transactionsApi.getWalletPrivacy).mockResolvedValue({
       utxos: [],
       summary: { score: 70 },
@@ -216,10 +215,7 @@ describe('useWalletData UTXO stats attempted-tracking', () => {
   });
 
   it('marks the wallet as attempted even when the stats load rejects', async () => {
-    vi.mocked(transactionsApi.getUTXOs).mockImplementation((async (_walletId: string, options?: unknown) => {
-      if (options) return pagedUtxoPage;
-      throw new Error('stats load failed');
-    }) as never);
+    vi.mocked(transactionsApi.getAllUTXOs).mockRejectedValue(new Error('stats load failed'));
 
     const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
     await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-1'));
@@ -263,10 +259,8 @@ describe('useWalletData UTXO stats attempted-tracking', () => {
     );
     await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-a'));
 
-    const staleStats = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
-    vi.mocked(transactionsApi.getUTXOs).mockImplementation((async (_walletId: string, options?: unknown) => (
-      options ? pagedUtxoPage : staleStats.promise
-    )) as never);
+    const staleStats = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAllUTXOs>>>();
+    vi.mocked(transactionsApi.getAllUTXOs).mockReturnValue(staleStats.promise);
 
     let stalePromise!: Promise<void>;
     act(() => {

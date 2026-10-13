@@ -335,28 +335,90 @@ export async function callExternalAIWithMessages(
 }
 
 /**
+ * Copy `text`, passing double-quoted strings through untouched and letting
+ * `handle` rewrite everything outside them. `handle` returns the text to emit
+ * and the index to resume from, or null to stop and keep the rest verbatim.
+ */
+function rewriteOutsideStrings(
+  text: string,
+  handle: (index: number) => { emit: string; next: number } | null,
+): string {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '"') {
+      let end = i + 1;
+      while (end < text.length && text[end] !== '"') {
+        end += text[end] === "\\" ? 2 : 1;
+      }
+      out += text.slice(i, end + 1);
+      i = end + 1;
+      continue;
+    }
+    const step = handle(i);
+    if (!step) return out + text.slice(i);
+    out += step.emit;
+    i = step.next;
+  }
+  return out;
+}
+
+function stripComments(text: string): string {
+  return rewriteOutsideStrings(text, (i) => {
+    if (text.startsWith("//", i)) {
+      const newline = text.indexOf("\n", i);
+      return { emit: "", next: newline === -1 ? text.length : newline };
+    }
+    if (text.startsWith("/*", i)) {
+      // An unterminated block comment stays in place so parsing fails.
+      const close = text.indexOf("*/", i + 2);
+      return close === -1 ? null : { emit: "", next: close + 2 };
+    }
+    return { emit: text[i], next: i + 1 };
+  });
+}
+
+const CLOSER_AFTER_COMMA = /\s*[}\]]/y;
+
+function stripTrailingCommas(text: string): string {
+  return rewriteOutsideStrings(text, (i) => {
+    if (text[i] !== ",") return { emit: text[i], next: i + 1 };
+    CLOSER_AFTER_COMMA.lastIndex = i + 1;
+    return { emit: CLOSER_AFTER_COMMA.test(text) ? "" : ",", next: i + 1 };
+  });
+}
+
+/**
+ * Remove JS-style comments, then trailing commas, outside double-quoted
+ * strings. Comments go first so `, // note\n}` still loses its comma.
+ */
+function stripJsonExtras(text: string): string {
+  return stripTrailingCommas(stripComments(text));
+}
+
+/**
  * Parse structured JSON from AI response, including markdown code blocks.
+ * Strict parsing comes first; lenient cleanup only runs when it fails.
  */
 export function parseStructuredResponse(
   raw: string,
 ): Record<string, unknown> | null {
-  try {
-    let jsonStr = raw;
-    const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim();
-    }
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    const cleanJson = jsonMatch[0]
-      .replace(/\/\/[^\n]*/g, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/,(\s*[}\]])/g, "$1")
-      .replace(/\n\s*\n/g, "\n");
-
-    return JSON.parse(cleanJson);
-  } catch {
-    return null;
+  let jsonStr = raw;
+  const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1].trim();
   }
+  const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  for (const candidate of [jsonMatch[0], stripJsonExtras(jsonMatch[0])]) {
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      log.debug("Structured response candidate failed to parse", {
+        error: extractErrorMessage(error),
+      });
+    }
+  }
+  return null;
 }

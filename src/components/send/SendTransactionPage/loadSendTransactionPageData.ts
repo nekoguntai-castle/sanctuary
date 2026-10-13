@@ -52,7 +52,7 @@ export async function loadSendTransactionPageData({
   const walletNetwork = apiWallet.network ?? 'mainnet';
   const mempoolNetwork = getMempoolNetwork(apiWallet.network);
   const [utxoData, feeEstimates, mempoolData, addressData, allDevices] = await Promise.all([
-    transactionsApi.getUTXOs(walletId),
+    transactionsApi.getAllUTXOs(walletId),
     bitcoinApi.getFeeEstimates(walletNetwork),
     mempoolNetwork ? bitcoinApi.getMempoolData(mempoolNetwork).catch(() => null) : Promise.resolve(null),
     transactionsApi.getAddresses(walletId).catch(() => []),

@@ -99,6 +99,11 @@ export async function findByUserId(userId: string): Promise<Device[]> {
   });
 }
 
+/** Devices shared to a group the user belongs to. */
+function sharedThroughGroupWhere(userId: string): Prisma.DeviceWhereInput {
+  return { groupId: { not: null }, group: { members: { some: { userId } } } };
+}
+
 /** Find all accessible devices with canonical model identity for safety checks. */
 export async function findByUserIdWithModel(
   userId: string,
@@ -109,6 +114,9 @@ export async function findByUserIdWithModel(
       OR: [
         { userId },
         { users: { some: { userId } } },
+        // walletImport reuse access is granted through the group role, so
+        // resolution must see group-shared devices too.
+        sharedThroughGroupWhere(userId),
       ],
     },
     include: { model: true },
@@ -621,10 +629,7 @@ export async function findAccessibleByUser(userId: string) {
     where: {
       OR: [
         { users: { some: { userId } } },
-        {
-          groupId: { not: null },
-          group: { members: { some: { userId } } },
-        },
+        sharedThroughGroupWhere(userId),
       ],
     },
     include: {

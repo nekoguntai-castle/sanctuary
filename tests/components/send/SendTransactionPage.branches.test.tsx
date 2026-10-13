@@ -75,6 +75,7 @@ vi.mock("../../../src/api/wallets", () => ({
 
 vi.mock("../../../src/api/transactions", () => ({
   getUTXOs: vi.fn(),
+  getAllUTXOs: vi.fn(),
   getAddresses: vi.fn(),
 }));
 
@@ -179,7 +180,7 @@ describe("SendTransactionPage branch coverage", () => {
     } as any);
 
     vi.mocked(walletsApi.getWallet).mockResolvedValue(baseWallet as any);
-    vi.mocked(transactionsApi.getUTXOs).mockResolvedValue(baseUtxos as any);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue(baseUtxos as any);
     vi.mocked(bitcoinApi.getFeeEstimates).mockResolvedValue(baseFees as any);
     vi.mocked(bitcoinApi.getMempoolData).mockResolvedValue({
       mempool: [{ blockSize: 1 } as any],
@@ -269,7 +270,7 @@ describe("SendTransactionPage branch coverage", () => {
   });
 
   it("covers draft UTXO filtering with locked-draft fallback and unavailable-info warning", async () => {
-    vi.mocked(transactionsApi.getUTXOs).mockResolvedValue({
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
       utxos: [
         {
           id: "u1",
@@ -380,7 +381,7 @@ describe("SendTransactionPage branch coverage", () => {
   });
 
   it("covers preselected UTXO frozen-removal branches (singular and plural)", async () => {
-    vi.mocked(transactionsApi.getUTXOs).mockResolvedValue({
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
       utxos: [
         {
           id: "u1",
@@ -440,7 +441,7 @@ describe("SendTransactionPage branch coverage", () => {
 
   it("covers mountedRef guard after unmount before parallel requests resolve", async () => {
     const deferredUtxos = createDeferred<any>();
-    vi.mocked(transactionsApi.getUTXOs).mockReturnValue(deferredUtxos.promise);
+    vi.mocked(transactionsApi.getAllUTXOs).mockReturnValue(deferredUtxos.promise);
 
     const view = renderPage();
     await waitFor(() => {

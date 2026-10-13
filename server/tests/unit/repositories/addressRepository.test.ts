@@ -82,7 +82,7 @@ describe("Address Repository", () => {
         where: { walletId: "wallet-456" },
         skip: undefined,
         take: undefined,
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
       });
     });
 
@@ -95,7 +95,7 @@ describe("Address Repository", () => {
         where: { walletId: "wallet-456", used: false },
         skip: undefined,
         take: undefined,
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
       });
     });
 
@@ -111,7 +111,7 @@ describe("Address Repository", () => {
         where: { walletId: "wallet-456" },
         skip: 10,
         take: 20,
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
       });
     });
 
@@ -126,7 +126,7 @@ describe("Address Repository", () => {
         where: { walletId: "wallet-456", used: true },
         skip: undefined,
         take: undefined,
-        orderBy: { index: "asc" },
+        orderBy: [{ index: "asc" }, { id: "asc" }],
       });
     });
   });

@@ -50,6 +50,7 @@ vi.mock('../../../src/api/wallets', () => ({
 
 vi.mock('../../../src/api/transactions', () => ({
   getUTXOs: vi.fn(),
+  getAllUTXOs: vi.fn(),
   getAddresses: vi.fn(),
 }));
 
@@ -169,7 +170,7 @@ describe('SendTransactionPage', () => {
     } as any);
 
     vi.mocked(walletsApi.getWallet).mockResolvedValue(mockWallet as any);
-    vi.mocked(transactionsApi.getUTXOs).mockResolvedValue(mockUtxos as any);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue(mockUtxos as any);
     vi.mocked(transactionsApi.getAddresses).mockResolvedValue([]);
     vi.mocked(bitcoinApi.getFeeEstimates).mockResolvedValue(mockFees as any);
     vi.mocked(bitcoinApi.getMempoolData).mockResolvedValue(mockMempoolData as any);
@@ -221,7 +222,7 @@ describe('SendTransactionPage', () => {
       renderPage();
 
       await waitFor(() => {
-        expect(transactionsApi.getUTXOs).toHaveBeenCalledWith('wallet-1');
+        expect(transactionsApi.getAllUTXOs).toHaveBeenCalledWith('wallet-1');
       });
     });
 
@@ -390,7 +391,7 @@ describe('SendTransactionPage', () => {
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1', { replace: true });
       });
-      expect(transactionsApi.getUTXOs).not.toHaveBeenCalled();
+      expect(transactionsApi.getAllUTXOs).not.toHaveBeenCalled();
     });
 
     it('redirects malformed roles to wallet page', async () => {

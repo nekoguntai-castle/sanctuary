@@ -38,6 +38,50 @@ export async function getUTXOs(
   );
 }
 
+// The server caps a UTXO page at 1000 rows (validatePagination).
+const UTXO_PAGE_SIZE = 1000;
+// Safety stop at 100,000 UTXOs; real wallets are far below this.
+const MAX_UTXO_PAGES = 100;
+
+/**
+ * Get every UTXO for a wallet by paging.
+ *
+ * An unpaged request is capped at one server page, which would hide UTXOs from
+ * coin selection and balance stats. The reported `count` is not a stop
+ * condition because it can lag the rows. `count` and `totalBalance` come from
+ * the first page. Any failed page, or reaching the safety cap, rejects the
+ * whole call so callers never get a partial set.
+ */
+export async function getAllUTXOs(walletId: string): Promise<GetUTXOsResponse> {
+  const first = await getUTXOs(walletId, { limit: UTXO_PAGE_SIZE, offset: 0 });
+  const seen = new Set<string>();
+  const utxos: GetUTXOsResponse['utxos'] = [];
+  const collect = (page: GetUTXOsResponse): number => {
+    const before = utxos.length;
+    for (const utxo of page.utxos) {
+      const key = utxo.id ?? `${utxo.txid}:${utxo.vout}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        utxos.push(utxo);
+      }
+    }
+    return utxos.length - before;
+  };
+
+  collect(first);
+  let page = first;
+  for (let pageIndex = 1; page.utxos.length >= UTXO_PAGE_SIZE; pageIndex++) {
+    if (pageIndex >= MAX_UTXO_PAGES) {
+      throw new Error(`Wallet has at least ${MAX_UTXO_PAGES * UTXO_PAGE_SIZE} UTXOs; loading more is not supported`);
+    }
+    page = await getUTXOs(walletId, { limit: UTXO_PAGE_SIZE, offset: pageIndex * UTXO_PAGE_SIZE });
+    // A full page with nothing new means the server ignored the offset.
+    if (collect(page) === 0) break;
+  }
+
+  return { utxos, count: first.count, totalBalance: first.totalBalance };
+}
+
 /**
  * Toggle UTXO frozen status
  */

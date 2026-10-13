@@ -85,6 +85,7 @@ vi.mock('../../../../src/api/transactions', () => ({
   getTransactions: vi.fn(),
   getTransactionStats: vi.fn(),
   getUTXOs: vi.fn(),
+  getAllUTXOs: vi.fn(),
   getWalletPrivacy: vi.fn(),
   getAddresses: vi.fn(),
   getAddressSummary: vi.fn(),
@@ -179,6 +180,11 @@ describe('useWalletData fetchDataWithResult supersession contract', () => {
     vi.mocked(transactionsApi.getTransactions).mockResolvedValue(Array.from({ length: 5 }, (_, i) => makeTx(`tx-${i}`)) as never);
     vi.mocked(transactionsApi.getTransactionStats).mockResolvedValue({ count: 5 } as never);
     vi.mocked(transactionsApi.getUTXOs).mockResolvedValue({
+      count: 3,
+      totalBalance: 5000,
+      utxos: Array.from({ length: 3 }, (_, i) => makeUtxo(`u-${i}`)),
+    } as never);
+    vi.mocked(transactionsApi.getAllUTXOs).mockResolvedValue({
       count: 3,
       totalBalance: 5000,
       utxos: Array.from({ length: 3 }, (_, i) => makeUtxo(`u-${i}`)),

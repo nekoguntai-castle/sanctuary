@@ -40,6 +40,24 @@ export function registerPushGatewayDeviceContracts() {
     expect(res.body.message).toBe('Device not found or already removed');
   });
 
+  it('should return success when the device vanishes between lookup and delete', async () => {
+    mockFindById.mockResolvedValue({ id: 'device-1', platform: 'android', userId: 'user-456' });
+    // deleteById is idempotent (deleteMany): a concurrently removed row resolves, not throws
+    mockDeleteById.mockResolvedValue(undefined);
+
+    const path = '/api/v1/push/device/device-1';
+    const { signature, timestamp } = generateGatewaySignature('DELETE', path, null, 'test-gateway-secret');
+
+    const res = await request(app)
+      .delete(path)
+      .set('X-Gateway-Signature', signature)
+      .set('X-Gateway-Timestamp', timestamp);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockDeleteById).toHaveBeenCalledWith('device-1');
+  });
+
   it('should return 403 without gateway signature', async () => {
     const res = await request(app).delete('/api/v1/push/device/device-1');
 
