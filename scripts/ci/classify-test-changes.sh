@@ -23,6 +23,7 @@ e2e_changed=false
 browser_smoke_changed=false
 render_changed=false
 build_changed=false
+shared_changed=false
 
 frontend_files=''
 backend_files=''
@@ -62,6 +63,7 @@ emit_outputs() {
     "browser_smoke_changed=$browser_smoke_changed" \
     "render_changed=$render_changed" \
     "build_changed=$build_changed" \
+    "shared_changed=$shared_changed" \
     "test_files=$test_files"
 }
 
@@ -214,6 +216,16 @@ while IFS= read -r file; do
   if is_frontend_file "$file"; then
     frontend_changed=true
     append_file frontend_files "$file"
+  fi
+
+  # Lane flags only; see is_shared_workspace_file for why no file list.
+  if is_shared_workspace_file "$file"; then
+    shared_changed=true
+    backend_changed=true
+    backend_integration_changed=true
+    gateway_changed=true
+    render_changed=true
+    build_changed=true
   fi
 
   if is_backend_file "$file"; then

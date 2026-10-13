@@ -81,4 +81,32 @@ export function registerConsolePromptReplayTests(): void {
       }),
     );
   });
+
+  it("replays into a new session when the stored origin session was deleted", async () => {
+    mocks.consoleRepository.findPromptForUser.mockResolvedValue(
+      promptHistory({ sessionId }),
+    );
+    mocks.consoleRepository.findSessionForUser.mockResolvedValueOnce(null);
+    mocks.planConsoleTools.mockResolvedValue({ toolCalls: [], warnings: [] });
+
+    await replayPromptHistory(actor(), promptId, {});
+
+    expect(mocks.consoleRepository.markPromptReplayed).toHaveBeenCalled();
+    expect(mocks.consoleRepository.createSession).toHaveBeenCalled();
+    expect(mocks.consoleRepository.updateSessionScope).not.toHaveBeenCalled();
+    expect(mocks.planConsoleTools).toHaveBeenCalled();
+  });
+
+  it("rejects an explicit missing replay session before marking the prompt replayed", async () => {
+    mocks.consoleRepository.findPromptForUser.mockResolvedValue(
+      promptHistory({ sessionId }),
+    );
+    mocks.consoleRepository.findSessionForUser.mockResolvedValueOnce(null);
+
+    await expect(
+      replayPromptHistory(actor(), promptId, { sessionId }),
+    ).rejects.toThrow("Console session not found");
+
+    expect(mocks.consoleRepository.markPromptReplayed).not.toHaveBeenCalled();
+  });
 }

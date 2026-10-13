@@ -77,6 +77,19 @@ is_critical_mutation_file() {
   return 1
 }
 
+# shared/ is built into shared/dist and consumed by the frontend, server and
+# gateway. It is deliberately not part of is_backend_file/is_gateway_file: those
+# feed related-file lists that run `vitest related` from server/ or gateway/,
+# where a shared/... path selects nothing. Callers set the lane flags directly.
+is_shared_workspace_file() {
+  case "$1" in
+    shared/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 is_gateway_file() {
   case "$1" in
     gateway/*)

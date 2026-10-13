@@ -11,6 +11,18 @@ import type { TransactionCreateData } from '../../types';
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
 /**
+ * Baseline syncs (first sync after import or full resync) rediscover history;
+ * only unconfirmed transactions are news worth notifying about there.
+ */
+export function filterNotifiableTransactions(
+  transactions: TransactionCreateData[],
+  isBaselineSync: boolean
+): TransactionCreateData[] {
+  if (!isBaselineSync) return transactions;
+  return transactions.filter(tx => (tx.confirmations ?? 0) === 0);
+}
+
+/**
  * Send notifications for new transactions
  */
 export async function sendNotifications(

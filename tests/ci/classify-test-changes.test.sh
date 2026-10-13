@@ -655,6 +655,39 @@ EOF_DOC
     assert_contains_output "$output_file" "frontend_files" "$frontend_tested"
   done
 
+  # shared/ is consumed by every workspace through shared/dist, so a shared-only
+  # diff must select the backend, gateway, render and build lanes without
+  # appending to any related-file list (vitest related would no-op on them).
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  mkdir -p "$repo_dir/shared/schemas"
+  printf 'export const walletSchema = {};\n' > "$repo_dir/shared/schemas/wallet.ts"
+  git -C "$repo_dir" add shared/schemas/wallet.ts
+  git -C "$repo_dir" commit -qm "shared schema only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  for shared_output in backend_changed backend_integration_changed gateway_changed render_changed build_changed frontend_changed shared_changed; do
+    assert_exact_output "$output_file" "$shared_output" "true"
+  done
+  assert_exact_output "$output_file" "llm_egress_proxy_changed" "false"
+  assert_exact_output "$output_file" "full_scan" "false"
+  assert_exact_output "$output_file" "backend_files" ""
+  assert_exact_output "$output_file" "gateway_files" ""
+
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  mkdir -p "$repo_dir/server/src/services" "$repo_dir/gateway/src" "$repo_dir/shared/schemas"
+  printf 'export const s = 1;\n' > "$repo_dir/server/src/services/sharedMixed.ts"
+  printf 'export const g = 1;\n' > "$repo_dir/gateway/src/sharedMixed.ts"
+  printf 'export const w = 2;\n' > "$repo_dir/shared/schemas/wallet.ts"
+  git -C "$repo_dir" add server/src/services/sharedMixed.ts gateway/src/sharedMixed.ts shared/schemas/wallet.ts
+  git -C "$repo_dir" commit -qm "mixed server gateway shared"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "shared_changed" "true"
+  assert_exact_output "$output_file" "backend_files" "server/src/services/sharedMixed.ts"
+  assert_exact_output "$output_file" "gateway_files" "gateway/src/sharedMixed.ts"
+
   echo "classify-test-changes regression checks passed"
 }
 

@@ -32,7 +32,11 @@ const TYPE_OPTIONS: { value: TxTypeFilter; label: string; icon?: React.ReactNode
 
 function toDateInputValue(ts: number | null): string {
   if (ts === null) return '';
-  return new Date(ts).toISOString().slice(0, 10);
+  // Local calendar date, matching how fromDateInputValue* parse the value.
+  const date = new Date(ts);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function fromDateInputValue(value: string): number | null {

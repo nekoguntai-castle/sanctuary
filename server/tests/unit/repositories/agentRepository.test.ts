@@ -6,9 +6,9 @@ import {
   resetAgentRepositoryMocks,
 } from './agentRepository.testHarness';
 import {
-  ACTIONABLE_DRAFT_STATUSES,
   BROADCASTED_DRAFT_STATUS,
-} from '../../../src/repositories/draftRepository';
+  DRAFT_LIFECYCLE_STATUS_VALUES,
+} from '@sanctuary/shared/constants/drafts';
 
 describe('agentRepository', () => {
   beforeEach(resetAgentRepositoryMocks);
@@ -255,13 +255,13 @@ describe('agentRepository', () => {
       where: {
         agentId: 'agent-1',
         createdAt: { gte: since },
-        status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+        status: { in: [...DRAFT_LIFECYCLE_STATUS_VALUES] },
       },
       _sum: { amount: true },
     });
     expect(
       prisma.draftTransaction.aggregate.mock.calls[0][0].where.status.in,
-    ).not.toContain(BROADCASTED_DRAFT_STATUS);
+    ).toContain(BROADCASTED_DRAFT_STATUS);
 
     prisma.draftTransaction.aggregate.mockResolvedValueOnce({
       _sum: { amount: null },

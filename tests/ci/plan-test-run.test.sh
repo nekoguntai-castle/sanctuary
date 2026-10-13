@@ -418,6 +418,37 @@ main() {
   assert_eq "renamed backend source -> backend_unit run" "true" \
     "$(json_query "$plan" lanes.backend_unit.run)"
 
+  # ---- shared/ runs backend, gateway, render and build lanes in full ------
+  base="$head"
+  mkdir -p "$repo/shared/schemas"
+  printf 'export const walletSchema = {}\n' > "$repo/shared/schemas/wallet.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'shared schema only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  for lane in backend_unit backend_integration gateway_unit render_regression build frontend_unit; do
+    assert_eq "shared-only $lane run" "true" "$(json_query "$plan" "lanes.$lane.run")"
+  done
+  assert_eq "shared-only llm egress run" "false" "$(json_query "$plan" lanes.llm_egress_proxy_unit.run)"
+  assert_eq "shared-only backend_unit files" "[]" "$(json_query "$plan" lanes.backend_unit.files)"
+  assert_eq "shared-only gateway_unit files" "[]" "$(json_query "$plan" lanes.gateway_unit.files)"
+  assert_eq "shared-only build files" "[]" "$(json_query "$plan" lanes.build.files)"
+
+  base="$head"
+  mkdir -p "$repo/server/src/services" "$repo/gateway/src"
+  printf 'export const s = 1\n' > "$repo/server/src/services/sharedMixed.ts"
+  printf 'export const g = 1\n' > "$repo/gateway/src/sharedMixed.ts"
+  printf 'export const w = 2\n' > "$repo/shared/schemas/wallet.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'mixed server gateway shared'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "mixed shared backend_unit files empty (full lane)" "[]" "$(json_query "$plan" lanes.backend_unit.files)"
+  assert_eq "mixed shared gateway_unit files empty (full lane)" "[]" "$(json_query "$plan" lanes.gateway_unit.files)"
+  assert_eq "mixed shared backend_unit run" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+
   # Exercise fixture isolation even under an unrelated CI event and SHA.
   GITHUB_SHA=abcdefabcdefabcdefabcdefabcdefabcdefabcd \
     WORKFLOW_SHA=abcdefabcdefabcdefabcdefabcdefabcdefabcd \

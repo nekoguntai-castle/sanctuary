@@ -552,6 +552,19 @@ export async function replayPromptHistory(
   );
   if (!prompt) throw new NotFoundError("Console prompt not found");
 
+  // The origin session may have been soft-deleted; fall back to a new session
+  // instead of failing after the prompt was already marked replayed.
+  const requestedSessionId = input.sessionId ?? prompt.sessionId ?? undefined;
+  const session = requestedSessionId
+    ? await consoleRepository.findSessionForUser(
+        requestedSessionId,
+        actor.userId,
+      )
+    : null;
+  if (input.sessionId && !session) {
+    throw new NotFoundError("Console session not found");
+  }
+
   await consoleRepository.markPromptReplayed(prompt.id);
   const storedScope = input.clientContext
     ? undefined
@@ -559,7 +572,7 @@ export async function replayPromptHistory(
   return runConsoleTurn(
     actor,
     {
-      sessionId: input.sessionId ?? prompt.sessionId ?? undefined,
+      sessionId: session?.id,
       prompt: prompt.prompt,
       scope: input.scope ?? storedScope,
       clientContext: input.clientContext,

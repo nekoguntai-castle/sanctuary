@@ -150,7 +150,9 @@ async function selectUtxosForSubtractFees(
     throw new Error('No spendable UTXOs available');
   }
 
-  // Select UTXOs to cover just the amount
+  // Pinned coin control spends the whole pinned set, like normal mode.
+  // Unpinned selection takes the minimal prefix that covers the amount.
+  const pinned = !!selectedUtxoIds && selectedUtxoIds.length > 0;
   const selectedUtxos: typeof utxos = [];
   let totalAmount = 0;
 
@@ -158,7 +160,7 @@ async function selectUtxosForSubtractFees(
     selectedUtxos.push(utxo);
     totalAmount += Number(utxo.amount);
 
-    if (totalAmount >= amount) {
+    if (!pinned && totalAmount >= amount) {
       break;
     }
   }

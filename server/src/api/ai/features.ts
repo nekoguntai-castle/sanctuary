@@ -14,6 +14,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import config from '../../config';
+import { requireFeature } from '../../middleware/featureGate';
 import { aiService } from '../../services/aiService';
 
 const SuggestLabelBodySchema = z.object({
@@ -58,6 +59,7 @@ export function createFeaturesRouter(): Router {
     '/suggest-label',
     aiAuthLimiter,
     authenticate,
+    requireFeature('aiAssistant'),
     rateLimitByUser('ai:analyze'),
     validate(
       { body: SuggestLabelBodySchema },
@@ -106,6 +108,7 @@ export function createFeaturesRouter(): Router {
     '/query',
     aiAuthLimiter,
     authenticate,
+    requireFeature('aiAssistant'),
     rateLimitByUser('ai:analyze'),
     validate(
       { body: QueryBodySchema },

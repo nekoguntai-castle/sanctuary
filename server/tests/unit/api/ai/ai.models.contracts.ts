@@ -13,7 +13,8 @@ export function registerDetectOllamaContracts() {
 
     const response = await request(app)
   .post('/api/v1/ai/detect-ollama')
-  .set('Authorization', 'Bearer test-token');
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-admin', 'true');
 
     expect(response.status).toBe(200);
     expect(response.body.found).toBe(true);
@@ -29,7 +30,8 @@ export function registerDetectOllamaContracts() {
 
     const response = await request(app)
   .post('/api/v1/ai/detect-ollama')
-  .set('Authorization', 'Bearer test-token');
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-admin', 'true');
 
     expect(response.status).toBe(200);
     expect(response.body.found).toBe(false);
@@ -41,7 +43,8 @@ export function registerDetectOllamaContracts() {
 
     const response = await request(app)
   .post('/api/v1/ai/detect-ollama')
-  .set('Authorization', 'Bearer test-token');
+  .set('Authorization', 'Bearer test-token')
+  .set('x-test-admin', 'true');
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
@@ -182,6 +185,15 @@ export function registerDetectOllamaContracts() {
     expect(response.status).toBe(400);
     expect(response.body.message).toBe('Valid provider endpoint is required');
     expect(aiService.detectProviderEndpoint).not.toHaveBeenCalled();
+  });
+
+  it('should return 403 for non-admin users on detect-ollama', async () => {
+    const response = await request(app)
+  .post('/api/v1/ai/detect-ollama')
+  .set('Authorization', 'Bearer test-token');
+
+    expect(response.status).toBe(403);
+    expect(aiService.detectOllama).not.toHaveBeenCalled();
   });
 }
 

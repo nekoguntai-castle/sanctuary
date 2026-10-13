@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TransactionFilterBar } from '../../../../src/components/WalletDetail/tabs/TransactionFilterBar';
 import type { TransactionFilters } from '../../../../src/components/WalletDetail/hooks/useTransactionFilters';
 import type { Label } from '../../../../src/types';
@@ -42,6 +42,48 @@ const sampleLabels: Label[] = [
 ];
 
 describe('TransactionFilterBar', () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  });
+
+  // -------------------------------------------------------------------------
+  // Date inputs use the local calendar date (not UTC)
+  // -------------------------------------------------------------------------
+  it.each([
+    ['Pacific/Honolulu', 600],
+    ['Europe/Berlin', -120],
+  ])('shows and round-trips local calendar dates in %s', (tz, expectedOffset) => {
+    process.env.TZ = tz;
+    // Fail loudly if this runtime ignores TZ changes
+    expect(new Date(2026, 9, 5).getTimezoneOffset()).toBe(expectedOffset);
+
+    const dateFrom = new Date(2026, 9, 5).getTime();
+    const dateTo = new Date(2026, 9, 5, 23, 59, 59, 999).getTime();
+    const props = buildProps({
+      filters: { ...defaultFilters, datePreset: 'custom', dateFrom, dateTo },
+    });
+    render(<TransactionFilterBar {...props} />);
+
+    const [fromInput, toInput] = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    );
+    expect(fromInput.value).toBe('2026-10-05');
+    expect(toInput.value).toBe('2026-10-05');
+
+    fireEvent.change(fromInput, { target: { value: '2026-10-04' } });
+    expect(props.onCustomDateRangeChange).toHaveBeenLastCalledWith(new Date(2026, 9, 4).getTime(), dateTo);
+    fireEvent.change(toInput, { target: { value: '2026-10-06' } });
+    expect(props.onCustomDateRangeChange).toHaveBeenLastCalledWith(
+      dateFrom,
+      new Date(2026, 9, 6, 23, 59, 59, 999).getTime(),
+    );
+
+    fireEvent.change(fromInput, { target: { value: '' } });
+    expect(props.onCustomDateRangeChange).toHaveBeenLastCalledWith(null, dateTo);
+  });
+
   // -------------------------------------------------------------------------
   // 1. Renders all type chips
   // -------------------------------------------------------------------------
@@ -320,16 +362,15 @@ describe('TransactionFilterBar', () => {
   // 16. toDateInputValue with timestamp returns ISO date string
   // -------------------------------------------------------------------------
   it('renders date input values from timestamps', () => {
-    // Use a UTC-midnight timestamp to ensure deterministic ISO date output
-    const from = Date.UTC(2025, 5, 1); // 2025-06-01T00:00:00Z
-    const to = Date.UTC(2025, 5, 15, 23, 59, 59, 999); // 2025-06-15T23:59:59.999Z
+    // Local-time timestamps, so the displayed date is the same in every timezone
+    const from = new Date(2025, 5, 1).getTime();
+    const to = new Date(2025, 5, 15, 23, 59, 59, 999).getTime();
     const props = buildProps({
       filters: { ...defaultFilters, datePreset: 'custom', dateFrom: from, dateTo: to },
     });
     render(<TransactionFilterBar {...props} />);
 
     const dateInputs = document.querySelectorAll('input[type="date"]');
-    // toDateInputValue uses new Date(ts).toISOString().slice(0,10), so always UTC
     expect((dateInputs[0] as HTMLInputElement).value).toBe('2025-06-01');
     expect((dateInputs[1] as HTMLInputElement).value).toBe('2025-06-15');
   });

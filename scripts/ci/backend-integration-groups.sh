@@ -53,6 +53,7 @@ list_group_specs() {
     "$GROUP_REPOSITORIES_CORE")
       printf '%s\n' \
         tests/integration/repositories/addressRepository.test.ts \
+        tests/integration/repositories/agentRepository.sumDraftAmounts.test.ts \
         tests/integration/repositories/auditLogRepository.test.ts \
         tests/integration/repositories/draftRepository.test.ts \
         tests/integration/repositories/labelRepository.test.ts \

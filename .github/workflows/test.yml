@@ -53,6 +53,7 @@ jobs:
       browser_smoke_changed: ${{ steps.classify.outputs.browser_smoke_changed }}
       render_changed: ${{ steps.classify.outputs.render_changed }}
       build_changed: ${{ steps.classify.outputs.build_changed }}
+      shared_changed: ${{ steps.classify.outputs.shared_changed }}
       test_files: ${{ steps.classify.outputs.test_files }}
     steps:
       - name: Checkout repository
@@ -198,7 +199,8 @@ jobs:
     if: |
       always() &&
       github.event_name == 'pull_request' &&
-      needs.detect-changes.outputs.backend_changed == 'true'
+      needs.detect-changes.outputs.backend_changed == 'true' &&
+      (needs.detect-changes.outputs.backend_files != '' || needs.detect-changes.outputs.shared_changed != 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes]
@@ -258,9 +260,9 @@ jobs:
           mapfile -t related_files < "$args_file"
 
           if [ "${#related_files[@]}" -eq 0 ]; then
-            # This job only runs when backend_changed == 'true', and the same
-            # classifier loop sets that flag and appends the file, so an empty
-            # list means the classifier is broken, not that nothing changed.
+            # Shared-only diffs skip this job (the full lanes cover them), so an
+            # empty list here means the classifier is broken, not that nothing
+            # changed.
             # Fail rather than warn: the point of this whole step is that a
             # required check must never report success having run no tests.
             echo "::error::backend_changed was true but no backend files were classified; refusing to report success without running tests."

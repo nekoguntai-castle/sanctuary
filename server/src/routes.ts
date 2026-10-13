@@ -75,13 +75,15 @@ const routes: RouteDefinition[] = [
   { method: 'use', path: '/api/v1', handler: mobilePermissionsRoutes },
   { method: 'use', path: '/internal/ai', handler: aiInternalRoutes },
   { method: 'use', path: '/internal', handler: mobilePermissionsInternalRoutes },
+  // Specific prefixes must precede the root /api/v1 mounts below: those routers
+  // call router.use(authenticate), which would answer these with a 401.
+  { method: 'use', path: '/api/v1/payjoin', handler: payjoinRoutes },
+  { method: 'use', path: '/api/v1/docs', handler: openApiRoutes },
   // These routes are mounted at /api/v1 without a specific path - must come LAST
   { method: 'use', path: '/api/v1', handler: approvalRoutes },
   { method: 'use', path: '/api/v1', handler: transactionRoutes },
   { method: 'use', path: '/api/v1', handler: labelRoutes },
   { method: 'use', path: '/api/v1', handler: draftRoutes },
-  { method: 'use', path: '/api/v1/payjoin', handler: payjoinRoutes },
-  { method: 'use', path: '/api/v1/docs', handler: openApiRoutes },
 ];
 
 export function registerRoutes(app: Express): void {

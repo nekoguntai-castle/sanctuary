@@ -27,7 +27,7 @@ vi.mock('../../../../../../../src/utils/logger', () => ({
   }),
 }));
 
-import { sendNotifications } from '../../../../../../../src/services/bitcoin/sync/phases/processTransactions/notifications';
+import { filterNotifiableTransactions, sendNotifications } from '../../../../../../../src/services/bitcoin/sync/phases/processTransactions/notifications';
 import type { TransactionCreateData } from '../../../../../../../src/services/bitcoin/sync/types';
 
 const makeTx = (overrides: Partial<TransactionCreateData> = {}): TransactionCreateData => ({
@@ -108,5 +108,24 @@ describe('sendNotifications', () => {
       confirmations: 1,
       blockHeight: 800000,
     }));
+  });
+});
+
+
+describe('filterNotifiableTransactions', () => {
+  const confirmed = { txid: 'a', confirmations: 3 } as any;
+  const pending = { txid: 'b', confirmations: 0 } as any;
+  const unknown = { txid: 'c' } as any;
+
+  it('keeps every transaction on incremental syncs', () => {
+    expect(filterNotifiableTransactions([confirmed, pending], false)).toEqual([confirmed, pending]);
+  });
+
+  it('keeps only unconfirmed transactions on baseline syncs', () => {
+    expect(filterNotifiableTransactions([confirmed, pending, unknown], true)).toEqual([pending, unknown]);
+  });
+
+  it('returns an empty list for empty input', () => {
+    expect(filterNotifiableTransactions([], true)).toEqual([]);
   });
 });

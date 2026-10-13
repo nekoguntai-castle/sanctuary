@@ -591,6 +591,31 @@ describe('exact transaction selection boundaries', () => {
     expect(result.selection.utxos.map(({ txid }) => txid)).toEqual([selected.txid]);
   });
 
+  it('spends every pinned UTXO in subtract-fee mode even when one input covers the amount', async () => {
+    const large = utxo('b', 50_000, P2WPKH);
+    const small = utxo('a', 10_000, P2WPKH);
+    mockAvailable([large, small]);
+
+    const result = await selectUtxosForMode(
+      'wallet-1', 20_000, 2, 546, false, true, p2wpkhContext(P2WPKH),
+      [`${large.txid}:${large.vout}`, `${small.txid}:${small.vout}`],
+    );
+
+    expect(result.selection.utxos.map(({ txid }) => txid)).toEqual([large.txid, small.txid]);
+    expect(result.selection.totalAmount).toBe(60_000);
+    expect(result.selection.changeAmount).toBe(40_000);
+  });
+
+  it('keeps the minimal prefix for unpinned subtract-fee selection', async () => {
+    mockAvailable([utxo('b', 50_000, P2WPKH), utxo('a', 10_000, P2WPKH)]);
+
+    const result = await selectUtxosForMode(
+      'wallet-1', 20_000, 2, 546, false, true, p2wpkhContext(P2WPKH),
+    );
+
+    expect(result.selection.utxos).toHaveLength(1);
+  });
+
   it('rejects missing exact spend-policy evidence during normal selection', async () => {
     const fixture = utxo('a', 20_000, P2WPKH);
     mockAvailable([fixture]);

@@ -2,8 +2,23 @@ import { expect, it, type Mock } from 'vitest';
 
 import { app, request } from './aiTestHarness';
 import { aiService } from '../../../../src/services/aiService';
+import { featureFlagService } from '../../../../src/services/featureFlagService';
 
 export function registerSuggestLabelContracts() {
+  it('should return 403 when the aiAssistant feature flag is off', async () => {
+    (featureFlagService.isEnabled as Mock).mockResolvedValue(false);
+    (aiService.isEnabled as Mock).mockResolvedValue(true);
+
+    const response = await request(app)
+  .post('/api/v1/ai/suggest-label')
+  .set('Authorization', 'Bearer test-token')
+  .send({ transactionId: 'tx-123' });
+
+    expect(response.status).toBe(403);
+    expect(featureFlagService.isEnabled).toHaveBeenCalledWith('aiAssistant');
+    expect(aiService.suggestTransactionLabel).not.toHaveBeenCalled();
+  });
+
   it('should return label suggestion when AI is available', async () => {
     (aiService.isEnabled as Mock).mockResolvedValue(true);
     (aiService.suggestTransactionLabel as Mock).mockResolvedValue('Exchange deposit');
@@ -114,6 +129,20 @@ export function registerSuggestLabelContracts() {
 }
 
 export function registerNaturalQueryContracts() {
+  it('should return 403 when the aiAssistant feature flag is off', async () => {
+    (featureFlagService.isEnabled as Mock).mockResolvedValue(false);
+    (aiService.isEnabled as Mock).mockResolvedValue(true);
+
+    const response = await request(app)
+  .post('/api/v1/ai/query')
+  .set('Authorization', 'Bearer test-token')
+  .send({ query: 'receives', walletId: 'wallet-1' });
+
+    expect(response.status).toBe(403);
+    expect(featureFlagService.isEnabled).toHaveBeenCalledWith('aiAssistant');
+    expect(aiService.executeNaturalQuery).not.toHaveBeenCalled();
+  });
+
   it('should return structured query result', async () => {
     const expectedResult = {
   type: 'transactions',

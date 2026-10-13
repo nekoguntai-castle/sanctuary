@@ -23,7 +23,7 @@ import {
 } from './classification';
 import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
-import { sendNotifications } from './notifications';
+import { filterNotifiableTransactions, sendNotifications } from './notifications';
 import {
   fetchAuthenticatedOutpoints,
   fetchAuthenticatedTransactions,
@@ -409,8 +409,12 @@ async function persistTransactionBatch(
     deferPostCommit,
   );
 
-  if (created.length > 0) {
-    deferPostCommit(() => sendNotifications(ctx.walletId, created));
+  const notifiable = filterNotifiableTransactions(
+    created,
+    ctx.wallet.lastSyncedAt === null,
+  );
+  if (notifiable.length > 0) {
+    deferPostCommit(() => sendNotifications(ctx.walletId, notifiable));
   }
 
   return { created, repaired };

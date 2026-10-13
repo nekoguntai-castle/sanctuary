@@ -175,6 +175,7 @@ else
   fi
 
   # Iterate diff. Anything that touches a global trigger forces full_scan.
+  shared_touched="false"
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     if is_docs_only_file "$file"; then
@@ -198,6 +199,15 @@ else
     if is_frontend_file "$file"; then
       frontend_unit_run="true"
       frontend_unit_files+=("$file")
+    fi
+    if is_shared_workspace_file "$file"; then
+      # Lane flags only; see is_shared_workspace_file for why no file list.
+      shared_touched="true"
+      backend_unit_run="true"
+      gateway_unit_run="true"
+      backend_integration_run="true"
+      render_regression_run="true"
+      build_run="true"
     fi
     if is_backend_file "$file"; then
       backend_unit_run="true"
@@ -229,6 +239,13 @@ else
       build_files+=("$file")
     fi
   done <<< "$changed_files"
+
+  # A shared change needs the whole backend and gateway suites, not
+  # `vitest related` on the server/ and gateway/ paths of a mixed diff.
+  if [ "$shared_touched" = "true" ]; then
+    backend_unit_files=()
+    gateway_unit_files=()
+  fi
 fi
 
 # JSON emit. We hand-build the document so jq is not required at runtime.

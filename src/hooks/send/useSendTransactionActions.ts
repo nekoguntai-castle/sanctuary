@@ -203,7 +203,6 @@ async function applyPayjoinIfNeeded(
 const getSendIdentity = (walletId: string, wallet: Wallet, state: TransactionState): string => JSON.stringify({
   walletId,
   network: wallet.network,
-  draftId: state.draftId,
   outputs: state.outputs,
   feeRate: state.feeRate,
   selectedUTXOs: Array.from(state.selectedUTXOs).sort(),
@@ -241,8 +240,9 @@ export function useSendTransactionActions({
   // Initialize signedDevices from state for draft resume (state.signedDevices is loaded from draft)
   const [signedDevices, setSignedDevices] = useState<Set<string>>(() => new Set(state.signedDevices));
   const identity = useMemo(() => getSendIdentity(walletId, wallet, state), [walletId, wallet, state]);
+  const { draftId } = state;
   const owner = useSendOperationOwner(Boolean(initialTxData || initialPsbt));
-  const previousIdentity = useRef(identity);
+  const previousIdentity = useRef({ tx: identity, draftId });
 
   // Payjoin state
   const { payjoinStatus, payjoinAttempted, setPayjoinStatus, resetPayjoin } = usePayjoin();
@@ -370,10 +370,14 @@ export function useSendTransactionActions({
   }, [owner, resetPayjoin]);
 
   useLayoutEffect(() => {
-    if (previousIdentity.current === identity) return;
-    previousIdentity.current = identity;
-    reset();
-  }, [identity, reset]);
+    const previous = previousIdentity.current;
+    previousIdentity.current = { tx: identity, draftId };
+    // Adopting a server id for the current unsaved transaction (null -> id,
+    // fired by createNewDraft's setDraftId) keeps its signed state; any other
+    // id change (id -> other id, id -> null via RESET) is a different draft.
+    const draftChanged = previous.draftId !== null && draftId !== previous.draftId;
+    if (previous.tx !== identity || draftChanged) reset();
+  }, [identity, draftId, reset]);
 
   useEffect(() => () => {
     // Ensure StrictMode's effect replay can start replacement work immediately.

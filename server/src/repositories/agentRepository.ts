@@ -13,7 +13,7 @@ import type {
   AgentFundingOverrideStatus,
   WalletAgentStatus,
 } from '@sanctuary/shared/constants/adminAgents';
-import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
+import { DRAFT_LIFECYCLE_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { InvalidInputError, NotFoundError } from '../errors';
 import {
   Prisma,
@@ -435,7 +435,9 @@ export async function sumAgentDraftAmountsSince(agentId: string, since: Date): P
     where: {
       agentId,
       createdAt: { gte: since },
-      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      // Broadcast drafts are funding already sent; excluding them would let
+      // the daily/weekly caps reset on every broadcast.
+      status: { in: [...DRAFT_LIFECYCLE_STATUS_VALUES] },
     },
     _sum: { amount: true },
   });
