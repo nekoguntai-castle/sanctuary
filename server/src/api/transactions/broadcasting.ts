@@ -1,5 +1,4 @@
 import { Router, type Request } from 'express';
-import * as bitcoin from 'bitcoinjs-lib';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import {
   MobilePsbtBroadcastRequestSchema,
@@ -7,7 +6,6 @@ import {
   type MobilePsbtBroadcastRequest,
   type MobileTransactionBroadcastRequest,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
-import { addressRepository } from '../../repositories/addressRepository';
 import { draftRepository } from '../../repositories/draftRepository';
 import { walletRepository } from '../../repositories/walletRepository';
 import { requireWalletAccess } from '../../middleware/walletAccess';
@@ -15,19 +13,21 @@ import { requireAuthenticatedUser } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
-import { policyEvaluationEngine } from '../../services/vaultPolicy';
+import { policyEvaluationEngine, type PolicyEvaluationResult } from '../../services/vaultPolicy';
 import type { UsageReservation } from '../../services/vaultPolicy/policyEvaluationEngine';
-import { getNetwork } from '../../services/bitcoin/utils';
+import { requiresEnforcedApproval } from '../../services/vaultPolicy/intentPolicyInput';
 import {
   validateSignedArtifact,
   findDraftBySigningIntent,
+  deriveIntentSpend,
+  findHeldPolicyReservations,
   type SigningIntentHandle,
   type ValidatedBroadcastArtifact,
 } from '../../services/bitcoin/signingIntent';
 import {
   broadcastAndSave,
-  DefiniteBroadcastRejectionError,
   PreNetworkBroadcastRejectionError,
+  readBroadcastFailureTag,
 } from '../../services/bitcoin/transactions/broadcasting';
 import { findVerifiedReplacement, selectCandidateOutpoints } from '../../services/bitcoin/transactions/replacementLink';
 import type {
@@ -58,6 +58,7 @@ const assertDraftAllowsBroadcast = (draft: NonNullable<BroadcastDraft>): void =>
     throw new ForbiddenError('Draft approval is required before broadcast', undefined, {
       reason: draft.approvalStatus === 'rejected' ? 'approval_rejected' : 'pending_approval',
       draftId: draft.id,
+      approvalStatus: draft.approvalStatus,
     });
   }
 };
@@ -132,14 +133,6 @@ const resolveTransactionPayload = (
   });
 };
 
-const decodeAddress = (scriptHex: string, network: ValidatedBroadcastArtifact['network']): string => {
-  try {
-    return bitcoin.address.fromOutputScript(Buffer.from(scriptHex, 'hex'), getNetwork(network));
-  } catch {
-    return '';
-  }
-};
-
 interface CanonicalRouteMetadata {
   recipient: string;
   amount: number;
@@ -150,48 +143,14 @@ interface CanonicalRouteMetadata {
   externalOutputs: Array<{ address: string; amount: number }>;
 }
 
-const safeSats = (value: string, field: string): number => {
-  const amount = Number(value);
-  if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new InvalidInputError('Signing intent amount is invalid', field, {
-      reason: 'unknown_input_value',
-    });
-  }
-  return amount;
-};
-
 const buildCanonicalMetadata = async (
   artifact: ValidatedBroadcastArtifact,
 ): Promise<CanonicalRouteMetadata> => {
-  const walletAddresses = new Set(await addressRepository.findAddressStrings(artifact.walletId));
-  const inputs = artifact.snapshot.transaction.inputs.map((input, index) => ({
-    txid: input.txid,
-    vout: input.vout,
-    address: decodeAddress(input.prevout.scriptPubKeyHex, artifact.network),
-    amount: safeSats(input.prevout.amountSats, `inputs.${index}.amountSats`),
-  }));
-  const outputs = artifact.snapshot.transaction.outputs.map((output, index) => {
-    const address = decodeAddress(output.scriptPubKeyHex, artifact.network);
-    const amount = safeSats(output.amountSats, `outputs.${index}.amountSats`);
-    const isOurs = address.length > 0 && walletAddresses.has(address);
-    return {
-      address,
-      amount,
-      outputType: isOurs ? 'change' as const : address ? 'recipient' as const : 'unknown' as const,
-      isOurs,
-      scriptPubKey: output.scriptPubKeyHex,
-    };
-  });
-  const paidUnknown = outputs.find(output => !output.address && output.amount > 0);
-  if (paidUnknown) {
-    throw new InvalidInputError('Paid output uses an unsupported script', 'outputs', {
-      reason: 'unsupported_script',
-      scriptPubKey: paidUnknown.scriptPubKey,
-    });
-  }
-  const externalOutputs = outputs
-    .filter(output => !output.isOurs && output.address && output.amount > 0)
-    .map(output => ({ address: output.address, amount: output.amount }));
+  const { inputs, outputs, externalOutputs, amount } = await deriveIntentSpend(
+    artifact.walletId,
+    artifact.network,
+    artifact.snapshot,
+  );
   const totalInput = inputs.reduce((sum, input) => sum + input.amount, 0);
   const totalOutput = outputs.reduce((sum, output) => sum + output.amount, 0);
   const fee = totalInput - totalOutput;
@@ -202,7 +161,7 @@ const buildCanonicalMetadata = async (
   }
   return {
     recipient: externalOutputs[0]?.address ?? outputs.find(output => output.address)?.address ?? '',
-    amount: externalOutputs.reduce((sum, output) => sum + output.amount, 0),
+    amount,
     fee,
     utxos: inputs.map(({ txid, vout }) => ({ txid, vout })),
     inputs,
@@ -266,13 +225,64 @@ const assertOptionalMetadata = (
   }
 };
 
+/** Usage reserved for this broadcast; `held` reservations belong to an earlier attempt of the same intent. */
+interface PolicyUsageHold {
+  reservations: UsageReservation[];
+  held: boolean;
+}
+
+const NO_POLICY_USAGE: PolicyUsageHold = { reservations: [], held: false };
+
+const resolveReplacementContext = async (
+  walletId: string,
+  metadata: CanonicalRouteMetadata,
+  replacesTxid: string | undefined,
+): Promise<{ replacedAmount?: bigint; isReplacementBump?: boolean }> => {
+  if (!replacesTxid) return {};
+  const replacement = await findVerifiedReplacement(
+    walletId,
+    replacesTxid,
+    selectCandidateOutpoints(metadata.inputs, metadata.utxos),
+    undefined,
+  );
+  return replacement ? { replacedAmount: replacement.amount, isReplacementBump: true } : {};
+};
+
+/**
+ * An enforce-mode approval_required policy authorizes a spend only through a
+ * draft approved for THIS signing intent: a draft with a null or different
+ * signingIntentId (legacy rows) approved some other spend. Drafts that reach
+ * here are `not_required` or `approved` (assertDraftAllowsBroadcast refuses
+ * every other status first); monitor-mode policies report `monitored` and
+ * stay informational.
+ */
+const assertApprovalSatisfied = (
+  result: PolicyEvaluationResult,
+  draft: BroadcastDraft,
+  intentId: string,
+): void => {
+  if (!requiresEnforcedApproval(result)) return;
+  if (draft?.approvalStatus === 'approved' && draft.signingIntentId === intentId) return;
+  throw new ForbiddenError('Vault policy requires an approved draft before broadcast', undefined, {
+    reason: 'approval_required',
+    draftId: draft?.id,
+  });
+};
+
 /**
  * Evaluate policies for this broadcast and, for every enforce-mode
  * spending_limit/velocity policy, reserve its usage windows atomically
  * BEFORE broadcastAndSave. A lost reservation (concurrent broadcast already
  * consumed the remaining headroom) blocks the same as any other triggered
- * policy. The returned reservations must be released by the caller if the
- * broadcast itself later fails.
+ * policy. Fresh reservations are released by the caller only under the
+ * release rule in releaseReservationsOnFailure. An enforce-mode
+ * approval_required trigger refuses a spend without an approved draft.
+ *
+ * A retry of an earlier attempt whose outcome is unknown reuses the
+ * reservations that attempt persisted on the intent
+ * (findHeldPolicyReservations) instead of reserving again: it is the same
+ * transaction, so it is still evaluated, as a bump of its own amount
+ * (velocity skips it), and returned as `held`.
  *
  * When `replacesTxid` names a verified RBF replacement (the same
  * shared-input check `assertReplacementLink` uses, via
@@ -292,25 +302,20 @@ const assertOptionalMetadata = (
  */
 const reservePolicyUsage = async (
   req: Request,
-  walletId: string,
+  artifact: ValidatedBroadcastArtifact,
   metadata: CanonicalRouteMetadata,
   replacesTxid: string | undefined,
-): Promise<UsageReservation[]> => {
-  if (metadata.externalOutputs.length === 0) return [];
+  draft: BroadcastDraft,
+): Promise<PolicyUsageHold> => {
+  if (metadata.externalOutputs.length === 0) return NO_POLICY_USAGE;
+  const walletId = artifact.walletId;
   const userId = requireAuthenticatedUser(req).userId;
   const amount = BigInt(metadata.amount);
 
-  const replacement = replacesTxid
-    ? await findVerifiedReplacement(
-        walletId,
-        replacesTxid,
-        selectCandidateOutpoints(metadata.inputs, metadata.utxos),
-        undefined,
-      )
-    : null;
-  const isReplacementBump = replacement !== null;
-  const replacedAmount = replacement?.amount ?? BigInt(0);
-  const replacementContext = isReplacementBump ? { replacedAmount, isReplacementBump } : {};
+  const held = await findHeldPolicyReservations(artifact.intent.intentId, artifact.txid);
+  const replacementContext = held
+    ? { replacedAmount: amount, isReplacementBump: true }
+    : await resolveReplacementContext(walletId, metadata, replacesTxid);
 
   const result = await policyEvaluationEngine.evaluatePolicies({
     walletId,
@@ -321,6 +326,8 @@ const reservePolicyUsage = async (
     ...replacementContext,
   });
   if (!result.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
+  assertApprovalSatisfied(result, draft, artifact.intent.intentId);
+  if (held) return { reservations: held, held: true };
 
   const reservation = await policyEvaluationEngine.reserveEnforcedUsage({
     walletId,
@@ -329,7 +336,7 @@ const reservePolicyUsage = async (
     ...replacementContext,
   });
   if (!reservation.ok) throw new ForbiddenError('Transaction blocked by vault policy');
-  return reservation.reservations;
+  return { reservations: reservation.reservations, held: false };
 };
 
 const auditFailure = async (req: WalletRequest, error: unknown): Promise<void> => {
@@ -341,28 +348,31 @@ const auditFailure = async (req: WalletRequest, error: unknown): Promise<void> =
 };
 
 /**
- * Release reservations after a failed broadcast — but ONLY when the failure
- * is a definite rejection (the node/network refused the transaction before
- * anything was accepted) or a pre-network rejection (broadcastAndSave threw
- * before the transaction ever reached the network — hardware capability, an
- * intent claim conflict, an unverifiable replacesTxid). broadcastAndSave can
- * also throw after the transaction was already accepted or recorded
- * (markSigningIntentBroadcastAccepted / persistTransaction) or when the
- * outcome is unknown (markSigningIntentBroadcastUnknown) — releasing the
- * reservation in those cases would let a spend that may have gone out stop
- * counting against the enforce-mode limit it was reserved against. Any other
- * error therefore keeps the reservation held: fail-safe means over-counting,
- * never under-counting, a real spend.
+ * Whether a failure proves that fresh reservations no longer stand for a
+ * transaction that may have gone out. broadcastAndSave tags its failures with
+ * what it did to the intent: release when no claim was taken (hardware
+ * refusal, busy or conflicting claim), or when a first (`ready`) claim was
+ * actually returned to `ready` (a definite rejection, a replacesTxid mismatch).
+ * A resumed claim stays `unknown` and a failed rollback leaves the intent
+ * claimed, so both keep the reservation. An untagged error is retained (fail
+ * safe: over-count, never under-count a real spend), except an untagged
+ * PreNetworkBroadcastRejectionError, which by construction precedes any claim.
  */
+const failureReleasesFreshReservations = (error: unknown): boolean => {
+  const tag = readBroadcastFailureTag(error);
+  if (!tag) return error instanceof PreNetworkBroadcastRejectionError;
+  return !tag.claimed || (tag.priorState === 'ready' && tag.releasedToReady);
+};
+
+/** Held (reused) reservations are never released here: they count an earlier attempt that may have gone out. */
 const releaseReservationsOnFailure = async (
-  reservations: UsageReservation[],
+  usage: PolicyUsageHold,
   error: unknown,
 ): Promise<void> => {
-  if (reservations.length === 0) return;
-  if (!(error instanceof DefiniteBroadcastRejectionError)
-    && !(error instanceof PreNetworkBroadcastRejectionError)) return;
+  if (usage.held || usage.reservations.length === 0) return;
+  if (!failureReleasesFreshReservations(error)) return;
   try {
-    await policyEvaluationEngine.releasePolicyUsage(reservations);
+    await policyEvaluationEngine.releasePolicyUsage(usage.reservations);
   } catch (releaseError) {
     log.error('Failed to release policy usage reservation', { error: getErrorMessage(releaseError) });
     return;
@@ -389,21 +399,29 @@ const broadcastValidated = async (
   metadata: CanonicalRouteMetadata,
   draft: BroadcastDraft,
   labels: { label?: string | null; memo?: string | null; replacesTxid?: string | null },
-  reservations: UsageReservation[],
+  usage: PolicyUsageHold,
 ) => {
+  const durableMetadata = {
+    recipient: metadata.recipient,
+    amount: metadata.amount,
+    fee: metadata.fee,
+    utxos: metadata.utxos,
+    inputs: metadata.inputs,
+    outputs: metadata.outputs,
+    ...(labels.label != null && { label: labels.label }),
+    ...(labels.memo != null && { memo: labels.memo }),
+    ...(labels.replacesTxid != null && { replacesTxid: labels.replacesTxid }),
+    ...(draft && { draftId: draft.id }),
+    // Every claim re-persists the reservations, held or fresh.
+    policyReservations: usage.reservations.map(({ windowId, amount }) => ({ windowId, amount: amount.toString() })),
+  };
   try {
-    const result = await broadcastAndSave(artifact, {
-      recipient: metadata.recipient,
-      amount: metadata.amount,
-      fee: metadata.fee,
-      utxos: metadata.utxos,
-      inputs: metadata.inputs,
-      outputs: metadata.outputs,
-      ...(labels.label != null && { label: labels.label }),
-      ...(labels.memo != null && { memo: labels.memo }),
-      ...(labels.replacesTxid != null && { replacesTxid: labels.replacesTxid }),
-      ...(draft && { draftId: draft.id }),
-    });
+    // A reusing retry may only resume the earlier attempt: if that attempt was
+    // released back to `ready` (and its reservations with it), the claim fails
+    // before the network instead of broadcasting with nothing reserved.
+    const result = usage.held
+      ? await broadcastAndSave(artifact, durableMetadata, { resumeOnly: true })
+      : await broadcastAndSave(artifact, durableMetadata);
     await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
       success: true,
       details: { walletId: artifact.walletId, txid: result.txid, intentId: artifact.intent.intentId },
@@ -416,7 +434,7 @@ const broadcastValidated = async (
     return result;
   } catch (error) {
     await auditFailure(req, error);
-    await releaseReservationsOnFailure(reservations, error);
+    await releaseReservationsOnFailure(usage, error);
     throw error;
   }
 };
@@ -448,9 +466,9 @@ const handleTransactionBroadcast = async (
     authoritativeDraft,
     metadata,
   );
-  const reservations = artifact.broadcastReplay
-    ? []
-    : await reservePolicyUsage(req, walletId, metadata, body.replacesTxid);
+  const usage = artifact.broadcastReplay
+    ? NO_POLICY_USAGE
+    : await reservePolicyUsage(req, artifact, metadata, body.replacesTxid, authoritativeDraft);
   // Unlike label/memo, replacesTxid has no draft fallback: it is not a
   // persisted draft column (see CreateDraftRequest.replacesTxid in
   // src/api/drafts.ts), so an RBF broadcast must send it directly in this
@@ -459,7 +477,7 @@ const handleTransactionBroadcast = async (
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
     replacesTxid: body.replacesTxid,
-  }, reservations);
+  }, usage);
 };
 
 const handlePsbtBroadcast = async (
@@ -477,14 +495,14 @@ const handlePsbtBroadcast = async (
   if (authoritativeDraft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(authoritativeDraft);
   const metadata = await buildCanonicalMetadata(artifact);
   assertOptionalMetadata({}, authoritativeDraft, metadata);
-  const reservations = artifact.broadcastReplay
-    ? []
-    : await reservePolicyUsage(req, walletId, metadata, body.replacesTxid);
+  const usage = artifact.broadcastReplay
+    ? NO_POLICY_USAGE
+    : await reservePolicyUsage(req, artifact, metadata, body.replacesTxid, authoritativeDraft);
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
     replacesTxid: body.replacesTxid,
-  }, reservations);
+  }, usage);
 };
 
 router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {

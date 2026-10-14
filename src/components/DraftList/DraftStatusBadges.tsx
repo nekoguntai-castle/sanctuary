@@ -5,6 +5,10 @@ import {
   Bot,
   CheckCircle2,
   Clock,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldX,
+  type LucideIcon,
 } from 'lucide-react';
 import type { DraftTransaction } from '../../api/drafts';
 import type { ExpirationInfo } from './types';
@@ -21,6 +25,34 @@ interface DraftStatusBadgesProps {
 }
 
 const statusBadgeBase = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium';
+
+// Mirrors the broadcast allow-list (api/transactions/broadcasting.ts): a draft whose approval
+// is pending, rejected, vetoed or expired is refused at broadcast, so it is not "ready".
+const BROADCAST_APPROVAL_STATUSES = new Set(['not_required', 'approved']);
+
+// Drafts from older servers carry no approvalStatus; they predate approval workflows.
+const isBroadcastAllowed = (draft: DraftTransaction): boolean =>
+  BROADCAST_APPROVAL_STATUSES.has(draft.approvalStatus ?? 'not_required');
+
+const APPROVAL_BADGES: Record<string, { label: string; className: string; Icon: LucideIcon }> = {
+  pending: { label: 'Awaiting approval', className: 'bg-warning-100 text-warning-700 dark:bg-warning-900/30', Icon: ShieldAlert },
+  approved: { label: 'Approved', className: 'bg-success-100 text-success-700 dark:bg-success-900/30', Icon: ShieldCheck },
+  rejected: { label: 'Approval rejected', className: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', Icon: ShieldX },
+  vetoed: { label: 'Approval vetoed', className: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', Icon: ShieldX },
+  expired: { label: 'Approval expired', className: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', Icon: ShieldX },
+};
+
+function DraftApprovalBadge({ draft }: { draft: DraftTransaction }) {
+  const badge = draft.approvalStatus ? APPROVAL_BADGES[draft.approvalStatus] : undefined;
+  if (!badge) return null;
+
+  return (
+    <span className={`${statusBadgeBase} ${badge.className}`}>
+      <badge.Icon className="w-3 h-3" />
+      {badge.label}
+    </span>
+  );
+}
 
 function DraftStatusBadge({
   draft,
@@ -44,7 +76,7 @@ function DraftStatusBadge({
     );
   }
 
-  if (draft.status === 'signed') {
+  if (draft.status === 'signed' && isBroadcastAllowed(draft)) {
     return (
       <span className={`${statusBadgeBase} bg-success-100 text-success-700 dark:bg-success-900/30`}>
         <CheckCircle2 className="w-3 h-3" />
@@ -110,6 +142,7 @@ export const DraftStatusBadges: React.FC<DraftStatusBadgesProps> = ({
 }) => (
   <>
     <DraftStatusBadge draft={draft} quorum={quorum} />
+    <DraftApprovalBadge draft={draft} />
     <DraftExpirationBadge expirationInfo={expirationInfo} />
     {isAgentFundingDraft(draft) && <AgentFundingBadge />}
   </>

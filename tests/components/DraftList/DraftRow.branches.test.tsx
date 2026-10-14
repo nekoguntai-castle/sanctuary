@@ -130,6 +130,45 @@ describe('DraftRow branch coverage', () => {
     });
   });
 
+  describe('approval status', () => {
+    it.each([
+      ['pending', 'Awaiting approval'],
+      ['approved', 'Approved'],
+      ['rejected', 'Approval rejected'],
+      ['vetoed', 'Approval vetoed'],
+      ['expired', 'Approval expired'],
+    ] as const)('shows the %s approval badge and keeps Resume enabled', (approvalStatus, label) => {
+      renderRow({ status: 'signed', approvalStatus });
+
+      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Resume/ })).toBeEnabled();
+    });
+
+    it.each(['pending', 'rejected', 'vetoed', 'expired'] as const)(
+      'does not call a signed %s draft ready to broadcast',
+      (approvalStatus) => {
+        renderRow({ status: 'signed', approvalStatus });
+
+        expect(screen.queryByText('Ready to broadcast')).not.toBeInTheDocument();
+      },
+    );
+
+    it.each(['not_required', 'approved', undefined] as const)(
+      'calls a signed %s draft ready to broadcast',
+      (approvalStatus) => {
+        renderRow({ status: 'signed', approvalStatus });
+
+        expect(screen.getByText('Ready to broadcast')).toBeInTheDocument();
+      },
+    );
+
+    it('shows no approval badge when none is required', () => {
+      renderRow({ status: 'signed', approvalStatus: 'not_required' });
+
+      expect(screen.queryByText(/approval/i)).not.toBeInTheDocument();
+    });
+  });
+
   it('renders every status branch and expiration badge variant', () => {
     expirationInfo = { urgency: 'expired', text: 'Expired now', diffMs: -1 };
     const { rerender } = renderRow({

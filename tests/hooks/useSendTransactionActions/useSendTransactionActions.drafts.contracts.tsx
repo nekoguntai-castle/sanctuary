@@ -1,6 +1,8 @@
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { ApiError } from '../../../src/api/client';
+
 import {
   baseTxData,
   createState,
@@ -191,6 +193,33 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
       expect(result.current.signedRawTx).toBeNull();
       expect(result.current.signedDevices.size).toBe(0);
       expect(result.current.payjoinStatus).toBe('idle');
+    });
+
+    it('exposes the approval action from a refused broadcast until the error is cleared or reset', async () => {
+      mocks.broadcastTransaction.mockRejectedValue(
+        new ApiError('Approval required', 403, { details: { reason: 'approval_required' } }),
+      );
+      const { result } = renderSendTransactionActions({
+        state: createState({ outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }] }),
+        initialPsbt: 'cHNidP8BAA==',
+        initialTxData: baseTxData as any,
+      });
+
+      await act(async () => {
+        await result.current.broadcastTransaction('signed-psbt');
+      });
+      expect(result.current.approvalAction).toBe('submit');
+
+      act(() => result.current.clearError());
+      expect(result.current.approvalAction).toBeNull();
+
+      await act(async () => {
+        await result.current.broadcastTransaction('signed-psbt');
+      });
+      expect(result.current.approvalAction).toBe('submit');
+
+      act(() => result.current.reset());
+      expect(result.current.approvalAction).toBeNull();
     });
 
     it('exposes shared query client from mocks for sanity', () => {

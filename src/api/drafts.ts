@@ -37,6 +37,8 @@ export interface DraftInputRequest {
   amount: DraftIntegerValue;
 }
 
+export type DraftApprovalStatus = 'not_required' | 'pending' | 'approved' | 'rejected' | 'vetoed' | 'expired';
+
 export interface DraftTransaction {
   id: string;
   walletId: string;
@@ -97,6 +99,7 @@ export interface DraftTransaction {
   // Signing status
   status: 'unsigned' | 'partial' | 'signed';
   signedDeviceIds: string[];
+  approvalStatus?: DraftApprovalStatus;
   agentId?: string;
   agentOperationalWalletId?: string;
 

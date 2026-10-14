@@ -32,6 +32,7 @@ function renderReviewStep({
       onSign={isMultiSig ? onSign : undefined}
       onBroadcast={!isMultiSig ? onSignAndBroadcast : undefined}
       onSaveDraft={isDraftMode ? undefined : onSaveDraft}
+      approvalAction={actions.approvalAction}
       signing={actions.isSigning}
       broadcasting={actions.isBroadcasting || actions.isCreating}
       savingDraft={actions.isSavingDraft}

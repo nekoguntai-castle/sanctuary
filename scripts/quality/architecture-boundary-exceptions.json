@@ -253,15 +253,6 @@
   },
   {
     "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/transactions/broadcasting.ts",
-    "target": "server/src/repositories/addressRepository.ts",
-    "specifier": "../../repositories/addressRepository",
-    "owner": "backend-architecture",
-    "reason": "Broadcast route ownership and draft-state guards currently read repositories in-route until broadcast orchestration moves behind a service boundary.",
-    "removeWhen": "Route delegates address lookup and validation through a transaction broadcast service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
     "file": "server/src/api/transactions/crossWallet.ts",
     "target": "server/src/repositories/index.ts",
     "specifier": "../../repositories",

@@ -56,12 +56,29 @@ vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
   },
 }));
 
+const intentSnapshot = vi.hoisted(() => ({
+  version: 2,
+  walletId: 'wallet-456',
+  network: 'testnet4',
+  transaction: { version: 2, locktime: 0, inputs: [], outputs: [] },
+}));
+
 vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   loadSigningIntent: vi.fn().mockResolvedValue({
     unsignedPsbtSha256: 'psbt-hash',
     signingContext: { version: 1 },
+    snapshot: intentSnapshot,
   }),
   unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
+  deriveIntentSpend: vi.fn(),
+}));
+
+vi.mock('../../../src/services/vaultPolicy/policyEvaluationEngine', () => ({
+  policyEvaluationEngine: { evaluatePolicies: vi.fn() },
+}));
+
+vi.mock('../../../src/services/bitcoin/transactions/replacementLink', () => ({
+  findVerifiedReplacement: vi.fn(),
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -76,7 +93,10 @@ import { draftRepository, systemSettingRepository } from '../../../src/repositor
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
 import { approvalService } from '../../../src/services/vaultPolicy/approvalService';
-import { loadSigningIntent } from '../../../src/services/bitcoin/signingIntent';
+import { deriveIntentSpend, loadSigningIntent } from '../../../src/services/bitcoin/signingIntent';
+import { policyEvaluationEngine } from '../../../src/services/vaultPolicy/policyEvaluationEngine';
+import { findVerifiedReplacement } from '../../../src/services/bitcoin/transactions/replacementLink';
+import { ForbiddenError } from '../../../src/errors';
 import {
   createDraft,
   runDraftCreatedSideEffects,
@@ -127,6 +147,83 @@ describe('createDraft approval atomicity', () => {
     (lockUtxosForDraft as Mock).mockResolvedValue({ success: true, lockedCount: 1 });
     (systemSettingRepository.getParsed as Mock).mockResolvedValue(7);
     (dispatchDraftNotification as Mock).mockResolvedValue(undefined);
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend());
+    (policyEvaluationEngine.evaluatePolicies as Mock).mockResolvedValue({ allowed: true, triggered: [] });
+    (findVerifiedReplacement as Mock).mockResolvedValue(null);
+  });
+
+  const externalSpend = (overrides: Record<string, unknown> = {}) => ({
+    inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }],
+    outputs: [],
+    externalOutputs: [{ address: 'tb1qexternal', amount: 100000 }],
+    amount: 100000,
+    ...overrides,
+  });
+
+  const enforcedApproval = {
+    allowed: true,
+    triggered: [
+      { policyId: 'pa', policyName: 'Approve', type: 'approval_required' as const, action: 'approval_required' as const, reason: 'always' },
+    ],
+  };
+
+  describe('server-side policy evaluation when the caller supplies none', () => {
+    it('creates an approval-required human draft as pending with its approval requests', async () => {
+      (policyEvaluationEngine.evaluatePolicies as Mock).mockResolvedValueOnce(enforcedApproval);
+
+      await createDraft(walletId, userId, approvalInput);
+
+      expect(policyEvaluationEngine.evaluatePolicies).toHaveBeenCalledWith({
+        walletId, userId, recipient: 'tb1qexternal', amount: BigInt(100000),
+        outputs: [{ address: 'tb1qexternal', amount: 100000 }],
+      });
+      expect(draftRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ approvalStatus: 'pending' }),
+        txTracker.clients[0],
+      );
+      expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledOnce();
+      expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledWith(
+        mockDraft.id, walletId, userId, enforcedApproval.triggered, txTracker.clients[0],
+      );
+    });
+
+    it('evaluates a verified RBF replacement as a bump on the full amount', async () => {
+      const replacementTxid = 'c'.repeat(64);
+      (deriveIntentSpend as Mock).mockResolvedValueOnce(externalSpend({ replacementTxid }));
+      (findVerifiedReplacement as Mock).mockResolvedValueOnce({ id: 'orig', label: null, amount: BigInt(90000) });
+
+      await createDraft(walletId, userId, { ...approvalInput, isRBF: true });
+
+      expect(findVerifiedReplacement).toHaveBeenCalledWith(
+        walletId, replacementTxid, [expect.objectContaining({ txid: 'a'.repeat(64), vout: 1 })], undefined,
+      );
+      expect(policyEvaluationEngine.evaluatePolicies).toHaveBeenCalledWith(expect.objectContaining({
+        amount: BigInt(100000), replacedAmount: BigInt(90000), isReplacementBump: true,
+      }));
+    });
+
+    it('refuses a draft that an enforce-mode policy blocks', async () => {
+      (policyEvaluationEngine.evaluatePolicies as Mock).mockResolvedValueOnce({ allowed: false, triggered: [] });
+
+      await expect(createDraft(walletId, userId, approvalInput)).rejects.toBeInstanceOf(ForbiddenError);
+      expect(draftRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('skips evaluation when the intent pays nothing outside the wallet', async () => {
+      (deriveIntentSpend as Mock).mockResolvedValueOnce(externalSpend({ externalOutputs: [], amount: 0 }));
+
+      await createDraft(walletId, userId, approvalInput);
+
+      expect(policyEvaluationEngine.evaluatePolicies).not.toHaveBeenCalled();
+      expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({ approvalStatus: undefined }));
+    });
+
+    it('does not re-evaluate when the caller already supplies an evaluation', async () => {
+      await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: { allowed: true, triggered: [] } });
+
+      expect(deriveIntentSpend).not.toHaveBeenCalled();
+      expect(policyEvaluationEngine.evaluatePolicies).not.toHaveBeenCalled();
+    });
   });
 
   it('persists pending draft, locks UTXOs, and creates approvals once in one transaction on the same client', async () => {

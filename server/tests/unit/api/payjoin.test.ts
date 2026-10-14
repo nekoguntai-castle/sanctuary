@@ -71,6 +71,16 @@ vi.mock('../../../src/services/payjoinService', () => ({
   },
 }));
 
+// The attempt route evaluates the original intent against vault policy before
+// any payjoin traffic; these tests' prisma mock has no policy tables.
+vi.mock('../../../src/services/vaultPolicy/intentPolicyInput', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../src/services/vaultPolicy/intentPolicyInput')>(),
+  buildIntentPolicyInput: vi.fn(),
+}));
+vi.mock('../../../src/services/vaultPolicy', () => ({
+  policyEvaluationEngine: { evaluatePolicies: vi.fn() },
+}));
+
 vi.mock('../../../src/services/addressDisplaySafety', () => ({
   assertFreshReceiveAddressSafeForDisplay: vi.fn(),
 }));
@@ -179,6 +189,8 @@ import {
 } from '../../../src/services/payjoin/bip21';
 import { registerPayjoinBip78ErrorContracts } from './payjoin.bip78-errors.contracts';
 import { registerPayjoinSecurityContracts } from './payjoin.security.contracts';
+import { buildIntentPolicyInput } from '../../../src/services/vaultPolicy/intentPolicyInput';
+import { policyEvaluationEngine } from '../../../src/services/vaultPolicy';
 
 // Get typed references to mocked functions
 const mockPrisma = prisma as unknown as {
@@ -203,6 +215,8 @@ const mockWalletUser = mockPrisma.walletUser;
 const mockUnsignedPsbtSha256 = vi.mocked(unsignedPsbtSha256);
 const mockDerivePayjoinInputRoles = vi.mocked(derivePayjoinInputRoles);
 const mockBindPsbtAccount = vi.mocked(bindPsbtAccount);
+const mockBuildIntentPolicyInput = vi.mocked(buildIntentPolicyInput);
+const mockEvaluatePolicies = vi.mocked(policyEvaluationEngine.evaluatePolicies);
 
 const submitPayjoinAttempt = (app: Express, userId = 'user-123') => request(app)
   .post('/api/v1/payjoin/attempt')
@@ -272,6 +286,8 @@ describe('Payjoin API Routes', () => {
     mockParseBip21Uri.mockImplementation(realParseBip21Uri);
     mockGenerateBip21Uri.mockImplementation(realGenerateBip21Uri);
     mockAssertFreshReceiveAddressSafeForDisplay.mockResolvedValue(undefined);
+    mockBuildIntentPolicyInput.mockResolvedValue(null);
+    mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
   });
 
   describe('POST /:addressId (BIP78 Receiver Endpoint)', () => {
@@ -1478,6 +1494,11 @@ describe('Payjoin API Routes', () => {
 
   registerPayjoinSecurityContracts({
     getApp: () => app,
+    submitPayjoinAttempt: () => submitPayjoinAttempt(app),
+    mockAttemptPayjoinSend,
+    mockCreateSigningIntent,
+    mockBuildIntentPolicyInput,
+    mockEvaluatePolicies,
     mockProcessPayjoinRequest,
     testAddressId: TEST_ADDRESS_ID,
     testWalletId: TEST_WALLET_ID,

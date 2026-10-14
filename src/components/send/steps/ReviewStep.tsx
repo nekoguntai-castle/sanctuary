@@ -9,7 +9,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSendTransaction } from '../../../contexts/send';
 import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import { createLogger } from '../../../utils/logger';
-import type { TransactionData } from '../../../hooks/send/useSendTransactionActions';
+import type { ApprovalAction, TransactionData } from '../../../hooks/send/types';
 import { isMultisigType } from '../../../types';
 import type { Device } from '../../../types';
 import { TransactionSummary } from './review/TransactionSummary';
@@ -28,6 +28,7 @@ import {
   getReviewAddressLabel,
   getReviewChangeAmount,
   getReviewTransactionTypeLabel,
+  getReviewApprovalMode,
   hasEnoughReviewSignatures,
 } from './review/reviewStepData';
 
@@ -37,7 +38,10 @@ export interface ReviewStepProps {
   // Handlers from parent
   onSign?: () => void;
   onBroadcast?: () => void;
+  // Also backs "Submit for approval": the server creates the draft pending when an
+  // approval policy holds the spend, and the draft list shows "Awaiting approval".
   onSaveDraft?: () => void;
+  approvalAction?: ApprovalAction;
   // Loading states
   signing?: boolean;
   broadcasting?: boolean;
@@ -62,6 +66,7 @@ export function ReviewStep({
   onSign,
   onBroadcast,
   onSaveDraft,
+  approvalAction = null,
   signing = false,
   broadcasting = false,
   savingDraft = false,
@@ -177,6 +182,7 @@ export function ReviewStep({
   // to stay disabled: re-signing a transaction that is already being broadcast is not a
   // valid user action while the server call is outstanding.
   const signingControlsBusy = signing || broadcasting;
+  const approvalMode = getReviewApprovalMode(approvalAction, txData, state.draftId, isDraftMode);
 
   return (
     <div className="space-y-6">
@@ -245,6 +251,7 @@ export function ReviewStep({
         onSign={onSign}
         onBroadcast={onBroadcast}
         onSaveDraft={onSaveDraft}
+        approvalMode={approvalMode}
         onBroadcastSigned={onBroadcastSigned}
         prevStep={prevStep}
       />

@@ -13,8 +13,13 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
 import { validateAddress } from '../../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
-import { policyEvaluationEngine } from '../../services/vaultPolicy';
-import { createSigningIntent } from '../../services/bitcoin/signingIntent';
+import { policyEvaluationEngine, type PolicyEvaluationResult } from '../../services/vaultPolicy';
+import { buildIntentPolicyInput } from '../../services/vaultPolicy/intentPolicyInput';
+import {
+  createSigningIntent,
+  loadSigningIntent,
+  type SigningIntentHandle,
+} from '../../services/bitcoin/signingIntent';
 import * as txService from '../../services/bitcoin/transactionService';
 import {
   MobilePsbtCreateRequestSchema,
@@ -51,6 +56,27 @@ function resolveBatchOutputs(
       ...(output.sendMax !== undefined && { sendMax: output.sendMax }),
     };
   });
+}
+
+/**
+ * Re-evaluate vault policy against the minted intent — the transaction that
+ * will actually be signed, so sendMax/subtractFees effective amounts and
+ * change are what the client sees — as a preview (no second PolicyEvent).
+ * A block on the minted amount refuses the request: the pre-check saw only the
+ * requested amount (0 for a sendMax batch output). Undefined when nothing
+ * triggered or nothing leaves the wallet.
+ */
+async function evaluateMintedIntent(
+  walletId: string,
+  userId: string,
+  handle: SigningIntentHandle,
+): Promise<PolicyEvaluationResult | undefined> {
+  const intent = await loadSigningIntent(handle, walletId);
+  const input = await buildIntentPolicyInput(walletId, userId, intent);
+  if (!input) return undefined;
+  const result = await policyEvaluationEngine.evaluatePolicies({ ...input, preview: true });
+  if (!result.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
+  return result.triggered.length > 0 ? result : undefined;
 }
 
 /**
@@ -136,6 +162,8 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
     signingContext: txData.signingContext,
   });
 
+  const policyEvaluation = await evaluateMintedIntent(walletId, requireAuthenticatedUser(req).userId, signingIntent);
+
   log.debug('Create transaction response', {
     fee: txData.fee,
     changeAmount: txData.changeAmount,
@@ -156,7 +184,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
     inputPaths: txData.inputPaths,
     effectiveAmount: txData.effectiveAmount,
     decoyOutputs: txData.decoyOutputs,
-    policyEvaluation: policyResult.triggered.length > 0 ? policyResult : undefined,
+    policyEvaluation,
     ...signingIntent,
   });
 }));
@@ -223,6 +251,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     feePolicy: txData.feePolicy,
     signingContext: txData.signingContext,
   });
+  const policyEvaluation = await evaluateMintedIntent(walletId, requireAuthenticatedUser(req).userId, signingIntent);
 
   res.json({
     psbtBase64: txData.psbtBase64,
@@ -234,7 +263,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     utxos: txData.utxos,
     inputPaths: txData.inputPaths,
     outputs: txData.outputs,
-    policyEvaluation: policyResult.triggered.length > 0 ? policyResult : undefined,
+    policyEvaluation,
     ...signingIntent,
   });
 }));
@@ -323,6 +352,7 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
     feePolicy: txData.feePolicy,
     signingContext: txData.signingContext,
   });
+  const policyEvaluation = await evaluateMintedIntent(walletId, requireAuthenticatedUser(req).userId, signingIntent);
 
   res.json({
     psbt: txData.psbtBase64,
@@ -333,6 +363,7 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
     changeAmount: txData.changeAmount,
     changeAddress: txData.changeAddress,
     utxos: txData.utxos,
+    policyEvaluation,
     ...signingIntent,
   });
 }));

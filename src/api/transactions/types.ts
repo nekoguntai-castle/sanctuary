@@ -74,6 +74,21 @@ export interface CreateTransactionRequest {
   };
 }
 
+/**
+ * Vault-policy evaluation the create routes echo for the minted signing intent.
+ * Only `approval_required` actions hold the spend; `monitored` is informational.
+ */
+export interface PolicyEvaluationSummary {
+  allowed: boolean;
+  triggered: Array<{
+    policyId: string;
+    policyName: string;
+    type: string;
+    action: 'approval_required' | 'blocked' | 'monitored' | 'time_delay';
+    reason: string;
+  }>;
+}
+
 export interface CreateTransactionResponse {
   psbtBase64: string;
   signingContext: PsbtSigningContext;
@@ -88,6 +103,7 @@ export interface CreateTransactionResponse {
   effectiveAmount?: number;
   inputPaths?: string[];
   decoyOutputs?: Array<{ address: string; amount: number }>;
+  policyEvaluation?: PolicyEvaluationSummary;
 }
 
 type BroadcastTransactionMetadata = Omit<
@@ -218,6 +234,7 @@ export interface CreateBatchTransactionResponse {
   inputPaths?: string[];
   effectiveAmount?: number;
   outputs: Array<{ address: string; amount: number; sendMax?: boolean }>;
+  policyEvaluation?: PolicyEvaluationSummary;
 }
 
 // ========================================

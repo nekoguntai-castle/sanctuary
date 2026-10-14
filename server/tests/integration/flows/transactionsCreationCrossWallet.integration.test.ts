@@ -27,6 +27,7 @@ const mockCreateBatchTransaction = vi.fn();
 const mockBroadcastAndSave = vi.fn();
 const mockEstimateTransaction = vi.fn();
 const mockCreateSigningIntent = vi.fn();
+const mockLoadSigningIntent = vi.fn();
 const mockValidateSignedArtifact = vi.fn();
 const mockFindDraftBySigningIntent = vi.fn();
 const mockGetCachedBlockHeight = vi.fn();
@@ -48,15 +49,28 @@ vi.mock('../../../src/services/bitcoin/transactionService', () => ({
   estimateTransaction: (...args: unknown[]) => mockEstimateTransaction(...args),
 }));
 
-vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
+// The rest of the barrel stays real: the create routes re-evaluate policy from
+// the minted intent (deriveIntentSpend) and broadcast looks up held usage.
+vi.mock('../../../src/services/bitcoin/signingIntent', async () => ({
+  ...await vi.importActual<typeof import('../../../src/services/bitcoin/signingIntent')>(
+    '../../../src/services/bitcoin/signingIntent'
+  ),
   createSigningIntent: (...args: unknown[]) => mockCreateSigningIntent(...args),
+  loadSigningIntent: (...args: unknown[]) => mockLoadSigningIntent(...args),
   validateSignedArtifact: (...args: unknown[]) => mockValidateSignedArtifact(...args),
   findDraftBySigningIntent: (...args: unknown[]) => mockFindDraftBySigningIntent(...args),
 }));
 
-vi.mock('../../../src/services/bitcoin/transactions/broadcasting', () => ({
-  broadcastAndSave: (...args: unknown[]) => mockBroadcastAndSave(...args),
-}));
+vi.mock('../../../src/services/bitcoin/transactions/broadcasting', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/services/bitcoin/transactions/broadcasting')>(
+    '../../../src/services/bitcoin/transactions/broadcasting'
+  );
+  return {
+    broadcastAndSave: (...args: unknown[]) => mockBroadcastAndSave(...args),
+    PreNetworkBroadcastRejectionError: actual.PreNetworkBroadcastRejectionError,
+    readBroadcastFailureTag: actual.readBroadcastFailureTag,
+  };
+});
 
 vi.mock('../../../src/services/bitcoin/blockchain', async () => {
   const actual = await vi.importActual<typeof import('../../../src/services/bitcoin/blockchain')>(
@@ -102,6 +116,9 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
 
   afterAll(async () => {
     resetTestApp();
+    // Leave no wallets behind: later specs (canonical producer recovery) scan
+    // every wallet with a pending incremental sync.
+    await cleanupTestData();
     await teardownTestDatabase();
     vi.restoreAllMocks();
   });
@@ -118,6 +135,23 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
       intentDigest: 'a'.repeat(64),
     });
     mockFindDraftBySigningIntent.mockResolvedValue(null);
+    mockLoadSigningIntent.mockImplementation(async (handle: { intentId: string; intentDigest: string }, walletId: string) => ({
+      ...handle,
+      snapshot: {
+        version: 1,
+        walletId,
+        network: 'testnet3',
+        transaction: {
+          version: 2,
+          locktime: 0,
+          inputs: [{
+            txid: 'e'.repeat(64), vout: 0, sequence: 0xfffffffd,
+            prevout: { amountSats: '100000', scriptPubKeyHex: `0014${'44'.repeat(20)}`, role: 'wallet' },
+          }],
+          outputs: [{ amountSats: '50000', scriptPubKeyHex: `0014${'55'.repeat(20)}` }],
+        },
+      },
+    }));
     mockEstimateTransaction.mockResolvedValue({
       fee: 500,
       totalInput: 150000,

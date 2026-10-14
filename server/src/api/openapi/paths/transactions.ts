@@ -36,6 +36,15 @@ const apiErrorResponse = {
   },
 } as const;
 
+const broadcastForbiddenResponse = {
+  description: 'Blocked by vault policy, or vault approval is required or outstanding',
+  content: {
+    'application/json': {
+      schema: { $ref: '#/components/schemas/TransactionBroadcastForbiddenError' },
+    },
+  },
+} as const;
+
 const legacyDeprecationHeaders = {
   Deprecation: {
     description: 'Indicates that the txid-only route is deprecated.',
@@ -609,7 +618,7 @@ export const transactionPaths = {
         200: jsonResponse('Broadcast result', '#/components/schemas/TransactionBroadcastResponse'),
         202: jsonResponse('Broadcast accepted; persistence reconciliation pending', '#/components/schemas/TransactionBroadcastResponse'),
         400: apiErrorResponse,
-        403: apiErrorResponse,
+        403: broadcastForbiddenResponse,
       },
     },
   },
@@ -746,7 +755,7 @@ export const transactionPaths = {
         200: jsonResponse('Broadcast result', '#/components/schemas/PsbtBroadcastResponse'),
         202: jsonResponse('Broadcast accepted; persistence reconciliation pending', '#/components/schemas/PsbtBroadcastResponse'),
         400: apiErrorResponse,
-        403: apiErrorResponse,
+        403: broadcastForbiddenResponse,
       },
     },
   },

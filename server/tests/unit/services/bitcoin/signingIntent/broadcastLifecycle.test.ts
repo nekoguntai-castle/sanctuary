@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   claim: vi.fn(), unknown: vi.fn(), stalled: vi.fn(), rejected: vi.fn(), accepted: vi.fn(), complete: vi.fn(),
+  findById: vi.fn(),
 }));
 vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', () => ({
   transactionSigningIntentRepository: {
@@ -11,11 +12,14 @@ vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', ()
     releaseRejectedBroadcast: mocks.rejected,
     markBroadcastAccepted: mocks.accepted,
     markBroadcastComplete: mocks.complete,
+    findById: mocks.findById,
   },
 }));
 
 import {
   claimSigningIntentBroadcast,
+  DurableBroadcastMetadataSchema,
+  findHeldPolicyReservations,
   markSigningIntentBroadcastAccepted,
   markSigningIntentBroadcastComplete,
   markSigningIntentBroadcastStalled,
@@ -120,5 +124,100 @@ describe('signing intent broadcast lifecycle', () => {
     await expect(releaseRejectedSigningIntentBroadcast('intent-1', 'lease', 'rejected')).resolves.toBe(true);
     await expect(markSigningIntentBroadcastAccepted('intent-1', 'lease')).resolves.toBe(true);
     await expect(markSigningIntentBroadcastComplete('intent-1', 'txid')).resolves.toBe(true);
+  });
+
+  describe('policy reservations on the durable claim', () => {
+    const many = (count: number) => Array.from({ length: count }, (_, index) => ({
+      windowId: `window-${index}`, amount: String(index * 1000),
+    }));
+
+    it('round-trips more than sixteen reservation entries through the claim metadata', async () => {
+      mocks.claim.mockResolvedValue({ status: 'claimed', record: {}, priorState: 'ready' });
+      const withReservations = { ...metadata, policyReservations: many(24) };
+
+      await expect(claimSigningIntentBroadcast(artifact, withReservations)).resolves.toMatchObject({ status: 'claimed' });
+      expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ metadata: withReservations }));
+    });
+
+    it.each([
+      [[{ windowId: '', amount: '1' }]],
+      [[{ windowId: 'w1', amount: '-1' }]],
+      [[{ windowId: 'w1', amount: '01' }]],
+      [[{ windowId: 'w1', amount: 1 }]],
+      [[{ windowId: 'w1', amount: '1', extra: true }]],
+    ])('rejects a malformed reservation entry %j', (policyReservations) => {
+      expect(DurableBroadcastMetadataSchema.safeParse({ ...metadata, policyReservations }).success).toBe(false);
+    });
+
+    it('bounds the entry count only by a generous sanity limit', () => {
+      expect(DurableBroadcastMetadataSchema.safeParse({ ...metadata, policyReservations: many(3000) }).success).toBe(true);
+      expect(DurableBroadcastMetadataSchema.safeParse({ ...metadata, policyReservations: many(3073) }).success).toBe(false);
+    });
+
+    it('forwards a resume-only claim to the repository', async () => {
+      mocks.claim.mockResolvedValue({ status: 'conflict' });
+      await expect(claimSigningIntentBroadcast(artifact, metadata, new Date(), { resumeOnly: true }))
+        .rejects.toThrow('does not match');
+      expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ resumeOnly: true, allowStalled: true }));
+      expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ keepHeldReservations: false }));
+    });
+
+    it('asks a fresh claim to leave reservations held by an earlier attempt untouched', async () => {
+      mocks.claim.mockResolvedValue({ status: 'busy' });
+      await expect(claimSigningIntentBroadcast(artifact, metadata)).rejects.toThrow('already in progress');
+      expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ resumeOnly: false, keepHeldReservations: true }));
+    });
+  });
+
+  describe('findHeldPolicyReservations', () => {
+    const now = new Date('2030-01-01T00:00:00Z');
+    const txid = 'b'.repeat(64);
+    const stored = (overrides: Record<string, unknown> = {}) => ({
+      broadcastState: 'unknown',
+      broadcastTxid: txid,
+      broadcastLeaseExpiresAt: null,
+      broadcastMetadata: { ...metadata, policyReservations: [{ windowId: 'w1', amount: '9000' }] },
+      ...overrides,
+    });
+
+    it('returns the reservations of an unknown intent for the same txid', async () => {
+      mocks.findById.mockResolvedValue(stored());
+      await expect(findHeldPolicyReservations('intent-1', txid, now))
+        .resolves.toEqual([{ windowId: 'w1', amount: BigInt(9000) }]);
+      expect(mocks.findById).toHaveBeenCalledWith('intent-1');
+    });
+
+    it('returns the reservations of a claimed intent whose lease expired', async () => {
+      mocks.findById.mockResolvedValue(stored({ broadcastState: 'claimed', broadcastLeaseExpiresAt: now }));
+      await expect(findHeldPolicyReservations('intent-1', txid, now))
+        .resolves.toEqual([{ windowId: 'w1', amount: BigInt(9000) }]);
+    });
+
+    it('returns an empty held list as held', async () => {
+      mocks.findById.mockResolvedValue(stored({ broadcastMetadata: { ...metadata, policyReservations: [] } }));
+      await expect(findHeldPolicyReservations('intent-1', txid, now)).resolves.toEqual([]);
+    });
+
+    it.each([
+      ['a missing intent', null],
+      ['a live claim', stored({ broadcastState: 'claimed', broadcastLeaseExpiresAt: new Date(now.getTime() + 1) })],
+      ['a claim without a lease expiry', stored({ broadcastState: 'claimed' })],
+      ['a ready intent', stored({ broadcastState: 'ready', broadcastTxid: null })],
+      ['an accepted intent', stored({ broadcastState: 'accepted' })],
+      ['a different txid', stored({ broadcastTxid: 'e'.repeat(64) })],
+      ['legacy metadata without reservations', stored({ broadcastMetadata: metadata })],
+      ['unparseable metadata', stored({ broadcastMetadata: { amount: 'x' } })],
+      ['null metadata', stored({ broadcastMetadata: null })],
+    ])('returns null for %s', async (_label, record) => {
+      mocks.findById.mockResolvedValue(record);
+      await expect(findHeldPolicyReservations('intent-1', txid, now)).resolves.toBeNull();
+    });
+
+    it('defaults the lease comparison to the current time', async () => {
+      mocks.findById.mockResolvedValue(stored({
+        broadcastState: 'claimed', broadcastLeaseExpiresAt: new Date(Date.now() - 1000),
+      }));
+      await expect(findHeldPolicyReservations('intent-1', txid)).resolves.toHaveLength(1);
+    });
   });
 });

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   releasePolicyUsage: vi.fn(),
   audit: vi.fn(),
   findVerifiedReplacement: vi.fn(),
+  findHeldPolicyReservations: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/addressRepository', () => ({
@@ -49,10 +50,17 @@ vi.mock('../../../src/services/vaultPolicy', () => ({
     releasePolicyUsage: mocks.releasePolicyUsage,
   },
 }));
-vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
-  validateSignedArtifact: mocks.validateSignedArtifact,
-  findDraftBySigningIntent: mocks.findLinkedDraft,
-}));
+vi.mock('../../../src/services/bitcoin/signingIntent', async () => {
+  const { deriveIntentSpend } = await vi.importActual<
+    typeof import('../../../src/services/bitcoin/signingIntent/intentSpend')
+  >('../../../src/services/bitcoin/signingIntent/intentSpend');
+  return {
+    validateSignedArtifact: mocks.validateSignedArtifact,
+    findDraftBySigningIntent: mocks.findLinkedDraft,
+    findHeldPolicyReservations: mocks.findHeldPolicyReservations,
+    deriveIntentSpend,
+  };
+});
 vi.mock('../../../src/services/bitcoin/transactions/broadcasting', async () => {
   const actual = await vi.importActual<typeof import('../../../src/services/bitcoin/transactions/broadcasting')>(
     '../../../src/services/bitcoin/transactions/broadcasting',
@@ -126,6 +134,7 @@ describe('transaction signing-intent broadcast route', () => {
     mocks.releasePolicyUsage.mockResolvedValue(undefined);
     mocks.audit.mockResolvedValue(undefined);
     mocks.findVerifiedReplacement.mockResolvedValue(null);
+    mocks.findHeldPolicyReservations.mockResolvedValue(null);
     mocks.broadcastAndSave.mockResolvedValue({
       txid: artifact.txid,
       broadcasted: true,
@@ -522,11 +531,14 @@ describe('transaction signing-intent broadcast route', () => {
     expect(mocks.releasePolicyUsage).not.toHaveBeenCalled();
   });
 
-  it('releases held reservations when broadcastAndSave definitely rejects the transaction', async () => {
+  it('releases fresh reservations when a definitely rejected first claim returned to ready', async () => {
     mocks.reserveEnforcedUsage.mockResolvedValue({
       ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
     });
-    mocks.broadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('rejected by node'));
+    mocks.broadcastAndSave.mockRejectedValueOnce(Object.assign(
+      new DefiniteBroadcastRejectionError('rejected by node'),
+      { broadcastFailure: { claimed: true, priorState: 'ready', releasedToReady: true } },
+    ));
 
     const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
 
@@ -554,7 +566,10 @@ describe('transaction signing-intent broadcast route', () => {
     mocks.reserveEnforcedUsage.mockResolvedValue({
       ok: true, reservations: [{ windowId: 'w1', amount: BigInt(9000) }],
     });
-    mocks.broadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('rejected by node'));
+    mocks.broadcastAndSave.mockRejectedValueOnce(Object.assign(
+      new DefiniteBroadcastRejectionError('rejected by node'),
+      { broadcastFailure: { claimed: true, priorState: 'ready', releasedToReady: true } },
+    ));
     mocks.releasePolicyUsage.mockRejectedValueOnce(new Error('release unavailable'));
 
     const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);

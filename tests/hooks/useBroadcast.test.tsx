@@ -73,6 +73,7 @@ vi.mock('../../src/utils/logger', () => ({
 }));
 
 import { useBroadcast } from '../../src/hooks/send/useBroadcast';
+import { ApiError } from '../../src/api/client';
 import { walletActivityKeys, walletKeys } from '../../src/hooks/queries/useWallets';
 
 const baseTxData = {
@@ -100,6 +101,7 @@ function createDeps(overrides: Partial<Parameters<typeof useBroadcast>[0]> = {})
     signedRawTx: null,
     setIsBroadcasting: vi.fn(),
     setError: vi.fn(),
+    setApprovalAction: vi.fn(),
     beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => true }),
     ...overrides,
   };
@@ -616,5 +618,106 @@ describe('useBroadcast', () => {
 
     expect(ok).toBe(false);
     expect(deps.setError).toHaveBeenCalledWith('Failed to broadcast transaction');
+  });
+
+  describe('approval-required refusals', () => {
+    const forbidden = (details: Record<string, unknown>) =>
+      new ApiError('Approval required', 403, { details });
+
+    const broadcastFailing = async (error: ApiError, draftId: string | null) => {
+      mocks.broadcastTransaction.mockRejectedValueOnce(error);
+      const deps = createDeps({
+        state: {
+          outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+          draftId,
+        } as any,
+      });
+      const { result } = renderHook(() => useBroadcast(deps));
+      await act(async () => {
+        await result.current.broadcastTransaction();
+      });
+      return deps;
+    };
+
+    it('offers Submit for approval when approval is required and there is no draft', async () => {
+      const deps = await broadcastFailing(forbidden({ reason: 'approval_required' }), null);
+
+      expect(deps.setError).toHaveBeenLastCalledWith(expect.stringMatching(/approval/i));
+      expect(deps.setApprovalAction).toHaveBeenLastCalledWith('submit');
+    });
+
+    it('asks to recreate when approval is required on a resumed draft', async () => {
+      const deps = await broadcastFailing(forbidden({ reason: 'approval_required' }), 'draft-1');
+
+      expect(deps.setError).toHaveBeenLastCalledWith(expect.stringMatching(/delete.*create/i));
+      expect(deps.setApprovalAction).toHaveBeenLastCalledWith('recreate');
+    });
+
+    it('prefers the server-resolved draft id over the local state', async () => {
+      const deps = await broadcastFailing(
+        forbidden({ reason: 'approval_required', draftId: 'server-draft' }),
+        null,
+      );
+
+      expect(deps.setApprovalAction).toHaveBeenLastCalledWith('recreate');
+    });
+
+    it('asks to recreate after an approval rejection', async () => {
+      const deps = await broadcastFailing(forbidden({ reason: 'approval_rejected', draftId: 'draft-1' }), 'draft-1');
+
+      expect(deps.setApprovalAction).toHaveBeenLastCalledWith('recreate');
+    });
+
+    it('shows an awaiting-approval notice, with no action, for a pending draft', async () => {
+      const deps = await broadcastFailing(
+        forbidden({ reason: 'pending_approval', draftId: 'draft-1', approvalStatus: 'pending' }),
+        'draft-1',
+      );
+
+      expect(deps.setError).toHaveBeenLastCalledWith(expect.stringMatching(/awaiting approval/i));
+      expect(deps.setApprovalAction).toHaveBeenLastCalledWith(null);
+    });
+
+    it.each(['vetoed', 'expired', undefined])(
+      'asks to recreate a draft whose approval status is %s',
+      async (approvalStatus) => {
+        const deps = await broadcastFailing(
+          forbidden({ reason: 'pending_approval', draftId: 'draft-1', approvalStatus }),
+          'draft-1',
+        );
+
+        expect(deps.setApprovalAction).toHaveBeenLastCalledWith('recreate');
+      },
+    );
+
+    it('keeps the server message and no action for other forbidden reasons', async () => {
+      const deps = await broadcastFailing(forbidden({ reason: 'policy_blocked' }), null);
+
+      expect(deps.setError).toHaveBeenLastCalledWith('Approval required');
+      expect(deps.setApprovalAction).toHaveBeenLastCalledWith(null);
+    });
+
+    it('ignores approval details on non-403 errors and on 403s without details', async () => {
+      const serverError = await broadcastFailing(
+        new ApiError('Server exploded', 500, { details: { reason: 'approval_required' } }),
+        null,
+      );
+      expect(serverError.setError).toHaveBeenLastCalledWith('Server exploded');
+      expect(serverError.setApprovalAction).toHaveBeenLastCalledWith(null);
+
+      const bare = await broadcastFailing(new ApiError('Forbidden', 403), null);
+      expect(bare.setError).toHaveBeenLastCalledWith('Forbidden');
+      expect(bare.setApprovalAction).toHaveBeenLastCalledWith(null);
+    });
+
+    it('clears a stale approval action when a new broadcast starts', async () => {
+      const deps = createDeps();
+      const { result } = renderHook(() => useBroadcast(deps));
+      await act(async () => {
+        await result.current.broadcastTransaction();
+      });
+
+      expect(deps.setApprovalAction).toHaveBeenCalledWith(null);
+    });
   });
 });

@@ -39,6 +39,19 @@ export interface BroadcastClaimInput {
   leaseExpiresAt: Date;
   /** User broadcasts may resume a `stalled` intent; the reconciler must not (default false). */
   allowStalled?: boolean;
+  /**
+   * Skip the `ready` step: only an `unknown` or expired-`claimed` attempt may be
+   * resumed. A retry that reuses reservations held by an earlier attempt must not
+   * start a fresh broadcast if that attempt was released back to `ready`.
+   */
+  resumeOnly?: boolean;
+  /**
+   * Never resume an attempt whose metadata already holds policy reservations:
+   * this claim would overwrite them with its own, leaving the earlier ones
+   * counted forever. Such an attempt is reported `busy`; the caller's retry
+   * reuses its reservations under `resumeOnly`.
+   */
+  keepHeldReservations?: boolean;
 }
 
 /** Which state a successful claim came from; only a first (`ready`) claim may be rolled back. */
@@ -92,25 +105,54 @@ const claimStateConditions = (
   input: BroadcastClaimInput,
 ): Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]> => {
   const sameArtifact = { broadcastTxid: input.txid, broadcastRawTx: input.rawTx };
-  const steps: Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]> = [
-    ['ready', { broadcastState: 'ready' }],
-    ['resumed', {
-      OR: [
-        {
-          broadcastState: 'claimed',
-          ...sameArtifact,
-          broadcastLeaseExpiresAt: { lte: input.now },
-        },
-        { broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { lt: MAX_RECONCILE_ATTEMPTS } },
-      ],
-    }],
-  ];
+  const steps: Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]> = [];
+  if (!input.resumeOnly) steps.push(['ready', { broadcastState: 'ready' }]);
+  steps.push(['resumed', {
+    OR: [
+      {
+        broadcastState: 'claimed',
+        ...sameArtifact,
+        broadcastLeaseExpiresAt: { lte: input.now },
+      },
+      { broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { lt: MAX_RECONCILE_ATTEMPTS } },
+    ],
+  }]);
   if (input.allowStalled) {
     steps.push(['stalled', {
       broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { gte: MAX_RECONCILE_ATTEMPTS },
     }]);
   }
   return steps;
+};
+
+const holdsPolicyReservations = (metadata: Prisma.JsonValue | null | undefined): boolean =>
+  typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)
+  && Array.isArray(metadata.policyReservations);
+
+/**
+ * Claim steps for a `keepHeldReservations` claim: an attempt holding
+ * reservations may only be claimed from `ready`, and any other resume is a
+ * compare-and-swap on the metadata just inspected, so reservations persisted
+ * by a concurrent claim in between are never overwritten.
+ */
+const guardHeldReservations = async (
+  tx: Pick<typeof prisma, 'transactionSigningIntent'>,
+  input: BroadcastClaimInput,
+  steps: Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]>,
+): Promise<Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]>> => {
+  if (!input.keepHeldReservations) return steps;
+  const current = await tx.transactionSigningIntent.findUnique({
+    where: { id: input.id },
+    select: { broadcastMetadata: true },
+  });
+  const stored = current?.broadcastMetadata ?? null;
+  if (holdsPolicyReservations(stored)) return steps.filter(([priorState]) => priorState === 'ready');
+  const broadcastMetadata = stored === null
+    ? { equals: Prisma.AnyNull }
+    : { equals: stored as Prisma.InputJsonValue };
+  return steps.map(([priorState, condition]) => (
+    priorState === 'ready' ? [priorState, condition] : [priorState, { ...condition, broadcastMetadata }]
+  ));
 };
 
 export const claimBroadcast = async (input: BroadcastClaimInput): Promise<BroadcastClaimResult> =>
@@ -126,7 +168,7 @@ export const claimBroadcast = async (input: BroadcastClaimInput): Promise<Broadc
       broadcastLastAttemptAt: input.now,
       broadcastLastError: null,
     };
-    for (const [priorState, condition] of claimStateConditions(input)) {
+    for (const [priorState, condition] of await guardHeldReservations(tx, input, claimStateConditions(input))) {
       const updated = await tx.transactionSigningIntent.updateMany({
         where: {
           id: input.id,

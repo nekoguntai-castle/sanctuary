@@ -68,9 +68,13 @@ vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   loadSigningIntent: vi.fn().mockResolvedValue({
     unsignedPsbtSha256: 'psbt-hash',
     signingContext: { version: 1 },
+    snapshot: { version: 2, network: 'testnet', transaction: { inputs: [], outputs: [] } },
   }),
   unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
   validatePartialSignedPsbt: vi.fn().mockResolvedValue(undefined),
+  // Server-side policy evaluation is covered in draftCreate.test.ts; these
+  // drafts pay nothing outside the wallet, so none is evaluated here.
+  deriveIntentSpend: vi.fn().mockResolvedValue({ inputs: [], outputs: [], externalOutputs: [], amount: 0 }),
 }));
 
 vi.mock('../../../src/utils/logger', () => ({

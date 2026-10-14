@@ -135,6 +135,90 @@ const RECEIVE_ADDRESSES = [
   },
 ];
 
+const APPROVAL_RECIPIENT = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
+const APPROVAL_INTENT_DIGEST = "d".repeat(64);
+
+// Schema-valid CreateTransactionResponse (shared/schemas/transactionResponses.ts) for a spend
+// that an enforce-mode approval_required policy holds.
+const APPROVAL_CREATE_RESPONSE = {
+  psbtBase64: "cHNidP8BAHECAAAAAbHxsE1l",
+  signingContext: {
+    version: 1,
+    walletId: WALLET_ID,
+    network: "mainnet",
+    walletType: "single_sig",
+    scriptType: "native_segwit",
+    canonicalPolicyId: "policy-canonical-1",
+    canonicalPolicyVersion: 1,
+    descriptorDigest: "e".repeat(64),
+    unsignedTransactionDigest: "f".repeat(64),
+    signers: [
+      {
+        signerIndex: 0,
+        deviceId: DEVICE_ID,
+        deviceAccountId: "acct-send-1",
+        masterFingerprint: "abcd1234",
+        accountPath: "m/84'/0'/0'",
+        accountXpub: "xpub-send-account",
+      },
+    ],
+    inputs: [
+      {
+        inputIndex: 0,
+        txid: UTXOS[0].txid,
+        vout: 0,
+        amountSats: "50000000",
+        scriptPubKey: "0014" + "11".repeat(20),
+        addressPath: "m/84'/0'/0'/0/0",
+        signerOrigins: [
+          { masterFingerprint: "abcd1234", path: "m/84'/0'/0'/0/0", pubkey: "02" + "22".repeat(32) },
+        ],
+      },
+    ],
+    changeOutputs: [],
+  },
+  intentId: "intent-approval-1",
+  intentDigest: APPROVAL_INTENT_DIGEST,
+  fee: 1410,
+  totalInput: 50000000,
+  totalOutput: 49998590,
+  changeAmount: 49988590,
+  changeAddress: "bc1qchangeaddrxxxxxxxxxxxxxxxxxxxx",
+  effectiveAmount: 10000,
+  utxos: [{ txid: UTXOS[0].txid, vout: 0 }],
+  policyEvaluation: {
+    allowed: true,
+    triggered: [
+      {
+        policyId: "policy-approval-1",
+        policyName: "Large spend approval",
+        type: "approval_required",
+        action: "approval_required",
+        reason: "Amount requires approval",
+      },
+    ],
+  },
+};
+
+const APPROVAL_PENDING_DRAFT = {
+  id: "draft-approval-1",
+  walletId: WALLET_ID,
+  userId: ADMIN_USER.id,
+  recipient: APPROVAL_RECIPIENT,
+  amount: 10000,
+  feeRate: 10,
+  fee: 1410,
+  totalInput: 50000000,
+  totalOutput: 49998590,
+  changeAmount: 49988590,
+  psbtBase64: APPROVAL_CREATE_RESPONSE.psbtBase64,
+  status: "unsigned",
+  approvalStatus: "pending",
+  signedDeviceIds: [],
+  createdAt: "2026-03-11T00:00:00.000Z",
+  updatedAt: "2026-03-11T00:00:00.000Z",
+};
+
 type SendMockFailure = { status?: number; body?: unknown; timeout?: boolean };
 
 type SendMockOptions = {
@@ -380,6 +464,15 @@ const getTransactionResponse: SendApiResponder = (
   }
   if (requestKey === `POST /wallets/${wallet.id}/transactions/broadcast`) {
     return mockResponse({ txid: "newtxid123456789abcdef" });
+  }
+  if (requestKey === `POST /wallets/${wallet.id}/transactions/create`) {
+    return mockResponse(APPROVAL_CREATE_RESPONSE);
+  }
+  if (requestKey === `POST /wallets/${wallet.id}/drafts`) {
+    return mockResponse(APPROVAL_PENDING_DRAFT);
+  }
+  if (requestKey === "POST /bitcoin/address-lookup") {
+    return mockResponse({ lookup: {} });
   }
   return null;
 };
@@ -733,6 +826,40 @@ test.describe("Send transaction flow", () => {
     await expect(main.getByRole("button", { name: "Continue" })).toBeVisible();
     await expect(main.getByRole("button", { name: "Back" })).toBeVisible();
 
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test("approval-required spend offers Submit for approval and saves a pending draft", async ({
+    page,
+  }) => {
+    const unhandledRequests = await mockSendApi(page);
+    const main = page.getByRole("main");
+
+    await page.goto(`/#/wallets/${WALLET_ID}/send`);
+    await main.getByRole("button", { name: "Standard Send" }).click();
+    await expect(main.getByText("Compose Transaction")).toBeVisible();
+
+    await main.locator('input[placeholder*="bc1q"]').fill(APPROVAL_RECIPIENT);
+    await main.locator('input[placeholder="0"]').fill("10000");
+    await main.getByRole("button", { name: "Continue" }).click();
+
+    // The create response carries an enforce-mode approval_required action, so the
+    // review step offers the approval workflow instead of signing and broadcasting.
+    const submit = main.getByRole("button", { name: "Submit for approval" });
+    await expect(submit).toBeVisible();
+    await expect(main.getByText(/Sign & Broadcast/)).toHaveCount(0);
+    await expect(main.getByRole("button", { name: "Save as Draft" })).toHaveCount(0);
+
+    const draftRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        request.url().includes(`/wallets/${WALLET_ID}/drafts`),
+    );
+    await submit.click();
+    const body = (await draftRequest).postDataJSON();
+    expect(body.intentId).toBe(APPROVAL_CREATE_RESPONSE.intentId);
+
+    await expect(page).toHaveURL(new RegExp(`#/wallets/${WALLET_ID}`));
     expect(unhandledRequests).toEqual([]);
   });
 

@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
 }));
 
+import { Prisma } from '../../../src/generated/prisma/client';
+
 vi.mock('../../../src/models/prisma', () => ({
   default: {
     $transaction: mocks.transaction,
@@ -150,6 +152,25 @@ describe('transactionSigningIntentRepository', () => {
     });
   });
 
+  it('skips the ready step for a resume-only claim and reports a released intent as a conflict', async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValueOnce({
+      ...record, broadcastState: 'ready', broadcastTxid: null, broadcastRawTx: null, consumedAt: null,
+    });
+    await expect(claimBroadcast({ ...claimInput(), allowStalled: true, resumeOnly: true }))
+      .resolves.toEqual({ status: 'conflict' });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
+    expect(mocks.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ broadcastState: 'ready' }),
+    }));
+  });
+
+  it('resumes an unknown exact artifact under a resume-only claim', async () => {
+    await expect(claimBroadcast({ ...claimInput(), resumeOnly: true }))
+      .resolves.toEqual({ status: 'claimed', record, priorState: 'resumed' });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('claims a stalled exact artifact only when allowStalled is set', async () => {
     mocks.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 0 });
     await expect(claimBroadcast({ ...claimInput(), allowStalled: true }))
@@ -158,6 +179,42 @@ describe('transactionSigningIntentRepository', () => {
     expect(mocks.updateMany).toHaveBeenNthCalledWith(3, {
       where: { ...guards, broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { gte: 60 } },
       data: expect.objectContaining({ broadcastState: 'claimed', broadcastLeaseToken: 'lease-1' }),
+    });
+  });
+
+  describe('keepHeldReservations', () => {
+    const heldMetadata = { amount: 1, policyReservations: [{ windowId: 'w1', amount: '1' }] };
+
+    it('refuses to resume an attempt whose metadata already holds policy reservations', async () => {
+      mocks.updateMany.mockResolvedValue({ count: 0 });
+      mocks.findUnique
+        .mockResolvedValueOnce({ broadcastMetadata: heldMetadata })
+        .mockResolvedValueOnce({ ...record, broadcastState: 'unknown', ...sameArtifact, consumedAt: null });
+      await expect(claimBroadcast({ ...claimInput(), allowStalled: true, keepHeldReservations: true }))
+        .resolves.toEqual({ status: 'busy' });
+      expect(mocks.updateMany).toHaveBeenCalledTimes(1);
+      expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { ...guards, broadcastState: 'ready' },
+      }));
+    });
+
+    it.each([
+      ['legacy metadata without reservations', { amount: 1 }, { equals: { amount: 1 } }],
+      ['no metadata', null, { equals: Prisma.AnyNull }],
+    ])('resumes %s only while that metadata is unchanged', async (_label, broadcastMetadata, metadataGuard) => {
+      mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+      mocks.findUnique.mockResolvedValueOnce({ broadcastMetadata });
+      await expect(claimBroadcast({ ...claimInput(), keepHeldReservations: true }))
+        .resolves.toEqual({ status: 'claimed', record, priorState: 'resumed' });
+      expect(mocks.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        where: expect.objectContaining({ broadcastMetadata: metadataGuard }),
+      }));
+    });
+
+    it('lets a resume-only claim reuse the held reservations as before', async () => {
+      await expect(claimBroadcast({ ...claimInput(), resumeOnly: true }))
+        .resolves.toEqual({ status: 'claimed', record, priorState: 'resumed' });
+      expect(mocks.findUnique).not.toHaveBeenCalled();
     });
   });
 

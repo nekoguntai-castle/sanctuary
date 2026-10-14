@@ -14,7 +14,7 @@ import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
-import { ErrorCodes, InvalidInputError, NotFoundError } from '../errors/ApiError';
+import { ErrorCodes, ForbiddenError, InvalidInputError, NotFoundError } from '../errors/ApiError';
 import { findByIdWithAccess } from '../repositories/walletRepository';
 import { findByIdWithAccess as findAddressByIdWithAccess } from '../repositories/addressRepository';
 import { countEligibility } from '../repositories/utxoRepository';
@@ -48,6 +48,8 @@ import {
   estimatePsbtMaximumSignedVsize,
 } from '../services/bitcoin/signingIntent/feePolicy';
 import { feeForRate } from '../services/bitcoin/transactionWeight';
+import { policyEvaluationEngine } from '../services/vaultPolicy';
+import { buildIntentPolicyInput, requiresEnforcedApproval } from '../services/vaultPolicy/intentPolicyInput';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -277,6 +279,29 @@ router.post('/parse-uri', authenticate, requireFeature('payjoinSupport'), valida
 }));
 
 /**
+ * A payjoin proposal supersedes the original intent, and a BIP78 receiver can
+ * act on the original PSBT it is sent, so a blocked or approval-required spend
+ * must be refused before either happens (an approval-required spend goes
+ * through a pending draft instead).
+ * Evaluated as a preview — the broadcast still evaluates for real.
+ */
+const assertPayjoinNeedsNoApproval = async (
+  walletId: string,
+  userId: string,
+  originalIntent: Awaited<ReturnType<typeof loadSigningIntent>>,
+): Promise<void> => {
+  const input = await buildIntentPolicyInput(walletId, userId, originalIntent);
+  if (!input) return;
+  const evaluation = await policyEvaluationEngine.evaluatePolicies({ ...input, preview: true });
+  if (!evaluation.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
+  if (requiresEnforcedApproval(evaluation)) {
+    throw new ForbiddenError('Vault policy requires approval; payjoin is not available for this spend', undefined, {
+      reason: 'approval_required',
+    });
+  }
+};
+
+/**
  * POST /api/v1/payjoin/attempt
  * Attempt to perform a Payjoin send
  */
@@ -299,6 +324,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
     throw new InvalidInputError('Payjoin network does not match wallet', 'network');
   }
   const networkObj = getNetwork(networkStr);
+  await assertPayjoinNeedsNoApproval(walletId, userId, originalIntent);
 
   const result = await attemptPayjoinSend(
     psbt,

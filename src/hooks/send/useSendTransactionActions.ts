@@ -20,7 +20,8 @@ import { useQrSigning } from './useQrSigning';
 import { useDraftManagement } from './useDraftManagement';
 import { usePayjoin } from './usePayjoin';
 import { useBroadcast } from './useBroadcast';
-import type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult } from './types';
+import { requiresApproval } from './types';
+import type { ApprovalAction, TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult } from './types';
 import type { OutputEntry, PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { Wallet } from '../../types';
 import {
@@ -131,8 +132,15 @@ async function createApiTransactionData(
     : createSingleTransactionData(walletId, state, signal);
 }
 
-function shouldAttemptPayjoin(state: TransactionState, payjoinAttempted: PayjoinAttemptRef): boolean {
-  return Boolean(state.payjoinUrl && state.outputs.length === 1 && !payjoinAttempted.current);
+// An approval-required spend must not leave the server: a payjoin attempt supersedes the
+// original signing intent and hands its PSBT to the receiver before the spend can be held.
+function shouldAttemptPayjoin(
+  state: TransactionState,
+  payjoinAttempted: PayjoinAttemptRef,
+  result: TransactionData,
+): boolean {
+  return Boolean(state.payjoinUrl && state.outputs.length === 1 && !payjoinAttempted.current)
+    && !requiresApproval(result.policyEvaluation);
 }
 
 type WalletNetwork = Wallet['network'];
@@ -147,7 +155,7 @@ async function applyPayjoinIfNeeded(
   lease: SendOperationLease,
 ): Promise<TransactionData> {
   // BIP 78 Payjoin is opportunistic: failure falls back to the original transaction.
-  if (!shouldAttemptPayjoin(state, payjoinAttempted)) {
+  if (!shouldAttemptPayjoin(state, payjoinAttempted, result)) {
     return result;
   }
 
@@ -235,6 +243,7 @@ export function useSendTransactionActions({
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approvalAction, setApprovalAction] = useState<ApprovalAction>(null);
   const [txData, setTxData] = useState<TransactionData | null>(initialTxData || null);
   const [unsignedPsbt, setUnsignedPsbt] = useState<string | null>(initialPsbt || null);
   const [signedRawTx, setSignedRawTx] = useState<string | null>(null);
@@ -261,6 +270,7 @@ export function useSendTransactionActions({
     }) as TransactionState;
     setIsCreating(true);
     setError(null);
+    setApprovalAction(null);
 
     try {
       const validationError = getOutputValidationError(stateSnapshot.outputs, wallet.network);
@@ -347,6 +357,7 @@ export function useSendTransactionActions({
     signedRawTx,
     setIsBroadcasting,
     setError,
+    setApprovalAction,
     beginBroadcast: owner.beginBroadcast,
   });
 
@@ -357,7 +368,10 @@ export function useSendTransactionActions({
   }, [owner]);
 
   // Clear error
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setApprovalAction(null);
+  }, []);
 
   // Reset state
   const reset = useCallback(() => {
@@ -367,6 +381,7 @@ export function useSendTransactionActions({
     setIsBroadcasting(false);
     setIsSavingDraft(false);
     setError(null);
+    setApprovalAction(null);
     setTxData(null);
     setUnsignedPsbt(null);
     setSignedRawTx(null);
@@ -418,6 +433,7 @@ export function useSendTransactionActions({
     signedRawTx,
     signedDevices,
     payjoinStatus,
+    approvalAction,
     createTransaction,
     signWithHardwareWallet,
     signWithHardwareWalletResult,

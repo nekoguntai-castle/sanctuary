@@ -3,7 +3,8 @@ import type { TransactionData } from '../../../../hooks/send/types';
 import type { AddressLookupResult } from '../../../../api/bitcoin';
 import type { UTXO, Wallet } from '../../../../types';
 import type { FlowInput, FlowOutput } from '../../../TransactionFlowPreview';
-import { UNATTRIBUTED_SIGNATURE_ID } from '../../../../hooks/send/types';
+import { UNATTRIBUTED_SIGNATURE_ID, requiresApproval } from '../../../../hooks/send/types';
+import type { ApprovalAction } from '../../../../hooks/send/types';
 import { getBuiltChangeSats } from './transactionSummaryModel';
 
 export interface ReviewFlowData {
@@ -258,4 +259,19 @@ export function buildReviewFlowData(params: BuildReviewFlowDataParams): ReviewFl
     totalOutput: params.txData?.totalOutput ?? (params.totalOutputAmount + actualChangeAmount),
     fee: params.txData?.fee ?? params.estimatedFee,
   };
+}
+
+/**
+ * 'submit' replaces signing with the approval workflow. It is only valid without a draft:
+ * saving over an existing draft PATCHes it and never changes its approval status.
+ */
+export function getReviewApprovalMode(
+  approvalAction: ApprovalAction,
+  txData: TransactionData | null | undefined,
+  draftId: string | null | undefined,
+  isDraftMode: boolean
+): ApprovalAction {
+  if (approvalAction) return approvalAction;
+  const proactive = requiresApproval(txData?.policyEvaluation) && !draftId && !isDraftMode;
+  return proactive ? 'submit' : null;
 }

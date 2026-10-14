@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { ForbiddenError } from '../../../../src/errors';
 
@@ -22,6 +22,9 @@ import {
   mockWalletFindById,
   mockWalletFindByIdWithDevices,
   mockAssertWalletHardwareCapabilityById,
+  mockBuildIntentPolicyInput,
+  mockLoadSigningIntent,
+  mintedIntentEnvelope,
   walletId,
 } from './transactionsHttpRoutesTestHarness';
 
@@ -198,7 +201,7 @@ export function registerTransactionHttpCreationTests(): void {
   it('includes allowed policy evaluation metadata for triggered transaction creation policies', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
-    mockEvaluatePolicies.mockResolvedValueOnce({
+    mockEvaluatePolicies.mockResolvedValue({
       allowed: true,
       triggered: [{ policyId: 'p1', policyName: 'Review', type: 'spending_limit', action: 'warn', reason: 'Near limit' }],
     });
@@ -493,7 +496,7 @@ export function registerTransactionHttpCreationTests(): void {
   it('includes allowed policy evaluation metadata for triggered batch policies', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
-    mockEvaluatePolicies.mockResolvedValueOnce({
+    mockEvaluatePolicies.mockResolvedValue({
       allowed: true,
       triggered: [{ policyId: 'p2', policyName: 'Batch Review', type: 'address_control', action: 'warn', reason: 'Watched address' }],
     });
@@ -525,5 +528,113 @@ export function registerTransactionHttpCreationTests(): void {
     expect(response.status).toBe(403);
     expect(response.body.code).toBe('FORBIDDEN');
     expect(mockCreateTransaction).not.toHaveBeenCalled();
+  });
+
+  describe('policy evaluation echo from the minted intent', () => {
+    const approvalAbove = (threshold: bigint) => async (input: { amount: bigint }) => ({
+      allowed: true,
+      triggered: input.amount > threshold
+        ? [{ policyId: 'p-approve', policyName: 'Large', type: 'approval_required', action: 'approval_required', reason: 'amountAbove' }]
+        : [],
+    });
+
+    const expectPreviewEcho = () => {
+      expect(mockLoadSigningIntent).toHaveBeenCalledWith(
+        { intentId: 'intent-http', intentDigest: 'a'.repeat(64) },
+        walletId,
+      );
+      expect(mockBuildIntentPolicyInput).toHaveBeenCalledWith(walletId, 'test-user-id', mintedIntentEnvelope());
+      expect(mockEvaluatePolicies).toHaveBeenCalledTimes(2);
+      expect(mockEvaluatePolicies.mock.calls[0][0].preview).toBeUndefined();
+      expect(mockEvaluatePolicies.mock.calls[1][0]).toMatchObject({ amount: BigInt(50000), preview: true });
+    };
+
+    it('echoes the sendMax effective amount evaluation that the requested amount misses', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockBuildIntentPolicyInput.mockResolvedValueOnce({
+        walletId, userId: 'test-user-id', recipient: 'tb1qrecipient', amount: BigInt(50000),
+        outputs: [{ address: 'tb1qrecipient', amount: 50000 }],
+      });
+      mockEvaluatePolicies.mockImplementation(approvalAbove(BigInt(40000)));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/create`)
+        .send({ recipient: 'tb1qrecipient', amount: 1000, feeRate: 1, sendMax: true });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.policyEvaluation.triggered).toEqual([
+        expect.objectContaining({ action: 'approval_required' }),
+      ]);
+      expectPreviewEcho();
+    });
+
+    it('echoes the minted-intent evaluation from batch creation', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockBuildIntentPolicyInput.mockResolvedValueOnce({
+        walletId, userId: 'test-user-id', recipient: 'tb1qone', amount: BigInt(50000),
+        outputs: [{ address: 'tb1qone', amount: 50000 }],
+      });
+      mockEvaluatePolicies.mockImplementation(approvalAbove(BigInt(40000)));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+        .send({ feeRate: 1, outputs: [{ address: 'tb1qone', sendMax: true }] });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.policyEvaluation.triggered).toHaveLength(1);
+      expectPreviewEcho();
+    });
+
+    it('blocks a sendMax batch whose minted amount exceeds a spending limit the requested amount missed', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockBuildIntentPolicyInput.mockResolvedValueOnce({
+        walletId, userId: 'test-user-id', recipient: 'tb1qone', amount: BigInt(50000),
+        outputs: [{ address: 'tb1qone', amount: 50000 }],
+      });
+      mockEvaluatePolicies.mockImplementation(async (input: { amount: bigint }) => ({
+        allowed: input.amount <= BigInt(40000),
+        triggered: input.amount > BigInt(40000)
+          ? [{ policyId: 'p-limit', policyName: 'Limit', type: 'spending_limit', action: 'blocked', reason: 'Over limit' }]
+          : [],
+      }));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+        .send({ feeRate: 1, outputs: [{ address: 'tb1qone', sendMax: true }] });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(403);
+      expect(response.body.message).toBe('Transaction blocked by vault policy');
+      expectPreviewEcho();
+    });
+
+    it('adds the minted-intent evaluation to the hardware PSBT create response', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockBuildIntentPolicyInput.mockResolvedValueOnce({
+        walletId, userId: 'test-user-id', recipient: 'tb1qrecipient', amount: BigInt(50000),
+        outputs: [{ address: 'tb1qrecipient', amount: 50000 }],
+      });
+      mockEvaluatePolicies.mockImplementation(approvalAbove(BigInt(40000)));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/psbt/create`)
+        .send({ feeRate: 1, recipients: [{ address: 'tb1qrecipient', amount: 1000 }] });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.policyEvaluation.triggered).toHaveLength(1);
+      expectPreviewEcho();
+    });
+
+    it('omits the echo when the minted intent pays nothing outside the wallet', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockBuildIntentPolicyInput.mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/create`)
+        .send({ recipient: 'tb1qrecipient', amount: 1000, feeRate: 1 });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.policyEvaluation).toBeUndefined();
+      expect(mockEvaluatePolicies).toHaveBeenCalledOnce();
+    });
   });
 }

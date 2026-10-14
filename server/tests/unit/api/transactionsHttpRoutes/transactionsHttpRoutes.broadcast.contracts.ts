@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 
 import {
@@ -43,6 +43,12 @@ const makeBroadcastDraft = (overrides: Record<string, unknown> = {}) => ({
   memo: 'draft memo',
   ...overrides,
 });
+
+/** A definite rejection of a first claim that broadcastAndSave returned to `ready`. */
+const releasedFirstClaimRejection = () => Object.assign(
+  new DefiniteBroadcastRejectionError('node rejected transaction'),
+  { broadcastFailure: { claimed: true, priorState: 'ready', releasedToReady: true } },
+);
 
 const validBroadcastBody = {
   signedPsbtBase64: 'cHNi',
@@ -127,7 +133,7 @@ export function registerTransactionHttpBroadcastTests(): void {
   it('releases the usage reservation when the broadcast is definitely rejected after it was taken', async () => {
     const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
     mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
-    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+    mockBroadcastAndSave.mockRejectedValueOnce(releasedFirstClaimRejection());
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
@@ -157,7 +163,7 @@ export function registerTransactionHttpBroadcastTests(): void {
   it('logs but does not fail the response when releasing a reservation itself fails', async () => {
     const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
     mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
-    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+    mockBroadcastAndSave.mockRejectedValueOnce(releasedFirstClaimRejection());
     mockReleasePolicyUsage.mockRejectedValueOnce(new Error('release unavailable'));
 
     const response = await request(app)
@@ -170,7 +176,7 @@ export function registerTransactionHttpBroadcastTests(): void {
 
   it('does not release anything when the broadcast fails without a reservation', async () => {
     mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations: [] });
-    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+    mockBroadcastAndSave.mockRejectedValueOnce(releasedFirstClaimRejection());
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
@@ -309,7 +315,7 @@ export function registerTransactionHttpBroadcastTests(): void {
   it('releases the PSBT usage reservation when the broadcast is definitely rejected after it was taken', async () => {
     const reservations = [{ windowId: 'w1', amount: BigInt(20000) }];
     mockReserveEnforcedUsage.mockResolvedValueOnce({ ok: true, reservations });
-    mockBroadcastAndSave.mockRejectedValueOnce(new DefiniteBroadcastRejectionError('node rejected transaction'));
+    mockBroadcastAndSave.mockRejectedValueOnce(releasedFirstClaimRejection());
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
@@ -317,6 +323,109 @@ export function registerTransactionHttpBroadcastTests(): void {
 
     expect(response.status).toBe(500);
     expect(mockReleasePolicyUsage).toHaveBeenCalledWith(reservations);
+  });
+
+  describe('approval-required vault policies', () => {
+    const approvalTrigger = (action: 'approval_required' | 'monitored') => ({
+      allowed: true,
+      triggered: [{ policyId: 'p-approve', policyName: 'Approve', type: 'approval_required', action, reason: 'always' }],
+    });
+
+    it('refuses a draft-less broadcast that an enforce-mode approval policy covers', async () => {
+      mockEvaluatePolicies.mockResolvedValueOnce(approvalTrigger('approval_required'));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+        .send(validBroadcastBody);
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({ reason: 'approval_required' });
+      expect(response.body.details.draftId).toBeUndefined();
+      expect(mockReserveEnforcedUsage).not.toHaveBeenCalled();
+      expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('refuses a PSBT broadcast that an enforce-mode approval policy covers', async () => {
+      mockEvaluatePolicies.mockResolvedValueOnce(approvalTrigger('approval_required'));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
+        .send({ signedPsbt: 'cHNi', ...intentHandle });
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({ reason: 'approval_required' });
+      expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('refuses a not_required draft and names the server-resolved draft', async () => {
+      mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({ approvalStatus: 'not_required' }));
+      mockEvaluatePolicies.mockResolvedValueOnce(approvalTrigger('approval_required'));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+        .send({ draftId: 'draft-1' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({ reason: 'approval_required', draftId: 'draft-1' });
+      expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('lets an approved draft through even though re-evaluation fires the trigger again', async () => {
+      mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({ approvalStatus: 'approved' }));
+      mockEvaluatePolicies.mockResolvedValueOnce(approvalTrigger('approval_required'));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+        .send({ draftId: 'draft-1' });
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(mockBroadcastAndSave).toHaveBeenCalledOnce();
+    });
+
+    it('refuses an approved draft that is not bound to the broadcast signing intent', async () => {
+      mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+        approvalStatus: 'approved',
+        signingIntentId: null,
+        signingIntentDigest: null,
+      }));
+      mockEvaluatePolicies.mockResolvedValueOnce(approvalTrigger('approval_required'));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+        .send({ draftId: 'draft-1', ...intentHandle });
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({ reason: 'approval_required', draftId: 'draft-1' });
+      expect(mockReserveEnforcedUsage).not.toHaveBeenCalled();
+      expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('treats a monitor-mode approval policy as informational', async () => {
+      mockEvaluatePolicies.mockResolvedValueOnce(approvalTrigger('monitored'));
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+        .send(validBroadcastBody);
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(mockBroadcastAndSave).toHaveBeenCalledOnce();
+    });
+
+    it.each(['vetoed', 'expired', 'pending'])(
+      'keeps the pending_approval refusal for a %s draft and reports its approval status',
+      async (approvalStatus) => {
+        mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({ approvalStatus }));
+
+        const response = await request(app)
+          .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+          .send({ draftId: 'draft-1' });
+
+        expect(response.status).toBe(403);
+        expect(response.body.details).toMatchObject({ reason: 'pending_approval', draftId: 'draft-1', approvalStatus });
+        expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+        expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('validates estimate payload fields', async () => {

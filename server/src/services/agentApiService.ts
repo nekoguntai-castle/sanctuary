@@ -411,7 +411,8 @@ export async function submitAgentFundingDraft(
         agentOperationalWalletId: operationalWalletId,
         notificationCreatedByUserId: null,
         notificationCreatedByLabel: context.agentName,
-        policyEvaluation: vaultPolicyDecision.triggered.length > 0 ? vaultPolicyDecision : undefined,
+        // Always passed, so createDraft does not evaluate the same spend twice.
+        policyEvaluation: vaultPolicyDecision,
       };
 
       const createdDraft = await draftService.createDraft(fundingWalletId, context.userId, draftData, {

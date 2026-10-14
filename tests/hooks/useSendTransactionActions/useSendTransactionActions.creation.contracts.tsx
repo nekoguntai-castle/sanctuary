@@ -311,6 +311,68 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       expect(result.current.txData?.signingContext).toEqual(replacementContext);
     });
 
+    it('skips payjoin when the create response requires approval', async () => {
+      // An attempt would supersede the original signing intent and hand its PSBT to the
+      // receiver before the wallet's approval-required policy could hold the spend.
+      mocks.createTransaction.mockResolvedValue({
+        ...baseTxData,
+        policyEvaluation: {
+          allowed: true,
+          triggered: [{
+            policyId: 'policy-1',
+            policyName: 'Needs approval',
+            type: 'approval_required',
+            action: 'approval_required',
+            reason: 'always',
+          }],
+        },
+      } as any);
+
+      const { result } = renderSendTransactionActions({
+        state: createState({
+          outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+          payjoinUrl: 'https://merchant.example/payjoin',
+        }),
+      });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+
+      expect(mocks.attemptPayjoin).not.toHaveBeenCalled();
+      expect(result.current.payjoinStatus).toBe('idle');
+      expect(result.current.txData?.policyEvaluation?.triggered[0].action).toBe('approval_required');
+    });
+
+    it('still attempts payjoin when the only approval trigger is monitor-only', async () => {
+      mocks.createTransaction.mockResolvedValue({
+        ...baseTxData,
+        policyEvaluation: {
+          allowed: true,
+          triggered: [{
+            policyId: 'policy-1',
+            policyName: 'Watching',
+            type: 'approval_required',
+            action: 'monitored',
+            reason: 'always',
+          }],
+        },
+      } as any);
+
+      const { result } = renderSendTransactionActions({
+        state: createState({
+          outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+          payjoinUrl: 'https://merchant.example/payjoin',
+        }),
+      });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+
+      expect(mocks.attemptPayjoin).toHaveBeenCalledTimes(1);
+    });
+
     it('rejects a successful Payjoin response without replacement signing context', async () => {
       mocks.attemptPayjoin.mockResolvedValue({
         success: true,

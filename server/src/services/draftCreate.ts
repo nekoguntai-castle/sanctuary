@@ -3,7 +3,7 @@ import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequest
 import { draftRepository, systemSettingRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
 import type { DraftLockDbClient } from '../repositories/draftLockRepository';
-import { ConflictError, InvalidInputError } from '../errors';
+import { ConflictError, ForbiddenError, InvalidInputError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { SystemSettingSchemas } from '../utils/safeJson';
@@ -13,7 +13,9 @@ import { dispatchDraftNotification } from './notifications/dispatch';
 import { approvalService, type ApprovalDbClient } from './vaultPolicy/approvalService';
 import { validateInitialSigningState } from './draftSigning';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
-import { loadSigningIntent, unsignedPsbtSha256 } from './bitcoin/signingIntent';
+import { loadSigningIntent, unsignedPsbtSha256, type SigningIntentEnvelope } from './bitcoin/signingIntent';
+import { policyEvaluationEngine } from './vaultPolicy/policyEvaluationEngine';
+import { buildIntentPolicyInput, requiresEnforcedApproval } from './vaultPolicy/intentPolicyInput';
 
 const log = createLogger('DRAFT:SVC_CREATE');
 
@@ -33,9 +35,8 @@ const toDraftAmountNumber = (value: unknown): unknown => {
   return typeof value === 'string' ? Number(value) : value;
 };
 
-const requiresApproval = (data: CreateDraftInput): boolean => {
-  return data.policyEvaluation?.triggered?.some(t => t.action === 'approval_required') ?? false;
-};
+const requiresApproval = (data: CreateDraftInput): boolean =>
+  data.policyEvaluation !== undefined && requiresEnforcedApproval(data.policyEvaluation);
 
 const normalizeDraftJsonAmounts = (
   value: DraftRequestJsonField
@@ -303,6 +304,28 @@ const persistDraftWithLocks = async (
 };
 
 /**
+ * Every draft is evaluated against vault policy: a caller that already
+ * evaluated (the agent funding path) passes its result, and anything else
+ * (POST /drafts, RBF/CPFP drafts) is evaluated here from the authenticated
+ * signing intent, so an enforce-mode approval_required policy makes the draft
+ * `pending` with approval requests. Nothing to evaluate when the intent pays
+ * nothing outside the wallet.
+ */
+const withServerPolicyEvaluation = async (
+  data: CreateDraftInput,
+  walletId: string,
+  userId: string,
+  intent: Pick<SigningIntentEnvelope, 'snapshot'>,
+): Promise<CreateDraftInput> => {
+  if (data.policyEvaluation !== undefined) return data;
+  const input = await buildIntentPolicyInput(walletId, userId, intent);
+  if (!input) return data;
+  const policyEvaluation = await policyEvaluationEngine.evaluatePolicies(input);
+  if (!policyEvaluation.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
+  return { ...data, policyEvaluation };
+};
+
+/**
  * Create a new draft transaction.
  */
 export async function createDraft(
@@ -328,6 +351,9 @@ export async function createDraft(
     throw new InvalidInputError('Draft signing intent has no authenticated account binding');
   }
   assertValidCreateDraftInput(data);
+  // Assigned back to `data`: requiresApproval(data) is recomputed by the
+  // record builder and the approval-request step below.
+  data = await withServerPolicyEvaluation(data, walletId, userId, intent);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);
   const signingContext = intent.signingContext as Prisma.InputJsonValue;

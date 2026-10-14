@@ -627,6 +627,83 @@ describe('ReviewStep', () => {
     });
   });
 
+  describe('Approval-required spends', () => {
+    const approvalEvaluation = (action: 'approval_required' | 'monitored') => ({
+      allowed: true,
+      triggered: [{
+        policyId: 'policy-1',
+        policyName: 'Spend approval',
+        type: 'approval_required',
+        action,
+        reason: 'amount above threshold',
+      }],
+    });
+    const withDraft = (draftId: string | null) => vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+      ...defaultContext,
+      state: { ...defaultContext.state, draftId },
+    } as any);
+
+    it('replaces Sign & Broadcast with Submit for approval when the create response requires approval', async () => {
+      const user = userEvent.setup();
+      const onSaveDraft = vi.fn();
+      render(
+        <ReviewStep
+          txData={{ policyEvaluation: approvalEvaluation('approval_required') } as any}
+          onBroadcast={vi.fn()}
+          onSaveDraft={onSaveDraft}
+        />,
+      );
+
+      expect(screen.queryByText(/Sign & Broadcast/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Save as Draft')).not.toBeInTheDocument();
+      await user.click(screen.getByText('Submit for approval'));
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces Sign Transaction for multisig wallets too', () => {
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContext,
+        wallet: { id: 'wallet-1', name: 'Test Wallet', type: 'multi_sig', quorum: { m: 2, n: 3 } },
+      } as any);
+      render(
+        <ReviewStep
+          txData={{ policyEvaluation: approvalEvaluation('approval_required') } as any}
+          onSaveDraft={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Submit for approval')).toBeInTheDocument();
+      expect(screen.queryByText('Sign Transaction')).not.toBeInTheDocument();
+    });
+
+    it('keeps normal signing when the approval policy is monitor-only', () => {
+      render(<ReviewStep txData={{ policyEvaluation: approvalEvaluation('monitored') } as any} />);
+
+      expect(screen.getByText(/Sign & Broadcast/)).toBeInTheDocument();
+      expect(screen.queryByText('Submit for approval')).not.toBeInTheDocument();
+    });
+
+    it('does not offer Submit for approval when a draft already exists', () => {
+      withDraft('draft-1');
+      render(<ReviewStep txData={{ policyEvaluation: approvalEvaluation('approval_required') } as any} />);
+
+      expect(screen.queryByText('Submit for approval')).not.toBeInTheDocument();
+    });
+
+    it('offers Submit for approval after a broadcast refusal without a draft', () => {
+      render(<ReviewStep txData={{} as any} approvalAction="submit" onSaveDraft={vi.fn()} />);
+
+      expect(screen.getByText('Submit for approval')).toBeInTheDocument();
+    });
+
+    it('does not offer Submit for approval when the refusal says to recreate the draft', () => {
+      withDraft('draft-1');
+      render(<ReviewStep txData={{} as any} approvalAction="recreate" onSaveDraft={vi.fn()} />);
+
+      expect(screen.queryByText('Submit for approval')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Error handling', () => {
     it('can render without optional callbacks', () => {
       render(<ReviewStep />);

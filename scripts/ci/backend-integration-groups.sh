@@ -25,6 +25,7 @@ list_group_specs() {
     "$GROUP_API")
       printf '%s\n' \
         tests/integration/api/broadcastIntentAudit.test.ts \
+        tests/integration/api/broadcastRetryPolicyUsage.test.ts \
         tests/integration/api/walletApprovalsAudit.test.ts
       ;;
     "$GROUP_FLOWS")

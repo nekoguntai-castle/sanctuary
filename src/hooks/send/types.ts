@@ -10,6 +10,7 @@ import type { PayjoinAttemptStatus, TransactionState } from '../../contexts/send
 import type { DeviceType } from '../../services/hardwareWallet/types';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import type { TrezorConnectSignedArtifact } from '../../services/hardwareWallet/types';
+import type { PolicyEvaluationSummary } from '../../api/transactions/types';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('SendTxHelpers');
@@ -34,6 +35,15 @@ export interface TransactionData {
   outputs?: Array<{ address: string; amount: number; sendMax?: boolean }>;
   inputPaths?: string[];
   decoyOutputs?: Array<{ address: string; amount: number }>;
+  policyEvaluation?: PolicyEvaluationSummary;
+}
+
+/** Why the review step offers (or withholds) the approval workflow instead of signing. */
+export type ApprovalAction = 'submit' | 'recreate' | null;
+
+/** True when an enforce-mode approval_required policy holds this spend (monitor mode does not). */
+export function requiresApproval(policyEvaluation: PolicyEvaluationSummary | undefined): boolean {
+  return Boolean(policyEvaluation?.triggered.some(entry => entry.action === 'approval_required'));
 }
 
 export interface UseSendTransactionActionsProps {
@@ -61,6 +71,7 @@ export interface UseSendTransactionActionsResult {
   signedRawTx: string | null;  // Raw tx hex from Trezor signing
   signedDevices: Set<string>;
   payjoinStatus: PayjoinAttemptStatus;
+  approvalAction: ApprovalAction;
 
   // Actions
   createTransaction: () => Promise<TransactionData | null>;

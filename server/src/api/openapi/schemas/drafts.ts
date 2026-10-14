@@ -126,6 +126,11 @@ export const draftSchemas = {
       effectiveAmount: { type: 'number', nullable: true },
       inputPaths: { type: 'array', items: { type: 'string' } },
       status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      approvalStatus: {
+        type: 'string',
+        enum: ['not_required', 'pending', 'approved', 'rejected', 'vetoed', 'expired'],
+        description: 'Vault approval state. Broadcast is allowed only for not_required or approved drafts.',
+      },
       signedDeviceIds: { type: 'array', items: { type: 'string' } },
       agentId: { type: 'string', nullable: true },
       agentOperationalWalletId: { type: 'string', nullable: true },

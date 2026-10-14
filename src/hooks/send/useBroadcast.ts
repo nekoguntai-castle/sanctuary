@@ -9,6 +9,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as bitcoin from 'bitcoinjs-lib';
 import * as transactionsApi from '../../api/transactions';
+import { ApiError } from '../../api/client';
 import { useErrorHandler } from '../useErrorHandler';
 import { useNotificationSound } from '../useNotificationSound';
 import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
@@ -20,7 +21,7 @@ import { toHex } from '../../utils/bufferUtils';
 import { requirePositiveSatoshiNumber } from '../../utils/sendAmount';
 import type { Wallet } from '../../types';
 import type { TransactionState } from '../../contexts/send/types';
-import type { TransactionData } from './types';
+import type { ApprovalAction, TransactionData } from './types';
 import type { BroadcastTransactionRequest } from '../../api/transactions';
 import type { SendOperationLease } from './useSendOperationOwner';
 
@@ -64,6 +65,7 @@ export interface UseBroadcastDeps {
   signedRawTx: string | null;
   setIsBroadcasting: (v: boolean) => void;
   setError: (v: string | null) => void;
+  setApprovalAction: (v: ApprovalAction) => void;
   beginBroadcast: () => SendOperationLease | null;
 }
 
@@ -209,8 +211,54 @@ const refetchBroadcastCaches = async (): Promise<void> => {
   queryClient.invalidateQueries({ queryKey: walletActivityKeys.balanceHistory.all });
 };
 
-const getBroadcastErrorMessage = (err: unknown): string => {
-  return err instanceof Error ? err.message : 'Failed to broadcast transaction';
+interface BroadcastFailure {
+  message: string;
+  approvalAction: ApprovalAction;
+}
+
+const APPROVAL_SUBMIT_MESSAGE =
+  'This wallet requires approval before this transaction can be broadcast. Submit it for approval instead.';
+const APPROVAL_RECREATE_MESSAGE =
+  'This draft cannot be broadcast without an approval. Delete the draft and create the transaction again.';
+const APPROVAL_PENDING_MESSAGE =
+  'This transaction is awaiting approval. It can be broadcast once it is approved.';
+
+const readForbiddenDetails = (err: unknown): Record<string, unknown> | null => {
+  if (!(err instanceof ApiError) || err.status !== 403) return null;
+  const details = err.response?.details;
+  return typeof details === 'object' && details !== null ? details as Record<string, unknown> : null;
+};
+
+const getPendingApprovalFailure = (details: Record<string, unknown>): BroadcastFailure => {
+  // `pending` is the only status that will resolve on its own; vetoed, expired or an older
+  // server that omits the status all need a fresh draft.
+  return details.approvalStatus === 'pending'
+    ? { message: APPROVAL_PENDING_MESSAGE, approvalAction: null }
+    : { message: APPROVAL_RECREATE_MESSAGE, approvalAction: 'recreate' };
+};
+
+/**
+ * Maps a broadcast failure to the message and the approval workflow the review step
+ * should offer. Submit for approval is only valid without a draft: saving over an
+ * existing draft PATCHes it, and a PATCH never changes its approval status.
+ */
+const getBroadcastFailure = (err: unknown, stateDraftId: string | null): BroadcastFailure => {
+  const details = readForbiddenDetails(err);
+  switch (details?.reason) {
+    case 'approval_required':
+      return (details.draftId ?? stateDraftId)
+        ? { message: APPROVAL_RECREATE_MESSAGE, approvalAction: 'recreate' }
+        : { message: APPROVAL_SUBMIT_MESSAGE, approvalAction: 'submit' };
+    case 'approval_rejected':
+      return { message: APPROVAL_RECREATE_MESSAGE, approvalAction: 'recreate' };
+    case 'pending_approval':
+      return getPendingApprovalFailure(details);
+    default:
+      return {
+        message: err instanceof Error ? err.message : 'Failed to broadcast transaction',
+        approvalAction: null,
+      };
+  }
 };
 
 const buildBroadcastRequest = (
@@ -250,6 +298,7 @@ export function useBroadcast({
   signedRawTx,
   setIsBroadcasting,
   setError,
+  setApprovalAction,
   beginBroadcast,
 }: UseBroadcastDeps): UseBroadcastResult {
   const navigate = useNavigate();
@@ -285,6 +334,7 @@ export function useBroadcast({
 
     setIsBroadcasting(true);
     setError(null);
+    setApprovalAction(null);
 
     try {
       const effectiveAmount = getEffectiveAmount(txData);
@@ -316,7 +366,9 @@ export function useBroadcast({
     } catch (err) {
       if (!lease.isCurrent()) return false;
       log.error('Transaction broadcast failed', { error: err });
-      setError(getBroadcastErrorMessage(err));
+      const failure = getBroadcastFailure(err, state.draftId);
+      setError(failure.message);
+      setApprovalAction(failure.approvalAction);
       return false;
     } finally {
       // Unlike the success/navigation branches above, this reset must run even when the
@@ -325,7 +377,7 @@ export function useBroadcast({
       // must still clear it or the wizard wedges with a permanent spinner.
       setIsBroadcasting(false);
     }
-  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError, beginBroadcast]);
+  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError, setApprovalAction, beginBroadcast]);
 
   return { broadcastTransaction };
 }

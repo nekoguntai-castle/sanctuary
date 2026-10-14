@@ -5,9 +5,10 @@ import {
   ChevronLeft,
   Loader2,
   AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '../../../ui/Button';
-import type { TransactionData } from '../../../../hooks/send/useSendTransactionActions';
+import type { ApprovalAction, TransactionData } from '../../../../hooks/send/types';
 
 interface DraftActionsProps {
   isMultiSig: boolean;
@@ -21,8 +22,122 @@ interface DraftActionsProps {
   onSign?: () => void;
   onBroadcast?: () => void;
   onSaveDraft?: () => void;
+  approvalMode?: ApprovalAction;
   onBroadcastSigned?: () => Promise<boolean>;
   prevStep: () => void;
+}
+
+type PrimaryActionProps = Pick<
+  DraftActionsProps,
+  | 'isMultiSig' | 'isReadyToSign' | 'canBroadcast' | 'txData' | 'signing' | 'broadcasting'
+  | 'savingDraft' | 'onSign' | 'onBroadcast' | 'onBroadcastSigned' | 'onSaveDraft'
+>;
+
+function SubmitForApprovalButton({
+  txData,
+  signing,
+  broadcasting,
+  savingDraft,
+  onSaveDraft,
+}: PrimaryActionProps) {
+  return (
+    <Button
+      variant="primary"
+      onClick={onSaveDraft}
+      disabled={!txData || signing || broadcasting}
+      isLoading={savingDraft}
+      className="flex-1"
+    >
+      <ShieldCheck className="w-4 h-4 mr-2" />
+      Submit for approval
+    </Button>
+  );
+}
+
+function MultiSigPrimaryButton({
+  isReadyToSign,
+  canBroadcast,
+  txData,
+  signing,
+  broadcasting,
+  savingDraft,
+  onSign,
+  onBroadcastSigned,
+}: PrimaryActionProps) {
+  // Multi-sig: Show broadcast if enough signatures
+  if (canBroadcast) {
+    return (
+      <Button
+        variant="primary"
+        onClick={onBroadcastSigned}
+        disabled={!canBroadcast || savingDraft}
+        isLoading={broadcasting}
+        className="flex-1"
+      >
+        <Send className="w-4 h-4 mr-2" />
+        Broadcast Transaction
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      variant="primary"
+      onClick={onSign}
+      disabled={!isReadyToSign || !txData || savingDraft}
+      isLoading={signing || broadcasting}
+      className="flex-1"
+    >
+      {!txData ? (
+        <>
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          Preparing...
+        </>
+      ) : (
+        <>
+          <Shield className="w-4 h-4 mr-2" />
+          Sign Transaction
+        </>
+      )}
+    </Button>
+  );
+}
+
+function SingleSigPrimaryButton({
+  isReadyToSign,
+  canBroadcast,
+  signing,
+  broadcasting,
+  savingDraft,
+  onBroadcast,
+}: PrimaryActionProps) {
+  // Single-sig: Sign & Broadcast
+  return (
+    <Button
+      variant="primary"
+      onClick={onBroadcast}
+      disabled={!isReadyToSign || savingDraft}
+      isLoading={signing || broadcasting}
+      className="flex-1"
+    >
+      {canBroadcast ? (
+        <>
+          <Send className="w-4 h-4 mr-2" />
+          Broadcast
+        </>
+      ) : (
+        <>
+          <Send className="w-4 h-4 mr-2" />
+          Sign & Broadcast
+        </>
+      )}
+    </Button>
+  );
+}
+
+function PrimaryAction(props: PrimaryActionProps & { submitForApproval: boolean }) {
+  if (props.submitForApproval) return <SubmitForApprovalButton {...props} />;
+  return props.isMultiSig ? <MultiSigPrimaryButton {...props} /> : <SingleSigPrimaryButton {...props} />;
 }
 
 export function DraftActions({
@@ -37,9 +152,11 @@ export function DraftActions({
   onSign,
   onBroadcast,
   onSaveDraft,
+  approvalMode = null,
   onBroadcastSigned,
   prevStep,
 }: DraftActionsProps) {
+  const submitForApproval = approvalMode === 'submit';
   return (
     <>
       {/* Validation Warnings */}
@@ -48,6 +165,16 @@ export function DraftActions({
           <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800 dark:text-amber-200">
             Please complete all required fields before signing.
+          </div>
+        </div>
+      )}
+
+      {submitForApproval && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800 dark:text-amber-200">
+            A vault policy requires approval before this transaction can be broadcast.
+            Submit it for approval; it can be broadcast once approved.
           </div>
         </div>
       )}
@@ -68,66 +195,24 @@ export function DraftActions({
             </Button>
           )}
 
-          {isMultiSig ? (
-            // Multi-sig: Show broadcast if enough signatures
-            canBroadcast ? (
-              <Button
-                variant="primary"
-                onClick={onBroadcastSigned}
-                disabled={!canBroadcast || savingDraft}
-                isLoading={broadcasting}
-                className="flex-1"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Broadcast Transaction
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                onClick={onSign}
-                disabled={!isReadyToSign || !txData || savingDraft}
-                isLoading={signing || broadcasting}
-                className="flex-1"
-              >
-                {!txData ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Preparing...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Sign Transaction
-                  </>
-                )}
-              </Button>
-            )
-          ) : (
-            // Single-sig: Sign & Broadcast
-            <Button
-              variant="primary"
-              onClick={onBroadcast}
-              disabled={!isReadyToSign || savingDraft}
-              isLoading={signing || broadcasting}
-              className="flex-1"
-            >
-              {canBroadcast ? (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Broadcast
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Sign & Broadcast
-                </>
-              )}
-            </Button>
-          )}
+          <PrimaryAction
+            submitForApproval={submitForApproval}
+            isMultiSig={isMultiSig}
+            isReadyToSign={isReadyToSign}
+            canBroadcast={canBroadcast}
+            txData={txData}
+            signing={signing}
+            broadcasting={broadcasting}
+            savingDraft={savingDraft}
+            onSign={onSign}
+            onBroadcast={onBroadcast}
+            onBroadcastSigned={onBroadcastSigned}
+            onSaveDraft={onSaveDraft}
+          />
         </div>
 
         {/* Save Draft Button */}
-        {onSaveDraft && (
+        {onSaveDraft && !submitForApproval && (
           <Button
             variant="secondary"
             onClick={onSaveDraft}

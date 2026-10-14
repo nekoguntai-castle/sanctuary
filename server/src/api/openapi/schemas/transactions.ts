@@ -444,8 +444,37 @@ export const transactionSchemas = {
         type: 'array',
         items: { $ref: '#/components/schemas/UtxoReference' },
       },
+      policyEvaluation: {
+        type: 'object',
+        description: 'Vault policy evaluation of the minted signing intent; present only when a policy triggered.',
+      },
     },
     required: ['psbt', 'signingContext', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
+  },
+  TransactionBroadcastForbiddenError: {
+    allOf: [
+      { $ref: '#/components/schemas/ApiError' },
+      {
+        type: 'object',
+        properties: {
+          details: {
+            type: 'object',
+            description: 'approval_required: an enforce-mode approval policy covers this spend and it has no approved draft '
+              + '(submit it as a draft for approval, or recreate a stale draft). pending_approval / approval_rejected: '
+              + 'the linked draft is not approved; approvalStatus gives its state. Policy blocks carry no reason.',
+            properties: {
+              reason: { type: 'string', enum: ['approval_required', 'pending_approval', 'approval_rejected'] },
+              draftId: { type: 'string', description: 'The server-resolved draft, when one is linked.' },
+              approvalStatus: {
+                type: 'string',
+                enum: ['pending', 'rejected', 'vetoed', 'expired'],
+                description: 'The linked draft approval status (pending_approval and approval_rejected).',
+              },
+            },
+          },
+        },
+      },
+    ],
   },
   PsbtBroadcastRequest: {
     type: 'object',

@@ -48,6 +48,7 @@ vi.mock('../../../src/components/send/steps', () => ({
       {props.onBroadcast && <button data-testid="broadcast-btn" onClick={props.onBroadcast}>Broadcast</button>}
       {props.onSign && <button data-testid="sign-btn" onClick={props.onSign}>Sign</button>}
       {props.onSaveDraft && <button data-testid="save-draft-btn" onClick={props.onSaveDraft}>Save Draft</button>}
+      {props.approvalAction && <span data-testid="approval-action">{props.approvalAction}</span>}
       {props.onBroadcastSigned && (
         <button data-testid="broadcast-signed-btn" onClick={props.onBroadcastSigned}>
           Broadcast Signed
@@ -351,6 +352,27 @@ describe('SendTransactionWizard', () => {
       } as any);
 
       renderWizard();
+      await user.click(screen.getByTestId('save-draft-btn'));
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the approval action to the review step, whose Submit for approval saves the draft', async () => {
+      const user = userEvent.setup();
+      const saveDraft = vi.fn();
+      vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
+        ...defaultActionsValue,
+        saveDraft,
+        approvalAction: 'submit',
+      } as any);
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContextValue,
+        currentStep: 'review',
+        state: { ...defaultContextValue.state, isDraftMode: false },
+        isReadyToSign: true,
+      } as any);
+
+      renderWizard();
+      expect(screen.getByTestId('approval-action')).toHaveTextContent('submit');
       await user.click(screen.getByTestId('save-draft-btn'));
       expect(saveDraft).toHaveBeenCalledTimes(1);
     });

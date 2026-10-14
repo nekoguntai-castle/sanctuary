@@ -28,8 +28,10 @@ import {
   markSigningIntentBroadcastStalled,
   markSigningIntentBroadcastUnknown,
   releaseRejectedSigningIntentBroadcast,
+  type BroadcastClaimOptions,
 } from '../signingIntent/broadcastLifecycle';
 import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
+import type { BroadcastPriorState } from '../../../repositories/transactionSigningIntentRepository';
 
 // Re-exported so callers (the broadcast route) can distinguish a definite
 // rejection from an unknown-outcome failure without importing the blockchain
@@ -58,6 +60,56 @@ export class PreNetworkBroadcastRejectionError extends ApiError {
 const asPreNetworkRejection = (error: unknown): unknown => (
   error instanceof ApiError ? new PreNetworkBroadcastRejectionError(error) : error
 );
+
+/**
+ * What a failed broadcastAndSave did to the signing intent, attached to the
+ * error it throws (identity, class and message unchanged) so the broadcast
+ * route can decide whether policy usage reserved before the call may be
+ * released. `releasedToReady` is true only when this attempt actually put the
+ * intent back to `ready` — the one outcome that proves nothing went out and a
+ * later retry must claim (and reserve) afresh.
+ */
+export type BroadcastFailureTag =
+  | { claimed: false; releasedToReady: false }
+  | { claimed: true; priorState: BroadcastPriorState; releasedToReady: boolean };
+
+const BROADCAST_FAILURE_TAG = 'broadcastFailure';
+
+/** Attach the tag to an object error; a thrown primitive cannot carry it and is returned as is. */
+const tagBroadcastFailure = (error: unknown, tag: BroadcastFailureTag): unknown => {
+  if (typeof error === 'object' && error !== null) {
+    Reflect.defineProperty(error, BROADCAST_FAILURE_TAG, {
+      value: tag, enumerable: false, configurable: true, writable: true,
+    });
+  }
+  return error;
+};
+
+const PRIOR_STATES: ReadonlySet<unknown> = new Set<BroadcastPriorState>(['ready', 'resumed', 'stalled']);
+
+/** The tag broadcastAndSave attached to a failure, or null for an untagged error. */
+export const readBroadcastFailureTag = (error: unknown): BroadcastFailureTag | null => {
+  if (typeof error !== 'object' || error === null) return null;
+  const tag: unknown = Reflect.get(error, BROADCAST_FAILURE_TAG);
+  if (typeof tag !== 'object' || tag === null) return null;
+  const { claimed, priorState, releasedToReady } = tag as Record<string, unknown>;
+  if (claimed === false) return { claimed: false, releasedToReady: false };
+  if (claimed !== true || !PRIOR_STATES.has(priorState) || typeof releasedToReady !== 'boolean') return null;
+  return { claimed: true, priorState: priorState as BroadcastPriorState, releasedToReady };
+};
+
+/**
+ * A failure before or during the claim. Only the ApiError wrapper proves no
+ * claim was taken: a Prisma or connection error may follow a committed claim
+ * that already re-persisted the reservations, so it stays untagged (and the
+ * route retains them).
+ */
+const asUnclaimedRejection = (error: unknown): unknown => {
+  const rejection = asPreNetworkRejection(error);
+  return rejection instanceof PreNetworkBroadcastRejectionError
+    ? tagBroadcastFailure(rejection, { claimed: false, releasedToReady: false })
+    : rejection;
+};
 
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
 const MAX_PERSISTENCE_ATTEMPTS = 3;
@@ -166,26 +218,31 @@ type BroadcastClaimed = Extract<Awaited<ReturnType<typeof claimSigningIntentBroa
 const STALLED_BROADCAST_MESSAGE = "This transaction's broadcast outcome could not be confirmed after repeated attempts. "
   + 'Check a block explorer for the txid before creating a replacement.';
 
+type FailureTransition = { releasedToReady: boolean };
+
 /**
  * Persist the outcome of a failed claim. Only a first (`ready`) claim may be
  * rolled back; a resumed claim may already have crossed the node boundary, so
  * it stays unknown, and a claim resumed from `stalled` returns to `stalled`.
+ * `releasedToReady` is true only when the rollback to `ready` succeeded.
  */
-const recordClaimFailure = (
+const recordClaimFailure = async (
   intentId: string,
   claim: BroadcastClaimed,
   error: unknown,
-): Promise<boolean> => {
+): Promise<FailureTransition> => {
   const message = getErrorMessage(error);
   if (claim.priorState === 'stalled') {
-    return markSigningIntentBroadcastStalled(intentId, claim.leaseToken, message);
+    await markSigningIntentBroadcastStalled(intentId, claim.leaseToken, message);
+    return { releasedToReady: false };
   }
   if (claim.priorState === 'ready' && error instanceof DefiniteBroadcastRejectionError) {
-    return releaseRejectedSigningIntentBroadcast(intentId, claim.leaseToken, message);
+    return { releasedToReady: await releaseRejectedSigningIntentBroadcast(intentId, claim.leaseToken, message) };
   }
-  return markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, {
+  await markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, {
     countAttempt: isNodeAnsweredBroadcastFailure(error),
   });
+  return { releasedToReady: false };
 };
 
 /** A failed re-submission of a stalled intent gets an actionable terminal conflict. */
@@ -196,19 +253,20 @@ const broadcastFailureToThrow = (claim: BroadcastClaimed, error: unknown): unkno
 );
 
 /** Failed replacement-link check before any network call: release only a first claim. */
-const recordReplacementLinkFailure = (
+const recordReplacementLinkFailure = async (
   intentId: string,
   claim: BroadcastClaimed,
   error: unknown,
-): Promise<boolean> => {
+): Promise<FailureTransition> => {
   const message = getErrorMessage(error);
   if (claim.priorState === 'ready') {
-    return releaseRejectedSigningIntentBroadcast(intentId, claim.leaseToken, message);
+    return { releasedToReady: await releaseRejectedSigningIntentBroadcast(intentId, claim.leaseToken, message) };
   }
-  return claim.priorState === 'stalled'
+  await (claim.priorState === 'stalled'
     ? markSigningIntentBroadcastStalled(intentId, claim.leaseToken, message)
     // Nothing reached a node, so this must not spend the stall-cap budget.
-    : markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, { countAttempt: false });
+    : markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, { countAttempt: false }));
+  return { releasedToReady: false };
 };
 
 /**
@@ -233,7 +291,11 @@ export async function broadcastAndSave(
     // Enhanced metadata for full I/O storage
     inputs?: TransactionInputMetadata[];
     outputs?: TransactionOutputMetadata[];
-  }
+    // Policy usage held for this broadcast; persisted on every claim so a
+    // retry of an unknown outcome can reuse it instead of reserving again.
+    policyReservations?: Array<{ windowId: string; amount: string }>;
+  },
+  options: BroadcastClaimOptions = {},
 ): Promise<BroadcastResult> {
   const { walletId, rawTx, txid } = artifact;
   let claim: Awaited<ReturnType<typeof claimSigningIntentBroadcast>>;
@@ -248,9 +310,11 @@ export async function broadcastAndSave(
       draftId: metadata.draftId,
     });
 
-    claim = await claimSigningIntentBroadcast(artifact, metadata);
+    claim = await claimSigningIntentBroadcast(artifact, metadata, new Date(), {
+      resumeOnly: options.resumeOnly === true,
+    });
   } catch (error) {
-    throw asPreNetworkRejection(error);
+    throw asUnclaimedRejection(error);
   }
   if (claim.status === 'complete') {
     return { txid, broadcasted: true, persistenceStatus: 'complete' };
@@ -280,8 +344,9 @@ export async function broadcastAndSave(
         selectCandidateOutpoints(metadata.inputs, metadata.utxos)
       );
     } catch (error) {
+      let transition: FailureTransition = { releasedToReady: false };
       try {
-        await recordReplacementLinkFailure(artifact.intent.intentId, claim, error);
+        transition = await recordReplacementLinkFailure(artifact.intent.intentId, claim, error);
       } catch (releaseError) {
         log.error('Failed to release claimed lease after replacesTxid rejection; lease expiry will reconcile it', {
           intentId: artifact.intent.intentId,
@@ -289,7 +354,9 @@ export async function broadcastAndSave(
           error: getErrorMessage(releaseError),
         });
       }
-      throw asPreNetworkRejection(error);
+      throw tagBroadcastFailure(asPreNetworkRejection(error), {
+        claimed: true, priorState: claim.priorState, releasedToReady: transition.releasedToReady,
+      });
     }
   }
 
@@ -298,8 +365,9 @@ export async function broadcastAndSave(
   try {
     broadcastResult = await broadcastTransaction(artifact, claim.priorState === 'ready');
   } catch (error) {
+    let transition: FailureTransition = { releasedToReady: false };
     try {
-      await recordClaimFailure(artifact.intent.intentId, claim, error);
+      transition = await recordClaimFailure(artifact.intent.intentId, claim, error);
     } catch (transitionError) {
       log.error('Failed to persist broadcast failure outcome; lease expiry will reconcile it', {
         intentId: artifact.intent.intentId,
@@ -307,7 +375,9 @@ export async function broadcastAndSave(
         error: getErrorMessage(transitionError),
       });
     }
-    throw broadcastFailureToThrow(claim, error);
+    throw tagBroadcastFailure(broadcastFailureToThrow(claim, error), {
+      claimed: true, priorState: claim.priorState, releasedToReady: transition.releasedToReady,
+    });
   }
 
   if (!broadcastResult.broadcasted) {

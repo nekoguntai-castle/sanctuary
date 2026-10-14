@@ -1,6 +1,7 @@
 import { describe } from 'vitest';
 
 import { registerTransactionHttpBroadcastTests } from './transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts';
+import { registerTransactionHttpBroadcastRetryTests } from './transactionsHttpRoutes/transactionsHttpRoutes.broadcastRetry.contracts';
 import { registerTransactionHttpCreationTests } from './transactionsHttpRoutes/transactionsHttpRoutes.creation.contracts';
 import { registerTransactionHttpExportTests } from './transactionsHttpRoutes/transactionsHttpRoutes.exports.contracts';
 import { registerTransactionHttpRawBroadcastTests } from './transactionsHttpRoutes/transactionsHttpRoutes.rawBroadcast.contracts';
@@ -13,5 +14,6 @@ describe('Transaction HTTP Routes', () => {
   registerTransactionHttpExportTests();
   registerTransactionHttpCreationTests();
   registerTransactionHttpBroadcastTests();
+  registerTransactionHttpBroadcastRetryTests();
   registerTransactionHttpRawBroadcastTests();
 });

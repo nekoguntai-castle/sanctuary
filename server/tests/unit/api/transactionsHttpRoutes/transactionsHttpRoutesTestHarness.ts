@@ -30,6 +30,9 @@ const {
   mockValidateSignedArtifact,
   mockFindLinkedDraft,
   mockAssertWalletHardwareCapabilityById,
+  mockLoadSigningIntent,
+  mockFindHeldPolicyReservations,
+  mockBuildIntentPolicyInput,
   DefiniteBroadcastRejectionError,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
@@ -59,6 +62,9 @@ const {
   mockValidateSignedArtifact: vi.fn(),
   mockFindLinkedDraft: vi.fn(),
   mockAssertWalletHardwareCapabilityById: vi.fn(),
+  mockLoadSigningIntent: vi.fn(),
+  mockFindHeldPolicyReservations: vi.fn(),
+  mockBuildIntentPolicyInput: vi.fn(),
   DefiniteBroadcastRejectionError: class DefiniteBroadcastRejectionError extends Error {},
 }));
 
@@ -167,15 +173,37 @@ vi.mock('../../../../src/services/bitcoin/transactionService', () => ({
   getPSBTInfoWithNetwork: mockGetPSBTInfoWithNetwork,
 }));
 
-vi.mock('../../../../src/services/bitcoin/transactions/broadcasting', () => ({
-  broadcastAndSave: mockBroadcastAndSave,
-  DefiniteBroadcastRejectionError,
-}));
+vi.mock('../../../../src/services/bitcoin/transactions/broadcasting', async () => {
+  // Named picks, not a spread: the actual module re-exports from the mocked
+  // blockchain barrel, whose missing members throw when read.
+  const actual = await vi.importActual<
+    typeof import('../../../../src/services/bitcoin/transactions/broadcasting')
+  >('../../../../src/services/bitcoin/transactions/broadcasting');
+  return {
+    broadcastAndSave: mockBroadcastAndSave,
+    DefiniteBroadcastRejectionError,
+    PreNetworkBroadcastRejectionError: actual.PreNetworkBroadcastRejectionError,
+    readBroadcastFailureTag: actual.readBroadcastFailureTag,
+  };
+});
 
-vi.mock('../../../../src/services/bitcoin/signingIntent', () => ({
-  createSigningIntent: mockCreateSigningIntent,
-  validateSignedArtifact: mockValidateSignedArtifact,
-  findDraftBySigningIntent: mockFindLinkedDraft,
+vi.mock('../../../../src/services/bitcoin/signingIntent', async () => {
+  const { deriveIntentSpend } = await vi.importActual<
+    typeof import('../../../../src/services/bitcoin/signingIntent/intentSpend')
+  >('../../../../src/services/bitcoin/signingIntent/intentSpend');
+  return {
+    createSigningIntent: mockCreateSigningIntent,
+    validateSignedArtifact: mockValidateSignedArtifact,
+    findDraftBySigningIntent: mockFindLinkedDraft,
+    loadSigningIntent: mockLoadSigningIntent,
+    findHeldPolicyReservations: mockFindHeldPolicyReservations,
+    deriveIntentSpend,
+  };
+});
+
+vi.mock('../../../../src/services/vaultPolicy/intentPolicyInput', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../src/services/vaultPolicy/intentPolicyInput')>(),
+  buildIntentPolicyInput: mockBuildIntentPolicyInput,
 }));
 
 vi.mock('../../../../src/services/vaultPolicy', () => ({
@@ -194,6 +222,39 @@ import creationRouter from '../../../../src/api/transactions/creation';
 
 export let app: Express;
 export const walletId = 'wallet-123';
+
+/** A v2 envelope as loadSigningIntent returns it for a freshly minted intent. */
+export const mintedIntentEnvelope = () => ({
+  intentId: 'intent-http',
+  intentDigest: 'a'.repeat(64),
+  unsignedPsbtBase64: 'cHNi',
+  unsignedPsbtSha256: 'f'.repeat(64),
+  source: 'standard',
+  expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+  snapshot: {
+    version: 2,
+    walletId,
+    network: 'testnet4',
+    feePolicy: {
+      version: 1,
+      expectedFeeSats: 150,
+      requestedFeeRateSatsPerVbyte: 1,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 0,
+    },
+    transaction: {
+      version: 2,
+      locktime: 0,
+      inputs: [{
+        txid: 'b'.repeat(64),
+        vout: 0,
+        sequence: 0xfffffffd,
+        prevout: { amountSats: '10150', scriptPubKeyHex: `0014${'1'.repeat(40)}`, role: 'wallet' },
+      }],
+      outputs: [{ amountSats: '10000', scriptPubKeyHex: `0014${'2'.repeat(40)}` }],
+    },
+  },
+});
 
 export function setupTransactionHttpRouteHooks(): void {
   beforeAll(() => {
@@ -235,6 +296,12 @@ export function setupTransactionHttpRouteHooks(): void {
       intentId: 'intent-http',
       intentDigest: 'a'.repeat(64),
     });
+    mockLoadSigningIntent.mockResolvedValue(mintedIntentEnvelope());
+    mockFindHeldPolicyReservations.mockResolvedValue(null);
+    mockBuildIntentPolicyInput.mockImplementation(async (_walletId: string, userId: string) => ({
+      walletId, userId, recipient: 'tb1qrecipient', amount: BigInt(10000),
+      outputs: [{ address: 'tb1qrecipient', amount: 10000 }],
+    }));
     mockValidateSignedArtifact.mockResolvedValue({
       rawTx: 'deadbeef',
       txid: 'd'.repeat(64),
@@ -343,5 +410,8 @@ export {
   mockCreateSigningIntent,
   mockValidateSignedArtifact,
   mockAssertWalletHardwareCapabilityById,
+  mockLoadSigningIntent,
+  mockFindHeldPolicyReservations,
+  mockBuildIntentPolicyInput,
   DefiniteBroadcastRejectionError,
 };
