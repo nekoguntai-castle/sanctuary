@@ -458,6 +458,9 @@ export function registerOpenApiCoreTests() {
     expect(
       openApiSpec.components.schemas.CpfpRequest.properties,
     ).toHaveProperty("recipientAddress");
+    expect(openApiSpec.components.schemas.CpfpResponse.required).toEqual(
+      expect.arrayContaining(["inputs", "outputs"]),
+    );
     expect(
       openApiSpec.components.schemas.BatchTransactionRequest.required,
     ).toEqual(["recipients", "feeRate", "walletId"]);

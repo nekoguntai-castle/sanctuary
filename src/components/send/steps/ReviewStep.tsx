@@ -103,8 +103,8 @@ export function ReviewStep({
 
   // Calculate change amount
   const changeAmount = useMemo(() => {
-    return getReviewChangeAmount(state.outputs, selectedTotal, totalOutputAmount, estimatedFee);
-  }, [selectedTotal, totalOutputAmount, estimatedFee, state.outputs]);
+    return getReviewChangeAmount(state.outputs, selectedTotal, totalOutputAmount, estimatedFee, txData);
+  }, [selectedTotal, totalOutputAmount, estimatedFee, state.outputs, txData]);
 
   // Create a set of known wallet addresses for quick lookup
   const knownAddresses = useMemo(() => {

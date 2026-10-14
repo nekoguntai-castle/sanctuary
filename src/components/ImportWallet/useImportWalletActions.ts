@@ -69,10 +69,12 @@ export function useImportWalletActions({
 
     state.setStep(state.step - 1);
 
-    if (state.step === 2) {
+    // Leaving step 3 of a hardware import remounts HardwareImport, which has already
+    // released its device lease, so the retained "Connected" state would be stale.
+    if (state.step === 2 || (state.step === 3 && state.format === 'hardware')) {
       state.resetHardwareState();
-      state.resetQrState();
     }
+    if (state.step === 2) state.resetQrState();
   };
 
   const handleImport = async () => {

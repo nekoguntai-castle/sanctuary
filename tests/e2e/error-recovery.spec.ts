@@ -178,6 +178,8 @@ const ADMIN_SETTINGS_RESPONSE = {
 const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /auth/me': mockResponse(ADMIN_USER),
   'GET /auth/registration-status': mockResponse({ enabled: false }),
+  'POST /auth/refresh': mockResponse({ message: 'Unauthorized' }, 401),
+  'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /wallets': mockResponse([WALLET]),
   'GET /devices': mockResponse([]),
@@ -303,9 +305,6 @@ function recoveryDynamicResponse(route: ParsedApiRoute, priceFailure: boolean): 
   if (route.requestKey === 'GET /price') {
     return recoveryPriceResponse(priceFailure);
   }
-  if (route.requestKey === 'GET /ai/status') {
-    return mockResponse({ available: false, proxyAvailable: false });
-  }
   return null;
 }
 
@@ -322,149 +321,172 @@ async function mockErrorApi(
   return unhandledRequests;
 }
 
+// The API client retries failed GETs (1s/2s/4s backoff per attempt), so a post-failure
+// state appears after roughly 7-8s, and the wallet list (react-query retries the whole
+// chain once) after roughly 15-17s. Playwright's 5s default would race that budget.
+const CLIENT_RETRY_TIMEOUT = 15_000;
+const WALLET_LIST_RETRY_TIMEOUT = 25_000;
+
 test.describe('Error recovery', () => {
   // --- Auth Errors ---
 
   test('401 on auth/me redirects to login', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /auth/me': { status: 401, body: { message: 'Unauthorized' } },
     });
 
     await page.goto('/#/');
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 10000 });
+    expect(unhandledRequests).toEqual([]);
   });
 
   test('401 on wallet detail redirects to login', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /auth/me': { status: 401, body: { message: 'Token expired' } },
     });
 
     await page.goto(`/#/wallets/${WALLET_ID}`);
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 10000 });
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- 500 Errors ---
 
-  test('500 on wallet list shows error state', async ({ page }) => {
-    await mockErrorApi(page, {
+  test('500 on wallet list shows a retryable error, not the empty state', async ({ page }) => {
+    test.setTimeout(45_000);
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /wallets': { status: 500, body: { message: 'Internal server error' } },
     });
 
     await page.goto('/#/wallets');
 
-    // Should show some error indication or the wallets page heading - page should not crash
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 10000 });
+    // Wait for the error state first: a count-0 check before it renders would pass trivially.
+    await expect(page.getByText('Failed to load wallets.')).toBeVisible({ timeout: WALLET_LIST_RETRY_TIMEOUT });
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Wallet' })).toHaveCount(0);
+    expect(unhandledRequests).toEqual([]);
   });
 
-  test('500 on wallet detail shows error state', async ({ page }) => {
-    await mockErrorApi(page, {
+  test('500 on wallet detail shows the load-failure state', async ({ page }) => {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /wallets/wallet-error-1': { status: 500, body: { message: 'Wallet service unavailable' } },
     });
 
     await page.goto(`/#/wallets/${WALLET_ID}`);
 
-    // Should show some error indication or at minimum the page renders without crashing
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole('heading', { name: 'Failed to Load Wallet' })
+    ).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- Timeout Errors ---
 
   test('timeout on dashboard data shows graceful degradation', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /bitcoin/status': { timeout: true },
     });
 
     await page.goto('/#/');
 
-    // Dashboard should still render even if bitcoin status times out
-    // It may show a loading state or error for that specific card
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
+    // Content that does not depend on bitcoin/status still renders, and nothing crashed.
+    await expect(page.getByTestId('telemetry-fees')).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
+    await expect(page.getByTestId('telemetry-price')).toContainText('95,000');
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    expect(unhandledRequests).toEqual([]);
   });
 
   test('timeout on price API does not crash dashboard', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /price': { timeout: true },
     });
 
     await page.goto('/#/');
 
-    // Dashboard should still render
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 15000 });
-    // Should not have crashed
-    await expect(page.locator('body')).not.toHaveText('Application error');
+    // Content that does not depend on the price still renders, and nothing crashed.
+    await expect(page.getByTestId('telemetry-fees')).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
+    await expect(page.getByTestId('telemetry-node')).toBeVisible();
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- Partial Failures ---
 
   test('transaction list failure still shows wallet info', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /wallets/wallet-error-1/transactions': { status: 500, body: { message: 'DB timeout' } },
     });
 
     await page.goto(`/#/wallets/${WALLET_ID}`);
 
     // Wallet header should still show
-    await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
+    await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
 
-    // Transaction section may show error or empty state
-    await expect(
-      page.getByRole('tab', { name: 'Transactions', exact: true })
-    ).toBeVisible();
+    // The wallet detail has no distinct error copy for a failed page fetch; it falls back to the empty state.
+    await expect(page.getByRole('tab', { name: 'Transactions', exact: true })).toBeVisible();
+    await expect(page.getByTestId('transactions-empty-state')).toHaveText(
+      'No transactions found.',
+      { timeout: CLIENT_RETRY_TIMEOUT }
+    );
+    expect(unhandledRequests).toEqual([]);
   });
 
   test('UTXO fetch failure still allows tab switching', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /wallets/wallet-error-1/utxos': { status: 500, body: { message: 'UTXO fetch failed' } },
     });
 
     await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
+    await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
 
-    // Switch to UTXOs tab
+    // Switch to UTXOs tab: the list renders its header with zero outputs, not a crash.
     await page.getByRole('tab', { name: 'UTXOs', exact: true }).click();
-
-    // Tab should render with error or empty state, not crash
-    await expect(page.getByRole('main')).toBeVisible();
+    await expect(page.getByText('Available Outputs')).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
+    await expect(page.getByText('0 UTXOs')).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
 
     // Can switch to other tabs
     await page.getByRole('tab', { name: 'Transactions', exact: true }).click();
     await expect(page.getByText(/No transactions/i)).toBeVisible();
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- Admin API Errors ---
 
   test('feature flags API error shows error banner', async ({ page }) => {
-    await mockErrorApi(page, {
+    const unhandledRequests = await mockErrorApi(page, {
       'GET /admin/features': { status: 500, body: { message: 'Service unavailable' } },
     });
 
     await page.goto('/#/admin/feature-flags');
 
-    // Should show the feature flags page (with error state or heading)
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Failed to load feature flags')).toBeVisible({ timeout: CLIENT_RETRY_TIMEOUT });
+    expect(unhandledRequests).toEqual([]);
   });
 
   test('settings save failure shows error message', async ({ page }) => {
-    await mockErrorApi(page, {
-      'PUT /admin/settings': { status: 500, body: { message: 'Failed to save settings' } },
+    const settingsError = 'Settings store unavailable (e2e)';
+    const unhandledRequests = await mockErrorApi(page, {
+      'PUT /admin/settings': { status: 500, body: { message: settingsError } },
     });
 
     await page.goto('/#/admin/variables');
     await expect(page.getByText('Confirmation Threshold').first()).toBeVisible();
 
-    // Change a value to trigger auto-save (the form auto-saves on change)
     const confirmInput = page.getByRole('spinbutton').first();
     await confirmInput.clear();
     await confirmInput.fill('3');
 
-    // Click save button if present, or the auto-save triggers it
     const saveButton = page.getByRole('button', { name: 'Save Changes' });
     await expect(saveButton).toBeVisible();
+    const saveAttempt = page.waitForRequest(
+      (request) => request.method() === 'PUT' && request.url().endsWith('/admin/settings')
+    );
     await saveButton.click();
+    await saveAttempt;
 
-    // After the save attempt, the button should change state (from "Saving..." back to "Save Changes" or show error)
-    // We just verify the page doesn't crash and the variables page is still functional
-    await expect(page.getByText('Confirmation Threshold').first()).toBeVisible({ timeout: 10000 });
+    // The server's own message is surfaced, not a generic fallback.
+    await expect(page.getByText(settingsError)).toBeVisible({ timeout: 10000 });
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- Network Disconnection ---
@@ -483,13 +505,16 @@ test.describe('Error recovery', () => {
     // Navigate back to dashboard
     await page.goto('/#/');
     await expect(page.getByRole('main')).toBeVisible();
+    expect(unhandledRequests).toEqual([]);
   });
 
   // --- Recovery After Error ---
 
   test('refreshing after error recovers successfully', async ({ page }) => {
+    test.setTimeout(45_000);
     // Start with a failing price endpoint
     let priceFailure = true;
+    const unhandledRequests: string[] = [];
 
     await page.addInitScript(() => {
       localStorage.setItem('sanctuary_token', 'playwright-recovery-token');
@@ -498,19 +523,21 @@ test.describe('Error recovery', () => {
     await registerApiRoutes(
       page,
       createApiRouteHandler({
+        unhandledRequests,
         dynamicResponse: (route) => recoveryDynamicResponse(route, priceFailure),
       })
     );
 
-    // Load with failing price
+    // Load with failing price: the 24h change has nothing to show
     await page.goto('/#/');
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('price-change-24h')).toContainText('---', { timeout: CLIENT_RETRY_TIMEOUT });
 
     // Fix the price endpoint
     priceFailure = false;
 
     // Reload should recover
     await page.reload();
-    await expect(page.getByRole('main')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('telemetry-price')).toContainText('95,000', { timeout: CLIENT_RETRY_TIMEOUT });
+    expect(unhandledRequests).toEqual([]);
   });
 });

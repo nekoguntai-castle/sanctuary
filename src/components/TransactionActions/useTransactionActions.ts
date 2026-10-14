@@ -5,7 +5,7 @@ import * as draftsApi from '../../api/drafts';
 import * as transactionsApi from '../../api/transactions';
 import { useLatestRequest } from '../../hooks/useLatestRequest';
 import { createLogger } from '../../utils/logger';
-import { cpfpSuccessMessage, errorMessage, rbfDraftRequest } from './transactionActionsData';
+import { cpfpDraftRequest, errorMessage, rbfDraftRequest } from './transactionActionsData';
 import type { TransactionActionHandlers, TransactionActionsProps, TransactionActionState } from './types';
 
 const log = createLogger('TransactionActions');
@@ -30,7 +30,6 @@ export function useTransactionActions({
   const [newFeeRate, setNewFeeRate] = useState<number>(0);
   const [targetFeeRate, setTargetFeeRate] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const actions = useLatestRequest();
   const statusRequests = useLatestRequest();
@@ -49,7 +48,6 @@ export function useTransactionActions({
     setShowRBFModal(false);
     setShowCPFPModal(false);
     setError(null);
-    setSuccess(null);
   }
   const scope = scopeRef.current;
 
@@ -150,9 +148,13 @@ export function useTransactionActions({
       });
 
       if (!actions.isCurrent(token)) return;
-      setSuccess(cpfpSuccessMessage(result.effectiveFeeRate));
+      const draft = await draftsApi.createDraft(walletId, cpfpDraftRequest({ parentTxid: txid, result }));
+
+      // Accepted server drafts remain saved; only their current UI may navigate.
+      if (!actions.isCurrent(token)) return;
       setShowCPFPModal(false);
-      onActionComplete?.();
+      navigate(`/wallets/${walletId}/send`, { state: { draft } });
+      if (actions.isCurrent(token)) onActionComplete?.();
     } catch (err) {
       if (!actions.isCurrent(token)) return;
       log.error('CPFP failed', { error: err });
@@ -181,7 +183,6 @@ export function useTransactionActions({
       rbfStatus,
       showCPFPModal,
       showRBFModal,
-      success,
       targetFeeRate,
     },
   };

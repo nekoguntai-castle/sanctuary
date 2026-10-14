@@ -3,6 +3,8 @@ import type { TransactionData } from '../../../../hooks/send/types';
 import type { AddressLookupResult } from '../../../../api/bitcoin';
 import type { UTXO, Wallet } from '../../../../types';
 import type { FlowInput, FlowOutput } from '../../../TransactionFlowPreview';
+import { UNATTRIBUTED_SIGNATURE_ID } from '../../../../hooks/send/types';
+import { getBuiltChangeSats } from './transactionSummaryModel';
 
 export interface ReviewFlowData {
   inputs: FlowInput[];
@@ -44,8 +46,11 @@ export function getReviewChangeAmount(
   outputs: TransactionState['outputs'],
   selectedTotal: number,
   totalOutputAmount: number,
-  estimatedFee: number
+  estimatedFee: number,
+  txData?: TransactionData | null
 ): number {
+  // The built transaction knows its real change (and decoy change); only estimate before the build.
+  if (txData) return getBuiltChangeSats(txData);
   if (outputs.some(output => output.sendMax)) return 0;
   return Math.max(0, selectedTotal - totalOutputAmount - estimatedFee);
 }
@@ -90,7 +95,7 @@ export function canBroadcastReviewTransaction(
   hasEnoughSignatures: boolean,
   signedDevices: Set<string>
 ): boolean {
-  return Boolean(txData && (hasEnoughSignatures || signedDevices.has('psbt-signed')));
+  return Boolean(txData && (hasEnoughSignatures || signedDevices.has(UNATTRIBUTED_SIGNATURE_ID)));
 }
 
 function getInputUtxos(

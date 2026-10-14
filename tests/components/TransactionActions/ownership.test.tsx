@@ -57,6 +57,12 @@ const replacement = {
   outputs: [{ address: 'recipient', value: 48000 }],
 } as Awaited<ReturnType<typeof bitcoinApi.createRBFTransaction>>;
 const draft = { id: 'draft' } as Awaited<ReturnType<typeof draftsApi.createDraft>>;
+const cpfpResponse = {
+  psbtBase64: 'cpfp-psbt', intentId: 'intent-cpfp', intentDigest: 'd'.repeat(64),
+  childFee: 3000, childFeeRate: 40, parentFeeRate: 2, effectiveFeeRate: 25,
+  inputs: [{ txid: 'parent', vout: 0, value: 50000 }],
+  outputs: [{ address: 'own', value: 47000, isChange: false }],
+} as Awaited<ReturnType<typeof bitcoinApi.createCPFPTransaction>>;
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: Error) => void;
@@ -93,7 +99,7 @@ beforeEach(() => {
   vi.mocked(transactionsApi.getTransaction).mockResolvedValue(original);
   vi.mocked(bitcoinApi.createRBFTransaction).mockResolvedValue(replacement);
   vi.mocked(draftsApi.createDraft).mockResolvedValue(draft);
-  vi.mocked(bitcoinApi.createCPFPTransaction).mockResolvedValue({ effectiveFeeRate: 25 } as never);
+  vi.mocked(bitcoinApi.createCPFPTransaction).mockResolvedValue(cpfpResponse);
 });
 
 describe('transaction action ownership', () => {
@@ -185,9 +191,31 @@ describe('transaction action ownership', () => {
     let work!: Promise<void>;
     act(() => { work = result.current.handlers.handleCPFP(); });
     unmount();
-    await act(async () => { if (outcome === 'success') pending.resolve({ effectiveFeeRate: 25 } as never); else pending.reject(new Error('retired')); await work; });
+    await act(async () => { if (outcome === 'success') pending.resolve(cpfpResponse); else pending.reject(new Error('retired')); await work; });
     expect(complete).not.toHaveBeenCalled();
     expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect a reader who left the wallet while the CPFP draft was pending', async () => {
+    const pending = deferBoundary('draft');
+    const { result, unmount, navigate, complete } = await setup();
+    act(() => result.current.handlers.setTargetFeeRate(25));
+    let work!: Promise<void>;
+    act(() => { work = result.current.handlers.handleCPFP(); });
+    await waitFor(() => expect(draftsApi.createDraft).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => { pending.resolve(); await work; });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke completion if navigation retires the owner after a CPFP draft', async () => {
+    const { result, navigate, unmount, complete } = await setup();
+    act(() => result.current.handlers.setTargetFeeRate(25));
+    navigate.mockImplementationOnce(unmount);
+    await act(async () => { await result.current.handlers.handleCPFP(); });
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it('old RBF finally cannot clear newer CPFP processing', async () => {
@@ -204,8 +232,8 @@ describe('transaction action ownership', () => {
     await act(async () => { old.resolve(); await first; });
     expect(result.current.state.processing).toBe(true);
     expect(navigate).not.toHaveBeenCalled();
-    await act(async () => { current.resolve({ effectiveFeeRate: 25 } as never); await second; });
-    expect(result.current.state.success).toContain('25.00');
+    await act(async () => { current.resolve(cpfpResponse); await second; });
+    expect(navigate).toHaveBeenCalledWith('/wallets/A/send', { state: { draft } });
     expect(result.current.state.processing).toBe(false);
     expect(complete).toHaveBeenCalledTimes(1);
   });

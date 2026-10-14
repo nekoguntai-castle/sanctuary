@@ -94,6 +94,8 @@ export async function createCPFPTransaction(
   effectiveFeeRate: number;
   signingContext: PsbtSigningContext;
   feePolicy: SigningIntentFeePolicyV1;
+  inputs: Array<{ txid: string; vout: number; value: number }>;
+  outputs: Array<{ address: string; value: number; isChange: boolean }>;
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
   const client = await getNodeClient(network);
@@ -251,5 +253,7 @@ export async function createCPFPTransaction(
       exactFeeRateNotAbove(cpfpCalc.childFee, childTxSize),
       cpfpCalc.childFee,
     ),
+    inputs: [{ txid: parentTxid, vout: resolvedVout, value: utxoValue }],
+    outputs: [{ address: resolvedRecipientAddress, value: outputValue, isChange: false }],
   };
 }

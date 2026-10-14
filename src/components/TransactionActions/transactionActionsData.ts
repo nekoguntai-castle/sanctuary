@@ -1,4 +1,4 @@
-import type { RBFCheckResult, RBFTransactionResponse } from '../../api/bitcoin';
+import type { CPFPTransactionResponse, RBFCheckResult, RBFTransactionResponse } from '../../api/bitcoin';
 import type { CreateDraftRequest } from '../../api/drafts';
 
 export function errorMessage(error: unknown, fallback: string): string {
@@ -8,8 +8,45 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function cpfpSuccessMessage(effectiveFeeRate: number): string {
-  return `CPFP transaction created! Effective fee rate: ${effectiveFeeRate.toFixed(2)} sat/vB`;
+/**
+ * Build the draft-creation request for a CPFP child. The server already
+ * persisted the signing intent, so the draft only carries the intent
+ * identifiers plus the display fields the send wizard needs. The child spends
+ * one parent output to one wallet address, so there is never change.
+ */
+export function cpfpDraftRequest({
+  parentTxid,
+  result,
+}: {
+  parentTxid: string;
+  result: CPFPTransactionResponse;
+}): CreateDraftRequest {
+  const primaryOutput = result.outputs[0];
+  const totalInput = result.inputs.reduce((sum, input) => sum + input.value, 0);
+  const totalOutput = result.outputs.reduce((sum, output) => sum + output.value, 0);
+
+  return {
+    recipient: primaryOutput.address,
+    amount: primaryOutput.value,
+    feeRate: result.childFeeRate,
+    fee: result.childFee,
+    selectedUtxoIds: result.inputs.map((input) => `${input.txid}:${input.vout}`),
+    enableRBF: false,
+    isRBF: false,
+    subtractFees: false,
+    sendMax: false,
+    outputs: result.outputs.map((output) => ({ address: output.address, amount: output.value })),
+    label: `CPFP: accelerate ${parentTxid.slice(0, 8)}...`,
+    memo: `Accelerating transaction ${parentTxid}`,
+    psbtBase64: result.psbtBase64,
+    intentId: result.intentId,
+    intentDigest: result.intentDigest,
+    totalInput,
+    totalOutput,
+    changeAmount: 0,
+    effectiveAmount: primaryOutput.value,
+    inputPaths: [],
+  };
 }
 
 /**

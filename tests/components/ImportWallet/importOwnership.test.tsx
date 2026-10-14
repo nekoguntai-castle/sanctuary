@@ -73,6 +73,23 @@ describe('import input ownership', () => {
     expect(result.current.state.validationResult).toBeNull();
   });
 
+  it('drops the hardware connection state when Back leaves the review step of a hardware import', () => {
+    const { result } = setup();
+    act(() => { result.current.state.setFormat('hardware'); });
+    act(() => {
+      result.current.state.setDeviceConnected(true);
+      result.current.state.setDeviceLabel('Ledger Nano');
+      result.current.state.setXpubData({ xpub: 'xpub', fingerprint: 'abcd1234', path: "m/84'/0'/0'" } as never);
+    });
+    act(() => { result.current.state.setStep(3); });
+    expect(result.current.state.step).toBe(3);
+    act(() => { result.current.actions.handleBack(); });
+    expect(result.current.state.step).toBe(2);
+    expect(result.current.state.deviceConnected).toBe(false);
+    expect(result.current.state.deviceLabel).toBeNull();
+    expect(result.current.state.xpubData).toBeNull();
+  });
+
   it.each(['roundtrip', 'back', 'format', 'network', 'unmount'] as const)('invalidates pending validation on %s', async change => {
     const pending = deferred<ImportValidationResult>();
     vi.mocked(walletsApi.validateImport).mockReturnValueOnce(pending.promise);

@@ -19,6 +19,11 @@ vi.mock('../../src/api/admin', () => ({
   revokeAgentApiKey: vi.fn(),
 }));
 
+const currentUser = vi.hoisted(() => ({ value: { id: 'user-1' } as { id: string } | null }));
+vi.mock('../../src/contexts/UserContext', () => ({
+  useCurrentUser: () => currentUser.value,
+}));
+
 vi.mock('../../src/api/wallets', () => ({
   validateImport: vi.fn(),
   importWallet: vi.fn(),
@@ -178,6 +183,7 @@ function renderAgentManagement() {
 describe('AgentManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    currentUser.value = { id: 'user-1' };
     vi.mocked(adminApi.getWalletAgents).mockResolvedValue([agent]);
     vi.mocked(adminApi.getWalletAgentOptions).mockResolvedValue(options);
     vi.mocked(adminApi.createWalletAgent).mockResolvedValue(agent);
@@ -431,6 +437,64 @@ describe('AgentManagement', () => {
     expect(walletsApi.validateXpub).not.toHaveBeenCalled();
     expect(walletsApi.validateImport).not.toHaveBeenCalled();
     expect(walletsApi.importWallet).not.toHaveBeenCalled();
+  });
+
+  const optionsWithSecondUser = {
+    ...options,
+    users: [
+      ...options.users,
+      { ...options.users[0], id: 'user-2', username: 'bob', email: 'bob@example.com' },
+    ],
+    wallets: [
+      ...options.wallets,
+      {
+        id: 'funding-2',
+        name: 'Shared Funding',
+        type: 'multi_sig',
+        network: 'testnet3',
+        accessUserIds: ['user-1', 'user-2'],
+        deviceIds: [],
+      },
+    ],
+  };
+
+  async function openWalletStepFor(user: ReturnType<typeof userEvent.setup>, userId: string) {
+    vi.mocked(adminApi.getWalletAgentOptions).mockReset().mockResolvedValue(optionsWithSecondUser);
+    renderAgentManagement();
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
+    let selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], userId);
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-2');
+  }
+
+  it('disables the inline operational import when the agent user is not the importing admin', async () => {
+    const user = userEvent.setup();
+    await openWalletStepFor(user, 'user-2');
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    expect(screen.getByText(/Only bob can import their operational wallet/)).toBeInTheDocument();
+  });
+
+  it('disables the inline operational import when no current user is loaded', async () => {
+    const user = userEvent.setup();
+    currentUser.value = null;
+    await openWalletStepFor(user, 'user-1');
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    expect(screen.getByText(/Only alice can import their operational wallet/)).toBeInTheDocument();
+  });
+
+  it('keeps the inline operational import enabled when the agent user is the importer', async () => {
+    const user = userEvent.setup();
+    await openWalletStepFor(user, 'user-1');
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled();
+    expect(screen.queryByText(/can import their operational wallet/)).not.toBeInTheDocument();
   });
 
   it('rejects raw multisig extended keys in the operational wallet import', async () => {

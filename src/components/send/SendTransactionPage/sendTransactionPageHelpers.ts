@@ -156,6 +156,7 @@ export function buildDraftTxData(draftData: DraftTransaction): DraftTransactionD
     effectiveAmount: draftData.effectiveAmount,
     selectedUtxoIds: draftData.selectedUtxoIds,
     inputPaths: draftData.inputPaths,
+    decoyOutputs: draftData.decoyOutputs,
     signingContext: draftData.signingContext ?? undefined,
   };
 }

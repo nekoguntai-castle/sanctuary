@@ -16,7 +16,7 @@ import { uint8ArrayEquals, toHex } from '../../utils/bufferUtils';
 import { base64ToBytes, bytesToBase64, hasPsbtMagicBytes } from '../../utils/psbtFormat';
 import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import type { Wallet } from '../../types';
-import type { TransactionData } from './types';
+import { UNATTRIBUTED_SIGNATURE_ID, type TransactionData } from './types';
 import type { SendOperationLease } from './useSendOperationOwner';
 
 const log = createLogger('QrSigning');
@@ -72,8 +72,10 @@ const getUploadedPsbtBase64 = (bytes: Uint8Array): string => {
   return new TextDecoder().decode(bytes).trim();
 };
 
+export { UNATTRIBUTED_SIGNATURE_ID };
+
 const getEffectiveDeviceId = (deviceId?: string): string => {
-  return deviceId || 'psbt-signed';
+  return deviceId || UNATTRIBUTED_SIGNATURE_ID;
 };
 
 const logUploadedSignedPsbt = (
@@ -259,7 +261,7 @@ const persistUploadedSignatureToDraft = async (
   try {
     await draftsApi.updateDraft(walletId, draftId, {
       signedPsbtBase64: combinedPsbt,
-      signedDeviceId: effectiveDeviceId,
+      ...(effectiveDeviceId !== UNATTRIBUTED_SIGNATURE_ID && { signedDeviceId: effectiveDeviceId }),
     }, lease.signal);
     log.info('Uploaded PSBT signature persisted to draft', { draftId, deviceId: effectiveDeviceId });
   } catch (persistErr) {

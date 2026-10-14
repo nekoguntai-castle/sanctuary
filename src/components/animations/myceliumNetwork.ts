@@ -6,41 +6,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-
-interface Node {
-  x: number;
-  y: number;
-  connections: number[];
-  pulsePhase: number;
-  size: number;
-  bloomPhase: number;
-  isBloomNode: boolean;
-}
-
-interface Branch {
-  startNode: number;
-  endNode: number;
-  progress: number;
-  growthSpeed: number;
-  thickness: number;
-  pulses: Pulse[];
-}
-
-interface Pulse {
-  position: number; // 0-1 along branch
-  speed: number;
-  size: number;
-  opacity: number;
-}
-
-interface GrowingTip {
-  x: number;
-  y: number;
-  angle: number;
-  parentNode: number;
-  age: number;
-  thickness: number;
-}
+import { advanceMyceliumGrowth, type MyceliumNode, type MyceliumState } from './myceliumNetwork/model';
 
 export function useMyceliumNetwork(
   canvasRef: React.RefObject<HTMLCanvasElement>,
@@ -48,9 +14,7 @@ export function useMyceliumNetwork(
   opacity: number,
   active: boolean
 ): void {
-  const nodesRef = useRef<Node[]>([]);
-  const branchesRef = useRef<Branch[]>([]);
-  const growingTipsRef = useRef<GrowingTip[]>([]);
+  const stateRef = useRef<MyceliumState>({ nodes: [], branches: [], tips: [] });
   const animationRef = useRef<number>(0);
   const timeRef = useRef<number>(0);
 
@@ -71,14 +35,15 @@ export function useMyceliumNetwork(
 
     const initializeNetwork = () => {
       const { width, height } = canvas;
-      nodesRef.current = [];
-      branchesRef.current = [];
-      growingTipsRef.current = [];
+      const state = stateRef.current;
+      state.nodes = [];
+      state.branches = [];
+      state.tips = [];
 
       // Create initial seed nodes
       const seedCount = 3 + Math.floor(Math.random() * 3);
       for (let i = 0; i < seedCount; i++) {
-        const node: Node = {
+        const node: MyceliumNode = {
           x: width * 0.2 + Math.random() * width * 0.6,
           y: height * 0.2 + Math.random() * height * 0.6,
           connections: [],
@@ -87,16 +52,16 @@ export function useMyceliumNetwork(
           bloomPhase: 0,
           isBloomNode: Math.random() < 0.3,
         };
-        nodesRef.current.push(node);
+        state.nodes.push(node);
 
         // Create initial growing tips from seed
         const tipCount = 2 + Math.floor(Math.random() * 3);
         for (let t = 0; t < tipCount; t++) {
-          growingTipsRef.current.push({
+          state.tips.push({
             x: node.x,
             y: node.y,
             angle: (t / tipCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.5,
-            parentNode: nodesRef.current.length - 1,
+            parentNode: state.nodes.length - 1,
             age: 0,
             thickness: 2 + Math.random() * 2,
           });
@@ -104,40 +69,13 @@ export function useMyceliumNetwork(
       }
     };
 
-    const addNode = (x: number, y: number, parentIndex: number): number => {
-      const node: Node = {
-        x,
-        y,
-        connections: [parentIndex],
-        pulsePhase: Math.random() * Math.PI * 2,
-        size: 2 + Math.random() * 3,
-        bloomPhase: 0,
-        isBloomNode: Math.random() < 0.15,
-      };
-      const newIndex = nodesRef.current.length;
-      nodesRef.current.push(node);
-      nodesRef.current[parentIndex].connections.push(newIndex);
-
-      // Add branch
-      branchesRef.current.push({
-        startNode: parentIndex,
-        endNode: newIndex,
-        progress: 0,
-        growthSpeed: 0.02 + Math.random() * 0.02,
-        thickness: 1 + Math.random() * 2,
-        pulses: [],
-      });
-
-      return newIndex;
-    };
-
     const drawNetwork = () => {
       const opacityMult = opacity / 50;
 
       // Draw branches
-      branchesRef.current.forEach((branch) => {
-        const startNode = nodesRef.current[branch.startNode];
-        const endNode = nodesRef.current[branch.endNode];
+      stateRef.current.branches.forEach((branch) => {
+        const startNode = stateRef.current.nodes[branch.startNode];
+        const endNode = stateRef.current.nodes[branch.endNode];
 
         const progress = Math.min(1, branch.progress);
         const endX = startNode.x + (endNode.x - startNode.x) * progress;
@@ -183,7 +121,7 @@ export function useMyceliumNetwork(
       });
 
       // Draw nodes
-      nodesRef.current.forEach((node) => {
+      stateRef.current.nodes.forEach((node) => {
         const pulse = Math.sin(node.pulsePhase) * 0.3 + 0.7;
         const size = node.size * pulse;
 
@@ -224,7 +162,7 @@ export function useMyceliumNetwork(
       });
 
       // Draw growing tips
-      growingTipsRef.current.forEach((tip) => {
+      stateRef.current.tips.forEach((tip) => {
         const tipGradient = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 5);
         if (darkMode) {
           tipGradient.addColorStop(0, `rgba(180, 220, 180, ${0.6 * opacityMult})`);
@@ -249,7 +187,7 @@ export function useMyceliumNetwork(
       ctx.fillRect(0, 0, width, height);
 
       // Update nodes
-      nodesRef.current.forEach((node) => {
+      stateRef.current.nodes.forEach((node) => {
         node.pulsePhase += 0.02;
         if (node.isBloomNode) {
           if (node.bloomPhase > 0) {
@@ -264,7 +202,7 @@ export function useMyceliumNetwork(
       });
 
       // Update branches - grow and add pulses
-      branchesRef.current.forEach((branch) => {
+      stateRef.current.branches.forEach((branch) => {
         if (branch.progress < 1) {
           branch.progress += branch.growthSpeed;
         }
@@ -287,59 +225,8 @@ export function useMyceliumNetwork(
         });
       });
 
-      // Update growing tips
-      growingTipsRef.current = growingTipsRef.current.filter((tip) => {
-        tip.age += 1;
-
-        // Grow
-        const speed = 0.5 + Math.random() * 0.3;
-        tip.angle += (Math.random() - 0.5) * 0.1; // Slight wandering
-        tip.x += Math.cos(tip.angle) * speed;
-        tip.y += Math.sin(tip.angle) * speed;
-
-        // Create node and branch occasionally
-        if (tip.age > 30 && Math.random() < 0.02) {
-          const newNodeIndex = addNode(tip.x, tip.y, tip.parentNode);
-          tip.parentNode = newNodeIndex;
-          tip.age = 0;
-
-          // Maybe branch
-          if (Math.random() < 0.3 && growingTipsRef.current.length < 20) {
-            growingTipsRef.current.push({
-              x: tip.x,
-              y: tip.y,
-              angle: tip.angle + (Math.random() < 0.5 ? 0.5 : -0.5) + (Math.random() - 0.5) * 0.3,
-              parentNode: newNodeIndex,
-              age: 0,
-              thickness: tip.thickness * 0.8,
-            });
-          }
-        }
-
-        // Stop growing if out of bounds or too many nodes
-        if (tip.x < 0 || tip.x > width || tip.y < 0 || tip.y > height) {
-          return false;
-        }
-        if (nodesRef.current.length > 100) {
-          return Math.random() > 0.01; // Slow down growth
-        }
-
-        return tip.age < 200;
-      });
-
-      // Occasionally start new growth from existing nodes
-      if (growingTipsRef.current.length < 5 && nodesRef.current.length > 0 && Math.random() < 0.005) {
-        const nodeIndex = Math.floor(Math.random() * nodesRef.current.length);
-        const node = nodesRef.current[nodeIndex];
-        growingTipsRef.current.push({
-          x: node.x,
-          y: node.y,
-          angle: Math.random() * Math.PI * 2,
-          parentNode: nodeIndex,
-          age: 0,
-          thickness: 1.5 + Math.random() * 1.5,
-        });
-      }
+      // Grow tips and occasionally start new growth, within the model's caps
+      advanceMyceliumGrowth(stateRef.current, { width, height }, Math.random);
 
       drawNetwork();
 

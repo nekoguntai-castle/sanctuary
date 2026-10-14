@@ -11,11 +11,31 @@ export function getRecipientHeading(outputCount: number): string {
   return outputCount === 1 ? 'Recipient' : `Recipients (${outputCount})`;
 }
 
-export function getRecipientAmountText(
+/**
+ * Change the built transaction actually pays back to the wallet: the primary
+ * change output plus any decoy change outputs.
+ */
+export function getBuiltChangeSats(txData: TransactionData): number {
+  return (txData.changeAmount ?? 0)
+    + (txData.decoyOutputs ?? []).reduce((sum, decoy) => sum + decoy.amount, 0);
+}
+
+/**
+ * Amount shown on a recipient row. Once the transaction is built, the PSBT's
+ * output amount wins over the typed amount (they differ under subtract-fees).
+ */
+export function getRecipientDisplayAmount(
   output: SummaryOutput,
-  format: (sats: number) => string
-): string {
-  return output.sendMax ? 'MAX' : format(parseInt(output.amount, 10) || 0);
+  index: number,
+  outputCount: number,
+  txData?: TransactionData | null
+): number | 'MAX' {
+  if (output.sendMax) return 'MAX';
+  const built = txData?.outputs;
+  if (built?.length === outputCount && built[index]?.address === output.address) {
+    return built[index].amount;
+  }
+  return parseInt(output.amount, 10) || 0;
 }
 
 export function getPayjoinSummaryLabel(payjoinStatus: string): string {
@@ -31,9 +51,17 @@ export function getTotalSendingSats(
   totalOutputAmount: number,
   txData?: TransactionData | null
 ): number {
+  if (txData) {
+    const built = txData.outputs;
+    // Built output amounts are authoritative; a MAX output may be stored as 0 (resumed drafts).
+    if (built?.length && !built.some((output) => output.sendMax)) {
+      return built.reduce((sum, output) => sum + output.amount, 0);
+    }
+    // Once built, the real fee and change are known; the pre-build estimate assumes 68-vB inputs.
+    if (hasSendMaxOutput(outputs)) return txData.totalInput - txData.fee - getBuiltChangeSats(txData);
+    return totalOutputAmount;
+  }
   if (!hasSendMaxOutput(outputs)) return totalOutputAmount;
-  // Once built, the real fee and change are known; the pre-build estimate assumes 68-vB inputs.
-  if (txData) return txData.totalInput - txData.fee - (txData.changeAmount ?? 0);
   return selectedTotal - estimatedFee;
 }
 
@@ -48,8 +76,8 @@ export function getTotalIncludingFeeSats(
   networkFee: number,
   txData?: TransactionData | null
 ): number {
-  if (!hasSendMaxOutput(outputs)) return totalOutputAmount + networkFee;
   if (txData) return getTotalSendingSats(outputs, selectedTotal, 0, totalOutputAmount, txData) + networkFee;
+  if (!hasSendMaxOutput(outputs)) return totalOutputAmount + networkFee;
   return selectedTotal;
 }
 

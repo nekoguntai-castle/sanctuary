@@ -143,6 +143,11 @@ describe('advanced transaction signing response schemas', () => {
     intentDigest: 'd'.repeat(64),
   };
 
+  const cpfpChild = {
+    inputs: [{ txid: 'parent', vout: 0, value: 10_000 }],
+    outputs: [{ address: 'bc1qown', value: 9_000, isChange: false }],
+  };
+
   it('accepts CPFP and batch responses carrying server-issued signing evidence', () => {
     expect(CPFPTransactionResponseSchema.parse({
       ...signingIntent,
@@ -150,6 +155,7 @@ describe('advanced transaction signing response schemas', () => {
       childFeeRate: 10,
       parentFeeRate: 2,
       effectiveFeeRate: 6,
+      ...cpfpChild,
     }).signingContext).toEqual(testPsbtSigningContext);
     expect(BatchTransactionResponseSchema.parse({
       ...signingIntent,
@@ -164,11 +170,32 @@ describe('advanced transaction signing response schemas', () => {
 
   it.each([
     ['RBF', RBFTransactionResponseSchema, rbf],
-    ['CPFP', CPFPTransactionResponseSchema, { ...signingIntent, childFee: 1, childFeeRate: 1, parentFeeRate: 1, effectiveFeeRate: 1 }],
+    ['CPFP', CPFPTransactionResponseSchema, { ...signingIntent, childFee: 1, childFeeRate: 1, parentFeeRate: 1, effectiveFeeRate: 1, ...cpfpChild }],
     ['batch', BatchTransactionResponseSchema, { ...signingIntent, fee: 1, totalInput: 2, totalOutput: 1, changeAmount: 0, savedFees: 0, recipientCount: 1 }],
   ])('rejects %s responses without valid signing evidence', (_name, schema, response) => {
     expect(schema.safeParse({ ...response, signingContext: undefined }).success).toBe(false);
     expect(schema.safeParse({ ...response, signingContext: { ...testPsbtSigningContext, walletId: '' } }).success).toBe(false);
+  });
+});
+
+describe('CPFP response child transaction shape', () => {
+  const base = {
+    psbtBase64: 'cHNidP8BAHECAAAAAf',
+    signingContext: testPsbtSigningContext,
+    intentId: 'intent-advanced',
+    intentDigest: 'd'.repeat(64),
+    childFee: 1,
+    childFeeRate: 1,
+    parentFeeRate: 1,
+    effectiveFeeRate: 1,
+    inputs: [{ txid: 'parent', vout: 0, value: 10_000 }],
+    outputs: [{ address: 'bc1qown', value: 9_000, isChange: false }],
+  };
+
+  it('requires at least one input and one output', () => {
+    expect(CPFPTransactionResponseSchema.safeParse(base).success).toBe(true);
+    expect(CPFPTransactionResponseSchema.safeParse({ ...base, inputs: [] }).success).toBe(false);
+    expect(CPFPTransactionResponseSchema.safeParse({ ...base, outputs: [] }).success).toBe(false);
   });
 });
 

@@ -14,7 +14,7 @@ import { useErrorHandler } from '../useErrorHandler';
 import { createLogger } from '../../utils/logger';
 import type { OutputEntry, TransactionState } from '../../contexts/send/types';
 import type { CreateDraftRequest } from '../../api/drafts';
-import type { TransactionData } from './types';
+import { UNATTRIBUTED_SIGNATURE_ID, type TransactionData } from './types';
 import type { SendOperationLease } from './useSendOperationOwner';
 import {
   requirePositiveSatoshiAmount,
@@ -113,9 +113,21 @@ const buildDraftRequest = (
   };
 };
 
-const getFirstSignedDeviceId = (signedDevices: Set<string>): string | undefined => {
-  const firstDevice = signedDevices.values().next();
-  return firstDevice.done ? undefined : firstDevice.value;
+// The server records one signed device per update, so a draft with several signers needs one PATCH each.
+const getDraftSignedDeviceIds = (signedDevices: Set<string>): string[] =>
+  Array.from(signedDevices).filter(deviceId => deviceId !== UNATTRIBUTED_SIGNATURE_ID);
+
+// Idempotent server-side, so retrying after a partial failure converges.
+const patchRemainingSignedDevices = async (
+  walletId: string,
+  draftId: string,
+  remainingDeviceIds: string[],
+  lease: SendOperationLease,
+): Promise<void> => {
+  for (const signedDeviceId of remainingDeviceIds) {
+    if (!lease.isCurrent()) return;
+    await draftsApi.updateDraft(walletId, draftId, { signedDeviceId }, lease.signal);
+  }
 };
 
 const hasSignedPsbtState = (
@@ -135,7 +147,7 @@ const buildSignedDraftUpdate = (
   const hasSignatures = hasSignedPsbtState(unsignedPsbt, currentTxData, signedDevices);
   return {
     signedPsbtBase64: hasSignatures && unsignedPsbt ? unsignedPsbt : undefined,
-    signedDeviceId: getFirstSignedDeviceId(signedDevices),
+    signedDeviceId: getDraftSignedDeviceIds(signedDevices)[0],
   };
 };
 
@@ -145,14 +157,15 @@ const updateExistingDraft = async (
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
   signedDevices: Set<string>,
-  signal: AbortSignal,
+  lease: SendOperationLease,
 ): Promise<string> => {
   await draftsApi.updateDraft(
     walletId,
     draftId,
     buildSignedDraftUpdate(unsignedPsbt, currentTxData, signedDevices),
-    signal,
+    lease.signal,
   );
+  await patchRemainingSignedDevices(walletId, draftId, getDraftSignedDeviceIds(signedDevices).slice(1), lease);
   return draftId;
 };
 
@@ -170,17 +183,19 @@ const saveSignedStateForNewDraft = async (
   unsignedPsbt: string,
   currentTxData: TransactionData,
   signedDevices: Set<string>,
-  signal: AbortSignal,
+  lease: SendOperationLease,
 ): Promise<void> => {
   log.info('Saving signed PSBT to newly created draft', {
     draftId,
     signedDevices: Array.from(signedDevices),
     psbtChanged: unsignedPsbt !== currentTxData.psbtBase64,
   });
+  const [firstDeviceId, ...remainingDeviceIds] = getDraftSignedDeviceIds(signedDevices);
   await draftsApi.updateDraft(walletId, draftId, {
     signedPsbtBase64: unsignedPsbt,
-    signedDeviceId: getFirstSignedDeviceId(signedDevices),
-  }, signal);
+    signedDeviceId: firstDeviceId,
+  }, lease.signal);
+  await patchRemainingSignedDevices(walletId, draftId, remainingDeviceIds, lease);
 };
 
 const createNewDraft = async (
@@ -206,7 +221,7 @@ const createNewDraft = async (
       unsignedPsbt as string,
       currentTxData,
       signedDevices,
-      lease.signal,
+      lease,
     );
     if (!lease.isCurrent()) return null;
   }
@@ -287,7 +302,7 @@ export function useDraftManagement({
           unsignedPsbtSnapshot,
           currentTxData,
           signedDevicesSnapshot,
-          lease.signal,
+          lease,
         );
         if (!lease.isCurrent()) return null;
         showSuccess('Draft updated successfully', 'Draft Saved');

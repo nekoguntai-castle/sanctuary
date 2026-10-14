@@ -24,6 +24,7 @@ function renderImport(
   overrides: Partial<{
     selectedFundingWallet: AgentOptionWallet;
     disabled: boolean;
+    disabledReason: string | null;
     onImported: (walletId: string) => Promise<void>;
   }> = {}
 ) {
@@ -31,6 +32,7 @@ function renderImport(
     <InlineOperationalWalletImport
       selectedFundingWallet={overrides.selectedFundingWallet ?? fundingWallet}
       disabled={overrides.disabled ?? false}
+      disabledReason={overrides.disabledReason ?? null}
       onImported={overrides.onImported ?? vi.fn().mockResolvedValue(undefined)}
     />
   );
@@ -84,11 +86,26 @@ describe('InlineOperationalWalletImport branch coverage', () => {
     expect(walletsApi.validateImport).not.toHaveBeenCalled();
   });
 
+  it('disables the import and shows the reason when the importer is not the target user', () => {
+    renderImport({ disabledReason: 'Only bob can import their operational wallet.' });
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    expect(screen.getByText('Only bob can import their operational wallet.')).toBeInTheDocument();
+    expect(screen.queryByText(/Select a funding wallet first/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the import enabled without a reason', () => {
+    renderImport();
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled();
+  });
+
   it('describes imports when no funding wallet network is selected', async () => {
     const user = userEvent.setup();
     render(
       <InlineOperationalWalletImport
         disabled={false}
+        disabledReason={null}
         onImported={vi.fn().mockResolvedValue(undefined)}
       />
     );

@@ -114,6 +114,8 @@ export const CPFPTransactionResponseSchema = z.looseObject({
   childFeeRate: satoshis,
   parentFeeRate: satoshis,
   effectiveFeeRate: satoshis,
+  inputs: z.array(z.looseObject({ txid: z.string(), vout: z.number().int(), value: satoshis })).min(1),
+  outputs: z.array(z.looseObject({ address: z.string(), value: satoshis, isChange: z.boolean() })).min(1),
 });
 
 export const BatchTransactionResponseSchema = z.looseObject({

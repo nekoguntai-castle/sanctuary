@@ -263,6 +263,8 @@ router.post('/transaction/cpfp', authenticate, validate(
     childFeeRate: result.childFeeRate,
     parentFeeRate: result.parentFeeRate,
     effectiveFeeRate: result.effectiveFeeRate,
+    inputs: result.inputs,
+    outputs: result.outputs,
     ...signingIntent,
   });
 }));

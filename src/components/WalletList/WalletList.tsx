@@ -4,11 +4,24 @@ import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import { useInvalidateAllWallets } from '../../hooks/queries/useWallets';
 import { useWalletSyncLifecycleClock } from '../../hooks/useWalletSyncLifecycleClock';
+import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
 import { createWalletCellRenderers } from '../cells/WalletCells';
 import { WalletListContent } from './WalletListContent';
 import { WalletListEmptyState } from './WalletListEmptyState';
 import { useWalletListData } from './useWalletListData';
 import { useWalletListPreferences } from './useWalletListPreferences';
+
+function WalletListLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="p-8 text-center space-y-4">
+      <ErrorAlert message="Failed to load wallets." className="inline-block" />
+      <div>
+        <Button variant="secondary" onClick={onRetry}>Retry</Button>
+      </div>
+    </div>
+  );
+}
 
 export const WalletList: React.FC = () => {
   const navigate = useNavigate();
@@ -30,6 +43,10 @@ export const WalletList: React.FC = () => {
 
   if (walletData.loading) {
     return <div className="p-8 text-center text-sanctuary-400">Loading wallets...</div>;
+  }
+
+  if (walletData.loadFailed) {
+    return <WalletListLoadError onRetry={() => { void walletData.refetch(); }} />;
   }
 
   if (walletData.wallets.length === 0) {

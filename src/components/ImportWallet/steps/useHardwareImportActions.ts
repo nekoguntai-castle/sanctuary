@@ -74,7 +74,10 @@ export function useHardwareImportActions({
 
   useEffect(() => () => {
     void releaseCurrentConnection();
-  }, [networkOwner.network, networkOwner.generation, releaseCurrentConnection]);
+    // The lease is gone, so the parent must not keep showing "Connected".
+    setDeviceConnected(false);
+    setDeviceLabel(null);
+  }, [networkOwner.network, networkOwner.generation, releaseCurrentConnection, setDeviceConnected, setDeviceLabel]);
 
   const handleDeviceTypeSelect = (type: HardwareDeviceType) => {
     void releaseCurrentConnection();

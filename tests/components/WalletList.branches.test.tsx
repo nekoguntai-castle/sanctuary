@@ -466,4 +466,38 @@ describe('WalletList branch coverage', () => {
     await user.click(screen.getByText('Import Wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/import');
   });
+
+  it('shows a retryable error instead of the empty state when the wallet list fails to load', async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+    vi.mocked(useWalletsHook.useWallets).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('boom'),
+      refetch,
+    } as any);
+
+    renderWalletList();
+
+    expect(screen.getByText('Failed to load wallets.')).toBeInTheDocument();
+    expect(screen.queryByText('Create Wallet')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps showing an already loaded list when a background refetch fails', () => {
+    vi.mocked(useWalletsHook.useWallets).mockReturnValue({
+      data: wallets,
+      isLoading: false,
+      isError: true,
+      error: new Error('refetch failed'),
+      refetch: vi.fn(),
+    } as any);
+
+    renderWalletList();
+
+    expect(screen.queryByText('Failed to load wallets.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wallet-order')).toBeInTheDocument();
+  });
 });

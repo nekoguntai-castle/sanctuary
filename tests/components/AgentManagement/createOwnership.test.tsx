@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { AgentManagement } from "../../../src/components/AgentManagement";
 import * as adminApi from "../../../src/api/admin";
+vi.mock("../../../src/contexts/UserContext", () => ({ useCurrentUser: () => ({ id: "user-1" }) }));
 vi.mock("../../../src/api/admin", () => ({ getWalletAgents: vi.fn(), getWalletAgentOptions: vi.fn(), createWalletAgent: vi.fn(), revokeWalletAgent: vi.fn() }));
 const options = {
   users: [

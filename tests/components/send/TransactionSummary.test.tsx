@@ -190,4 +190,46 @@ describe('TransactionSummary', () => {
     expect(screen.getByText('49300 sats')).toBeInTheDocument();
     expect(screen.getByText('50000 sats')).toBeInTheDocument();
   });
+
+  it('shows the built output amount and totals under subtract-fees', () => {
+    const props = buildProps({
+      state: {
+        ...buildProps().state,
+        outputs: [{ address: 'bc1qfixed', amount: '100000', sendMax: false }],
+      },
+      txData: {
+        totalInput: 150000,
+        fee: 200,
+        changeAmount: 50000,
+        outputs: [{ address: 'bc1qfixed', amount: 99800 }],
+      },
+      changeAmount: 50000,
+      selectedTotal: 150000,
+      estimatedFee: 150,
+      totalOutputAmount: 100000,
+    });
+    render(<TransactionSummary {...props} />);
+
+    expect(screen.getAllByText('99800 sats').length).toBe(2);
+    expect(screen.getAllByText('fiat:99800').length).toBe(2);
+    expect(screen.getByText('100000 sats')).toBeInTheDocument();
+    expect(screen.queryByText('100200 sats')).not.toBeInTheDocument();
+  });
+
+  it('shows MAX on a resumed send-max row with a stored amount of 0', () => {
+    const props = buildProps({
+      state: {
+        ...buildProps().state,
+        outputs: [{ address: 'bc1qmax', amount: '0', sendMax: true }],
+      },
+      txData: { totalInput: 50000, fee: 700, changeAmount: 0, outputs: [{ address: 'bc1qmax', amount: 0, sendMax: true }] },
+      isDraftMode: true,
+      selectedTotal: 50000,
+      estimatedFee: 300,
+      totalOutputAmount: 0,
+    });
+    render(<TransactionSummary {...props} />);
+
+    expect(screen.getByText('MAX')).toBeInTheDocument();
+  });
 });

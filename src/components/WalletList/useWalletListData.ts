@@ -12,6 +12,8 @@ import {
   walletIds as getWalletIds,
 } from './walletListData';
 
+const EMPTY_WALLETS: NonNullable<ReturnType<typeof useWallets>['data']> = [];
+
 export function useWalletListData({
   selectedNetwork,
   sortBy,
@@ -23,7 +25,10 @@ export function useWalletListData({
   sortOrder: WalletSortOrder;
   timeframe: Timeframe;
 }) {
-  const { data: wallets = [], isLoading: loading } = useWallets();
+  const { data, isLoading: loading, isError, refetch } = useWallets();
+  const wallets = data ?? EMPTY_WALLETS;
+  // A failed background refetch must not hide a list that is already populated.
+  const loadFailed = isError && !data;
   const filteredWallets = useMemo(
     () => filterWalletsByNetwork(wallets, selectedNetwork),
     [wallets, selectedNetwork]
@@ -48,6 +53,8 @@ export function useWalletListData({
   return {
     wallets,
     loading,
+    loadFailed,
+    refetch,
     filteredWallets,
     sortedWallets,
     totalBalance,

@@ -274,6 +274,26 @@ describe('ReviewStep branch coverage', () => {
     expect(capture.draftProps.canBroadcast).toBe(true);
   });
 
+  it('passes the built transaction change (including decoys) to the summary instead of the heuristic', async () => {
+    render(
+      <ReviewStep
+        txData={{
+          utxos: [],
+          outputs: [{ address: 'bc1qexternal', amount: 5000 }],
+          decoyOutputs: [{ address: 'bc1qdecoy', amount: 700 }],
+          changeAmount: 3000,
+          totalInput: 12000,
+          totalOutput: 8700,
+          fee: 300,
+        } as any}
+      />,
+    );
+
+    await waitFor(() => expect(capture.summaryProps).not.toBeNull());
+    // Heuristic would be selectedTotal 12000 - totalOutputAmount 5000 - estimatedFee 1000 = 6000.
+    expect(capture.summaryProps.changeAmount).toBe(3700);
+  });
+
   it('skips address lookup when there are no output/change/decoy addresses', async () => {
     vi.mocked(SendContext.useSendTransaction).mockReturnValue(
       makeContext({

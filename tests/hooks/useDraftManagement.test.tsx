@@ -595,4 +595,78 @@ describe('useDraftManagement', () => {
       expect(setDraftIdSpy).not.toHaveBeenCalled();
     });
   });
+
+  describe('every signed device is recorded on the draft', () => {
+    const paths = [
+      { name: 'new draft', state: {}, draftId: 'draft-1' },
+      { name: 'existing draft', state: { draftId: 'draft-existing' }, draftId: 'draft-existing' },
+    ];
+
+    it.each(paths)('patches one device per call for a $name', async ({ state, draftId }) => {
+      const deps = createDeps({
+        state: createState(state),
+        unsignedPsbt: 'signed-psbt',
+        signedDevices: new Set(['dev-A', 'dev-B', 'dev-C']),
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await act(async () => { await result.current.saveDraft(); });
+
+      expect(mocks.updateDraft.mock.calls.map(call => call.slice(0, 3))).toEqual([
+        ['wallet-1', draftId, { signedPsbtBase64: 'signed-psbt', signedDeviceId: 'dev-A' }],
+        ['wallet-1', draftId, { signedDeviceId: 'dev-B' }],
+        ['wallet-1', draftId, { signedDeviceId: 'dev-C' }],
+      ]);
+    });
+
+    it.each(paths)('never sends the unattributed sentinel for a $name', async ({ state, draftId }) => {
+      const deps = createDeps({
+        state: createState(state),
+        unsignedPsbt: 'signed-psbt',
+        signedDevices: new Set(['psbt-signed']),
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await act(async () => { await result.current.saveDraft(); });
+
+      expect(mocks.updateDraft).toHaveBeenCalledTimes(1);
+      expect(mocks.updateDraft).toHaveBeenCalledWith(
+        'wallet-1', draftId, { signedPsbtBase64: 'signed-psbt', signedDeviceId: undefined }, expect.any(AbortSignal),
+      );
+    });
+
+    it.each(paths)('skips the sentinel but keeps real devices for a $name', async ({ state, draftId }) => {
+      const deps = createDeps({
+        state: createState(state),
+        unsignedPsbt: 'signed-psbt',
+        signedDevices: new Set(['psbt-signed', 'dev-A', 'dev-B']),
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await act(async () => { await result.current.saveDraft(); });
+
+      expect(mocks.updateDraft.mock.calls.map(call => call[2])).toEqual([
+        { signedPsbtBase64: 'signed-psbt', signedDeviceId: 'dev-A' },
+        { signedDeviceId: 'dev-B' },
+      ]);
+      expect(mocks.updateDraft.mock.calls.every(call => call[1] === draftId)).toBe(true);
+    });
+
+    it.each(paths)('stops patching once the lease goes stale for a $name', async ({ state }) => {
+      let current = true;
+      mocks.updateDraft.mockImplementationOnce(async () => { current = false; });
+      const controller = new AbortController();
+      const deps = createDeps({
+        state: createState(state),
+        unsignedPsbt: 'signed-psbt',
+        signedDevices: new Set(['dev-A', 'dev-B']),
+        beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await expect(result.current.saveDraft()).resolves.toBeNull();
+
+      expect(mocks.updateDraft).toHaveBeenCalledTimes(1);
+    });
+  });
 });

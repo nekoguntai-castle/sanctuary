@@ -77,6 +77,14 @@ describe('createDraftInitialTxData', () => {
     });
   });
 
+  it('carries decoy change from the saved draft into the resumed transaction data', () => {
+    const decoyOutputs = [{ address: 'bc1qdecoy1', amount: 300 }, { address: 'bc1qdecoy2', amount: 200 }];
+    const draft = { ...draftTxData, signingIntentId: 'intent-1', signingIntentDigest: 'a'.repeat(64), decoyOutputs };
+    const resumed = buildDraftTxData(draft as any);
+    expect(resumed.decoyOutputs).toEqual(decoyOutputs);
+    expect(createDraftInitialTxData({ state, draftTxData: resumed, utxos })?.decoyOutputs).toEqual(decoyOutputs);
+  });
+
   it('keeps the server-issued signing context when resuming a draft', () => {
     const ctx = { walletType: 'multi_sig' } as any;
     const draft = { ...draftTxData, signingIntentId: 'intent-1', signingIntentDigest: 'a'.repeat(64) };

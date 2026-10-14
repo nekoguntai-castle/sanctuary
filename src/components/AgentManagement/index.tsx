@@ -8,6 +8,7 @@ import type {
   UpdateWalletAgentRequest,
   WalletAgentMetadata,
 } from '../../api/admin';
+import { useCurrentUser } from '../../contexts/UserContext';
 import { useLatestRequest } from '../../hooks/useLatestRequest';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { Button } from '../ui/Button';
@@ -110,6 +111,7 @@ function buildUpdatePayload(form: AgentFormState): UpdateWalletAgentRequest {
 
 export function AgentManagement() {
   const navigate = useNavigate();
+  const currentUser = useCurrentUser();
   const createOwner = useLatestRequest();
   const [agents, setAgents] = useState<WalletAgentMetadata[]>([]);
   const [options, setOptions] = useState<AgentManagementOptions>(EMPTY_OPTIONS);
@@ -327,6 +329,7 @@ export function AgentManagement() {
       {showCreate && (
         <AgentFormModal
           title="Add Agent Wallet"
+          currentUserId={currentUser?.id}
           options={options}
           isSaving={busyAction === 'create-agent'}
           onClose={() => setShowCreate(false)}
@@ -339,6 +342,7 @@ export function AgentManagement() {
         <AgentFormModal
           title="Edit Wallet Agent"
           agent={editingAgent}
+          currentUserId={currentUser?.id}
           options={options}
           isSaving={busyAction === `update-${editingAgent.id}`}
           onClose={() => setEditingAgent(null)}

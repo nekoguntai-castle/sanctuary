@@ -480,6 +480,8 @@ export const registerBitcoinTransactionRouteTests = () => {
           childFeeRate: 30,
           parentFeeRate: 5,
           effectiveFeeRate: 20,
+          inputs: [{ txid: 'parent123', vout: 0, value: 50000 }],
+          outputs: [{ address: 'bc1qtest', value: 47000, isChange: false }],
         });
 
         const response = await request(app)
@@ -495,6 +497,8 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'cpfppsbt');
         expect(response.body).toHaveProperty('effectiveFeeRate', 20);
+        expect(response.body.inputs).toEqual([{ txid: 'parent123', vout: 0, value: 50000 }]);
+        expect(response.body.outputs).toEqual([{ address: 'bc1qtest', value: 47000, isChange: false }]);
         expectGroupAwareEditLookup();
         expect(mockAdvancedTx.createCPFPTransaction).toHaveBeenCalledWith(
           'parent123',

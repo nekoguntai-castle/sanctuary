@@ -335,9 +335,26 @@ describe('useQrSigning', () => {
     const updater = vi.mocked(deps.setSignedDevices).mock.calls[0][0];
     const updatedSet = updater(new Set<string>());
     expect(updatedSet.has('psbt-signed')).toBe(true);
+    // 'psbt-signed' is a UI sentinel, not a wallet device; the server would reject it.
     expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
       signedPsbtBase64: expectedBase64,
-      signedDeviceId: 'psbt-signed',
+    }, expect.any(AbortSignal));
+  });
+
+  it('persists an uploaded signature with its real device id', async () => {
+    const binaryBytes = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
+    mockFileReader({ bytes: binaryBytes });
+
+    const deps = createDeps({ draftId: 'draft-1' });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await act(async () => {
+      await result.current.uploadSignedPsbt(new File(['dummy'], 'signed.psbt'), 'device-9');
+    });
+
+    expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
+      signedPsbtBase64: btoa(String.fromCharCode(...binaryBytes)),
+      signedDeviceId: 'device-9',
     }, expect.any(AbortSignal));
   });
 

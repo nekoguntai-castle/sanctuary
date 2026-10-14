@@ -710,6 +710,20 @@ describe('HardwareImport', () => {
     });
   });
 
+  it('drops the Connected state when the lease is released on unmount', async () => {
+    const user = userEvent.setup();
+    const props = renderHardwareImport();
+    await connectAndRerender(props, user);
+    props.setDeviceConnected.mockClear();
+    props.setDeviceLabel.mockClear();
+
+    props.unmount();
+
+    await waitFor(() => expect(mockReleaseConnection).toHaveBeenCalled());
+    expect(props.setDeviceConnected).toHaveBeenCalledWith(false);
+    expect(props.setDeviceLabel).toHaveBeenCalledWith(null);
+  });
+
   it('handles non-Error connect failures with fallback message', async () => {
     const user = userEvent.setup();
     mockConnect.mockRejectedValueOnce('nope');

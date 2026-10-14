@@ -12,7 +12,7 @@ import {
   getCoinControlLabel,
   getNetworkFeeSats,
   getPayjoinSummaryLabel,
-  getRecipientAmountText,
+  getRecipientDisplayAmount,
   getRecipientHeading,
   getTotalIncludingFeeSats,
   getTotalSendingSats,
@@ -38,6 +38,49 @@ interface TransactionSummaryProps {
   format: (sats: number) => string;
   goToStep: (step: WizardStep) => void;
   interactionLocked: boolean;
+}
+
+function RecipientRow({
+  output,
+  index,
+  outputCount,
+  txData,
+  showPayjoin,
+  payjoinStatus,
+  format,
+}: {
+  output: TransactionState['outputs'][number];
+  index: number;
+  outputCount: number;
+  txData?: TransactionData | null;
+  showPayjoin: boolean;
+  payjoinStatus: string;
+  format: (sats: number) => string;
+}) {
+  const displayAmount = getRecipientDisplayAmount(output, index, outputCount, txData);
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg surface-secondary">
+      <div className="flex-1 min-w-0 mr-4">
+        <div className="font-mono text-sm text-sanctuary-900 dark:text-sanctuary-100 truncate">
+          {output.address || '(no address)'}
+        </div>
+        {showPayjoin && (
+          <div className="flex items-center gap-1 mt-1 text-xs text-zen-indigo">
+            <Shield className="w-3 h-3" />
+            {getPayjoinSummaryLabel(payjoinStatus)}
+          </div>
+        )}
+      </div>
+      <div className="text-right flex-shrink-0">
+        <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
+          {displayAmount === 'MAX' ? 'MAX' : format(displayAmount)}
+        </div>
+        {displayAmount !== 'MAX' && (
+          <FiatDisplay sats={displayAmount} size="xs" showApprox />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function TransactionSummary({
@@ -154,34 +197,16 @@ export function TransactionSummary({
 
           <div className="space-y-3">
             {state.outputs.map((output, index) => (
-              <div
+              <RecipientRow
                 key={index}
-                className="flex items-center justify-between p-3 rounded-lg surface-secondary"
-              >
-                <div className="flex-1 min-w-0 mr-4">
-                  <div className="font-mono text-sm text-sanctuary-900 dark:text-sanctuary-100 truncate">
-                    {output.address || '(no address)'}
-                  </div>
-                  {state.payjoinUrl && index === 0 && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-zen-indigo">
-                      <Shield className="w-3 h-3" />
-                      {getPayjoinSummaryLabel(payjoinStatus)}
-                    </div>
-                  )}
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                    {getRecipientAmountText(output, format)}
-                  </div>
-                  {!output.sendMax && (
-                    <FiatDisplay
-                      sats={parseInt(output.amount, 10) || 0}
-                      size="xs"
-                      showApprox
-                    />
-                  )}
-                </div>
-              </div>
+                output={output}
+                index={index}
+                outputCount={state.outputs.length}
+                txData={txData}
+                showPayjoin={Boolean(state.payjoinUrl) && index === 0}
+                payjoinStatus={payjoinStatus}
+                format={format}
+              />
             ))}
           </div>
         </div>

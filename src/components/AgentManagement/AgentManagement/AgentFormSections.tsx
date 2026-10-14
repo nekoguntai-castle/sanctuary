@@ -90,11 +90,13 @@ export function EditAgentFormFields(props: AgentFormFieldsProps) {
 
 export function CreateAgentWizardFields({
   stepIndex,
+  currentUserId,
   selectedFundingWallet,
   onOperationalWalletImported,
   ...props
 }: AgentFormFieldsProps & {
   stepIndex: number;
+  currentUserId: string | undefined;
   selectedFundingWallet?: AgentOptionWallet;
   onOperationalWalletImported: (walletId: string) => Promise<void>;
 }) {
@@ -116,6 +118,7 @@ export function CreateAgentWizardFields({
           operationalOptions={props.operationalOptions}
           signerOptions={props.signerOptions}
           selectedFundingWallet={selectedFundingWallet}
+          importDisabledReason={getInlineImportDisabledReason(props.form.userId, currentUserId, props.userOptions)}
           onFieldChange={props.onFieldChange}
           onFundingWalletChange={props.onFundingWalletChange}
           onOperationalWalletImported={onOperationalWalletImported}
@@ -131,6 +134,18 @@ export function CreateAgentWizardFields({
       )}
     </>
   );
+}
+
+// The importing admin owns the imported wallet, and the server requires the
+// agent's target user to have access to the operational wallet.
+function getInlineImportDisabledReason(
+  userId: string,
+  currentUserId: string | undefined,
+  userOptions: SelectOption[]
+): string | null {
+  if (!userId || userId === currentUserId) return null;
+  const label = userOptions.find(option => option.value === userId)?.label ?? 'the selected user';
+  return `Only ${label} can import their operational wallet. Ask them to import it, or select yourself as the agent user.`;
 }
 
 function AgentSetupProgress({ stepIndex }: { stepIndex: number }) {
@@ -186,6 +201,7 @@ function AgentWalletStep({
   operationalOptions,
   signerOptions,
   selectedFundingWallet,
+  importDisabledReason,
   onFieldChange,
   onFundingWalletChange,
   onOperationalWalletImported,
@@ -195,6 +211,7 @@ function AgentWalletStep({
   operationalOptions: SelectOption[];
   signerOptions: SelectOption[];
   selectedFundingWallet?: AgentOptionWallet;
+  importDisabledReason: string | null;
   onFieldChange: SetAgentFormField;
   onFundingWalletChange: (fundingWalletId: string) => void;
   onOperationalWalletImported: (walletId: string) => Promise<void>;
@@ -219,6 +236,7 @@ function AgentWalletStep({
         <InlineOperationalWalletImport
           selectedFundingWallet={selectedFundingWallet}
           disabled={!form.fundingWalletId}
+          disabledReason={importDisabledReason}
           onImported={onOperationalWalletImported}
         />
       </div>

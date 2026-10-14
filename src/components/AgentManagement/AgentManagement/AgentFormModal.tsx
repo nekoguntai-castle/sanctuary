@@ -26,6 +26,7 @@ import {
 type AgentFormModalProps = {
   title: string;
   agent?: WalletAgentMetadata;
+  currentUserId: string | undefined;
   options: AgentManagementOptions;
   isSaving: boolean;
   onClose: () => void;
@@ -36,6 +37,7 @@ type AgentFormModalProps = {
 export function AgentFormModal({
   title,
   agent,
+  currentUserId,
   options,
   isSaving,
   onClose,
@@ -126,6 +128,7 @@ export function AgentFormModal({
           <CreateAgentWizardFields
             form={form}
             stepIndex={createStepIndex}
+            currentUserId={currentUserId}
             selectedFundingWallet={selectedFundingWallet}
             userOptions={userOptions}
             fundingOptions={fundingOptions}

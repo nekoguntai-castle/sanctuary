@@ -208,6 +208,7 @@ describe('FeatureFlags', () => {
         expect(screen.getByText('Feature Flags')).toBeInTheDocument();
       });
 
+      expect(screen.getByText('Failed to load feature flags')).toBeInTheDocument();
       expect(screen.queryByText('aiAssistant')).not.toBeInTheDocument();
       expect(screen.queryByText('Initial load failed')).not.toBeInTheDocument();
     });

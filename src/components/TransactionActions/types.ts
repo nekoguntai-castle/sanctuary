@@ -16,7 +16,6 @@ export interface TransactionActionState {
   rbfStatus: RBFCheckResult | null;
   showCPFPModal: boolean;
   showRBFModal: boolean;
-  success: string | null;
   targetFeeRate: number;
 }
 

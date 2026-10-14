@@ -206,36 +206,16 @@ test.describe("Admin operations", () => {
     expect(unhandledRequests).toEqual([]);
   });
 
-  test("wallet agent setup creates link and lands on agent wallet dashboard", async ({
+  test("wallet agent setup selects an existing operational wallet and lands on agent wallet dashboard", async ({
     page,
   }) => {
     const createdAgent = {
       ...WALLET_AGENTS[0],
       id: "agent-ops-created",
       name: "Ops Agent",
-      operationalWalletId: "wallet-agent-operational-inline",
       signerDeviceId: null,
       signerDevice: null,
-      operationalWallet: {
-        id: "wallet-agent-operational-inline",
-        name: "Inline Imported Ops",
-        type: "single_sig",
-        network: "testnet3",
-      },
       apiKeys: [],
-    };
-    const importedOperationalWallet = {
-      ...AGENT_MANAGEMENT_OPTIONS.wallets[1],
-      id: "wallet-agent-operational-inline",
-      name: "Inline Imported Ops",
-    };
-    const optionsWithImportedOperational = {
-      ...AGENT_MANAGEMENT_OPTIONS,
-      wallets: [
-        AGENT_MANAGEMENT_OPTIONS.wallets[0],
-        AGENT_MANAGEMENT_OPTIONS.wallets[1],
-        importedOperationalWallet,
-      ],
     };
     const createdDashboardRow = {
       ...AGENT_WALLET_DASHBOARD_ROWS[0],
@@ -252,37 +232,6 @@ test.describe("Admin operations", () => {
     };
     const unhandledRequests = await mockAdminApi(page, {
       responseOverrides: {
-        "GET /admin/agents/options": mockResponse(
-          optionsWithImportedOperational,
-        ),
-        "POST /wallets/import/validate": mockResponse({
-          valid: true,
-          format: "descriptor",
-          walletType: "single_sig",
-          scriptType: "native_segwit",
-          network: "testnet3",
-          devices: [],
-          suggestedName: "Inline Imported Ops",
-        }),
-        "POST /wallets/import": mockResponse(
-          {
-            wallet: {
-              id: importedOperationalWallet.id,
-              name: importedOperationalWallet.name,
-              type: "single_sig",
-              scriptType: "native_segwit",
-              network: "testnet3",
-              quorum: null,
-              totalSigners: null,
-              descriptor: "wpkh([abcd1234/84h/1h/0h]tpub.../0/*)",
-            },
-            devicesCreated: 0,
-            devicesReused: 0,
-            createdDeviceIds: [],
-            reusedDeviceIds: [],
-          },
-          201,
-        ),
         "POST /admin/agents": mockResponse(createdAgent, 201),
         "GET /admin/agents/dashboard": mockResponse([createdDashboardRow]),
       },
@@ -301,16 +250,22 @@ test.describe("Admin operations", () => {
       main.getByRole("link", { name: "Open full import page" }),
     ).toHaveAttribute("href", "#/wallets/import");
     await selects.nth(0).selectOption("wallet-agent-funding");
-    await main.getByRole("button", { name: "Import" }).click();
-    await main.getByPlaceholder("Agent operational wallet").fill("Inline Imported Ops");
-    await main
-      .getByPlaceholder(/wpkh/)
-      .fill("wpkh([abcd1234/84h/1h/0h]tpub.../0/*)");
-    await main.getByRole("button", { name: "Import and select" }).click();
-    await expect(main.getByText("Imported and selected Inline Imported Ops")).toBeVisible();
+    // The admin would own an inline import, so importing for another user is blocked.
+    await expect(main.getByRole("button", { name: "Import" })).toBeDisabled();
+    await expect(
+      main.getByText(/Only viewer can import their operational wallet/),
+    ).toBeVisible();
+    await selects.nth(1).selectOption("wallet-agent-operational");
     await main.getByRole("button", { name: "Next" }).click();
     await main.getByRole("button", { name: "Next" }).click();
+    const createRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().endsWith("/admin/agents"),
+    );
     await main.getByRole("button", { name: "Add Agent Wallet" }).last().click();
+    const createBody = (await createRequest).postDataJSON();
+    expect(createBody.operationalWalletId).toBe("wallet-agent-operational");
+    expect(createBody.userId).toBe("user-ops-regular");
 
     await expect(page).toHaveURL(/#\/admin\/agent-wallets/);
     await expect(
@@ -322,7 +277,7 @@ test.describe("Admin operations", () => {
     ).toHaveAttribute("href", /wallet-agent-funding/);
     await expect(
       main.getByRole("link", { name: "Operational Wallet" }),
-    ).toHaveAttribute("href", /wallet-agent-operational-inline/);
+    ).toHaveAttribute("href", /wallet-agent-operational$/);
 
     expect(unhandledRequests).toEqual([]);
   });

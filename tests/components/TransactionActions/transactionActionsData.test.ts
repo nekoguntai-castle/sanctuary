@@ -9,8 +9,8 @@
  * (rbf-memo-prefix-spoofs-transaction-replacement).
  */
 import { describe, expect, it } from 'vitest';
-import { cpfpSuccessMessage, errorMessage, rbfDraftRequest } from '../../../src/components/TransactionActions/transactionActionsData';
-import type { RBFCheckResult, RBFTransactionResponse } from '../../../src/api/bitcoin';
+import { cpfpDraftRequest, errorMessage, rbfDraftRequest } from '../../../src/components/TransactionActions/transactionActionsData';
+import type { CPFPTransactionResponse, RBFCheckResult, RBFTransactionResponse } from '../../../src/api/bitcoin';
 
 const txid = 'a'.repeat(64);
 
@@ -164,8 +164,44 @@ describe('errorMessage', () => {
   });
 });
 
-describe('cpfpSuccessMessage', () => {
-  it('formats the effective fee rate to two decimal places', () => {
-    expect(cpfpSuccessMessage(12.345)).toBe('CPFP transaction created! Effective fee rate: 12.35 sat/vB');
+describe('cpfpDraftRequest', () => {
+  const cpfpResult: CPFPTransactionResponse = {
+    psbtBase64: 'cHNidP8cpfp',
+    signingContext: {} as CPFPTransactionResponse['signingContext'],
+    intentId: 'intent-cpfp',
+    intentDigest: 'c'.repeat(64),
+    childFee: 3000,
+    childFeeRate: 40,
+    parentFeeRate: 2,
+    effectiveFeeRate: 21,
+    inputs: [{ txid: 'parent-txid', vout: 1, value: 50000 }],
+    outputs: [{ address: 'bc1qown', value: 47000, isChange: false }],
+  };
+
+  it('maps the server child transaction onto a non-RBF draft request', () => {
+    const request = cpfpDraftRequest({ parentTxid: txid, result: cpfpResult });
+
+    expect(request).toEqual({
+      recipient: 'bc1qown',
+      amount: 47000,
+      feeRate: 40,
+      fee: 3000,
+      selectedUtxoIds: ['parent-txid:1'],
+      enableRBF: false,
+      isRBF: false,
+      subtractFees: false,
+      sendMax: false,
+      outputs: [{ address: 'bc1qown', amount: 47000 }],
+      label: `CPFP: accelerate ${txid.slice(0, 8)}...`,
+      memo: `Accelerating transaction ${txid}`,
+      psbtBase64: 'cHNidP8cpfp',
+      intentId: 'intent-cpfp',
+      intentDigest: 'c'.repeat(64),
+      totalInput: 50000,
+      totalOutput: 47000,
+      changeAmount: 0,
+      effectiveAmount: 47000,
+      inputPaths: [],
+    });
   });
 });

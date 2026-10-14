@@ -385,6 +385,8 @@ export interface CPFPTransactionResponse {
   childFeeRate: number;
   parentFeeRate: number;
   effectiveFeeRate: number;
+  inputs: Array<{ txid: string; vout: number; value: number }>;
+  outputs: Array<{ address: string; value: number; isChange: boolean }>;
 }
 
 export interface BatchRecipient {

@@ -709,6 +709,34 @@ export const bitcoinSchemas = {
       childFeeRate: { type: "number", minimum: 0 },
       parentFeeRate: { type: "number", minimum: 0 },
       effectiveFeeRate: { type: "number", minimum: 0 },
+      inputs: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          properties: {
+            txid: { type: "string" },
+            vout: { type: "integer", minimum: 0 },
+            value: { type: "integer", minimum: 0 },
+          },
+          required: ["txid", "vout", "value"],
+          additionalProperties: true,
+        },
+      },
+      outputs: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          properties: {
+            address: { type: "string" },
+            value: { type: "integer", minimum: 0 },
+            isChange: { type: "boolean" },
+          },
+          required: ["address", "value", "isChange"],
+          additionalProperties: true,
+        },
+      },
     },
     required: [
       "psbtBase64",
@@ -719,6 +747,8 @@ export const bitcoinSchemas = {
       "childFeeRate",
       "parentFeeRate",
       "effectiveFeeRate",
+      "inputs",
+      "outputs",
     ],
   },
   BatchTransactionRecipient: {

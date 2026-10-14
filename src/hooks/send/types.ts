@@ -144,3 +144,9 @@ export function extractXpubsFromDescriptor(
 
   return xpubMap;
 }
+
+/**
+ * UI-only marker for a signature uploaded without a device. It is not a
+ * wallet device id, so it must never be sent as a draft `signedDeviceId`.
+ */
+export const UNATTRIBUTED_SIGNATURE_ID = 'psbt-signed';

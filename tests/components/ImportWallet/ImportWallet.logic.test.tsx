@@ -305,7 +305,20 @@ describe('ImportWallet logic branches', () => {
     await user.click(screen.getByRole('button', { name: /Back/i }));
     expect(step3State.setStep).toHaveBeenCalledWith(2);
     expect(step3State.resetValidation).toHaveBeenCalledTimes(1);
+    expect(step3State.resetHardwareState).not.toHaveBeenCalled();
     step3Render.unmount();
+
+    const hardwareStep3State = createState({
+      step: 3,
+      format: 'hardware',
+      walletName: 'Wallet',
+      validationResult: { valid: true },
+    });
+    const hardwareStep3Render = renderImportWalletWithState(hardwareStep3State);
+    await user.click(screen.getByRole('button', { name: /Back/i }));
+    expect(hardwareStep3State.setStep).toHaveBeenCalledWith(2);
+    expect(hardwareStep3State.resetHardwareState).toHaveBeenCalledTimes(1);
+    hardwareStep3Render.unmount();
 
     const step2State = createState({
       step: 2,

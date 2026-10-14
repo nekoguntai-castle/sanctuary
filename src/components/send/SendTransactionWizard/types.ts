@@ -13,6 +13,7 @@ export interface DraftTransactionData {
   effectiveAmount: number;
   selectedUtxoIds: string[];
   inputPaths?: string[];
+  decoyOutputs?: Array<{ address: string; amount: number }>;
   signingContext?: PsbtSigningContext;
 }
 

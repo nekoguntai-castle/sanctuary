@@ -109,6 +109,23 @@ export function registerCpfpContracts() {
       mockElectrumClient.getTransaction.mockResolvedValue(cpfpChain().parent);
     });
 
+    it('returns the child input and output so callers can persist a draft', async () => {
+      const result = await createCPFPTransaction(
+        parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3'
+      );
+
+      expect(result.inputs).toEqual([
+        { txid: parentTxid, vout: parentVout, value: Number(sampleUtxos[0].amount) },
+      ]);
+      expect(result.outputs).toEqual([
+        {
+          address: recipientAddress,
+          value: Number(sampleUtxos[0].amount) - result.childFee,
+          isChange: false,
+        },
+      ]);
+    });
+
     it('should throw error if UTXO not found', async () => {
       mockPrismaClient.uTXO.findUnique.mockResolvedValue(null);
 

@@ -85,8 +85,15 @@ describe('TransactionActions', () => {
       psbtBase64: 'cHNidP8...',
     } as any);
     vi.mocked(bitcoinApi.createCPFPTransaction).mockResolvedValue({
-      psbtBase64: 'cHNidP8...',
+      psbtBase64: 'cHNidP8cpfp',
+      intentId: 'intent-cpfp',
+      intentDigest: 'd'.repeat(64),
+      childFee: 3000,
+      childFeeRate: 50,
+      parentFeeRate: 2,
       effectiveFeeRate: 25,
+      inputs: [{ txid: 'parent', vout: 0, value: 50000 }],
+      outputs: [{ address: 'bc1qown', value: 47000, isChange: false }],
     } as any);
   });
 
@@ -559,7 +566,7 @@ describe('TransactionActions', () => {
       });
     });
 
-    it('shows success message after CPFP', async () => {
+    it('saves the child PSBT as a draft and opens the send wizard', async () => {
       const user = userEvent.setup();
       renderComponent({ isReceived: true });
 
@@ -581,9 +588,18 @@ describe('TransactionActions', () => {
       }
 
       await waitFor(() => {
-        expect(screen.getByText(/CPFP transaction created/)).toBeInTheDocument();
-        expect(screen.getByText(/25.*sat\/vB/)).toBeInTheDocument();
+        expect(draftsApi.createDraft).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+          psbtBase64: 'cHNidP8cpfp',
+          intentId: 'intent-cpfp',
+          intentDigest: 'd'.repeat(64),
+          selectedUtxoIds: ['parent:0'],
+          enableRBF: false,
+        }));
+        expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1/send', {
+          state: { draft: { id: 'draft-1', psbtBase64: 'cHNidP8...' } },
+        });
       });
+      expect(screen.queryByText(/CPFP transaction created/)).not.toBeInTheDocument();
     });
 
     it('shows error when CPFP fails', async () => {
@@ -614,6 +630,31 @@ describe('TransactionActions', () => {
       });
     });
 
+    it('shows the error and stays put when the CPFP draft cannot be saved', async () => {
+      vi.mocked(draftsApi.createDraft).mockRejectedValue(new Error('Draft limit reached'));
+      const onActionComplete = vi.fn();
+      const user = userEvent.setup();
+      renderComponent({ isReceived: true, onActionComplete });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Accelerate \(CPFP\)/)).toBeInTheDocument();
+      });
+      await user.click(screen.getByText(/Accelerate \(CPFP\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '50');
+      const accelerateButton = screen.getAllByText('Accelerate').find(btn => btn.closest('button'));
+      if (accelerateButton) {
+        await user.click(accelerateButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/Draft limit reached/)).toBeInTheDocument();
+      });
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(onActionComplete).not.toHaveBeenCalled();
+    });
+
     it('supports successful CPFP flow when onActionComplete is not provided', async () => {
       const user = userEvent.setup();
       renderComponent({ isReceived: true, onActionComplete: undefined });
@@ -635,7 +676,7 @@ describe('TransactionActions', () => {
       }
 
       await waitFor(() => {
-        expect(screen.getByText(/CPFP transaction created/)).toBeInTheDocument();
+        expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1/send', expect.anything());
       });
     });
 

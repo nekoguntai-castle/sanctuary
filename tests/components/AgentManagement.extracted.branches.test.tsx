@@ -376,6 +376,7 @@ describe('AgentManagement extracted branches', () => {
     renderAgentFormModal(
       <AgentFormModal
         title="Add Agent Wallet"
+        currentUserId="user-1"
         options={options}
         isSaving={false}
         onClose={onClose}
@@ -397,6 +398,7 @@ describe('AgentManagement extracted branches', () => {
       <AgentFormModal
         title="Edit Agent"
         agent={makeAgent()}
+        currentUserId="user-1"
         options={options}
         isSaving={false}
         onClose={vi.fn()}
@@ -436,6 +438,7 @@ describe('AgentManagement extracted branches', () => {
     renderAgentFormModal(
       <AgentFormModal
         title="Add Agent Wallet"
+        currentUserId="user-1"
         options={options}
         isSaving={false}
         onClose={vi.fn()}
@@ -473,5 +476,67 @@ describe('AgentManagement extracted branches', () => {
         })
       )
     );
+  });
+
+  async function chooseUserAndFundingWallet(
+    user: ReturnType<typeof userEvent.setup>,
+    userId: string,
+    fundingWalletId: string,
+  ) {
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
+    await user.selectOptions(screen.getAllByRole('combobox')[0], userId);
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.selectOptions(screen.getAllByRole('combobox')[0], fundingWalletId);
+  }
+
+  function agentFormModalElement(modalOptions: typeof options) {
+    return (
+      <MemoryRouter>
+        <AgentFormModal
+          title="Add Agent Wallet"
+          currentUserId="user-1"
+          options={modalOptions}
+          isSaving={false}
+          onClose={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+  }
+
+  it('blocks the inline operational import when the agent user is not the current user', async () => {
+    const user = userEvent.setup();
+    render(agentFormModalElement(options));
+
+    await chooseUserAndFundingWallet(user, 'user-2', 'funding-2');
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    expect(screen.getByText(
+      'Only bob can import their operational wallet. Ask them to import it, or select yourself as the agent user.'
+    )).toBeInTheDocument();
+  });
+
+  it('leaves the inline operational import enabled when the agent user is the current user', async () => {
+    const user = userEvent.setup();
+    render(agentFormModalElement(options));
+
+    await chooseUserAndFundingWallet(user, 'user-1', 'funding-1');
+
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled();
+    expect(screen.queryByText(/can import their operational wallet/)).not.toBeInTheDocument();
+  });
+
+  it('names the selected user generically when the agent user is missing from the options', async () => {
+    const user = userEvent.setup();
+    const view = render(agentFormModalElement(options));
+
+    await chooseUserAndFundingWallet(user, 'user-2', 'funding-2');
+    view.rerender(agentFormModalElement({
+      ...options,
+      users: options.users.filter(option => option.id !== 'user-2'),
+    }));
+
+    expect(screen.getByText(/^Only the selected user can import their operational wallet\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
   });
 });

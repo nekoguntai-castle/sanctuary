@@ -31,7 +31,7 @@ export function FeatureFlags() {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { loading, execute: runLoad } = useLoadingState({ initialLoading: true });
+  const { loading, error: loadError, execute: runLoad } = useLoadingState({ initialLoading: true });
   const { loading: isLoadingAudit, execute: runLoadAudit } = useLoadingState();
   const { error: actionError, execute: runAction, clearError } = useLoadingState();
 
@@ -121,6 +121,14 @@ export function FeatureFlags() {
         <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Feature Flags</h2>
         <p className="text-sanctuary-500">Toggle features without restarting the server.</p>
       </div>
+
+      {/* Initial load failure: fixed text, the raw error is not shown */}
+      {loadError && (
+        <div className="flex items-center space-x-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm">Failed to load feature flags</span>
+        </div>
+      )}
 
       {/* Error Banner */}
       {actionError && (

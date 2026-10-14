@@ -16,12 +16,14 @@ import {
 type InlineOperationalWalletImportProps = {
   selectedFundingWallet?: AgentOptionWallet;
   disabled: boolean;
+  disabledReason: string | null;
   onImported: (walletId: string) => Promise<void>;
 };
 
 export function InlineOperationalWalletImport({
   selectedFundingWallet,
   disabled,
+  disabledReason,
   onImported,
 }: InlineOperationalWalletImportProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -99,12 +101,16 @@ export function InlineOperationalWalletImport({
               </div>
             )}
           </div>
-          <Button variant="secondary" onClick={openImportPanel} disabled={disabled}>
+          <Button variant="secondary" onClick={openImportPanel} disabled={disabled || Boolean(disabledReason)}>
             <Upload className="h-4 w-4 mr-2" />
             Import
           </Button>
         </div>
-        {disabled && (
+        {disabledReason ? (
+          <p className="mt-2 text-xs text-sanctuary-500 dark:text-sanctuary-400">
+            {disabledReason}
+          </p>
+        ) : disabled && (
           <p className="mt-2 text-xs text-sanctuary-500 dark:text-sanctuary-400">
             Select a funding wallet first so the import can be checked against its network.
           </p>

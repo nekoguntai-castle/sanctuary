@@ -10,6 +10,7 @@ import {
 import { Button } from '../../../ui/Button';
 import type { Device } from '../../../../types';
 import { getDeviceCapabilities } from './deviceCapabilities';
+import { UNATTRIBUTED_SIGNATURE_ID } from '../../../../hooks/send/types';
 
 interface UsbSigningProps {
   devices: Device[];
@@ -136,7 +137,7 @@ export function UsbSigning({
           onChange={onFileUpload}
         />
       </div>
-      {signedDevices.has('psbt-signed') && (
+      {signedDevices.has(UNATTRIBUTED_SIGNATURE_ID) && (
         <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
           <CheckCircle2 className="w-4 h-4" />
           Signed PSBT uploaded

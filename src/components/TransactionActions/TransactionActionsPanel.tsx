@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpCircle, CheckCircle, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowUpCircle, TrendingUp } from 'lucide-react';
 import { Button } from '../ui/Button';
 import type { TransactionActionHandlers, TransactionActionState } from './types';
 
@@ -13,8 +13,7 @@ export function TransactionActionsPanel({
 }) {
   return (
     <div className="space-y-4">
-      <ActionMessage type="success" message={state.success} />
-      <ActionMessage type="error" message={state.error} />
+      <ActionMessage message={state.error} />
       <ActionButtons
         handlers={handlers}
         isReceived={isReceived}
@@ -24,19 +23,12 @@ export function TransactionActionsPanel({
   );
 }
 
-function ActionMessage({
-  message,
-  type,
-}: {
-  message: string | null;
-  type: 'error' | 'success';
-}) {
+function ActionMessage({ message }: { message: string | null }) {
   if (!message) return null;
 
-  const Icon = type === 'success' ? CheckCircle : AlertTriangle;
   return (
-    <div className={`flex items-center p-4 rounded-lg ${actionMessageClass(type)}`}>
-      <Icon className="w-5 h-5 mr-3 flex-shrink-0" />
+    <div className="flex items-center p-4 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-200">
+      <AlertTriangle className="w-5 h-5 mr-3 flex-shrink-0" />
       <span className="text-sm">{message}</span>
     </div>
   );
@@ -138,12 +130,4 @@ function RBFUnavailableReason({
       {rbfStatus.reason}
     </div>
   );
-}
-
-function actionMessageClass(type: 'error' | 'success'): string {
-  if (type === 'success') {
-    return 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-500/20 text-green-800 dark:text-green-200';
-  }
-
-  return 'bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-200';
 }
