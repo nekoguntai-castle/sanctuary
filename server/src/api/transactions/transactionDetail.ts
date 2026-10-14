@@ -9,9 +9,11 @@ import type { Prisma } from '../../generated/prisma/client';
 import { transactionRepository, walletRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ConflictError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import { requireWalletAccess } from '../../middleware/walletAccess';
+import { isGatewayRequest } from '../../middleware/gatewayRequest';
+import { mobilePermissionService } from '../../services/mobilePermissions';
 import { getMempoolApiBase } from '../../services/bitcoin/mempool/config';
 import {
   normalizeLegacyBitcoinNetwork,
@@ -221,9 +223,23 @@ router.get('/transactions/:txid', asyncHandler(async (req, res) => {
   const txid = requireValidTxid(req.params.txid);
   setLegacyRouteHeaders(res, txid, false);
 
-  const matches = await transactionRepository.findAccessibleByTxidMatches(txid, userId, {
+  let matches = await transactionRepository.findAccessibleByTxidMatches(txid, userId, {
     include: transactionDetailInclude,
   });
+
+  if (matches.length > 0 && isGatewayRequest(req)) {
+    // Mobile view caps apply before the duplicate check so a capped wallet's
+    // copy neither leaks nor turns a permitted lookup into a 409.
+    const permitted = new Set(await mobilePermissionService.filterWalletIdsByMobileAction(
+      userId,
+      matches.map(match => ({ walletId: match.walletId })),
+      'viewTransactions'
+    ));
+    matches = matches.filter(match => permitted.has(match.walletId));
+    if (matches.length === 0) {
+      throw new ForbiddenError('Mobile access denied for action: viewTransactions');
+    }
+  }
 
   if (matches.length === 0) {
     throw new NotFoundError('Transaction not found');

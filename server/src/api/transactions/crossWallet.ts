@@ -16,6 +16,8 @@ import { getCachedBlockHeight, type Network } from '../../services/bitcoin/block
 import { computeVirtualSizeFromRawTx } from '../../services/bitcoin/transactionVsize';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import { walletCache } from '../../services/cache';
+import { isGatewayRequest } from '../../middleware/gatewayRequest';
+import { mobilePermissionService } from '../../services/mobilePermissions';
 
 /**
  * Both directions are carried separately and both are positive magnitudes.
@@ -260,7 +262,17 @@ router.get('/transactions/pending', asyncHandler(async (req, res) => {
     return res.json([]);
   }
 
-  const walletIds = accessibleWallets.map(w => w.id);
+  // Mobile view caps apply to gateway-proxied requests (the path carries no wallet id).
+  const walletIds = isGatewayRequest(req)
+    ? await mobilePermissionService.filterWalletIdsByMobileAction(
+        userId,
+        accessibleWallets.map(w => ({ walletId: w.id })),
+        'viewTransactions'
+      )
+    : accessibleWallets.map(w => w.id);
+  if (walletIds.length === 0) {
+    return res.json([]);
+  }
   const walletNameMap = new Map(accessibleWallets.map(w => [w.id, w.name]));
 
   // Fetch pending (unconfirmed) transactions - those with blockHeight of 0 or null

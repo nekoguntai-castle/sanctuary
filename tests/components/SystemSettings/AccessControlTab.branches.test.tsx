@@ -124,3 +124,30 @@ describe('AccessControlTab branch coverage', () => {
     expect(screen.queryByText('Settings saved successfully')).not.toBeInTheDocument();
   });
 });
+
+describe('AccessControlTab load failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows a load error with Retry instead of a fabricated disabled state, then recovers', async () => {
+    vi.mocked(adminApi.getSystemSettings)
+      .mockRejectedValueOnce(new Error('settings unavailable') as never)
+      .mockResolvedValueOnce({ registrationEnabled: true } as never);
+
+    render(<AccessControlTab />);
+
+    expect(await screen.findByText(/Failed to load access control settings/)).toBeInTheDocument();
+    expect(screen.getByText(/settings unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText('Public Registration')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Public registration is disabled/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Public Registration')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Public registration is enabled/)).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load access control settings/)).not.toBeInTheDocument();
+  });
+});

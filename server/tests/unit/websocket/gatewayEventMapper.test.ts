@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findAudience: vi.fn(),
+  filterUserIds: vi.fn(),
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('../../../src/repositories/pushAudienceRepository', () => ({
   findGatewayPushAudience: mocks.findAudience,
+}));
+vi.mock('../../../src/services/mobilePermissions', () => ({
+  mobilePermissionService: { filterUserIdsByMobileAction: mocks.filterUserIds },
 }));
 vi.mock('../../../src/utils/logger', () => ({ createLogger: () => mocks.logger }));
 
@@ -20,7 +24,10 @@ const settings = (overrides: Record<string, boolean> = {}) => ({
 });
 
 describe('mapGatewayEvent', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.filterUserIds.mockImplementation(async (_walletId: string, userIds: string[]) => userIds);
+  });
 
   it('enriches transaction events with wallet name and distinct eligible users', async () => {
     mocks.findAudience.mockResolvedValue({
@@ -111,5 +118,47 @@ describe('mapGatewayEvent', () => {
     };
     await expect(mapGatewayEvent(event)).resolves.toBe(event);
     expect(mocks.findAudience).not.toHaveBeenCalled();
+  });
+
+  describe('mobile view caps', () => {
+    const audience = (transaction: unknown = null) => ({
+      walletId: 'w1', walletName: 'Vault', transaction,
+      candidates: [
+        { userId: 'u1', preferences: settings() },
+        { userId: 'u2', preferences: settings() },
+      ],
+    });
+
+    it('drops recipients whose viewTransactions cap is off for transaction events', async () => {
+      mocks.findAudience.mockResolvedValue(audience());
+      mocks.filterUserIds.mockResolvedValue(['u1']);
+
+      await expect(mapGatewayEvent({
+        type: 'transaction', walletId: 'w1', data: { txid: 'tx1', type: 'received', amount: 5 },
+      })).resolves.toEqual(expect.objectContaining({ userIds: ['u1'] }));
+      expect(mocks.filterUserIds).toHaveBeenCalledWith('w1', ['u1', 'u2'], 'viewTransactions');
+    });
+
+    it('drops recipients whose viewTransactions cap is off for confirmation events', async () => {
+      mocks.findAudience.mockResolvedValue(audience({ type: 'received', amount: 5n }));
+      mocks.filterUserIds.mockResolvedValue(['u1']);
+
+      await expect(mapGatewayEvent({
+        type: 'confirmation', walletId: 'w1', data: { txid: 'tx1', confirmations: 1 },
+      })).resolves.toEqual(expect.objectContaining({ userIds: ['u1'] }));
+    });
+
+    it('sends to nobody and warns when the permission lookup fails', async () => {
+      mocks.findAudience.mockResolvedValue(audience());
+      mocks.filterUserIds.mockRejectedValue(new Error('db down'));
+
+      await expect(mapGatewayEvent({
+        type: 'transaction', walletId: 'w1', data: { txid: 'tx1', type: 'received', amount: 5 },
+      })).resolves.toEqual(expect.objectContaining({ walletName: 'Vault', userIds: [] }));
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('sending to nobody'),
+        expect.objectContaining({ walletId: 'w1', error: 'db down' }),
+      );
+    });
   });
 });

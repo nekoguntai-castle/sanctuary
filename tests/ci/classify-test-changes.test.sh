@@ -251,6 +251,17 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
   assert_exact_output "$output_file" "test_files" ""
 
+  # A wallet-safety critical doc (proof input) is never skipped as docs-only.
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/docs/adr"
+  printf '# ADR\n' > "$repo_dir/docs/adr/0003-jade-plus-authentication-boundary.md"
+  git -C "$repo_dir" add docs/adr/0003-jade-plus-authentication-boundary.md
+  git -C "$repo_dir" commit -qm "wallet-safety ADR only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "full_scan" "true"
+
   base_sha="$head_sha"
   mkdir -p "$repo_dir/gateway"
   printf '# Gateway Notes\n' > "$repo_dir/gateway/README.md"

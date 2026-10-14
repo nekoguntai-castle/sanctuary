@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import {
@@ -47,6 +48,61 @@ test('checked-in classifier covers every hardware proof helper and emulator modu
     (file) => !manifest.paths.some((pattern) => matchesClassifierPath(file, pattern))
   );
   assert.deepEqual(uncovered, []);
+});
+
+test('bash wallet-safety matcher agrees with matchesClassifierPath', () => {
+  const manifest = JSON.parse(
+    readFileSync(resolve(REPO_ROOT, 'config/wallet-safety-critical-paths.json'), 'utf8')
+  );
+  const probes = [
+    'docs/adr/0003-jade-plus-authentication-boundary.md',
+    'docs/adr/0003-jade-plus-authentication-boundary.mdx',
+    'docs/adr/0004-other.md',
+    'docs/reference/example.md',
+    'README.md',
+    'scripts/verify-addresses/README.md',
+    'scripts/verify-psbt/README.md',
+    'scripts/verify-psbt/nested/deep/file.mjs',
+    'server/src/services/bitcoin/a.ts',
+    'server/src/services/bitcoin/nested/deep/a.ts',
+    'server/src/services/bitcoin',
+    'server/src/services/bitcoinX/a.ts',
+    'server/src/api/push.ts',
+    'config/wallet-safety-critical-paths.json',
+    'config/wallet-safety-critical-pathsXjson',
+    'shared/constants/bitcoin.ts',
+    'shared/constants/bitcoinXts',
+    'shared/constants/bitcoin.ts/extra',
+    '.github/workflows/verify-vectors.yml',
+  ];
+  const probeSet = [...new Set([...probes, ...manifest.paths.map((path) => path.replaceAll('*', 'x'))])];
+  const script = [
+    '. scripts/ci/classify-files-lib.sh',
+    'for f in "$@"; do',
+    '  if is_wallet_safety_critical_file "$f"; then echo "$f=1"; else echo "$f=0"; fi',
+    'done',
+  ].join('\n');
+  const output = execFileSync('bash', ['-c', script, 'parity', ...probeSet], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+  const bash = new Map(output.trim().split('\n').map((line) => {
+    const index = line.lastIndexOf('=');
+    return [line.slice(0, index), line.slice(index + 1) === '1'];
+  }));
+  for (const file of probeSet) {
+    const expected = manifest.paths.some((pattern) => matchesClassifierPath(file, pattern));
+    assert.equal(bash.get(file), expected, `bash and node disagree on ${file}`);
+  }
+  for (const pattern of manifest.paths) {
+    assert.equal(bash.get(pattern.replaceAll('*', 'x')), true, `pattern ${pattern} must match itself`);
+  }
+  // The pre-commit hook sources the library from POSIX sh: it must parse and agree there too.
+  const posix = execFileSync('sh', ['-c', `REPO_ROOT=. ${script}`, 'parity', ...probeSet], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+  assert.equal(posix, output, 'POSIX sh and bash must classify every probe identically');
 });
 
 const BROAD_WORKFLOW = `  pull_request:

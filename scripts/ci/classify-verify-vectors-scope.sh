@@ -22,6 +22,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ci/provider-context.sh
 . "$SCRIPT_DIR/provider-context.sh"
+# shellcheck source=scripts/ci/classify-files-lib.sh
+. "$SCRIPT_DIR/classify-files-lib.sh"
 
 event_name="$(ci_event_name)"
 workflow_sha="$(ci_event_head_sha)"
@@ -116,7 +118,13 @@ fi
 #   .github/workflows/verify-vectors.yml
 #   scripts/ci/classify-verify-vectors-scope.sh (this script)
 
+# Documentation listed in the wallet-safety manifest (for example an ADR hashed
+# into the Jade proof sources) is proof input, not documentation. A missing
+# manifest makes every path critical, so the result is "run".
 is_documentation_only_file() {
+  if is_wallet_safety_critical_file "$1"; then
+    return 1
+  fi
   case "$1" in
     *.md|*.mdx)
       return 0

@@ -49,6 +49,13 @@ vi.mock('../../../../server/src/repositories/pushAudienceRepository', () => ({
   findGatewayPushAudience: mocks.findAudience,
 }));
 
+// The mobile view-cap filter is not under test here: let every candidate through.
+vi.mock('../../../../server/src/services/mobilePermissions', () => ({
+  mobilePermissionService: {
+    filterUserIdsByMobileAction: async (_walletId: string, userIds: string[]) => userIds,
+  },
+}));
+
 vi.mock('../../../../server/src/websocket/server', () => ({
   getWebSocketServerIfInitialized: () => ({ broadcast: mocks.localBroadcast }),
   getWebSocketServer: () => ({ broadcast: mocks.localBroadcast }),

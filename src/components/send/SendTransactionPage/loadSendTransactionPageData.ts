@@ -80,6 +80,7 @@ export async function loadSendTransactionPageData({
         preSelectedUTXOs,
         showInfo,
         utxos,
+        walletType: apiWallet.type,
       }),
       mempoolBlocks,
       queuedBlocksSummary,

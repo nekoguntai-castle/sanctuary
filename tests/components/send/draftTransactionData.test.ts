@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { WalletType } from '../../../src/types';
+import { UNATTRIBUTED_SIGNATURE_ID } from '../../../src/hooks/send/types';
 import { createDraftInitialTxData } from '../../../src/components/send/SendTransactionWizard/draftTransactionData';
 import {
   buildDraftTxData,
@@ -145,6 +147,7 @@ describe('createDraftInitialTxData', () => {
       draftData,
       showInfo: () => undefined,
       utxos: [],
+      walletType: WalletType.SINGLE_SIG,
     });
 
     expect(initialState?.outputs).toEqual([{ address, amount: '0', sendMax: true }]);
@@ -186,16 +189,68 @@ describe('buildInitialState — RBF replacesTxid linkage', () => {
   it('copies the client-attached replacesTxid into the initial wizard state', () => {
     const draftData = { ...baseDraftData, replacesTxid: 'a'.repeat(64) };
 
-    const initialState = buildInitialState({ addresses: [], draftData, showInfo: () => undefined, utxos: [] });
+    const initialState = buildInitialState({
+      addresses: [], draftData, showInfo: () => undefined, utxos: [], walletType: WalletType.SINGLE_SIG,
+    });
 
     expect(initialState?.replacesTxid).toBe('a'.repeat(64));
   });
 
   it('defaults replacesTxid to null when the draft carries none', () => {
     const initialState = buildInitialState({
-      addresses: [], draftData: baseDraftData, showInfo: () => undefined, utxos: [],
+      addresses: [], draftData: baseDraftData, showInfo: () => undefined, utxos: [], walletType: WalletType.SINGLE_SIG,
     });
 
     expect(initialState?.replacesTxid).toBeNull();
+  });
+});
+
+describe('buildInitialState — resumed draft with an unattributed uploaded signature', () => {
+  const uploadedDraft = {
+    id: 'draft-upload',
+    recipient: 'bc1qrecipient',
+    amount: 10_000,
+    walletId: 'wallet-1',
+    userId: 'user-1',
+    psbtBase64: 'unsigned-psbt',
+    signedPsbtBase64: 'signed-psbt',
+    signingIntentId: 'intent-upload',
+    signingIntentDigest: 'd'.repeat(64),
+    feeRate: 5,
+    selectedUtxoIds: [],
+    enableRBF: true,
+    subtractFees: false,
+    isRBF: false,
+    status: 'partial',
+    signedDeviceIds: [],
+    fee: 100,
+    totalInput: 10_100,
+    totalOutput: 10_000,
+    changeAmount: 0,
+    effectiveAmount: 10_000,
+    inputPaths: [],
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  } as any;
+  const build = (walletType: WalletType, draftData = uploadedDraft) => buildInitialState({
+    addresses: [], draftData, showInfo: () => undefined, utxos: [], walletType,
+  });
+
+  it('seeds the UI-only marker for a single-sig wallet so Sign & Broadcast works', () => {
+    const state = build(WalletType.SINGLE_SIG);
+
+    expect(state?.unsignedPsbt).toBe('signed-psbt');
+    expect(state?.signedDevices).toEqual([UNATTRIBUTED_SIGNATURE_ID]);
+  });
+
+  it('does not seed the marker for a multisig wallet (it must not count toward the quorum)', () => {
+    expect(build(WalletType.MULTI_SIG)?.signedDevices).toEqual([]);
+  });
+
+  it('keeps attributed device ids and seeds nothing without an uploaded signature', () => {
+    expect(build(WalletType.SINGLE_SIG, { ...uploadedDraft, signedDeviceIds: ['dev-1'] })?.signedDevices)
+      .toEqual(['dev-1']);
+    expect(build(WalletType.SINGLE_SIG, { ...uploadedDraft, signedPsbtBase64: undefined })?.signedDevices)
+      .toEqual([]);
   });
 });

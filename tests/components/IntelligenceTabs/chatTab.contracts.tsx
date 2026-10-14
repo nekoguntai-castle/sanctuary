@@ -543,35 +543,52 @@ describe('ChatTab', () => {
     });
   });
 
-  it('should handle getConversations API error gracefully', async () => {
-    vi.mocked(intelligenceApi.getConversations).mockRejectedValue(new Error('Network error'));
+  it('shows a conversation list error with Retry instead of the empty state', async () => {
+    vi.mocked(intelligenceApi.getConversations)
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce({ conversations: [mockConversation] });
 
     render(<ChatTab walletId="wallet-1" />);
 
-    // Should show empty conversation state
-    await waitFor(() => {
-      expect(screen.getByText('No conversations yet')).toBeInTheDocument();
-    });
+    expect(await screen.findByText(/Failed to load conversations/)).toBeInTheDocument();
+    expect(screen.queryByText('No conversations yet')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('UTXO Strategy Discussion')).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load conversations/)).not.toBeInTheDocument();
   });
 
-  it('should handle getConversationMessages API error gracefully', async () => {
+  it('shows a history error with Retry, keeps the composer disabled, and clears on switching', async () => {
+    const conversationB = { ...mockConversation, id: 'conv-2', title: 'Conversation B' };
     vi.mocked(intelligenceApi.getConversations).mockResolvedValue({
-      conversations: [mockConversation],
+      conversations: [mockConversation, conversationB],
     });
-    vi.mocked(intelligenceApi.getConversationMessages).mockRejectedValue(new Error('Load failed'));
+    vi.mocked(intelligenceApi.getConversationMessages)
+      .mockRejectedValueOnce(new Error('Load failed'))
+      .mockResolvedValueOnce({ messages: [mockAssistantMessage] })
+      .mockResolvedValueOnce({ messages: [] });
 
     render(<ChatTab walletId="wallet-1" />);
+    fireEvent.click(await screen.findByText('UTXO Strategy Discussion'));
 
-    await waitFor(() => {
-      expect(screen.getByText('UTXO Strategy Discussion')).toBeInTheDocument();
-    });
+    expect(await screen.findByText(/Failed to load messages/)).toBeInTheDocument();
+    expect(screen.queryByText('Ask anything about your wallet')).not.toBeInTheDocument();
+    const textarea = screen.getByPlaceholderText('Ask about your wallet...');
+    expect(textarea).toBeDisabled();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText(mockAssistantMessage.content)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask about your wallet...')).toBeEnabled();
+
+    // A failure on one conversation never disables another conversation's composer.
+    vi.mocked(intelligenceApi.getConversationMessages).mockReset().mockRejectedValueOnce(new Error('again'))
+      .mockResolvedValueOnce({ messages: [] });
+    fireEvent.click(screen.getByText('Conversation B'));
+    await screen.findByText(/Failed to load messages/);
     fireEvent.click(screen.getByText('UTXO Strategy Discussion'));
-
-    // Should not crash, empty messages shown
-    await waitFor(() => {
-      expect(screen.getByText('Ask anything about your wallet')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.queryByText(/Failed to load messages/)).not.toBeInTheDocument());
+    expect(screen.getByPlaceholderText('Ask about your wallet...')).toBeEnabled();
   });
 
   it('should handle createConversation API error gracefully', async () => {
@@ -611,6 +628,17 @@ describe('ChatTab', () => {
     await waitFor(() => {
       expect(intelligenceApi.deleteConversation).toHaveBeenCalled();
     });
+  });
+
+  it('retryMessages does nothing without a selected conversation', async () => {
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+    await waitFor(() => expect(intelligenceApi.getConversations).toHaveBeenCalled());
+    vi.mocked(intelligenceApi.getConversationMessages).mockClear();
+
+    act(() => { result.current.retryMessages(); });
+
+    expect(intelligenceApi.getConversationMessages).not.toHaveBeenCalled();
+    expect(result.current.loadingMessages).toBe(false);
   });
 
   it('should send message via send button click', async () => {

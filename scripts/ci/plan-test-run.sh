@@ -179,6 +179,11 @@ else
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     if is_docs_only_file "$file"; then
+      # Documentation that is wallet-safety proof input still gets a full scan.
+      if is_wallet_safety_critical_file "$file"; then
+        mark_full_scan
+        break
+      fi
       continue
     fi
     if is_full_scan_trigger_file "$file"; then

@@ -80,6 +80,10 @@ create_failure_fixture() {
   mkdir -p "$repo/scripts/ci" "$bin"
   cp "$ROOT_DIR/scripts/run-tests.sh" "$repo/scripts/run-tests.sh"
   cp "$PLANNER" "$repo/scripts/ci/plan-test-run.sh"
+  # This fixture has no config/, so the wallet-safety matcher hits its
+  # missing-manifest (fail-closed) case. That stays harmless only because the
+  # injected diffs below carry no docs path; a docs path added to them would
+  # trigger an unexpected full scan.
   cp "$ROOT_DIR/scripts/ci/"{provider-context,classify-files-lib}.sh "$repo/scripts/ci/"
   cat > "$repo/scripts/ci/run-lane.sh" <<'LANE'
 #!/usr/bin/env bash
@@ -396,6 +400,19 @@ main() {
   assert_eq "docs-only frontend_unit" "false" "$(json_query "$plan" lanes.frontend_unit.run)"
   assert_eq "docs-only backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
   assert_eq "docs-only build" "false" "$(json_query "$plan" lanes.build.run)"
+
+  # ---- A wallet-safety critical doc is not a no-op ------------------------
+  base="$head"
+  mkdir -p "$repo/docs/adr"
+  printf '# adr\n' > "$repo/docs/adr/0003-jade-plus-authentication-boundary.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'wallet-safety adr only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "critical doc -> full_scan" "true" "$(json_query "$plan" full_scan)"
+  assert_eq "critical doc -> frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "critical doc -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
 
   # ---- workflow_dispatch --full forces full tier --------------------------
   plan="$(EVENT_NAME=workflow_dispatch run_planner "$repo" "$base" "$head" --full)"

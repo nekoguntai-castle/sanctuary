@@ -28,6 +28,7 @@ import {
 import {
   GATEWAY_AUTH_TIMEOUT_MS,
   GATEWAY_EVENT_PREPARATION_TIMEOUT_MS,
+  GATEWAY_WS_MAX_PAYLOAD_BYTES,
   GatewayWebSocket,
   WebSocketEvent,
 } from './types';
@@ -51,6 +52,7 @@ export class GatewayWebSocketServer {
   constructor() {
     this.wss = new WebSocketServer({
       noServer: true,
+      maxPayload: GATEWAY_WS_MAX_PAYLOAD_BYTES,
     });
 
     this.wss.on('connection', this.handleConnection.bind(this));

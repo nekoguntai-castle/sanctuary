@@ -190,6 +190,9 @@ run_unit_suites() {
     if ! run_test_suite "Upgrade TOTP Step Guard Unit Tests" "$SCRIPT_DIR/unit/upgrade-totp-step-guard.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Compose Operator Env Forwarding Unit Tests" "$SCRIPT_DIR/unit/compose-operator-env.test.sh"; then
+        suite_failed=true
+    fi
 
     [ "$suite_failed" = "false" ]
 }

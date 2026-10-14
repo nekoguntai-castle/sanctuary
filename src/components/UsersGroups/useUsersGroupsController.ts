@@ -30,7 +30,7 @@ export const useUsersGroupsController = () => {
   const [newGroup, setNewGroup] = useState('');
   const isCreatingGroupRef = useRef(false);
 
-  const { loading, execute: runLoad } = useLoadingState({ initialLoading: true });
+  const { loading, error: loadError, execute: runLoad } = useLoadingState({ initialLoading: true });
   const {
     loading: isCreatingUser,
     error: createUserError,
@@ -229,6 +229,8 @@ export const useUsersGroupsController = () => {
     users,
     groups,
     loading,
+    loadError,
+    retryLoad: loadData,
     showCreateUser,
     createUserInstanceKey,
     editingUser,

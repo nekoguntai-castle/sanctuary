@@ -1,6 +1,8 @@
 import type React from 'react';
 import { Brain } from 'lucide-react';
 import type { AIMessage } from '../../../api/intelligence';
+import { Button } from '../../ui/Button';
+import { ErrorAlert } from '../../ui/ErrorAlert';
 import { ChatInputComposer } from './ChatInputComposer';
 import { ChatMessage } from './ChatMessage';
 
@@ -8,6 +10,8 @@ interface ChatMessagePaneProps {
   selectedConversationId: string | null;
   messages: AIMessage[];
   loadingMessages: boolean;
+  messagesError: string | null;
+  onRetryMessages: () => void;
   sending: boolean;
   input: string;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
@@ -21,6 +25,8 @@ export const ChatMessagePane: React.FC<ChatMessagePaneProps> = ({
   selectedConversationId,
   messages,
   loadingMessages,
+  messagesError,
+  onRetryMessages,
   sending,
   input,
   messagesEndRef,
@@ -35,11 +41,14 @@ export const ChatMessagePane: React.FC<ChatMessagePaneProps> = ({
         <ChatMessages
           messages={messages}
           loadingMessages={loadingMessages}
+          messagesError={messagesError}
+          onRetryMessages={onRetryMessages}
           sending={sending}
           messagesEndRef={messagesEndRef}
         />
         <ChatInputComposer
           loadingMessages={loadingMessages}
+          historyFailed={messagesError !== null}
           input={input}
           sending={sending}
           inputRef={inputRef}
@@ -57,6 +66,8 @@ export const ChatMessagePane: React.FC<ChatMessagePaneProps> = ({
 interface ChatMessagesProps {
   messages: AIMessage[];
   loadingMessages: boolean;
+  messagesError: string | null;
+  onRetryMessages: () => void;
   sending: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -64,6 +75,8 @@ interface ChatMessagesProps {
 const ChatMessages: React.FC<ChatMessagesProps> = ({
   messages,
   loadingMessages,
+  messagesError,
+  onRetryMessages,
   sending,
   messagesEndRef,
 }) => (
@@ -71,6 +84,8 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
     <ChatMessagesContent
       messages={messages}
       loadingMessages={loadingMessages}
+      messagesError={messagesError}
+      onRetryMessages={onRetryMessages}
       sending={sending}
       messagesEndRef={messagesEndRef}
     />
@@ -80,6 +95,8 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
 function ChatMessagesContent({
   messages,
   loadingMessages,
+  messagesError,
+  onRetryMessages,
   sending,
   messagesEndRef,
 }: ChatMessagesProps) {
@@ -87,6 +104,15 @@ function ChatMessagesContent({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary-600 border-t-transparent dark:border-primary-200 dark:border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (messagesError !== null) {
+    return (
+      <div className="flex flex-col items-start gap-2 py-4">
+        <ErrorAlert message={`Failed to load messages: ${messagesError}`} className="" />
+        <Button variant="secondary" onClick={onRetryMessages}>Retry</Button>
       </div>
     );
   }

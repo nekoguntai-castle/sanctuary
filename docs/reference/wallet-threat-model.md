@@ -120,10 +120,14 @@ Every exposed transaction path must preserve these invariants:
   work.
 - Mobile view capabilities (`viewBalance`, `viewTransactions`, `viewUtxos`) are
   enforced by the gateway on every wallet-scoped read. Three routes carry no
-  wallet id in the path, so the gateway cannot cap them: `GET /wallets` (list
-  with balances), the deprecated `GET /transactions/{txid}` and
-  `GET /transactions/pending`. Backend-side filtering by the capability is a
-  tracked follow-up.
+  wallet id in the path, so the gateway cannot cap them: `GET /wallets`, the
+  deprecated `GET /transactions/{txid}` and `GET /transactions/pending`. The
+  backend caps them itself for requests carrying the gateway's
+  `X-Gateway-Request: true` marker (which the gateway always overwrites): the
+  wallet list reports `balance: 0` with `balanceHidden: true`, pending rows and
+  txid matches are filtered by `viewTransactions`. The marker can only restrict
+  what a caller sees. Push notifications (gateway and backend FCM/APNs) also
+  skip recipients whose `viewTransactions` cap is off.
 - Target-environment performance evidence is not transferable to every operator
   topology without rerunning the benchmark on that topology.
 - A public responsible-disclosure or bug-bounty process must be published before

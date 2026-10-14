@@ -253,12 +253,32 @@ services:
       # JWT
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+
+      # CORS allowed browser origins (comma-separated; empty keeps the built-in
+      # same-origin/loopback defaults). Native clients without an Origin are allowed.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
 
       # Rate limiting (configurable for testing, defaults to production values)
       RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-5}
       RATE_LIMIT_2FA: ${RATE_LIMIT_2FA:-10}
       RATE_LIMIT_2FA_ACCOUNT: ${RATE_LIMIT_2FA_ACCOUNT:-10}
       RATE_LIMIT_PASSWORD_CHANGE: ${RATE_LIMIT_PASSWORD_CHANGE:-5}
+      RATE_LIMIT_API_DEFAULT: ${RATE_LIMIT_API_DEFAULT:-1000}
+
+      # Slow query logging threshold (ms) and maintenance retention. Defaults
+      # equal the server defaults; the server treats an empty value as unset.
+      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-50}
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
+      PRICE_DATA_RETENTION_DAYS: ${PRICE_DATA_RETENTION_DAYS:-30}
+      FEE_ESTIMATE_RETENTION_DAYS: ${FEE_ESTIMATE_RETENTION_DAYS:-7}
+      DISK_WARNING_THRESHOLD_PERCENT: ${DISK_WARNING_THRESHOLD_PERCENT:-80}
+
+      # Monitoring UI ports reported by the admin monitoring screen. GRAFANA_PASSWORD
+      # is deliberately not forwarded: only the monitoring overlay receives it.
+      GRAFANA_PORT: ${GRAFANA_PORT:-3000}
+      PROMETHEUS_PORT: ${PROMETHEUS_PORT:-9090}
+      JAEGER_UI_PORT: ${JAEGER_UI_PORT:-16686}
 
       # Encryption (for sensitive data like node passwords)
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (at least 32 chars)}
@@ -280,6 +300,9 @@ services:
       # Worker architecture (single owner for background processing)
       WORKER_HEALTH_URL: ${WORKER_HEALTH_URL:-http://worker:3002/ready}
       WORKER_DIAGNOSTICS_URL: ${WORKER_DIAGNOSTICS_URL:-http://worker:3002/internal/diagnostics/v1/snapshot}
+      WORKER_HEALTH_TIMEOUT_MS: ${WORKER_HEALTH_TIMEOUT_MS:-3000}
+      WORKER_HEALTH_CHECK_INTERVAL_MS: ${WORKER_HEALTH_CHECK_INTERVAL_MS:-10000}
+      WORKER_DIAGNOSTICS_TIMEOUT_MS: ${WORKER_DIAGNOSTICS_TIMEOUT_MS:-3000}
       WORKER_DIAGNOSTICS_SECRET: ${WORKER_DIAGNOSTICS_SECRET:?WORKER_DIAGNOSTICS_SECRET is required}
       SUPPORT_CAPTURE_SOCKET_DIR: /run/sanctuary-support-capture
       SUPPORT_CAPTURE_EXPECTED_PARTICIPANTS: api,notification-worker
@@ -405,6 +428,14 @@ services:
       ELECTRUM_PORT: ${ELECTRUM_PORT:-50002}
       ELECTRUM_PROTOCOL: ${ELECTRUM_PROTOCOL:-ssl}
 
+      # Maintenance (runs in the worker) and slow query logging. Defaults equal
+      # the server defaults; the server treats an empty value as unset.
+      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-50}
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
+      PRICE_DATA_RETENTION_DAYS: ${PRICE_DATA_RETENTION_DAYS:-30}
+      FEE_ESTIMATE_RETENTION_DAYS: ${FEE_ESTIMATE_RETENTION_DAYS:-7}
+      DISK_WARNING_THRESHOLD_PERCENT: ${DISK_WARNING_THRESHOLD_PERCENT:-80}
+
       # Security (required for config validation)
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (at least 32 chars)}
@@ -481,6 +512,10 @@ services:
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      # models/prisma.ts reads this at runtime. CORS, rate-limit, retention,
+      # worker-health and monitoring-port settings are not read by the MCP
+      # startup path, so they are intentionally not forwarded here.
+      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-50}
       WORKER_DIAGNOSTICS_SECRET: ${WORKER_DIAGNOSTICS_SECRET:?WORKER_DIAGNOSTICS_SECRET is required}
       MCP_ENABLED: "true"
       MCP_HOST: 0.0.0.0
@@ -675,6 +710,10 @@ services:
 
       # Gateway secret for backend WebSocket connection
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
+
+      # Browser origins allowed to call the gateway (comma-separated; empty
+      # limits browser origins to loopback development origins)
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
 
       # Rate limiting
       RATE_LIMIT_WINDOW_MS: ${GATEWAY_RATE_LIMIT_WINDOW_MS:-60000}

@@ -1,11 +1,15 @@
 import type React from 'react';
 import { MessageSquare, Plus, Trash2 } from 'lucide-react';
 import type { AIConversation } from '../../../api/intelligence';
+import { Button } from '../../ui/Button';
+import { ErrorAlert } from '../../ui/ErrorAlert';
 
 interface ChatConversationListProps {
   conversations: AIConversation[];
   selectedConversationId: string | null;
   loadingConversations: boolean;
+  conversationsError: string | null;
+  onRetryConversations: () => void;
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
@@ -15,6 +19,8 @@ export const ChatConversationList: React.FC<ChatConversationListProps> = ({
   conversations,
   selectedConversationId,
   loadingConversations,
+  conversationsError,
+  onRetryConversations,
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
@@ -35,6 +41,8 @@ export const ChatConversationList: React.FC<ChatConversationListProps> = ({
         conversations={conversations}
         selectedConversationId={selectedConversationId}
         loadingConversations={loadingConversations}
+        conversationsError={conversationsError}
+        onRetryConversations={onRetryConversations}
         onSelectConversation={onSelectConversation}
         onDeleteConversation={onDeleteConversation}
       />
@@ -48,6 +56,8 @@ function ConversationListContent({
   conversations,
   selectedConversationId,
   loadingConversations,
+  conversationsError,
+  onRetryConversations,
   onSelectConversation,
   onDeleteConversation,
 }: ConversationListContentProps) {
@@ -55,6 +65,15 @@ function ConversationListContent({
     return (
       <div className="flex items-center justify-center py-8">
         <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary-600 border-t-transparent dark:border-primary-200 dark:border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (conversationsError !== null) {
+    return (
+      <div className="flex flex-col items-start gap-2 p-2">
+        <ErrorAlert message={`Failed to load conversations: ${conversationsError}`} className="" />
+        <Button variant="secondary" onClick={onRetryConversations}>Retry</Button>
       </div>
     );
   }

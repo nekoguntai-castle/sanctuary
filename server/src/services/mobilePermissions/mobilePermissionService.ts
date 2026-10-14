@@ -52,6 +52,9 @@ import {
 
 const log = createLogger('MOBILE_PERM:SVC');
 
+/** Any role grants the view actions, so batch helpers resolve them with this one. */
+const VIEW_ACTION_ROLE: WalletRole = 'viewer';
+
 // =============================================================================
 // Permission Resolution
 // =============================================================================
@@ -419,6 +422,55 @@ class MobilePermissionService {
     });
 
     return results;
+  }
+
+  /**
+   * Batch-filter wallets by a mobile action for one user.
+   *
+   * Intended for the view actions on cross-wallet routes whose callers already
+   * hold access to every wallet passed in: every role grants those actions, so
+   * only the user's saved permission row decides. A role already at hand may be
+   * supplied per wallet; otherwise any granting role is used.
+   */
+  async filterWalletIdsByMobileAction(
+    userId: string,
+    wallets: ReadonlyArray<{ walletId: string; role?: WalletRole | null }>,
+    action: MobileAction
+  ): Promise<string[]> {
+    if (wallets.length === 0) return [];
+
+    const walletIds = new Set(wallets.map((wallet) => wallet.walletId));
+    const rows = await mobilePermissionRepository.findByUserId(userId);
+    const permissions = new Map(
+      rows.filter((row) => walletIds.has(row.walletId)).map((row) => [row.walletId, row])
+    );
+
+    return wallets
+      .filter(({ walletId, role }) =>
+        calculateEffectivePermission(role ?? VIEW_ACTION_ROLE, permissions.get(walletId) ?? null, action)
+      )
+      .map(({ walletId }) => walletId);
+  }
+
+  /**
+   * Batch-filter a wallet's members by a mobile action (see
+   * {@link filterWalletIdsByMobileAction} for the view-action assumption).
+   */
+  async filterUserIdsByMobileAction(
+    walletId: string,
+    userIds: readonly string[],
+    action: MobileAction
+  ): Promise<string[]> {
+    if (userIds.length === 0) return [];
+
+    const permissions = await mobilePermissionRepository.findByWalletIdAndUserIds(
+      walletId,
+      [...userIds]
+    );
+
+    return userIds.filter((userId) =>
+      calculateEffectivePermission(VIEW_ACTION_ROLE, permissions.get(userId) ?? null, action)
+    );
   }
 
   // =============================================================================

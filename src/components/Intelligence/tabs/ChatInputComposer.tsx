@@ -6,6 +6,7 @@ interface ChatInputComposerProps {
   input: string;
   sending: boolean;
   loadingMessages: boolean;
+  historyFailed: boolean;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   onInputChange: (value: string) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
@@ -16,6 +17,7 @@ export const ChatInputComposer: React.FC<ChatInputComposerProps> = ({
   input,
   sending,
   loadingMessages,
+  historyFailed,
   inputRef,
   onInputChange,
   onKeyDown,
@@ -30,12 +32,13 @@ export const ChatInputComposer: React.FC<ChatInputComposerProps> = ({
         onKeyDown={onKeyDown}
         placeholder="Ask about your wallet..."
         rows={1}
+        disabled={historyFailed}
         maxLength={CHAT_MESSAGE_MAX_LENGTH}
         className="min-h-[32px] max-h-[120px] flex-1 resize-none rounded-lg border border-sanctuary-200 bg-sanctuary-50 px-3 py-1.5 text-[11px] text-sanctuary-800 placeholder:text-sanctuary-400 focus:border-primary-500 focus:outline-none dark:border-sanctuary-700 dark:bg-sanctuary-950 dark:text-sanctuary-200 dark:placeholder:text-sanctuary-500"
       />
       <button
         onClick={onSend}
-        disabled={!input.trim() || sending || loadingMessages}
+        disabled={!input.trim() || sending || loadingMessages || historyFailed}
         className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors hover:bg-primary-700 disabled:opacity-50 dark:bg-primary-200 dark:text-primary-900 dark:hover:bg-primary-300"
       >
         <Send className="h-3.5 w-3.5" />

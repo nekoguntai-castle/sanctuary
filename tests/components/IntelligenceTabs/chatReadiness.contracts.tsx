@@ -63,7 +63,7 @@ describe('Chat readiness and repeated selection', () => {
     expect(api.sendChatMessage).toHaveBeenCalledExactlyOnceWith('conv-1', mockUserMessage.content);
   });
 
-  it('releases readiness after history failure without losing typed input', async () => {
+  it('keeps the composer disabled after history failure without losing typed input', async () => {
     const history = deferred<History>();
     vi.mocked(api.getConversationMessages).mockReturnValue(history.promise);
     const { user, input, send } = await selectConversation();
@@ -71,9 +71,9 @@ describe('Chat readiness and repeated selection', () => {
     expect(send).toBeDisabled();
     await settleHistory(history, true);
     expect(input).toHaveValue(mockUserMessage.content);
-    expect(send).toBeEnabled();
-    await user.click(send);
-    expect(await screen.findByText(mockAssistantMessage.content)).toBeInTheDocument();
+    expect(input).toBeDisabled();
+    expect(send).toBeDisabled();
+    expect(api.sendChatMessage).not.toHaveBeenCalled();
   });
 
   it.each([false, true])('keeps B gated when stale A settles (failure=%s)', async fails => {

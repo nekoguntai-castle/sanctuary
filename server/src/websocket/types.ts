@@ -72,6 +72,18 @@ export const QUEUE_OVERFLOW_POLICY: QueueOverflowPolicy =
 /** Timeout for gateway authentication */
 export const GATEWAY_AUTH_TIMEOUT_MS = 10000; // 10 seconds
 
+/**
+ * Largest inbound frame each server accepts. `ws` buffers a whole frame before
+ * any rate limit or schema check runs (and `/ws` accepts unauthenticated
+ * sockets), so the library default of 100 MiB is a memory-exhaustion vector.
+ * An oversized frame closes the socket with code 1009.
+ *
+ * Client: the largest legitimate message is a ~1100-channel `subscribe_batch`
+ * (under 100 KiB). Gateway: only `auth_response` is ever received.
+ */
+export const CLIENT_WS_MAX_PAYLOAD_BYTES = 1024 * 1024; // 1 MiB
+export const GATEWAY_WS_MAX_PAYLOAD_BYTES = 64 * 1024; // 64 KiB
+
 /** Bound audience enrichment so one database read cannot stall every later push. */
 export const GATEWAY_EVENT_PREPARATION_TIMEOUT_MS = 10000;
 

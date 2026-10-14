@@ -3,7 +3,9 @@ import {
   type GatewayPushAudience,
 } from '../repositories/pushAudienceRepository';
 import { isWalletTransactionNotificationEnabled } from '../services/push/notificationEligibility';
+import { mobilePermissionService } from '../services/mobilePermissions';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import type { WebSocketEvent } from './types';
 
 const log = createLogger('WS:GATEWAY:MAPPER');
@@ -28,18 +30,36 @@ function emptyAudience(event: WebSocketEvent, walletName?: string): GatewayEvent
   return { ...event, ...(walletName ? { walletName } : {}), userIds: [] };
 }
 
-function eligibleUserIds(
+/**
+ * Recipients who enabled this notification and whose mobile `viewTransactions`
+ * cap is on. A permission-lookup failure sends to nobody (fail closed).
+ */
+async function eligibleUserIds(
   audience: GatewayPushAudience,
   walletId: string,
   transactionType: string,
-): string[] {
-  return [...new Set(audience.candidates
+): Promise<string[]> {
+  const preferred = [...new Set(audience.candidates
     .filter(({ preferences }) => isWalletTransactionNotificationEnabled(
       preferences,
       walletId,
       transactionType,
     ))
     .map(({ userId }) => userId))];
+
+  try {
+    return await mobilePermissionService.filterUserIdsByMobileAction(
+      walletId,
+      preferred,
+      'viewTransactions',
+    );
+  } catch (error) {
+    log.warn('Gateway push mobile permission lookup failed; sending to nobody', {
+      walletId,
+      error: getErrorMessage(error),
+    });
+    return [];
+  }
 }
 
 /** Add the private push audience required by the external gateway. */
@@ -70,7 +90,7 @@ export async function mapGatewayEvent(event: WebSocketEvent): Promise<GatewayEve
     return {
       ...event,
       walletName: audience.walletName,
-      userIds: eligibleUserIds(audience, event.walletId, transaction.type),
+      userIds: await eligibleUserIds(audience, event.walletId, transaction.type),
       data: { ...data, type: transaction.type, amount: Number(transaction.amount) },
     };
   }
@@ -84,6 +104,6 @@ export async function mapGatewayEvent(event: WebSocketEvent): Promise<GatewayEve
   return {
     ...event,
     walletName: audience.walletName,
-    userIds: eligibleUserIds(audience, event.walletId, transactionType),
+    userIds: await eligibleUserIds(audience, event.walletId, transactionType),
   };
 }

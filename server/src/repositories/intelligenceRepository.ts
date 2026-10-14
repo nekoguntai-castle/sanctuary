@@ -232,21 +232,18 @@ async function addMessage(input: CreateMessageInput): Promise<AIMessage> {
   return message;
 }
 
+/** Newest `limit` messages in chronological order (older turns drop off, not newer). */
 async function getMessages(conversationId: string, limit = 100): Promise<AIMessage[]> {
-  return prisma.aIMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'asc' },
-    take: limit,
-  });
-}
-
-async function getNewestMessages(conversationId: string, limit = 20): Promise<AIMessage[]> {
   const messages = await prisma.aIMessage.findMany({
     where: { conversationId },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit,
   });
   return messages.reverse();
+}
+
+function getNewestMessages(conversationId: string, limit = 20): Promise<AIMessage[]> {
+  return getMessages(conversationId, limit);
 }
 
 // ========================================

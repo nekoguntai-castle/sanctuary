@@ -196,6 +196,49 @@ is_test_suite_file() {
   return 1
 }
 
+# Wallet-safety critical paths: the manifest at
+# config/wallet-safety-critical-paths.json lists every path whose change must
+# re-run the funds-safety proofs, including some documentation (an ADR hashed
+# into the Jade proof sources). The manifest is resolved from this library's own
+# location, never the cwd, so fixture repos that copy only the scripts resolve
+# the same way. The matcher mirrors matchesClassifierPath in
+# check-wallet-safety-classifier.mjs (`**` any characters, `*` any characters
+# except `/`, everything else literal, anchored); a parity test keeps them in
+# step. The verify-vectors job is bash + git only, so this reads the manifest
+# with POSIX tools and needs no jq or node.
+# The pre-commit hook sources this library from a POSIX shell, so this block is
+# POSIX sh: no arrays, process substitution or [[ ]]. Under sh there is no
+# BASH_SOURCE, and the hook's REPO_ROOT locates the manifest instead.
+if [ -n "${BASH_SOURCE:-}" ]; then
+  SANCTUARY_CI_WALLET_SAFETY_MANIFEST="$(cd "$(dirname "$BASH_SOURCE")/../.." && pwd)/config/wallet-safety-critical-paths.json"
+else
+  SANCTUARY_CI_WALLET_SAFETY_MANIFEST="${REPO_ROOT:-.}/config/wallet-safety-critical-paths.json"
+fi
+SANCTUARY_CI_WALLET_SAFETY_REGEX=
+SANCTUARY_CI_WALLET_SAFETY_REGEX_LOADED=0
+
+# One ERE alternation of every manifest pattern: regex metacharacters escaped,
+# then `**` -> `.*` and `*` -> `[^/]*` (the placeholder keeps `**` from being
+# rewritten twice; no manifest path contains `@`).
+load_wallet_safety_regex() {
+  [ "$SANCTUARY_CI_WALLET_SAFETY_REGEX_LOADED" = "0" ] || return 0
+  SANCTUARY_CI_WALLET_SAFETY_REGEX_LOADED=1
+  [ -r "$SANCTUARY_CI_WALLET_SAFETY_MANIFEST" ] || return 0
+  SANCTUARY_CI_WALLET_SAFETY_REGEX=$(
+    sed -n '/"paths"[[:space:]]*:[[:space:]]*\[/,/\]/p' "$SANCTUARY_CI_WALLET_SAFETY_MANIFEST" \
+      | sed -n 's/^[[:space:]]*"\([^"]*\)"[[:space:]]*,\{0,1\}[[:space:]]*$/\1/p' \
+      | sed -e 's/[].+^${}()|[\\]/\\&/g' -e 's/\*\*/@@ANY@@/g' -e 's/\*/[^\/]*/g' -e 's/@@ANY@@/.*/g' \
+      | paste -sd '|' -
+  )
+}
+
+# Fail closed: a missing, unreadable or empty manifest makes every path critical.
+is_wallet_safety_critical_file() {
+  load_wallet_safety_regex
+  [ -n "$SANCTUARY_CI_WALLET_SAFETY_REGEX" ] || return 0
+  printf '%s\n' "$1" | grep -Eq "^(${SANCTUARY_CI_WALLET_SAFETY_REGEX})\$"
+}
+
 is_docs_only_file() {
   case "$1" in
     *.md|*.mdx)

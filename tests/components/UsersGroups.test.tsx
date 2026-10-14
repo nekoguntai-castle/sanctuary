@@ -529,4 +529,24 @@ describe('UsersGroups', () => {
       });
     });
   });
+
+  describe('load failure', () => {
+    it('shows an error with Retry instead of empty lists, and Retry reloads', async () => {
+      vi.mocked(adminApi.getUsers)
+        .mockRejectedValueOnce(new Error('users unavailable'))
+        .mockResolvedValueOnce(mockUsers as never);
+      vi.mocked(adminApi.getGroups).mockResolvedValue(mockGroups as never);
+
+      render(<UsersGroups />);
+
+      expect(await screen.findByText(/Failed to load users and groups/)).toBeInTheDocument();
+      expect(screen.getByText(/users unavailable/)).toBeInTheDocument();
+      expect(screen.queryByText('No users found')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+      expect(await screen.findByText('testuser')).toBeInTheDocument();
+      expect(screen.queryByText(/Failed to load users and groups/)).not.toBeInTheDocument();
+    });
+  });
 });

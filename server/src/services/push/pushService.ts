@@ -24,6 +24,7 @@ import {
 import type { IPushProvider, PushMessage, PushPlatform } from './types';
 import { isInvalidTokenError } from './types';
 import { recordPushFailure } from '../deadLetterQueue';
+import { mobilePermissionService } from '../mobilePermissions';
 
 const log = createLogger('PUSH:SVC');
 
@@ -245,9 +246,18 @@ class PushService {
 
       // Get all users with access to this wallet, including push device counts
       // This avoids N+1 queries by fetching device counts in a single query
-      users = await userRepository.findByWalletAccess(walletId, {
+      const accessUsers = await userRepository.findByWalletAccess(walletId, {
         includePushDeviceCount: true,
       });
+
+      // Payloads carry amounts and txids, so honour each user's mobile
+      // viewTransactions cap. A lookup failure lands in the catch below.
+      const permitted = new Set(await mobilePermissionService.filterUserIdsByMobileAction(
+        walletId,
+        accessUsers.map((user) => user.id),
+        'viewTransactions',
+      ));
+      users = accessUsers.filter((user) => permitted.has(user.id));
     } catch (err) {
       const errorMsg = getErrorMessage(err);
       log.error(`Error sending push notifications: ${errorMsg}`);

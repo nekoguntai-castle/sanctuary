@@ -16,6 +16,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({ walletId }) => {
         conversations={controller.conversations}
         selectedConversationId={controller.selectedConversationId}
         loadingConversations={controller.loadingConversations}
+        conversationsError={controller.conversationsError}
+        onRetryConversations={controller.reloadConversations}
         onNewConversation={controller.handleNewConversation}
         onSelectConversation={controller.setSelectedConversationId}
         onDeleteConversation={controller.handleDeleteConversation}
@@ -25,6 +27,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({ walletId }) => {
         selectedConversationId={controller.selectedConversationId}
         messages={controller.messages}
         loadingMessages={controller.loadingMessages}
+        messagesError={controller.messagesError}
+        onRetryMessages={controller.retryMessages}
         sending={controller.sending}
         input={controller.input}
         messagesEndRef={controller.messagesEndRef}

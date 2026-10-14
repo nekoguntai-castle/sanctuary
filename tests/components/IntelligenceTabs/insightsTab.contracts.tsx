@@ -237,15 +237,34 @@ describe('InsightsTab', () => {
     });
   });
 
-  it('should handle getInsights API error gracefully', async () => {
-    vi.mocked(intelligenceApi.getInsights).mockRejectedValue(new Error('Network error'));
+  it('shows a load error with Retry instead of the empty state, and Retry reloads', async () => {
+    vi.mocked(intelligenceApi.getInsights)
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce({ insights: [mockInsight] });
 
     render(<InsightsTab walletId="wallet-1" />);
 
-    // Should show empty state after error (insights array stays empty)
-    await waitFor(() => {
-      expect(screen.getByText('No insights found.')).toBeInTheDocument();
-    });
+    expect(await screen.findByText(/Failed to load insights/)).toBeInTheDocument();
+    expect(screen.queryByText('No insights found.')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Fragmented UTXOs Detected')).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load insights/)).not.toBeInTheDocument();
+  });
+
+  it('clears a load error when the filter changes to a successful load', async () => {
+    vi.mocked(intelligenceApi.getInsights)
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce({ insights: [] });
+
+    render(<InsightsTab walletId="wallet-1" />);
+    await screen.findByText(/Failed to load insights/);
+
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'anomaly' } });
+
+    expect(await screen.findByText('No insights found.')).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load insights/)).not.toBeInTheDocument();
   });
 
   it('should handle updateInsightStatus API error gracefully', async () => {
@@ -269,10 +288,10 @@ describe('InsightsTab', () => {
 
     fireEvent.click(screen.getByText('Dismiss'));
 
-    // Insight should remain since the API call failed
-    await waitFor(() => {
-      expect(intelligenceApi.updateInsightStatus).toHaveBeenCalled();
-    });
+    // Insight should remain since the API call failed, and the failure is visible
+    expect(await screen.findByText(/Failed to update insight/)).toBeInTheDocument();
+    expect(intelligenceApi.updateInsightStatus).toHaveBeenCalled();
+    expect(screen.getByText('Fragmented UTXOs Detected')).toBeInTheDocument();
   });
 
   it('should change severity filter', async () => {

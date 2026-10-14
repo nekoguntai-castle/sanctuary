@@ -145,6 +145,14 @@ main() {
   assert_exact_output "$output_file" false
   base_sha="$head_sha"
 
+  # A documentation path listed in the wallet-safety manifest is proof input
+  # (hashed into the Jade proof sources): it must run the proofs.
+  commit_file "$repo_dir" docs/adr/0003-jade-plus-authentication-boundary.md '# ADR only' "wallet-safety ADR change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "push"
+  assert_exact_output "$output_file" true
+  base_sha="$head_sha"
+
   # Mixed docs+code: run.
   mkdir -p "$repo_dir/docs" "$repo_dir/server/src"
   printf '# more docs\n' > "$repo_dir/docs/more.md"

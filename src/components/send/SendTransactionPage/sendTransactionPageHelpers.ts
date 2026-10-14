@@ -2,6 +2,7 @@ import type { FeeEstimates, MempoolData } from '../../../api/bitcoin';
 import type { DraftTransaction } from '../../../api/drafts';
 import type { Address, Device, FeeEstimate, UTXO, Wallet } from '../../../types';
 import { getQuorumM, getQuorumN, isMultisigType, WalletType } from '../../../types';
+import { UNATTRIBUTED_SIGNATURE_ID } from '../../../hooks/send/types';
 import type { SerializableTransactionState, WalletAddress } from '../../../contexts/send/types';
 import type { DraftTransactionData, LoadedSendTransactionPageData } from './types';
 
@@ -132,9 +133,12 @@ export function buildInitialState(params: {
   preSelectedUTXOs?: string[];
   showInfo: (message: string) => void;
   utxos: UTXO[];
+  walletType: WalletType | string;
 }): Partial<SerializableTransactionState> | undefined {
   if (params.draftData) {
-    return buildDraftInitialState(params.draftData, params.utxos, params.addresses, params.showInfo);
+    return buildDraftInitialState(
+      params.draftData, params.utxos, params.addresses, params.showInfo, params.walletType
+    );
   }
 
   if (params.preSelectedUTXOs && params.preSelectedUTXOs.length > 0) {
@@ -165,7 +169,8 @@ function buildDraftInitialState(
   draftData: DraftTransaction,
   utxos: UTXO[],
   addresses: Address[] | undefined,
-  showInfo: (message: string) => void
+  showInfo: (message: string) => void,
+  walletType: WalletType | string
 ): Partial<SerializableTransactionState> {
   const draftInitial: Partial<SerializableTransactionState> = {
     currentStep: 'review',
@@ -177,7 +182,7 @@ function buildDraftInitialState(
     draftId: draftData.id,
     replacesTxid: draftData.replacesTxid ?? null,
     unsignedPsbt: draftData.signedPsbtBase64 || draftData.psbtBase64,
-    signedDevices: draftData.signedDeviceIds || [],
+    signedDevices: resolveDraftSignedDevices(draftData, walletType),
     payjoinUrl: draftData.payjoinUrl || null,
     payjoinStatus: 'idle',
     outputs: buildDraftOutputs(draftData),
@@ -188,6 +193,17 @@ function buildDraftInitialState(
   draftInitial.outputsValid = (draftInitial.outputs || []).map(() => true);
 
   return draftInitial;
+}
+
+// An unattributed uploaded signature is persisted without a device id. For a single-sig wallet
+// seed the UI-only marker so Sign & Broadcast can broadcast the resumed PSBT; multisig drafts are
+// not seeded because an unattributed partial signature must not count toward the quorum.
+function resolveDraftSignedDevices(draftData: DraftTransaction, walletType: WalletType | string): string[] {
+  const attributed = draftData.signedDeviceIds || [];
+  if (attributed.length === 0 && draftData.signedPsbtBase64 && !isMultisigType(walletType)) {
+    return [UNATTRIBUTED_SIGNATURE_ID];
+  }
+  return attributed;
 }
 
 function buildDraftOutputs(draftData: DraftTransaction): SerializableTransactionState['outputs'] {

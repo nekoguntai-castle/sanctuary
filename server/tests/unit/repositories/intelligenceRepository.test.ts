@@ -537,15 +537,19 @@ describe('Intelligence Repository', () => {
   });
 
   describe('getMessages', () => {
-    it('should return messages ordered by createdAt asc with default limit', async () => {
-      (prisma.aIMessage.findMany as Mock).mockResolvedValue([mockMessage]);
+    it('selects the newest 100 by default and returns them chronologically', async () => {
+      const newestFirst = [
+        { ...mockMessage, id: 'msg-101', createdAt: new Date('2026-01-02') },
+        { ...mockMessage, id: 'msg-100', createdAt: new Date('2026-01-01') },
+      ];
+      (prisma.aIMessage.findMany as Mock).mockResolvedValue(newestFirst);
 
       const result = await intelligenceRepository.getMessages('conv-1');
 
-      expect(result).toEqual([mockMessage]);
+      expect(result.map((message) => message.id)).toEqual(['msg-100', 'msg-101']);
       expect(prisma.aIMessage.findMany).toHaveBeenCalledWith({
         where: { conversationId: 'conv-1' },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 100,
       });
     });
@@ -557,7 +561,7 @@ describe('Intelligence Repository', () => {
 
       expect(prisma.aIMessage.findMany).toHaveBeenCalledWith({
         where: { conversationId: 'conv-1' },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 20,
       });
     });

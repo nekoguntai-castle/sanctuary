@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Shield, UserPlus, Check, AlertCircle } from 'lucide-react';
 import * as adminApi from '../../api/admin';
 import { useLoadingState } from '../../hooks/useLoadingState';
+import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
 
 function useSaveSuccessState(durationMs = 3000) {
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -166,15 +168,20 @@ export const AccessControlTab: React.FC = () => {
   const { saveSuccess, showSaveSuccess } = useSaveSuccessState();
 
   // Loading states using hook
-  const { loading, execute: runLoad } = useLoadingState({ initialLoading: true });
+  const { loading, error: loadError, execute: runLoad } = useLoadingState({ initialLoading: true });
   const { loading: isSaving, error: saveError, execute: runSave } = useLoadingState();
 
-  useEffect(() => {
-    void runLoad(async () => {
+  const loadSettings = useCallback(
+    () => runLoad(async () => {
       const settings = await adminApi.getSystemSettings();
       setRegistrationEnabled(settings.registrationEnabled);
-    });
-  }, []);
+    }),
+    [runLoad],
+  );
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   const handleToggleRegistration = async () => {
     const newValue = !registrationEnabled;
@@ -191,6 +198,16 @@ export const AccessControlTab: React.FC = () => {
 
   if (loading) {
     return <div className="p-8 text-center text-sanctuary-400">Loading access control settings...</div>;
+  }
+
+  // The toggle and status text only render once the real value is known.
+  if (loadError !== null) {
+    return (
+      <div className="space-y-4">
+        <ErrorAlert message={`Failed to load access control settings: ${loadError}`} />
+        <Button variant="secondary" onClick={() => { void loadSettings(); }}>Retry</Button>
+      </div>
+    );
   }
 
   return (

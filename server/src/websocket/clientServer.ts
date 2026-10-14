@@ -25,6 +25,7 @@ import {
   MAX_WEBSOCKET_CONNECTIONS,
   MAX_WEBSOCKET_PER_USER,
   MAX_SUBSCRIPTIONS_PER_CONNECTION,
+  CLIENT_WS_MAX_PAYLOAD_BYTES,
   AuthenticatedWebSocket,
   WebSocketEvent,
   bumpSubscriptionGeneration,
@@ -74,6 +75,7 @@ export class SanctauryWebSocketServer {
   constructor() {
     this.wss = new WebSocketServer({
       noServer: true,
+      maxPayload: CLIENT_WS_MAX_PAYLOAD_BYTES,
     });
 
     this.wss.on('connection', this.handleConnection.bind(this));

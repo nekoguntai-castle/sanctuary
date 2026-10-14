@@ -57,7 +57,7 @@ Use different controls for different exposures:
 - Public backend exposure: prefer an authenticated reverse proxy or VPN. If the
   backend must be internet-facing, lower `RATE_LIMIT_API_DEFAULT`, keep TLS and
   CORS allowlists explicit, and monitor 429s and auth failures.
-- Public gateway exposure: tune `RATE_LIMIT_MAX` and route-specific mobile
+- Public gateway exposure: tune `GATEWAY_RATE_LIMIT_MAX` (compose forwards it to the gateway as `RATE_LIMIT_MAX`) and route-specific mobile
   limits for the expected client profile. The built-in gateway limiters are
   process-local, so multiple gateway instances multiply effective limits unless
   an edge limiter or shared store is added.

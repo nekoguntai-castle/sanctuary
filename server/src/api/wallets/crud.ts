@@ -14,6 +14,8 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, NotFoundError } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { isGatewayRequest } from '../../middleware/gatewayRequest';
+import { mobilePermissionService } from '../../services/mobilePermissions';
 
 const router = Router();
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
@@ -129,7 +131,19 @@ router.get('/', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const wallets = await walletService.getUserWallets(userId);
 
-  res.json(wallets);
+  if (!isGatewayRequest(req)) {
+    return res.json(wallets);
+  }
+
+  // Mobile view caps redact (not omit) the wallet: receive-only devices still need it.
+  const visible = new Set(await mobilePermissionService.filterWalletIdsByMobileAction(
+    userId,
+    wallets.map((wallet) => ({ walletId: wallet.id, role: wallet.userRole })),
+    'viewBalance'
+  ));
+  res.json(wallets.map((wallet) =>
+    visible.has(wallet.id) ? wallet : { ...wallet, balance: 0, balanceHidden: true }
+  ));
 }));
 
 /**

@@ -55,6 +55,10 @@ export const walletSchemas = {
       descriptor: { type: 'string', nullable: true },
       balance: { type: 'string', description: 'Balance in satoshis as string' },
       unconfirmedBalance: { type: 'string', description: 'Unconfirmed balance in satoshis' },
+      balanceHidden: {
+        type: 'boolean',
+        description: 'Present and true on mobile-gateway requests when the user\'s viewBalance cap is off; balance is then reported as 0',
+      },
       lastSynced: { type: 'string', format: 'date-time', nullable: true },
       syncStatus: { type: 'string', enum: ['synced', 'syncing', 'error', 'pending', 'never'] },
       lastSyncedAt: { type: 'string', format: 'date-time', nullable: true },
