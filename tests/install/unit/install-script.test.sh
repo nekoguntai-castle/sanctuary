@@ -1470,6 +1470,18 @@ test_install_script_supports_offline_bundle() {
     fi
 }
 
+test_install_offline_apply_passes_downgrade_override_via_environment() {
+    local body
+    body="$(sed -n '/^apply_offline_bundle()/,/^}/p' "$INSTALL_SCRIPT")"
+    if grep -qF 'SANCTUARY_ALLOW_DOWNGRADE="$ALLOW_DOWNGRADE"' <<<"$body" \
+        && ! grep -q -- '--allow-downgrade' <<<"$body"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} apply_offline_bundle should pass the downgrade override via the environment, never the CLI flag"
+        return 1
+    fi
+}
+
 test_setup_script_supports_offline_mode() {
     if grep -q -- "--offline" "$SETUP_SCRIPT" \
         && grep -q "validate_offline_images" "$SETUP_SCRIPT" \
@@ -2971,6 +2983,7 @@ main() {
     run_test "install script checks multiple ports" test_install_script_checks_multiple_ports
     run_test "install script has upgrade backup guidance" test_install_script_has_upgrade_backup_guidance
     run_test "install script supports offline bundle" test_install_script_supports_offline_bundle
+    run_test "install offline apply passes downgrade override via environment" test_install_offline_apply_passes_downgrade_override_via_environment
     run_test "setup script supports offline mode" test_setup_script_supports_offline_mode
     run_test "setup offline mode overrides existing online metadata" test_setup_offline_mode_overrides_existing_online_metadata
     run_test "start script refuses offline rebuild" test_start_script_refuses_offline_rebuild

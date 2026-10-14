@@ -75,26 +75,73 @@ run_classifier() {
   )
 }
 
-# Drift guard: every root scripts/ci helper that test.yml or a composite action
-# executes must be classified, either as a full-scan trigger or by the dedicated
-# predicate of one of the narrower lanes. Adding a helper to test.yml without
-# classifying it fails here.
+# Drift guard: every file that test.yml or a composite action executes, and
+# every file those transitively call, source or import, must be classified,
+# either as a full-scan trigger or by the dedicated predicate of one of the
+# narrower lanes. Adding a helper (or a dependency of one) without classifying
+# it fails here.
+#
+# The walk follows `$SCRIPT_DIR/NAME` / `$script_dir/NAME` (a single path
+# segment, never `../`, so `../`-relative inputs such as
+# scripts/verify-addresses/implementations/go.mod are not walked: verify-vectors
+# has its own provenance pin for those), `scripts/ci/NAME`, relative ESM
+# imports, and JSON config reads under .github.
+#
+# It neither reports nor descends into is_test_lane_excluded_file scripts (a
+# narrower lane owns them) or scripts/ownership (quality/architecture own it).
+transitive_dependencies() {
+  local rel="$1" dir
+  dir="$(dirname "$rel")"
+  # Each grep may legitimately match nothing, so tolerate exit 1 under set -e.
+  {
+    { grep -Eo '\$\{?(script_dir|SCRIPT_DIR)\}?/[A-Za-z0-9_.-]+' "$ROOT_DIR/$rel" || true; } \
+      | sed -E 's|^.*\}?/||; s|^|'"$dir"'/|'
+    grep -Eo 'scripts/ci/[A-Za-z0-9_.-]+' "$ROOT_DIR/$rel" || true
+    { grep -Eo "from '\.\.?/[^']+'" "$ROOT_DIR/$rel" || true; } \
+      | sed -E "s|^from '||; s|'\$||; s|^|$dir/|"
+    grep -Eo '\.github/[A-Za-z0-9_.-]+\.json' "$ROOT_DIR/$rel" || true
+  } | while IFS= read -r dep; do
+    realpath -m --relative-to="$ROOT_DIR" "$ROOT_DIR/$dep"
+  done
+}
+
 assert_every_test_workflow_script_is_classified() {
-  local path
+  local path dep
   # shellcheck source=scripts/ci/classify-files-lib.sh
   . "$ROOT_DIR/scripts/ci/classify-files-lib.sh"
+
+  local -a queue=()
+  local -A seen=()
   while IFS= read -r path; do
-    [ -f "$ROOT_DIR/$path" ] || continue
-    if is_full_scan_trigger_file "$path" || is_frontend_file "$path" || is_test_suite_file "$path"; then
-      continue
-    fi
-    fail "test.yml executes $path but no classifier predicate covers it"
+    queue+=("$path")
   done < <(
     {
+      # Already-classified lane helpers seed the walk too: some are only reached
+      # through other helpers, and their own imports must be classified as well.
+      for path in $(cd "$ROOT_DIR" && find scripts/ci -maxdepth 1 -type f | sort); do
+        ! is_test_lane_infrastructure_file "$path" || printf '%s\n' "$path"
+      done
       grep -ho 'scripts/ci/[A-Za-z0-9_.-]*' "$ROOT_DIR/.github/workflows/test.yml"
       find "$ROOT_DIR/.github/actions" -name action.yml -exec grep -ho 'scripts/ci/[A-Za-z0-9_.-]*' {} +
     } | sort -u
   )
+
+  while [ "${#queue[@]}" -gt 0 ]; do
+    path="${queue[0]}"
+    queue=("${queue[@]:1}")
+    [ -z "${seen[$path]:-}" ] || continue
+    seen[$path]=1
+    [ -f "$ROOT_DIR/$path" ] || continue
+    [[ "$path" != "scripts/ownership/"* ]] || continue
+    ! is_test_lane_excluded_file "$path" || continue
+    if ! { is_full_scan_trigger_file "$path" || is_frontend_file "$path" || is_test_suite_file "$path" \
+      || is_critical_mutation_file "$path" || is_backend_file "$path"; }; then
+      fail "test.yml reaches $path but no classifier predicate covers it"
+    fi
+    while IFS= read -r dep; do
+      [ -n "$dep" ] && queue+=("$dep")
+    done < <(transitive_dependencies "$path")
+  done
 }
 
 main() {
@@ -713,7 +760,8 @@ EOF_DOC
   # Lane-infrastructure helpers that test.yml executes wrap every lane, so a
   # diff that touches only one of them must force a full scan.
   local infra_script
-  for infra_script in backend-coverage-shard.sh prepare-integration-db.sh with-runner-lock.sh; do
+  for infra_script in backend-coverage-shard.sh prepare-integration-db.sh with-runner-lock.sh \
+    subject-budget.mjs record-command-timing.mjs create-isolated-workspace.sh; do
     base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
     printf '#!/usr/bin/env bash\necho %s\n' "$infra_script" > "$repo_dir/scripts/ci/$infra_script"
     git -C "$repo_dir" add "scripts/ci/$infra_script"
@@ -723,6 +771,15 @@ EOF_DOC
     run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
     assert_exact_output "$output_file" "full_scan" "true"
   done
+
+  # The time-command.sh budget file is read by every wrapped lane too.
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  printf '{}\n' > "$repo_dir/.github/ci-performance-budget.json"
+  git -C "$repo_dir" add .github/ci-performance-budget.json
+  git -C "$repo_dir" commit -qm "lane performance budget"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "full_scan" "true"
 
   assert_every_test_workflow_script_is_classified
 

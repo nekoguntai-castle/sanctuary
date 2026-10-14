@@ -760,6 +760,7 @@ jobs:
           bash -n tests/ci/check-provider-leaks.test.sh
           bash -n tests/ci/playwright-timing-reporter.test.sh
           bash -n tests/ci/classify-test-changes.test.sh
+          bash -n tests/ci/jscpd-only.test.sh
           bash -n tests/ci/check-lockfile-peer-resolution.test.sh
           bash -n tests/ci/classify-architecture-scope.test.sh
           bash -n tests/ci/classify-docker-build-images.test.sh
@@ -898,6 +899,7 @@ jobs:
           # Existing CI helper tests.
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
+          bash tests/ci/jscpd-only.test.sh
           bash tests/ci/check-lockfile-peer-resolution.test.sh
           bash tests/ci/classify-architecture-scope.test.sh
           bash tests/ci/classify-docker-build-images.test.sh

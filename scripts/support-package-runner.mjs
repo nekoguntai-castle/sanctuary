@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { isMainModule } from './lib/is-main-module.mjs';
 
 export const supportPackageModuleCandidates = Object.freeze([
   './dist/app/src/services/supportPackage',
@@ -90,9 +89,12 @@ async function main() {
   }
 }
 
-const isDirectExecution = isMainModule(import.meta.url);
-const isStdinExecution = process.argv[1] === '-';
-
-if (isDirectExecution || isStdinExecution) {
+// scripts/support-package.sh pipes this file to `node -` inside the backend
+// image, which ships no scripts/lib; load the helper only for file execution,
+// where it resolves against this module's own URL.
+if (process.argv[1] === '-') {
   await main();
+} else {
+  const { isMainModule } = await import('./lib/is-main-module.mjs');
+  if (isMainModule(import.meta.url)) await main();
 }

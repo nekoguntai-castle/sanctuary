@@ -346,7 +346,7 @@ main() {
 
   # ---- A test.yml lane-infrastructure helper forces a full scan --------------
   local infra_script
-  for infra_script in backend-coverage-shard.sh prepare-integration-db.sh with-runner-lock.sh; do
+  for infra_script in backend-coverage-shard.sh prepare-integration-db.sh with-runner-lock.sh subject-budget.mjs; do
     base="$head"
     mkdir -p "$repo/scripts/ci"
     printf '#!/usr/bin/env bash\necho %s\n' "$infra_script" > "$repo/scripts/ci/$infra_script"

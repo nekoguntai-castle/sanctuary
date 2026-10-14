@@ -19,6 +19,7 @@ STAGE_DIR=""
 INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"
 PUBLIC_KEY=""
 ALLOW_UNSIGNED_DEV=false
+ALLOW_DOWNGRADE="${SANCTUARY_ALLOW_DOWNGRADE:-false}"
 PREPARE_ONLY=false
 APPLY_ONLY=false
 VERIFY_ONLY=false
@@ -47,10 +48,13 @@ trap cleanup_apply EXIT
 
 ensure_apply_lock() {
   [ "$APPLY_LOCK_ACTIVE" = true ] && return 0
+  local ownership_dir="$SCRIPT_DIR/../ownership"
+  # An extracted bundle ships the ownership tree under authority/.
+  [ -f "$ownership_dir/producer-hooks.sh" ] || ownership_dir="$SCRIPT_DIR/../authority/scripts/ownership"
   # shellcheck source=scripts/ownership/producer-hooks.sh
-  . "$SCRIPT_DIR/../ownership/producer-hooks.sh"
+  . "$ownership_dir/producer-hooks.sh"
   # shellcheck source=scripts/ownership/deployment-lifecycle.sh
-  . "$SCRIPT_DIR/../ownership/deployment-lifecycle.sh"
+  . "$ownership_dir/deployment-lifecycle.sh"
   SANCTUARY_PROJECT_DIR="$INSTALL_DIR"
   SANCTUARY_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
   SANCTUARY_ENV_FILE="$(resolve_runtime_env_file)"
@@ -85,6 +89,8 @@ Options:
   --install-dir DIR              Sanctuary install directory
   --public-key FILE              Trusted public key for signature verification
   --allow-unsigned-dev-bundle    Accept unsigned development bundles
+  --allow-downgrade              Allow applying a bundle older than the installed version
+                                 (or set SANCTUARY_ALLOW_DOWNGRADE=true)
   --prepare-only                 Verify/extract only; no docker load or git checkout
   --verify-only                  Verify an already staged bundle; no docker load or git checkout
   --apply                        Apply an already staged bundle
@@ -117,6 +123,10 @@ parse_args() {
         ;;
       --allow-unsigned-dev-bundle)
         ALLOW_UNSIGNED_DEV=true
+        shift
+        ;;
+      --allow-downgrade)
+        ALLOW_DOWNGRADE=true
         shift
         ;;
       --prepare-only)
@@ -408,10 +418,21 @@ verify_staged_bundle() {
   validate_image_inventory
 }
 
+reject_bundle_downgrade() {
+  [ "$ALLOW_DOWNGRADE" != true ] || return 0
+  [ -e "$INSTALL_DIR/.git" ] || return 0
+  local current
+  current="$(git -C "$INSTALL_DIR" describe --tags 2>/dev/null || true)"
+  if offline_is_semver_downgrade "$current" "${SANCTUARY_GIT_TAG:-}"; then
+    offline_fail "Refusing downgrade from $current to $SANCTUARY_GIT_TAG. Database migrations may be irreversible; restore from a backup or rerun with --allow-downgrade only for explicit recovery."
+  fi
+}
+
 apply_prepared_bundle() {
   verify_staged_bundle
   validate_profile_coverage
   ensure_apply_lock
+  reject_bundle_downgrade
   load_bundle_images
   verify_loaded_images
   checkout_bundle_source

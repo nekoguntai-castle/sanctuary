@@ -318,6 +318,10 @@ EOF
 setup_fake_git() {
   cat > "$FAKE_BIN/git" <<'EOF'
 #!/bin/bash
+# `describe` answers SANCTUARY_FAKE_GIT_DESCRIBE when set (downgrade guard tests).
+if [[ " $* " == *" describe "* ]] && [ -n "${SANCTUARY_FAKE_GIT_DESCRIBE:-}" ]; then
+  printf '%s\n' "$SANCTUARY_FAKE_GIT_DESCRIBE"
+fi
 exit 0
 EOF
   chmod +x "$FAKE_BIN/git"
@@ -508,7 +512,8 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
       scripts/ci/cleanup-ci-callsite.sh \
       scripts/ci/create-registered-staging.sh \
       scripts/ci/provider-context.sh \
-      scripts/ci/provider-context.mjs; do
+      scripts/ci/provider-context.mjs \
+      scripts/ci/forward-live-annotations.mjs; do
       assert_contains "$list" "./authority/$authority_relative" \
         "bundle should include CI authority file $authority_relative" || failures=1
     done
@@ -883,6 +888,7 @@ test_create_bundle_signs_outer_archive() {
     "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
     "$PROJECT_ROOT/scripts/ci/provider-context.sh" \
     "$PROJECT_ROOT/scripts/ci/provider-context.mjs" \
+    "$PROJECT_ROOT/scripts/ci/forward-live-annotations.mjs" \
     "$release_repo/scripts/ci/"
   cp -R "$PROJECT_ROOT/scripts/ownership" "$release_repo/scripts/ownership"
   cp -R "$PROJECT_ROOT/scripts/lib" "$release_repo/scripts/lib"
@@ -938,6 +944,7 @@ test_create_bundle_skip_build_rejects_stale_revision() {
     "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
     "$PROJECT_ROOT/scripts/ci/provider-context.sh" \
     "$PROJECT_ROOT/scripts/ci/provider-context.mjs" \
+    "$PROJECT_ROOT/scripts/ci/forward-live-annotations.mjs" \
     "$release_repo/scripts/ci/"
   cp -R "$PROJECT_ROOT/scripts/ownership" "$release_repo/scripts/ownership"
   cp -R "$PROJECT_ROOT/scripts/lib" "$release_repo/scripts/lib"
@@ -1128,6 +1135,185 @@ EOF
   return "$failures"
 }
 
+# Builds an unsigned dev core bundle from the newest repo tag and extracts it
+# into $TEST_TMP_DIR/extracted. Returns 2 (skip) when the checkout has no tags.
+extract_dev_bundle() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag output
+  tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
+  if [ -z "$tag" ]; then
+    teardown_bundle_workspace
+    return 2
+  fi
+
+  output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
+  EXTRACTED_BUNDLE="$TEST_TMP_DIR/extracted"
+  mkdir -p "$EXTRACTED_BUNDLE"
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    run_create_bundle "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
+    && tar -xzf "$output" -C "$EXTRACTED_BUNDLE"
+}
+
+test_semver_downgrade_comparison_table() {
+  local current target expected actual failures=0
+  while read -r current target expected; do
+    if (source "$PROJECT_ROOT/scripts/offline/bundle-common.sh"; offline_is_semver_downgrade "$current" "$target"); then
+      actual=downgrade
+    else
+      actual=allowed
+    fi
+    if [ "$actual" != "$expected" ]; then
+      echo "  $current -> $target: expected $expected, got $actual"
+      failures=$((failures + 1))
+    fi
+  done <<'TABLE'
+v0.8.77 v0.8.76 downgrade
+v0.8.77 v0.7.99 downgrade
+v1.0.0 v0.9.9 downgrade
+v0.8.77 v0.8.77 allowed
+v0.8.76 v0.8.77 allowed
+v0.8.77 v0.9.0 allowed
+v0.8.77 v1.0.0 allowed
+v0.8.77-3-gabc1234 v0.8.76 downgrade
+v0.8.77 v0.8.77-rc1 allowed
+not-a-version v0.8.76 allowed
+v0.8.77 garbage allowed
+TABLE
+  [ "$failures" -eq 0 ]
+}
+
+test_extracted_bundle_apply_runs_from_bundle_layout() {
+  local status=0 failures=0 apply_output
+  extract_dev_bundle || status=$?
+  [ "$status" -ne 2 ] || return 0
+  [ "$status" -eq 0 ] || { teardown_bundle_workspace; return 1; }
+
+  # The real apply takes a deployment lock: keep it in the test lock root with
+  # a unique project so it can never touch a developer's real deployment.
+  export SANCTUARY_TEST_PROJECT_LOCK_ROOT=@runtime
+  export SANCTUARY_ALLOW_TEST_PROJECT_LOCK_ROOT=true
+  apply_output="$(PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_PROJECT="sanctuary-test-$$" \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    SANCTUARY_OWNERSHIP_ROOT="$TEST_TMP_DIR/ownership" \
+    "$EXTRACTED_BUNDLE/tools/apply-bundle.sh" --staged-dir "$EXTRACTED_BUNDLE" \
+      --install-dir "$TEST_TMP_DIR/install" --apply --allow-unsigned-dev-bundle 2>&1)" || {
+    echo "$apply_output" >&2
+    failures=1
+  }
+  grep -q '^load ' "$DOCKER_LOG" || { echo "apply never loaded an image" >&2; failures=1; }
+
+  unset SANCTUARY_PROJECT
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_extracted_bundle_authority_imports_resolve() {
+  local status=0 failures=0 entry
+  extract_dev_bundle || status=$?
+  [ "$status" -ne 2 ] || return 0
+  [ "$status" -eq 0 ] || { teardown_bundle_workspace; return 1; }
+
+  for entry in \
+    ownership/register-resource.mjs ownership/describe-host-authority.mjs \
+    ownership/write-ci-cleanup-request.mjs ownership/ci-cleanup-coordinator.mjs \
+    ci/provider-context.mjs; do
+    # Pass the path via env, not argv: argv[1] would make isMainModule() true.
+    ENTRY="$EXTRACTED_BUNDLE/authority/scripts/$entry" \
+      node --input-type=module -e 'await import(process.env.ENTRY)' >/dev/null 2>"$TEST_TMP_DIR/import.err" || {
+      echo "extracted bundle cannot import authority/scripts/$entry" >&2
+      cat "$TEST_TMP_DIR/import.err" >&2
+      failures=1
+    }
+  done
+
+  # Top-level sourcing must resolve in the bundle layout (tools/ has no ownership/).
+  local backup_output
+  backup_output="$(assert_command_fails "$EXTRACTED_BUNDLE/tools/create-upgrade-backup.sh" --bogus-flag)" || failures=1
+  if [[ "$backup_output" == *"No such file"* ]]; then
+    echo "$backup_output" >&2
+    failures=1
+  fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_apply_refuses_bundle_downgrade() {
+  setup_inventory_bundle
+  mkdir -p "$TEST_TMP_DIR/install/.git"
+
+  local output failures=0
+  # The bundle tag is v9.9.9, so an installed v99.0.0 makes this a downgrade.
+  output="$(PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_GIT_DESCRIBE=v99.0.0 \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    assert_command_fails "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply)" || failures=1
+  assert_contains "$output" "Refusing downgrade" "apply should refuse a bundle older than the install" || failures=1
+  if grep -q '^load ' "$DOCKER_LOG"; then
+    echo "downgrade refusal must happen before any image load" >&2
+    failures=1
+  fi
+
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_GIT_DESCRIBE=v99.0.0 \
+    SANCTUARY_ALLOW_DOWNGRADE=true \
+    SANCTUARY_RUNTIME_DIR="$TEST_TMP_DIR/runtime" \
+    "$APPLY_SCRIPT" --staged-dir "$BUNDLE_DIR" --install-dir "$TEST_TMP_DIR/install" \
+      --public-key "$PUBLIC_KEY" --apply >/dev/null 2>&1 || {
+    echo "SANCTUARY_ALLOW_DOWNGRADE=true should permit the downgrade" >&2
+    failures=1
+  }
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_install_offline_forwards_allow_downgrade() {
+  local status=0 failures=0 apply_log
+  extract_dev_bundle || status=$?
+  [ "$status" -ne 2 ] || return 0
+  [ "$status" -eq 0 ] || { teardown_bundle_workspace; return 1; }
+
+  apply_log="$TEST_TMP_DIR/apply.log"
+  cat > "$EXTRACTED_BUNDLE/tools/apply-bundle.sh" <<'EOF'
+#!/bin/bash
+set -e
+printf '%s\n' "$*" >> "$SANCTUARY_FAKE_APPLY_LOG"
+install_dir=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--install-dir" ]; then install_dir="$2"; shift 2; else shift; fi
+done
+if [ -n "$install_dir" ]; then
+  mkdir -p "$install_dir"
+  printf '#!/bin/bash\nexit 0\n' > "$install_dir/install.sh"
+  chmod +x "$install_dir/install.sh"
+fi
+EOF
+  chmod +x "$EXTRACTED_BUNDLE/tools/apply-bundle.sh"
+
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_APPLY_LOG="$apply_log" \
+    SANCTUARY_EXPECTED_COMPOSE_PROJECT=dg-install \
+    "$EXTRACTED_BUNDLE/install-offline.sh" --install-dir "$TEST_TMP_DIR/dg-install" \
+      --allow-unsigned-dev-bundle --allow-downgrade --yes >/dev/null || failures=1
+  grep -- '--apply' "$apply_log" | grep -q -- '--allow-downgrade' || {
+    echo "install-offline.sh did not forward --allow-downgrade to apply-bundle.sh --apply" >&2
+    failures=1
+  }
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
 test_tar_links_are_rejected() {
   setup_bundle_workspace
   ln -s payload/file.txt "$BUNDLE_DIR/link-to-payload"
@@ -1172,6 +1358,11 @@ main() {
   run_test "create bundle --skip-build rejects a stale image revision" test_create_bundle_skip_build_rejects_stale_revision
   run_test "fresh bootstrap ignores unrelated database volume" test_fresh_bootstrap_ignores_unrelated_database_volume
   run_test "upgrade bootstrap resolves current and legacy project names" test_upgrade_bootstrap_resolves_current_and_legacy_project_names
+  run_test "extracted bundle apply runs from the bundle layout" test_extracted_bundle_apply_runs_from_bundle_layout
+  run_test "extracted bundle authority imports resolve" test_extracted_bundle_authority_imports_resolve
+  run_test "semver downgrade comparison table" test_semver_downgrade_comparison_table
+  run_test "apply refuses a bundle downgrade" test_apply_refuses_bundle_downgrade
+  run_test "install-offline forwards allow-downgrade" test_install_offline_forwards_allow_downgrade
   run_test "tar links are rejected" test_tar_links_are_rejected
 
   echo ""

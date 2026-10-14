@@ -446,6 +446,7 @@ copy_bootstrap_tools() {
     "$OFFLINE_REPO_ROOT/scripts/ci/create-registered-staging.sh" \
     "$OFFLINE_REPO_ROOT/scripts/ci/provider-context.sh" \
     "$OFFLINE_REPO_ROOT/scripts/ci/provider-context.mjs" \
+    "$OFFLINE_REPO_ROOT/scripts/ci/forward-live-annotations.mjs" \
     "$stage_dir/authority/scripts/ci/"
   cp -R "$OFFLINE_REPO_ROOT/scripts/ownership/." "$stage_dir/authority/scripts/ownership/"
   # scripts/ownership/*.mjs (and some scripts/ci/*.mjs) resolve their direct-
@@ -477,12 +478,14 @@ before running this script.
 
 Options:
   --allow-unsigned-dev-bundle    Accept an unsigned development bundle
+  --allow-downgrade              Allow installing a bundle older than the installed version
   --yes, -y                      Non-interactive acknowledgement
   --skip-upgrade-backup          Skip the local pre-upgrade backup explicitly
 USAGE
 }
 
 ALLOW_UNSIGNED=""
+ALLOW_DOWNGRADE_ARGS=()
 ASSUME_YES="${SANCTUARY_ASSUME_YES:-false}"
 SKIP_UPGRADE_BACKUP="${SANCTUARY_SKIP_UPGRADE_BACKUP:-false}"
 while [ "$#" -gt 0 ]; do
@@ -497,6 +500,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --allow-unsigned-dev-bundle)
       ALLOW_UNSIGNED="--allow-unsigned-dev-bundle"
+      shift
+      ;;
+    --allow-downgrade)
+      ALLOW_DOWNGRADE_ARGS=(--allow-downgrade)
       shift
       ;;
     --yes|-y)
@@ -610,7 +617,7 @@ PUBLIC_KEY_ARGS=()
 [ -n "$PUBLIC_KEY" ] && PUBLIC_KEY_ARGS=(--public-key "$PUBLIC_KEY")
 "$BUNDLE_DIR/tools/apply-bundle.sh" --staged-dir "$BUNDLE_DIR" "${PUBLIC_KEY_ARGS[@]}" --verify-only $ALLOW_UNSIGNED
 create_upgrade_backup_or_prompt
-"$BUNDLE_DIR/tools/apply-bundle.sh" --staged-dir "$BUNDLE_DIR" --install-dir "$INSTALL_DIR" "${PUBLIC_KEY_ARGS[@]}" --apply $ALLOW_UNSIGNED
+"$BUNDLE_DIR/tools/apply-bundle.sh" --staged-dir "$BUNDLE_DIR" --install-dir "$INSTALL_DIR" "${PUBLIC_KEY_ARGS[@]}" "${ALLOW_DOWNGRADE_ARGS[@]}" --apply $ALLOW_UNSIGNED
 
 SANCTUARY_INSTALL_MODE=offline \
 SANCTUARY_OFFLINE_VERSION="${SANCTUARY_VERSION:-${SANCTUARY_GIT_TAG:-}}" \

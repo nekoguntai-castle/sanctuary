@@ -11,10 +11,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+OWNERSHIP_DIR="$SCRIPT_DIR/ownership"
+# An extracted offline bundle ships the ownership tree under authority/.
+[ -f "$OWNERSHIP_DIR/producer-hooks.sh" ] || OWNERSHIP_DIR="$SCRIPT_DIR/../authority/scripts/ownership"
 # shellcheck source=scripts/ownership/producer-hooks.sh
-. "$SCRIPT_DIR/ownership/producer-hooks.sh"
+. "$OWNERSHIP_DIR/producer-hooks.sh"
 # shellcheck source=scripts/ownership/deployment-lifecycle.sh
-. "$SCRIPT_DIR/ownership/deployment-lifecycle.sh"
+. "$OWNERSHIP_DIR/deployment-lifecycle.sh"
 REGISTERED_STAGING_SCRIPT="$SCRIPT_DIR/ci/create-registered-staging.sh"
 CLEANUP_COORDINATOR="$SCRIPT_DIR/ci/cleanup-ci-callsite.sh"
 if [ ! -f "$REGISTERED_STAGING_SCRIPT" ]; then

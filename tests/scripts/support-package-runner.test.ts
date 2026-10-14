@@ -1,3 +1,7 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   loadSupportPackageGenerator,
@@ -106,5 +110,30 @@ describe('support-package-runner', () => {
 
     expect(observedStdout).toEqual([]);
     expect(chunks.join('')).toBe(JSON.stringify({ ok: true }, null, 2));
+  });
+
+  it('runs when the source is piped over stdin, as scripts/support-package.sh does', () => {
+    // The backend image has no scripts/lib, so a cwd-relative helper import must not be needed.
+    const cwd = mkdtempSync(path.join(tmpdir(), 'support-package-stdin-'));
+    try {
+      const moduleDir = path.join(cwd, 'dist/server/src/services');
+      mkdirSync(moduleDir, { recursive: true });
+      writeFileSync(
+        path.join(moduleDir, 'supportPackage.js'),
+        'exports.generateSupportPackage = async () => ({ ok: 1 });\n',
+      );
+
+      const result = spawnSync(process.execPath, ['--input-type=module', '-'], {
+        cwd,
+        input: readFileSync(path.resolve(__dirname, '../../scripts/support-package-runner.mjs')),
+        encoding: 'utf8',
+      });
+
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ ok: 1 });
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });

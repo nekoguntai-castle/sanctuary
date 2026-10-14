@@ -450,7 +450,9 @@ apply_offline_bundle() {
     [ -n "$OFFLINE_PUBLIC_KEY" ] && args+=(--public-key "$OFFLINE_PUBLIC_KEY")
     [ "$ALLOW_UNSIGNED_DEV_BUNDLE" = true ] && args+=(--allow-unsigned-dev-bundle)
 
-    "$apply_script" "${args[@]}"
+    # Pass the override through the environment: the fallback above can run an
+    # older installed apply-bundle.sh that rejects an unknown downgrade option.
+    SANCTUARY_ALLOW_DOWNGRADE="$ALLOW_DOWNGRADE" "$apply_script" "${args[@]}"
 }
 
 semver_parts() {

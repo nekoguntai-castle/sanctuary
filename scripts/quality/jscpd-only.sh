@@ -34,10 +34,12 @@ case "$output_dir" in
     exit 1
     ;;
 esac
-[ ! -e "$output_dir" ] || {
+# An empty directory is left by a failed earlier attempt (retry-command.sh), so
+# it is reused; anything else may be a stale report from a previous run.
+if [ -e "$output_dir" ] && { [ ! -d "$output_dir" ] || [ -n "$(ls -A "$output_dir")" ]; }; then
   printf 'Refusing stale jscpd output directory: %s\n' "$output_dir" >&2
   exit 1
-}
+fi
 mkdir -p "$output_dir"
 
 npx --yes jscpd@4 --silent --config "$config_file" --gitignore --reporters json,markdown --output "$output_dir" .

@@ -143,6 +143,9 @@ for development or local tests.
 
 Downgrades are refused by default because migrations may be irreversible. Use
 `--allow-downgrade` only for an explicit recovery flow after taking a backup.
+The bundle bootstrap (`./install-offline.sh`) enforces the same rule: its apply
+step refuses a bundle older than the installed checkout and accepts
+`--allow-downgrade` (or `SANCTUARY_ALLOW_DOWNGRADE=true`) to override it.
 
 ## Pre-Upgrade Backup
 

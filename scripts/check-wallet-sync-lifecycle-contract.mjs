@@ -164,7 +164,7 @@ function walkCode(root, relativePath = 'server/src', files = []) {
   if (!existsSync(absolutePath)) return files;
   const stats = statSync(absolutePath);
   if (stats.isFile()) {
-    if (/\.(?:ts|js|mjs|cjs)$/.test(relativePath)) files.push(normalize(relativePath));
+    if (/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(relativePath)) files.push(normalize(relativePath));
     return files;
   }
   if (!stats.isDirectory()) return files;

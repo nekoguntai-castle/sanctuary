@@ -42,6 +42,29 @@ offline_log() {
   echo "$*"
 }
 
+# Mirrors install.sh semver_parts/is_semver_downgrade (install.sh stays
+# standalone). Unparsable versions are never reported as a downgrade.
+offline_semver_parts() {
+  local version="${1#v}"
+  if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+    echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}"
+    return 0
+  fi
+  return 1
+}
+
+offline_is_semver_downgrade() {
+  local current_parts target_parts cur_major cur_minor cur_patch tgt_major tgt_minor tgt_patch
+  current_parts="$(offline_semver_parts "$1")" || return 1
+  target_parts="$(offline_semver_parts "$2")" || return 1
+  read -r cur_major cur_minor cur_patch <<< "$current_parts"
+  read -r tgt_major tgt_minor tgt_patch <<< "$target_parts"
+
+  if [ "$tgt_major" -ne "$cur_major" ]; then [ "$tgt_major" -lt "$cur_major" ]; return; fi
+  if [ "$tgt_minor" -ne "$cur_minor" ]; then [ "$tgt_minor" -lt "$cur_minor" ]; return; fi
+  [ "$tgt_patch" -lt "$cur_patch" ]
+}
+
 offline_require_tool() {
   command -v "$1" >/dev/null 2>&1 || offline_fail "$1 is required"
 }

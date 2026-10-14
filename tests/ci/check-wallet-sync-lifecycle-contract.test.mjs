@@ -1078,6 +1078,23 @@ test('rejects unlisted frontend wallet-history producers and retired user-batch 
   }
 });
 
+test('scans React components for forbidden client wallet-history symbols', () => {
+  for (const extension of ['tsx', 'jsx']) {
+    const root = createFixture();
+    write(
+      root,
+      `src/components/SyncButton.${extension}`,
+      "import { queueUserWallets } from '../api/sync';\n"
+        + 'export const B = () => <button onClick={() => queueUserWallets()} />;\n',
+    );
+    const errors = checkWalletSyncLifecycleContract(root).errors.join('\n');
+    assert.match(
+      errors,
+      new RegExp(`forbidden client wallet-history symbol queueUserWallets: src/components/SyncButton\\.${extension}`),
+    );
+  }
+});
+
 test('rejects non-route callers of manual coordinator producer methods', () => {
   const root = createFixture();
   write(

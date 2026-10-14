@@ -8,7 +8,7 @@
       "owner": "wallet-sync-lifecycle",
       "reason": "Executable architecture proof that exhaustively inventories wallet-sync producers, queue mutations, lifecycle authority, activation gates, and compatibility surfaces as one auditable contract.",
       "reviewWhenTouched": true,
-      "lastReviewed": "2026-08-23"
+      "lastReviewed": "2026-10-14"
     },
     "scripts/check-wallet-sync-mutation-boundaries.mjs": {
       "category": "proof-harness",
@@ -232,7 +232,7 @@
       "owner": "wallet-sync-lifecycle",
       "reason": "Adversarial executable architecture fixture that proves exhaustive producer, queue, generation-authority, activation, compatibility, and subscription lifecycle discovery cannot be bypassed.",
       "reviewWhenTouched": true,
-      "lastReviewed": "2026-08-23"
+      "lastReviewed": "2026-10-14"
     },
     "tests/ownership/cleanup-execution.test.mjs": {
       "category": "proof-harness",
