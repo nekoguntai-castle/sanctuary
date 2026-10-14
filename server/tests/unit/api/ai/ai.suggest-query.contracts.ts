@@ -30,7 +30,7 @@ export function registerSuggestLabelContracts() {
 
     expect(response.status).toBe(200);
     expect(response.body.suggestion).toBe('Exchange deposit');
-    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-123', 'test-token');
+    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-123', 'test-token', 'user-123');
   });
 
   it('should forward cookie access tokens for browser label suggestions', async () => {
@@ -43,7 +43,7 @@ export function registerSuggestLabelContracts() {
   .send({ transactionId: 'tx-123' });
 
     expect(response.status).toBe(200);
-    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-123', 'cookie-token');
+    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-123', 'cookie-token', 'user-123');
   });
 
   it('should return 400 when transactionId is missing', async () => {
@@ -108,7 +108,7 @@ export function registerSuggestLabelContracts() {
   .send({ transactionId: 'tx-empty-token' });
 
     expect(response.status).toBe(200);
-    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-empty-token', '');
+    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-empty-token', '', 'user-123');
   });
 
   it('should forward empty auth token when authentication is not a bearer token', async () => {
@@ -123,7 +123,8 @@ export function registerSuggestLabelContracts() {
     expect(response.status).toBe(200);
     expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith(
       'tx-non-bearer-token',
-      ''
+      '',
+      'user-123'
     );
   });
 }
@@ -164,7 +165,8 @@ export function registerNaturalQueryContracts() {
     expect(aiService.executeNaturalQuery).toHaveBeenCalledWith(
   'Show my largest receives',
   'wallet-123',
-  'test-token'
+  'test-token',
+  'user-123'
     );
   });
 
@@ -187,7 +189,8 @@ export function registerNaturalQueryContracts() {
     expect(aiService.executeNaturalQuery).toHaveBeenCalledWith(
   'show me transactions between feb 2020 and june 2020',
   'wallet-123',
-  'cookie-token'
+  'cookie-token',
+  'user-123'
     );
   });
 
@@ -261,6 +264,6 @@ export function registerNaturalQueryContracts() {
   .send({ query: 'summarize', walletId: 'wallet-123' });
 
     expect(response.status).toBe(200);
-    expect(aiService.executeNaturalQuery).toHaveBeenCalledWith('summarize', 'wallet-123', '');
+    expect(aiService.executeNaturalQuery).toHaveBeenCalledWith('summarize', 'wallet-123', '', 'user-123');
   });
 }

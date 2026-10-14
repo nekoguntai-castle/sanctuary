@@ -12,6 +12,7 @@ import {
   recordWalletSyncTerminalOutcome,
   type WalletSyncStageOutcome,
 } from '../observability/metrics/walletSyncMetrics';
+import { walletSyncDuration, walletSyncsTotal } from '../observability/metrics/businessMetrics';
 import {
   walletSyncExecutionRegistry,
   type OwnedWalletSyncLock,
@@ -34,6 +35,7 @@ export class WalletSyncAttemptTelemetry implements SyncAttemptTelemetry {
   private terminalRecorded = false;
   private attemptFinished = false;
   private activeStage: { stage: SyncExecutionStage; finish: FinishMetricStage } | null = null;
+  private readonly startedAtMs = Date.now();
 
   constructor(private readonly options: WalletSyncAttemptTelemetryOptions) {}
 
@@ -111,6 +113,12 @@ export class WalletSyncAttemptTelemetry implements SyncAttemptTelemetry {
     this.attemptFinished = true;
     if (outcome === 'timedOut' || outcome === 'aborted') {
       this.recordTerminal(outcome);
+    }
+    // Aborts (shutdown, lock loss) stay out of the success/failure ratio so
+    // deploys do not fire WalletSyncFailures; the terminal counter keeps them.
+    if (outcome !== 'aborted') {
+      walletSyncsTotal.inc({ status: outcome === 'completed' ? 'success' : 'failure' });
+      walletSyncDuration.observe({ walletType: 'all' }, (Date.now() - this.startedAtMs) / 1000);
     }
     this.closeActiveStage(outcome === 'completed' ? 'completed' : outcome === 'failed'
       ? 'failed'

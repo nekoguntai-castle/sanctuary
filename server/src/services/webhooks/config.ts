@@ -11,9 +11,14 @@ export function asJsonRecord(value: Prisma.JsonValue | null | undefined): JsonRe
 
 export function getFilterConfig(endpoint: WebhookEndpoint): WebhookFilterConfig {
   const filters = asJsonRecord(endpoint.filters);
+  const rawMinAmount = typeof filters.minAmountSats === 'string' && filters.minAmountSats !== ''
+    ? filters.minAmountSats
+    : undefined;
+  const validMinAmount = rawMinAmount !== undefined && /^\d+$/.test(rawMinAmount);
   return {
     transactionTypes: getStringArray(filters.transactionTypes),
-    minAmountSats: typeof filters.minAmountSats === 'string' ? filters.minAmountSats : undefined,
+    minAmountSats: validMinAmount ? rawMinAmount : undefined,
+    invalidMinAmount: rawMinAmount !== undefined && !validMinAmount ? true : undefined,
     confirmationThreshold: getOptionalNumber(filters.confirmationThreshold),
   };
 }

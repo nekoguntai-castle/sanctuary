@@ -24,8 +24,10 @@ import {
 } from "./config";
 import { validateResponse } from "./validation";
 import {
+  ADMIN_SYSTEM_RATE_KEY,
   buildLlmEgressProxyAuthHeaders,
   buildLlmEgressProxyJsonHeaders,
+  userRateKey,
 } from "./llmEgressProxyClient";
 import type {
   QueryResult,
@@ -52,6 +54,7 @@ const AI_NATURAL_QUERY_TIMEOUT_MS = 125_000;
 export async function suggestTransactionLabel(
   transactionId: string,
   authToken: string,
+  userId: string,
 ): Promise<string | null> {
   const readiness = await ensureLlmProxyConfigured();
   if (!readiness.ready) {
@@ -63,6 +66,7 @@ export async function suggestTransactionLabel(
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({
         authorization: `Bearer ${authToken}`,
+        rateLimitKey: userRateKey(userId),
       }),
       body: JSON.stringify({ transactionId }),
       signal: AbortSignal.timeout(35000),
@@ -108,6 +112,7 @@ export async function executeNaturalQuery(
   query: string,
   walletId: string,
   authToken: string,
+  userId: string,
 ): Promise<QueryResult | null> {
   const readiness = await ensureLlmProxyConfigured();
   if (!readiness.ready) {
@@ -119,6 +124,7 @@ export async function executeNaturalQuery(
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({
         authorization: `Bearer ${authToken}`,
+        rateLimitKey: userRateKey(userId),
       }),
       body: JSON.stringify({ query, walletId }),
       signal: AbortSignal.timeout(AI_NATURAL_QUERY_TIMEOUT_MS),
@@ -164,7 +170,7 @@ export async function detectOllama(): Promise<{
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/detect-ollama`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       signal: AbortSignal.timeout(15000),
     });
 
@@ -198,7 +204,7 @@ export async function detectProviderEndpoint(input: {
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/detect-provider`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(15000),
     });
@@ -245,7 +251,7 @@ export async function listModels(): Promise<{
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/list-models`, {
       method: "GET",
-      headers: buildLlmEgressProxyAuthHeaders(),
+      headers: buildLlmEgressProxyAuthHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       signal: AbortSignal.timeout(10000),
     });
 

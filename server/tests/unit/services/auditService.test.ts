@@ -494,37 +494,29 @@ describe('getClientInfo', () => {
     expect(info.ipAddress).toBe('192.168.1.1');
   });
 
-  it('should extract IP from x-forwarded-for header (single IP)', () => {
+  it('should use req.ip and ignore a forged x-forwarded-for prefix', () => {
     const req = {
-      headers: { 'x-forwarded-for': '10.0.0.1' },
+      ip: '10.0.0.9',
+      headers: { 'x-forwarded-for': '1.2.3.4, 10.0.0.9' },
       socket: { remoteAddress: '192.168.1.1' },
     } as any;
 
-    const info = getClientInfo(req);
-
-    expect(info.ipAddress).toBe('10.0.0.1');
+    expect(getClientInfo(req).ipAddress).toBe('10.0.0.9');
   });
 
-  it('should extract first IP from x-forwarded-for header (multiple IPs)', () => {
+  it('should fall back to the socket address when req.ip is unset', () => {
     const req = {
-      headers: { 'x-forwarded-for': '10.0.0.1, 192.168.1.1, 172.16.0.1' },
-      socket: { remoteAddress: '127.0.0.1' },
+      headers: { 'x-forwarded-for': '1.2.3.4' },
+      socket: { remoteAddress: '192.168.1.1' },
     } as any;
 
-    const info = getClientInfo(req);
-
-    expect(info.ipAddress).toBe('10.0.0.1');
+    expect(getClientInfo(req).ipAddress).toBe('192.168.1.1');
   });
 
-  it('should handle array x-forwarded-for header', () => {
-    const req = {
-      headers: { 'x-forwarded-for': ['10.0.0.1', '192.168.1.1'] },
-      socket: { remoteAddress: '127.0.0.1' },
-    } as any;
+  it('should return unknown when neither req.ip nor a socket exists', () => {
+    const req = { headers: {} } as any;
 
-    const info = getClientInfo(req);
-
-    expect(info.ipAddress).toBe('10.0.0.1');
+    expect(getClientInfo(req).ipAddress).toBe('unknown');
   });
 
   it('should extract user agent', () => {

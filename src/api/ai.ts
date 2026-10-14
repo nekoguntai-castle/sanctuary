@@ -7,7 +7,7 @@
 import apiClient, { ApiError } from "./client";
 import type { AIProviderType } from "./admin/types";
 
-const AI_NATURAL_QUERY_TIMEOUT_MS = 120_000;
+const AI_NATURAL_QUERY_TIMEOUT_MS = 135_000;
 
 // ========================================
 // TYPE DEFINITIONS

@@ -642,11 +642,12 @@ export async function findUnspentAmounts(
 }
 
 /**
- * Find unspent, unfrozen UTXOs for privacy scoring
+ * Find all unspent UTXOs (frozen included) with the fields privacy scoring aggregates over,
+ * largest first. Callers filter `frozen` themselves.
  */
-export async function findUnspentForPrivacy(walletId: string) {
+export async function findUnspentForPrivacyAggregates(walletId: string) {
   return prisma.uTXO.findMany({
-    where: { walletId, spent: false, frozen: false },
+    where: { walletId, spent: false },
     select: {
       id: true,
       txid: true,
@@ -654,6 +655,7 @@ export async function findUnspentForPrivacy(walletId: string) {
       amount: true,
       address: true,
       blockHeight: true,
+      frozen: true,
     },
     orderBy: { amount: 'desc' },
   });
@@ -808,7 +810,7 @@ export const utxoRepository = {
   countUnspentByTxid,
   countUnspentByBlockHeight,
   findUnspentAmounts,
-  findUnspentForPrivacy,
+  findUnspentForPrivacyAggregates,
   findByIdsForPrivacy,
   findByOutpoint,
   findLargestSpendableByTxid,

@@ -6,6 +6,7 @@
 
 import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Device, DeviceAccount, DeviceUser, WalletDevice, Prisma } from '../generated/prisma/client';
+import { buildWalletAccessWhere } from './accessControl';
 import { getSupportStats } from './deviceSupportStatsRepository';
 export { getSupportStats } from './deviceSupportStatsRepository';
 export type { DeviceSupportStats } from './deviceSupportStatsRepository';
@@ -277,15 +278,30 @@ export async function getSharedUserCount(deviceId: string): Promise<number> {
 }
 
 /**
- * Find device by ID with full details (model, accounts, wallets, owner)
+ * Linked wallets a user may see on a device: everything for the device's
+ * owner, otherwise only wallets the user can access directly or via a group.
+ * Ownership is the DeviceUser owner row, which ownership transfer moves.
  */
-export async function findByIdFull(deviceId: string) {
+export function visibleDeviceWalletsWhere(userId: string): Prisma.WalletDeviceWhereInput {
+  return {
+    OR: [
+      { device: { users: { some: { userId, role: 'owner' } } } },
+      { wallet: buildWalletAccessWhere(userId) },
+    ],
+  };
+}
+
+/**
+ * Find device by ID with full details (model, accounts, visible wallets, owner)
+ */
+export async function findByIdFull(deviceId: string, userId: string) {
   return prisma.device.findUnique({
     where: { id: deviceId },
     include: {
       model: true,
       accounts: true,
       wallets: {
+        where: visibleDeviceWalletsWhere(userId),
         include: {
           wallet: {
             select: {
@@ -644,6 +660,7 @@ export async function findAccessibleByUser(userId: string) {
         },
       },
       wallets: {
+        where: visibleDeviceWalletsWhere(userId),
         select: {
           wallet: {
             select: { id: true, name: true, type: true, scriptType: true, network: true },

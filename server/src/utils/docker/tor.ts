@@ -39,10 +39,18 @@ const OWNERSHIP_LABEL_KEYS = {
   run: "io.sanctuary.creation-run-id",
 } as const;
 
-interface TorOwnership {
+/** Who the container belongs to; stable across backend restarts and upgrades. */
+interface TorIdentity {
   project: string;
   containerName: string;
-  labels: Record<string, string>;
+  identityLabels: Record<string, string>;
+}
+
+/** Per-operation labels stamped at creation; they change with every start.sh or upgrade run. */
+type TorProvenanceLabels = Record<string, string>;
+
+interface TorOwnership extends TorIdentity {
+  provenanceLabels: TorProvenanceLabels;
 }
 
 function requiredEnvironment(name: string): string {
@@ -52,7 +60,7 @@ function requiredEnvironment(name: string): string {
   return value.trim();
 }
 
-function currentTorOwnership(): TorOwnership {
+function currentTorIdentity(): TorIdentity {
   const project = requiredEnvironment("SANCTUARY_PROJECT");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(project)) {
     throw new Error("SANCTUARY_PROJECT is invalid for Tor ownership");
@@ -60,7 +68,7 @@ function currentTorOwnership(): TorOwnership {
   return {
     project,
     containerName: `${project}-tor`,
-    labels: {
+    identityLabels: {
       [OWNERSHIP_LABEL_KEYS.project]: project,
       [OWNERSHIP_LABEL_KEYS.deployment]: requiredEnvironment(
         "SANCTUARY_DEPLOYMENT_ID",
@@ -71,18 +79,29 @@ function currentTorOwnership(): TorOwnership {
         "SANCTUARY_RESOURCE_LIFECYCLE",
       ),
       [OWNERSHIP_LABEL_KEYS.policy]: "exact_delete",
-      [OWNERSHIP_LABEL_KEYS.createdAt]: requiredEnvironment(
-        "SANCTUARY_CLEANUP_CREATED_AT",
-      ),
-      [OWNERSHIP_LABEL_KEYS.release]: requiredEnvironment("SANCTUARY_RELEASE"),
-      [OWNERSHIP_LABEL_KEYS.commit]: requiredEnvironment("SANCTUARY_COMMIT"),
-      [OWNERSHIP_LABEL_KEYS.run]: requiredEnvironment(
-        "SANCTUARY_OPERATION_RUN_ID",
-      ),
       "com.docker.compose.project": project,
       "com.docker.compose.service": "tor",
     },
   };
+}
+
+/** This run's provenance labels; only the create path needs them. */
+function currentTorProvenance(): TorProvenanceLabels {
+  return {
+    [OWNERSHIP_LABEL_KEYS.createdAt]: requiredEnvironment(
+      "SANCTUARY_CLEANUP_CREATED_AT",
+    ),
+    [OWNERSHIP_LABEL_KEYS.release]: requiredEnvironment("SANCTUARY_RELEASE"),
+    [OWNERSHIP_LABEL_KEYS.commit]: requiredEnvironment("SANCTUARY_COMMIT"),
+    [OWNERSHIP_LABEL_KEYS.run]: requiredEnvironment(
+      "SANCTUARY_OPERATION_RUN_ID",
+    ),
+  };
+}
+
+function currentTorOwnership(): TorOwnership {
+  const identity = currentTorIdentity();
+  return { ...identity, provenanceLabels: currentTorProvenance() };
 }
 
 function labelsMatch(
@@ -97,12 +116,12 @@ function labelsMatch(
 
 function summaryHasExactIdentity(
   container: ContainerInfo,
-  ownership: TorOwnership,
+  ownership: TorIdentity,
 ): boolean {
   return (
     FULL_CONTAINER_ID.test(container.Id) &&
     container.Names.includes(`/${ownership.containerName}`) &&
-    labelsMatch(container.Labels, ownership.labels)
+    labelsMatch(container.Labels, ownership.identityLabels)
   );
 }
 
@@ -169,7 +188,7 @@ async function drainDockerPull(response: Response): Promise<string | null> {
  * Returns the container info if found
  */
 async function findTorContainer(): Promise<ContainerInfo | null> {
-  const ownership = currentTorOwnership();
+  const ownership = currentTorIdentity();
   const response = await fetch(`${DOCKER_PROXY_URL}/containers/json?all=true`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
@@ -214,19 +233,30 @@ async function inspectContainer(
 
 function inspectHasCreatedIdentity(
   inspect: ContainerInspect,
-  ownership: TorOwnership,
+  ownership: TorIdentity,
 ): boolean {
   return (
     FULL_CONTAINER_ID.test(inspect.Id) &&
     inspect.Name === `/${ownership.containerName}` &&
     inspect.State.Status === "created" &&
     inspect.State.Running === false &&
-    labelsMatch(inspect.Config?.Labels, ownership.labels)
+    labelsMatch(inspect.Config?.Labels, ownership.identityLabels)
+  );
+}
+
+/** Identity plus this run's provenance: proves a just-created container is ours. */
+function inspectHasExactCreatedProvenance(
+  inspect: ContainerInspect,
+  ownership: TorOwnership,
+): boolean {
+  return (
+    inspectHasCreatedIdentity(inspect, ownership) &&
+    labelsMatch(inspect.Config?.Labels, ownership.provenanceLabels)
   );
 }
 
 async function recoverCreatedTor(
-  ownership: TorOwnership,
+  ownership: TorIdentity,
 ): Promise<string | null> {
   const byName = await inspectContainer(ownership.containerName);
   if (!byName || !inspectHasCreatedIdentity(byName, ownership)) return null;
@@ -251,7 +281,7 @@ async function verifyReturnedContainerId(
   if (
     !inspected ||
     inspected.Id !== containerId ||
-    !inspectHasCreatedIdentity(inspected, ownership)
+    !inspectHasExactCreatedProvenance(inspected, ownership)
   ) {
     return null;
   }
@@ -283,20 +313,20 @@ async function startExactContainer(containerId: string): Promise<Response> {
 
 function inspectHasRuntimeIdentity(
   inspect: ContainerInspect,
-  ownership: TorOwnership,
+  ownership: TorIdentity,
   running: boolean,
 ): boolean {
   return (
     FULL_CONTAINER_ID.test(inspect.Id) &&
     inspect.Name === `/${ownership.containerName}` &&
     inspect.State.Running === running &&
-    labelsMatch(inspect.Config?.Labels, ownership.labels)
+    labelsMatch(inspect.Config?.Labels, ownership.identityLabels)
   );
 }
 
 async function exactRuntimeStateReached(
   containerId: string,
-  ownership: TorOwnership,
+  ownership: TorIdentity,
   running: boolean,
 ): Promise<boolean> {
   const first = await inspectContainer(containerId);
@@ -312,7 +342,7 @@ async function exactRuntimeStateReached(
 
 async function safelyReachedRuntimeState(
   containerId: string,
-  ownership: TorOwnership,
+  ownership: TorIdentity,
   running: boolean,
 ): Promise<boolean> {
   try {
@@ -330,7 +360,7 @@ interface StateMutationResult {
 async function reconcileStateMutation(
   request: () => Promise<Response>,
   containerId: string,
-  ownership: TorOwnership,
+  ownership: TorIdentity,
   running: boolean,
 ): Promise<StateMutationResult> {
   try {
@@ -462,7 +492,8 @@ export async function createTorContainer(): Promise<ContainerActionResult> {
         },
       },
       Labels: {
-        ...ownership.labels,
+        ...ownership.identityLabels,
+        ...ownership.provenanceLabels,
       },
     };
 
@@ -540,7 +571,7 @@ export async function createTorContainer(): Promise<ContainerActionResult> {
  */
 export async function startTor(): Promise<ContainerActionResult> {
   try {
-    const ownership = currentTorOwnership();
+    const ownership = currentTorIdentity();
     const status = await getTorStatus();
     if (status.status === "error") {
       return ownershipUnavailable(status);
@@ -587,7 +618,7 @@ export async function startTor(): Promise<ContainerActionResult> {
  */
 export async function stopTor(): Promise<ContainerActionResult> {
   try {
-    const ownership = currentTorOwnership();
+    const ownership = currentTorIdentity();
     const status = await getTorStatus();
     if (status.status === "error") {
       return ownershipUnavailable(status);

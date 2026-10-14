@@ -39,8 +39,21 @@ export function stopRateLimitCleanup(): void {
   clearInterval(cleanupInterval);
 }
 
+export const RATE_LIMIT_KEY_HEADER = 'x-llm-egress-rate-key';
+const RATE_LIMIT_KEY_PATTERN = /^(user|worker|admin):[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Returns the backend-supplied principal key (user:/worker:/admin:<id>) when it
+ * is well formed, otherwise undefined. The header is only trusted because the
+ * shared-secret middleware runs before any rate-limited route.
+ */
+export function principalRateLimitKey(req: Pick<Request, 'headers'>): string | undefined {
+  const value = req.headers?.[RATE_LIMIT_KEY_HEADER];
+  return typeof value === 'string' && RATE_LIMIT_KEY_PATTERN.test(value) ? value : undefined;
+}
+
 export const rateLimit = (req: Request, res: Response, next: NextFunction) => {
-  const clientIp = req.socket.remoteAddress || 'unknown';
+  const clientIp = principalRateLimitKey(req) ?? (req.socket.remoteAddress || 'unknown');
   const now = Date.now();
 
   let entry = rateLimitStore.get(clientIp);

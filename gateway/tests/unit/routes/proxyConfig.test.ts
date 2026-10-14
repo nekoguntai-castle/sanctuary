@@ -61,7 +61,7 @@ describe('proxyConfig', () => {
 
   it('forwards gateway and authenticated user headers on proxy requests', () => {
     const setHeader = vi.fn();
-    const proxyReq = { setHeader } as unknown;
+    const proxyReq = { setHeader, removeHeader: vi.fn() } as unknown;
     const req = {
       method: 'POST',
       url: '/api/v1/wallets',
@@ -79,7 +79,7 @@ describe('proxyConfig', () => {
 
   it('always sets gateway marker even when request is unauthenticated', () => {
     const setHeader = vi.fn();
-    const proxyReq = { setHeader } as unknown;
+    const proxyReq = { setHeader, removeHeader: vi.fn() } as unknown;
     const req = {
       method: 'GET',
       url: '/api/v1/price',
@@ -90,6 +90,55 @@ describe('proxyConfig', () => {
 
     expect(setHeader).toHaveBeenCalledWith('X-Gateway-Request', 'true');
     expect(setHeader).not.toHaveBeenCalledWith('X-Gateway-User-Id', expect.anything());
+  });
+
+  it('replaces a client-supplied X-Forwarded-For with the observed client IP', () => {
+    const setHeader = vi.fn();
+    const removeHeader = vi.fn();
+    const req = {
+      method: 'GET',
+      url: '/api/v1/wallets',
+      ip: '203.0.113.7',
+      headers: { 'x-forwarded-for': '6.6.6.6' },
+    } as unknown;
+
+    config.on.proxyReq({ setHeader, removeHeader } as unknown, req);
+
+    expect(setHeader).toHaveBeenCalledWith('X-Forwarded-For', '203.0.113.7');
+    expect(setHeader).not.toHaveBeenCalledWith('X-Forwarded-For', '6.6.6.6');
+    expect(removeHeader).toHaveBeenCalledWith('Forwarded');
+    expect(removeHeader).toHaveBeenCalledWith('X-Real-IP');
+  });
+
+  it('falls back to the socket address when req.ip is unavailable', () => {
+    const setHeader = vi.fn();
+    const removeHeader = vi.fn();
+    const req = {
+      method: 'GET',
+      url: '/api/v1/wallets',
+      socket: { remoteAddress: '198.51.100.9' },
+      headers: { 'x-forwarded-for': '6.6.6.6' },
+    } as unknown;
+
+    config.on.proxyReq({ setHeader, removeHeader } as unknown, req);
+
+    expect(setHeader).toHaveBeenCalledWith('X-Forwarded-For', '198.51.100.9');
+    expect(removeHeader).not.toHaveBeenCalledWith('X-Forwarded-For');
+  });
+
+  it('drops the client X-Forwarded-For when no client address is known', () => {
+    const setHeader = vi.fn();
+    const removeHeader = vi.fn();
+    const req = {
+      method: 'GET',
+      url: '/api/v1/wallets',
+      headers: { 'x-forwarded-for': '6.6.6.6' },
+    } as unknown;
+
+    expect(() => config.on.proxyReq({ setHeader, removeHeader } as unknown, req)).not.toThrow();
+
+    expect(setHeader).not.toHaveBeenCalledWith('X-Forwarded-For', expect.anything());
+    expect(removeHeader).toHaveBeenCalledWith('X-Forwarded-For');
   });
 
   it('strips stale browser auth cookies when forwarding body refresh credentials', () => {

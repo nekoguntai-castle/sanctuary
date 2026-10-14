@@ -196,12 +196,14 @@ async function listTurns(
   sessionId: string,
   limit: number,
 ): Promise<ConsoleTurnWithTraces[]> {
-  return prisma.consoleTurn.findMany({
+  // Newest `limit` turns, returned oldest-first for rendering.
+  const newestFirst = await prisma.consoleTurn.findMany({
     where: { sessionId },
     include: { toolTraces: { orderBy: { createdAt: "asc" } } },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit,
   });
+  return newestFirst.reverse();
 }
 
 async function createPrompt(

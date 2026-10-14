@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import expressRateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { authenticate, extractAccessToken } from '../../middleware/auth';
+import { authenticate, extractAccessToken, requireAuthenticatedUser } from '../../middleware/auth';
 import { rateLimitByUser } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -78,7 +78,8 @@ export function createFeaturesRouter(): Router {
 
       const suggestion = await aiService.suggestTransactionLabel(
         transactionId,
-        authTokenForProxy(req)
+        authTokenForProxy(req),
+        requireAuthenticatedUser(req).userId
       );
 
       if (!suggestion) {
@@ -128,7 +129,8 @@ export function createFeaturesRouter(): Router {
       const result = await aiService.executeNaturalQuery(
         query,
         walletId,
-        authTokenForProxy(req)
+        authTokenForProxy(req),
+        requireAuthenticatedUser(req).userId
       );
 
       if (!result) {

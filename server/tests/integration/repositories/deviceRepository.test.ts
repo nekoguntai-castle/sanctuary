@@ -18,7 +18,7 @@ import {
   getTestPrisma,
 } from './setup';
 import { randomUUID } from 'node:crypto';
-import { deleteAccountPreservingOne, deleteDeviceIfUnused } from '../../../src/repositories/deviceRepository';
+import { deleteAccountPreservingOne, deleteDeviceIfUnused, findAccessibleByUser, findByIdFull } from '../../../src/repositories/deviceRepository';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 
 async function waitForBlockedSessions(client: PrismaClient, blockerPid: number, count: number) {
@@ -739,6 +739,49 @@ describeIfDatabase('DeviceRepository Integration Tests', () => {
         expect(deviceWithModel?.model?.name).toBe('ColdCard Mk4');
         expect(deviceWithModel?.model?.manufacturer).toBe('Coinkite');
       });
+    });
+  });
+
+  describe('wallet visibility on shared devices', () => {
+    it('shows non-owners only the linked wallets they can access', async () => {
+      const client = await getTestPrisma();
+      const suffix = randomUUID();
+      const owner = await createTestUser(client, { username: `dev-vis-owner-${suffix}`, email: `dev-vis-owner-${suffix}@example.com` });
+      const viewer = await createTestUser(client, { username: `dev-vis-viewer-${suffix}`, email: `dev-vis-viewer-${suffix}@example.com` });
+      const device = await createTestDevice(client, owner.id);
+      const privateWallet = await createTestWallet(client, owner.id, { name: `private-${suffix}` });
+      const sharedWallet = await createTestWallet(client, owner.id, { name: `shared-${suffix}` });
+      try {
+        await client.deviceUser.createMany({ data: [
+          { deviceId: device.id, userId: owner.id, role: 'owner' },
+          { deviceId: device.id, userId: viewer.id, role: 'viewer' },
+        ] });
+        await client.walletUser.create({ data: { walletId: sharedWallet.id, userId: viewer.id, role: 'viewer' } });
+        await client.walletDevice.createMany({ data: [
+          { walletId: privateWallet.id, deviceId: device.id },
+          { walletId: sharedWallet.id, deviceId: device.id },
+        ] });
+
+        const walletIds = (wallets: Array<{ wallet: { id: string } }> | undefined) =>
+          (wallets ?? []).map((w) => w.wallet.id).sort();
+
+        const viewerList = (await findAccessibleByUser(viewer.id)).find((d) => d.id === device.id);
+        expect(walletIds(viewerList?.wallets)).toEqual([sharedWallet.id]);
+        const viewerFull = await findByIdFull(device.id, viewer.id);
+        expect(walletIds(viewerFull?.wallets)).toEqual([sharedWallet.id]);
+
+        const ownerList = (await findAccessibleByUser(owner.id)).find((d) => d.id === device.id);
+        expect(walletIds(ownerList?.wallets)).toEqual([privateWallet.id, sharedWallet.id].sort());
+        const ownerFull = await findByIdFull(device.id, owner.id);
+        expect(walletIds(ownerFull?.wallets)).toEqual([privateWallet.id, sharedWallet.id].sort());
+      } finally {
+        await client.walletDevice.deleteMany({ where: { deviceId: device.id } });
+        await client.walletUser.deleteMany({ where: { walletId: { in: [privateWallet.id, sharedWallet.id] } } });
+        await client.wallet.deleteMany({ where: { id: { in: [privateWallet.id, sharedWallet.id] } } });
+        await client.deviceUser.deleteMany({ where: { deviceId: device.id } });
+        await client.device.deleteMany({ where: { id: device.id } });
+        await client.user.deleteMany({ where: { id: { in: [owner.id, viewer.id] } } });
+      }
     });
   });
 });

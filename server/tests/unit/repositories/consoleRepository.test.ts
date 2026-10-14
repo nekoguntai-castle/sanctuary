@@ -202,9 +202,18 @@ describe("consoleRepository", () => {
     expect(prisma.consoleTurn.findMany).toHaveBeenCalledWith({
       where: { sessionId },
       include: { toolTraces: { orderBy: { createdAt: "asc" } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 20,
     });
+  });
+
+  it("returns the newest turns in chronological order", async () => {
+    const t1 = { id: "t1", toolTraces: [] };
+    const t2 = { id: "t2", toolTraces: [] };
+    const t3 = { id: "t3", toolTraces: [] };
+    (prisma.consoleTurn.findMany as Mock).mockResolvedValue([t3, t2, t1]);
+
+    await expect(consoleRepository.listTurns(sessionId, 3)).resolves.toEqual([t1, t2, t3]);
   });
 
   it("creates, filters, updates, deletes, and replays prompt history", async () => {

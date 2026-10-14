@@ -124,6 +124,23 @@ describe('proxy transport', () => {
     expect(lastForwarded().headers['x-gateway-request']).toBe('true');
   });
 
+  it('sends the backend exactly the observed client IP, dropping client forwarding headers', async () => {
+    const response = await fetch(`${gatewayOrigin}/api/v1/wallets`, {
+      headers: {
+        authorization: `Bearer ${accessToken()}`,
+        'x-forwarded-for': '6.6.6.6',
+        'x-real-ip': '7.7.7.7',
+        forwarded: 'for=8.8.8.8',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const { headers } = lastForwarded();
+    expect(headers['x-forwarded-for']).toMatch(/^(::ffff:)?127\.0\.0\.1$/);
+    expect(headers['x-real-ip']).toBeUndefined();
+    expect(headers.forwarded).toBeUndefined();
+  });
+
   it('forwards logout body and unrelated cookie while removing browser auth cookies', async () => {
     const body = { refreshToken: 'logout-body-token' };
     const response = await post('/api/v1/auth/logout', body, browserCookies, true);

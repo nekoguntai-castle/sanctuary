@@ -191,7 +191,7 @@ export function useWalletSync({
 
     if (
       !confirm(
-        "This will clear all transaction history and re-sync from the blockchain. This is useful if transactions are missing. Continue?",
+        "This will clear all transaction history and re-sync from the blockchain. Transaction labels and memos are kept and re-applied as transactions are found again. This is useful if transactions are missing. Continue?",
       )
     ) {
       return;

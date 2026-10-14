@@ -63,6 +63,8 @@ export interface WalletWebhookEvent {
 export interface WebhookFilterConfig {
   transactionTypes?: string[];
   minAmountSats?: string;
+  /** True when a minAmountSats value is present but not a whole number of sats. */
+  invalidMinAmount?: boolean;
   confirmationThreshold?: number;
 }
 

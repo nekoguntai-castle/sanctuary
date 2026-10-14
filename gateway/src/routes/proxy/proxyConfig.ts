@@ -54,6 +54,17 @@ export const proxy = createProxyMiddleware({
 
       const authReq = req as AuthenticatedRequest;
 
+      // Replace (never append to) client-supplied forwarding headers: the backend derives
+      // req.ip from X-Forwarded-For, so it must see exactly the client this gateway observed.
+      const clientIp = (req as Request).ip || req.socket?.remoteAddress;
+      if (clientIp) {
+        proxyReq.setHeader('X-Forwarded-For', clientIp);
+      } else {
+        proxyReq.removeHeader('X-Forwarded-For');
+      }
+      proxyReq.removeHeader('Forwarded');
+      proxyReq.removeHeader('X-Real-IP');
+
       // Forward user info to backend
       if (authReq.user) {
         proxyReq.setHeader('X-Gateway-User-Id', authReq.user.userId);

@@ -108,6 +108,7 @@ describe("console service", () => {
           }),
         ],
       }),
+      "user-1",
     );
     expect(mocks.auditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -167,6 +168,7 @@ describe("console service", () => {
           ],
         },
       }),
+      "user-1",
     );
     expect(mocks.synthesizeConsoleAnswer).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -175,6 +177,7 @@ describe("console service", () => {
           currentWalletId: walletId,
         }),
       }),
+      "user-1",
     );
     expect(mocks.walletRepository.findByIdWithAccess).toHaveBeenCalledWith(
       walletId,
@@ -214,6 +217,7 @@ describe("console service", () => {
           ],
         }),
       }),
+      "user-1",
     );
   });
 
@@ -248,6 +252,7 @@ describe("console service", () => {
           walletLimitApplied: true,
         }),
       }),
+      "user-1",
     );
     expect(mocks.planConsoleTools.mock.calls[0][0].context).not.toHaveProperty(
       "currentWalletId",
@@ -278,6 +283,7 @@ describe("console service", () => {
           wallets: [],
         },
       }),
+      "user-1",
     );
   });
 
@@ -311,6 +317,7 @@ describe("console service", () => {
       expect.objectContaining({
         toolResults: [expect.objectContaining({ status: "denied" })],
       }),
+      "user-1",
     );
   });
 
@@ -335,6 +342,7 @@ describe("console service", () => {
           }),
         ],
       }),
+      "user-1",
     );
     expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -751,6 +759,7 @@ describe("console service", () => {
       expect.objectContaining({
         planningWarnings: ["wallet_worth_plan_partial"],
       }),
+      "user-1",
     );
     expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
       expect.objectContaining({

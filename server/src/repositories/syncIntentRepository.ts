@@ -21,7 +21,7 @@ const MAX_RECOVERY_BATCH_SIZE = 100;
 const MAX_SYNC_GENERATION = 2_147_483_647;
 // Preserve the deliberate ceiling used by wallet-sized SQL repair statements.
 // Mutation units remain logically bounded and never include network work.
-const WALLET_SYNC_MUTATION_TIMEOUT_MS = 60_000;
+export const WALLET_SYNC_MUTATION_TIMEOUT_MS = 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const syncIntentSelect = {

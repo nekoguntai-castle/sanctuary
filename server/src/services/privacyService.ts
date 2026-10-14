@@ -119,46 +119,47 @@ function isRoundAmount(satoshis: bigint): boolean {
   return trailingZeros >= 4; // 10000+ sats with trailing zeros
 }
 
+interface ScorableUtxo {
+  amount: bigint;
+  blockHeight: number | null;
+}
+
+/** Counts and wallet average a UTXO is scored against (all unspent UTXOs, frozen included). */
+interface UtxoAggregates {
+  addressCount: number;     // UTXOs at this address, including itself
+  sameTxCount: number;      // other UTXOs from the same transaction
+  sameBlockCount: number;   // UTXOs at the same height from other transactions
+  avgAmount: bigint;
+}
+
 /**
- * Calculate privacy score for a single UTXO
+ * Score one UTXO from precomputed aggregates. Single home of the scoring formulas.
  */
-export async function calculateUtxoPrivacy(
-  utxoId: string
-): Promise<PrivacyScore> {
-  const utxo = await utxoRepository.findByIdWithWallet(utxoId);
-
-  if (!utxo) {
-    throw new Error('UTXO not found');
-  }
-
+function scoreUtxoWithAggregates(utxo: ScorableUtxo, agg: UtxoAggregates): PrivacyScore {
   const factors: PrivacyFactor[] = [];
   const warnings: string[] = [];
   let score = 100; // Start with perfect score
 
   // Check address reuse
-  const addressCount = await utxoRepository.countUnspentByAddress(utxo.walletId, utxo.address);
-
-  if (addressCount > 1) {
+  if (agg.addressCount > 1) {
     const impact = WEIGHTS.ADDRESS_REUSE;
     score += impact;
     factors.push({
       factor: 'Address Reuse',
       impact,
-      description: `This address has ${addressCount} UTXOs, linking them together`,
+      description: `This address has ${agg.addressCount} UTXOs, linking them together`,
     });
-    warnings.push(`Address reuse detected: ${addressCount} UTXOs share this address`);
+    warnings.push(`Address reuse detected: ${agg.addressCount} UTXOs share this address`);
   }
 
   // Check cluster linkage (same transaction outputs)
-  const sameTransactionUtxos = await utxoRepository.countUnspentByTxid(utxo.walletId, utxo.txid, utxo.id);
-
-  if (sameTransactionUtxos > 0) {
-    const impact = WEIGHTS.CLUSTER_LINKAGE * sameTransactionUtxos;
+  if (agg.sameTxCount > 0) {
+    const impact = WEIGHTS.CLUSTER_LINKAGE * agg.sameTxCount;
     score += impact;
     factors.push({
       factor: 'Transaction Clustering',
       impact,
-      description: `${sameTransactionUtxos} other UTXOs from same transaction`,
+      description: `${agg.sameTxCount} other UTXOs from same transaction`,
     });
   }
 
@@ -174,30 +175,18 @@ export async function calculateUtxoPrivacy(
   }
 
   // Check timing correlation (same block height)
-  if (utxo.blockHeight) {
-    const sameBlockUtxos = await utxoRepository.countUnspentByBlockHeight(
-      utxo.walletId, utxo.blockHeight, utxo.id, utxo.txid
-    );
-
-    if (sameBlockUtxos > 0) {
-      const impact = WEIGHTS.TIMING_CORRELATION;
-      score += impact;
-      factors.push({
-        factor: 'Timing Correlation',
-        impact,
-        description: `Received in same block as ${sameBlockUtxos} other UTXOs`,
-      });
-    }
+  if (utxo.blockHeight && agg.sameBlockCount > 0) {
+    const impact = WEIGHTS.TIMING_CORRELATION;
+    score += impact;
+    factors.push({
+      factor: 'Timing Correlation',
+      impact,
+      description: `Received in same block as ${agg.sameBlockCount} other UTXOs`,
+    });
   }
 
   // Check relative size (very small or very large)
-  const walletUtxos = await utxoRepository.findUnspentAmounts(utxo.walletId);
-
-  const totalAmount = walletUtxos.reduce((sum, u) => sum + u.amount, BigInt(0));
-  const avgAmount = totalAmount / BigInt(Math.max(walletUtxos.length, 1));
-  const utxoAmount = utxo.amount;
-
-  if (utxoAmount < avgAmount / BigInt(10)) {
+  if (utxo.amount < agg.avgAmount / BigInt(10)) {
     const impact = WEIGHTS.SMALL_UTXO;
     score += impact;
     factors.push({
@@ -205,7 +194,7 @@ export async function calculateUtxoPrivacy(
       impact,
       description: 'Very small relative to wallet average',
     });
-  } else if (utxoAmount > avgAmount * BigInt(10)) {
+  } else if (utxo.amount > agg.avgAmount * BigInt(10)) {
     const impact = WEIGHTS.LARGE_UTXO;
     score += impact;
     factors.push({
@@ -226,13 +215,88 @@ export async function calculateUtxoPrivacy(
   };
 }
 
+function averageAmount(amounts: Array<{ amount: bigint }>): bigint {
+  const total = amounts.reduce((sum, u) => sum + u.amount, BigInt(0));
+  return total / BigInt(Math.max(amounts.length, 1));
+}
+
+interface AggregateRow {
+  txid: string;
+  amount: bigint;
+  address: string;
+  blockHeight: number | null;
+}
+
+/**
+ * Build wallet-wide lookups once from every unspent UTXO (frozen included), so each
+ * UTXO's aggregates are resolved in memory instead of by per-UTXO queries.
+ */
+function buildWalletAggregates(rows: AggregateRow[]): (utxo: AggregateRow) => UtxoAggregates {
+  const byAddress = new Map<string, number>();
+  const byTxid = new Map<string, number>();
+  const byHeight = new Map<number, { total: number; byTxid: Map<string, number> }>();
+
+  for (const row of rows) {
+    byAddress.set(row.address, (byAddress.get(row.address) ?? 0) + 1);
+    byTxid.set(row.txid, (byTxid.get(row.txid) ?? 0) + 1);
+    if (row.blockHeight) {
+      const at = byHeight.get(row.blockHeight) ?? { total: 0, byTxid: new Map<string, number>() };
+      at.total += 1;
+      at.byTxid.set(row.txid, (at.byTxid.get(row.txid) ?? 0) + 1);
+      byHeight.set(row.blockHeight, at);
+    }
+  }
+  const avgAmount = averageAmount(rows);
+
+  // Every scored UTXO is in `rows`, so its address/txid (and height bucket) always resolve.
+  return utxo => {
+    const at = utxo.blockHeight ? byHeight.get(utxo.blockHeight) : undefined;
+    return {
+      addressCount: byAddress.get(utxo.address) as number,
+      sameTxCount: (byTxid.get(utxo.txid) as number) - 1,
+      sameBlockCount: at ? at.total - (at.byTxid.get(utxo.txid) as number) : 0,
+      avgAmount,
+    };
+  };
+}
+
+/**
+ * Calculate privacy score for a single UTXO
+ */
+export async function calculateUtxoPrivacy(
+  utxoId: string
+): Promise<PrivacyScore> {
+  const utxo = await utxoRepository.findByIdWithWallet(utxoId);
+
+  if (!utxo) {
+    throw new Error('UTXO not found');
+  }
+
+  const addressCount = await utxoRepository.countUnspentByAddress(utxo.walletId, utxo.address);
+  const sameTxCount = await utxoRepository.countUnspentByTxid(utxo.walletId, utxo.txid, utxo.id);
+  const sameBlockCount = utxo.blockHeight
+    ? await utxoRepository.countUnspentByBlockHeight(utxo.walletId, utxo.blockHeight, utxo.id, utxo.txid)
+    : 0;
+  const walletUtxos = await utxoRepository.findUnspentAmounts(utxo.walletId);
+
+  return scoreUtxoWithAggregates(utxo, {
+    addressCount,
+    sameTxCount,
+    sameBlockCount,
+    avgAmount: averageAmount(walletUtxos),
+  });
+}
+
 /**
  * Calculate privacy scores for all UTXOs in a wallet
  */
 export async function calculateWalletPrivacy(
   walletId: string
 ): Promise<{ utxos: UtxoPrivacyInfo[]; summary: WalletPrivacySummary }> {
-  const utxos = await utxoRepository.findUnspentForPrivacy(walletId);
+  // One load: aggregates use all unspent UTXOs (frozen included); only unfrozen ones are scored.
+  const allUnspent = await utxoRepository.findUnspentForPrivacyAggregates(walletId);
+  const utxos = allUnspent.filter(u => !u.frozen);
+  const aggregatesFor = buildWalletAggregates(allUnspent);
 
   if (utxos.length === 0) {
     return {
@@ -271,7 +335,7 @@ export async function calculateWalletPrivacy(
   let totalScore = 0;
 
   for (const utxo of utxos) {
-    const score = await calculateUtxoPrivacy(utxo.id);
+    const score = scoreUtxoWithAggregates(utxo, aggregatesFor(utxo));
     totalScore += score.score;
     utxoInfos.push({
       utxoId: utxo.id,

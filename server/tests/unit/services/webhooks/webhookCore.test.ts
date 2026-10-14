@@ -387,6 +387,24 @@ describe('webhook core', () => {
     expect(mockFindEnabledEndpointsForEvent).toHaveBeenCalledWith('wallet-1', 'wallet.transaction.received');
   });
 
+  it('fails closed without throwing when minAmountSats is not a whole number', () => {
+    const event = makeEvent();
+
+    for (const minAmountSats of ['abc', '0.001', '1,000', '-5']) {
+      const endpoint = makeEndpoint({ filters: { minAmountSats } });
+      expect(() => matchesEndpointFilters(endpoint, event)).not.toThrow();
+      expect(matchesEndpointFilters(endpoint, event)).toBe(false);
+    }
+    expect(getFilterConfig(makeEndpoint({ filters: { minAmountSats: '' } }))).toMatchObject({
+      minAmountSats: undefined,
+      invalidMinAmount: undefined,
+    });
+    expect(matchesEndpointFilters(
+      makeEndpoint({ filters: { minAmountSats: 'abc' } }),
+      { ...event, transaction: undefined },
+    )).toBe(true);
+  });
+
   it('compares minAmountSats against the transaction magnitude, not the signed value', async () => {
     const sentEvent: WalletWebhookEvent = {
       ...makeEvent(),

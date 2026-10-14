@@ -90,6 +90,9 @@ function installAdminSetBarrier() {
       walletUser: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      walletDevice: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       refreshToken: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
@@ -345,7 +348,10 @@ describe('Admin user repository updates', () => {
     targetIsAdmin?: boolean;
     adminCount?: number;
     walletMemberships?: Array<{ walletId: string; wallet: { groupId: string | null; _count: { users: number } } }>;
+    soleOwnerWallets?: Array<{ wallet: { name: string } }>;
+    linkedDeviceWallets?: Array<{ wallet: { name: string } }>;
   } = {}) {
+    let walletUserCalls = 0;
     const tx = {
       user: {
         findUnique: vi.fn().mockResolvedValue({
@@ -357,11 +363,22 @@ describe('Admin user repository updates', () => {
         delete: vi.fn().mockResolvedValue({ id: 'regular-user' }),
       },
       walletUser: {
-        findMany: vi.fn().mockResolvedValue(options.walletMemberships ?? []),
+        // Sole-member check first, then the sole-owner-of-shared-wallet check.
+        findMany: vi.fn().mockImplementation(async () => (
+          walletUserCalls++ % 2 === 0
+            ? (options.walletMemberships ?? [])
+            : (options.soleOwnerWallets ?? [])
+        )),
+      },
+      walletDevice: {
+        findMany: vi.fn().mockResolvedValue(options.linkedDeviceWallets ?? []),
       },
     };
     mockPrisma.$transaction.mockImplementation(
-      async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+      async (callback: (client: typeof tx) => Promise<unknown>) => {
+        walletUserCalls = 0;
+        return callback(tx);
+      },
     );
     return tx;
   }
@@ -439,6 +456,64 @@ describe('Admin user repository updates', () => {
       username: 'regular-user',
       isAdmin: false,
     });
+    expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'regular-user' } });
+  });
+
+  it('refuses to delete a user whose owned devices are linked to wallets', async () => {
+    const tx = installAdminDeleteTransaction({
+      linkedDeviceWallets: [
+        { wallet: { name: 'Vault B' } },
+        { wallet: { name: 'Vault A' } },
+        { wallet: { name: 'Vault B' } },
+      ],
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toThrow(/signers in wallet\(s\) Vault A, Vault B;/);
+    expect(tx.walletDevice.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { device: { userId: 'regular-user' } },
+    }));
+    expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it('caps the named wallets at ten and counts the rest', async () => {
+    const tx = installAdminDeleteTransaction({
+      linkedDeviceWallets: Array.from({ length: 12 }, (_, i) => ({
+        wallet: { name: `W${String(i).padStart(2, '0')}` },
+      })),
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toThrow(/W09 and 2 more;/);
+    expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete the only owner of a shared non-group wallet', async () => {
+    const tx = installAdminDeleteTransaction({
+      soleOwnerWallets: [{ wallet: { name: 'Family' } }],
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    expect(tx.walletUser.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {
+        userId: 'regular-user',
+        role: 'owner',
+        wallet: {
+          groupId: null,
+          users: { none: { role: 'owner', userId: { not: 'regular-user' } } },
+        },
+      },
+    }));
+    expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it('allows deleting a co-owner with no device links', async () => {
+    const tx = installAdminDeleteTransaction({ soleOwnerWallets: [], linkedDeviceWallets: [] });
+
+    await expect(userRepository.deleteFromAdmin('regular-user')).resolves.toMatchObject({ id: 'regular-user' });
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'regular-user' } });
   });
 

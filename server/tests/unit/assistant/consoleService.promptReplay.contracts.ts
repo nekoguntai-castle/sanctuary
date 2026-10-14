@@ -64,6 +64,7 @@ export function registerConsolePromptReplayTests(): void {
           currentWalletId: walletId,
         }),
       }),
+      "user-1",
     );
   });
 

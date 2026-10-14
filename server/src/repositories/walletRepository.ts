@@ -21,6 +21,7 @@ import type {
 } from './types';
 import { buildWalletAccessWhere, buildWalletEditAccessWhere } from './accessControl';
 import { requestIncrementalSyncWithClient } from './syncIntentRepository';
+import { deleteResyncAnnotationSnapshot } from './resyncAnnotationSnapshot';
 
 export type { WalletDescriptorAssignment } from './types';
 
@@ -689,8 +690,9 @@ export async function findByIdWithAccessAndInclude(
  * Delete a wallet by ID
  */
 export async function deleteById(walletId: string): Promise<void> {
-  await prisma.wallet.delete({
-    where: { id: walletId },
+  await prisma.$transaction(async tx => {
+    await deleteResyncAnnotationSnapshot(tx, walletId);
+    await tx.wallet.delete({ where: { id: walletId } });
   });
 }
 

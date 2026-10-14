@@ -26,6 +26,11 @@ import { WEBHOOK_REDACTED_VALUE } from '@sanctuary/shared/constants/webhooks';
 const router = Router();
 
 const JsonRecordSchema = z.record(z.string(), z.unknown());
+const WebhookFiltersSchema = z.object({
+  transactionTypes: z.array(z.string().min(1).max(40)).max(20).optional(),
+  minAmountSats: z.string().regex(/^\d{1,16}$/).optional(),
+  confirmationThreshold: z.number().int().min(0).max(1_000_000).optional(),
+}).catchall(z.unknown());
 const WebhookHeaderNameSchema = z.string().trim().min(1).max(256);
 const WebhookHeaderValueSchema = z.string().max(8192).refine(
   value => value !== WEBHOOK_REDACTED_VALUE,
@@ -46,7 +51,7 @@ const WebhookEndpointBodySchema = z.object({
   enabled: z.boolean().optional(),
   url: z.string().trim().url().max(2048),
   eventTypes: z.array(z.string().trim().min(1).max(120)).min(1).max(20),
-  filters: JsonRecordSchema.optional(),
+  filters: WebhookFiltersSchema.optional(),
   payloadProfile: z.string().trim().min(1).max(120).optional(),
   authType: z.string().trim().min(1).max(80).optional(),
   secret: z.string().trim().min(1).max(8192).optional(),

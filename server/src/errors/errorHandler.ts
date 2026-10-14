@@ -40,6 +40,15 @@ export function errorHandler(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _next: NextFunction,
 ): void {
+  // A timeout or earlier handler already responded; writing again throws ERR_HTTP_HEADERS_SENT
+  if (res.headersSent) {
+    log.warn('Error after response sent', {
+      requestId: requestContext.getRequestId(),
+      error: error.message,
+    });
+    return;
+  }
+
   // Get request ID from context for correlation
   const requestId = requestContext.getRequestId();
 

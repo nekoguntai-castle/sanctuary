@@ -348,6 +348,30 @@ describe('Request Timeout Middleware', () => {
         expect(res.status).toHaveBeenCalledWith(408);
       });
 
+      it('should apply 130s timeout to the AI natural query route', () => {
+        req.path = '/api/v1/ai/query';
+
+        requestTimeout(req, res, next);
+
+        vi.advanceTimersByTime(129000);
+        expect(res.status).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2000);
+        expect(res.status).toHaveBeenCalledWith(408);
+      });
+
+      it('should apply 45s timeout to Intelligence chat messages', () => {
+        req.path = '/api/v1/intelligence/conversations/abc/messages';
+
+        requestTimeout(req, res, next);
+
+        vi.advanceTimersByTime(44000);
+        expect(res.status).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2000);
+        expect(res.status).toHaveBeenCalledWith(408);
+      });
+
       it('should apply 60s timeout to internal AI routes', () => {
         req.path = '/internal/ai/data';
 

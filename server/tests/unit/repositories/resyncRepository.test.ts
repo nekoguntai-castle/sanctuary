@@ -6,6 +6,13 @@ vi.mock('../../../src/models/prisma', () => ({
   default: mockPrismaClient,
 }));
 
+const annotationMocks = vi.hoisted(() => ({
+  captureAnnotations: vi.fn(),
+  restoreAnnotations: vi.fn(),
+}));
+
+vi.mock('../../../src/repositories/resyncAnnotationSnapshot', () => annotationMocks);
+
 import {
   completeFencedWalletFullResync,
   completeWalletFullResync,
@@ -25,6 +32,8 @@ describe('resyncRepository', () => {
   } as const;
   beforeEach(() => {
     resetPrismaMocks();
+    annotationMocks.captureAnnotations.mockReset().mockResolvedValue(undefined);
+    annotationMocks.restoreAnnotations.mockReset().mockResolvedValue(undefined);
     mockPrismaClient.$queryRaw.mockResolvedValue([{
       requestedFullResyncGeneration: 4,
       preparedFullResyncGeneration: 0,
@@ -177,6 +186,10 @@ describe('resyncRepository', () => {
     expect(mockPrismaClient.transaction.deleteMany).toHaveBeenCalledWith({
       where: { walletId: 'wallet-1' },
     });
+    // Annotations are snapshotted on the same transaction, before the delete.
+    expect(annotationMocks.captureAnnotations).toHaveBeenCalledWith(mockPrismaClient, 'wallet-1');
+    expect(annotationMocks.captureAnnotations)
+      .toHaveBeenCalledBefore(mockPrismaClient.transaction.deleteMany);
     expect(mockPrismaClient.$queryRaw).toHaveBeenCalledTimes(1);
     expect(mockPrismaClient.address.updateMany).toHaveBeenCalledWith({
       where: { walletId: 'wallet-1' },
@@ -215,6 +228,15 @@ describe('resyncRepository', () => {
       resetPerformed: false,
     });
     expect(mockPrismaClient.transaction.deleteMany).not.toHaveBeenCalled();
+    expect(annotationMocks.captureAnnotations).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the reset when the annotation snapshot cannot be captured', async () => {
+    annotationMocks.captureAnnotations.mockRejectedValueOnce(new Error('snapshot over cap'));
+
+    await expect(resetWalletForFullResync('wallet-1', 4)).rejects.toThrow('snapshot over cap');
+    expect(mockPrismaClient.transaction.deleteMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
   });
 
   it('uses the high-water mark so A cannot re-arm after B', async () => {
@@ -377,6 +399,9 @@ describe('resyncRepository', () => {
       syncedAt,
       lastSyncedBlockHeight: 250,
     })).resolves.toEqual({ completionRecorded: true, syncState });
+    expect(annotationMocks.restoreAnnotations).toHaveBeenCalledWith(mockPrismaClient, 'wallet-1');
+    expect(annotationMocks.restoreAnnotations)
+      .toHaveBeenCalledBefore(mockPrismaClient.wallet.update);
     expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'wallet-1' },
       data: expect.objectContaining({
@@ -406,6 +431,7 @@ describe('resyncRepository', () => {
       lastSyncedBlockHeight: 250,
     })).resolves.toEqual({ completionRecorded: false });
     expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+    expect(annotationMocks.restoreAnnotations).not.toHaveBeenCalled();
   });
 
   it('records rebuild completion and successful lifecycle state atomically', async () => {
@@ -433,6 +459,9 @@ describe('resyncRepository', () => {
         lastSyncedAt: syncedAt,
       },
     });
+    expect(annotationMocks.restoreAnnotations).toHaveBeenCalledWith(mockPrismaClient, 'wallet-1');
+    expect(annotationMocks.restoreAnnotations)
+      .toHaveBeenCalledBefore(mockPrismaClient.wallet.update);
     expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith({
       where: { id: 'wallet-1' },
       data: {
@@ -467,6 +496,7 @@ describe('resyncRepository', () => {
       lastSyncedBlockHeight: 250,
     })).resolves.toEqual({ completionRecorded: false });
     expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+    expect(annotationMocks.restoreAnnotations).not.toHaveBeenCalled();
   });
 
   it('rejects completion when the wallet no longer exists', async () => {
@@ -511,6 +541,7 @@ describe('resyncRepository', () => {
       lastSyncedBlockHeight: 250,
     })).resolves.toEqual({ completionRecorded: false });
     expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+    expect(annotationMocks.restoreAnnotations).not.toHaveBeenCalled();
   });
 
   it('keeps mixed-version rows monotonic when legacy processed is ahead', async () => {
@@ -532,6 +563,7 @@ describe('resyncRepository', () => {
       lastSyncedBlockHeight: 250,
     })).resolves.toEqual({ completionRecorded: false });
     expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+    expect(annotationMocks.restoreAnnotations).not.toHaveBeenCalled();
   });
 
   it('rejects completion before destructive preparation', async () => {

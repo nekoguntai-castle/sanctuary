@@ -364,6 +364,78 @@ describe('MCP HTTP transport', () => {
     }));
   });
 
+  it('lets the real SDK transport accept a JSON-RPC batch of 3 messages', async () => {
+    const express = (await import('express')).default;
+    const { StreamableHTTPServerTransport: RealTransport } = await vi.importActual<
+      typeof import('@modelcontextprotocol/sdk/server/streamableHttp.js')
+    >('@modelcontextprotocol/sdk/server/streamableHttp.js');
+    const transport = new RealTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    let received = 0;
+    transport.onmessage = message => {
+      received++;
+      if ('id' in message && message.id !== undefined) {
+        void transport.send({ jsonrpc: '2.0', id: message.id, result: {} });
+      }
+    };
+    const app = express();
+    app.use(express.json());
+    app.post('/', (req, res) => {
+      void transport.handleRequest(req, res, req.body);
+    });
+
+    const batch = [1, 2, 3].map(id => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'x' } }));
+    const response = await request(app)
+      .post('/')
+      .set('Accept', 'application/json, text/event-stream')
+      .set('Content-Type', 'application/json')
+      .send(batch);
+
+    expect(response.status).toBe(200);
+    expect(received).toBe(3);
+    await transport.close();
+  });
+
+  it('charges one rate-limit token per message in a JSON-RPC batch', async () => {
+    const app = createMcpHttpApp();
+    const batch = [1, 2, 3].map(id => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'x' } }));
+
+    await request(app).post('/mcp').set('mcp-protocol-version', '2025-03-26').send(batch).expect(202);
+    expect(mocks.consumeRateLimit).toHaveBeenCalledWith('mcp:default', 'key-1', 3);
+
+    mocks.consumeRateLimit.mockClear();
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-03-26')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+      .expect(202);
+    expect(mocks.consumeRateLimit).toHaveBeenCalledWith('mcp:default', 'key-1', 1);
+
+    mocks.consumeRateLimit.mockClear();
+    await request(app).post('/mcp').set('mcp-protocol-version', '2025-03-26').send([]).expect(202);
+    expect(mocks.consumeRateLimit).toHaveBeenCalledWith('mcp:default', 'key-1', 1);
+  });
+
+  it('refuses a batch larger than the remaining rate-limit budget', async () => {
+    const app = createMcpHttpApp();
+    mocks.consumeRateLimit.mockImplementation(async (_policy: string, _key: string, cost: number = 1) => ({
+      allowed: cost <= 2,
+      limit: 120,
+      remaining: 2,
+      resetAt: Date.now() + 60_000,
+      retryAfter: 30,
+    }));
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-03-26')
+      .send([1, 2, 3].map(id => ({ jsonrpc: '2.0', id, method: 'tools/list' })))
+      .expect(429)
+      .expect(response => {
+        expect(response.body.error.message).toBe('Rate limit exceeded');
+      });
+    expect(mocks.handleRequest).not.toHaveBeenCalled();
+  });
+
   it('omits Retry-After when the rate limiter has no retry window', async () => {
     const app = createMcpHttpApp();
     mocks.consumeRateLimit.mockResolvedValueOnce({

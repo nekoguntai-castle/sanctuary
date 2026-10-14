@@ -112,7 +112,7 @@ router.get('/:id', requireDeviceAccess('view'), asyncHandler(async (req, res) =>
   const { id } = req.params;
   const deviceRole = req.deviceRole;
 
-  const device = await deviceRepository.findByIdFull(id);
+  const device = await deviceRepository.findByIdFull(id, requireAuthenticatedUser(req).userId);
 
   if (!device) {
     throw new NotFoundError('Device not found');

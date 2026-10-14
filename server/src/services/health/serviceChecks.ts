@@ -19,15 +19,21 @@ const log = createLogger('HEALTH:SERVICE');
  * Check Electrum/blockchain service status
  */
 export function checkElectrum(): ComponentHealth {
-  const breakers = circuitBreakerRegistry.getAllHealth();
-  const electrumBreaker = breakers.find(b => b.name.includes('electrum'));
+  const breakers = circuitBreakerRegistry.getAllHealth().filter(b => b.name.includes('electrum'));
 
-  if (!electrumBreaker) {
+  if (breakers.length === 0) {
     return {
       status: 'healthy',
       message: 'No circuit breaker registered',
     };
   }
+
+  // One breaker per pool (network/feature scope): the worst state wins so an open pool is never hidden.
+  const electrumBreaker =
+    breakers.find(b => b.state === 'open') ??
+    breakers.find(b => b.state === 'half-open') ??
+    breakers[0];
+  const breakerSummaries = breakers.map(b => ({ name: b.name, state: b.state, failures: b.failures }));
 
   if (electrumBreaker.state === 'open') {
     return {
@@ -36,6 +42,7 @@ export function checkElectrum(): ComponentHealth {
       details: {
         failures: electrumBreaker.failures,
         lastFailure: electrumBreaker.lastFailure,
+        breakers: breakerSummaries,
       },
     };
   }
@@ -46,6 +53,7 @@ export function checkElectrum(): ComponentHealth {
       message: 'Circuit half-open - recovering',
       details: {
         successes: electrumBreaker.successes,
+        breakers: breakerSummaries,
       },
     };
   }
@@ -55,6 +63,7 @@ export function checkElectrum(): ComponentHealth {
     details: {
       totalRequests: electrumBreaker.totalRequests,
       lastSuccess: electrumBreaker.lastSuccess,
+      breakers: breakerSummaries,
     },
   };
 }

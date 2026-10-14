@@ -11,6 +11,16 @@ import {
 } from './dockerTestHarness';
 import { registerDockerTorCreateContracts } from './tor-create.contracts';
 
+// Same deployment and owner, but created by an earlier operation: every per-run provenance
+// label differs from the backend's current environment (see dockerTestHarness).
+const EARLIER_RUN_LABELS = {
+  ...TOR_OWNERSHIP_LABELS,
+  'io.sanctuary.created-at': '2026-08-01T00:00:00.000Z',
+  'io.sanctuary.created-by-release': 'v0.8.60',
+  'io.sanctuary.created-by-commit': 'c'.repeat(40),
+  'io.sanctuary.creation-run-id': 'run-earlier',
+};
+
 export function registerDockerTorLifecycleContracts(): void {
   describe('Tor Container Management', () => {
     describe('getTorStatus', () => {
@@ -154,6 +164,29 @@ export function registerDockerTorLifecycleContracts(): void {
     });
 
     describe('startTor', () => {
+      it('stays controllable after the backend restarts with new per-run provenance', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [ownedTorSummary('running', { Labels: EARLIER_RUN_LABELS })],
+        });
+
+        await expect(getTorStatus()).resolves.toMatchObject({
+          exists: true,
+          running: true,
+          containerId: TOR_ID,
+        });
+      });
+
+      it('does not need the per-run provenance environment to report status', async () => {
+        delete process.env.SANCTUARY_OPERATION_RUN_ID;
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [ownedTorSummary('running', { Labels: EARLIER_RUN_LABELS })],
+        });
+
+        await expect(getTorStatus()).resolves.toMatchObject({ exists: true, running: true });
+      });
+
       it('reports a missing ownership manifest field', async () => {
         delete process.env.SANCTUARY_PROJECT;
 
@@ -218,6 +251,28 @@ export function registerDockerTorLifecycleContracts(): void {
           success: true,
           message: 'Tor container created and started successfully',
         });
+      });
+
+      it('starts a stopped container created by an earlier operation', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [ownedTorSummary('exited', { Labels: EARLIER_RUN_LABELS })],
+        });
+        mockFetch.mockResolvedValueOnce({ status: 204 });
+
+        await expect(startTor()).resolves.toMatchObject({ success: true });
+        expect(mockFetch.mock.calls.at(-1)?.[0]).toContain(`/containers/${TOR_ID}/start`);
+      });
+
+      it('starts an existing container without the per-run provenance environment', async () => {
+        delete process.env.SANCTUARY_OPERATION_RUN_ID;
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [ownedTorSummary('exited')],
+        });
+        mockFetch.mockResolvedValueOnce({ status: 204 });
+
+        await expect(startTor()).resolves.toMatchObject({ success: true });
       });
 
       it('should start stopped container', async () => {
@@ -349,6 +404,17 @@ export function registerDockerTorLifecycleContracts(): void {
           message: 'SANCTUARY_PROJECT is invalid for Tor ownership',
         });
         expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it('stops a running container created by an earlier operation', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [ownedTorSummary('running', { Labels: EARLIER_RUN_LABELS })],
+        });
+        mockFetch.mockResolvedValueOnce({ status: 204 });
+
+        await expect(stopTor()).resolves.toMatchObject({ success: true });
+        expect(mockFetch.mock.calls.at(-1)?.[0]).toContain(`/containers/${TOR_ID}/stop`);
       });
 
       it('should stop running container', async () => {

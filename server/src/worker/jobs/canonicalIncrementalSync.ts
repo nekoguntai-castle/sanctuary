@@ -265,11 +265,22 @@ export async function executeCanonicalIncrementalSync(
             phaseProgress!,
           );
           signal.throwIfAborted();
-          await resyncRepository.resetWalletForFullResync(
-            data.walletId,
-            data.fullResyncGeneration,
-            fence,
-          );
+          try {
+            await resyncRepository.resetWalletForFullResync(
+              data.walletId,
+              data.fullResyncGeneration,
+              fence,
+            );
+          } catch (error) {
+            // The reset rolled back without deleting anything, and a retry
+            // would refuse the same oversized or unreadable annotation
+            // snapshot again: surface it to the operator instead. Matched by
+            // name: sync-path files may import only *Repository bindings.
+            if (error instanceof Error && error.name === 'ResyncAnnotationSnapshotError') {
+              throw new PermanentIncrementalSyncError(error.message);
+            }
+            throw error;
+          }
         }
         const syncResult = await syncWallet(
           data.walletId,

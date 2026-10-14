@@ -124,6 +124,34 @@ describe('wallet webhook routes', () => {
     expect(JSON.stringify(response.body)).not.toContain('raw-secret');
   });
 
+  it('rejects malformed webhook filters on create and update', async () => {
+    const body = {
+      name: 'Accounting',
+      url: 'https://example.com/hook',
+      eventTypes: ['wallet.transaction.received'],
+    };
+
+    await request(app)
+      .post('/api/v1/wallets/wallet-1/webhooks')
+      .send({ ...body, filters: { minAmountSats: '1,000' } })
+      .expect(400);
+    await request(app)
+      .post('/api/v1/wallets/wallet-1/webhooks')
+      .send({ ...body, filters: { confirmationThreshold: 1.5 } })
+      .expect(400);
+    await request(app)
+      .patch('/api/v1/wallets/wallet-1/webhooks/webhook-1')
+      .send({ filters: { minAmountSats: '0.001' } })
+      .expect(400);
+    expect(mockCreateWalletWebhook).not.toHaveBeenCalled();
+    expect(mockUpdateWalletWebhook).not.toHaveBeenCalled();
+
+    await request(app)
+      .post('/api/v1/wallets/wallet-1/webhooks')
+      .send({ ...body, filters: { minAmountSats: '1000', transactionTypes: ['received'], confirmationThreshold: 1 } })
+      .expect(201);
+  });
+
   it('lists, reads, and deletes wallet webhook endpoints', async () => {
     const list = await request(app)
       .get('/api/v1/wallets/wallet-1/webhooks')

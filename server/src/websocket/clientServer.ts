@@ -224,7 +224,7 @@ export class SanctauryWebSocketServer {
         break;
 
       case 'subscribe':
-        this.handleSubscribe(client, message.data);
+        void this.handleSubscribe(client, message.data).catch(this.logSubscribeFailure);
         break;
 
       case 'unsubscribe':
@@ -232,7 +232,7 @@ export class SanctauryWebSocketServer {
         break;
 
       case 'subscribe_batch':
-        this.handleSubscribeBatch(client, message.data);
+        void this.handleSubscribeBatch(client, message.data).catch(this.logSubscribeFailure);
         break;
 
       case 'unsubscribe_batch':
@@ -321,6 +321,10 @@ export class SanctauryWebSocketServer {
       /* v8 ignore stop */
     });
   }
+
+  private logSubscribeFailure = (error: unknown): void => {
+    log.error('Subscribe handler failed', { error: getErrorMessage(error) });
+  };
 
   /**
    * Handle subscription request (delegates to channels module)

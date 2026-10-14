@@ -8,7 +8,8 @@ import type {
   IncrementalSyncLifecycleState,
   WalletSyncMutationFence,
 } from './types';
-import { withWalletSyncMutationFence } from './syncIntentRepository';
+import { WALLET_SYNC_MUTATION_TIMEOUT_MS, withWalletSyncMutationFence } from './syncIntentRepository';
+import { captureAnnotations, restoreAnnotations } from './resyncAnnotationSnapshot';
 
 export interface FullResyncResetResult {
   deletedTransactions: number;
@@ -319,6 +320,10 @@ export async function resetWalletForFullResync(
       return { deletedTransactions: 0, resetPerformed: false };
     }
 
+    // Same transaction as the delete: labels and memos survive a crash
+    // between reset and completion, and an oversized or unreadable snapshot
+    // rolls the reset back before anything is deleted.
+    await captureAnnotations(tx, walletId);
     const deleted = await tx.transaction.deleteMany({ where: { walletId } });
     await tx.address.updateMany({
       where: { walletId },
@@ -352,7 +357,7 @@ export async function resetWalletForFullResync(
     }
     return withWalletSyncMutationFence(mutationFence, reset);
   }
-  return prisma.$transaction(reset);
+  return prisma.$transaction(reset, { timeout: WALLET_SYNC_MUTATION_TIMEOUT_MS });
 }
 
 /** Complete one canonical full resync and its mutation lease atomically. */
@@ -386,6 +391,7 @@ export async function completeFencedWalletFullResync(
       || wallet.processedFullResyncGeneration >= fullResyncGeneration) {
       return { completionRecorded: false };
     }
+    await restoreAnnotations(tx, walletId);
     const syncState = await tx.wallet.update({
       where: { id: walletId },
       data: {
@@ -473,6 +479,7 @@ export async function completeWalletFullResync(
       return { completionRecorded: false };
     }
 
+    await restoreAnnotations(tx, walletId);
     const syncState = await tx.wallet.update({
       where: { id: walletId },
       data: {
@@ -495,7 +502,7 @@ export async function completeWalletFullResync(
       completionRecorded: true,
       syncState: syncState as IncrementalSyncLifecycleState,
     };
-  });
+  }, { timeout: WALLET_SYNC_MUTATION_TIMEOUT_MS });
 }
 
 export const resyncRepository = {

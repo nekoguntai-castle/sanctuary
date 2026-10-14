@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
 import {
@@ -8,6 +8,7 @@ import {
   metricMocks,
   mockCheckWalletAccess,
   mockCheckWalletAccessCached,
+  mockLogger,
   parseLastSend,
   flushMicrotasks,
 } from './clientServerLimitsTestHarness';
@@ -290,5 +291,104 @@ export const registerClientServerLimitSubscriptionContracts = () => {
     await Promise.resolve();
     expect(client.isProcessingQueue).toBe(false);
     expect(client.once).not.toHaveBeenCalledWith('drain', expect.any(Function));
+  });
+
+  it('fails closed with an error when the single subscribe access check rejects', async () => {
+    mockCheckWalletAccess.mockRejectedValueOnce(new Error('pool timeout'));
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient({ userId: 'user-1' });
+
+    await expect((server as any).handleSubscribe(client, { channel: 'wallet:deadbeef' })).resolves.toBeUndefined();
+
+    const payload = parseLastSend(client);
+    expect(payload.type).toBe('error');
+    expect(payload.data.code).toBe('SUBSCRIPTION_CHECK_FAILED');
+    expect(payload.data.channel).toBe('wallet:deadbeef');
+    expect(client.subscriptions.has('wallet:deadbeef')).toBe(false);
+  });
+
+  it('stays silent when the access check rejects for a client that is no longer live', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient({ userId: 'user-1' });
+    mockCheckWalletAccess.mockImplementationOnce(async () => {
+      client.readyState = WebSocket.CLOSING;
+      throw new Error('pool timeout');
+    });
+
+    await (server as any).handleSubscribe(client, { channel: 'wallet:deadbeef' });
+
+    expect(client.send).not.toHaveBeenCalled();
+    expect(client.subscriptions.size).toBe(0);
+  });
+
+  it('reports a failed batch access check and still admits the remaining channels', async () => {
+    mockCheckWalletAccess.mockRejectedValueOnce(new Error('pool timeout'));
+    mockCheckWalletAccess.mockResolvedValueOnce({ hasAccess: true, canEdit: true, role: 'owner' });
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient({ userId: 'user-1' });
+
+    await (server as any).handleSubscribeBatch(client, { channels: ['wallet:aaaa', 'wallet:bbbb'] });
+
+    const payload = parseLastSend(client);
+    expect(payload.type).toBe('subscribed_batch');
+    expect(payload.data.subscribed).toEqual(['wallet:bbbb']);
+    expect(payload.data.errors).toEqual([{ channel: 'wallet:aaaa', reason: 'Access check failed' }]);
+    expect(client.subscriptions.has('wallet:aaaa')).toBe(false);
+  });
+
+  it('contains a rejected access check when subscribe is dispatched from handleMessage', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      mockCheckWalletAccess.mockRejectedValueOnce(new Error('pool timeout'));
+      const Server = await loadServer();
+      const server = new Server();
+      activeServers.push(server);
+      const client = createClient({ userId: 'user-1' });
+
+      (server as any).handleMessage(
+        client,
+        Buffer.from(JSON.stringify({ type: 'subscribe', data: { channel: 'wallet:deadbeef' } }))
+      );
+      await flushMicrotasks();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toEqual([]);
+      expect(parseLastSend(client).data.code).toBe('SUBSCRIPTION_CHECK_FAILED');
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it.each([
+    ['handleSubscribe', { type: 'subscribe', data: { channel: 'system' } }],
+    ['handleSubscribeBatch', { type: 'subscribe_batch', data: { channels: ['system'] } }],
+  ])('logs instead of leaking when %s itself rejects', async (method, message) => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const Server = await loadServer();
+      const server = new Server();
+      activeServers.push(server);
+      const client = createClient({ userId: 'user-1' });
+      vi.spyOn(server as any, method).mockRejectedValue(new Error('boom'));
+
+      (server as any).handleMessage(client, Buffer.from(JSON.stringify(message)));
+      await flushMicrotasks();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toEqual([]);
+      expect(mockLogger.error).toHaveBeenCalledWith('Subscribe handler failed', { error: 'boom' });
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 };

@@ -14,7 +14,7 @@ import {
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
-import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
+import { WORKER_INTELLIGENCE_RATE_KEY, buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
 import { intelligenceRepository } from "../../repositories/intelligenceRepository";
 import { getEnabledIntelligenceWallets } from "./settings";
 import { notificationChannelRegistry } from "../notifications/channels";
@@ -351,7 +351,7 @@ async function callAnalysis(
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/analyze`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: WORKER_INTELLIGENCE_RATE_KEY }),
       body: JSON.stringify({ type, context }),
       signal: AbortSignal.timeout(130000),
     });
@@ -394,7 +394,7 @@ async function fetchProviderCheck(): Promise<{
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/check-provider`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: WORKER_INTELLIGENCE_RATE_KEY }),
       signal: AbortSignal.timeout(10000),
     });
 

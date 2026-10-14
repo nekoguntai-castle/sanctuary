@@ -352,6 +352,7 @@ describe("Conversation Service", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             "X-LLM-Egress-Proxy-Secret": "",
+            "X-LLM-Egress-Rate-Key": "user:user-1",
           }),
         }),
       );

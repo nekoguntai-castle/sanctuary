@@ -3,6 +3,7 @@ import request from 'supertest';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
 import { app, mockAssertHardwareWalletCapability } from './devicesTestHarness';
+import { visibleDeviceWalletsWhere } from '../../../../src/repositories/deviceRepository';
 
 export function registerDeviceCrudTests(): void {
   // ========================================
@@ -99,6 +100,20 @@ export function registerDeviceCrudTests(): void {
       expect(response.body.isOwner).toBe(false);
       expect(response.body.userRole).toBe('viewer');
       expect(response.body.sharedBy).toBe('owneruser');
+    });
+
+    it('limits linked wallets to those the requesting user may see', async () => {
+      mockPrismaClient.device.findUnique.mockResolvedValue({
+        id: 'device-1', wallets: [], user: { username: 'owneruser' },
+      });
+
+      await request(app).get('/api/v1/devices/device-1').set('X-Test-Device-Role', 'viewer');
+
+      expect(mockPrismaClient.device.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+        include: expect.objectContaining({
+          wallets: expect.objectContaining({ where: visibleDeviceWalletsWhere('test-user-id') }),
+        }),
+      }));
     });
 
     it('should return 404 when device not found', async () => {

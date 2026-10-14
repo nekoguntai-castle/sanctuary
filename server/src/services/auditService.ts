@@ -195,13 +195,9 @@ export interface AuditLogQuery {
  * Extract client info from Express request
  */
 export function getClientInfo(req: Request): { ipAddress: string; userAgent: string } {
-  // Get IP from x-forwarded-for header (for proxies) or direct connection
-  const forwardedFor = req.headers['x-forwarded-for'];
-  const ipAddress = Array.isArray(forwardedFor)
-    ? forwardedFor[0]
-    : typeof forwardedFor === 'string'
-    ? forwardedFor.split(',')[0].trim()
-    : req.socket.remoteAddress || 'unknown';
+  // req.ip honors the app's `trust proxy` setting, so a client-supplied X-Forwarded-For
+  // prefix cannot choose it (same source as getClientIp in middleware/rateLimit.ts).
+  const ipAddress = req.ip || req.socket?.remoteAddress || 'unknown';
 
   const userAgent = req.headers['user-agent'] || 'unknown';
 

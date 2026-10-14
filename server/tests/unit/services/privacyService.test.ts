@@ -511,18 +511,21 @@ describe('Privacy Scoring Service', () => {
       }
     });
 
-    it('should exclude frozen UTXOs from calculation', async () => {
-      mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+    it('should exclude frozen UTXOs from scoring but not from wallet aggregates', async () => {
+      const utxos = [
+        createTestUtxo({ id: 'utxo-1', address: ADDRESS_1 }),
+        createTestUtxo({ id: 'utxo-frozen', address: ADDRESS_1, frozen: true }),
+      ];
+      mockPrismaClient.uTXO.findMany.mockResolvedValue(utxos);
 
-      await calculateWalletPrivacy(WALLET_ID);
+      const result = await calculateWalletPrivacy(WALLET_ID);
 
       expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            frozen: false,
-          }),
-        })
+        expect.objectContaining({ where: { walletId: WALLET_ID, spent: false } })
       );
+      expect(result.utxos.map(u => u.utxoId)).toEqual(['utxo-1']);
+      // The frozen UTXO still counts toward address reuse for the scored one.
+      expect(result.utxos[0].score.factors.map(f => f.factor)).toContain('Address Reuse');
     });
 
     it('should exclude spent UTXOs from calculation', async () => {
@@ -694,6 +697,92 @@ describe('Privacy Scoring Service', () => {
 
         expect(['good', 'fair', 'poor']).toContain(result.grade);
       });
+    });
+  });
+
+  describe('calculateWalletPrivacy aggregate loading', () => {
+    type Row = ReturnType<typeof createTestUtxo>;
+    const TXID_A = 'aaaa'.repeat(16);
+    const TXID_B = 'bbbb'.repeat(16);
+    const TXID_C = 'cccc'.repeat(16);
+    const TXID_D = 'dddd'.repeat(16);
+    const TXID_E = 'eeee'.repeat(16);
+
+    // Address reuse, a shared txid, same-height/different-txid, a frozen UTXO, and
+    // blockHeight null and 0 (both skip the timing factor).
+    const fixture: Row[] = [
+      createTestUtxo({ id: 'reuse-1', txid: TXID_A, vout: 0, address: ADDRESS_1, amount: BigInt(123456), blockHeight: 800000 }),
+      createTestUtxo({ id: 'reuse-2', txid: TXID_B, vout: 0, address: ADDRESS_1, amount: BigInt(234567), blockHeight: 800001 }),
+      createTestUtxo({ id: 'cluster-1', txid: TXID_C, vout: 0, address: ADDRESS_2, amount: BigInt(345678), blockHeight: 800002 }),
+      createTestUtxo({ id: 'cluster-2', txid: TXID_C, vout: 1, address: ADDRESS_3, amount: BigInt(456789), blockHeight: 800002 }),
+      createTestUtxo({ id: 'same-height', txid: TXID_D, vout: 0, address: 'tb1qsameheight', amount: BigInt(567891), blockHeight: 800002 }),
+      createTestUtxo({ id: 'frozen', txid: TXID_E, vout: 0, address: ADDRESS_1, amount: BigInt(100_000_000), blockHeight: 800000, frozen: true }),
+      createTestUtxo({ id: 'null-height', txid: 'ffff'.repeat(16), vout: 0, address: 'tb1qnullheight', amount: BigInt(678912), blockHeight: null }),
+      createTestUtxo({ id: 'zero-height', txid: '1111'.repeat(16), vout: 0, address: 'tb1qzeroheight', amount: BigInt(789123), blockHeight: 0 }),
+    ];
+
+    // Answers each query from the fixture by its `where` clause so the same data serves
+    // both the per-UTXO path and the single aggregate load.
+    const mockFixtureQueries = (rows: Row[]) => {
+      const matches = (row: Row, where: any) =>
+        (where.walletId === undefined || row.walletId === where.walletId) &&
+        (where.spent === undefined || row.spent === where.spent) &&
+        (where.frozen === undefined || row.frozen === where.frozen) &&
+        (where.address === undefined || row.address === where.address) &&
+        (where.txid === undefined ||
+          (typeof where.txid === 'string' ? row.txid === where.txid : row.txid !== where.txid.not)) &&
+        (where.blockHeight === undefined || row.blockHeight === where.blockHeight) &&
+        (where.id === undefined || row.id !== where.id.not);
+      mockPrismaClient.uTXO.findMany.mockImplementation(async ({ where }: any) =>
+        rows.filter(r => matches(r, where)).sort((a, b) => Number(b.amount - a.amount)));
+      mockPrismaClient.uTXO.count.mockImplementation(async ({ where }: any) =>
+        rows.filter(r => matches(r, where)).length);
+      mockPrismaClient.uTXO.findUnique.mockImplementation(async ({ where }: any) => {
+        const row = rows.find(r => r.id === where.id);
+        return row ? { ...row, wallet: { id: WALLET_ID } } : null;
+      });
+    };
+
+    it('loads wallet aggregates once without per-UTXO queries', async () => {
+      const rows = Array.from({ length: 50 }, (_, i) =>
+        createTestUtxo({
+          id: `utxo-${i}`,
+          txid: `${'a'.repeat(60)}${i.toString().padStart(4, '0')}`,
+          address: `tb1q${i}`,
+          amount: BigInt(10_000 + i * 37),
+        }));
+      mockFixtureQueries(rows);
+
+      const result = await calculateWalletPrivacy(WALLET_ID);
+
+      expect(result.utxos).toHaveLength(50);
+      expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.uTXO.count).not.toHaveBeenCalled();
+      expect(mockPrismaClient.uTXO.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('scores identically to the per-UTXO path, counting frozen UTXOs as aggregate context only', async () => {
+      mockFixtureQueries(fixture);
+
+      const result = await calculateWalletPrivacy(WALLET_ID);
+
+      // Scored list is unspent and unfrozen, amount desc.
+      expect(result.utxos.map(u => u.utxoId)).toEqual([
+        'zero-height', 'null-height', 'same-height', 'cluster-2', 'cluster-1', 'reuse-2', 'reuse-1',
+      ]);
+      const scores = Object.fromEntries(result.utxos.map(u => [u.utxoId, u.score.score]));
+      // Expected values recorded from the per-UTXO implementation at 336bc94b.
+      expect(scores).toEqual({
+        'cluster-1': 80,
+        'cluster-2': 80,
+        'null-height': 95,
+        'reuse-1': 65,
+        'reuse-2': 75,
+        'same-height': 85,
+        'zero-height': 95,
+      });
+      expect(result.summary.addressReuseCount).toBe(1);
+      expect(result.summary.clusterCount).toBe(1);
     });
   });
 

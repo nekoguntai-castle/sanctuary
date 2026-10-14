@@ -3,7 +3,7 @@ import {
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../../services/ai/config";
-import { buildLlmEgressProxyJsonHeaders } from "../../services/ai/llmEgressProxyClient";
+import { buildLlmEgressProxyJsonHeaders, userRateKey } from "../../services/ai/llmEgressProxyClient";
 import { getErrorMessage } from "../../utils/errors";
 import { createLogger } from "../../utils/logger";
 import type { ConsoleScope, ConsoleToolCall } from "./protocol";
@@ -108,11 +108,12 @@ async function ensureConfiguredProvider(): Promise<ConsoleGatewayProviderState> 
 async function fetchConsoleGateway<TResponse>(
   path: "/console/plan" | "/console/synthesize",
   body: Record<string, unknown>,
+  userId: string,
 ): Promise<TResponse> {
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}${path}`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: userRateKey(userId) }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(CONSOLE_GATEWAY_TIMEOUT_MS),
     });
@@ -190,11 +191,12 @@ export async function planConsoleTools(input: {
   context?: ConsoleGatewayContext;
   maxToolCalls: number;
   tools: ConsoleGatewayToolDescription[];
-}): Promise<ConsoleGatewayPlan & ConsoleGatewayProviderState> {
+}, userId: string): Promise<ConsoleGatewayPlan & ConsoleGatewayProviderState> {
   const provider = await ensureConfiguredProvider();
   const plan = await fetchConsoleGateway<ConsoleGatewayPlan>(
     "/console/plan",
     input,
+    userId,
   );
   return {
     ...provider,
@@ -209,7 +211,7 @@ export async function synthesizeConsoleAnswer(input: {
   context?: ConsoleGatewayContext;
   planningWarnings?: string[];
   toolResults: ConsoleGatewayToolResult[];
-}): Promise<{ response: string } & ConsoleGatewayProviderState> {
+}, userId: string): Promise<{ response: string } & ConsoleGatewayProviderState> {
   const provider = await ensureConfiguredProvider();
   const result = await fetchConsoleGateway<{ response?: string }>(
     "/console/synthesize",
@@ -217,6 +219,7 @@ export async function synthesizeConsoleAnswer(input: {
       ...input,
       planningWarnings: input.planningWarnings ?? [],
     },
+    userId,
   );
   return {
     ...provider,

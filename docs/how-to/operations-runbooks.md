@@ -182,6 +182,25 @@ Mitigation:
 - If the worker is unhealthy or stuck, inspect queue and worker logs before restart.
 - Avoid repeatedly forcing full resyncs until Electrum health and worker ownership are understood.
 
+### Full resync
+
+A full resync (wallet or network) deletes the wallet's transaction rows and
+rebuilds them from the blockchain. Transaction labels, memos and label
+assignments are preserved:
+
+- The reset saves them in an operational system setting,
+  `operational.wallet-resync-annotations.v1:<walletId>`, in the same database
+  transaction as the delete. A crash between reset and completion loses
+  nothing.
+- When the resync completes, they are re-applied to every transaction the
+  rebuild found again. A value edited after the transaction reappeared wins.
+- Entries for transactions not found again stay in the setting and are
+  re-applied by a later full resync. Deleting the wallet removes the setting.
+  The setting is excluded from the admin settings list and from backups.
+- The reset refuses a wallet with more than 50,000 annotated transactions, or
+  one whose saved setting is unreadable. Nothing is deleted. The wallet moves
+  to "action required"; export or clean up labels and memos before retrying.
+
 ## Transaction Broadcast Failures
 
 Alert:

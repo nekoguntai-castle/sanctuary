@@ -71,7 +71,7 @@ describe('Core API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/ai/test-connection', {}, { timeoutMs: 20000 });
       expect(mockPost).toHaveBeenCalledWith('/ai/suggest-label', { transactionId: 'tx-1' });
       expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' }, {
-        timeoutMs: 120000,
+        timeoutMs: 135000,
         signal: queryController.signal,
       });
     });

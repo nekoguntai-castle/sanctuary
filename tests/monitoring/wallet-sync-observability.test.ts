@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 
@@ -102,6 +102,25 @@ function queryLabelNames(expression: string): Set<string> {
     }
   }
   return names;
+}
+
+const serverSources = (readdirSync(repoPath('server/src'), { recursive: true }) as string[])
+  .filter(path => path.endsWith('.ts'))
+  .map(path => readFileSync(repoPath('server/src', path), 'utf8'));
+
+/** The exported metric object for a Prometheus name, and whether anything writes it. */
+function metricProducerCalls(metricName: string): { binding: string; producers: number } {
+  const declaration = new RegExp(
+    `export const (\\w+) = new (?:Counter|Histogram|Gauge)\\(\\{\\s*name: '${metricName}'`,
+  );
+  const binding = serverSources
+    .map(source => source.match(declaration)?.[1])
+    .find(Boolean);
+  expect(binding, `no declaration for ${metricName}`).toBeDefined();
+  const write = new RegExp(`\\b${binding}\\.(?:inc|dec|set|observe)\\(`, 'g');
+  const producers = serverSources
+    .reduce((count, source) => count + (source.match(write)?.length ?? 0), 0);
+  return { binding: binding as string, producers };
 }
 
 describe('wallet-sync operational observability', () => {
@@ -220,6 +239,20 @@ describe('wallet-sync operational observability', () => {
       for (const label of queryLabelNames(expression)) {
         expect(allowedLabels.has(label), `high-cardinality or unknown label: ${label}`).toBe(true);
       }
+    }
+  });
+  it('has a server producer for every metric the WalletSyncFailures alert and sync dashboard read', () => {
+    const rule = alertRules.groups
+      .flatMap(group => group.rules)
+      .find(candidate => candidate.alert === 'WalletSyncFailures');
+    expect(rule, 'missing alert: WalletSyncFailures').toBeDefined();
+    const alertMetrics = [...new Set(rule?.expr.match(/\bsanctuary_[a-z_]+/g) ?? [])];
+    expect(alertMetrics).toEqual(['sanctuary_wallet_syncs_total']);
+
+    for (const metricName of [...alertMetrics, 'sanctuary_wallet_sync_duration_seconds']) {
+      const { binding, producers } = metricProducerCalls(metricName);
+      expect(producers, `${binding} (${metricName}) is declared but never written`)
+        .toBeGreaterThan(0);
     }
   });
 });

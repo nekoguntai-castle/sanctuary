@@ -315,6 +315,18 @@ describe("aiService", () => {
         }),
       }),
     );
+    expect(mocks.fetch).toHaveBeenNthCalledWith(
+      3,
+      "http://llm-egress-proxy:3100/test",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-LLM-Egress-Rate-Key": "admin:system",
+        }),
+      }),
+    );
+    expect(mocks.fetch.mock.calls[1][1].headers).not.toHaveProperty(
+      "X-LLM-Egress-Rate-Key",
+    );
   });
 
   it("reports config sync rejection before testing stale proxy config", async () => {
@@ -429,7 +441,7 @@ describe("aiService", () => {
       .mockResolvedValueOnce(okJson({ suggestion: "Payroll income" }));
 
     const mod = await import("../../../src/services/aiService");
-    const suggestion = await mod.suggestTransactionLabel("tx-1", "token-abc");
+    const suggestion = await mod.suggestTransactionLabel("tx-1", "token-abc", "user-9");
 
     expect(suggestion).toBe("Payroll income");
     expect(mocks.fetch).toHaveBeenLastCalledWith(
@@ -439,6 +451,7 @@ describe("aiService", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer token-abc",
           "X-LLM-Egress-Proxy-Secret": "",
+          "X-LLM-Egress-Rate-Key": "user:user-9",
         }),
       }),
     );
@@ -452,7 +465,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-2", "token-abc"),
+      mod.suggestTransactionLabel("tx-2", "token-abc", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -467,7 +480,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-sync-failed", "token-abc"),
+      mod.suggestTransactionLabel("tx-sync-failed", "token-abc", "user-9"),
     ).resolves.toBeNull();
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
@@ -489,7 +502,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-3", "token-abc"),
+      mod.suggestTransactionLabel("tx-3", "token-abc", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -509,7 +522,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-3b", "token-abc"),
+      mod.suggestTransactionLabel("tx-3b", "token-abc", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -525,7 +538,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-4", "token-abc"),
+      mod.suggestTransactionLabel("tx-4", "token-abc", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -541,7 +554,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-empty", "token-abc"),
+      mod.suggestTransactionLabel("tx-empty", "token-abc", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -557,7 +570,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.suggestTransactionLabel("tx-5", "token-abc"),
+      mod.suggestTransactionLabel("tx-5", "token-abc", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -575,7 +588,7 @@ describe("aiService", () => {
     const result = await mod.executeNaturalQuery(
       "show latest",
       "wallet-1",
-      "token-xyz",
+      "token-xyz", "user-9",
     );
 
     expect(result).toBeNull();
@@ -598,13 +611,18 @@ describe("aiService", () => {
     try {
       const mod = await import("../../../src/services/aiService");
       await expect(
-        mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+        mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
       ).resolves.toEqual({ type: "transactions" });
 
       expect(timeoutSpy).toHaveBeenCalledWith(125_000);
       expect(mocks.fetch).toHaveBeenLastCalledWith(
         "http://llm-egress-proxy:3100/query",
-        expect.objectContaining({ signal: timeoutSignal }),
+        expect.objectContaining({
+          signal: timeoutSignal,
+          headers: expect.objectContaining({
+            "X-LLM-Egress-Rate-Key": "user:user-9",
+          }),
+        }),
       );
     } finally {
       timeoutSpy.mockRestore();
@@ -618,7 +636,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -630,7 +648,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
     ).resolves.toBeNull();
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
@@ -652,7 +670,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -672,7 +690,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -688,7 +706,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
     ).resolves.toBeNull();
   });
 
@@ -704,7 +722,7 @@ describe("aiService", () => {
 
     const mod = await import("../../../src/services/aiService");
     await expect(
-      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz", "user-9"),
     ).resolves.toBeNull();
   });
 });

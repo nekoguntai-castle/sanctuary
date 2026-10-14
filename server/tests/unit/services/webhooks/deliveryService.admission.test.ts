@@ -72,4 +72,25 @@ describe('webhook delivery admission', () => {
     expect(mockFindDeliveryById).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain('ciphertext');
   });
+
+  it('keeps delivering to valid endpoints when another endpoint has an invalid minAmountSats', async () => {
+    const { queueWebhookEventsDeliveries } = await import('../../../../src/services/webhooks/deliveryService');
+    mockListEndpoints.mockResolvedValueOnce([
+      makeEndpoint({ id: 'bad-filter', filters: { minAmountSats: '0.001' } }),
+      makeEndpoint({ id: 'good-endpoint' }),
+    ]);
+    mockCreateDelivery.mockResolvedValueOnce({
+      accepted: true,
+      delivery: { id: 'delivery-good', attemptCount: 0 },
+    });
+    mockQueueWebhookDeliveryNotification.mockResolvedValueOnce(true);
+
+    await expect(queueWebhookEventsDeliveries([makeEvent()])).resolves.toEqual({
+      queued: 1,
+      errors: [],
+    });
+
+    expect(mockCreateDelivery).toHaveBeenCalledTimes(1);
+    expect(mockCreateDelivery).toHaveBeenCalledWith(expect.objectContaining({ endpointId: 'good-endpoint' }));
+  });
 });

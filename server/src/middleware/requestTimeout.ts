@@ -19,7 +19,7 @@ const log = createLogger('MW:TIMEOUT');
  * Default request timeout in milliseconds
  */
 const DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
-const AI_REQUEST_TIMEOUT_MS = 125000; // local/LAN models can be slow
+const AI_REQUEST_TIMEOUT_MS = 130000; // natural query handler deadline (125s) + 5s; local/LAN models can be slow
 const CONSOLE_REQUEST_TIMEOUT_MS = 280000; // planner + tools + synthesis
 
 /**
@@ -38,6 +38,10 @@ const EXTENDED_TIMEOUT_ROUTES: Array<{
   // Transaction broadcasts may have network delays
   { pattern: /^\/api\/v1\/wallets\/.*\/transactions\/broadcast/, timeout: 60000, reason: 'tx broadcast' },
   { pattern: /^\/api\/v1\/wallets\/.*\/psbt\/broadcast/, timeout: 60000, reason: 'tx broadcast' },
+  // AI natural query must precede the generic AI entry (first match wins)
+  { pattern: /^\/api\/v1\/ai\/query$/, timeout: AI_REQUEST_TIMEOUT_MS, reason: 'AI natural query' },
+  // Intelligence chat persists both messages, so outlast the 35s provider deadline
+  { pattern: /^\/api\/v1\/intelligence\/conversations\/[^/]+\/messages$/, timeout: 45000, reason: 'Intelligence chat' },
   // AI analysis endpoints
   { pattern: /^\/api\/v1\/ai\//, timeout: 60000, reason: 'AI analysis' },
   { pattern: /^\/internal\/ai\//, timeout: 60000, reason: 'AI analysis' },

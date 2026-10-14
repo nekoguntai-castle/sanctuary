@@ -80,7 +80,8 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   requestContext.run(context, () => {
     // Log request start (skip for excluded paths)
     if (!isExcluded) {
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      // req.ip honors `trust proxy`; raw X-Forwarded-For is client-controlled (see getClientIp in rateLimit.ts)
+      const clientIp = req.ip || req.socket.remoteAddress;
       const logData: Record<string, unknown> = {
         requestId,
         ip: clientIp,

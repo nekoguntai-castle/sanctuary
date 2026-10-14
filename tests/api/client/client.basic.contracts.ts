@@ -333,6 +333,20 @@ export const registerApiClientBasicContracts = () => {
       }
     });
 
+    it("should not replay a mutation POST that gets a 408 (no duplicate messages)", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 408,
+        statusText: "Request Timeout",
+        json: () => Promise.resolve({ message: "Request timeout" }),
+      });
+
+      await expect(
+        apiClient.post("/intelligence/conversations/c1/messages", { content: "hi" }),
+      ).rejects.toThrow(ApiError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it("should throw ApiError for 401 Unauthorized", async () => {
       mockFetch.mockResolvedValue({
         ok: false,

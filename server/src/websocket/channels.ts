@@ -16,6 +16,7 @@ import {
   WebSocketChannels,
 } from '@sanctuary/shared/types/websocket';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import {
   websocketRateLimitHits,
   websocketSubscriptions,
@@ -94,7 +95,28 @@ export async function handleSubscribe(
   if (isWebSocketWalletChannel(channel) && client.userId) {
     const walletId = getWalletIdFromWebSocketChannel(channel);
     if (walletId) {
-      const access = await checkWalletAccessUncached(walletId, client.userId);
+      let access: Awaited<ReturnType<typeof checkWalletAccessUncached>>;
+      try {
+        access = await checkWalletAccessUncached(walletId, client.userId);
+      } catch (error) {
+        // Fail closed: an unverifiable access check must not subscribe or crash the API.
+        log.warn('Wallet access check failed during subscribe', {
+          userId: client.userId,
+          walletId,
+          error: getErrorMessage(error),
+        });
+        if (isClientLiveForAdmission(client)) {
+          callbacks.sendToClient(client, {
+            type: 'error',
+            data: {
+              code: 'SUBSCRIPTION_CHECK_FAILED',
+              message: 'Unable to verify wallet access; retry later',
+              channel,
+            },
+          });
+        }
+        return;
+      }
       if (!isClientLiveForAdmission(client)) return;
       if (!access.hasAccess) {
         log.warn(`User ${client.userId} denied access to wallet ${walletId}`);
@@ -198,7 +220,18 @@ export async function handleSubscribeBatch(
     if (isWebSocketWalletChannel(channel) && client.userId) {
       const walletId = getWalletIdFromWebSocketChannel(channel);
       if (walletId) {
-        const access = await checkWalletAccessUncached(walletId, client.userId);
+        let access: Awaited<ReturnType<typeof checkWalletAccessUncached>>;
+        try {
+          access = await checkWalletAccessUncached(walletId, client.userId);
+        } catch (error) {
+          log.warn('Wallet access check failed during batch subscribe', {
+            userId: client.userId,
+            walletId,
+            error: getErrorMessage(error),
+          });
+          errors.push({ channel, reason: 'Access check failed' });
+          continue;
+        }
         if (!isClientLiveForAdmission(client)) return;
         if (!access.hasAccess) {
           errors.push({ channel, reason: 'Access denied' });

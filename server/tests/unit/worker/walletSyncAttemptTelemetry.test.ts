@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncProgressDetails } from '@sanctuary/shared/schemas/syncProgress';
 
 const metric = vi.hoisted(() => ({
@@ -30,6 +30,29 @@ vi.mock('../../../src/worker/walletSyncExecutionRegistry', () => ({
 }));
 
 import { WalletSyncAttemptTelemetry } from '../../../src/worker/walletSyncAttemptTelemetry';
+import {
+  walletSyncDuration,
+  walletSyncsTotal,
+} from '../../../src/observability/metrics/businessMetrics';
+import { registry as metricsRegistry } from '../../../src/observability/metrics/registry';
+import type { WalletSyncExecutionOutcome } from '../../../src/worker/walletSyncExecutionRegistry';
+
+async function metricValue(
+  metric: string,
+  series: string,
+  labels: string,
+): Promise<number | null> {
+  const text = await metricsRegistry.getSingleMetricAsString(metric);
+  const line = text.split('\n').find(entry => entry.startsWith(`${series}{${labels}} `));
+  return line === undefined ? null : Number(line.slice(line.lastIndexOf(' ') + 1));
+}
+
+const SYNCS = 'sanctuary_wallet_syncs_total';
+const DURATION = 'sanctuary_wallet_sync_duration_seconds';
+const syncsTotal = (status: 'success' | 'failure') =>
+  metricValue(SYNCS, SYNCS, `status="${status}"`);
+const durationCount = () => metricValue(DURATION, `${DURATION}_count`, 'walletType="all"');
+const durationSum = () => metricValue(DURATION, `${DURATION}_sum`, 'walletType="all"');
 
 const progress = (
   event: SyncProgressDetails['event'],
@@ -209,5 +232,75 @@ describe('WalletSyncAttemptTelemetry', () => {
     expect(metric.finishStage).toHaveBeenCalledOnce();
     expect(metric.finishStage).toHaveBeenCalledWith('failed', expect.any(Number));
     expect(registry.finish).not.toHaveBeenCalled();
+  });
+  describe('wallet sync outcome counters', () => {
+    const START_MS = Date.parse('2026-10-13T12:00:00.000Z');
+
+    beforeEach(() => {
+      walletSyncsTotal.reset();
+      walletSyncDuration.reset();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(START_MS);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const attempt = () => new WalletSyncAttemptTelemetry({
+      executionId: 'execution-outcome',
+      ownedLock: { key: 'sync:wallet:wallet-outcome', token: '7'.repeat(32) },
+      mode: 'incremental',
+      network: 'mainnet',
+    });
+
+    it('counts a completed attempt as success and observes its exact duration', async () => {
+      const telemetry = attempt();
+      vi.setSystemTime(START_MS + 2_500);
+
+      telemetry.finish('completed');
+
+      await expect(syncsTotal('success')).resolves.toBe(1);
+      await expect(syncsTotal('failure')).resolves.toBeNull();
+      await expect(durationCount()).resolves.toBe(1);
+      await expect(durationSum()).resolves.toBe(2.5);
+    });
+
+    it.each(['failed', 'timedOut'] as const)(
+      'counts a %s attempt as one failure',
+      async (outcome: WalletSyncExecutionOutcome) => {
+        const telemetry = attempt();
+        vi.setSystemTime(START_MS + 4_000);
+
+        telemetry.finish(outcome);
+
+        await expect(syncsTotal('failure')).resolves.toBe(1);
+        await expect(syncsTotal('success')).resolves.toBeNull();
+        await expect(durationCount()).resolves.toBe(1);
+        await expect(durationSum()).resolves.toBe(4);
+      },
+    );
+
+    it('keeps aborted attempts out of the outcome counter and duration', async () => {
+      const telemetry = attempt();
+      vi.setSystemTime(START_MS + 1_000);
+
+      telemetry.finish('aborted');
+
+      await expect(syncsTotal('success')).resolves.toBeNull();
+      await expect(syncsTotal('failure')).resolves.toBeNull();
+      await expect(durationCount()).resolves.toBeNull();
+    });
+
+    it('records only the first terminal outcome', async () => {
+      const telemetry = attempt();
+
+      telemetry.finish('failed');
+      telemetry.finish('completed');
+
+      await expect(syncsTotal('failure')).resolves.toBe(1);
+      await expect(syncsTotal('success')).resolves.toBeNull();
+      await expect(durationCount()).resolves.toBe(1);
+    });
   });
 });

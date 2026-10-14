@@ -238,6 +238,7 @@ async function resolveSession(input: {
 }
 
 async function getPlannedToolCalls(input: {
+  userId: string;
   prompt: string;
   scope: ConsoleScope;
   planningContext?: ConsoleGatewayContext;
@@ -255,13 +256,16 @@ async function getPlannedToolCalls(input: {
     };
   }
 
-  return planConsoleTools({
-    prompt: input.prompt,
-    scope: input.scope,
-    ...(input.planningContext ? { context: input.planningContext } : {}),
-    maxToolCalls: MAX_TOOL_CALLS_PER_TURN,
-    tools: assistantReadToolRegistry.list().map(describeToolForPlanning),
-  });
+  return planConsoleTools(
+    {
+      prompt: input.prompt,
+      scope: input.scope,
+      ...(input.planningContext ? { context: input.planningContext } : {}),
+      maxToolCalls: MAX_TOOL_CALLS_PER_TURN,
+      tools: assistantReadToolRegistry.list().map(describeToolForPlanning),
+    },
+    input.userId,
+  );
 }
 
 async function auditConsoleTurn(
@@ -386,6 +390,7 @@ export async function runConsoleTurn(
   try {
     await consoleRepository.updateTurnState(turn.id, "planning");
     const plan = await getPlannedToolCalls({
+      userId: actor.userId,
       prompt: input.prompt,
       scope,
       planningContext,
@@ -405,13 +410,16 @@ export async function runConsoleTurn(
     }
     await consoleRepository.updateTurnState(turn.id, "synthesizing");
     let synthesisFallbackApplied = false;
-    const synthesis = await synthesizeConsoleAnswer({
-      prompt: input.prompt,
-      scope,
-      ...(planningContext ? { context: planningContext } : {}),
-      planningWarnings: plan.warnings,
-      toolResults: traces.map(traceForSynthesis),
-    }).catch((error) => {
+    const synthesis = await synthesizeConsoleAnswer(
+      {
+        prompt: input.prompt,
+        scope,
+        ...(planningContext ? { context: planningContext } : {}),
+        planningWarnings: plan.warnings,
+        toolResults: traces.map(traceForSynthesis),
+      },
+      actor.userId,
+    ).catch((error) => {
       if (traces.length === 0) throw error;
       synthesisFallbackApplied = true;
       return {

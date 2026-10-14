@@ -24,6 +24,14 @@ describe("aiService model operations", () => {
       found: true,
       endpoint: "http://localhost:11434",
     });
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      "http://llm-egress-proxy:3100/detect-ollama",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-LLM-Egress-Rate-Key": "admin:system",
+        }),
+      }),
+    );
   });
 
   it("returns detectOllama failure when LLM egress proxy returns non-ok", async () => {
@@ -81,6 +89,9 @@ describe("aiService model operations", () => {
       "http://llm-egress-proxy:3100/detect-provider",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({
+          "X-LLM-Egress-Rate-Key": "admin:system",
+        }),
         body: JSON.stringify({
           endpoint: "http://studio.local:1234",
           preferredProviderType: "openai-compatible",
@@ -272,7 +283,12 @@ describe("aiService model operations", () => {
     expect(mocks.fetch).toHaveBeenNthCalledWith(
       2,
       "http://llm-egress-proxy:3100/list-models",
-      expect.objectContaining({ method: "GET" }),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          "X-LLM-Egress-Rate-Key": "admin:system",
+        }),
+      }),
     );
   });
 

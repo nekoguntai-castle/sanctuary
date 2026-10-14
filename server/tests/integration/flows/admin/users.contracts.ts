@@ -483,7 +483,7 @@ export function registerAdminUserManagementContracts(): void {
         expect(association).not.toBeNull();
       });
 
-      it('cascades wallet user associations when another member remains', async () => {
+      it('cascades wallet user associations when another owner remains', async () => {
         const { token } = await createAdminAndLogin();
         const { userId } = await createUserAndLogin();
         const { userId: otherUserId } = await createUserAndLogin();
@@ -497,7 +497,7 @@ export function registerAdminUserManagementContracts(): void {
             users: {
               create: [
                 { userId, role: 'owner' },
-                { userId: otherUserId, role: 'viewer' },
+                { userId: otherUserId, role: 'owner' },
               ],
             },
           },
@@ -521,6 +521,72 @@ export function registerAdminUserManagementContracts(): void {
         expect(associationAfter).toBeNull();
         const walletAfter = await prisma.wallet.findUnique({ where: { id: wallet.id } });
         expect(walletAfter).not.toBeNull();
+      });
+
+      it('refuses to delete the only owner of a wallet that other members still use', async () => {
+        const { token } = await createAdminAndLogin();
+        const { userId } = await createUserAndLogin();
+        const { userId: viewerId } = await createUserAndLogin();
+
+        const wallet = await prisma.wallet.create({
+          data: {
+            name: 'Owner Plus Viewer',
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            users: {
+              create: [
+                { userId, role: 'owner' },
+                { userId: viewerId, role: 'viewer' },
+              ],
+            },
+          },
+        });
+
+        const response = await request(app)
+          .delete(`/api/v1/admin/users/${userId}`)
+          .set(authHeader(token))
+          .expect(409);
+        expect(response.body.message).toContain('Owner Plus Viewer');
+        expect(await prisma.user.findUnique({ where: { id: userId } })).not.toBeNull();
+        expect(await prisma.walletUser.count({ where: { walletId: wallet.id } })).toBe(2);
+      });
+
+      it('refuses to delete a user whose device signs a wallet other users still hold', async () => {
+        const { token } = await createAdminAndLogin();
+        const { userId } = await createUserAndLogin();
+        const { userId: coOwnerId } = await createUserAndLogin();
+
+        const wallet = await prisma.wallet.create({
+          data: {
+            name: 'Cosigned Vault',
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            users: {
+              create: [
+                { userId, role: 'owner' },
+                { userId: coOwnerId, role: 'owner' },
+              ],
+            },
+          },
+        });
+        const device = await prisma.device.create({
+          data: {
+            userId,
+            type: 'ledger',
+            label: 'Admin Delete Signer',
+            fingerprint: `ad${Date.now().toString(16)}`.slice(0, 8),
+            xpub: 'xpub-admin-delete-test',
+          },
+        });
+        await prisma.walletDevice.create({ data: { walletId: wallet.id, deviceId: device.id } });
+
+        const response = await request(app)
+          .delete(`/api/v1/admin/users/${userId}`)
+          .set(authHeader(token))
+          .expect(409);
+        expect(response.body.message).toContain('Cosigned Vault');
+        expect(await prisma.user.findUnique({ where: { id: userId } })).not.toBeNull();
+        expect(await prisma.walletDevice.count({ where: { walletId: wallet.id } })).toBe(1);
       });
 
       it('should prevent self-deletion', async () => {

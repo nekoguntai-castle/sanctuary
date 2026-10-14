@@ -135,8 +135,9 @@ describe('Request Logger Middleware', () => {
       );
     });
 
-    it('should use X-Forwarded-For header for IP', () => {
-      req.headers['x-forwarded-for'] = '10.0.0.1';
+    it('should log req.ip rather than a client-supplied X-Forwarded-For', () => {
+      req.headers['x-forwarded-for'] = '1.2.3.4, 10.0.0.1';
+      req.ip = '10.0.0.1';
 
       requestLogger(req, res, next);
 

@@ -9,6 +9,7 @@ import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { userRepository } from '../../../repositories';
 import * as telegramApi from '../../telegram/api';
+import { escapeHtml } from '../../telegram/formatting';
 import type {
   NotificationChannelHandler,
   TransactionNotification,
@@ -185,14 +186,14 @@ function formatInsightMessage(insight: AIInsightNotification): string {
   const typeLabel = TYPE_LABELS[insight.type] || insight.type;
 
   return [
-    `\uD83E\uDDE0 <b>Treasury Intelligence</b> \u2014 ${insight.walletName}`,
+    `\uD83E\uDDE0 <b>Treasury Intelligence</b> \u2014 ${escapeHtml(insight.walletName)}`,
     '',
-    `<b>${insight.title}</b>`,
+    `<b>${escapeHtml(insight.title)}</b>`,
     '',
-    insight.summary,
+    escapeHtml(insight.summary),
     '',
-    `${severityIcon} Severity: ${insight.severity}`,
-    `Type: ${typeLabel}`,
+    `${severityIcon} Severity: ${escapeHtml(insight.severity)}`,
+    `Type: ${escapeHtml(typeLabel)}`,
     '',
     '\u2014 Sanctuary AI',
   ].join('\n');

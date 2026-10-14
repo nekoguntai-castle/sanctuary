@@ -1,7 +1,10 @@
 import type { WebhookEndpoint } from '../../generated/prisma/client';
 import { webhookRepository } from '../../repositories';
 import { getFilterConfig } from './config';
+import { createLogger } from '../../utils/logger';
 import type { WalletWebhookEvent } from './types';
+
+const log = createLogger('WEBHOOK:SUBSCRIPTIONS');
 
 export async function findMatchingWebhookEndpoints(
   event: WalletWebhookEvent,
@@ -33,6 +36,12 @@ export function matchesEndpointFilters(
 
   if (filters.transactionTypes?.length && transaction) {
     if (!filters.transactionTypes.includes(transaction.type)) return false;
+  }
+
+  if (filters.invalidMinAmount && transaction) {
+    // Fail closed for this endpoint only; the save-time 400 is the operator-facing signal.
+    log.debug('Skipping webhook endpoint with invalid minAmountSats filter', { endpointId: endpoint.id });
+    return false;
   }
 
   if (filters.minAmountSats && transaction) {

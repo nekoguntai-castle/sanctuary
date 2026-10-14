@@ -149,7 +149,9 @@ export async function sendChatMessage(
 ): Promise<{ userMessage: AIMessage; assistantMessage: AIMessage }> {
   return apiClient.post<{ userMessage: AIMessage; assistantMessage: AIMessage }>(
     `/intelligence/conversations/${conversationId}/messages`,
-    { content }
+    { content },
+    // Server route allows 45s; stay above it so the server answers first
+    { timeoutMs: 50_000 }
   );
 }
 

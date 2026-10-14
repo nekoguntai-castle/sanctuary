@@ -48,6 +48,20 @@ describe('errorHandler', () => {
     mockGetRequestId.mockReturnValue('req-123');
   });
 
+  it('does not write a second response after headers were sent', () => {
+    const res = makeRes();
+    (res as { headersSent: boolean }).headersSent = true;
+
+    errorHandler(new Error('late handler failure'), {} as Request, res, vi.fn() as NextFunction);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
+    expect(mockLogWarn).toHaveBeenCalledWith('Error after response sent', {
+      requestId: 'req-123',
+      error: 'late handler failure',
+    });
+  });
+
   it('maps P2002 fingerprint unique violations', () => {
     const res = makeRes();
     const err = new Prisma.PrismaClientKnownRequestError('duplicate', {

@@ -478,6 +478,37 @@ describe('aiInsightsChannelHandler', () => {
       }
     });
 
+    it('escapes HTML-significant characters in every interpolated field', async () => {
+      mockFindMany.mockResolvedValueOnce([makeWalletUser({
+        intelligence: {
+          wallets: {
+            'wallet-1': { enabled: true, notifyTelegram: true, severityFilter: 'unknown' },
+          },
+        },
+      })] as any);
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
+
+      await aiInsightsChannelHandler.notifyAIInsight!(
+        'wallet-1',
+        makeInsight({
+          walletName: 'A&B <cold>',
+          title: 'Fees <spiking> & rising',
+          summary: 'x < y',
+          severity: '<sev>' as AIInsightNotification['severity'],
+          type: '<type>' as AIInsightNotification['type'],
+        }),
+      );
+
+      const sentMessage = mockSendTelegram.mock.calls[0][2];
+      expect(sentMessage).toContain('A&amp;B &lt;cold&gt;');
+      expect(sentMessage).toContain('<b>Fees &lt;spiking&gt; &amp; rising</b>');
+      expect(sentMessage).toContain('x &lt; y');
+      expect(sentMessage).toContain('Severity: &lt;sev&gt;');
+      expect(sentMessage).toContain('Type: &lt;type&gt;');
+      expect(sentMessage).not.toContain('<cold>');
+      expect(sentMessage).toContain('<b>Treasury Intelligence</b>');
+    });
+
     it('falls back to generic formatting for unknown severity and type values', async () => {
       mockFindMany.mockResolvedValueOnce([makeWalletUser({
         intelligence: {

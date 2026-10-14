@@ -747,14 +747,23 @@ export const registerWalletRepositoryMutationContracts = () => {
   });
 
   describe('deleteById', () => {
-    it('should delete a wallet by ID', async () => {
-      (prisma.wallet.delete as Mock).mockResolvedValue(mockWallet);
+    it('deletes the wallet and its resync annotation snapshot in one transaction', async () => {
+      const tx = {
+        systemSetting: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        wallet: { delete: vi.fn().mockResolvedValue(mockWallet) },
+      };
+      (prisma.$transaction as Mock).mockImplementationOnce(
+        (fn: (client: unknown) => Promise<unknown>) => fn(tx),
+      );
 
       await walletRepository.deleteById('wallet-123');
 
-      expect(prisma.wallet.delete).toHaveBeenCalledWith({
-        where: { id: 'wallet-123' },
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      expect(tx.systemSetting.deleteMany).toHaveBeenCalledWith({
+        where: { key: 'operational.wallet-resync-annotations.v1:wallet-123' },
       });
+      expect(tx.wallet.delete).toHaveBeenCalledWith({ where: { id: 'wallet-123' } });
+      expect(prisma.wallet.delete).not.toHaveBeenCalled();
     });
   });
 

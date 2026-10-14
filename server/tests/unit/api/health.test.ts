@@ -619,6 +619,38 @@ describe('Health API', () => {
       expect(response.body.components.electrum.message).toBe('Circuit half-open - recovering');
     });
 
+    it('reports the worst electrum breaker regardless of registration order', async () => {
+      (circuitBreakerRegistry.getAllHealth as Mock).mockReturnValue([
+        { name: 'electrum-pool:1', state: 'closed', failures: 0, totalRequests: 10 },
+        { name: 'electrum-pool:2', state: 'open', failures: 8, lastFailure: '2025-01-01T00:00:00Z' },
+      ]);
+
+      const response = await request(app).get('/api/v1/health');
+
+      expect(response.body.components.electrum.status).toBe('unhealthy');
+      expect(response.body.components.electrum.details.failures).toBe(8);
+      expect(response.body.components.electrum.details.breakers).toEqual([
+        { name: 'electrum-pool:1', state: 'closed', failures: 0 },
+        { name: 'electrum-pool:2', state: 'open', failures: 8 },
+      ]);
+    });
+
+    it('prefers half-open over closed and open over half-open', async () => {
+      (circuitBreakerRegistry.getAllHealth as Mock).mockReturnValueOnce([
+        { name: 'electrum-pool:1', state: 'closed', failures: 0 },
+        { name: 'electrum-pool:2', state: 'half-open', failures: 3, successes: 1 },
+      ]);
+      const degraded = await request(app).get('/api/v1/health');
+      expect(degraded.body.components.electrum.status).toBe('degraded');
+
+      (circuitBreakerRegistry.getAllHealth as Mock).mockReturnValueOnce([
+        { name: 'electrum-pool:1', state: 'half-open', failures: 3, successes: 1 },
+        { name: 'electrum-pool:2', state: 'open', failures: 8 },
+      ]);
+      const unhealthy = await request(app).get('/api/v1/health');
+      expect(unhealthy.body.components.electrum.status).toBe('unhealthy');
+    });
+
     it('should return healthy when electrum circuit is closed', async () => {
       (circuitBreakerRegistry.getAllHealth as Mock).mockReturnValue([
         {

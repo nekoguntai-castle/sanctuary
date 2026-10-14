@@ -132,7 +132,9 @@ async function handleMcpPost(req: Request, res: Response): Promise<void> {
     validateProtocolHeader(req);
 
     context = await authenticateMcpRequest(req);
-    const rateLimit = await rateLimitService.consume('mcp:default', context.keyId);
+    // A JSON-RPC batch carries many messages in one POST; charge one token per message.
+    const cost = Array.isArray(req.body) ? Math.max(1, req.body.length) : 1;
+    const rateLimit = await rateLimitService.consume('mcp:default', context.keyId, cost);
     res.setHeader('X-RateLimit-Limit', rateLimit.limit.toString());
     res.setHeader('X-RateLimit-Remaining', rateLimit.remaining.toString());
     res.setHeader('X-RateLimit-Reset', Math.ceil(rateLimit.resetAt / 1000).toString());

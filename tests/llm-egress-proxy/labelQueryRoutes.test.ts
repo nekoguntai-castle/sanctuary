@@ -34,12 +34,12 @@ function makeDeps() {
   };
 }
 
-function makeRateLimitRequest(ip: string) {
+function makeRateLimitRequest(ip: string, headers: Record<string, unknown> = {}) {
   return {
     ip,
     method: 'POST',
     path: '/suggest-label',
-    headers: {},
+    headers,
     app: {
       get: vi.fn().mockReturnValue(false),
     },
@@ -99,5 +99,32 @@ describe('LLM egress proxy label/query routes', () => {
         'Rate limit exceeded. AI requests are limited to 10 per minute. Please wait 60s before trying again.',
       retryAfter: 60,
     });
+  });
+
+  it('partitions the label-query limiter by the backend-supplied principal header', async () => {
+    const { app, routes } = makeApp();
+    registerLabelQueryRoutes(app as any, makeDeps() as any);
+    const [rateLimitMiddleware] = routes.get('/suggest-label') as Function[];
+    const keyed = (key: unknown) =>
+      makeRateLimitRequest('203.0.113.77', { 'x-llm-egress-rate-key': key });
+
+    for (let count = 0; count < RATE_LIMIT_MAX_REQUESTS; count++) {
+      await rateLimitMiddleware(keyed('user:a'), makeResponse(), vi.fn());
+    }
+    const blockedRes = makeResponse();
+    await rateLimitMiddleware(keyed('user:a'), blockedRes, vi.fn());
+    expect(blockedRes.status).toHaveBeenCalledWith(429);
+
+    const otherNext = vi.fn();
+    await rateLimitMiddleware(keyed('user:b'), makeResponse(), otherNext);
+    expect(otherNext).toHaveBeenCalledTimes(1);
+
+    // Invalid and array-valued headers fall back to the (exhausted-by-fallback) IP bucket.
+    for (let count = 0; count < RATE_LIMIT_MAX_REQUESTS; count++) {
+      await rateLimitMiddleware(keyed('bad key'), makeResponse(), vi.fn());
+    }
+    const fallbackRes = makeResponse();
+    await rateLimitMiddleware(keyed(['user:c']), fallbackRes, vi.fn());
+    expect(fallbackRes.status).toHaveBeenCalledWith(429);
   });
 });

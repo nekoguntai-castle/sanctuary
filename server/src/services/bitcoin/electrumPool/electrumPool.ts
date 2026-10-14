@@ -9,7 +9,7 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import type { CircuitBreaker } from '../../circuitBreaker';
+import { circuitBreakerRegistry, type CircuitBreaker } from '../../circuitBreaker';
 import type {
   ElectrumPoolConfig,
   ServerConfig,
@@ -72,7 +72,7 @@ import {
 } from './poolHealthCycle';
 import { getSubscriptionConnection as getSubscriptionConn } from './subscriptionConnection';
 import { loadPoolConfigFromDatabase } from './poolConfig';
-import { createElectrumPoolCircuitBreaker } from './poolCircuitBreaker';
+import { createElectrumPoolCircuitBreaker, nextElectrumPoolBreakerName } from './poolCircuitBreaker';
 
 const log = createLogger('ELECTRUM_POOL:SVC');
 
@@ -120,6 +120,7 @@ export class ElectrumPool extends EventEmitter {
 
   // Circuit breaker for pool-level fault tolerance
   private circuitBreaker: CircuitBreaker<PooledConnectionHandle>;
+  private readonly circuitBreakerName = nextElectrumPoolBreakerName();
 
   constructor(poolConfig?: Partial<ElectrumPoolConfig>) {
     super();
@@ -128,7 +129,7 @@ export class ElectrumPool extends EventEmitter {
     this.circuitBreaker = createElectrumPoolCircuitBreaker((newState, oldState) => {
       log.info(`Electrum pool circuit breaker: ${oldState} → ${newState}`);
       this.emit('circuitStateChange', { newState, oldState });
-    });
+    }, this.circuitBreakerName);
   }
 
   // Get circuit breaker health for monitoring
@@ -367,56 +368,60 @@ export class ElectrumPool extends EventEmitter {
    * Shutdown the pool and close all connections
    */
   async shutdown(): Promise<void> {
-    log.info('Shutting down Electrum pool...');
-    this.isShuttingDown = true;
-    const initialization = this.initializePromise;
+    try {
+      log.info('Shutting down Electrum pool...');
+      this.isShuttingDown = true;
+      const initialization = this.initializePromise;
 
-    // Clear intervals
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-    if (this.keepaliveInterval) {
-      clearInterval(this.keepaliveInterval);
-      this.keepaliveInterval = null;
-    }
-    if (this.idleCheckInterval) {
-      clearInterval(this.idleCheckInterval);
-      this.idleCheckInterval = null;
-    }
-
-    // Reject all waiting requests
-    for (const req of this.waitingQueue) {
-      clearTimeout(req.timeoutId);
-      req.reject(new Error('Pool is shutting down'));
-    }
-    this.waitingQueue = [];
-
-    // Close all connections
-    for (const [id, conn] of this.connections) {
-      try {
-        conn.client.disconnect();
-        conn.state = 'closed';
-      } catch (error) {
-        log.warn(`Error closing connection ${id}`, { error: getErrorMessage(error) });
+      // Clear intervals
+      if (this.healthCheckInterval) {
+        clearInterval(this.healthCheckInterval);
+        this.healthCheckInterval = null;
       }
-    }
-    this.connections.clear();
-    this.subscriptionConnectionId.value = null;
-    this.isInitialized = false;
+      if (this.keepaliveInterval) {
+        clearInterval(this.keepaliveInterval);
+        this.keepaliveInterval = null;
+      }
+      if (this.idleCheckInterval) {
+        clearInterval(this.idleCheckInterval);
+        this.idleCheckInterval = null;
+      }
 
-    if (initialization) {
-      await initialization.catch((error) => {
-        log.debug('Pool initialization stopped during shutdown', {
-          error: getErrorMessage(error),
+      // Reject all waiting requests
+      for (const req of this.waitingQueue) {
+        clearTimeout(req.timeoutId);
+        req.reject(new Error('Pool is shutting down'));
+      }
+      this.waitingQueue = [];
+
+      // Close all connections
+      for (const [id, conn] of this.connections) {
+        try {
+          conn.client.disconnect();
+          conn.state = 'closed';
+        } catch (error) {
+          log.warn(`Error closing connection ${id}`, { error: getErrorMessage(error) });
+        }
+      }
+      this.connections.clear();
+      this.subscriptionConnectionId.value = null;
+      this.isInitialized = false;
+
+      if (initialization) {
+        await initialization.catch((error) => {
+          log.debug('Pool initialization stopped during shutdown', {
+            error: getErrorMessage(error),
+          });
         });
-      });
-    }
-    this.initializePromise = null;
-    this.connections.clear();
-    this.isInitialized = false;
+      }
+      this.initializePromise = null;
+      this.connections.clear();
+      this.isInitialized = false;
 
-    log.info('Electrum pool shut down');
+      log.info('Electrum pool shut down');
+    } finally {
+      circuitBreakerRegistry.unregister(this.circuitBreakerName);
+    }
   }
 
   /**

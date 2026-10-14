@@ -8,6 +8,14 @@ import {
   TOR_OWNERSHIP_LABELS,
 } from "./dockerTestHarness";
 
+const EARLIER_RUN_LABELS = {
+  ...TOR_OWNERSHIP_LABELS,
+  "io.sanctuary.created-at": "2026-08-01T00:00:00.000Z",
+  "io.sanctuary.created-by-release": "v0.8.60",
+  "io.sanctuary.created-by-commit": "c".repeat(40),
+  "io.sanctuary.creation-run-id": "run-earlier",
+};
+
 export function registerDockerTorCreateContracts(): void {
   describe("createTorContainer", () => {
     it("should return success if already running", async () => {
@@ -508,6 +516,47 @@ export function registerDockerTorCreateContracts(): void {
         ).toBe(false);
       },
     );
+
+    it("fails to create without the per-run provenance environment", async () => {
+      delete process.env.SANCTUARY_OPERATION_RUN_ID;
+
+      await expect(createTorContainer()).resolves.toEqual({
+        success: false,
+        message: "SANCTUARY_OPERATION_RUN_ID is required for Tor ownership",
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("adopts a created container with the same identity but earlier-run provenance after a lost create response", async () => {
+      const earlier = ownedTorInspect({ Config: { Labels: EARLIER_RUN_LABELS } });
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockResolvedValueOnce({ ok: true, text: async () => "Done" });
+      mockFetch.mockRejectedValueOnce(new Error("create response lost"));
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => earlier });
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => earlier });
+      mockFetch.mockResolvedValueOnce({ status: 204 });
+
+      await expect(createTorContainer()).resolves.toMatchObject({ success: true });
+      expect(mockFetch.mock.calls.at(-1)?.[0]).toContain(`/containers/${TOR_ID}/start`);
+    });
+
+    it("refuses a post-create inspect whose identity matches but provenance does not", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockResolvedValueOnce({ ok: true, text: async () => "Done" });
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ Id: TOR_ID }) });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ownedTorInspect({ Config: { Labels: EARLIER_RUN_LABELS } }),
+      });
+
+      const result = await createTorContainer();
+
+      expect(result.success).toBe(false);
+      expect(
+        mockFetch.mock.calls.some((call) => String(call[0]).endsWith("/start")),
+      ).toBe(false);
+    });
 
     it("refuses response-loss recovery when the ownership tuple differs", async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });

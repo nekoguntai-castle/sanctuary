@@ -322,7 +322,8 @@ describe('Intelligence API', () => {
 
       expect(mockPost).toHaveBeenCalledWith(
         '/intelligence/conversations/conv-1/messages',
-        { content: 'test' }
+        { content: 'test' },
+        { timeoutMs: 50_000 }
       );
       expect(result.userMessage.content).toBe('test');
       expect(result.assistantMessage.content).toBe('response');
@@ -340,7 +341,8 @@ describe('Intelligence API', () => {
         '/intelligence/conversations/conv-1/messages',
         {
           content: 'analyze',
-        }
+        },
+        { timeoutMs: 50_000 }
       );
     });
   });

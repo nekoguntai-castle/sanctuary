@@ -154,6 +154,54 @@ async function findSoleOwnedNonGroupWalletIds(
     .map((membership) => membership.walletId);
 }
 
+const MAX_NAMED_WALLETS = 10;
+
+function formatWalletNames(names: string[]): string {
+  const unique = [...new Set(names)].sort();
+  const shown = unique.slice(0, MAX_NAMED_WALLETS).join(', ');
+  const more = unique.length - MAX_NAMED_WALLETS;
+  return more > 0 ? `${shown} and ${more} more` : shown;
+}
+
+/**
+ * A non-group wallet whose only `owner` is this user but that still has other
+ * members would survive the cascade with nobody able to manage it. The
+ * sole-member check above already covers the one-member case.
+ */
+async function findSoleOwnerSharedWalletNames(
+  tx: TxClient,
+  userId: string,
+): Promise<string[]> {
+  const rows = await tx.walletUser.findMany({
+    where: {
+      userId,
+      role: 'owner',
+      wallet: {
+        groupId: null,
+        users: { none: { role: 'owner', userId: { not: userId } } },
+      },
+    },
+    select: { wallet: { select: { name: true } } },
+  });
+  return rows.map((row) => row.wallet.name);
+}
+
+/**
+ * `Device.user` and `WalletDevice.device` both cascade, so deleting the user
+ * would silently remove their devices as signers from wallets other users
+ * still hold. Mirrors `deviceRepository.deleteDeviceIfUnused`.
+ */
+async function findWalletLinkedOwnedDeviceWalletNames(
+  tx: TxClient,
+  userId: string,
+): Promise<string[]> {
+  const links = await tx.walletDevice.findMany({
+    where: { device: { userId } },
+    select: { wallet: { select: { name: true } } },
+  });
+  return links.map((link) => link.wallet.name);
+}
+
 async function attemptAdminUserDelete(id: string) {
   return prisma.$transaction(async (tx) => {
     const current = await tx.user.findUnique({
@@ -172,6 +220,22 @@ async function attemptAdminUserDelete(id: string) {
       throw new ConflictError(
         `Cannot delete user: sole member of wallet(s) ${strandedWalletIds.join(', ')}; `
         + 'reassign or delete the wallet(s) first',
+      );
+    }
+
+    const soleOwnerWalletNames = await findSoleOwnerSharedWalletNames(tx, id);
+    if (soleOwnerWalletNames.length > 0) {
+      throw new ConflictError(
+        `Cannot delete user: sole owner of shared wallet(s) ${formatWalletNames(soleOwnerWalletNames)}; `
+        + 'transfer ownership first',
+      );
+    }
+
+    const linkedWalletNames = await findWalletLinkedOwnedDeviceWalletNames(tx, id);
+    if (linkedWalletNames.length > 0) {
+      throw new ConflictError(
+        `Cannot delete user: their device(s) are signers in wallet(s) ${formatWalletNames(linkedWalletNames)}; `
+        + 'remove the device from the wallet(s) or delete/transfer the wallets first',
       );
     }
 

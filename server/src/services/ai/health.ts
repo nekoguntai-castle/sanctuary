@@ -11,7 +11,7 @@ import {
   getLlmEgressProxyUrl,
   syncConfigToLlmEgressProxyResult,
 } from "./config";
-import { buildLlmEgressProxyJsonHeaders } from "./llmEgressProxyClient";
+import { ADMIN_SYSTEM_RATE_KEY, buildLlmEgressProxyJsonHeaders } from "./llmEgressProxyClient";
 import { validateResponse } from "./validation";
 import type { AIHealthResponse } from "./types";
 
@@ -114,7 +114,7 @@ export async function checkHealth(): Promise<{
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/test`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       signal: AbortSignal.timeout(15000),
     });
 

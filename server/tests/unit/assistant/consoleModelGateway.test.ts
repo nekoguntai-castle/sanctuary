@@ -33,6 +33,7 @@ vi.mock("../../../src/services/ai/config", () => ({
 
 vi.mock("../../../src/services/ai/llmEgressProxyClient", () => ({
   buildLlmEgressProxyJsonHeaders: mocks.buildLlmEgressProxyJsonHeaders,
+  userRateKey: (userId: string) => `user:${userId}`,
 }));
 
 vi.mock("../../../src/utils/logger", () => ({
@@ -88,7 +89,7 @@ describe("console model gateway", () => {
           inputFields: [],
         },
       ],
-    });
+    }, "user-7");
 
     expect(result).toMatchObject({
       providerProfileId: "lan-profile",
@@ -108,7 +109,14 @@ describe("console model gateway", () => {
         },
       }),
     );
-    expect(mocks.buildLlmEgressProxyJsonHeaders).toHaveBeenCalledWith();
+    expect(mocks.buildLlmEgressProxyJsonHeaders).toHaveBeenCalledWith({
+      rateLimitKey: "user:user-7",
+    });
+    // The rate-limit principal travels as a header only, never in the request body.
+    expect(mocks.fetch.mock.calls[0][1].body).not.toContain("user-7");
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).not.toHaveProperty(
+      "rateLimitKey",
+    );
     expect(mocks.fetch.mock.calls[0][1].headers).not.toHaveProperty(
       "Authorization",
     );
@@ -143,7 +151,7 @@ describe("console model gateway", () => {
             inputFields: [],
           },
         ],
-      });
+      }, "user-7");
 
       expect(timeoutSpy).toHaveBeenCalledWith(2500);
     } finally {
@@ -178,7 +186,7 @@ describe("console model gateway", () => {
             inputFields: [],
           },
         ],
-      }),
+      }, "user-7"),
     ).resolves.toMatchObject({ toolCalls: [], warnings: [] });
   });
 
@@ -202,7 +210,7 @@ describe("console model gateway", () => {
           facts: { summary: "Fee estimates available." },
         },
       ],
-    });
+    }, "user-7");
 
     expect(result).toEqual({
       providerProfileId: "lan-profile",
@@ -214,6 +222,10 @@ describe("console model gateway", () => {
       planningWarnings: ["wallet_worth_plan_partial"],
       toolResults: [{ facts: { summary: "Fee estimates available." } }],
     });
+    expect(mocks.buildLlmEgressProxyJsonHeaders).toHaveBeenCalledWith({
+      rateLimitKey: "user:user-7",
+    });
+    expect(mocks.fetch.mock.calls[0][1].body).not.toContain("user-7");
   });
 
   it("fails closed before proxy fetch when no provider is configured", async () => {
@@ -238,7 +250,7 @@ describe("console model gateway", () => {
             inputFields: [],
           },
         ],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       statusCode: 503,
       details: { reason: "provider_not_configured" },
@@ -264,7 +276,7 @@ describe("console model gateway", () => {
             inputFields: [],
           },
         ],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       statusCode: 503,
       details: { reason: "provider_config_sync_failed" },
@@ -284,7 +296,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message:
         "LLM egress proxy /console/synthesize request failed: AI endpoint not available",
@@ -312,7 +324,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message:
         "LLM egress proxy /console/synthesize request failed: AI endpoint or model is not configured",
@@ -340,7 +352,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message:
         "LLM egress proxy /console/synthesize request failed: AI provider configuration could not be synced",
@@ -363,7 +375,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message:
         "LLM egress proxy /console/synthesize request failed: Provider timed out",
@@ -398,7 +410,7 @@ describe("console model gateway", () => {
             inputFields: [],
           },
         ],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message:
         "LLM egress proxy /console/plan request failed: The request took too long to process",
@@ -423,7 +435,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message: "LLM egress proxy /console/synthesize request failed",
       details: { status: 502 },
@@ -440,7 +452,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({
       message: "LLM egress proxy /console/synthesize request failed",
       details: { status: 503 },
@@ -455,7 +467,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).rejects.toMatchObject({ statusCode: 503 });
   });
 
@@ -470,7 +482,7 @@ describe("console model gateway", () => {
         prompt: "summarize",
         scope: { kind: "general" },
         toolResults: [],
-      }),
+      }, "user-7"),
     ).resolves.toMatchObject({ response: "" });
   });
 });

@@ -68,6 +68,10 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
           type: 'tax',
         })
       );
+      for (const [url, init] of mockFetch.mock.calls.slice(0, 2)) {
+        expect(init.headers).toMatchObject({ 'X-LLM-Egress-Rate-Key': 'worker:intelligence' });
+        expect(String(url)).toMatch(/\/(check-provider|analyze)$/);
+      }
     });
 
     it('should return null context for tax when both short and long term counts are zero', async () => {

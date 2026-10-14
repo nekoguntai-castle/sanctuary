@@ -68,11 +68,11 @@ export async function queueWebhookEventsDeliveries(
   for (const event of events) {
     const endpoints = await getEnabledWalletEndpoints(event.wallet.id, endpointsByWallet);
     for (const endpoint of endpoints) {
-      if (!matchesEndpointEventType(endpoint, event.eventType) || !matchesEndpointFilters(endpoint, event)) {
-        continue;
-      }
-
       try {
+        if (!matchesEndpointEventType(endpoint, event.eventType) || !matchesEndpointFilters(endpoint, event)) {
+          continue;
+        }
+
         const admission = await webhookRepository.createDelivery({
           endpointId: endpoint.id,
           walletId: event.wallet.id,

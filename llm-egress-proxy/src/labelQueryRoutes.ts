@@ -1,8 +1,9 @@
 import type { Express, Request, Response } from 'express';
-import expressRateLimit from 'express-rate-limit';
+import expressRateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { callExternalAI } from './aiClient';
 import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from './constants';
 import type { Logger } from './logger';
+import { principalRateLimitKey } from './rateLimit';
 import {
   QueryBodySchema,
   SuggestLabelBodySchema,
@@ -30,6 +31,8 @@ const aiRequestRateLimit = expressRateLimit({
   limit: RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: false,
   legacyHeaders: false,
+  keyGenerator: (req) =>
+    principalRateLimitKey(req) ?? ipKeyGenerator(req.ip ?? 'unknown'),
   handler: (_req, res) => {
     const retryAfter = Math.ceil(RATE_LIMIT_WINDOW_MS / 1000);
     return res.status(429).json({

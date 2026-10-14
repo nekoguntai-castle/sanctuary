@@ -41,6 +41,7 @@ export const ResyncConfirmationDialog: React.FC<ResyncConfirmationDialogProps> =
           <li>Clear all UTXO data</li>
           <li>Reset address derivation tracking</li>
           <li>Re-sync everything from the blockchain</li>
+          <li>Transaction labels and memos are kept and re-applied as transactions are found again</li>
         </ul>
         <p className="mt-3 text-amber-600 dark:text-amber-400 font-medium">
           This may take several minutes.

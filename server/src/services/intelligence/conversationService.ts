@@ -10,7 +10,7 @@ import {
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
-import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
+import { buildLlmEgressProxyJsonHeaders, userRateKey } from "../ai/llmEgressProxyClient";
 import { intelligenceRepository } from "../../repositories/intelligenceRepository";
 import type { AIConversation, AIMessage } from "../../generated/prisma/client";
 import { findByIdWithAccess } from "../../repositories/walletRepository";
@@ -135,7 +135,7 @@ export async function sendMessage(
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/chat`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: userRateKey(userId) }),
       body: JSON.stringify({
         messages: aiMessages,
         walletContext: conversation.walletId ? { walletId: conversation.walletId } : undefined,
