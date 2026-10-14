@@ -32,7 +32,7 @@ function buildValidConfig() {
       loginWindowSeconds: 900,
       registerAttempts: 10,
       registerWindowSeconds: 3600,
-      twoFaAttempts: 10,
+      twoFaAttempts: 10, twoFaAccountAttempts: 10,
       twoFaWindowSeconds: 900,
       passwordChangeAttempts: 5,
       passwordChangeWindowSeconds: 900,
@@ -223,6 +223,18 @@ describe('Config Schema Validation', () => {
     expect(result.success).toBe(false);
     expect(result.errors.some(error => error.includes('server.port'))).toBe(true);
     expect(result.errors.some(error => error.includes('security.jwt.secret'))).toBe(true);
+  });
+
+  it('bounds the per-account 2FA attempt cap to 1..100', () => {
+    for (const value of [0, 101]) {
+      const invalidConfig = buildValidConfig();
+      invalidConfig.rateLimit.twoFaAccountAttempts = value;
+
+      const result = validateConfigSchema(invalidConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.errors.some(error => error.includes('rateLimit.twoFaAccountAttempts'))).toBe(true);
+    }
   });
 
   it('enforces the declared pre-floor wallet execution drain bound', () => {

@@ -45,8 +45,8 @@ export async function checkHealth(
 
     // Verify connection is actually working
     try {
-      // Simple ping by getting server version
-      await state.client.getServerVersion();
+      // Real round-trip ping (getServerVersion returns a cached value without I/O)
+      await state.client.ping();
       if (!isActive()) {
         state.connected = false;
         state.client.disconnect();

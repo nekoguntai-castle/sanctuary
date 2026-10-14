@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  claim: vi.fn(), unknown: vi.fn(), rejected: vi.fn(), accepted: vi.fn(), complete: vi.fn(),
+  claim: vi.fn(), unknown: vi.fn(), stalled: vi.fn(), rejected: vi.fn(), accepted: vi.fn(), complete: vi.fn(),
 }));
 vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', () => ({
   transactionSigningIntentRepository: {
     claimBroadcast: mocks.claim,
     markBroadcastUnknown: mocks.unknown,
+    markBroadcastStalled: mocks.stalled,
     releaseRejectedBroadcast: mocks.rejected,
     markBroadcastAccepted: mocks.accepted,
     markBroadcastComplete: mocks.complete,
@@ -17,6 +18,7 @@ import {
   claimSigningIntentBroadcast,
   markSigningIntentBroadcastAccepted,
   markSigningIntentBroadcastComplete,
+  markSigningIntentBroadcastStalled,
   markSigningIntentBroadcastUnknown,
   releaseRejectedSigningIntentBroadcast,
 } from '../../../../../src/services/bitcoin/signingIntent/broadcastLifecycle';
@@ -37,14 +39,20 @@ describe('signing intent broadcast lifecycle', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('stores the exact artifact and metadata in the atomic pre-broadcast claim', async () => {
-    mocks.claim.mockResolvedValue({ status: 'claimed', record: {} });
+    mocks.claim.mockResolvedValue({ status: 'claimed', record: {}, priorState: 'ready' });
     const now = new Date('2030-01-01T00:00:00Z');
     const result = await claimSigningIntentBroadcast(artifact, metadata, now);
-    expect(result).toEqual({ status: 'claimed', leaseToken: expect.any(String) });
+    expect(result).toEqual({ status: 'claimed', leaseToken: expect.any(String), priorState: 'ready' });
     expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({
       id: 'intent-1', digest: 'a'.repeat(64), txid: 'b'.repeat(64), rawTx: '00', metadata,
-      now, leaseExpiresAt: new Date('2030-01-01T00:01:00Z'),
+      now, leaseExpiresAt: new Date('2030-01-01T00:01:00Z'), allowStalled: true,
     }));
+  });
+
+  it.each(['ready', 'resumed', 'stalled'] as const)('returns the %s prior state of a claim', async priorState => {
+    mocks.claim.mockResolvedValue({ status: 'claimed', record: {}, priorState });
+    await expect(claimSigningIntentBroadcast(artifact, metadata))
+      .resolves.toEqual({ status: 'claimed', leaseToken: expect.any(String), priorState });
   });
 
   it.each(['accepted', 'complete'] as const)('makes an exact retry idempotent after %s', async status => {
@@ -84,12 +92,12 @@ describe('signing intent broadcast lifecycle', () => {
     // which is exactly what happened to every RBF broadcast when
     // replacesTxid was added to broadcastAndSave's metadata without also
     // being added here (rbf-memo-prefix-spoofs-transaction-replacement).
-    mocks.claim.mockResolvedValue({ status: 'claimed', record: {} });
+    mocks.claim.mockResolvedValue({ status: 'claimed', record: {}, priorState: 'ready' });
     const replacesTxid = 'd'.repeat(64);
     const metadataWithReplacesTxid = { ...metadata, replacesTxid };
 
     await expect(claimSigningIntentBroadcast(artifact, metadataWithReplacesTxid))
-      .resolves.toEqual({ status: 'claimed', leaseToken: expect.any(String) });
+      .resolves.toEqual({ status: 'claimed', leaseToken: expect.any(String), priorState: 'ready' });
 
     expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({
       metadata: metadataWithReplacesTxid,
@@ -99,9 +107,16 @@ describe('signing intent broadcast lifecycle', () => {
   it('delegates every lease-bound outcome transition', async () => {
     mocks.unknown.mockResolvedValue(true);
     mocks.rejected.mockResolvedValue(true);
+    mocks.stalled.mockResolvedValue(true);
     mocks.accepted.mockResolvedValue(true);
     mocks.complete.mockResolvedValue(true);
     await expect(markSigningIntentBroadcastUnknown('intent-1', 'lease', 'timeout')).resolves.toBe(true);
+    expect(mocks.unknown).toHaveBeenLastCalledWith('intent-1', 'lease', 'timeout', undefined);
+    await expect(markSigningIntentBroadcastUnknown('intent-1', 'lease', 'timeout', { countAttempt: false }))
+      .resolves.toBe(true);
+    expect(mocks.unknown).toHaveBeenLastCalledWith('intent-1', 'lease', 'timeout', { countAttempt: false });
+    await expect(markSigningIntentBroadcastStalled('intent-1', 'lease', 'capped')).resolves.toBe(true);
+    expect(mocks.stalled).toHaveBeenCalledWith('intent-1', 'lease', 'capped');
     await expect(releaseRejectedSigningIntentBroadcast('intent-1', 'lease', 'rejected')).resolves.toBe(true);
     await expect(markSigningIntentBroadcastAccepted('intent-1', 'lease')).resolves.toBe(true);
     await expect(markSigningIntentBroadcastComplete('intent-1', 'txid')).resolves.toBe(true);

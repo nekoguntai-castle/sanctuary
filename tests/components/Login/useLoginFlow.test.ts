@@ -30,17 +30,20 @@ vi.mock('../../../src/contexts/UserContext', () => ({
 
 vi.mock('../../../src/api/auth', () => ({
   getRegistrationStatus: vi.fn().mockResolvedValue({ enabled: true }),
+  resendPendingVerification: vi.fn(),
 }));
 
 // Must import after mocks are defined
 import { useLoginFlow } from '../../../src/components/Login/useLoginFlow';
-import { getRegistrationStatus } from '../../../src/api/auth';
+import { getRegistrationStatus, resendPendingVerification } from '../../../src/api/auth';
+import { ApiError } from '../../../src/api/client';
 
 describe('useLoginFlow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset the mutable UserContext state before every test.
     mockUserContextState.isLoading = false;
+    mockLogin.mockResolvedValue({ success: true });
     vi.mocked(getRegistrationStatus).mockResolvedValue({ enabled: true });
     // Mock fetch for health check
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
@@ -326,5 +329,79 @@ describe('useLoginFlow', () => {
     expect(mockEvent.preventDefault).toHaveBeenCalled();
     expect(mockVerify2FA).not.toHaveBeenCalled();
     expect(mockClearError).not.toHaveBeenCalled();
+  });
+
+  describe('unverified email resend', () => {
+    const submitLogin = async (result: { current: ReturnType<typeof useLoginFlow> }) => {
+      act(() => result.current.setUsername('alice'));
+      act(() => result.current.setPassword('password123'));
+      const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
+      await act(() => result.current.handleSubmit(mockEvent));
+    };
+
+    it('offers the resend action only after a login refused for an unverified email', async () => {
+      mockLogin.mockResolvedValue({ success: false, emailVerificationRequired: true });
+      const { result } = renderHook(() => useLoginFlow());
+      await waitForInitialChecks(result);
+      expect(result.current.emailVerificationRequired).toBe(false);
+
+      await submitLogin(result);
+
+      expect(result.current.emailVerificationRequired).toBe(true);
+    });
+
+    it('does not offer it for other failed logins and clears it on the next attempt', async () => {
+      mockLogin.mockResolvedValueOnce({ success: false, emailVerificationRequired: true });
+      const { result } = renderHook(() => useLoginFlow());
+      await waitForInitialChecks(result);
+      await submitLogin(result);
+      expect(result.current.emailVerificationRequired).toBe(true);
+
+      mockLogin.mockResolvedValueOnce({ success: false, emailVerificationRequired: false });
+      await submitLogin(result);
+
+      expect(result.current.emailVerificationRequired).toBe(false);
+    });
+
+    it('resends with the username and password from the form and reports success', async () => {
+      mockLogin.mockResolvedValue({ success: false, emailVerificationRequired: true });
+      vi.mocked(resendPendingVerification).mockResolvedValue({ success: true, message: 'A new email has been sent.' });
+      const { result } = renderHook(() => useLoginFlow());
+      await waitForInitialChecks(result);
+      await submitLogin(result);
+
+      await act(() => result.current.handleResendVerification());
+
+      expect(resendPendingVerification).toHaveBeenCalledWith({ username: 'alice', password: 'password123' });
+      expect(result.current.resendFeedback).toEqual({ kind: 'success', message: 'A new email has been sent.' });
+      expect(result.current.isResendingVerification).toBe(false);
+    });
+
+    it.each([
+      ['an ApiError message', new ApiError('Too many verification email requests.', 429), 'Too many verification email requests.'],
+      ['a generic message for other errors', new Error('boom'), 'Could not request a new verification email'],
+    ])('reports %s when the resend fails', async (_name, error, expected) => {
+      mockLogin.mockResolvedValue({ success: false, emailVerificationRequired: true });
+      vi.mocked(resendPendingVerification).mockRejectedValue(error);
+      const { result } = renderHook(() => useLoginFlow());
+      await waitForInitialChecks(result);
+      await submitLogin(result);
+
+      await act(() => result.current.handleResendVerification());
+
+      expect(result.current.resendFeedback).toEqual({ kind: 'error', message: expected });
+    });
+
+    it('clears the resend state when switching between sign in and register', async () => {
+      mockLogin.mockResolvedValue({ success: false, emailVerificationRequired: true });
+      const { result } = renderHook(() => useLoginFlow());
+      await waitForInitialChecks(result);
+      await submitLogin(result);
+
+      act(() => result.current.toggleMode());
+
+      expect(result.current.emailVerificationRequired).toBe(false);
+      expect(result.current.resendFeedback).toBeNull();
+    });
   });
 });

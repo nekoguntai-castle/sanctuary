@@ -636,6 +636,20 @@ describe('Mobile Permissions API', () => {
       expect(response.body.allowed).toBe(true);
     });
 
+    it.each(['viewBalance', 'viewTransactions', 'viewUtxos'])(
+      'accepts the %s view action from the gateway',
+      async (action) => {
+        vi.mocked(mobilePermissionService.checkForGateway).mockResolvedValue({ allowed: true });
+
+        const response = await request(app)
+          .post('/internal/mobile-permissions/check')
+          .send({ walletId: 'wallet-123', userId: 'user-123', action });
+
+        expect(response.status).toBe(200);
+        expect(mobilePermissionService.checkForGateway).toHaveBeenCalledWith('wallet-123', 'user-123', action);
+      },
+    );
+
     it('should return allowed: false with reason when denied', async () => {
       vi.mocked(mobilePermissionService.checkForGateway).mockResolvedValue({
         allowed: false,

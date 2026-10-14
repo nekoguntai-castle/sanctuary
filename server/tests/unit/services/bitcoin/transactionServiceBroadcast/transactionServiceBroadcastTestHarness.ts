@@ -15,6 +15,7 @@ const transactionServiceBroadcastMocks = vi.hoisted(() => ({
   mockClaimSigningIntentBroadcast: vi.fn(),
   mockMarkSigningIntentBroadcastComplete: vi.fn(),
   mockMarkSigningIntentBroadcastUnknown: vi.fn(),
+  mockMarkSigningIntentBroadcastStalled: vi.fn(),
   mockReleaseRejectedSigningIntentBroadcast: vi.fn(),
   mockAssertWalletHardwareCapabilityById: vi.fn(),
 }));
@@ -28,6 +29,7 @@ export const mockMarkSigningIntentBroadcastAccepted =
 export const mockClaimSigningIntentBroadcast = transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast;
 export const mockMarkSigningIntentBroadcastComplete = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete;
 export const mockMarkSigningIntentBroadcastUnknown = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown;
+export const mockMarkSigningIntentBroadcastStalled = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastStalled;
 export const mockReleaseRejectedSigningIntentBroadcast = transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast;
 export const mockAssertWalletHardwareCapabilityById =
   transactionServiceBroadcastMocks.mockAssertWalletHardwareCapabilityById;
@@ -59,11 +61,18 @@ vi.mock('../../../../../src/services/bitcoin/electrum', () => ({
   }),
 }));
 
-vi.mock('../../../../../src/services/bitcoin/blockchain', () => ({
-  broadcastTransaction: vi.fn().mockResolvedValue({ txid: 'mock-txid', broadcasted: true }),
-  DefiniteBroadcastRejectionError: class extends Error {},
-  recalculateWalletBalances: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('../../../../../src/services/bitcoin/blockchain', async () => {
+  const actual = await vi.importActual<typeof import('../../../../../src/services/bitcoin/blockchain/networkOperations')>(
+    '../../../../../src/services/bitcoin/blockchain/networkOperations',
+  );
+  return {
+    broadcastTransaction: vi.fn().mockResolvedValue({ txid: 'mock-txid', broadcasted: true }),
+    DefiniteBroadcastRejectionError: class extends Error {},
+    // The real predicate, so the transition chosen for a thrown error is exercised end to end.
+    isNodeAnsweredBroadcastFailure: actual.isNodeAnsweredBroadcastFailure,
+    recalculateWalletBalances: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 vi.mock('../../../../../src/services/bitcoin/signingIntent/broadcastLifecycle', () => ({
   claimSigningIntentBroadcast: transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast,
@@ -71,6 +80,7 @@ vi.mock('../../../../../src/services/bitcoin/signingIntent/broadcastLifecycle', 
     transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastAccepted,
   markSigningIntentBroadcastComplete: transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete,
   markSigningIntentBroadcastUnknown: transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown,
+  markSigningIntentBroadcastStalled: transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastStalled,
   releaseRejectedSigningIntentBroadcast:
     transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast,
 }));
@@ -172,12 +182,14 @@ export const setupTransactionServiceBroadcastMocks = () => {
   transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastAccepted.mockResolvedValue(true);
   transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast.mockReset();
   transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast.mockResolvedValue({
-    status: 'claimed', leaseToken: 'lease-1',
+    status: 'claimed', leaseToken: 'lease-1', priorState: 'ready',
   });
   transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete.mockReset();
   transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete.mockResolvedValue(true);
   transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown.mockReset();
   transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown.mockResolvedValue(true);
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastStalled.mockReset();
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastStalled.mockResolvedValue(true);
   transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast.mockReset();
   transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast.mockResolvedValue(true);
   // Set up default system settings

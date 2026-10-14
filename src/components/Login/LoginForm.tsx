@@ -19,6 +19,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   isBootLoading,
   error,
   notice,
+  showResendVerification,
+  isResendingVerification,
+  resendFeedback,
+  onResendVerification,
   onUsernameChange,
   onPasswordChange,
   onEmailChange,
@@ -51,6 +55,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           isBootLoading={isBootLoading}
           error={error}
           notice={notice}
+          showResendVerification={showResendVerification}
+          isResendingVerification={isResendingVerification}
+          resendFeedback={resendFeedback}
+          onResendVerification={onResendVerification}
           onToggleMode={onToggleMode}
         />
       </form>

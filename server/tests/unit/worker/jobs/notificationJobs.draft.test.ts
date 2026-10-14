@@ -62,6 +62,38 @@ describe('draftNotifyJob', () => {
     );
   });
 
+  it.each([
+    ['pending', true],
+    ['not_required', false],
+    ['approved', false],
+  ])('derives approvalRequired from the reloaded draft status %s', async (approvalStatus, expected) => {
+    mockPrisma.draftTransaction.findUnique.mockResolvedValueOnce({
+      id: 'draft-approval',
+      amount: BigInt(50000),
+      feeRate: 5.0,
+      recipient: 'bc1q...',
+      label: null,
+      approvalStatus,
+    });
+    mockNotificationChannelRegistry.notifyDraft.mockResolvedValueOnce([
+      { success: true, usersNotified: 1 },
+    ]);
+
+    await draftNotifyJob.handler(createMockJob({
+      walletId: 'wallet-abc',
+      draftId: 'draft-approval',
+      creatorUserId: 'user-456',
+      creatorUsername: 'alice',
+    }));
+
+    expect(mockNotificationChannelRegistry.notifyDraft).toHaveBeenCalledWith(
+      'wallet-abc',
+      expect.objectContaining({ approvalRequired: expected }),
+      'user-456',
+      undefined,
+    );
+  });
+
   it('should handle draft not found', async () => {
     mockPrisma.draftTransaction.findUnique.mockResolvedValueOnce(null);
 

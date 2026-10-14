@@ -4,7 +4,9 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { getRegistrationStatus } from '../../api/auth';
+import { getRegistrationStatus, resendPendingVerification } from '../../api/auth';
+import { ApiError } from '../../api/client';
+import type { ResendFeedback } from '../VerifyEmail/useVerifyEmail';
 import { checkApiHealth } from '../../api/health';
 
 export function useLoginFlow() {
@@ -55,6 +57,12 @@ export function useLoginFlow() {
   // and the latter as `isLoading`, so the text and spinner reflect only
   // real submissions while the button stays un-pressable during boot.
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Set when the last sign-in was refused because the email is unverified;
+  // offers a credentialed resend (the user has no session to resend with).
+  const [emailVerificationRequired, setEmailVerificationRequired] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [resendFeedback, setResendFeedback] = useState<ResendFeedback | null>(null);
 
   // Apply system color scheme preference on login screen
   useEffect(() => {
@@ -141,12 +149,15 @@ export function useLoginFlow() {
     if (isBootLoading || isSubmitting) return;
     clearError();
     clearNotice();
+    setEmailVerificationRequired(false);
+    setResendFeedback(null);
     setIsSubmitting(true);
     try {
       if (isRegisterMode) {
         await register(username, password, email);
       } else {
-        await login(username, password);
+        const result = await login(username, password);
+        setEmailVerificationRequired(result.emailVerificationRequired === true);
       }
     } finally {
       setIsSubmitting(false);
@@ -166,6 +177,22 @@ export function useLoginFlow() {
     }
   };
 
+  const handleResendVerification = async () => {
+    setIsResendingVerification(true);
+    setResendFeedback(null);
+    try {
+      const response = await resendPendingVerification({ username, password });
+      setResendFeedback({ kind: 'success', message: response.message });
+    } catch (err) {
+      setResendFeedback({
+        kind: 'error',
+        message: err instanceof ApiError ? err.message : 'Could not request a new verification email',
+      });
+    } finally {
+      setIsResendingVerification(false);
+    }
+  };
+
   const handleCancel2FA = () => {
     setTwoFactorCode('');
     cancel2FA();
@@ -174,6 +201,8 @@ export function useLoginFlow() {
 
   const toggleMode = useCallback(() => {
     setIsRegisterMode(prev => !prev);
+    setEmailVerificationRequired(false);
+    setResendFeedback(null);
     clearError();
     clearNotice();
     setUsername('');
@@ -197,6 +226,9 @@ export function useLoginFlow() {
     isBootLoading,
     error,
     notice,
+    emailVerificationRequired,
+    isResendingVerification,
+    resendFeedback,
 
     // Setters
     setUsername,
@@ -208,6 +240,7 @@ export function useLoginFlow() {
     handleSubmit,
     handle2FASubmit,
     handleCancel2FA,
+    handleResendVerification,
     toggleMode,
   };
 }

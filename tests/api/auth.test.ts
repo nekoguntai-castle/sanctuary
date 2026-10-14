@@ -33,9 +33,11 @@ login,
 logout,
 register,
 requires2FA,
+resendPendingVerification,
 searchUsers,
 testTelegramConfig,
 updatePreferences,
+verifyEmail,
 } from '../../src/api/auth';
 
 describe('Auth API', () => {
@@ -177,6 +179,28 @@ describe('Auth API', () => {
   // ========================================
   // logout
   // ========================================
+  describe('verifyEmail', () => {
+    it('posts the token to the public verify endpoint', async () => {
+      const response = { success: true, message: 'Email verified successfully', email: 'a@example.com' };
+      mockPost.mockResolvedValue(response);
+
+      await expect(verifyEmail('tok-123')).resolves.toEqual(response);
+
+      expect(mockPost).toHaveBeenCalledWith('/auth/email/verify', { token: 'tok-123' });
+    });
+  });
+
+  describe('resendPendingVerification', () => {
+    it('posts the credentials to the pre-auth resend endpoint', async () => {
+      const response = { success: true, message: 'If the account needs verification, a new email has been sent.' };
+      mockPost.mockResolvedValue(response);
+
+      await expect(resendPendingVerification({ username: 'alice', password: 'pw' })).resolves.toEqual(response);
+
+      expect(mockPost).toHaveBeenCalledWith('/auth/email/resend-pending', { username: 'alice', password: 'pw' });
+    });
+  });
+
   describe('logout', () => {
     it('should POST /auth/logout through the mutation-safe client contract', async () => {
       mockPost.mockResolvedValue({ success: true });

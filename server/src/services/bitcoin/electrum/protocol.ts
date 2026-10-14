@@ -8,6 +8,7 @@
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import type { ElectrumResponse, ElectrumRequest, PendingRequest } from './types';
+import { ElectrumRpcError } from './types';
 
 const log = createLogger('ELECTRUM:SVC_PROTOCOL');
 
@@ -309,7 +310,7 @@ export function processResponse(
   if (response.error) {
     const errorMsg = response.error.message || JSON.stringify(response.error);
     log.debug(`Electrum error response: id=${response.id} error=${errorMsg}`);
-    request.reject(new Error(errorMsg));
+    request.reject(new ElectrumRpcError(errorMsg, response.error.code));
   } else {
     request.resolve(response.result);
   }

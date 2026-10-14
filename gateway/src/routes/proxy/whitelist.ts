@@ -175,6 +175,7 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   route('GET', `/wallets/${uuidPattern}`, `/wallets/${sampleUuid}`, '/wallets/{walletId}', {
     expressPath: '/api/v1/wallets/:id',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewBalance',
   }),
   route('POST', `/sync/wallet/${uuidPattern}`, `/sync/wallet/${sampleUuid}`, '/sync/wallet/{walletId}', {
     expressPath: '/api/v1/sync/wallet/:id',
@@ -186,11 +187,13 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   route('GET', `/wallets/${uuidPattern}/transactions`, `/wallets/${sampleUuid}/transactions`, '/wallets/{walletId}/transactions', {
     expressPath: '/api/v1/wallets/:id/transactions',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewTransactions',
   }),
   // Canonical detail lookup requires both wallet and txid; the backend enforces wallet view access.
   route('GET', `/wallets/${uuidPattern}/transactions/${txidPattern}`, `/wallets/${sampleUuid}/transactions/${sampleTxid}`, '/wallets/{walletId}/transactions/{txid}', {
     expressPath: '/api/v1/wallets/:walletId/transactions/:txid',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewTransactions',
   }),
   // Retained during the backend deprecation window; ambiguous txids fail with 409.
   route('GET', `/transactions/${txidPattern}`, `/transactions/${sampleTxid}`, '/transactions/{txid}', {
@@ -202,10 +205,12 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   route('GET', `/wallets/${uuidPattern}/addresses/summary`, `/wallets/${sampleUuid}/addresses/summary`, '/wallets/{walletId}/addresses/summary', {
     expressPath: '/api/v1/wallets/:id/addresses/summary',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewBalance',
   }),
   route('GET', `/wallets/${uuidPattern}/addresses`, `/wallets/${sampleUuid}/addresses`, '/wallets/{walletId}/addresses', {
     expressPath: '/api/v1/wallets/:id/addresses',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewBalance',
   }),
   route('POST', `/wallets/${uuidPattern}/addresses/generate`, `/wallets/${sampleUuid}/addresses/generate`, '/wallets/{walletId}/addresses/generate', {
     expressPath: '/api/v1/wallets/:id/addresses/generate',
@@ -218,12 +223,14 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   route('GET', `/wallets/${uuidPattern}/utxos`, `/wallets/${sampleUuid}/utxos`, '/wallets/{walletId}/utxos', {
     expressPath: '/api/v1/wallets/:id/utxos',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewUtxos',
   }),
 
   // Labels (read + write)
   route('GET', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels', {
     expressPath: '/api/v1/wallets/:id/labels',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewTransactions',
   }),
   route('POST', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels', {
     expressPath: '/api/v1/wallets/:id/labels',
@@ -342,10 +349,12 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   route('GET', `/wallets/${uuidPattern}/drafts`, `/wallets/${sampleUuid}/drafts`, '/wallets/{walletId}/drafts', {
     expressPath: '/api/v1/wallets/:id/drafts',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewTransactions',
   }),
   route('GET', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}', {
     expressPath: '/api/v1/wallets/:id/drafts/:draftId',
     validation: noBody(readOnlyNoBody),
+    mobilePermission: 'viewTransactions',
   }),
   route('PATCH', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}', {
     expressPath: '/api/v1/wallets/:id/drafts/:draftId',
@@ -361,6 +370,7 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   route('GET', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions', {
     expressPath: '/api/v1/wallets/:id/mobile-permissions',
     validation: noBody(readOnlyNoBody),
+    accessControlReason: 'Backend mobile-permissions route enforces wallet access.',
   }),
   route('PATCH', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions', {
     expressPath: '/api/v1/wallets/:id/mobile-permissions',

@@ -509,7 +509,8 @@ export async function createAlertIfNotDuplicate(input: CreateAgentAlertInput, si
   return prisma.$transaction(
     async tx => {
       // Serialize same-key dedupe checks so concurrent monitor runs cannot both insert.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      // $executeRaw: the pg adapter cannot deserialize the lock function's `void` result via $queryRaw.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
       const duplicate = await tx.agentAlert.findFirst({
         where: {
@@ -710,7 +711,8 @@ export async function withAgentFundingTransaction<T>(
 
   return prisma.$transaction(
     async tx => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      // $executeRaw: the pg adapter cannot deserialize the lock function's `void` result via $queryRaw.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
       return fn(tx);
     },
     {

@@ -1336,7 +1336,9 @@ test_backend_compose_exposes_auth_rate_limit_overrides() {
     if grep -q 'RATE_LIMIT_LOGIN:.*RATE_LIMIT_LOGIN' "$PROJECT_ROOT/docker-compose.yml" \
         && grep -q 'RATE_LIMIT_2FA:.*RATE_LIMIT_2FA' "$PROJECT_ROOT/docker-compose.yml" \
         && grep -q 'RATE_LIMIT_PASSWORD_CHANGE:.*RATE_LIMIT_PASSWORD_CHANGE' "$PROJECT_ROOT/docker-compose.yml" \
-        && grep -q 'RATE_LIMIT_LOGIN RATE_LIMIT_2FA RATE_LIMIT_PASSWORD_CHANGE' "$START_SCRIPT"; then
+        && grep -q 'RATE_LIMIT_2FA_ACCOUNT:.*RATE_LIMIT_2FA_ACCOUNT' "$PROJECT_ROOT/docker-compose.yml" \
+        && grep -q 'RATE_LIMIT_LOGIN RATE_LIMIT_2FA RATE_LIMIT_PASSWORD_CHANGE' "$START_SCRIPT" \
+        && grep -q 'export .*RATE_LIMIT_2FA_ACCOUNT' "$START_SCRIPT"; then
         return 0
     else
         echo -e "${RED}ASSERTION FAILED:${NC} backend compose/start path should expose auth rate-limit overrides"

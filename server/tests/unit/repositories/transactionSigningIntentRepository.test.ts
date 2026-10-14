@@ -21,6 +21,7 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 import {
+  MAX_RECONCILE_ATTEMPTS,
   create,
   findById,
   claimBroadcast,
@@ -28,7 +29,11 @@ import {
   markBroadcastComplete,
   markBroadcastUnknown,
   releaseRejectedBroadcast,
+  markBroadcastStalled,
   listBroadcastsForReconciliation,
+  listStalledBroadcastsForLookup,
+  claimStalledBroadcastLookup,
+  markStalledBroadcastAccepted,
 } from '../../../src/repositories/transactionSigningIntentRepository';
 
 const record = {
@@ -106,60 +111,73 @@ describe('transactionSigningIntentRepository', () => {
     leaseExpiresAt: new Date('2030-01-01T00:01:00Z'),
   });
 
-  it('atomically claims the exact digest and txid before network submission', async () => {
-    const input = claimInput();
-    await expect(claimBroadcast(input)).resolves.toEqual({ status: 'claimed', record });
+  const guards = {
+    id: 'intent-1',
+    snapshotDigest: 'a'.repeat(64),
+    supersededById: null,
+    consumedAt: null,
+  };
+  const sameArtifact = { broadcastTxid: 'c'.repeat(64), broadcastRawTx: '00' };
+
+  it('claims a ready intent first, with the exact digest guards, and reports priorState ready', async () => {
+    await expect(claimBroadcast(claimInput())).resolves.toEqual({ status: 'claimed', record, priorState: 'ready' });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: 'intent-1',
-        snapshotDigest: 'a'.repeat(64),
-        supersededById: null,
-        consumedAt: null,
-        OR: [
-          { broadcastState: 'ready' },
-          {
-            broadcastState: 'claimed',
-            broadcastTxid: 'c'.repeat(64),
-            broadcastRawTx: '00',
-            broadcastLeaseExpiresAt: { lte: input.now },
-          },
-          {
-            broadcastState: 'unknown',
-            broadcastTxid: 'c'.repeat(64),
-            broadcastRawTx: '00',
-          },
-        ],
-      },
+      where: { ...guards, broadcastState: 'ready' },
       data: expect.objectContaining({
-        broadcastState: 'claimed', broadcastTxid: 'c'.repeat(64), broadcastLeaseToken: 'lease-1',
+        broadcastState: 'claimed',
+        broadcastTxid: 'c'.repeat(64),
+        broadcastLeaseToken: 'lease-1',
+        broadcastAttemptCount: { increment: 1 },
       }),
     });
   });
 
-  it('reclaims an unknown exact artifact without requiring a null lease to expire', async () => {
-    await claimBroadcast(claimInput());
-    const where = mocks.updateMany.mock.calls[0][0].where;
-    expect(where.OR).toContainEqual({
-      broadcastState: 'unknown',
-      broadcastTxid: 'c'.repeat(64),
-      broadcastRawTx: '00',
-    });
-    expect(where.OR).toContainEqual({
-      broadcastState: 'claimed',
-      broadcastTxid: 'c'.repeat(64),
-      broadcastRawTx: '00',
-      broadcastLeaseExpiresAt: { lte: claimInput().now },
+  it('reclaims an expired claim or an unknown exact artifact as resumed', async () => {
+    const input = claimInput();
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(claimBroadcast(input)).resolves.toEqual({ status: 'claimed', record, priorState: 'resumed' });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        ...guards,
+        OR: [
+          { broadcastState: 'claimed', ...sameArtifact, broadcastLeaseExpiresAt: { lte: input.now } },
+          { broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { lt: 60 } },
+        ],
+      },
+      data: expect.objectContaining({ broadcastState: 'claimed' }),
     });
   });
 
-  it.each([
-    ['complete', 'complete'], ['accepted', 'accepted'], ['claimed', 'busy'],
-  ] as const)('returns idempotent/busy state when a claim loses the race: %s', async (state, expected) => {
-    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
-    mocks.findUnique.mockResolvedValueOnce({
-      ...record, broadcastState: state, broadcastTxid: 'c'.repeat(64), broadcastRawTx: '00', consumedAt: null,
+  it('claims a stalled exact artifact only when allowStalled is set', async () => {
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 0 });
+    await expect(claimBroadcast({ ...claimInput(), allowStalled: true }))
+      .resolves.toEqual({ status: 'claimed', record, priorState: 'stalled' });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(3, {
+      where: { ...guards, broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { gte: 60 } },
+      data: expect.objectContaining({ broadcastState: 'claimed', broadcastLeaseToken: 'lease-1' }),
     });
-    expect((await claimBroadcast(claimInput())).status).toBe(expected);
+  });
+
+  it.each([{}, { allowStalled: false }])('does not claim a stalled row without allowStalled: %j', async (extra) => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValueOnce({
+      ...record, broadcastState: 'unknown', broadcastAttemptCount: 60, ...sameArtifact, consumedAt: null,
+    });
+    await expect(claimBroadcast({ ...claimInput(), ...extra })).resolves.toEqual({ status: 'busy' });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['complete', { broadcastState: 'complete', consumedAt: null }, 'complete'],
+    ['accepted', { broadcastState: 'accepted', consumedAt: null }, 'accepted'],
+    ['consumed', { broadcastState: 'claimed', consumedAt: new Date() }, 'accepted'],
+  ])('reports a lost claim race on a %s exact artifact', async (_label, state, status) => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValueOnce({ ...record, ...sameArtifact, ...state });
+    await expect(claimBroadcast(claimInput())).resolves.toEqual({ status });
   });
 
   it.each([
@@ -168,7 +186,7 @@ describe('transactionSigningIntentRepository', () => {
     ['txid', { ...record, snapshotDigest: 'a'.repeat(64), broadcastTxid: 'd'.repeat(64), broadcastRawTx: '00' }],
     ['witness', { ...record, snapshotDigest: 'a'.repeat(64), broadcastTxid: 'c'.repeat(64), broadcastRawTx: '01' }],
   ])('rejects a lost claim race with conflicting %s evidence', async (_label, current) => {
-    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.updateMany.mockResolvedValue({ count: 0 });
     mocks.findUnique.mockResolvedValueOnce(current);
     await expect(claimBroadcast(claimInput())).resolves.toEqual({ status: 'conflict' });
   });
@@ -212,5 +230,112 @@ describe('transactionSigningIntentRepository', () => {
       where: { id: 'intent-1', broadcastTxid: 'c'.repeat(64), broadcastState: 'accepted' },
       data: { broadcastState: 'complete', broadcastCompletedAt: expect.any(Date) },
     });
+  });
+
+  it('gives back the claim attempt only when countAttempt is false', async () => {
+    await markBroadcastUnknown('intent-1', 'lease', 'timeout');
+    expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({ broadcastAttemptCount: expect.anything() }),
+    }));
+    await markBroadcastUnknown('intent-1', 'lease', 'timeout', { countAttempt: true });
+    expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({ broadcastAttemptCount: expect.anything() }),
+    }));
+    await markBroadcastUnknown('intent-1', 'lease', 'timeout', { countAttempt: false });
+    expect(mocks.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'intent-1', broadcastState: 'claimed', broadcastLeaseToken: 'lease' },
+      data: expect.objectContaining({
+        broadcastState: 'unknown',
+        broadcastAttemptCount: { decrement: 1 },
+      }),
+    });
+  });
+
+  it('pins the attempt cap that defines a stalled intent', () => {
+    expect(MAX_RECONCILE_ATTEMPTS).toBe(60);
+  });
+
+  it('stalls a claimed intent under the lease token at the cap and keeps the raw transaction', async () => {
+    await expect(markBroadcastStalled('intent-1', 'lease', 'node said no')).resolves.toBe(true);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'intent-1',
+        broadcastState: 'claimed',
+        broadcastLeaseToken: 'lease',
+        broadcastAttemptCount: { gte: 60 },
+      },
+      data: {
+        // stalled is derived: an unknown intent at the cap (the state CHECK forbids a new value)
+        broadcastState: 'unknown',
+        broadcastLeaseToken: null,
+        broadcastLeaseExpiresAt: null,
+        broadcastLastError: 'node said no',
+      },
+    });
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(markBroadcastStalled('intent-1', 'wrong', 'x')).resolves.toBe(false);
+  });
+
+  it('excludes capped unknown intents from the reconciliation list', async () => {
+    mocks.findMany.mockResolvedValue([]);
+    await listBroadcastsForReconciliation(new Date('2030-01-01T00:00:00Z'));
+    const where = mocks.findMany.mock.calls[0][0].where;
+    expect(where.OR).toContainEqual({ broadcastState: 'unknown', broadcastAttemptCount: { lt: 60 } });
+    expect(where.OR).toContainEqual({ broadcastState: 'accepted' });
+  });
+
+  it('lists stalled broadcasts last attempted at least an hour ago, with an explicit or default limit', async () => {
+    mocks.findMany.mockResolvedValue([]);
+    const now = new Date('2030-01-01T12:00:00Z');
+    await listStalledBroadcastsForLookup(now);
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 50,
+      where: expect.objectContaining({
+        broadcastState: 'unknown',
+        broadcastAttemptCount: { gte: 60 },
+        broadcastLastAttemptAt: { lte: new Date('2030-01-01T11:00:00Z') },
+      }),
+    }));
+    await listStalledBroadcastsForLookup(now, 7);
+    expect(mocks.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 7 }));
+  });
+
+  it('bumps the stalled lookup time conditionally and reports a lost race', async () => {
+    const now = new Date('2030-01-01T12:00:00Z');
+    await expect(claimStalledBroadcastLookup('intent-1', now)).resolves.toBe(true);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'intent-1',
+        broadcastState: 'unknown',
+        broadcastAttemptCount: { gte: 60 },
+        broadcastLastAttemptAt: { lte: new Date('2030-01-01T11:00:00Z') },
+      },
+      data: { broadcastLastAttemptAt: now },
+    });
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(claimStalledBroadcastLookup('intent-1', now)).resolves.toBe(false);
+  });
+
+  it('accepts a stalled intent without a lease, setting the markBroadcastAccepted field set', async () => {
+    const now = new Date('2030-01-01T12:00:00Z');
+    await expect(markStalledBroadcastAccepted('intent-1', 'c'.repeat(64), now)).resolves.toBe(true);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'intent-1', broadcastState: 'unknown', broadcastAttemptCount: { gte: 60 }, broadcastTxid: 'c'.repeat(64),
+      },
+      data: {
+        broadcastState: 'accepted',
+        broadcastLeaseToken: null,
+        broadcastLeaseExpiresAt: null,
+        broadcastAcceptedAt: now,
+        consumedAt: now,
+        broadcastLastError: null,
+      },
+    });
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(markStalledBroadcastAccepted('intent-1', 'c'.repeat(64))).resolves.toBe(false);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ broadcastAcceptedAt: expect.any(Date) }),
+    }));
   });
 });

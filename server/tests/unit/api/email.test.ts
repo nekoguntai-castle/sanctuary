@@ -22,6 +22,7 @@ const {
     updateEmailWithVerification: vi.fn(),
     isVerificationRequired: vi.fn(),
     isSmtpConfigured: vi.fn(),
+    assertEmailChangeDeliverable: vi.fn().mockResolvedValue(undefined),
   };
 
   const mockUserRepository = {
@@ -63,6 +64,12 @@ vi.mock('../../../src/repositories', () => ({
 }));
 
 vi.mock('../../../src/services/auditService', () => mockAuditService);
+
+// email.ts imports the rate limiting barrel for the pre-auth resend; keep its
+// policies/config graph out of this suite.
+vi.mock('../../../src/services/rateLimiting', () => ({
+  rateLimitService: { consume: vi.fn().mockResolvedValue({ allowed: true }) },
+}));
 
 vi.mock('../../../src/utils/password', () => ({
   verifyPassword: vi.fn(),
@@ -112,7 +119,8 @@ function createTestApp() {
   const emailRouter = createEmailRouter(
     noopLimiter as any, // verifyLimiter
     noopLimiter as any, // resendLimiter
-    noopLimiter as any  // updateLimiter
+    noopLimiter as any, // updateLimiter
+    { login: noopLimiter as any, resendPending: noopLimiter as any }
   );
   app.use('/api/v1/auth', emailRouter);
   app.use(errorHandler);
@@ -482,6 +490,23 @@ describe('Email Verification API', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.email).toBe(newEmail);
       expect(response.body.emailVerified).toBe(false);
+    });
+
+    it('refuses with the guard error and never updates when the new address could not be verified', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.emailExists.mockResolvedValue(false);
+      const { ServiceUnavailableError } = await import('../../../src/errors/ApiError');
+      mockEmailVerificationService.assertEmailChangeDeliverable.mockRejectedValueOnce(
+        new ServiceUnavailableError('Email verification is required but outgoing email is not configured; ask an administrator')
+      );
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: newEmail, password: currentPassword });
+
+      expect(response.status).toBe(503);
+      expect(response.body.message).toContain('outgoing email is not configured');
+      expect(mockEmailVerificationService.updateEmailWithVerification).not.toHaveBeenCalled();
     });
 
     it('should canonicalize mixed-case email before duplicate check, update, audit, and token creation', async () => {

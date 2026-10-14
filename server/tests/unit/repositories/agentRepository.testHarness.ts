@@ -45,6 +45,7 @@ const mockPrisma = vi.hoisted(() => ({
     groupBy: vi.fn(),
   },
   $queryRaw: vi.fn(),
+  $executeRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
 
@@ -64,4 +65,5 @@ export function resetAgentRepositoryMocks() {
     async (fn: (client: typeof prisma) => unknown) => fn(prisma),
   );
   prisma.$queryRaw.mockResolvedValue([{ pg_advisory_xact_lock: '' }]);
+  prisma.$executeRaw.mockResolvedValue(1);
 }

@@ -76,6 +76,7 @@ const renderLogin = async (Login: React.ComponentType) => {
 describe('Login Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogin.mockResolvedValue({ success: true });
     mockFetch.mockResolvedValue({ ok: true });
 
     // Mock matchMedia for system theme detection
@@ -347,6 +348,7 @@ describe('Login Component', () => {
 describe('Login Component - 2FA Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogin.mockResolvedValue({ success: true });
     mockFetch.mockResolvedValue({ ok: true });
 
     Object.defineProperty(window, 'matchMedia', {
@@ -452,6 +454,7 @@ describe('Login Component - 2FA Flow', () => {
 describe('Login Component - Error Display', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogin.mockResolvedValue({ success: true });
     mockFetch.mockResolvedValue({ ok: true });
 
     Object.defineProperty(window, 'matchMedia', {
@@ -494,6 +497,7 @@ describe('Login Component - Error Display', () => {
 describe('Login Component - Loading branches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogin.mockResolvedValue({ success: true });
     mockFetch.mockResolvedValue({ ok: true });
 
     Object.defineProperty(window, 'matchMedia', {
@@ -519,7 +523,7 @@ describe('Login Component - Loading branches', () => {
     // Block login() forever so isSubmitting stays true.
     let resolveLogin: (() => void) | undefined;
     mockLogin.mockImplementation(
-      () => new Promise<void>((res) => { resolveLogin = () => res(); })
+      () => new Promise<{ success: boolean }>((res) => { resolveLogin = () => res({ success: true }); })
     );
 
     vi.resetModules();

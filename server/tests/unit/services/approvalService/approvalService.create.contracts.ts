@@ -198,8 +198,6 @@ export function registerCreateApprovalRequestsForDraftContracts() {
 
     // Verify draft approval status updated to pending
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending');
-    // Verify notification sent
-    expect(mockNotify.notifyApprovalRequested).toHaveBeenCalledWith(walletId, draftId, userId);
     // Verify log
     expect(mockLog.info).toHaveBeenCalledWith('Created approval request', expect.objectContaining({
       requestId,
@@ -270,39 +268,6 @@ export function registerCreateApprovalRequestsForDraftContracts() {
     expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('logs warning when notifyApprovalRequested fails', async () => {
-    mockPolicyRepo.findPolicyById.mockResolvedValue({
-      id: policyId,
-      config: {
-        trigger: { always: true },
-        requiredApprovals: 1,
-        quorumType: 'any_n',
-        allowSelfApproval: false,
-        expirationHours: 0,
-      },
-    });
-
-    mockPolicyRepo.createApprovalRequest.mockResolvedValue({
-      id: requestId,
-      status: 'pending',
-    });
-
-    mockNotify.notifyApprovalRequested.mockRejectedValue(new Error('Notification failed'));
-
-    await approvalService.createApprovalRequestsForDraft(
-      draftId, walletId, userId,
-      [{ policyId, policyName: 'Test', type: 'approval_required', action: 'approval_required', reason: 'test' }]
-    );
-
-    // Wait for the .catch() handler to execute
-    await vi.waitFor(() => {
-      expect(mockLog.warn).toHaveBeenCalledWith(
-        'Failed to send approval notification',
-        expect.objectContaining({ error: 'Notification failed' })
-      );
-    });
-  });
-
   it('propagates composite client to effective membership, policy writes, and draft approval status', async () => {
     const mockClient = { vaultPolicy: {}, approvalRequest: {}, draftTransaction: {}, user: {} } as unknown as ApprovalDbClient;
     mockPolicyRepo.findPolicyById.mockResolvedValue({
@@ -333,55 +298,6 @@ export function registerCreateApprovalRequestsForDraftContracts() {
       mockClient
     );
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending', mockClient);
-    // Notification behavior preserved when a client is supplied
-    expect(mockNotify.notifyApprovalRequested).toHaveBeenCalledWith(walletId, draftId, userId);
-  });
-
-  it('suppresses only the notification when suppressNotification is true', async () => {
-    mockPolicyRepo.findPolicyById.mockResolvedValue({
-      id: policyId,
-      config: {
-        trigger: { always: true },
-        requiredApprovals: 1,
-        quorumType: 'any_n',
-        allowSelfApproval: false,
-        expirationHours: 0,
-      },
-    });
-
-    mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
-
-    const result = await approvalService.createApprovalRequestsForDraft(
-      draftId, walletId, userId,
-      [{ policyId, policyName: 'Test', type: 'approval_required', action: 'approval_required', reason: 'test' }],
-      undefined,
-      true
-    );
-
-    // Request creation and pending status update still happen
-    expect(result).toHaveLength(1);
-    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledWith(policyId);
-    expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledTimes(1);
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending');
-
-    // Only the notification is skipped
-    expect(mockNotify.notifyApprovalRequested).not.toHaveBeenCalled();
-  });
-
-  it('dispatchApprovalRequestedNotification calls notify with exact args and warns on rejection', async () => {
-    mockNotify.notifyApprovalRequested.mockRejectedValue(new Error('Notification failed'));
-
-    approvalService.dispatchApprovalRequestedNotification(walletId, draftId, userId);
-
-    expect(mockNotify.notifyApprovalRequested).toHaveBeenCalledWith(walletId, draftId, userId);
-
-    // Wait for the .catch() handler to execute
-    await vi.waitFor(() => {
-      expect(mockLog.warn).toHaveBeenCalledWith(
-        'Failed to send approval notification',
-        expect.objectContaining({ error: 'Notification failed' })
-      );
-    });
   });
 
   it('passes original repository arity by default when no client is supplied', async () => {

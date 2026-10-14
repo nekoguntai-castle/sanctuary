@@ -25,6 +25,7 @@ export function buildRateLimitConfig() {
     registerAttempts: parseIntegerEnv('RATE_LIMIT_REGISTER', 10),
     registerWindowSeconds: parseIntegerEnv('RATE_LIMIT_REGISTER_WINDOW', 3600),
     twoFaAttempts: parseIntegerEnv('RATE_LIMIT_2FA', 10),
+    twoFaAccountAttempts: parseIntegerEnv('RATE_LIMIT_2FA_ACCOUNT', 10),
     twoFaWindowSeconds: parseIntegerEnv('RATE_LIMIT_2FA_WINDOW', 900),
     passwordChangeAttempts: parseIntegerEnv('RATE_LIMIT_PASSWORD_CHANGE', 5),
     passwordChangeWindowSeconds: parseIntegerEnv('RATE_LIMIT_PASSWORD_CHANGE_WINDOW', 900),

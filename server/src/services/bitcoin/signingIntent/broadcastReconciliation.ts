@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../../generated/prisma/client';
-import { transactionSigningIntentRepository } from '../../../repositories/transactionSigningIntentRepository';
+import {
+  MAX_RECONCILE_ATTEMPTS,
+  transactionSigningIntentRepository,
+} from '../../../repositories/transactionSigningIntentRepository';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { broadcastAuthenticatedRawTransaction, getTransactionDetails } from '../blockchain';
+import {
+  broadcastAuthenticatedRawTransaction,
+  getTransactionDetails,
+  isNodeAnsweredBroadcastFailure,
+} from '../blockchain';
 import { isBitcoinNetwork } from '../networks';
 import { persistTransaction } from '../transactions/persistTransaction';
 import {
@@ -34,6 +41,33 @@ const reconcileAccepted = async (record: {
   return transactionSigningIntentRepository.markBroadcastComplete(record.id, record.broadcastTxid);
 };
 
+/**
+ * Keep a failed re-broadcast uncertain, or stop re-broadcasting (`stalled`) once
+ * enough attempts got a node answer. Attempts that never reached a node give
+ * their claim increment back, so an outage cannot advance the cap.
+ */
+const recordUncertainFailure = async (
+  intentId: string,
+  leaseToken: string,
+  attemptCount: number,
+  error: unknown,
+): Promise<void> => {
+  const message = getErrorMessage(error);
+  const nodeAnswered = isNodeAnsweredBroadcastFailure(error);
+  if (nodeAnswered && attemptCount >= MAX_RECONCILE_ATTEMPTS) {
+    log.warn('Signing intent broadcast stalled after repeated node-answered attempts', {
+      intentId,
+      attempts: attemptCount,
+      error: message,
+    });
+    await transactionSigningIntentRepository.markBroadcastStalled(intentId, leaseToken, message);
+    return;
+  }
+  await transactionSigningIntentRepository.markBroadcastUnknown(intentId, leaseToken, message, {
+    countAttempt: nodeAnswered,
+  });
+};
+
 const reconcileUncertain = async (record: {
   id: string;
   walletId: string;
@@ -58,6 +92,7 @@ const reconcileUncertain = async (record: {
     leaseToken,
     now,
     leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+    allowStalled: false,
   });
   if (claim.status !== 'claimed') return claim.status === 'complete';
   try {
@@ -84,22 +119,67 @@ const reconcileUncertain = async (record: {
       expectedTxid: record.broadcastTxid,
       network: record.network,
       replacement: typeof snapshot.data.transaction.replacementTxid === 'string',
+      allowDefiniteRejection: false,
     });
   } catch (error) {
     // Once an earlier submission may have crossed the node boundary, even a
     // later preflight rejection (for example, "input already spent") is not
     // proof that the exact transaction was rejected. Never roll this state
     // back to ready; retain it for another lookup/reconciliation pass.
-    await transactionSigningIntentRepository.markBroadcastUnknown(
-      record.id,
-      leaseToken,
-      getErrorMessage(error),
-    );
+    await recordUncertainFailure(record.id, leaseToken, claim.record.broadcastAttemptCount, error);
     return false;
   }
   const accepted = await transactionSigningIntentRepository.markBroadcastAccepted(record.id, leaseToken);
   if (!accepted) return false;
   return reconcileAccepted(record);
+};
+
+/**
+ * Lookup-only pass for a stalled intent (never re-broadcasts): if its txid is
+ * now known to the node, move it to accepted and finish persistence.
+ */
+const lookupStalledIntent = async (record: {
+  id: string;
+  walletId: string;
+  network: string;
+  broadcastTxid: string | null;
+  broadcastRawTx: string | null;
+  broadcastMetadata: Prisma.JsonValue | null;
+}, now: Date): Promise<boolean> => {
+  if (!isBitcoinNetwork(record.network) || !record.broadcastTxid) return false;
+  if (!await transactionSigningIntentRepository.claimStalledBroadcastLookup(record.id, now)) return false;
+  try {
+    await getTransactionDetails(record.broadcastTxid, record.network);
+  } catch (lookupError) {
+    log.debug('Stalled transaction lookup missed; leaving the intent stalled', {
+      intentId: record.id,
+      txid: record.broadcastTxid,
+      error: getErrorMessage(lookupError),
+    });
+    return false;
+  }
+  const accepted = await transactionSigningIntentRepository.markStalledBroadcastAccepted(
+    record.id,
+    record.broadcastTxid,
+    now,
+  );
+  return accepted ? reconcileAccepted(record) : false;
+};
+
+const lookupStalledIntentIsolated = async (
+  record: Parameters<typeof lookupStalledIntent>[0],
+  now: Date,
+): Promise<void> => {
+  try {
+    await lookupStalledIntent(record, now);
+  } catch (error) {
+    log.error('Stalled signing intent lookup failed', {
+      intentId: record.id,
+      txid: record.broadcastTxid,
+      error: getErrorMessage(error),
+    });
+    return;
+  }
 };
 
 export const reconcileSigningIntentBroadcasts = async (
@@ -121,6 +201,10 @@ export const reconcileSigningIntentBroadcasts = async (
         error: getErrorMessage(error),
       });
     }
+  }
+  const stalled = await transactionSigningIntentRepository.listStalledBroadcastsForLookup(now, limit);
+  for (const record of stalled) {
+    await lookupStalledIntentIsolated(record, now);
   }
   return { examined: records.length, completed };
 };

@@ -51,6 +51,7 @@ class MockRedis extends EventEmitter {
   url: string;
   options: any;
   quit = vi.fn().mockResolvedValue('OK');
+  disconnect = vi.fn();
   ping = vi.fn().mockResolvedValue('PONG');
 
   constructor(url: string, options: any = {}) {
@@ -187,7 +188,8 @@ describe('infrastructure/redis', () => {
 
     const opts = redisInstances[0].options;
     expect(opts.retryStrategy(2)).toBe(200);
-    expect(opts.retryStrategy(12)).toBeNull();
+    expect(opts.retryStrategy(12)).toBe(1200);
+    expect(opts.retryStrategy(1000)).toBe(3000);
     expect(opts.reconnectOnError(new Error('READONLY You can\'t write'))).toBe(true);
     expect(opts.reconnectOnError(new Error('network error'))).toBe(false);
 
@@ -195,6 +197,56 @@ describe('infrastructure/redis', () => {
     const subscriberOpts = redisInstances[2].options;
     expect(publisherOpts.retryStrategy(5)).toBe(500);
     expect(subscriberOpts.retryStrategy(7)).toBe(700);
+  });
+
+  it('logs an error every 20 retries and never stops retrying', async () => {
+    const redisInfra = await loadRedisInfra();
+    await redisInfra.initializeRedis();
+    const { retryStrategy } = redisInstances[0].options;
+    mockLogger.error.mockClear();
+
+    expect(retryStrategy(20)).toBe(2000);
+    expect(retryStrategy(21)).toBe(2100);
+    expect(retryStrategy(40)).toBe(3000);
+
+    const retryErrors = mockLogger.error.mock.calls.filter(([msg]) => String(msg).includes('Redis still unreachable'));
+    expect(retryErrors.map(([msg]) => msg)).toEqual([
+      'Redis still unreachable after 20 retries; retrying every 3s',
+      'Redis still unreachable after 40 retries; retrying every 3s',
+    ]);
+  });
+
+  it('keeps one persistent throttled error listener after init', async () => {
+    vi.useFakeTimers();
+    try {
+      const redisInfra = await loadRedisInfra();
+      const init = redisInfra.initializeRedis();
+      await vi.advanceTimersByTimeAsync(1);
+      await init;
+      const client = redisInstances[0];
+      expect(client.listenerCount('error')).toBe(1);
+      mockLogger.warn.mockClear();
+      mockLogger.debug.mockClear();
+
+      client.emit('error', new Error('ECONNREFUSED'));
+      client.emit('error', new Error('ECONNREFUSED'));
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+      expect(mockLogger.debug).not.toHaveBeenCalled();
+
+      // Past the 30s window: one debug line, then silence inside the next window.
+      await vi.advanceTimersByTimeAsync(30001);
+      client.emit('error', new Error('ECONNREFUSED'));
+      client.emit('error', new Error('ECONNREFUSED'));
+      expect(mockLogger.debug).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+
+      // A successful reconnect starts a new outage: the next error warns again.
+      client.emit('ready');
+      client.emit('error', new Error('ECONNRESET'));
+      expect(mockLogger.warn).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does nothing when initialized twice', async () => {
@@ -212,12 +264,14 @@ describe('infrastructure/redis', () => {
 
     await expect(redisInfra.initializeRedis()).rejects.toThrow('main connection failed');
 
-    expect(redisInstances[0].quit).toHaveBeenCalledTimes(1);
+    // disconnect(), not quit(): a QUIT queued while reconnecting never stops the retry loop.
+    expect(redisInstances[0].disconnect).toHaveBeenCalledTimes(1);
+    expect(redisInstances[0].quit).not.toHaveBeenCalled();
     expect(redisInfra.isRedisConnected()).toBe(false);
     expect(redisInfra.getRedisClient()).toBeNull();
   });
 
-  it('times out when redis never becomes ready and ignores quit cleanup errors', async () => {
+  it('times out when redis never becomes ready and disconnects the retrying client', async () => {
     redisState.autoReady = false;
     const redisInfra = await loadRedisInfra();
     vi.useFakeTimers();
@@ -225,10 +279,10 @@ describe('infrastructure/redis', () => {
     const initPromise = redisInfra.initializeRedis();
     const initExpectation = expect(initPromise).rejects.toThrow('Redis connection timeout');
     expect(redisInstances).toHaveLength(1);
-    redisInstances[0].quit.mockRejectedValueOnce(new Error('quit failed'));
 
     await vi.advanceTimersByTimeAsync(10001);
     await initExpectation;
+    expect(redisInstances[0].disconnect).toHaveBeenCalledTimes(1);
 
     vi.useRealTimers();
   });

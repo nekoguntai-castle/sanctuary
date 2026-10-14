@@ -239,9 +239,14 @@ const assertOptionalMetadata = (
   draft: BroadcastDraft,
   metadata: CanonicalRouteMetadata,
 ): void => {
-  const checks: Array<[string, unknown, unknown]> = [
+  // With no external output nothing leaves the wallet, so the client/draft-reported
+  // recipient and amount carry no spend meaning (e.g. a consolidation reports the sum of its own outputs).
+  const spendChecks: Array<[string, unknown, unknown]> = metadata.externalOutputs.length === 0 ? [] : [
     ['recipient', metadata.recipient, optional.recipient ?? draft?.recipient],
     ['amount', metadata.amount, optional.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
+  ];
+  const checks: Array<[string, unknown, unknown]> = [
+    ...spendChecks,
     ['fee', metadata.fee, optional.fee ?? (draft ? Number(draft.fee) : undefined)],
   ];
   for (const [field, expected, actual] of checks) {

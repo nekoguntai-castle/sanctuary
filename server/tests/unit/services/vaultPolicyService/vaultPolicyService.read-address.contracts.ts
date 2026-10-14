@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Prisma } from '../../../../src/generated/prisma/client';
 
 import {
   groupId,
@@ -9,6 +10,13 @@ import {
   vaultPolicyService,
   walletId,
 } from './vaultPolicyServiceTestHarness';
+
+const TESTNET_ADDRESS = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+const MAINNET_ADDRESS = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+
+function addressControlPolicy() {
+  mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({ id: policyId, walletId, type: 'address_control' });
+}
 
 export function registerVaultPolicyReadAddressContracts(): void {
   describe('getWalletPolicies', () => {
@@ -112,7 +120,7 @@ export function registerVaultPolicyReadAddressContracts(): void {
     });
 
     it('creates an address for address_control policies', async () => {
-      const createdAddress = { id: 'addr-1', policyId, address: 'tb1qfoo', listType: 'allow' };
+      const createdAddress = { id: 'addr-1', policyId, address: TESTNET_ADDRESS, listType: 'allow' };
 
       mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({
         id: policyId,
@@ -122,7 +130,7 @@ export function registerVaultPolicyReadAddressContracts(): void {
       mockPolicyRepo.createPolicyAddress.mockResolvedValue(createdAddress);
 
       const result = await vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, {
-        address: 'tb1qfoo',
+        address: TESTNET_ADDRESS.toUpperCase(),
         label: 'Treasury',
         listType: 'allow',
       });
@@ -130,11 +138,52 @@ export function registerVaultPolicyReadAddressContracts(): void {
       expect(result).toBe(createdAddress);
       expect(mockPolicyRepo.createPolicyAddress).toHaveBeenCalledWith({
         policyId,
-        address: 'tb1qfoo',
+        address: TESTNET_ADDRESS,
         label: 'Treasury',
         listType: 'allow',
         addedBy: userId,
       });
+    });
+
+    it('rejects a mainnet address on a testnet wallet and a malformed address', async () => {
+      addressControlPolicy();
+
+      for (const address of [MAINNET_ADDRESS, 'not-an-address']) {
+        await expect(
+          vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, { address, listType: 'deny' })
+        ).rejects.toMatchObject({ statusCode: 400, message: 'Invalid address for this wallet network' });
+      }
+      expect(mockPolicyRepo.createPolicyAddress).not.toHaveBeenCalled();
+    });
+
+    it.each([null, 'bogus'])('refuses address creation when the wallet network is %s', async (network) => {
+      addressControlPolicy();
+      mockWalletRepo.findNetwork.mockResolvedValueOnce(network);
+
+      await expect(
+        vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, {
+          address: TESTNET_ADDRESS, listType: 'allow',
+        })
+      ).rejects.toMatchObject({ statusCode: 404, message: 'Wallet not found' });
+      expect(mockPolicyRepo.createPolicyAddress).not.toHaveBeenCalled();
+    });
+
+    it('maps a duplicate entry to a conflict and rethrows other failures', async () => {
+      addressControlPolicy();
+      const input = { address: TESTNET_ADDRESS, listType: 'allow' as const };
+      mockPolicyRepo.createPolicyAddress.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' })
+      );
+      await expect(vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, input))
+        .rejects.toMatchObject({
+          statusCode: 409,
+          message: 'Address already on this policy (allow or deny list)',
+        });
+
+      const boom = new Error('db down');
+      mockPolicyRepo.createPolicyAddress.mockRejectedValueOnce(boom);
+      await expect(vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, input))
+        .rejects.toBe(boom);
     });
 
     it('rejects address creation for non-address-control policies', async () => {

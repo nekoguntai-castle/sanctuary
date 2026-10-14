@@ -92,6 +92,9 @@ import { openApiSpec } from '../../../../server/src/api/openapi/spec';
 
 type OpenApiPathKey = keyof typeof openApiSpec.paths;
 
+// Router build runs requireMobilePermission once per capped route; capture before beforeEach clears the mock.
+const builtMobileCaps = proxyRouteMocks.requireMobilePermission.mock.calls.map((call) => (call as unknown[])[0]);
+
 describe('Proxy Routes', () => {
   function createProxyTestApp() {
     const app = express();
@@ -200,6 +203,39 @@ describe('Proxy Routes', () => {
         }
       }
     });
+    it('requires wallet-scoped reads to declare a view capability or backend access control', () => {
+      const walletReads = GATEWAY_ROUTE_CONTRACTS.filter((route) =>
+        route.method === 'GET' && /\/api\/v1\/wallets\/:[^/]+/.test(route.expressPath));
+      expect(walletReads.length).toBeGreaterThanOrEqual(10);
+
+      for (const route of walletReads) {
+        expect(
+          Boolean(route.mobilePermission || route.accessControlReason),
+          `${route.method} ${route.expressPath}`
+        ).toBe(true);
+      }
+    });
+
+    it('maps wallet-scoped reads to their view capabilities', () => {
+      const caps = Object.fromEntries(
+        GATEWAY_ROUTE_CONTRACTS
+          .filter((route) => route.method === 'GET' && route.mobilePermission)
+          .map((route) => [route.expressPath, route.mobilePermission])
+      );
+
+      expect(caps).toEqual({
+        '/api/v1/wallets/:id': 'viewBalance',
+        '/api/v1/wallets/:id/addresses/summary': 'viewBalance',
+        '/api/v1/wallets/:id/addresses': 'viewBalance',
+        '/api/v1/wallets/:id/transactions': 'viewTransactions',
+        '/api/v1/wallets/:walletId/transactions/:txid': 'viewTransactions',
+        '/api/v1/wallets/:id/utxos': 'viewUtxos',
+        '/api/v1/wallets/:id/labels': 'viewTransactions',
+        '/api/v1/wallets/:id/drafts': 'viewTransactions',
+        '/api/v1/wallets/:id/drafts/:draftId': 'viewTransactions',
+      });
+      expect(builtMobileCaps).toEqual(expect.arrayContaining(['viewBalance', 'viewTransactions', 'viewUtxos']));
+    });
   });
 
   describe('manifest-driven proxy middleware registration', () => {
@@ -227,6 +263,16 @@ describe('Proxy Routes', () => {
       expect(proxyRouteMocks.transactionCreateRateLimiter).toHaveBeenCalled();
       expect(proxyRouteMocks.mobilePermissionMiddleware).toHaveBeenCalled();
       expect(proxyRouteMocks.validateRequest).toHaveBeenCalled();
+      expect(proxyRouteMocks.proxy).toHaveBeenCalled();
+    });
+
+    it('applies mobile permission middleware to capped wallet reads', async () => {
+      await request(createProxyTestApp())
+        .get('/api/v1/wallets/12345678-1234-1234-1234-123456789abc/transactions')
+        .expect(204);
+
+      expect(proxyRouteMocks.authenticate).toHaveBeenCalled();
+      expect(proxyRouteMocks.mobilePermissionMiddleware).toHaveBeenCalled();
       expect(proxyRouteMocks.proxy).toHaveBeenCalled();
     });
 

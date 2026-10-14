@@ -100,6 +100,7 @@ export function formatDraftMessage(
     agentName?: string | null;
     agentOperationalWalletName?: string | null;
     agentSigned?: boolean;
+    approvalRequired?: boolean;
   },
   wallet: { name: string },
   createdBy: string
@@ -125,6 +126,10 @@ export function formatDraftMessage(
       message += `Label: ${escapeHtml(draft.label)}\n`;
     }
 
+    if (draft.approvalRequired) {
+      message += `Approval required before signing\n`;
+    }
+
     message += `\n<i>Review in Sanctuary before signing. Once funded, the agent can spend from the operational wallet without multisig approval.</i>`;
     return message;
   }
@@ -139,6 +144,10 @@ export function formatDraftMessage(
 
   if (draft.label) {
     message += `Label: ${escapeHtml(draft.label)}\n`;
+  }
+
+  if (draft.approvalRequired) {
+    message += `Approval required before signing\n`;
   }
 
   message += `\n<i>Awaiting signature</i>`;

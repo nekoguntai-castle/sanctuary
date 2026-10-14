@@ -68,6 +68,17 @@ export class ElectrumNoFeeEstimateError extends Error {
   }
 }
 
+/**
+ * A JSON-RPC error answer from the Electrum server (as opposed to a transport
+ * failure or timeout). The message text is the server's, unchanged.
+ */
+export class ElectrumRpcError extends Error {
+  constructor(message: string, readonly code?: number) {
+    super(message);
+    this.name = 'ElectrumRpcError';
+  }
+}
+
 /** Electrum protocol limit for `blockchain.block.headers` responses. */
 export const ELECTRUM_MAX_HEADERS_PER_REQUEST = 2016;
 export const BITCOIN_BLOCK_HEADER_HEX_LENGTH = 160;

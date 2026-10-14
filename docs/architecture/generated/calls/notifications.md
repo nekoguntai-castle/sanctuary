@@ -281,7 +281,7 @@ flowchart LR
     click formatting_formatDestinationClassification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/formatting.ts#L61" "View source"
     click formatting_formatHandlingMode href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/formatting.ts#L76" "View source"
     click formatting_formatDraftMessage href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/formatting.ts#L94" "View source"
-    click formatting_escapeHtml href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/formatting.ts#L152" "View source"
+    click formatting_escapeHtml href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/formatting.ts#L161" "View source"
     click notifications_getDraftCreatorName href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/notifications.ts#L34" "View source"
     click notifications_withOperationalWalletName href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/notifications.ts#L42" "View source"
     click notifications_getDraftRecipientFilter href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/telegram/notifications.ts#L54" "View source"

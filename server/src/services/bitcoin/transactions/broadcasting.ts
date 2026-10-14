@@ -9,9 +9,10 @@
 import {
   broadcastTransaction,
   DefiniteBroadcastRejectionError,
+  isNodeAnsweredBroadcastFailure,
   recalculateWalletBalances,
 } from '../blockchain';
-import { ApiError } from '../../../errors/ApiError';
+import { ApiError, ConflictError } from '../../../errors/ApiError';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
@@ -24,6 +25,7 @@ import {
   claimSigningIntentBroadcast,
   markSigningIntentBroadcastAccepted,
   markSigningIntentBroadcastComplete,
+  markSigningIntentBroadcastStalled,
   markSigningIntentBroadcastUnknown,
   releaseRejectedSigningIntentBroadcast,
 } from '../signingIntent/broadcastLifecycle';
@@ -159,6 +161,56 @@ const emitAcceptedTransactionEvent = (
   }
 };
 
+type BroadcastClaimed = Extract<Awaited<ReturnType<typeof claimSigningIntentBroadcast>>, { status: 'claimed' }>;
+
+const STALLED_BROADCAST_MESSAGE = "This transaction's broadcast outcome could not be confirmed after repeated attempts. "
+  + 'Check a block explorer for the txid before creating a replacement.';
+
+/**
+ * Persist the outcome of a failed claim. Only a first (`ready`) claim may be
+ * rolled back; a resumed claim may already have crossed the node boundary, so
+ * it stays unknown, and a claim resumed from `stalled` returns to `stalled`.
+ */
+const recordClaimFailure = (
+  intentId: string,
+  claim: BroadcastClaimed,
+  error: unknown,
+): Promise<boolean> => {
+  const message = getErrorMessage(error);
+  if (claim.priorState === 'stalled') {
+    return markSigningIntentBroadcastStalled(intentId, claim.leaseToken, message);
+  }
+  if (claim.priorState === 'ready' && error instanceof DefiniteBroadcastRejectionError) {
+    return releaseRejectedSigningIntentBroadcast(intentId, claim.leaseToken, message);
+  }
+  return markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, {
+    countAttempt: isNodeAnsweredBroadcastFailure(error),
+  });
+};
+
+/** A failed re-submission of a stalled intent gets an actionable terminal conflict. */
+const broadcastFailureToThrow = (claim: BroadcastClaimed, error: unknown): unknown => (
+  claim.priorState === 'stalled'
+    ? new ConflictError(STALLED_BROADCAST_MESSAGE, undefined, { reason: 'broadcast_stalled' })
+    : error
+);
+
+/** Failed replacement-link check before any network call: release only a first claim. */
+const recordReplacementLinkFailure = (
+  intentId: string,
+  claim: BroadcastClaimed,
+  error: unknown,
+): Promise<boolean> => {
+  const message = getErrorMessage(error);
+  if (claim.priorState === 'ready') {
+    return releaseRejectedSigningIntentBroadcast(intentId, claim.leaseToken, message);
+  }
+  return claim.priorState === 'stalled'
+    ? markSigningIntentBroadcastStalled(intentId, claim.leaseToken, message)
+    // Nothing reached a node, so this must not spend the stall-cap budget.
+    : markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, { countAttempt: false });
+};
+
 /**
  * Broadcast a signed transaction and save to database.
  *
@@ -229,7 +281,7 @@ export async function broadcastAndSave(
       );
     } catch (error) {
       try {
-        await releaseRejectedSigningIntentBroadcast(artifact.intent.intentId, claim.leaseToken, getErrorMessage(error));
+        await recordReplacementLinkFailure(artifact.intent.intentId, claim, error);
       } catch (releaseError) {
         log.error('Failed to release claimed lease after replacesTxid rejection; lease expiry will reconcile it', {
           intentId: artifact.intent.intentId,
@@ -244,13 +296,10 @@ export async function broadcastAndSave(
   // Broadcast to network
   let broadcastResult;
   try {
-    broadcastResult = await broadcastTransaction(artifact);
+    broadcastResult = await broadcastTransaction(artifact, claim.priorState === 'ready');
   } catch (error) {
-    const transition = error instanceof DefiniteBroadcastRejectionError
-      ? releaseRejectedSigningIntentBroadcast
-      : markSigningIntentBroadcastUnknown;
     try {
-      await transition(artifact.intent.intentId, claim.leaseToken, getErrorMessage(error));
+      await recordClaimFailure(artifact.intent.intentId, claim, error);
     } catch (transitionError) {
       log.error('Failed to persist broadcast failure outcome; lease expiry will reconcile it', {
         intentId: artifact.intent.intentId,
@@ -258,7 +307,7 @@ export async function broadcastAndSave(
         error: getErrorMessage(transitionError),
       });
     }
-    throw error;
+    throw broadcastFailureToThrow(claim, error);
   }
 
   if (!broadcastResult.broadcasted) {

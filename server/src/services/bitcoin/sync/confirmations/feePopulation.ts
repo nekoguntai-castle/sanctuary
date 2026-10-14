@@ -51,43 +51,57 @@ const sumOutputSats = (outputs: TransactionOutput[]): number => {
 const getInputValueSats = (
   input: TransactionInput,
   prevTxCache: Map<string, RawTransaction>
-): number => {
+): number | null => {
   if (input.prevout && input.prevout.value != null) {
     return Math.round(input.prevout.value * 100000000);
   }
 
   if (!input.txid || input.vout == null) {
-    return 0;
+    return null;
   }
 
   const prevOutput = prevTxCache.get(input.txid)?.vout?.[input.vout];
-  return prevOutput ? Math.round(prevOutput.value * 100000000) : 0;
+  return prevOutput ? Math.round(prevOutput.value * 100000000) : null;
 };
 
 const sumInputSats = (
+  txid: string,
   inputs: TransactionInput[],
   totalOutputValue: number,
   prevTxCache: Map<string, RawTransaction>
-): number => {
+): number | null => {
   let totalInputValue = 0;
+  let unresolved = 0;
   for (const input of inputs) {
     if (input.coinbase) {
       return totalOutputValue;
     }
 
-    totalInputValue += getInputValueSats(input, prevTxCache);
+    const value = getInputValueSats(input, prevTxCache);
+    if (value === null) {
+      unresolved++;
+    } else {
+      totalInputValue += value;
+    }
+  }
+
+  if (unresolved > 0) {
+    // A partial sum would persist an understated fee permanently; leave it null so a later pass retries.
+    log.debug(`Skipping calculated fee for tx ${txid}: ${unresolved} unresolved input value(s)`);
+    return null;
   }
   return totalInputValue;
 };
 
 const calculatedFeeSats = (
+  txid: string,
   inputs: TransactionInput[],
   outputs: TransactionOutput[],
   prevTxCache: Map<string, RawTransaction>
 ): number | null => {
   const totalOutputValue = sumOutputSats(outputs);
-  const totalInputValue = sumInputSats(inputs, totalOutputValue, prevTxCache);
-  if (totalInputValue <= 0 || totalInputValue < totalOutputValue) {
+  const totalInputValue = sumInputSats(txid, inputs, totalOutputValue, prevTxCache);
+  if (totalInputValue === null || totalInputValue <= 0 || totalInputValue < totalOutputValue) {
     return null;
   }
 
@@ -102,7 +116,7 @@ const resolveFeeSats = (
   outputs: TransactionOutput[],
   prevTxCache: Map<string, RawTransaction>
 ): number | null => {
-  return electrumFeeSats(tx, txDetails) ?? calculatedFeeSats(inputs, outputs, prevTxCache);
+  return electrumFeeSats(tx, txDetails) ?? calculatedFeeSats(tx.txid, inputs, outputs, prevTxCache);
 };
 
 const applyFeeUpdate = (

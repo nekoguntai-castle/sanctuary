@@ -497,8 +497,7 @@ describe('DraftService', () => {
         walletId,
         userId,
         policyEvaluation.triggered,
-        expect.any(Object),
-        true
+        expect.any(Object)
       );
       expect(result).toEqual(mockDraft);
     });

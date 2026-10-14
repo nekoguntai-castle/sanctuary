@@ -45,6 +45,20 @@ let distributedCache: ICacheService | null = null;
 let distributedEventBus: RedisEventBus | typeof localEventBus | null = null;
 let isInitialized = false;
 let isRedisEnabled = false;
+// Last time the persistent main-client error listener logged (0 = none this outage)
+let lastClientErrorLoggedAt = 0;
+const CLIENT_ERROR_LOG_INTERVAL_MS = 30_000;
+
+function logClientError(err: Error): void {
+  const now = Date.now();
+  if (lastClientErrorLoggedAt === 0) {
+    lastClientErrorLoggedAt = now;
+    log.warn('Redis client error', { error: getErrorMessage(err) });
+  } else if (now - lastClientErrorLoggedAt >= CLIENT_ERROR_LOG_INTERVAL_MS) {
+    lastClientErrorLoggedAt = now;
+    log.debug('Redis client error (throttled)', { error: getErrorMessage(err) });
+  }
+}
 
 // =============================================================================
 // Initialization
@@ -78,12 +92,13 @@ export async function initializeRedis(): Promise<void> {
     redisClient = new Redis(config.redis.url, {
       maxRetriesPerRequest: 3,
       retryStrategy(times) {
-        if (times > 10) {
-          log.error('Redis connection failed after 10 retries, using in-memory fallback');
-          return null; // Stop retrying
-        }
+        // Never stop retrying: a null return would leave the client in `end` until restart.
         const delay = Math.min(times * 100, 3000);
-        log.warn(`Redis connection retry ${times}, waiting ${delay}ms`);
+        if (times <= 10) {
+          log.warn(`Redis connection retry ${times}, waiting ${delay}ms`);
+        } else if (times % 20 === 0) {
+          log.error(`Redis still unreachable after ${times} retries; retrying every 3s`);
+        }
         return delay;
       },
       reconnectOnError(err) {
@@ -93,20 +108,31 @@ export async function initializeRedis(): Promise<void> {
 
     // Wait for connection to be ready (not just connected)
     await new Promise<void>((resolve, reject) => {
+      const onReady = () => {
+        clearTimeout(timeout);
+        redisClient!.off('error', onInitError);
+        resolve();
+      };
+      const onInitError = (err: Error) => {
+        clearTimeout(timeout);
+        redisClient!.off('ready', onReady);
+        reject(err);
+      };
       const timeout = setTimeout(() => {
+        redisClient!.off('ready', onReady);
+        redisClient!.off('error', onInitError);
         reject(new Error('Redis connection timeout'));
       }, 10000);
 
-      redisClient!.once('ready', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-
-      redisClient!.once('error', (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
+      redisClient!.once('ready', onReady);
+      redisClient!.on('error', onInitError);
     });
+
+    // Persistent listener: keeps reconnect failures in structured, throttled logs
+    redisClient.on('ready', () => {
+      lastClientErrorLoggedAt = 0;
+    });
+    redisClient.on('error', logClientError);
 
     // Create distributed cache
     distributedCache = new RedisCache(redisClient);
@@ -126,6 +152,9 @@ export async function initializeRedis(): Promise<void> {
       },
     });
 
+    publisher.on('error', logClientError);
+    subscriber.on('error', logClientError);
+
     await Promise.all([
       new Promise<void>((resolve) => publisher.once('ready', resolve)),
       new Promise<void>((resolve) => subscriber.once('ready', resolve)),
@@ -144,10 +173,10 @@ export async function initializeRedis(): Promise<void> {
     log.error('Failed to initialize Redis', { error: getErrorMessage(error) });
 
     // Clean up partial connections
+    // disconnect(), not quit(): retries are unbounded, and a QUIT queued while
+    // reconnecting would leave the client retrying forever.
     if (redisClient) {
-      await redisClient.quit().catch((e) => {
-        log.debug('Redis quit failed during error cleanup (non-critical)', { error: String(e) });
-      });
+      redisClient.disconnect();
       redisClient = null;
     }
     isRedisEnabled = false;

@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ConflictError, InvalidInputError } from '../../../errors/ApiError';
-import { transactionSigningIntentRepository } from '../../../repositories/transactionSigningIntentRepository';
+import {
+  transactionSigningIntentRepository,
+  type BroadcastPriorState,
+} from '../../../repositories/transactionSigningIntentRepository';
 import type { ValidatedBroadcastArtifact } from './artifactValidation';
 import { toPrismaInputJson } from './json';
 
@@ -44,7 +47,7 @@ export const DurableBroadcastMetadataSchema = z.object({
 export type DurableBroadcastMetadata = z.infer<typeof DurableBroadcastMetadataSchema>;
 
 export type BroadcastClaim =
-  | { status: 'claimed'; leaseToken: string }
+  | { status: 'claimed'; leaseToken: string; priorState: BroadcastPriorState }
   | { status: 'accepted' }
   | { status: 'complete' };
 
@@ -69,8 +72,9 @@ export const claimSigningIntentBroadcast = async (
     leaseToken,
     now,
     leaseExpiresAt: new Date(now.getTime() + BROADCAST_LEASE_MS),
+    allowStalled: true,
   });
-  if (result.status === 'claimed') return { status: 'claimed', leaseToken };
+  if (result.status === 'claimed') return { status: 'claimed', leaseToken, priorState: result.priorState };
   if (result.status === 'accepted') return { status: 'accepted' };
   if (result.status === 'complete') return { status: 'complete' };
   if (result.status === 'busy') {
@@ -87,7 +91,14 @@ export const markSigningIntentBroadcastUnknown = (
   intentId: string,
   leaseToken: string,
   error: string,
-) => transactionSigningIntentRepository.markBroadcastUnknown(intentId, leaseToken, error);
+  options?: { countAttempt?: boolean },
+) => transactionSigningIntentRepository.markBroadcastUnknown(intentId, leaseToken, error, options);
+
+export const markSigningIntentBroadcastStalled = (
+  intentId: string,
+  leaseToken: string,
+  error: string,
+) => transactionSigningIntentRepository.markBroadcastStalled(intentId, leaseToken, error);
 
 export const releaseRejectedSigningIntentBroadcast = (
   intentId: string,

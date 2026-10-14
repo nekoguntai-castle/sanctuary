@@ -4,6 +4,7 @@ import { registerPopulateMissingTransactionFieldsAddressIdContracts } from './co
 import { registerPopulateMissingTransactionFieldsCoreContracts } from './confirmations/confirmations.populate-core.contracts';
 import { registerPopulateMissingTransactionFieldsCounterpartyFallbacksContracts } from './confirmations/confirmations.populate-counterparty-fallbacks.contracts';
 import { registerPopulateMissingTransactionFieldsErrorHandlingContracts } from './confirmations/confirmations.populate-error-handling.contracts';
+import { registerPopulateMissingTransactionFieldsFeePartialInputsContracts } from './confirmations/confirmations.populate-fee-partial-inputs.contracts';
 import { registerPopulateMissingTransactionFieldsMainFlowContracts } from './confirmations/confirmations.populate-main-flow.contracts';
 import { registerPopulateMissingTransactionFieldsMixedFallbacksContracts } from './confirmations/confirmations.populate-mixed-fallbacks.contracts';
 import { registerPopulateMissingTransactionFieldsNetworkHistoryContracts } from './confirmations/confirmations.populate-network-history.contracts';
@@ -28,6 +29,7 @@ describe('confirmations service', () => {
     registerPopulateMissingTransactionFieldsAddressIdContracts();
     registerPopulateMissingTransactionFieldsErrorHandlingContracts();
     registerPopulateMissingTransactionFieldsMixedFallbacksContracts();
+    registerPopulateMissingTransactionFieldsFeePartialInputsContracts();
     registerPopulateMissingTransactionFieldsNetworkHistoryContracts();
     registerPopulateMissingTransactionFieldsCounterpartyFallbacksContracts();
   });

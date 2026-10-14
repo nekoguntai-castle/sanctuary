@@ -10,6 +10,8 @@ export interface LoginResult {
   success: boolean;
   requires2FA?: boolean;
   tempToken?: string;
+  /** Login was refused with 403 because the account's email is unverified. */
+  emailVerificationRequired?: boolean;
 }
 
 /**

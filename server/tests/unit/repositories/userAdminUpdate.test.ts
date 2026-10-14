@@ -56,6 +56,24 @@ function installAdminTransaction(options: {
   return tx;
 }
 
+// Actionable-status draft count first, then the non-actionable (retained) count.
+function restrictedReferenceStubs(counts: {
+  actionableDrafts?: number;
+  otherDrafts?: number;
+  policies?: number;
+  votes?: number;
+}) {
+  return {
+    draftTransaction: {
+      count: vi.fn()
+        .mockResolvedValueOnce(counts.actionableDrafts ?? 0)
+        .mockResolvedValueOnce(counts.otherDrafts ?? 0),
+    },
+    vaultPolicy: { count: vi.fn().mockResolvedValue(counts.policies ?? 0) },
+    approvalVote: { count: vi.fn().mockResolvedValue(counts.votes ?? 0) },
+  };
+}
+
 function installAdminSetBarrier() {
   const adminIds = new Set(['admin-a', 'admin-b']);
   let version = 0;
@@ -93,6 +111,9 @@ function installAdminSetBarrier() {
       walletDevice: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      draftTransaction: { count: vi.fn().mockResolvedValue(0) },
+      vaultPolicy: { count: vi.fn().mockResolvedValue(0) },
+      approvalVote: { count: vi.fn().mockResolvedValue(0) },
       refreshToken: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
@@ -350,6 +371,11 @@ describe('Admin user repository updates', () => {
     walletMemberships?: Array<{ walletId: string; wallet: { groupId: string | null; _count: { users: number } } }>;
     soleOwnerWallets?: Array<{ wallet: { name: string } }>;
     linkedDeviceWallets?: Array<{ wallet: { name: string } }>;
+    actionableDrafts?: number;
+    otherDrafts?: number;
+    policies?: number;
+    votes?: number;
+    deleteError?: Error;
   } = {}) {
     let walletUserCalls = 0;
     const tx = {
@@ -360,8 +386,11 @@ describe('Admin user repository updates', () => {
           isAdmin: options.targetIsAdmin ?? false,
         }),
         count: vi.fn().mockResolvedValue(options.adminCount ?? 1),
-        delete: vi.fn().mockResolvedValue({ id: 'regular-user' }),
+        delete: options.deleteError
+          ? vi.fn().mockRejectedValue(options.deleteError)
+          : vi.fn().mockResolvedValue({ id: 'regular-user' }),
       },
+      ...restrictedReferenceStubs(options),
       walletUser: {
         // Sole-member check first, then the sole-owner-of-shared-wallet check.
         findMany: vi.fn().mockImplementation(async () => (
@@ -508,6 +537,41 @@ describe('Admin user repository updates', () => {
       },
     }));
     expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a vault policy they created', { policies: 1 }, /1 vault policy\(ies\) they created/],
+    ['an actionable draft', { actionableDrafts: 1 }, /1 draft\(s\) \(1 still pending\)/],
+    ['a broadcast draft', { otherDrafts: 2 }, /2 draft\(s\) \(0 still pending\)/],
+    ['an approval vote', { votes: 3 }, /3 approval vote\(s\)/],
+  ])('refuses to delete a user referenced by %s', async (_label, counts, message) => {
+    const tx = installAdminDeleteTransaction(counts);
+
+    await expect(userRepository.deleteFromAdmin('regular-user'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    expect(tx.user.delete).not.toHaveBeenCalled();
+
+    installAdminDeleteTransaction(counts);
+    await expect(userRepository.deleteFromAdmin('regular-user')).rejects.toThrow(message);
+  });
+
+  it('wraps a P2003 from the final delete as a conflict', async () => {
+    installAdminDeleteTransaction({
+      deleteError: new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'test' }),
+    });
+
+    await expect(userRepository.deleteFromAdmin('regular-user')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONFLICT',
+      message: expect.stringContaining('other records still reference this account'),
+    });
+  });
+
+  it('rethrows other delete failures unchanged', async () => {
+    const boom = new Error('boom');
+    installAdminDeleteTransaction({ deleteError: boom });
+
+    await expect(userRepository.deleteFromAdmin('regular-user')).rejects.toBe(boom);
   });
 
   it('allows deleting a co-owner with no device links', async () => {

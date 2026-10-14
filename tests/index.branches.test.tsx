@@ -32,6 +32,48 @@ describe('index bootstrap branch coverage', () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
+  it('rewrites a legacy path-based verification link to the hash route before mounting', async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    window.history.replaceState(null, '', '/verify-email?token=abc%20123');
+
+    vi.doMock('../src/themes', () => ({ initializeThemes: vi.fn() }));
+    vi.doMock('../src/App', () => ({ default: () => <div>Mock App</div> }));
+    vi.doMock('react-dom/client', () => ({
+      default: { createRoot: () => ({ render: vi.fn() }) },
+      createRoot: () => ({ render: vi.fn() }),
+    }));
+
+    try {
+      await import('../src/main');
+
+      expect(window.location.pathname).toBe('/');
+      expect(window.location.hash).toBe('#/verify-email?token=abc%20123');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
+  it('leaves other paths untouched', async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    window.history.replaceState(null, '', '/somewhere?x=1');
+
+    vi.doMock('../src/themes', () => ({ initializeThemes: vi.fn() }));
+    vi.doMock('../src/App', () => ({ default: () => <div>Mock App</div> }));
+    vi.doMock('react-dom/client', () => ({
+      default: { createRoot: () => ({ render: vi.fn() }) },
+      createRoot: () => ({ render: vi.fn() }),
+    }));
+
+    try {
+      await import('../src/main');
+
+      expect(window.location.pathname).toBe('/somewhere');
+      expect(window.location.hash).toBe('');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('throws clear error when root element is missing', async () => {
     const initializeThemes = vi.fn();
     const createRoot = vi.fn();

@@ -17,7 +17,7 @@ import { walletSharingRepository, type EffectiveApproverDbClient } from '../../r
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
-import { notifyApprovalRequested, notifyApprovalResolved } from './approvalNotifications';
+import { notifyApprovalResolved } from './approvalNotifications';
 import type {
   ApprovalRequiredConfig,
   VoteDecision,
@@ -54,20 +54,6 @@ const isApprovalRequiredConfig = (config: unknown): config is ApprovalRequiredCo
 // ========================================
 
 /**
- * Fire-and-forget dispatch of an approval-requested notification.
- * Never throws; failures are logged as warnings.
- */
-export function dispatchApprovalRequestedNotification(
-  walletId: string,
-  draftId: string,
-  userId: string
-): void {
-  notifyApprovalRequested(walletId, draftId, userId).catch(err => {
-    log.warn('Failed to send approval notification', { error: getErrorMessage(err) });
-  });
-}
-
-/**
  * Create approval requests for a draft based on triggered policies.
  * Called when policy evaluation returns approval_required triggers.
  */
@@ -76,8 +62,7 @@ export async function createApprovalRequestsForDraft(
   walletId: string,
   createdByUserId: string,
   triggeredPolicies: PolicyEvaluationResult['triggered'],
-  client?: ApprovalDbClient,
-  suppressNotification = false
+  client?: ApprovalDbClient
 ): Promise<ApprovalRequest[]> {
   // Belt and braces: only 'approval_required'-type policies ever carry an
   // ApprovalRequiredConfig shape (requiredApprovals/quorumType). Checking
@@ -156,13 +141,6 @@ export async function createApprovalRequestsForDraft(
 
   // Update draft approval status
   await updateDraftApprovalStatus(draftId, 'pending', client);
-
-  // Send notifications (async, don't block) unless suppressed.
-  // Suppression only skips the notification; request creation and the
-  // pending status update above always run.
-  if (!suppressNotification) {
-    dispatchApprovalRequestedNotification(walletId, draftId, createdByUserId);
-  }
 
   return requests;
 }
@@ -707,7 +685,6 @@ async function updateDraftApprovalStatus(
 
 export const approvalService = {
   createApprovalRequestsForDraft,
-  dispatchApprovalRequestedNotification,
   castVote,
   ownerOverride,
   getPendingApprovalsForUser,

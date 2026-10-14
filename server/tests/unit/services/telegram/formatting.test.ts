@@ -132,6 +132,23 @@ describe('telegram formatting helpers', () => {
     expect(message).toContain('Review in Sanctuary before signing');
   });
 
+  it.each([
+    ['standard draft', undefined],
+    ['agent funding draft', 'Treasury Agent'],
+  ])('prints the approval line for a %s only when approvalRequired is set', (_name, agentName) => {
+    const draft = {
+      amount: 250000n,
+      recipient: 'tb1qrecipientaddress0000000000',
+      feeRate: 7,
+      agentName,
+    };
+    const line = 'Approval required before signing';
+
+    expect(formatDraftMessage({ ...draft, approvalRequired: true }, { name: 'W' }, 'alice')).toContain(line);
+    expect(formatDraftMessage({ ...draft, approvalRequired: false }, { name: 'W' }, 'alice')).not.toContain(line);
+    expect(formatDraftMessage(draft, { name: 'W' }, 'alice')).not.toContain(line);
+  });
+
   it('escapes HTML metacharacters only', () => {
     expect(escapeHtml('A&B <C> "D"')).toBe('A&amp;B &lt;C&gt; "D"');
   });

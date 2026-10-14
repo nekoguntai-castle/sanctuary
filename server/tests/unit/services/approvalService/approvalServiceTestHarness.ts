@@ -25,7 +25,6 @@ const approvalMocks = vi.hoisted(() => ({
     updateApprovalStatus: vi.fn().mockResolvedValue(undefined),
   },
   mockNotify: {
-    notifyApprovalRequested: vi.fn().mockResolvedValue(undefined),
     notifyApprovalResolved: vi.fn().mockResolvedValue(undefined),
   },
   mockWalletSharingRepo: {
@@ -101,7 +100,6 @@ export function registerApprovalServiceTestHarness() {
     );
     mockPolicyRepo.createPolicyEvent.mockResolvedValue({});
     mockDraftRepo.updateApprovalStatus.mockResolvedValue(undefined);
-    mockNotify.notifyApprovalRequested.mockResolvedValue(undefined);
     mockNotify.notifyApprovalResolved.mockResolvedValue(undefined);
     // Default to no wallet members so 'all'-quorum paths that don't set up
     // membership explicitly resolve to an empty eligible set rather than

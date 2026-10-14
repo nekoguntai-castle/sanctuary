@@ -89,6 +89,14 @@ vi.mock('../../../../src/services/email', () => ({
 }));
 
 // Mock rate limiting middleware to allow requests through in tests
+// The real barrel loads policies.ts, which reads config.mcp at import; this
+// harness config has none. Default to an allowed consume; tests override it.
+vi.mock('../../../../src/services/rateLimiting', () => ({
+  rateLimitService: {
+    consume: vi.fn().mockResolvedValue({ allowed: true, remaining: 9, limit: 10, resetAt: Date.now() + 900_000 }),
+  },
+}));
+
 vi.mock('../../../../src/middleware/rateLimit', () => ({
   rateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitByIpAndKey: (_key?: string, extractKey?: (req: any) => string | undefined) =>

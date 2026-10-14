@@ -13,7 +13,10 @@ import type {
   PendingEmailVerificationResponse,
   RegisterRequest,
   RegisterResponse,
+  ResendPendingVerificationRequest,
+  ResendPendingVerificationResponse,
   TwoFactorRequiredResponse,
+  VerifyEmailResponse,
 } from '@sanctuary/shared/types/api';
 import type { TelegramConfig, WalletTelegramSettings } from '../types';
 import { createLogger } from '../utils/logger';
@@ -30,8 +33,11 @@ export type {
   PendingEmailVerificationResponse,
   RegisterRequest,
   RegisterResponse,
+  ResendPendingVerificationRequest,
+  ResendPendingVerificationResponse,
   TelegramConfig,
   TwoFactorRequiredResponse,
+  VerifyEmailResponse,
   WalletTelegramSettings,
 };
 
@@ -75,6 +81,24 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
   // Mutations are transport-single-shot; this also avoids amplifying login
   // attempts against the server-side rate limiter.
   return apiClient.post<LoginResponse>('/auth/login', data);
+}
+
+/**
+ * Complete email verification with the token from the emailed link.
+ * Public: unverified users have no session.
+ */
+export async function verifyEmail(token: string): Promise<VerifyEmailResponse> {
+  return apiClient.post<VerifyEmailResponse>('/auth/email/verify', { token });
+}
+
+/**
+ * Ask for a new verification email with credentials, for users who cannot log
+ * in yet. The server's response is the same whether or not mail was sent.
+ */
+export async function resendPendingVerification(
+  data: ResendPendingVerificationRequest,
+): Promise<ResendPendingVerificationResponse> {
+  return apiClient.post<ResendPendingVerificationResponse>('/auth/email/resend-pending', data);
 }
 
 /**

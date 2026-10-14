@@ -36,6 +36,7 @@ export interface DraftNotification {
   agentOperationalWalletId?: string | null;
   agentOperationalWalletName?: string | null;
   agentSigned?: boolean;
+  approvalRequired?: boolean;
   dedupeKey?: string;
 }
 

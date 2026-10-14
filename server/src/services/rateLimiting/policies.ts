@@ -6,6 +6,7 @@
  */
 
 import type { RateLimitPolicy } from './types';
+import { TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE } from './policyMessages';
 import { getConfig } from '../../config';
 
 /**
@@ -42,6 +43,16 @@ function buildPolicies(): Record<string, RateLimitPolicy> {
       message: 'Too many 2FA attempts. Please try again in 15 minutes.',
     },
 
+    // Per-account cap, consumed in the 2FA verify handler. 'custom' because the
+    // key (user:<id>) is not derivable from the request by the middleware.
+    'auth:2fa-account': {
+      name: 'auth:2fa-account',
+      limit: rl.twoFaAccountAttempts,
+      windowSeconds: rl.twoFaWindowSeconds,
+      keyStrategy: 'custom',
+      message: TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE,
+    },
+
     'auth:password-change': {
       name: 'auth:password-change',
       limit: rl.passwordChangeAttempts,
@@ -63,6 +74,15 @@ function buildPolicies(): Record<string, RateLimitPolicy> {
       limit: rl.emailResendAttempts,
       windowSeconds: rl.emailResendWindowSeconds,
       keyStrategy: 'user',
+      message: 'Too many verification email requests. Please try again later.',
+    },
+
+    // Pre-auth resend (credentialed). Shares the emailResend* limits.
+    'auth:email-resend-pending': {
+      name: 'auth:email-resend-pending',
+      limit: rl.emailResendAttempts,
+      windowSeconds: rl.emailResendWindowSeconds,
+      keyStrategy: 'ip+user',
       message: 'Too many verification email requests. Please try again later.',
     },
 

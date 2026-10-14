@@ -110,6 +110,12 @@ describe('Mobile Permission Middleware', () => {
       expect(ROUTE_ACTION_MAP['DELETE:/wallets/:id/labels/:labelId']).toBe('manageLabels');
     });
 
+    it('should map wallet-scoped read routes to view capabilities', () => {
+      expect(ROUTE_ACTION_MAP['GET:/wallets/:id/transactions']).toBe('viewTransactions');
+      expect(ROUTE_ACTION_MAP['GET:/wallets/:id/addresses/summary']).toBe('viewBalance');
+      expect(ROUTE_ACTION_MAP['GET:/wallets/:id/utxos']).toBe('viewUtxos');
+    });
+
     it('should map draft signing routes', () => {
       expect(ROUTE_ACTION_MAP['PATCH:/wallets/:id/drafts/:draftId']).toBe('signPsbt');
     });

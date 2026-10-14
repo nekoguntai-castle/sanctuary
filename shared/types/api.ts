@@ -181,6 +181,33 @@ export interface TwoFactorVerifyRequest {
   code: string;
 }
 
+/**
+ * Email verification (completed from the emailed link, no session needed)
+ */
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface VerifyEmailResponse {
+  success: boolean;
+  message: string;
+  email: string;
+}
+
+/**
+ * Credentialed resend for users who cannot log in until verified. The server
+ * answers 202 with this same body whether or not an email was sent.
+ */
+export interface ResendPendingVerificationRequest {
+  username: string;
+  password: string;
+}
+
+export interface ResendPendingVerificationResponse {
+  success: boolean;
+  message: string;
+}
+
 export type RegisterResponse = AuthResponse | PendingEmailVerificationResponse;
 export type LoginResponse = AuthResponse | TwoFactorRequiredResponse;
 

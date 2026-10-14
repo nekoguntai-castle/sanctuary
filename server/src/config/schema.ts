@@ -58,6 +58,7 @@ export const RateLimitConfigSchema = z.object({
   registerAttempts: z.number().int().min(1).max(100),
   registerWindowSeconds: z.number().int().min(1),
   twoFaAttempts: z.number().int().min(1).max(100),
+  twoFaAccountAttempts: z.number().int().min(1).max(100),
   twoFaWindowSeconds: z.number().int().min(1),
   passwordChangeAttempts: z.number().int().min(1).max(100),
   passwordChangeWindowSeconds: z.number().int().min(1),

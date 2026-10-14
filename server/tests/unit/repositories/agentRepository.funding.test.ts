@@ -19,7 +19,7 @@ describe('agentRepository funding controls', () => {
       maxWait: 5000,
       timeout: 60000,
     });
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it('passes the advisory-locked transaction client to agent funding work', async () => {
@@ -36,7 +36,7 @@ describe('agentRepository funding controls', () => {
       maxWait: 5000,
       timeout: 60000,
     });
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it('records agent funding attempts for monitoring', async () => {
@@ -373,7 +373,7 @@ describe('agentRepository funding controls', () => {
       maxWait: 5000,
       timeout: 5000,
     });
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(prisma.agentAlert.findFirst).toHaveBeenCalledWith({
       where: {
         dedupeKey: 'agent:agent-1:balance_low:wallet-1',
@@ -407,7 +407,7 @@ describe('agentRepository funding controls', () => {
     expect(prisma.agentAlert.create).not.toHaveBeenCalled();
 
     prisma.$transaction.mockClear();
-    prisma.$queryRaw.mockClear();
+    prisma.$executeRaw.mockClear();
     prisma.agentAlert.create.mockClear();
     prisma.agentAlert.create.mockResolvedValueOnce({
       id: 'alert-without-dedupe',
@@ -424,7 +424,7 @@ describe('agentRepository funding controls', () => {
       ),
     ).resolves.toEqual({ id: 'alert-without-dedupe' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
     expect(prisma.agentAlert.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         agentId: 'agent-1',

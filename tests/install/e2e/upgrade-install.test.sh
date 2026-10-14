@@ -759,6 +759,7 @@ run_install_script_command() {
         export SANCTUARY_ASSUME_YES="true"
         export RATE_LIMIT_LOGIN=100
         export RATE_LIMIT_2FA=100
+        export RATE_LIMIT_2FA_ACCOUNT=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$project_dir/install.sh" </dev/null
     )
@@ -2295,6 +2296,7 @@ test_recover_postgres_password_drift() {
         unset COMPOSE_PROFILES
         export RATE_LIMIT_LOGIN=100
         export RATE_LIMIT_2FA=100
+        export RATE_LIMIT_2FA_ACCOUNT=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive --skip-ssl 2>&1
     ) || {
@@ -2419,6 +2421,7 @@ test_force_rebuild_upgrade() {
         export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
         export RATE_LIMIT_LOGIN=100
         export RATE_LIMIT_2FA=100
+        export RATE_LIMIT_2FA_ACCOUNT=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$PROJECT_ROOT/start.sh" --rebuild 2>&1
     )

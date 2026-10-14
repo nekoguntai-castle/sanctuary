@@ -65,6 +65,8 @@ export const mockPrismaClient = {
   agentFundingOverride: createModelMock(),
   agentAlert: createModelMock(),
   draftTransaction: createModelMock(),
+  vaultPolicy: createModelMock(),
+  approvalVote: createModelMock(),
   pushSubscription: createModelMock(),
   pushDevice: createModelMock(),
   feeEstimate: createModelMock(),

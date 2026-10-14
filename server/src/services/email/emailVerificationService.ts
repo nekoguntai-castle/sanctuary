@@ -15,6 +15,7 @@ import { sendEmail, isSmtpConfigured } from './emailService';
 import { generateVerificationEmail } from './templates/verification';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { ServiceUnavailableError } from '../../errors/ApiError';
 import config from '../../config';
 
 const log = createLogger('EMAIL:VERIFICATION');
@@ -71,7 +72,8 @@ async function getServerName(): Promise<string> {
 function getVerificationUrl(token: string): string {
   // Use the client URL since verification happens in the frontend
   const baseUrl = config.server.clientUrl || `http://localhost:3000`;
-  return `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
+  // The app is hash-routed, so the link must target a hash route.
+  return `${baseUrl}/#/verify-email?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -160,6 +162,19 @@ export async function createVerificationToken(
 }
 
 /**
+ * Refuse an email change that could never be verified: verification is
+ * required for login but outgoing email is not configured, so no link would
+ * ever be sent. Throws before anything is written.
+ */
+export async function assertEmailChangeDeliverable(): Promise<void> {
+  if (await isVerificationRequired() && !(await isSmtpConfigured())) {
+    throw new ServiceUnavailableError(
+      'Email verification is required but outgoing email is not configured; ask an administrator'
+    );
+  }
+}
+
+/**
  * Update a user's email and create the replacement verification intent in the
  * same transaction that invalidates older unused intents. SMTP delivery happens
  * only after that transaction commits, so stale old-address tokens cannot
@@ -178,6 +193,7 @@ export async function updateEmailWithVerification(
     error?: string;
   };
 }> {
+  await assertEmailChangeDeliverable();
   try {
     const smtpConfigured = await isSmtpConfigured();
     const token = smtpConfigured ? generateToken() : null;

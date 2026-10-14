@@ -464,13 +464,30 @@ export function registerElectrumManagerStandaloneContracts() {
         new Map([['addr-main', 'status']]),
       );
 
-      mockClient.getServerVersion.mockRejectedValueOnce(new Error('health failed'));
+      mockClient.ping.mockRejectedValueOnce(new Error('health failed'));
       const scheduleReconnectSpy = vi.fn();
       await checkHealth(networks, scheduleReconnectSpy);
 
       expect(disconnected.connected).toBe(false);
       expect(state.connected).toBe(false);
       expect(scheduleReconnectSpy).toHaveBeenCalledWith('mainnet');
+    });
+
+    it('reconnects when ping fails even though the cached server version resolves', async () => {
+      const state: NetworkState = {
+        network: 'mainnet', client: mockClient as any, connected: true,
+        subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+      };
+      const networks = new Map<BitcoinNetwork, NetworkState>([['mainnet', state]]);
+      mockClient.getServerVersion.mockResolvedValue({ server: 'cached', protocol: '1.4' });
+      mockClient.ping.mockRejectedValueOnce(new Error('ping timeout'));
+      const schedule = vi.fn();
+
+      await checkHealth(networks, schedule);
+
+      expect(state.connected).toBe(false);
+      expect(schedule).toHaveBeenCalledWith('mainnet');
     });
 
     it.each(['before', 'after-success', 'after-failure'] as const)(
@@ -484,12 +501,12 @@ export function registerElectrumManagerStandaloneContracts() {
         const networks = new Map<BitcoinNetwork, NetworkState>([['mainnet', state]]);
         let active = timing !== 'before';
         if (timing === 'after-success') {
-          mockClient.getServerVersion.mockImplementationOnce(async () => {
+          mockClient.ping.mockImplementationOnce(async () => {
             active = false;
             return { server: 'stale', protocol: '1.4' };
           });
         } else if (timing === 'after-failure') {
-          mockClient.getServerVersion.mockImplementationOnce(async () => {
+          mockClient.ping.mockImplementationOnce(async () => {
             active = false;
             throw new Error('closed');
           });

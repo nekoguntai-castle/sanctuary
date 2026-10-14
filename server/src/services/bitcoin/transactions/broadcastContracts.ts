@@ -34,6 +34,7 @@ export const BROADCAST_ERROR_REASON_VALUES = [
   'node_preflight_rejected',
   'node_timeout',
   'node_failure',
+  'broadcast_stalled',
 ] as const;
 
 export type BroadcastErrorReason = typeof BROADCAST_ERROR_REASON_VALUES[number];

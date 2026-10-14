@@ -1,4 +1,5 @@
 import { beforeEach, describe } from 'vitest';
+import { registerBroadcastAndSaveClaimStateContracts } from './transactionServiceBroadcast.broadcastAndSave.claim-states.contracts';
 import { registerBroadcastAndSaveCoreContracts } from './transactionServiceBroadcast.broadcastAndSave.core.contracts';
 import { registerBroadcastAndSaveFailureAndRbfContracts } from './transactionServiceBroadcast.broadcastAndSave.failures-rbf.contracts';
 import { registerBroadcastAndSaveNotificationContracts } from './transactionServiceBroadcast.broadcastAndSave.notifications.contracts';
@@ -9,6 +10,7 @@ export const registerBroadcastAndSaveTests = () => {
     beforeEach(setupBroadcastAndSaveDefaults);
 
     registerBroadcastAndSaveCoreContracts();
+    registerBroadcastAndSaveClaimStateContracts();
     registerBroadcastAndSaveNotificationContracts();
     registerBroadcastAndSaveFailureAndRbfContracts();
   });

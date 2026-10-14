@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   list: vi.fn(), claim: vi.fn(), accepted: vi.fn(), complete: vi.fn(), unknown: vi.fn(),
   rejected: vi.fn(), broadcast: vi.fn(), persist: vi.fn(),
-  lookup: vi.fn(),
+  lookup: vi.fn(), stalled: vi.fn(), listStalled: vi.fn(), claimLookup: vi.fn(), stalledAccepted: vi.fn(),
 }));
 vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', () => ({
+  MAX_RECONCILE_ATTEMPTS: 60, // pinned against the real constant in transactionSigningIntentRepository.test.ts
   transactionSigningIntentRepository: {
     listBroadcastsForReconciliation: mocks.list,
     claimBroadcast: mocks.claim,
@@ -13,17 +14,33 @@ vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', ()
     markBroadcastComplete: mocks.complete,
     markBroadcastUnknown: mocks.unknown,
     releaseRejectedBroadcast: mocks.rejected,
+    markBroadcastStalled: mocks.stalled,
+    listStalledBroadcastsForLookup: mocks.listStalled,
+    claimStalledBroadcastLookup: mocks.claimLookup,
+    markStalledBroadcastAccepted: mocks.stalledAccepted,
   },
 }));
-vi.mock('../../../../../src/services/bitcoin/blockchain', () => ({
-  broadcastAuthenticatedRawTransaction: mocks.broadcast,
-  getTransactionDetails: mocks.lookup,
-}));
+vi.mock('../../../../../src/services/bitcoin/blockchain', async () => {
+  const actual = await vi.importActual<typeof import('../../../../../src/services/bitcoin/blockchain/networkOperations')>(
+    '../../../../../src/services/bitcoin/blockchain/networkOperations',
+  );
+  return {
+    broadcastAuthenticatedRawTransaction: mocks.broadcast,
+    getTransactionDetails: mocks.lookup,
+    // The real predicate: classification is exercised end to end with typed causes.
+    isNodeAnsweredBroadcastFailure: actual.isNodeAnsweredBroadcastFailure,
+  };
+});
 vi.mock('../../../../../src/services/bitcoin/transactions/persistTransaction', () => ({
   persistTransaction: mocks.persist,
 }));
 
 import { reconcileSigningIntentBroadcasts } from '../../../../../src/services/bitcoin/signingIntent/broadcastReconciliation';
+import { ElectrumRpcError } from '../../../../../src/services/bitcoin/electrum/types';
+import { BroadcastPreflightError } from '../../../../../src/services/bitcoin/blockchain/broadcastPreflight';
+
+const unknownOutcome = (cause: unknown) =>
+  Object.assign(new Error('Broadcast outcome is unknown: boom'), { cause });
 
 const metadata = {
   recipient: 'tb1qrecipient',
@@ -58,7 +75,11 @@ const record = (state: 'accepted' | 'unknown' | 'claimed') => ({
 describe('signing intent broadcast reconciliation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.claim.mockResolvedValue({ status: 'claimed', record: {} });
+    mocks.claim.mockResolvedValue({ status: 'claimed', record: { broadcastAttemptCount: 1 } });
+    mocks.listStalled.mockResolvedValue([]);
+    mocks.claimLookup.mockResolvedValue(true);
+    mocks.stalledAccepted.mockResolvedValue(true);
+    mocks.stalled.mockResolvedValue(true);
     mocks.accepted.mockResolvedValue(true);
     mocks.complete.mockResolvedValue(true);
     mocks.broadcast.mockResolvedValue({ txid: 'b'.repeat(64), broadcasted: true });
@@ -82,8 +103,10 @@ describe('signing intent broadcast reconciliation', () => {
       id: 'intent-1', txid: 'b'.repeat(64), leaseToken: expect.any(String), now,
       leaseExpiresAt: new Date('2030-01-01T00:01:00Z'),
     }));
+    expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ allowStalled: false }));
     expect(mocks.broadcast).toHaveBeenCalledWith(expect.objectContaining({
       rawTx: '00', expectedTxid: 'b'.repeat(64), network: 'testnet3', replacement: false,
+      allowDefiniteRejection: false,
     }));
     expect(mocks.accepted).toHaveBeenCalled();
   });
@@ -101,7 +124,9 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.list.mockResolvedValue([record('unknown')]);
     mocks.broadcast.mockRejectedValue(new Error('connection lost'));
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
-    expect(mocks.unknown).toHaveBeenCalledWith('intent-1', expect.any(String), 'connection lost');
+    expect(mocks.unknown).toHaveBeenCalledWith('intent-1', expect.any(String), 'connection lost', {
+      countAttempt: false,
+    });
     expect(mocks.persist).not.toHaveBeenCalled();
   });
 
@@ -187,5 +212,118 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.lookup.mockRejectedValueOnce(new Error('not found'));
     mocks.accepted.mockResolvedValueOnce(false);
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
+  });
+
+  describe('attempt cap', () => {
+    const failWith = async (attempts: number, error: Error) => {
+      mocks.list.mockResolvedValue([record('unknown')]);
+      mocks.claim.mockResolvedValue({ status: 'claimed', record: { broadcastAttemptCount: attempts } });
+      mocks.broadcast.mockRejectedValue(error);
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
+    };
+
+    it('stalls at the cap when the node answered with a verdict', async () => {
+      await failWith(60, unknownOutcome(new ElectrumRpcError('min relay fee not met')));
+      expect(mocks.stalled).toHaveBeenCalledWith('intent-1', expect.any(String), 'Broadcast outcome is unknown: boom');
+      expect(mocks.unknown).not.toHaveBeenCalled();
+    });
+
+    it('stalls past the cap too', async () => {
+      await failWith(61, unknownOutcome(new ElectrumRpcError('txn-already-known')));
+      expect(mocks.stalled).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the intent unknown one attempt below the cap and counts the answered attempt', async () => {
+      await failWith(59, unknownOutcome(new ElectrumRpcError('min relay fee not met')));
+      expect(mocks.stalled).not.toHaveBeenCalled();
+      expect(mocks.unknown).toHaveBeenCalledWith('intent-1', expect.any(String), expect.any(String), {
+        countAttempt: true,
+      });
+    });
+
+    it('stalls at the cap on a node-data preflight rejection', async () => {
+      await failWith(60, unknownOutcome(new BroadcastPreflightError('spent', 'node_preflight_rejected')));
+      expect(mocks.stalled).toHaveBeenCalledTimes(1);
+      expect(mocks.unknown).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['preflight unavailable', unknownOutcome(new BroadcastPreflightError('down', 'node_preflight_unavailable'))],
+      ['non-verdict RPC error', unknownOutcome(new ElectrumRpcError('bitcoind is not reachable'))],
+      ['transport failure', unknownOutcome(new Error('socket hang up'))],
+      ['unwrapped failure', new Error('Broadcast outcome is unknown: boom')],
+    ])('never stalls and gives the attempt back for %s', async (_label, error) => {
+      await failWith(60, error);
+      expect(mocks.stalled).not.toHaveBeenCalled();
+      expect(mocks.unknown).toHaveBeenCalledWith('intent-1', expect.any(String), expect.any(String), {
+        countAttempt: false,
+      });
+    });
+  });
+
+  describe('stalled lookup pass', () => {
+    const stalledRecord = { ...record('unknown'), broadcastState: 'stalled' };
+
+    it('moves a stalled intent that now exists on the node to accepted without rebroadcasting', async () => {
+      const now = new Date('2030-01-01T00:00:00Z');
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([stalledRecord]);
+      mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+      await expect(reconcileSigningIntentBroadcasts(now, 5)).resolves.toEqual({ examined: 0, completed: 0 });
+      expect(mocks.listStalled).toHaveBeenCalledWith(now, 5);
+      expect(mocks.claimLookup).toHaveBeenCalledWith('intent-1', now);
+      expect(mocks.lookup).toHaveBeenCalledWith('b'.repeat(64), 'testnet3');
+      expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-1', 'b'.repeat(64), now);
+      expect(mocks.persist).toHaveBeenCalledWith('wallet-1', 'b'.repeat(64), '00', metadata);
+      expect(mocks.complete).toHaveBeenCalledWith('intent-1', 'b'.repeat(64));
+      expect(mocks.broadcast).not.toHaveBeenCalled();
+      expect(mocks.claim).not.toHaveBeenCalled();
+    });
+
+    it('leaves a stalled intent stalled when the node does not know the txid', async () => {
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([stalledRecord]);
+      mocks.lookup.mockRejectedValue(new Error('not found'));
+      await reconcileSigningIntentBroadcasts();
+      expect(mocks.stalledAccepted).not.toHaveBeenCalled();
+      expect(mocks.persist).not.toHaveBeenCalled();
+      expect(mocks.broadcast).not.toHaveBeenCalled();
+    });
+
+    it('skips the lookup when another worker already looked within the interval', async () => {
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([stalledRecord]);
+      mocks.claimLookup.mockResolvedValue(false);
+      await reconcileSigningIntentBroadcasts();
+      expect(mocks.lookup).not.toHaveBeenCalled();
+    });
+
+    it('leaves the intent to a concurrent user claim when the stalled to accepted transition is lost', async () => {
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([stalledRecord]);
+      mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+      mocks.stalledAccepted.mockResolvedValue(false);
+      await reconcileSigningIntentBroadcasts();
+      expect(mocks.persist).not.toHaveBeenCalled();
+      expect(mocks.complete).not.toHaveBeenCalled();
+    });
+
+    it.each([{ network: 'invalid' }, { broadcastTxid: null }])('skips a stalled record with bad evidence %j', async override => {
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([{ ...stalledRecord, ...override }]);
+      await reconcileSigningIntentBroadcasts();
+      expect(mocks.claimLookup).not.toHaveBeenCalled();
+      expect(mocks.lookup).not.toHaveBeenCalled();
+    });
+
+    it('isolates a failing stalled record from the rest of the pass', async () => {
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([stalledRecord, { ...stalledRecord, id: 'intent-2' }]);
+      mocks.claimLookup.mockRejectedValueOnce(new Error('db down')).mockResolvedValue(true);
+      mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 0, completed: 0 });
+      expect(mocks.stalledAccepted).toHaveBeenCalledTimes(1);
+      expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-2', 'b'.repeat(64), expect.any(Date));
+    });
   });
 });

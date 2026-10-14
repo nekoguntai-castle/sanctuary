@@ -805,7 +805,7 @@ jobs:
           PRISMA_TRANSACTION_MAX_WAIT_MS: '10000'
           PRISMA_TRANSACTION_TIMEOUT_MS: '30000'
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
-          # The ops-workers group registers four Redis-backed suites. CI must
+          # The ops-workers group registers the Redis-backed suites. CI must
           # fail at collection instead of silently reporting them as skipped.
           SANCTUARY_REQUIRE_REDIS_INTEGRATION: 'true'
         run: |

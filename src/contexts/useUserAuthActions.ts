@@ -3,7 +3,7 @@ import type React from 'react';
 import type { User } from '../types';
 import * as authApi from '../api/auth';
 import * as twoFactorApi from '../api/twoFactor';
-import { ApiError } from '../api/client';
+import { ApiError, apiErrorMessageOr } from '../api/client';
 import { triggerLogout } from '../api/refresh';
 import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
 import type {
@@ -34,8 +34,9 @@ interface UserAuthActions {
   logout: () => void;
 }
 
-function getApiMessage(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
+/** The login 403 for an unverified account carries `emailVerificationRequired: true`. */
+function isEmailVerificationRequired(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 403 && err.response?.emailVerificationRequired === true;
 }
 
 export function useUserAuthActions({
@@ -67,8 +68,8 @@ export function useUserAuthActions({
       setNotice(null);
       return { success: true };
     } catch (err) {
-      setError(getApiMessage(err, 'Login failed'));
-      return { success: false };
+      setError(apiErrorMessageOr(err, 'Login failed'));
+      return { success: false, emailVerificationRequired: isEmailVerificationRequired(err) };
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +97,7 @@ export function useUserAuthActions({
       setNotice(null);
       return true;
     } catch (err) {
-      setError(getApiMessage(err, 'Invalid verification code'));
+      setError(apiErrorMessageOr(err, 'Invalid verification code'));
       return false;
     } finally {
       setIsLoading(false);
@@ -145,7 +146,7 @@ export function useUserAuthActions({
       setNotice(null);
       return { success: true };
     } catch (err) {
-      const message = getApiMessage(err, 'Registration failed');
+      const message = apiErrorMessageOr(err, 'Registration failed');
       setError(message);
       setNotice(null);
       return { success: false, message };

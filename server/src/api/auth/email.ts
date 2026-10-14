@@ -4,22 +4,94 @@
  * Handles email verification, resend, and email updates.
  */
 
+import { randomBytes } from 'node:crypto';
 import { Router, Response } from 'express';
-import type { RequestHandler } from 'express';
-import { verifyEmail, resendVerification, updateEmailWithVerification } from '../../services/email';
+import type { Request, RequestHandler } from 'express';
+import {
+  verifyEmail,
+  resendVerification,
+  updateEmailWithVerification,
+  isVerificationRequired,
+  assertEmailChangeDeliverable,
+} from '../../services/email';
 import { userRepository } from '../../repositories';
+import type { User } from '../../generated/prisma/client';
+import { rateLimitService } from '../../services/rateLimiting';
 import { normalizeEmail } from '../../utils/email';
-import { verifyPassword } from '../../utils/password';
-import { VerifyEmailSchema, UpdateEmailSchema } from '../schemas/email';
+import { normalizeUsername } from '../../utils/username';
+import { hashPassword, verifyPassword } from '../../utils/password';
+import { VerifyEmailSchema, UpdateEmailSchema, ResendPendingVerificationSchema } from '../schemas/email';
 import { createLogger } from '../../utils/logger';
 import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ValidationError, UnauthorizedError, ConflictError } from '../../errors/ApiError';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
-import { isUniqueConstraintError } from '../../utils/errors';
+import { getErrorMessage, isUniqueConstraintError } from '../../utils/errors';
 
 const log = createLogger('AUTH_EMAIL:ROUTE');
+
+/** Limiters for the credentialed pre-auth resend route. */
+export interface ResendPendingLimiters {
+  /** Same ip+username bucket as POST /auth/login. */
+  login: RequestHandler;
+  resendPending: RequestHandler;
+}
+
+// Compared against when the user does not exist, so the response time does not
+// reveal whether the account does. Hashed at runtime (same cost as real
+// passwords, no committed hash) and only once per process.
+let dummyPasswordHash: Promise<string> | undefined;
+const getDummyPasswordHash = (): Promise<string> =>
+  (dummyPasswordHash ??= hashPassword(randomBytes(16).toString('hex')).catch((error: unknown) => {
+    dummyPasswordHash = undefined; // retry next time rather than failing forever
+    throw error;
+  }));
+
+// Identical for every outcome: no account or password oracle.
+const RESEND_PENDING_RESPONSE = {
+  success: true,
+  message: 'If the account needs verification, a new email has been sent.',
+};
+
+/**
+ * Consume the same per-user bucket the authenticated resend uses. Never
+ * signals the caller: exhaustion or limiter failure only suppresses the send,
+ * because a 429/500 here would appear only for a correct password.
+ */
+async function consumeResendBucket(userId: string): Promise<boolean> {
+  try {
+    const result = await rateLimitService.consume('auth:email-resend', `user:${userId}`);
+    return result.allowed;
+  } catch (error) {
+    log.warn('Pre-auth resend skipped: rate limiter unavailable', { userId, error: getErrorMessage(error) });
+    return false;
+  }
+}
+
+/** Send a fresh link to a credential-verified user, when one is actually owed. */
+async function sendPendingVerification(req: Request, user: User): Promise<void> {
+  if (!user.email || user.emailVerified || !(await isVerificationRequired())) return;
+  if (!(await consumeResendBucket(user.id))) return;
+
+  const result = await resendVerification(user.id);
+  if (!result.success) {
+    log.warn('Pre-auth resend failed', { userId: user.id, error: result.error });
+    return;
+  }
+
+  const { ipAddress, userAgent } = getClientInfo(req);
+  await auditService.log({
+    userId: user.id,
+    username: user.username,
+    action: AuditAction.AUTH_EMAIL_VERIFICATION_SENT,
+    category: AuditCategory.AUTH,
+    success: true,
+    details: { email: user.email, preAuth: true },
+    ipAddress,
+    userAgent,
+  });
+}
 
 /**
  * Create email verification router with rate limiters
@@ -27,7 +99,8 @@ const log = createLogger('AUTH_EMAIL:ROUTE');
 export function createEmailRouter(
   verifyLimiter: RequestHandler,
   resendLimiter: RequestHandler,
-  updateLimiter: RequestHandler
+  updateLimiter: RequestHandler,
+  pendingLimiters: ResendPendingLimiters
 ): Router {
   const router = Router();
 
@@ -147,6 +220,34 @@ export function createEmailRouter(
   );
 
   /**
+   * POST /api/v1/auth/email/resend-pending
+   *
+   * Resend the verification email using username and password, for users who
+   * cannot log in yet because their email is unverified. Public, always 202.
+   */
+  router.post(
+    '/email/resend-pending',
+    pendingLimiters.login,
+    pendingLimiters.resendPending,
+    validate({ body: ResendPendingVerificationSchema }, { message: 'Invalid request' }),
+    asyncHandler(async (req, res) => {
+      const { username, password } = req.body;
+      const user = await userRepository.findByUsername(normalizeUsername(username));
+      const passwordValid = await verifyPassword(password, user?.password ?? await getDummyPasswordHash());
+
+      res.status(202).json(RESEND_PENDING_RESPONSE);
+
+      // Send after responding: awaiting it would make latency (or a 500) reveal
+      // that the password was correct.
+      if (user && passwordValid) {
+        void sendPendingVerification(req, user).catch((error) => {
+          log.warn('Pre-auth resend failed', { userId: user.id, error: getErrorMessage(error) });
+        });
+      }
+    })
+  );
+
+  /**
    * PUT /api/v1/auth/me/email
    *
    * Update email address. Requires password confirmation.
@@ -183,6 +284,9 @@ export function createEmailRouter(
           throw new ConflictError('This email address is already in use');
         }
       }
+
+      // Refuse before writing anything if the new address could never be verified.
+      await assertEmailChangeDeliverable();
 
       let updateResult: Awaited<ReturnType<typeof updateEmailWithVerification>>;
       try {

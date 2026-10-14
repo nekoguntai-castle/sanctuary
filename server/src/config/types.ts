@@ -47,6 +47,7 @@ export interface RateLimitConfig {
   registerAttempts: number;
   registerWindowSeconds: number;
   twoFaAttempts: number;
+  twoFaAccountAttempts: number;
   twoFaWindowSeconds: number;
   passwordChangeAttempts: number;
   passwordChangeWindowSeconds: number;

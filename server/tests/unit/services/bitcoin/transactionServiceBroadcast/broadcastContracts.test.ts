@@ -49,6 +49,7 @@ const REQUIRED_REASON_CODES = [
   'node_preflight_rejected',
   'node_timeout',
   'node_failure',
+  'broadcast_stalled',
 ] as const;
 
 const REQUIRED_PRE_PROPAGATION_INVARIANTS = [
@@ -86,6 +87,7 @@ describe('broadcast contracts', () => {
     expect(getBroadcastFailureRetryPolicy('node_preflight_rejected')).toBe(
       'terminal',
     );
+    expect(getBroadcastFailureRetryPolicy('broadcast_stalled')).toBe('terminal');
     expect(getBroadcastFailureRetryPolicy('already_known')).toBe('idempotent_success');
     expect(getBroadcastFailureRetryPolicy('duplicate_submission')).toBe(
       'idempotent_success',

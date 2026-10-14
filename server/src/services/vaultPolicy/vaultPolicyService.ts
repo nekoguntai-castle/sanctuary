@@ -7,7 +7,10 @@
 import type { PolicyAddress, PolicyEvent, VaultPolicy, Prisma } from '../../generated/prisma/client';
 import { policyRepository } from '../../repositories/policyRepository';
 import { walletRepository } from '../../repositories/walletRepository';
-import { NotFoundError, ForbiddenError, InvalidInputError } from '../../errors';
+import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
+import { isUniqueConstraintError } from '../../utils/errors';
+import { resolvePersistedBitcoinNetwork } from '../../constants/bitcoinNetworks';
+import { tryCanonicalizePolicyAddress } from './policyAddressCanonical';
 import { createLogger } from '../../utils/logger';
 import {
   VALID_ENFORCEMENT_MODES,
@@ -270,13 +273,36 @@ export async function createPolicyAddressInWallet(
     throw new InvalidInputError('Address lists can only be managed on address_control policies');
   }
 
-  return policyRepository.createPolicyAddress({
-    policyId,
-    address: input.address,
-    label: input.label,
-    listType: input.listType,
-    addedBy: userId,
-  });
+  const network = await resolveWalletPolicyNetwork(walletId);
+  const address = tryCanonicalizePolicyAddress(input.address, network);
+  if (address === null) {
+    throw new InvalidInputError('Invalid address for this wallet network');
+  }
+
+  try {
+    return await policyRepository.createPolicyAddress({
+      policyId,
+      address,
+      label: input.label,
+      listType: input.listType,
+      addedBy: userId,
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ConflictError('Address already on this policy (allow or deny list)');
+    }
+    throw error;
+  }
+}
+
+/** Strictly resolve the wallet network; a missing or invalid value is never assumed to be mainnet. */
+async function resolveWalletPolicyNetwork(walletId: string): Promise<string> {
+  const stored = await walletRepository.findNetwork(walletId);
+  try {
+    return resolvePersistedBitcoinNetwork(stored);
+  } catch {
+    throw new NotFoundError('Wallet not found');
+  }
 }
 
 /**

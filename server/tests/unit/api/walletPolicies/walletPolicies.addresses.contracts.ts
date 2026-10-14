@@ -6,7 +6,7 @@ import {
   mockRemovePolicyAddressFromWallet,
   walletPoliciesRequest,
 } from './walletPoliciesTestHarness';
-import { InvalidInputError, NotFoundError } from '../../../../src/errors/ApiError';
+import { ConflictError, InvalidInputError, NotFoundError } from '../../../../src/errors/ApiError';
 
 export function registerWalletPolicyAddressTests(): void {
   describe('GET /:walletId/policies/:policyId/addresses', () => {
@@ -116,6 +116,24 @@ export function registerWalletPolicyAddressTests(): void {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBe('Address lists can only be managed on address_control policies');
+    });
+
+    it('maps an invalid-network address to 400 and a duplicate to 409', async () => {
+      mockCreatePolicyAddressInWallet.mockRejectedValueOnce(
+        new InvalidInputError('Invalid address for this wallet network'),
+      );
+      const invalid = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
+        .send({ address: 'tb1qfoo', listType: 'allow' });
+      expect(invalid.status).toBe(400);
+
+      mockCreatePolicyAddressInWallet.mockRejectedValueOnce(
+        new ConflictError('Address already on this policy (allow or deny list)'),
+      );
+      const duplicate = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
+        .send({ address: 'tb1qfoo', listType: 'allow' });
+      expect(duplicate.status).toBe(409);
     });
 
     it('returns 400 when address is missing', async () => {

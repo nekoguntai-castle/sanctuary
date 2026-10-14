@@ -757,6 +757,7 @@ export function registerOpenApiWalletPolicyTests() {
       .toEqual({
         $ref: '#/components/schemas/PolicyAddressResponse',
       });
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}/addresses'].post.responses[409]).toBeDefined();
     expect(openApiSpec.components.schemas.PolicyAddressResponse.required).toEqual(['address']);
     expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}/addresses/{addressId}'].delete.responses[200].content['application/json'].schema)
       .toEqual({

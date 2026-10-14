@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import { userRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { verify2FAToken } from '../../../utils/jwt';
@@ -14,11 +14,52 @@ import { verifyAndConsumeTotp } from './consumeVerifiedTotp';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../../services/auditService';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
-import { UnauthorizedError } from '../../../errors/ApiError';
+import { RateLimitError, ServiceUnavailableError, UnauthorizedError } from '../../../errors/ApiError';
 import { TwoFactorVerifySchema } from '../../schemas/auth';
+import { rateLimitService } from '../../../services/rateLimiting';
+import { TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE } from '../../../services/rateLimiting/policyMessages';
+import { getErrorMessage } from '../../../utils/errors';
 import { prepareAuthSession, sendAuthSessionResponse } from '../sessionResponse';
 
 const log = createLogger('AUTH_2FA:ROUTE');
+
+/**
+ * Per-account cap on 2FA attempts, across every source IP. Consumed per
+ * attempt (not per failure) so concurrent guesses cannot race past the cap.
+ * Fails closed with 503 when the limiter is unavailable, and never lets the
+ * caller reach the code check once the bucket is exhausted.
+ */
+async function enforceTwoFactorAccountLimit(
+  req: Request,
+  res: Response,
+  user: { id: string; username: string }
+): Promise<void> {
+  let result;
+  try {
+    result = await rateLimitService.consume('auth:2fa-account', `user:${user.id}`);
+  } catch (err) {
+    log.error('2FA account rate limiter unavailable', { error: getErrorMessage(err) });
+    throw new ServiceUnavailableError('Rate limiter unavailable. Please try again later.');
+  }
+  if (result.allowed) return;
+
+  if (result.retryAfter !== undefined) {
+    res.setHeader('Retry-After', String(result.retryAfter));
+  }
+  const { ipAddress, userAgent } = getClientInfo(req);
+  await auditService.log({
+    userId: user.id,
+    username: user.username,
+    action: AuditAction.TWO_FACTOR_FAILED,
+    category: AuditCategory.AUTH,
+    ipAddress,
+    userAgent,
+    success: false,
+    errorMsg: 'Too many 2FA attempts for this account',
+    details: { reason: 'account_rate_limited' },
+  });
+  throw new RateLimitError(TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE, result.retryAfter);
+}
 
 /**
  * Create the 2FA verification router
@@ -53,6 +94,8 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
     if (decoded.sessionVersion !== user.sessionVersion) {
       throw new UnauthorizedError('Invalid or expired temporary token');
     }
+
+    await enforceTwoFactorAccountLimit(req, res, user);
 
     // Check if it's a TOTP code or backup code
     let codeValid = false;

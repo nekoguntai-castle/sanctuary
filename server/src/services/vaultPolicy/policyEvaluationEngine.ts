@@ -26,10 +26,13 @@ import type {
   WindowType,
 } from './types';
 import { vaultPolicyService } from './vaultPolicyService';
+import { buildPolicyAddressComparison } from './policyAddressCanonical';
 
 const log = createLogger('VAULT_POLICY:SVC_ENGINE');
 // Legacy unknownAddressesOnly-only rows are warned about once per process, not per evaluation.
 const warnedLegacyApprovalPolicyIds = new Set<string>();
+// Likewise once per process for stored addresses that no longer decode.
+const warnedUndecodableAddressPolicyIds = new Set<string>();
 
 type EvaluationInput = PolicyEvaluationInput & { preview?: boolean };
 type TriggeredPolicy = PolicyEvaluationResult['triggered'][number];
@@ -39,6 +42,7 @@ interface EvaluationState {
   walletId: string;
   userId: string;
   recipient: string;
+  network?: string;
   amount: bigint;
   outputs?: PolicyEvaluationInput['outputs'];
   replacedAmount?: bigint;
@@ -124,6 +128,7 @@ export async function evaluatePolicies(
   // Get the wallet's group for inheritance
   const wallet = await walletRepository.findById(input.walletId);
   const groupId = wallet?.groupId ?? null;
+  state.network = wallet?.network;
 
   // Fetch all active policies (system + group + wallet)
   const policies = await vaultPolicyService.getActivePoliciesForWallet(input.walletId, groupId);
@@ -261,7 +266,8 @@ const applyAddressControlPolicy = async (
     policy,
     config as unknown as AddressControlConfig,
     state.recipient,
-    state.outputs
+    state.outputs,
+    state.network
   );
 
   if (result.triggered) {
@@ -822,17 +828,32 @@ async function evaluateAddressControl(
   policy: VaultPolicy,
   config: AddressControlConfig,
   recipient: string,
-  outputs?: Array<{ address: string; amount: number }>
+  outputs?: Array<{ address: string; amount: number }>,
+  network?: string
 ): Promise<SimpleResult> {
   // Collect all recipient addresses
-  const addresses = outputs
+  const rawAddresses = outputs
     ? outputs.map(o => o.address)
     : [recipient];
 
   const policyAddresses = await policyRepository.findPolicyAddresses(policy.id);
+  const listType = config.mode === 'allowlist' ? 'allow' : 'deny';
+  const comparison = buildPolicyAddressComparison(
+    policyAddresses.filter(a => a.listType === listType).map(a => a.address),
+    rawAddresses,
+    network
+  );
+  if (comparison.undecodableStored.length > 0 && !warnedUndecodableAddressPolicyIds.has(policy.id)) {
+    warnedUndecodableAddressPolicyIds.add(policy.id);
+    log.warn('address_control policy has stored addresses that do not decode for the wallet network', {
+      policyId: policy.id,
+      count: comparison.undecodableStored.length,
+    });
+  }
+  const addresses = comparison.recipients;
 
   if (config.mode === 'allowlist') {
-    const allowed = new Set(policyAddresses.filter(a => a.listType === 'allow').map(a => a.address));
+    const allowed = comparison.stored;
     if (allowed.size === 0) {
       // No allowlist entries = no restrictions (empty allowlist doesn't block)
       return { triggered: false, reason: '' };
@@ -847,7 +868,7 @@ async function evaluateAddressControl(
     }
   } else {
     // denylist mode
-    const denied = new Set(policyAddresses.filter(a => a.listType === 'deny').map(a => a.address));
+    const denied = comparison.stored;
     for (const addr of addresses) {
       if (denied.has(addr)) {
         return {

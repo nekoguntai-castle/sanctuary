@@ -241,6 +241,24 @@ test.describe('Authentication', () => {
     await expect(page.getByLabel(/code|otp|2fa/i)).toBeVisible();
   });
 
+  test('completes email verification from the emailed hash link without a session', async ({ page }) => {
+    const verifyBodies: string[] = [];
+    await page.route('**/auth/email/verify', async (route) => {
+      verifyBodies.push(route.request().postData() ?? '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, message: 'Email verified successfully', email: 'e2e@example.com' }),
+      });
+    });
+
+    await page.goto('/#/verify-email?token=t');
+
+    await expect(page.getByText('Email verified successfully')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+    expect(verifyBodies).toEqual([JSON.stringify({ token: 't' })]);
+  });
+
   test('should logout successfully', async ({ page }) => {
     // First login
     await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);

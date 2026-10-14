@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '../../ui/Button';
 import { ErrorAlert } from '../../ui/ErrorAlert';
 import { NoticeAlert } from '../../ui/NoticeAlert';
+import type { ResendFeedback } from '../../VerifyEmail/useVerifyEmail';
 
 const getSubmitLabel = (isLoading: boolean, isRegisterMode: boolean): string => {
   if (isLoading) {
@@ -26,6 +27,10 @@ interface LoginFormActionsProps {
   isBootLoading: boolean;
   error: string | null;
   notice: string | null;
+  showResendVerification: boolean;
+  isResendingVerification: boolean;
+  resendFeedback: ResendFeedback | null;
+  onResendVerification: () => void;
   onToggleMode: () => void;
 }
 
@@ -36,11 +41,31 @@ export const LoginFormActions: React.FC<LoginFormActionsProps> = ({
   isBootLoading,
   error,
   notice,
+  showResendVerification,
+  isResendingVerification,
+  resendFeedback,
+  onResendVerification,
   onToggleMode,
 }) => (
   <>
     <NoticeAlert message={notice} className="text-center" />
     <ErrorAlert message={error} className="text-center" />
+
+    {showResendVerification && (
+      <div className="space-y-2 text-center">
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full justify-center"
+          isLoading={isResendingVerification}
+          onClick={onResendVerification}
+        >
+          Resend verification email
+        </Button>
+        <NoticeAlert message={resendFeedback?.kind === 'success' ? resendFeedback.message : null} />
+        <ErrorAlert message={resendFeedback?.kind === 'error' ? resendFeedback.message : null} />
+      </div>
+    )}
 
     <div className="space-y-3 login-reveal-4">
       <Button

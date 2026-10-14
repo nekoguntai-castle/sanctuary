@@ -79,6 +79,7 @@ export const adminIdentityPolicyPaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        409: apiErrorResponse,
         500: apiErrorResponse,
       },
     },

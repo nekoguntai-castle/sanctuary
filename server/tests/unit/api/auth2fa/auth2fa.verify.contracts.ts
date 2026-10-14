@@ -5,6 +5,7 @@ import { app } from './auth2faTestHarness';
 import { mockPrismaClient } from '../auth.testHelpers';
 import { expectCanonicalAuthSessionUser } from '../authSessionUser.contractHelper';
 import { Prisma } from '../../../../src/generated/prisma/client';
+import { TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE } from '../../../../src/services/rateLimiting/policyMessages';
 
 function totpStepAlreadyConsumedError(): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`jti`)', {
@@ -377,5 +378,76 @@ export function registerTwoFactorVerifyContracts() {
     expect(typeof expiresHeader).toBe('string');
     const date = new Date(expiresHeader as string);
     expect(Number.isNaN(date.getTime())).toBe(false);
+  });
+
+  describe('per-account attempt cap', () => {
+    const pending2faUser = {
+      id: 'test-user-id',
+      username: 'testuser',
+      isAdmin: false,
+      sessionVersion: 0,
+      twoFactorEnabled: true,
+      twoFactorSecret: 'some-secret',
+      twoFactorBackupCodes: null,
+    };
+
+    async function expectCodeNotChecked() {
+      const twoFactorService = await import('../../../../src/services/twoFactorService');
+      expect(twoFactorService.verifyTokenStep).not.toHaveBeenCalled();
+      expect(twoFactorService.isBackupCode).not.toHaveBeenCalled();
+      expect(twoFactorService.verifyBackupCode).not.toHaveBeenCalled();
+    }
+
+    it('returns 429 with Retry-After and does not check the code when the account bucket is exhausted', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue(pending2faUser);
+      const { rateLimitService } = await import('../../../../src/services/rateLimiting');
+      const { auditService } = await import('../../../../src/services/auditService');
+      vi.mocked(rateLimitService.consume).mockResolvedValueOnce({
+        allowed: false, remaining: 0, limit: 10, resetAt: Date.now() + 900_000, retryAfter: 900,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/2fa/verify')
+        .send({ tempToken: 'valid-token', code: '123456' });
+
+      expect(response.status).toBe(429);
+      expect(response.headers['retry-after']).toBe('900');
+      expect(response.body.message).toBe(TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE);
+      expect(rateLimitService.consume).toHaveBeenCalledWith('auth:2fa-account', 'user:test-user-id');
+      expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'TWO_FACTOR_FAILED',
+        details: expect.objectContaining({ reason: 'account_rate_limited' }),
+      }));
+      await expectCodeNotChecked();
+    });
+
+    it('returns 429 without a Retry-After header when the denial carries no retryAfter', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue(pending2faUser);
+      const { rateLimitService } = await import('../../../../src/services/rateLimiting');
+      vi.mocked(rateLimitService.consume).mockResolvedValueOnce({
+        allowed: false, remaining: 0, limit: 10, resetAt: Date.now() + 900_000,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/2fa/verify')
+        .send({ tempToken: 'valid-token', code: '123456' });
+
+      expect(response.status).toBe(429);
+      expect(response.headers['retry-after']).toBeUndefined();
+      await expectCodeNotChecked();
+    });
+
+    it('fails closed with 503 and does not check the code when the limiter is unavailable', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue(pending2faUser);
+      const { rateLimitService } = await import('../../../../src/services/rateLimiting');
+      vi.mocked(rateLimitService.consume).mockRejectedValueOnce(new Error('Redis rate limiter unavailable'));
+
+      const response = await request(app)
+        .post('/api/v1/auth/2fa/verify')
+        .send({ tempToken: 'valid-token', code: '123456' });
+
+      expect(response.status).toBe(503);
+      await expectCodeNotChecked();
+    });
   });
 }

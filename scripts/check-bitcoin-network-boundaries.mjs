@@ -166,6 +166,23 @@ function findingKey(finding) {
   ].join('\0');
 }
 
+/**
+ * The canonical broadcaster passes only the opaque artifact, optionally followed
+ * by a boolean flag written as a literal or comparison. Anything else (a network
+ * string, an identifier) could smuggle broadcast inputs past the artifact.
+ */
+function isOpaqueBroadcastArguments(args) {
+  if (args.length === 1) return true;
+  if (args.length !== 2) return false;
+  const flag = args[1];
+  if (flag.kind === ts.SyntaxKind.TrueKeyword || flag.kind === ts.SyntaxKind.FalseKeyword) return true;
+  if (!ts.isBinaryExpression(flag)) return false;
+  return [
+    ts.SyntaxKind.EqualsEqualsEqualsToken,
+    ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ].includes(flag.operatorToken.kind);
+}
+
 function collectFindingsInFile(filePath) {
   const relativePath = repoPath(filePath);
   const sourceText = readFileSync(filePath, 'utf8');
@@ -195,7 +212,7 @@ function collectFindingsInFile(filePath) {
       const call = propertyName(node);
       if (call?.kind === 'identifier' && opaqueBroadcastBindings.has(call.name)) {
         const canonicalFile = 'server/src/services/bitcoin/transactions/broadcasting.ts';
-        const valid = relativePath === canonicalFile && node.arguments.length === 1;
+        const valid = relativePath === canonicalFile && isOpaqueBroadcastArguments(node.arguments);
         if (!valid) {
           const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           findings.push({

@@ -25,6 +25,9 @@ export const Login: React.FC = () => {
     isBootLoading,
     error,
     notice,
+    emailVerificationRequired,
+    isResendingVerification,
+    resendFeedback,
     setUsername,
     setPassword,
     setEmail,
@@ -32,6 +35,7 @@ export const Login: React.FC = () => {
     handleSubmit,
     handle2FASubmit,
     handleCancel2FA,
+    handleResendVerification,
     toggleMode,
   } = useLoginFlow();
 
@@ -64,6 +68,10 @@ export const Login: React.FC = () => {
       isBootLoading={isBootLoading}
       error={error}
       notice={notice}
+      showResendVerification={emailVerificationRequired}
+      isResendingVerification={isResendingVerification}
+      resendFeedback={resendFeedback}
+      onResendVerification={handleResendVerification}
       onUsernameChange={setUsername}
       onPasswordChange={setPassword}
       onEmailChange={setEmail}

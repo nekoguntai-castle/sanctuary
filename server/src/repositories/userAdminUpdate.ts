@@ -1,6 +1,8 @@
 import { Prisma } from '../generated/prisma/client';
 import prisma from '../models/prisma';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { ConflictError, NotFoundError } from '../errors';
+import { isPrismaError } from '../utils/errors';
 import {
   getAdminSessionInvalidationReason,
   type AdminUpdateTransitions,
@@ -202,6 +204,31 @@ async function findWalletLinkedOwnedDeviceWalletNames(
   return links.map((link) => link.wallet.name);
 }
 
+/**
+ * draft_transactions.userId, vault_policies.createdBy and approval_votes.userId
+ * are ON DELETE RESTRICT: these are audit-bearing (or funding-cap) records that
+ * must never be removed or re-attributed implicitly, so refuse with an
+ * actionable message instead of surfacing a bare P2003.
+ */
+async function assertNoRestrictedUserReferences(tx: TxClient, userId: string): Promise<void> {
+  const actionable = [...ACTIONABLE_DRAFT_STATUS_VALUES];
+  const [pendingDrafts, otherDrafts, policies, votes] = await Promise.all([
+    tx.draftTransaction.count({ where: { userId, status: { in: actionable } } }),
+    tx.draftTransaction.count({ where: { userId, status: { notIn: actionable } } }),
+    tx.vaultPolicy.count({ where: { createdBy: userId } }),
+    tx.approvalVote.count({ where: { userId } }),
+  ]);
+  const drafts = pendingDrafts + otherDrafts;
+  if (drafts + policies + votes === 0) return;
+
+  throw new ConflictError(
+    `Cannot delete user: they are referenced by ${drafts} draft(s) (${pendingDrafts} still pending), `
+    + `${policies} vault policy(ies) they created and ${votes} approval vote(s). `
+    + 'Pending drafts can be deleted from the wallet; policies, broadcast drafts and votes '
+    + 'are retained for audit, so this account cannot be deleted.',
+  );
+}
+
 async function attemptAdminUserDelete(id: string) {
   return prisma.$transaction(async (tx) => {
     const current = await tx.user.findUnique({
@@ -239,7 +266,16 @@ async function attemptAdminUserDelete(id: string) {
       );
     }
 
-    await tx.user.delete({ where: { id } });
+    await assertNoRestrictedUserReferences(tx, id);
+
+    try {
+      await tx.user.delete({ where: { id } });
+    } catch (error) {
+      if (isPrismaError(error) && error.code === 'P2003') {
+        throw new ConflictError('Cannot delete user: other records still reference this account');
+      }
+      throw error;
+    }
     return current;
   }, { isolationLevel: 'Serializable' });
 }

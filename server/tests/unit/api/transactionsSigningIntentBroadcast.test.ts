@@ -318,16 +318,91 @@ describe('transaction signing-intent broadcast route', () => {
     }));
   });
 
-  it('skips policy evaluation when every output belongs to the wallet', async () => {
+  const testnet = {
+    messagePrefix: '\u0018Bitcoin Signed Message:\n', bech32: 'tb',
+    bip32: { public: 0x043587cf, private: 0x04358394 }, pubKeyHash: 0x6f, scriptHash: 0xc4, wif: 0xef,
+  };
+  const addressOf = async (scriptPubKeyHex: string) => {
     const bitcoin = await import('bitcoinjs-lib');
-    const address = bitcoin.address.fromOutputScript(
-      Buffer.from(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex, 'hex'),
-      { messagePrefix: '\u0018Bitcoin Signed Message:\n', bech32: 'tb', bip32: { public: 0x043587cf, private: 0x04358394 }, pubKeyHash: 0x6f, scriptHash: 0xc4, wif: 0xef },
-    );
-    mocks.findAddressStrings.mockResolvedValue([address]);
-    const response = await request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(body);
+    return bitcoin.address.fromOutputScript(Buffer.from(scriptPubKeyHex, 'hex'), testnet);
+  };
+  const post = (payload: Record<string, unknown>) =>
+    request(app).post('/api/v1/wallets/wallet-1/transactions/broadcast').send(payload);
+
+  it('skips policy evaluation when every output belongs to the wallet', async () => {
+    mocks.findAddressStrings.mockResolvedValue([await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex)]);
+    const response = await post(body);
     expect(response.status).toBe(200);
     expect(mocks.evaluatePolicies).not.toHaveBeenCalled();
+  });
+
+  describe('when every output belongs to the wallet', () => {
+    const utxos = [{ txid: '1'.repeat(64), vout: 0 }];
+
+    it('accepts the client-reported spend amount and recipient of a consolidation', async () => {
+      const own = await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      mocks.findAddressStrings.mockResolvedValue([own]);
+      const response = await post({ ...body, amount: 9000, fee: 1000, recipient: own, utxos });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+        amount: 0, recipient: own, fee: 1000,
+      }));
+    });
+
+    it('accepts a self-send whose reported recipient is not the first output', async () => {
+      const twoOutputs = structuredClone(artifact);
+      twoOutputs.snapshot.transaction.outputs = [
+        { amountSats: '4000', scriptPubKeyHex: '0014' + '44'.repeat(20) },
+        { amountSats: '5000', scriptPubKeyHex: '0014' + '55'.repeat(20) },
+      ];
+      mocks.validateSignedArtifact.mockResolvedValue(twoOutputs);
+      const first = await addressOf(twoOutputs.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      const second = await addressOf(twoOutputs.snapshot.transaction.outputs[1].scriptPubKeyHex);
+      mocks.findAddressStrings.mockResolvedValue([first, second]);
+      const response = await post({ ...body, amount: 5000, recipient: second });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(twoOutputs, expect.objectContaining({
+        amount: 0, recipient: first,
+      }));
+    });
+
+    it('still rejects a wrong fee', async () => {
+      mocks.findAddressStrings.mockResolvedValue([await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex)]);
+      const response = await post({ ...body, amount: 9000, fee: 999 });
+      expect(response.status).toBe(400);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [[]],
+      [[{ txid: '1'.repeat(64), vout: 1 }]],
+    ])('still rejects mismatched utxos %j', async (badUtxos) => {
+      mocks.findAddressStrings.mockResolvedValue([await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex)]);
+      const response = await post({ ...body, amount: 9000, utxos: badUtxos });
+      expect(response.status).toBe(400);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('accepts a draft whose effective amount is the sum of its own outputs', async () => {
+      const own = await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      mocks.findAddressStrings.mockResolvedValue([own]);
+      mocks.findDraft.mockResolvedValue(draft({ recipient: own, effectiveAmount: 9000n }));
+      const response = await post({ draftId: 'draft-1' });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({ amount: 0 }));
+    });
+  });
+
+  describe('when an output leaves the wallet', () => {
+    it.each([
+      [{ amount: 8999 }],
+      [{ recipient: 'tb1qwrong' }],
+    ])('still rejects a mismatched %j', async (extra) => {
+      mocks.findAddressStrings.mockResolvedValue([]);
+      const response = await post({ ...body, ...extra });
+      expect(response.status).toBe(400);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
   });
 
   it('supports zero-value undecodable outputs and optional labels', async () => {

@@ -211,8 +211,7 @@ const createApprovalRequestsIfNeeded = async (
   walletId: string,
   userId: string,
   data: CreateDraftInput,
-  client?: ApprovalDbClient,
-  suppressNotification = false
+  client?: ApprovalDbClient
 ): Promise<void> => {
   if (!requiresApproval(data)) {
     return;
@@ -224,8 +223,7 @@ const createApprovalRequestsIfNeeded = async (
     walletId,
     userId,
     triggered,
-    client,
-    suppressNotification
+    client
   );
 };
 
@@ -247,6 +245,7 @@ const dispatchCreatedDraftNotification = (
     /* v8 ignore stop */
     agentOperationalWalletId: data.agentOperationalWalletId ?? null,
     agentSigned: Boolean(data.agentId && data.signedDeviceId),
+    approvalRequired: draft.approvalStatus === 'pending',
     /* v8 ignore start -- agent-created draft path supplies linked operational wallet id */
     dedupeKey: data.agentId
       ? `agent:${data.agentId}:${walletId}:${data.agentOperationalWalletId ?? ''}:${draft.recipient}:${draft.amount.toString()}`
@@ -280,9 +279,6 @@ export const dispatchDraftCreatedPostCommitNotifications = (
   draft: DraftTransaction,
   data: CreateDraftInput
 ): void => {
-  if (requiresApproval(data)) {
-    approvalService.dispatchApprovalRequestedNotification(walletId, draft.id, userId);
-  }
   dispatchCreatedDraftNotification(walletId, userId, draft, data);
 };
 
@@ -351,7 +347,7 @@ export async function createDraft(
         signingContext,
         tx
       );
-      await createApprovalRequestsIfNeeded(created, walletId, userId, data, tx, true);
+      await createApprovalRequestsIfNeeded(created, walletId, userId, data, tx);
       return created;
     });
   } else {
@@ -365,9 +361,9 @@ export async function createDraft(
     );
     if (approvalRequired) {
       // External-client branch: the caller owns the transaction, so approval
-      // requests are created here within it (notification suppressed). No
-      // notifications are dispatched from this branch.
-      await createApprovalRequestsIfNeeded(draft, walletId, userId, data, options.client, true);
+      // requests are created here within it. No notifications are dispatched
+      // from this branch.
+      await createApprovalRequestsIfNeeded(draft, walletId, userId, data, options.client);
     }
   }
 
@@ -375,9 +371,8 @@ export async function createDraft(
 
   if (options.runSideEffects !== false) {
     if (approvalRequired && options.client === undefined) {
-      // Approval setup already ran inside the transaction with notification
-      // suppressed; dispatch it now, then the draft-created notification.
-      approvalService.dispatchApprovalRequestedNotification(walletId, draft.id, userId);
+      // Approval setup already ran inside the transaction; the draft-created
+      // notification carries the approval-required mark.
       dispatchCreatedDraftNotification(walletId, userId, draft, data);
     } else {
       await runDraftCreatedSideEffects(walletId, userId, draft, data, options.client);

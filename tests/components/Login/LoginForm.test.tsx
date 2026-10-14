@@ -33,6 +33,10 @@ const defaultProps = {
   isBootLoading: false,
   error: null as string | null,
   notice: null as string | null,
+  showResendVerification: false,
+  isResendingVerification: false,
+  resendFeedback: null as { kind: 'success' | 'error'; message: string } | null,
+  onResendVerification: vi.fn(),
   onUsernameChange: vi.fn(),
   onPasswordChange: vi.fn(),
   onEmailChange: vi.fn(),
@@ -174,5 +178,33 @@ describe('LoginForm', () => {
   it('shows password minimum hint in register mode', () => {
     renderForm({ isRegisterMode: true });
     expect(screen.getByText('Minimum 8 characters')).toBeInTheDocument();
+  });
+
+  describe('resend verification action', () => {
+    it('is hidden unless the last sign-in was refused for an unverified email', () => {
+      renderForm();
+      expect(screen.queryByRole('button', { name: 'Resend verification email' })).not.toBeInTheDocument();
+    });
+
+    it('calls onResendVerification when clicked', () => {
+      const onResendVerification = vi.fn();
+      renderForm({ showResendVerification: true, onResendVerification });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }));
+
+      expect(onResendVerification).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders success and error feedback separately', () => {
+      const { rerender } = renderForm({
+        showResendVerification: true,
+        resendFeedback: { kind: 'success', message: 'A new email has been sent.' },
+      });
+      expect(screen.getByText('A new email has been sent.')).toBeInTheDocument();
+
+      rerender(<LoginForm {...defaultProps} showResendVerification resendFeedback={{ kind: 'error', message: 'Too many requests.' }} />);
+      expect(screen.getByText('Too many requests.')).toBeInTheDocument();
+      expect(screen.queryByText('A new email has been sent.')).not.toBeInTheDocument();
+    });
   });
 });

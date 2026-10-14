@@ -295,6 +295,9 @@ export function registerOpenApiAdminOpsTests() {
       expectDocumentedMethod(path, method);
     }
 
+    // RESTRICT foreign keys (policies, votes, drafts) make delete answer 409
+    expect((openApiSpec.paths['/admin/users/{userId}'] as any).delete.responses[409]).toBeDefined();
+
     expect(openApiSpec.components.schemas.AdminUser.required).toEqual([
       'id',
       'username',

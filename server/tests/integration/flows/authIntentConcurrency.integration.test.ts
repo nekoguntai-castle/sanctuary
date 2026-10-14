@@ -5,6 +5,7 @@ import type { Express } from 'express';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { SystemSettingKeys } from '../../../src/repositories';
 import { updateEmailWithVerification, verifyEmail } from '../../../src/services/email/emailVerificationService';
+import { rateLimitService } from '../../../src/services/rateLimiting';
 import { hashBackupCodes } from '../../../src/services/twoFactorService';
 import { generate2FAToken } from '../../../src/utils/jwt';
 import {
@@ -78,6 +79,11 @@ describeWithDb('Auth intent concurrency integration', () => {
   });
 
   it('allows only one concurrent 2FA backup-code verification to issue a session', async () => {
+    // The shared integration server never initialises the rate limiter, so
+    // consume would throw (mapped to 503). Restored before each test.
+    vi.spyOn(rateLimitService, 'consume').mockResolvedValue({
+      allowed: true, remaining: 9, limit: 10, resetAt: Date.now() + 900_000,
+    });
     const testUser = getTestUser();
     const { id: userId } = await createTestUser(prisma, testUser);
     const backupCode = 'ABCD1234';
@@ -141,7 +147,7 @@ describeWithDb('Auth intent concurrency integration', () => {
     expect(storedToken.usedAt).toBeInstanceOf(Date);
   });
 
-  it('invalidates old email intents before an SMTP-disabled email update can leave stale takeover tokens', async () => {
+  async function seedUnverifiedUserWithOldEmailToken() {
     const testUser = getTestUser();
     const { id: userId } = await createTestUser(prisma, testUser);
     const oldToken = `old-email-${Date.now()}`;
@@ -167,18 +173,54 @@ describeWithDb('Auth intent concurrency integration', () => {
         },
       },
     });
+    return { testUser, userId, oldToken };
+  }
 
-    const newEmail = `new-${testUser.email}`;
-    const updateResult = await updateEmailWithVerification(userId, newEmail, testUser.username);
-    expect(updateResult.verification.success).toBe(false);
-    expect(updateResult.verification.error).toBe('SMTP not configured');
-
-    await expect(verifyEmail(oldToken)).resolves.toEqual({
-      success: false,
-      error: 'INVALID_TOKEN',
+  it('invalidates old email intents before an SMTP-disabled email update can leave stale takeover tokens', async () => {
+    const { testUser, userId, oldToken } = await seedUnverifiedUserWithOldEmailToken();
+    // Verification not required, so the SMTP guard lets the update through.
+    // cleanupTestData keeps system settings, so the key is deleted in finally.
+    await prisma.systemSetting.upsert({
+      where: { key: SystemSettingKeys.EMAIL_VERIFICATION_REQUIRED },
+      update: { value: 'false' },
+      create: { key: SystemSettingKeys.EMAIL_VERIFICATION_REQUIRED, value: 'false' },
     });
+
+    try {
+      const newEmail = `new-${testUser.email}`;
+      const updateResult = await updateEmailWithVerification(userId, newEmail, testUser.username);
+      expect(updateResult.verification.success).toBe(false);
+      expect(updateResult.verification.error).toBe('SMTP not configured');
+
+      await expect(verifyEmail(oldToken)).resolves.toEqual({
+        success: false,
+        error: 'INVALID_TOKEN',
+      });
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+      expect(user.email).toBe(newEmail);
+      expect(user.emailVerified).toBe(false);
+    } finally {
+      await prisma.systemSetting.deleteMany({
+        where: { key: SystemSettingKeys.EMAIL_VERIFICATION_REQUIRED },
+      });
+    }
+  });
+
+  it('refuses an email change before writing when verification is required and SMTP is not configured', async () => {
+    const { testUser, userId, oldToken } = await seedUnverifiedUserWithOldEmailToken();
+    // A leaked setting from another test must fail loudly, not hide the guard.
+    await expect(prisma.systemSetting.findUnique({
+      where: { key: SystemSettingKeys.EMAIL_VERIFICATION_REQUIRED },
+    })).resolves.toBeNull();
+
+    await expect(updateEmailWithVerification(userId, `new-${testUser.email}`, testUser.username))
+      .rejects.toThrow('outgoing email is not configured');
+
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    expect(user.email).toBe(newEmail);
-    expect(user.emailVerified).toBe(false);
+    expect(user.email).toBe(testUser.email);
+    const stored = await prisma.emailVerificationToken.findUniqueOrThrow({
+      where: { tokenHash: hashToken(oldToken) },
+    });
+    expect(stored.usedAt).toBeNull();
   });
 });

@@ -32,6 +32,7 @@ list_group_specs() {
         tests/integration/flows/admin.integration.test.ts \
         tests/integration/flows/adminSettingsConcurrency.integration.test.ts \
         tests/integration/flows/authIntentConcurrency.integration.test.ts \
+        tests/integration/flows/emailVerification.integration.test.ts \
         tests/integration/flows/authCsrfRecovery.integration.test.ts \
         tests/integration/flows/auth.integration.test.ts \
         tests/integration/flows/coinControl.integration.test.ts \
@@ -53,6 +54,7 @@ list_group_specs() {
     "$GROUP_REPOSITORIES_CORE")
       printf '%s\n' \
         tests/integration/repositories/addressRepository.test.ts \
+        tests/integration/repositories/agentRepository.advisoryLocks.test.ts \
         tests/integration/repositories/agentRepository.sumDraftAmounts.test.ts \
         tests/integration/repositories/auditLogRepository.test.ts \
         tests/integration/repositories/draftRepository.test.ts \
@@ -98,6 +100,7 @@ list_group_specs() {
       ;;
     "$GROUP_OPS_WORKERS")
       printf '%s\n' \
+        tests/integration/flows/auth/twoFactorAccountRateLimit.integration.test.ts \
         tests/integration/websocket/websocket.integration.test.ts \
         tests/integration/worker/canonicalProducerAdmission.integration.test.ts \
         tests/integration/worker/featureFlagToggle.integration.test.ts \

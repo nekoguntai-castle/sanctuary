@@ -17,6 +17,17 @@ export interface CreateTransactionSigningIntentRecord {
   supersedesIntentId?: string;
 }
 
+/**
+ * Node-answered re-broadcast attempts after which an intent is `stalled`.
+ *
+ * `stalled` is derived, not stored: `transaction_signing_intents_broadcast_state_check`
+ * (migration 20260810180000) admits only ready/claimed/unknown/accepted/complete and
+ * the migration set is frozen, so a stalled intent is an `unknown` one whose
+ * `broadcastAttemptCount` has reached this cap. Attempts that never got a node
+ * answer give their increment back, so only node-answered attempts count.
+ */
+export const MAX_RECONCILE_ATTEMPTS = 60;
+
 export interface BroadcastClaimInput {
   id: string;
   digest: string;
@@ -26,10 +37,15 @@ export interface BroadcastClaimInput {
   leaseToken: string;
   now: Date;
   leaseExpiresAt: Date;
+  /** User broadcasts may resume a `stalled` intent; the reconciler must not (default false). */
+  allowStalled?: boolean;
 }
 
+/** Which state a successful claim came from; only a first (`ready`) claim may be rolled back. */
+export type BroadcastPriorState = 'ready' | 'resumed' | 'stalled';
+
 export type BroadcastClaimResult =
-  | { status: 'claimed'; record: TransactionSigningIntent }
+  | { status: 'claimed'; record: TransactionSigningIntent; priorState: BroadcastPriorState }
   | { status: 'accepted' | 'complete' | 'busy' | 'conflict' };
 
 export const create = async (
@@ -72,46 +88,62 @@ export const create = async (
 export const findById = (id: string): Promise<TransactionSigningIntent | null> =>
   prisma.transactionSigningIntent.findUnique({ where: { id } });
 
+const claimStateConditions = (
+  input: BroadcastClaimInput,
+): Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]> => {
+  const sameArtifact = { broadcastTxid: input.txid, broadcastRawTx: input.rawTx };
+  const steps: Array<[BroadcastPriorState, Prisma.TransactionSigningIntentWhereInput]> = [
+    ['ready', { broadcastState: 'ready' }],
+    ['resumed', {
+      OR: [
+        {
+          broadcastState: 'claimed',
+          ...sameArtifact,
+          broadcastLeaseExpiresAt: { lte: input.now },
+        },
+        { broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { lt: MAX_RECONCILE_ATTEMPTS } },
+      ],
+    }],
+  ];
+  if (input.allowStalled) {
+    steps.push(['stalled', {
+      broadcastState: 'unknown', ...sameArtifact, broadcastAttemptCount: { gte: MAX_RECONCILE_ATTEMPTS },
+    }]);
+  }
+  return steps;
+};
+
 export const claimBroadcast = async (input: BroadcastClaimInput): Promise<BroadcastClaimResult> =>
   prisma.$transaction(async tx => {
-    const updated = await tx.transactionSigningIntent.updateMany({
-      where: {
-        id: input.id,
-        snapshotDigest: input.digest,
-        supersededById: null,
-        consumedAt: null,
-        OR: [
-          { broadcastState: 'ready' },
-          {
-            broadcastState: 'claimed',
-            broadcastTxid: input.txid,
-            broadcastRawTx: input.rawTx,
-            broadcastLeaseExpiresAt: { lte: input.now },
-          },
-          {
-            broadcastState: 'unknown',
-            broadcastTxid: input.txid,
-            broadcastRawTx: input.rawTx,
-          },
-        ],
-      },
-      data: {
-        broadcastState: 'claimed',
-        broadcastTxid: input.txid,
-        broadcastRawTx: input.rawTx,
-        broadcastMetadata: input.metadata,
-        broadcastLeaseToken: input.leaseToken,
-        broadcastLeaseExpiresAt: input.leaseExpiresAt,
-        broadcastAttemptCount: { increment: 1 },
-        broadcastLastAttemptAt: input.now,
-        broadcastLastError: null,
-      },
-    });
-    if (updated.count === 1) {
-      return {
-        status: 'claimed',
-        record: await tx.transactionSigningIntent.findUniqueOrThrow({ where: { id: input.id } }),
-      };
+    const data = {
+      broadcastState: 'claimed',
+      broadcastTxid: input.txid,
+      broadcastRawTx: input.rawTx,
+      broadcastMetadata: input.metadata,
+      broadcastLeaseToken: input.leaseToken,
+      broadcastLeaseExpiresAt: input.leaseExpiresAt,
+      broadcastAttemptCount: { increment: 1 },
+      broadcastLastAttemptAt: input.now,
+      broadcastLastError: null,
+    };
+    for (const [priorState, condition] of claimStateConditions(input)) {
+      const updated = await tx.transactionSigningIntent.updateMany({
+        where: {
+          id: input.id,
+          snapshotDigest: input.digest,
+          supersededById: null,
+          consumedAt: null,
+          ...condition,
+        },
+        data,
+      });
+      if (updated.count === 1) {
+        return {
+          status: 'claimed',
+          priorState,
+          record: await tx.transactionSigningIntent.findUniqueOrThrow({ where: { id: input.id } }),
+        };
+      }
     }
     const current = await tx.transactionSigningIntent.findUnique({ where: { id: input.id } });
     if (!current
@@ -129,9 +161,10 @@ const transitionClaim = async (
   id: string,
   leaseToken: string,
   data: Prisma.TransactionSigningIntentUpdateManyMutationInput,
+  extraWhere: Prisma.TransactionSigningIntentWhereInput = {},
 ): Promise<boolean> => {
   const result = await prisma.transactionSigningIntent.updateMany({
-    where: { id, broadcastState: 'claimed', broadcastLeaseToken: leaseToken },
+    where: { id, broadcastState: 'claimed', broadcastLeaseToken: leaseToken, ...extraWhere },
     data,
   });
   return result.count === 1;
@@ -141,12 +174,32 @@ export const markBroadcastUnknown = (
   id: string,
   leaseToken: string,
   error: string,
+  options: { countAttempt?: boolean } = {},
 ): Promise<boolean> => transitionClaim(id, leaseToken, {
   broadcastState: 'unknown',
   broadcastLeaseToken: null,
   broadcastLeaseExpiresAt: null,
   broadcastLastError: error,
+  // Give back the claim's increment when the node never answered, so an outage cannot advance the cap.
+  ...(options.countAttempt === false ? { broadcastAttemptCount: { decrement: 1 } } : {}),
 });
+
+/**
+ * Stop rebroadcasting: an `unknown` intent at the attempt cap (see
+ * MAX_RECONCILE_ATTEMPTS). Raw transaction and txid are kept for lookups and a
+ * user-initiated retry. The cap guard keeps "stalled" well defined: below it the
+ * transition is refused and the lease simply expires.
+ */
+export const markBroadcastStalled = (
+  id: string,
+  leaseToken: string,
+  error: string,
+): Promise<boolean> => transitionClaim(id, leaseToken, {
+  broadcastState: 'unknown',
+  broadcastLeaseToken: null,
+  broadcastLeaseExpiresAt: null,
+  broadcastLastError: error,
+}, { broadcastAttemptCount: { gte: MAX_RECONCILE_ATTEMPTS } });
 
 export const releaseRejectedBroadcast = (
   id: string,
@@ -183,13 +236,61 @@ export const markBroadcastComplete = async (id: string, txid: string): Promise<b
   return result.count === 1;
 };
 
+const STALLED_LOOKUP_INTERVAL_MS = 60 * 60 * 1000;
+
+const stalledLookupCutoff = (now: Date): Date => new Date(now.getTime() - STALLED_LOOKUP_INTERVAL_MS);
+
+const stalledWhere = { broadcastState: 'unknown', broadcastAttemptCount: { gte: MAX_RECONCILE_ATTEMPTS } } as const;
+
+/** Stalled intents whose last attempt/lookup is at least an hour old. */
+export const listStalledBroadcastsForLookup = (now: Date, limit = 50) =>
+  prisma.transactionSigningIntent.findMany({
+    where: {
+      ...stalledWhere,
+      broadcastRawTx: { not: null },
+      broadcastMetadata: { not: Prisma.DbNull },
+      broadcastLastAttemptAt: { lte: stalledLookupCutoff(now) },
+    },
+    orderBy: [{ broadcastLastAttemptAt: 'asc' }, { id: 'asc' }],
+    take: limit,
+  });
+
+/** Record a lookup on a stalled intent; false when another worker already did within the interval. */
+export const claimStalledBroadcastLookup = async (id: string, now: Date): Promise<boolean> => {
+  const result = await prisma.transactionSigningIntent.updateMany({
+    where: { id, ...stalledWhere, broadcastLastAttemptAt: { lte: stalledLookupCutoff(now) } },
+    data: { broadcastLastAttemptAt: now },
+  });
+  return result.count === 1;
+};
+
+/** Lease-free stalled -> accepted transition (same fields as markBroadcastAccepted). */
+export const markStalledBroadcastAccepted = async (
+  id: string,
+  txid: string,
+  now = new Date(),
+): Promise<boolean> => {
+  const result = await prisma.transactionSigningIntent.updateMany({
+    where: { id, ...stalledWhere, broadcastTxid: txid },
+    data: {
+      broadcastState: 'accepted',
+      broadcastLeaseToken: null,
+      broadcastLeaseExpiresAt: null,
+      broadcastAcceptedAt: now,
+      consumedAt: now,
+      broadcastLastError: null,
+    },
+  });
+  return result.count === 1;
+};
+
 export const listBroadcastsForReconciliation = (now: Date, limit = 50) =>
   prisma.transactionSigningIntent.findMany({
     where: {
       broadcastRawTx: { not: null },
       broadcastMetadata: { not: Prisma.DbNull },
       OR: [
-        { broadcastState: 'unknown' },
+        { broadcastState: 'unknown', broadcastAttemptCount: { lt: MAX_RECONCILE_ATTEMPTS } },
         { broadcastState: 'accepted' },
         { broadcastState: 'claimed', broadcastLeaseExpiresAt: { lte: now } },
       ],
@@ -203,10 +304,14 @@ export const transactionSigningIntentRepository = {
   findById,
   claimBroadcast,
   markBroadcastUnknown,
+  markBroadcastStalled,
   releaseRejectedBroadcast,
   markBroadcastAccepted,
   markBroadcastComplete,
   listBroadcastsForReconciliation,
+  listStalledBroadcastsForLookup,
+  claimStalledBroadcastLookup,
+  markStalledBroadcastAccepted,
 };
 
 export default transactionSigningIntentRepository;

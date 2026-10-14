@@ -24,6 +24,7 @@ export {
   broadcastTransaction,
   broadcastAuthenticatedRawTransaction,
   DefiniteBroadcastRejectionError,
+  isNodeAnsweredBroadcastFailure,
   getFeeEstimates,
   getTransactionDetails,
   checkAddress,

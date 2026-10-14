@@ -118,6 +118,12 @@ Every exposed transaction path must preserve these invariants:
 - The safety catch guard currently has an accountable legacy baseline. Reducing
   that baseline and expanding typed error taxonomy coverage remain follow-up
   work.
+- Mobile view capabilities (`viewBalance`, `viewTransactions`, `viewUtxos`) are
+  enforced by the gateway on every wallet-scoped read. Three routes carry no
+  wallet id in the path, so the gateway cannot cap them: `GET /wallets` (list
+  with balances), the deprecated `GET /transactions/{txid}` and
+  `GET /transactions/pending`. Backend-side filtering by the capability is a
+  tracked follow-up.
 - Target-environment performance evidence is not transferable to every operator
   topology without rerunning the benchmark on that topology.
 - A public responsible-disclosure or bug-bounty process must be published before

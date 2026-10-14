@@ -264,6 +264,9 @@ n_src_components_Variables_tsx["Variables.tsx"]
 subgraph n_src_components_Variables["Variables"]
 n_src_components_Variables__collapsed[" "]
 end
+subgraph n_src_components_VerifyEmail["VerifyEmail"]
+n_src_components_VerifyEmail__collapsed[" "]
+end
 subgraph n_src_components_WalletDetail["WalletDetail"]
 n_src_components_WalletDetail__collapsed[" "]
 end
@@ -547,6 +550,7 @@ n_src_app_AppRoutes__collapsed-->n_src_components_ChangePasswordModal_tsx
 n_src_app_AppRoutes__collapsed-->n_src_components_Layout__collapsed
 n_src_app_AppRoutes__collapsed-->n_src_components_Login__collapsed
 n_src_app_AppRoutes__collapsed-->n_src_components_NotificationToast_tsx
+n_src_app_AppRoutes__collapsed-->n_src_components_VerifyEmail__collapsed
 n_src_app_AppRoutes__collapsed-->n_src_components_ui__collapsed
 n_src_app_AppRoutes__collapsed-->n_src_contexts_NotificationContext_tsx
 n_src_app_AppRoutes__collapsed-->n_src_contexts_UserContext_tsx
@@ -809,6 +813,7 @@ n_src_components_Layout__collapsed-->n_src_utils_logger_ts
 n_src_components_Layout__collapsed-->n_src_utils_networkScopedDevices_ts
 n_src_components_Layout__collapsed-->n_src_utils_walletSyncPresentation_ts
 n_src_components_Login__collapsed-->n_src_api_auth_ts
+n_src_components_Login__collapsed-->n_src_api_client_ts
 n_src_components_Login__collapsed-->n_src_api_health_ts
 n_src_components_Login__collapsed-->n_src_components_AnimatedBackground_tsx
 n_src_components_Login__collapsed-->n_src_components_ui__collapsed
@@ -936,6 +941,9 @@ n_src_components_Variables__collapsed-->n_src_api_admin__collapsed
 n_src_components_Variables__collapsed-->n_src_hooks_useLatestRequest_ts
 n_src_components_Variables__collapsed-->n_src_hooks_useLoadingState_ts
 n_src_components_Variables__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_VerifyEmail__collapsed-->n_src_api_auth_ts
+n_src_components_VerifyEmail__collapsed-->n_src_api_client_ts
+n_src_components_VerifyEmail__collapsed-->n_src_components_ui__collapsed
 n_src_components_WalletDetail__collapsed-->n_shared_constants_nodeConfig_ts
 n_src_components_WalletDetail__collapsed-->n_shared_constants_walletIdentity_ts
 n_src_components_WalletDetail__collapsed-->n_shared_constants_walletRoles_ts

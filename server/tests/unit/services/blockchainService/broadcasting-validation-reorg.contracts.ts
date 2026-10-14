@@ -114,9 +114,28 @@ describe('Blockchain Service - Broadcasting', () => {
 
       await expect(broadcastTransaction(
         createBroadcastArtifact(rawTx, 'broadcasted-txid'),
+        true,
       )).rejects.toThrow(
         'Failed to broadcast transaction: Broadcast preflight rejected stale or spent input'
       );
+      expect(mockNodeClient.broadcastTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should keep a preflight rejection unknown (never definite) when the claim is resumed', async () => {
+      const { broadcastTransaction, DefiniteBroadcastRejectionError } = await import('../../../../src/services/bitcoin/blockchain');
+      const rawTx = createBroadcastRawTx();
+
+      setupBroadcastPreflight();
+      mockNodeClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[PREV_ADDRESS, []]]));
+
+      const failure = await broadcastTransaction(
+        createBroadcastArtifact(rawTx, 'broadcasted-txid'),
+      ).catch((error: unknown) => error);
+      expect(failure).not.toBeInstanceOf(DefiniteBroadcastRejectionError);
+      expect((failure as Error).message).toBe(
+        'Broadcast outcome is unknown: Broadcast preflight rejected stale or spent input'
+      );
+      expect((failure as { cause?: unknown }).cause).toBeInstanceOf(Error);
       expect(mockNodeClient.broadcastTransaction).not.toHaveBeenCalled();
     });
   });

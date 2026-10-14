@@ -238,6 +238,7 @@ export const draftNotifyJob: WorkerJobHandler<DraftNotifyJobData, NotifyJobResul
         agentName: agentName ?? null,
         agentOperationalWalletId: agentOperationalWalletId ?? null,
         agentSigned: agentSigned ?? false,
+        approvalRequired: draft.approvalStatus === 'pending',
       };
 
       // Send via all channels — pass creatorLabel so agent-created drafts

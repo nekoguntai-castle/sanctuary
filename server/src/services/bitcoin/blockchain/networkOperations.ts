@@ -7,7 +7,7 @@
 
 import { getNodeClient } from '../nodeClient';
 import type { TransactionDetails } from '../electrum';
-import { ElectrumNoFeeEstimateError } from '../electrum/types';
+import { ElectrumNoFeeEstimateError, ElectrumRpcError } from '../electrum/types';
 import { validateAddress } from '../utils';
 import type { BitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
@@ -21,9 +21,12 @@ const log = createLogger('BITCOIN:SVC_BLOCKCHAIN');
 /**
  * Broadcast a transaction to the selected network.
  *
+ * `allowDefiniteRejection` is true only for a first claim: a resumed claim may
+ * already have crossed the node boundary, so a rejection is never definite.
  */
 export async function broadcastTransaction(
   artifact: ValidatedBroadcastArtifact,
+  allowDefiniteRejection = false,
 ): Promise<{
   txid: string;
   broadcasted: boolean;
@@ -33,18 +36,68 @@ export async function broadcastTransaction(
     network: artifact.network,
     expectedTxid: artifact.txid,
     replacement: Boolean(artifact.snapshot.transaction.replacementTxid),
+    allowDefiniteRejection,
   });
 }
 
 export class DefiniteBroadcastRejectionError extends Error {}
+
+/** Node policy/consensus rejections that a retry of the same bytes cannot change. */
+const DEFINITE_REJECTION_FRAGMENTS = [
+  'min relay fee not met',
+  'mempool min fee not met',
+  'insufficient fee',
+  'dust',
+  'txn-mempool-conflict',
+  'non-mandatory-script-verify-flag',
+  'mandatory-script-verify-flag',
+  'non-final',
+];
+
+/** Node answers that are verdicts but not proof of rejection (the tx may be known or the parent racing). */
+const AMBIGUOUS_VERDICT_FRAGMENTS = ['missingorspent', 'already in block chain', 'txn-already-known'];
+
+const isDefiniteRejectionMessage = (message: string): boolean => {
+  const text = message.toLowerCase();
+  if (text.includes('bad-txns-') && !text.includes('bad-txns-inputs-missingorspent')) return true;
+  return DEFINITE_REJECTION_FRAGMENTS.some(fragment => text.includes(fragment));
+};
+
+const isNodeVerdictMessage = (message: string): boolean => {
+  const text = message.toLowerCase();
+  return isDefiniteRejectionMessage(text) || AMBIGUOUS_VERDICT_FRAGMENTS.some(fragment => text.includes(fragment));
+};
+
+/** True only for an Electrum RPC answer carrying a definite policy/consensus rejection. */
+export const isDefiniteNodeRejection = (error: unknown): boolean =>
+  error instanceof ElectrumRpcError && isDefiniteRejectionMessage(error.message);
+
+const withCause = (message: string, cause: unknown): Error => Object.assign(new Error(message), { cause });
+
+/**
+ * True when an "outcome is unknown" failure carries a node answer (a verdict
+ * RPC error, or a preflight rejection built from node data) rather than a
+ * transport/timeout failure. Only node-answered attempts count toward the
+ * reconciler cap.
+ */
+export const isNodeAnsweredBroadcastFailure = (error: unknown): boolean => {
+  const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+  if (cause instanceof ElectrumRpcError) return isNodeVerdictMessage(cause.message);
+  if (cause instanceof BroadcastPreflightError) {
+    return cause.reason === 'node_preflight_rejected' || cause.reason === 'invalid_raw_transaction';
+  }
+  return false;
+};
 
 export async function broadcastAuthenticatedRawTransaction(input: {
   rawTx: string;
   network: BitcoinNetwork;
   expectedTxid: string;
   replacement: boolean;
+  allowDefiniteRejection?: boolean;
 }): Promise<{ txid: string; broadcasted: boolean }> {
   const { rawTx, network, expectedTxid } = input;
+  const allowDefiniteRejection = input.allowDefiniteRejection ?? false;
   const client = await getNodeClient(network);
 
   let preflight;
@@ -60,9 +113,10 @@ export async function broadcastAuthenticatedRawTransaction(input: {
         network, reason: error.reason, details: error.details,
       });
     }
-    throw new DefiniteBroadcastRejectionError(
-      `Failed to broadcast transaction: ${getErrorMessage(error, 'Unknown error')}`,
-    );
+    const message = getErrorMessage(error, 'Unknown error');
+    throw allowDefiniteRejection
+      ? new DefiniteBroadcastRejectionError(`Failed to broadcast transaction: ${message}`)
+      : withCause(`Broadcast outcome is unknown: ${message}`, error);
   }
   log.debug('[BLOCKCHAIN] Broadcast preflight passed', {
     network, txid: preflight.txid, inputCount: preflight.inputCount,
@@ -78,7 +132,11 @@ export async function broadcastAuthenticatedRawTransaction(input: {
       broadcasted: true,
     };
   } catch (error) {
-    throw new Error(`Broadcast outcome is unknown: ${getErrorMessage(error, 'Unknown error')}`);
+    const message = getErrorMessage(error, 'Unknown error');
+    if (allowDefiniteRejection && isDefiniteNodeRejection(error)) {
+      throw new DefiniteBroadcastRejectionError(`Failed to broadcast transaction: ${message}`);
+    }
+    throw withCause(`Broadcast outcome is unknown: ${message}`, error);
   }
 }
 

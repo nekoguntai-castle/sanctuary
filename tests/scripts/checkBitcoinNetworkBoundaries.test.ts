@@ -181,4 +181,53 @@ describe('check-bitcoin-network-boundaries', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('lets only the canonical broadcaster pass the artifact plus a boolean comparison', () => {
+    const root = createRoot();
+    try {
+      const imports = "import { broadcastTransaction } from '../blockchain';";
+      writeFile(
+        root,
+        'server/src/services/bitcoin/transactions/broadcasting.ts',
+        `
+        ${imports}
+        export async function broadcastAndSave(artifact, claim, network) {
+          await broadcastTransaction(artifact);
+          await broadcastTransaction(artifact, claim.priorState === 'ready');
+          await broadcastTransaction(artifact, false);
+          await broadcastTransaction(artifact, true);
+          await broadcastTransaction(artifact, claim.priorState !== 'stalled');
+          await broadcastTransaction(artifact, claim.ready || network);
+          await broadcastTransaction(artifact, network);
+          await broadcastTransaction(artifact, 'mainnet');
+        }
+        `,
+      );
+      writeFile(
+        root,
+        'server/src/services/bitcoin/transactions/elsewhere.ts',
+        `
+        ${imports}
+        export async function bypass(artifact) {
+          await broadcastTransaction(artifact, true);
+        }
+        `,
+      );
+
+      const summary = JSON.parse(runCheck(root).stdout);
+
+      expect(summary.newFindings.map((finding: { call: string; file: string }) => [finding.file, finding.call])).toEqual(
+        expect.arrayContaining([
+          ['server/src/services/bitcoin/transactions/broadcasting.ts', 'broadcastTransaction(artifact, claim.ready || network)'],
+          ['server/src/services/bitcoin/transactions/broadcasting.ts', 'broadcastTransaction(artifact, network)'],
+          ['server/src/services/bitcoin/transactions/broadcasting.ts', "broadcastTransaction(artifact, 'mainnet')"],
+          ['server/src/services/bitcoin/transactions/elsewhere.ts', 'broadcastTransaction(artifact, true)'],
+        ]),
+      );
+      expect(summary.newFindings).toHaveLength(4);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
+

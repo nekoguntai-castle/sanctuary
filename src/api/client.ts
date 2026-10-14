@@ -495,6 +495,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The server's message for an ApiError; otherwise the fallback (never raw internals). */
+export function apiErrorMessageOr(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
 export class ApiClient {
   private appendQueryParams(endpoint: string, params: QueryParams): string {
     const queryString = new URLSearchParams(params).toString();

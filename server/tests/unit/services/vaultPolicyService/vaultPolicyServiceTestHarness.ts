@@ -27,6 +27,7 @@ const vaultPolicyMocks = vi.hoisted(() => ({
   },
   mockWalletRepo: {
     findById: vi.fn(),
+    findNetwork: vi.fn(),
   },
 }));
 
@@ -64,5 +65,6 @@ export function registerVaultPolicyServiceTestHarness(): void {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWalletRepo.findNetwork.mockResolvedValue('testnet');
   });
 }

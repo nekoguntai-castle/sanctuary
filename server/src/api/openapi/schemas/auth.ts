@@ -282,6 +282,22 @@ export const authSchemas = {
     },
     required: ['success', 'message', 'email'],
   },
+  ResendPendingVerificationRequest: {
+    type: 'object',
+    properties: {
+      username: { type: 'string', minLength: 1 },
+      password: { type: 'string', minLength: 1 },
+    },
+    required: ['username', 'password'],
+  },
+  ResendPendingVerificationResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['success', 'message'],
+  },
   EmailResendResponse: {
     type: 'object',
     properties: {

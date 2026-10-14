@@ -91,6 +91,7 @@ import type { ElectrumManagerCallbacks } from '../../../../src/worker/electrumMa
 export class MockElectrumClient extends EventEmitter {
   connect = vi.fn().mockResolvedValue(undefined);
   getServerVersion = vi.fn().mockResolvedValue({ server: 'test', protocol: '1.4' });
+  ping = vi.fn().mockResolvedValue(null);
   subscribeHeaders = vi.fn().mockResolvedValue({ height: 100000, hex: '00'.repeat(80) });
   getBlockHeaders = vi.fn().mockResolvedValue(['00'.repeat(80)]);
   subscribeAddress = vi.fn().mockResolvedValue('status');

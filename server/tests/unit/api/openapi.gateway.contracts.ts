@@ -344,6 +344,7 @@ export function registerOpenApiGatewayTests() {
       ['/auth/users/search', 'get'],
       ['/auth/email/verify', 'post'],
       ['/auth/email/resend', 'post'],
+      ['/auth/email/resend-pending', 'post'],
       ['/auth/telegram/chat-id', 'post'],
       ['/auth/telegram/test', 'post'],
     ];
@@ -354,6 +355,7 @@ export function registerOpenApiGatewayTests() {
 
     expect(openApiSpec.paths['/auth/registration-status'].get).not.toHaveProperty('security');
     expect(openApiSpec.paths['/auth/email/verify'].post).not.toHaveProperty('security');
+    expect(openApiSpec.paths['/auth/email/resend-pending'].post).not.toHaveProperty('security');
     expect(openApiSpec.paths['/auth/2fa/setup'].post.security).toEqual(browserOrBearerAuthSecurity);
     expect(openApiSpec.paths['/auth/email/resend'].post.security).toEqual(browserOrBearerAuthSecurity);
     expect(openApiSpec.paths['/auth/telegram/chat-id'].post.security).toEqual(browserOrBearerAuthSecurity);

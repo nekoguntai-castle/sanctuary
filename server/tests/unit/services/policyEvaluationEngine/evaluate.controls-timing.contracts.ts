@@ -9,6 +9,30 @@ import {
   type PolicyEvaluationEngineTestContext,
 } from './policyEvaluationEngineTestHarness';
 
+const MAINNET_BECH32 = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+const TESTNET_BECH32 = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+const MAINNET_BASE58 = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+
+function setAddressControl(
+  mode: 'allowlist' | 'denylist',
+  entries: string[],
+  network: string | undefined,
+): void {
+  mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
+    makePolicy({
+      id: 'p1',
+      name: 'Canonical list',
+      type: 'address_control',
+      enforcement: 'enforce',
+      config: { mode, allowSelfSend: true, managedBy: 'owner_only' },
+    }),
+  ]);
+  mockPolicyRepo.findPolicyAddresses.mockResolvedValue(
+    entries.map((address) => ({ address, listType: mode === 'allowlist' ? 'allow' : 'deny' })),
+  );
+  mockWalletRepo.findById.mockResolvedValue({ id: 'w', groupId: null, network });
+}
+
 export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluationEngineTestContext): void {
   const { walletId, userId, groupId, recipient } = context;
 
@@ -249,6 +273,58 @@ export function registerPolicyEvaluateControlsTimingTests(context: PolicyEvaluat
         expect(result.allowed).toBe(true);
         expect(result.triggered).toHaveLength(1);
         expect(result.triggered[0].action).toBe('monitored');
+      });
+
+      describe('address canonicalization', () => {
+        const evaluate = (to: string) => getPolicyEvaluationEngine().evaluatePolicies({
+          walletId, userId, recipient: to, amount: BigInt(100),
+        });
+
+        it('blocks a lowercase recipient on an uppercase denylist entry', async () => {
+          setAddressControl('denylist', [MAINNET_BECH32.toUpperCase()], 'mainnet');
+          const result = await evaluate(MAINNET_BECH32);
+          expect(result.allowed).toBe(false);
+          expect(mockLog.warn).not.toHaveBeenCalled();
+        });
+
+        it('lets an uppercase recipient through a padded allowlist entry', async () => {
+          setAddressControl('allowlist', [`  ${MAINNET_BECH32}  `], 'mainnet');
+          const result = await evaluate(MAINNET_BECH32.toUpperCase());
+          expect(result.allowed).toBe(true);
+        });
+
+        it('warns once per policy, not per evaluation, for legacy undecodable rows', async () => {
+          setAddressControl('denylist', ['legacy-one', 'legacy-two'], 'mainnet');
+          const result = await evaluate(MAINNET_BECH32);
+          expect(result.allowed).toBe(true);
+          await evaluate(MAINNET_BECH32);
+          expect(mockLog.warn).toHaveBeenCalledTimes(1);
+        });
+
+        it('decodes testnet entries with the wallet network', async () => {
+          setAddressControl('denylist', [TESTNET_BECH32.toUpperCase()], 'testnet');
+          const result = await evaluate(TESTNET_BECH32);
+          expect(result.allowed).toBe(false);
+          expect(mockLog.warn).not.toHaveBeenCalled();
+        });
+
+        it.each([undefined, 'bogus'])(
+          'uses the fallback form on both sides when the wallet network is %s',
+          async (network) => {
+            setAddressControl('denylist', [MAINNET_BECH32.toUpperCase()], network);
+            const result = await evaluate(MAINNET_BECH32);
+            expect(result.allowed).toBe(false);
+            expect(mockLog.warn).not.toHaveBeenCalled();
+          },
+        );
+
+        it('trims non-bech32 entries but keeps their case in the fallback form', async () => {
+          setAddressControl('denylist', [`  ${MAINNET_BASE58}  `], undefined);
+          expect((await evaluate(MAINNET_BASE58)).allowed).toBe(false);
+
+          setAddressControl('denylist', [MAINNET_BASE58.toLowerCase()], undefined);
+          expect((await evaluate(MAINNET_BASE58)).allowed).toBe(true);
+        });
       });
     });
 

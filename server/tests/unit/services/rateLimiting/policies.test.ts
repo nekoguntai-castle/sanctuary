@@ -14,9 +14,12 @@ const mockConfig = vi.hoisted(() => ({
     registerAttempts: 3,
     registerWindowSeconds: 3600,
     twoFaAttempts: 5,
+    twoFaAccountAttempts: 10,
     twoFaWindowSeconds: 900,
     passwordChangeAttempts: 3,
     passwordChangeWindowSeconds: 3600,
+    emailResendAttempts: 4,
+    emailResendWindowSeconds: 1800,
     apiDefaultLimit: 100,
     apiHeavyLimit: 20,
     apiPublicLimit: 30,
@@ -48,6 +51,7 @@ import {
   createPolicy,
   RATE_LIMIT_POLICIES,
 } from '../../../../src/services/rateLimiting/policies';
+import { TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE } from '../../../../src/services/rateLimiting/policyMessages';
 
 describe('Rate Limit Policies', () => {
   beforeEach(() => {
@@ -170,6 +174,36 @@ describe('Rate Limit Policies', () => {
       expect(policy.limit).toBe(5);
       expect(policy.windowSeconds).toBe(900);
       expect(policy.keyStrategy).toBe('ip');
+    });
+  });
+
+  describe('auth:2fa-account policy', () => {
+    it('should have correct configuration', () => {
+      const policy = getRateLimitPolicies()['auth:2fa-account'];
+
+      expect(policy.name).toBe('auth:2fa-account');
+      expect(policy.limit).toBe(10);
+      expect(policy.windowSeconds).toBe(900);
+      expect(policy.keyStrategy).toBe('custom');
+      expect(policy.message).toBe(TWO_FA_ACCOUNT_RATE_LIMIT_MESSAGE);
+    });
+
+    it('is registered with the rate limit service so consume enforces it', async () => {
+      // An unregistered policy fails open in consume(), silently disabling the cap.
+      const { RATE_LIMIT_POLICIES: registered } = await import('../../../../src/services/rateLimiting/policies');
+      expect(registered['auth:2fa-account']).toBeDefined();
+    });
+  });
+
+  describe('auth:email-resend-pending policy', () => {
+    it('uses the emailResend limits keyed by ip+user', () => {
+      const policies = getRateLimitPolicies();
+      const policy = policies['auth:email-resend-pending'];
+
+      expect(policy.keyStrategy).toBe('ip+user');
+      expect(policy.limit).toBe(4);
+      expect(policy.windowSeconds).toBe(1800);
+      expect(policies['auth:email-resend'].limit).toBe(4);
     });
   });
 
@@ -328,6 +362,7 @@ describe('Rate Limit Policies', () => {
         'auth:login',
         'auth:register',
         'auth:2fa',
+        'auth:2fa-account',
         'auth:password-change',
         'api:default',
         'api:heavy',

@@ -83,6 +83,9 @@ import {
   dispatchDraftCreatedPostCommitNotifications,
 } from '../../../src/services/draftCreate';
 
+// The placeholder approval dispatch was removed; the mock key pins its absence.
+const removedApprovalDispatch = (approvalService as unknown as Record<string, Mock>).dispatchApprovalRequestedNotification;
+
 describe('createDraft approval atomicity', () => {
   const walletId = 'wallet-456';
   const userId = 'user-123';
@@ -145,8 +148,7 @@ describe('createDraft approval atomicity', () => {
       walletId,
       userId,
       approvalEvaluation.triggered,
-      tx,
-      true
+      tx
     );
     expect(result).toEqual(mockDraft);
   });
@@ -205,18 +207,32 @@ describe('createDraft approval atomicity', () => {
     expect(createArgs.approvalStatus).toBeUndefined();
   });
 
-  it('dispatches the approval notification before the draft-created notification after commit', async () => {
+  it('dispatches a single real draft notification marked approval-required after commit', async () => {
+    (draftRepository.create as Mock).mockResolvedValue({ ...mockDraft, approvalStatus: 'pending' });
+
     await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: approvalEvaluation });
 
-    expect(approvalService.dispatchApprovalRequestedNotification).toHaveBeenCalledTimes(1);
-    expect(approvalService.dispatchApprovalRequestedNotification).toHaveBeenCalledWith(walletId, mockDraft.id, userId);
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).toHaveBeenCalledTimes(1);
+    expect(dispatchDraftNotification).toHaveBeenCalledWith(
+      walletId,
+      expect.objectContaining({ amount: mockDraft.amount, recipient: mockDraft.recipient, approvalRequired: true }),
+      userId,
+      undefined
+    );
     // Approval setup ran exactly once (inside the transaction); post-commit only dispatches.
     expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledTimes(1);
+  });
 
-    const approvalDispatchOrder = (approvalService.dispatchApprovalRequestedNotification as Mock).mock.invocationCallOrder[0];
-    const draftNotifyOrder = (dispatchDraftNotification as Mock).mock.invocationCallOrder[0];
-    expect(approvalDispatchOrder).toBeLessThan(draftNotifyOrder);
+  it('marks the draft notification approvalRequired:false when approval is not required', async () => {
+    await createDraft(walletId, userId, approvalInput);
+
+    expect(dispatchDraftNotification).toHaveBeenCalledWith(
+      walletId,
+      expect.objectContaining({ approvalRequired: false }),
+      userId,
+      undefined
+    );
   });
 
   it('propagates approval setup errors, skips post-commit dispatch, and retries in a fresh transaction', async () => {
@@ -225,7 +241,7 @@ describe('createDraft approval atomicity', () => {
     await expect(createDraft(walletId, userId, { ...approvalInput, policyEvaluation: approvalEvaluation }))
       .rejects.toThrow('approval service down');
 
-    expect(approvalService.dispatchApprovalRequestedNotification).not.toHaveBeenCalled();
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).not.toHaveBeenCalled();
 
     // A retry after rollback starts a fresh, isolated transaction.
@@ -254,10 +270,9 @@ describe('createDraft approval atomicity', () => {
       walletId,
       userId,
       approvalEvaluation.triggered,
-      client,
-      true
+      client
     );
-    expect(approvalService.dispatchApprovalRequestedNotification).not.toHaveBeenCalled();
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).not.toHaveBeenCalled();
     expect(result).toEqual(mockDraft);
   });
@@ -276,7 +291,7 @@ describe('createDraft approval atomicity', () => {
     expect(resolveUtxoIds).not.toHaveBeenCalled();
     expect(lockUtxosForDraft).not.toHaveBeenCalled();
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
-    expect(approvalService.dispatchApprovalRequestedNotification).not.toHaveBeenCalled();
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).not.toHaveBeenCalled();
   });
 
@@ -295,7 +310,7 @@ describe('createDraft approval atomicity', () => {
     expect(resolveUtxoIds).not.toHaveBeenCalled();
     expect(lockUtxosForDraft).not.toHaveBeenCalled();
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
-    expect(approvalService.dispatchApprovalRequestedNotification).not.toHaveBeenCalled();
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).not.toHaveBeenCalled();
   });
 
@@ -310,7 +325,7 @@ describe('createDraft approval atomicity', () => {
       })
     ).rejects.toThrow('external approval down');
 
-    expect(approvalService.dispatchApprovalRequestedNotification).not.toHaveBeenCalled();
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).not.toHaveBeenCalled();
   });
 
@@ -330,35 +345,35 @@ describe('createDraft approval atomicity', () => {
       walletId,
       userId,
       approvalEvaluation.triggered,
-      client,
-      false
+      client
     );
     expect(dispatchDraftNotification).toHaveBeenCalledTimes(1);
   });
 
-  it('dispatchDraftCreatedPostCommitNotifications dispatches approval before draft exactly once without persisting approvals', async () => {
+  it('dispatchDraftCreatedPostCommitNotifications dispatches one approval-marked draft notification without persisting approvals', async () => {
     await dispatchDraftCreatedPostCommitNotifications(
       walletId,
       userId,
-      mockDraft as never,
+      { ...mockDraft, approvalStatus: 'pending' } as never,
       { ...approvalInput, policyEvaluation: approvalEvaluation }
     );
 
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
-    expect(approvalService.dispatchApprovalRequestedNotification).toHaveBeenCalledTimes(1);
-    expect(approvalService.dispatchApprovalRequestedNotification).toHaveBeenCalledWith(walletId, mockDraft.id, userId);
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).toHaveBeenCalledTimes(1);
-
-    const approvalDispatchOrder = (approvalService.dispatchApprovalRequestedNotification as Mock).mock.invocationCallOrder[0];
-    const draftNotifyOrder = (dispatchDraftNotification as Mock).mock.invocationCallOrder[0];
-    expect(approvalDispatchOrder).toBeLessThan(draftNotifyOrder);
+    expect(dispatchDraftNotification).toHaveBeenCalledWith(
+      walletId,
+      expect.objectContaining({ approvalRequired: true }),
+      userId,
+      undefined
+    );
   });
 
   it('dispatchDraftCreatedPostCommitNotifications dispatches only the draft notification when approval is not required', async () => {
     await dispatchDraftCreatedPostCommitNotifications(walletId, userId, mockDraft as never, approvalInput);
 
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
-    expect(approvalService.dispatchApprovalRequestedNotification).not.toHaveBeenCalled();
+    expect(removedApprovalDispatch).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).toHaveBeenCalledTimes(1);
   });
 

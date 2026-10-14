@@ -368,6 +368,7 @@ export const authPaths = {
         401: apiErrorResponse,
         404: apiErrorResponse,
         409: apiErrorResponse,
+        503: apiErrorResponse,
       },
     },
   },
@@ -402,6 +403,19 @@ export const authPaths = {
         200: jsonResponse('Email verified', '#/components/schemas/VerifyEmailResponse'),
         400: apiErrorResponse,
         500: apiErrorResponse,
+      },
+    },
+  },
+  '/auth/email/resend-pending': {
+    post: {
+      tags: ['Auth'],
+      summary: 'Resend verification email before login',
+      description: 'Resend the verification email using username and password, for users who cannot log in until their email is verified. Always returns 202 with an identical body, whether or not an email was sent.',
+      requestBody: jsonRequestBody('#/components/schemas/ResendPendingVerificationRequest'),
+      responses: {
+        202: jsonResponse('Request accepted', '#/components/schemas/ResendPendingVerificationResponse'),
+        400: apiErrorResponse,
+        429: apiErrorResponse,
       },
     },
   },

@@ -49,6 +49,12 @@ const passwordChangeLimiter = rateLimitByUser('auth:password-change');
 const emailVerifyLimiter = rateLimit('auth:email-verify');
 const emailResendLimiter = rateLimitByUser('auth:email-resend');
 const emailUpdateLimiter = rateLimitByUser('auth:email-update');
+// Pre-auth resend: shares the login ip+username bucket (so it is no second
+// password-guessing budget) and has its own ip+username resend bucket.
+const emailResendPendingLimiters = {
+  login: loginLimiter,
+  resendPending: rateLimitByIpAndKey('auth:email-resend-pending', getLoginRateLimitUsername),
+};
 
 // ========================================
 // ROUTE CONFIGURATION
@@ -69,8 +75,9 @@ router.use('/', createTwoFactorRouter(twoFactorLimiter));
 // Email verification routes - mixed auth requirements:
 // - /email/verify is public (uses token from email)
 // - /email/resend requires authentication
+// - /email/resend-pending is public (credentialed, for unverified users)
 // - /me/email requires authentication
-router.use('/', createEmailRouter(emailVerifyLimiter, emailResendLimiter, emailUpdateLimiter));
+router.use('/', createEmailRouter(emailVerifyLimiter, emailResendLimiter, emailUpdateLimiter, emailResendPendingLimiters));
 
 // Protected routes (require authentication)
 router.use('/', authenticate, profileRouter);

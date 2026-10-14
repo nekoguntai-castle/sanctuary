@@ -303,6 +303,38 @@ describe("App branch coverage", () => {
     expect(mockUseWebSocketQueryInvalidation).toHaveBeenCalled();
   });
 
+  it("renders the email verification page, not Login, for an unauthenticated /verify-email", () => {
+    window.location.hash = "#/verify-email";
+    mockUseUser.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: false,
+      logout: vi.fn(),
+      user: null,
+      updatePreferences: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Email verification" })).toBeInTheDocument();
+    expect(screen.queryByText("Login Screen")).not.toBeInTheDocument();
+  });
+
+  it("renders the email verification page for an authenticated /verify-email too", () => {
+    window.location.hash = "#/verify-email";
+    mockUseUser.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      user: { usingDefaultPassword: false, preferences: {} },
+      updatePreferences: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Email verification" })).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard Page")).not.toBeInTheDocument();
+  });
+
   it("renders authenticated app with preference fallbacks and theme toggling", async () => {
     const updatePreferences = vi.fn();
     const logout = vi.fn();

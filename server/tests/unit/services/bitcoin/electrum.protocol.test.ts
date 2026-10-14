@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ElectrumFrameDecoder,
   ElectrumFrameTooLargeError,
   ElectrumMalformedFrameError,
+  processResponse,
   readElectrumResponseId,
 } from '../../../../src/services/bitcoin/electrum/protocol';
+import { ElectrumRpcError } from '../../../../src/services/bitcoin/electrum/types';
 
 describe('ElectrumFrameDecoder', () => {
   it('preserves ordered frames across byte fragmentation and UTF-8 boundaries', () => {
@@ -104,5 +106,35 @@ describe('ElectrumFrameDecoder', () => {
 
     expect(() => decoder.push(Buffer.from('not-json\n'))).toThrow(ElectrumMalformedFrameError);
     expect(decoder.push(Buffer.from('{"id":2}\n'))[0]?.response).toEqual({ id: 2 });
+  });
+});
+
+describe('processResponse', () => {
+  const pendingFor = (id: number) => {
+    const request = { resolve: vi.fn(), reject: vi.fn(), timeoutId: setTimeout(() => undefined, 0) };
+    return { request, pending: new Map([[id, request]]) };
+  };
+
+  it('rejects a JSON-RPC error answer with a typed ElectrumRpcError carrying the code', () => {
+    const { request, pending } = pendingFor(1);
+    processResponse({ jsonrpc: '2.0', id: 1, error: { code: -26, message: 'min relay fee not met' } }, pending);
+    const error = request.reject.mock.calls[0][0] as ElectrumRpcError;
+    expect(error).toBeInstanceOf(ElectrumRpcError);
+    expect(error.message).toBe('min relay fee not met');
+    expect(error.code).toBe(-26);
+    expect(request.resolve).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the serialized error when the server sends no message', () => {
+    const { request, pending } = pendingFor(2);
+    processResponse({ jsonrpc: '2.0', id: 2, error: { code: 1, message: '' } }, pending);
+    expect(request.reject.mock.calls[0][0]).toBeInstanceOf(ElectrumRpcError);
+    expect(request.reject.mock.calls[0][0].message).toBe('{"code":1,"message":""}');
+  });
+
+  it('resolves a result answer', () => {
+    const { request, pending } = pendingFor(3);
+    processResponse({ jsonrpc: '2.0', id: 3, result: 'ok' }, pending);
+    expect(request.resolve).toHaveBeenCalledWith('ok');
   });
 });

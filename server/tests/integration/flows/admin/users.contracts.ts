@@ -38,6 +38,46 @@ async function installRefreshDeleteFailureTrigger(): Promise<void> {
   `);
 }
 
+async function createCoOwnedWallet(userId: string, otherUserId: string) {
+  return prisma.wallet.create({
+    data: {
+      name: `Restrict FK Wallet ${Date.now()}`,
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      users: { create: [{ userId, role: 'owner' }, { userId: otherUserId, role: 'owner' }] },
+    },
+  });
+}
+
+function createRetainedDraft(walletId: string, userId: string, status: string) {
+  return prisma.draftTransaction.create({
+    data: {
+      walletId, userId, status,
+      recipient: 'bc1qrestrictfkrecipient', amount: 1000n, feeRate: 1,
+      selectedUtxoIds: [], psbtBase64: 'cHNidA==', fee: 10n,
+      totalInput: 2000n, totalOutput: 1990n, changeAmount: 990n, effectiveAmount: 1000n,
+      inputPaths: [],
+    },
+  });
+}
+
+function createCreatorPolicy(walletId: string, createdBy: string) {
+  return prisma.vaultPolicy.create({
+    data: { walletId, name: 'Creator policy', type: 'approval_required', config: {}, createdBy },
+  });
+}
+
+async function createUserVote(walletId: string, policyCreator: string, userId: string) {
+  const policy = await createCreatorPolicy(walletId, policyCreator);
+  const draft = await createRetainedDraft(walletId, policyCreator, 'unsigned');
+  const approval = await prisma.approvalRequest.create({
+    data: { draftTransactionId: draft.id, policyId: policy.id, requiredApprovals: 1 },
+  });
+  await prisma.approvalVote.create({
+    data: { approvalRequestId: approval.id, userId, decision: 'approve' },
+  });
+}
+
 export function registerAdminUserManagementContracts(): void {
   // =============================================
   // USER MANAGEMENT
@@ -587,6 +627,39 @@ export function registerAdminUserManagementContracts(): void {
         expect(response.body.message).toContain('Cosigned Vault');
         expect(await prisma.user.findUnique({ where: { id: userId } })).not.toBeNull();
         expect(await prisma.walletDevice.count({ where: { walletId: wallet.id } })).toBe(1);
+      });
+
+      it.each([
+        ['a vault policy they created', 'vault policy', async (w: string, u: string) => { await createCreatorPolicy(w, u); }],
+        ['a broadcast draft', 'draft', async (w: string, u: string) => { await createRetainedDraft(w, u, 'broadcasted'); }],
+      ])('refuses with 409 when the user is referenced by %s', async (_label, noun, seed) => {
+        const { token } = await createAdminAndLogin();
+        const { userId } = await createUserAndLogin();
+        const { userId: otherUserId } = await createUserAndLogin();
+        const wallet = await createCoOwnedWallet(userId, otherUserId);
+        await seed(wallet.id, userId);
+
+        const response = await request(app)
+          .delete(`/api/v1/admin/users/${userId}`)
+          .set(authHeader(token))
+          .expect(409);
+        expect(response.body.message).toContain(noun);
+        expect(await prisma.user.findUnique({ where: { id: userId } })).not.toBeNull();
+      });
+
+      it('refuses with 409 when the user cast an approval vote', async () => {
+        const { token } = await createAdminAndLogin();
+        const { userId } = await createUserAndLogin();
+        const { userId: otherUserId } = await createUserAndLogin();
+        const wallet = await createCoOwnedWallet(userId, otherUserId);
+        await createUserVote(wallet.id, otherUserId, userId);
+
+        const response = await request(app)
+          .delete(`/api/v1/admin/users/${userId}`)
+          .set(authHeader(token))
+          .expect(409);
+        expect(response.body.message).toContain('approval vote');
+        expect(await prisma.user.findUnique({ where: { id: userId } })).not.toBeNull();
       });
 
       it('should prevent self-deletion', async () => {

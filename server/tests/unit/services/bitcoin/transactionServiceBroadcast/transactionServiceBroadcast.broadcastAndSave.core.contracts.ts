@@ -116,7 +116,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       network: broadcastNetwork,
       rawTx: rawTxHex,
       intent: expect.objectContaining({ intentId: 'intent-broadcast-persistence-test' }),
-    }));
+    }), true);
   });
 
   it('should mark spent UTXOs after broadcast', async () => {

@@ -92,6 +92,7 @@ vi.mock('../../../../src/utils/logger', () => ({
 import {
   createVerificationToken,
   updateEmailWithVerification,
+  assertEmailChangeDeliverable,
   verifyEmail,
   resendVerification,
   isVerificationRequired,
@@ -234,7 +235,7 @@ describe('Email Verification Service', () => {
 
       expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining('http://localhost:3000/verify-email?token='),
+          text: expect.stringContaining('http://localhost:3000/#/verify-email?token='),
         })
       );
       mockConfig.server.clientUrl = originalClientUrl;
@@ -264,8 +265,39 @@ describe('Email Verification Service', () => {
     });
   });
 
+  describe('assertEmailChangeDeliverable', () => {
+    it('passes when verification is not required, even without SMTP', async () => {
+      mockSystemSettingRepository.getBoolean.mockResolvedValueOnce(false);
+      mockEmailService.isSmtpConfigured.mockResolvedValue(false);
+
+      await expect(assertEmailChangeDeliverable()).resolves.toBeUndefined();
+    });
+
+    it('passes when verification is required and SMTP is configured', async () => {
+      mockEmailService.isSmtpConfigured.mockResolvedValue(true);
+
+      await expect(assertEmailChangeDeliverable()).resolves.toBeUndefined();
+    });
+
+    it('rejects with an actionable 503 when verification is required and SMTP is not configured', async () => {
+      mockEmailService.isSmtpConfigured.mockResolvedValue(false);
+
+      await expect(assertEmailChangeDeliverable()).rejects.toMatchObject({ statusCode: 503 });
+    });
+  });
+
   describe('updateEmailWithVerification', () => {
+    it('refuses the change before any write when verification is required and SMTP is not configured', async () => {
+      mockEmailService.isSmtpConfigured.mockResolvedValue(false);
+
+      await expect(updateEmailWithVerification(testUserId, testEmail, testUsername))
+        .rejects.toThrow('outgoing email is not configured');
+
+      expect(mockEmailVerificationRepository.replaceUnusedForEmailUpdate).not.toHaveBeenCalled();
+    });
+
     it('should invalidate old intents, update email, and truthfully report unsent mail when SMTP is disabled', async () => {
+      mockSystemSettingRepository.getBoolean.mockResolvedValueOnce(false);
       const updatedUser = {
         id: testUserId,
         username: testUsername,
