@@ -11,6 +11,7 @@ interface WalletSummaryCardsProps {
   fiatBalance: number | null;
   fiatCurrency: string;
   firstActivityAgeDays: number | null;
+  firstActivityLoading?: boolean;
   format: SatsFormatter;
   oldestTxDate: Date | null;
   showFiat: boolean;
@@ -72,6 +73,7 @@ export const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
   fiatBalance,
   fiatCurrency,
   firstActivityAgeDays,
+  firstActivityLoading = false,
   format,
   oldestTxDate,
   showFiat,
@@ -112,9 +114,11 @@ export const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
       icon={Clock}
       iconClassName="text-sanctuary-400"
       label="First Activity"
-      caption={firstActivityAgeDays === null ? undefined : `${firstActivityAgeDays} days ago`}
+      caption={firstActivityLoading || firstActivityAgeDays === null ? undefined : `${firstActivityAgeDays} days ago`}
     >
-      {oldestTxDate ? (
+      {firstActivityLoading ? (
+        <span className="text-sm font-normal text-sanctuary-500">Loading...</span>
+      ) : oldestTxDate ? (
         oldestTxDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
       ) : (
         <span className="text-sm font-normal text-sanctuary-500">No transactions</span>

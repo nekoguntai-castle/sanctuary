@@ -725,26 +725,32 @@ test.describe("Wallet sharing and privacy", () => {
 
     await gotoWalletDetail(page);
 
-    // Tab through each available tab
-    const tabs = [
-      "Transactions",
-      "UTXOs",
-      "addresses",
-      "drafts",
-      "stats",
-      "access",
-      "settings",
-      "log",
+    // The mocked wallet is owned by the admin, so every tab in
+    // walletDetailTabDefinitions is visible. UTXOs and Addresses are left out
+    // on purpose: clicking them is the known CI unmount covered by the
+    // test.fixme cases above. Wallet-detail tabs carry no role="tabpanel", so
+    // each tab is checked through aria-selected plus one content marker.
+    const tabs: Array<{ name: string; marker?: () => Locator }> = [
+      { name: "Stats", marker: () => page.getByText("UTXO Count") },
+      { name: "Drafts", marker: () => page.getByText("No draft transactions") },
+      {
+        name: "Access",
+        marker: () =>
+          page.getByRole("tablist", { name: "Wallet access sections" }),
+      },
+      {
+        name: "Settings",
+        marker: () => page.getByRole("heading", { name: "Wallet Name" }),
+      },
+      { name: "Log", marker: () => page.getByText("Sync Log") },
+      { name: "Transactions" },
     ];
-    for (const tab of tabs) {
-      const tabButton = page.getByRole("tab", {
-        name: new RegExp(tab, "i"),
-      });
-      if (await tabButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await tabButton.click();
-        // Just verify no crash - tab content should render
-        await page.waitForTimeout(200);
-      }
+    for (const { name, marker } of tabs) {
+      const tabButton = page.getByRole("tab", { name, exact: true });
+      await expect(tabButton).toBeVisible();
+      await tabButton.click();
+      await expect(tabButton).toHaveAttribute("aria-selected", "true");
+      if (marker) await expect(marker()).toBeVisible();
     }
 
     expect(unhandledRequests).toEqual([]);

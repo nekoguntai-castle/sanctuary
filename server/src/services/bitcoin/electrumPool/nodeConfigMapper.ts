@@ -1,12 +1,9 @@
 import type {
   LoadBalancingStrategy,
-  ProxyConfig,
   ServerConfig,
 } from './types';
 import {
   isNodePoolLoadBalancing,
-  projectNodeProxyConfig,
-  type NodeNetworkConfigSource,
 } from '@sanctuary/shared/constants/nodeConfig';
 import {
   normalizeServerUsage,
@@ -69,10 +66,4 @@ export function getLoadBalancingStrategy(
   return isNodePoolLoadBalancing(nodeConfig.poolLoadBalancing)
     ? nodeConfig.poolLoadBalancing as LoadBalancingStrategy
     : null;
-}
-
-export function getProxyConfig(nodeConfig: ElectrumNodeConfig): ProxyConfig | null {
-  return projectNodeProxyConfig(
-    nodeConfig as unknown as NodeNetworkConfigSource,
-  );
 }

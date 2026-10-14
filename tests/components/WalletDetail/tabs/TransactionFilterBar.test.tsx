@@ -42,33 +42,28 @@ const sampleLabels: Label[] = [
 ];
 
 describe('TransactionFilterBar', () => {
-  const originalTz = process.env.TZ;
+  // Times are built in the host's local zone, the zone the inputs display in,
+  // so the expectations hold wherever the suite runs. (Reassigning
+  // process.env.TZ at runtime does not reach vitest's worker threads.)
   afterEach(() => {
-    if (originalTz === undefined) delete process.env.TZ;
-    else process.env.TZ = originalTz;
+    vi.restoreAllMocks();
   });
+
+  const dateFrom = new Date(2026, 9, 5).getTime();
+  const dateTo = new Date(2026, 9, 5, 23, 59, 59, 999).getTime();
+  const customFilters = { ...defaultFilters, datePreset: 'custom' as const, dateFrom, dateTo };
+
+  const getDateInputs = () =>
+    Array.from(document.querySelectorAll<HTMLInputElement>('input[type="date"]'));
 
   // -------------------------------------------------------------------------
   // Date inputs use the local calendar date (not UTC)
   // -------------------------------------------------------------------------
-  it.each([
-    ['Pacific/Honolulu', 600],
-    ['Europe/Berlin', -120],
-  ])('shows and round-trips local calendar dates in %s', (tz, expectedOffset) => {
-    process.env.TZ = tz;
-    // Fail loudly if this runtime ignores TZ changes
-    expect(new Date(2026, 9, 5).getTimezoneOffset()).toBe(expectedOffset);
-
-    const dateFrom = new Date(2026, 9, 5).getTime();
-    const dateTo = new Date(2026, 9, 5, 23, 59, 59, 999).getTime();
-    const props = buildProps({
-      filters: { ...defaultFilters, datePreset: 'custom', dateFrom, dateTo },
-    });
+  it('shows and round-trips local calendar dates', () => {
+    const props = buildProps({ filters: customFilters });
     render(<TransactionFilterBar {...props} />);
 
-    const [fromInput, toInput] = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="date"]')
-    );
+    const [fromInput, toInput] = getDateInputs();
     expect(fromInput.value).toBe('2026-10-05');
     expect(toInput.value).toBe('2026-10-05');
 
@@ -82,6 +77,19 @@ describe('TransactionFilterBar', () => {
 
     fireEvent.change(fromInput, { target: { value: '' } });
     expect(props.onCustomDateRangeChange).toHaveBeenLastCalledWith(null, dateTo);
+  });
+
+  it('formats the inputs without going through UTC (toISOString or getUTC*)', () => {
+    // A UTC-based formatter would show these canned values in every host zone.
+    vi.spyOn(Date.prototype, 'toISOString').mockReturnValue('1999-01-01T00:00:00.000Z');
+    vi.spyOn(Date.prototype, 'getUTCFullYear').mockReturnValue(1999);
+    vi.spyOn(Date.prototype, 'getUTCMonth').mockReturnValue(0);
+    vi.spyOn(Date.prototype, 'getUTCDate').mockReturnValue(1);
+    render(<TransactionFilterBar {...buildProps({ filters: customFilters })} />);
+
+    const [fromInput, toInput] = getDateInputs();
+    expect(fromInput.value).toBe('2026-10-05');
+    expect(toInput.value).toBe('2026-10-05');
   });
 
   // -------------------------------------------------------------------------

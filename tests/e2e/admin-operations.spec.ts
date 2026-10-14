@@ -48,14 +48,13 @@ test.describe("Admin operations", () => {
     ).toBeVisible();
 
     const historyButton = page.getByRole("button", { name: /Change History/i });
-    if (await historyButton.isVisible()) {
-      await historyButton.click();
-      await expect(
-        page
-          .getByText("No changes recorded yet.")
-          .or(page.getByText("Loading audit log...")),
-      ).toBeVisible();
-    }
+    await expect(historyButton).toBeVisible();
+    await historyButton.click();
+    await expect(
+      page
+        .getByText("No changes recorded yet.")
+        .or(page.getByText("Loading audit log...")),
+    ).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -104,12 +103,11 @@ test.describe("Admin operations", () => {
     const viewerRow = page.locator("li").filter({ hasText: "viewer" });
     const deleteButton = viewerRow.locator('button[title="Delete user"]');
 
-    if (await deleteButton.first().isVisible()) {
-      await deleteButton.first().click();
-      await expect(page.getByText("viewer", { exact: true })).not.toBeVisible({
-        timeout: 5000,
-      });
-    }
+    await expect(deleteButton.first()).toBeVisible();
+    await deleteButton.first().click();
+    await expect(page.getByText("viewer", { exact: true })).not.toBeVisible({
+      timeout: 5000,
+    });
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -119,15 +117,12 @@ test.describe("Admin operations", () => {
 
     await page.goto("/#/admin/users-groups");
 
-    const groupInput = page
-      .getByPlaceholder(/group name/i)
-      .or(page.getByPlaceholder(/new group/i));
-    if (await groupInput.isVisible()) {
-      await groupInput.fill("Test Group");
-      await page.getByRole("button", { name: /Create/i }).click();
+    const groupInput = page.getByPlaceholder("New group name");
+    await expect(groupInput).toBeVisible();
+    await groupInput.fill("Test Group");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
 
-      await expect(page.getByText("Test Group")).toBeVisible({ timeout: 5000 });
-    }
+    await expect(page.getByText("Test Group")).toBeVisible({ timeout: 5000 });
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -137,33 +132,23 @@ test.describe("Admin operations", () => {
 
     await page.goto("/#/admin/users-groups");
 
-    const groupInput = page
-      .getByPlaceholder(/group name/i)
-      .or(page.getByPlaceholder(/new group/i));
-    if (await groupInput.isVisible()) {
-      await groupInput.fill("Group To Delete");
-      await page.getByRole("button", { name: /Create/i }).click();
-      await expect(page.getByText("Group To Delete")).toBeVisible({
-        timeout: 5000,
-      });
+    const groupInput = page.getByPlaceholder("New group name");
+    await expect(groupInput).toBeVisible();
+    await groupInput.fill("Group To Delete");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByText("Group To Delete")).toBeVisible({
+      timeout: 5000,
+    });
 
-      page.on("dialog", (dialog) => dialog.accept());
-      const groupRow = page
-        .locator("li, tr, [data-testid]")
-        .filter({ hasText: "Group To Delete" });
-      const deleteButton = groupRow
-        .locator(
-          'button[title="Delete group"], button[aria-label*="delete" i], button:has(svg)',
-        )
-        .last();
-
-      if (await deleteButton.isVisible()) {
-        await deleteButton.click();
-        await expect(page.getByText("Group To Delete")).not.toBeVisible({
-          timeout: 5000,
-        });
-      }
-    }
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("listitem")
+      .filter({ hasText: "Group To Delete" })
+      .getByTitle("Delete group")
+      .click();
+    await expect(page.getByText("Group To Delete")).not.toBeVisible({
+      timeout: 5000,
+    });
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -621,13 +606,12 @@ test.describe("Admin operations", () => {
     const filtersButton = page
       .getByRole("button", { name: /Filters/i })
       .first();
-    if (await filtersButton.isVisible()) {
-      await filtersButton.click();
-      // Filter panel should expand with filter inputs - look for "Apply Filters" button
-      await expect(
-        page.getByRole("button", { name: /Apply Filters/i }),
-      ).toBeVisible({ timeout: 3000 });
-    }
+    await expect(filtersButton).toBeVisible();
+    await filtersButton.click();
+    // Filter panel should expand with filter inputs - look for "Apply Filters" button
+    await expect(
+      page.getByRole("button", { name: /Apply Filters/i }),
+    ).toBeVisible({ timeout: 3000 });
 
     expect(unhandledRequests).toEqual([]);
   });

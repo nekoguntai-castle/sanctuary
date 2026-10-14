@@ -392,6 +392,12 @@ describe('useBalanceHistory', () => {
     expect(mockGetBalanceHistory).not.toHaveBeenCalled();
   });
 
+  it('makes no request when the enabled argument is false', () => {
+    renderHook(() => useBalanceHistory(['w1'], 1200, 'ALL', false), { wrapper: createWrapper(queryClient) });
+
+    expect(mockGetBalanceHistory).not.toHaveBeenCalled();
+  });
+
   it('fetches balance history when walletIds exist', async () => {
     mockGetBalanceHistory.mockResolvedValue([
       { name: 'Start', value: 900 },

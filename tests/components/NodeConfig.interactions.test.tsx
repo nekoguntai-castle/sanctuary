@@ -236,6 +236,31 @@ describe('NodeConfig interaction branches', () => {
     });
   });
 
+  it('posts the masked stored password as-is so the server resolves it', async () => {
+    vi.mocked(adminApi.getNodeConfig).mockResolvedValue({
+      ...baseNodeConfig,
+      proxyUsername: 'tor-user',
+      proxyPassword: '********',
+    } as any);
+    const user = userEvent.setup();
+    render(<NodeConfig />);
+    await waitFor(() => {
+      expect(screen.getByText('Proxy / Tor')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Proxy / Tor'));
+
+    await user.click(screen.getByRole('button', { name: 'Verify Connection' }));
+
+    await waitFor(() => {
+      expect(adminApi.testProxy).toHaveBeenCalledWith({
+        host: '127.0.0.1',
+        port: 9050,
+        username: 'tor-user',
+        password: '********',
+      });
+    });
+  });
+
   it('supports keyboard expansion and proxy preset toggles', async () => {
     const user = userEvent.setup();
     render(<NodeConfig />);

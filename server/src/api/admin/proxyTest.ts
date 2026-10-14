@@ -11,8 +11,9 @@ import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
 import { safeJsonParseUntyped } from '../../utils/safeJson';
+import { resolveMaskedProxyPassword } from '../../services/adminProxyCredentialService';
+import { MASKED_PROXY_PASSWORD } from './nodeConfigData';
 import { SocksClient } from 'socks';
 
 const router = Router();
@@ -48,9 +49,12 @@ router.post('/proxy/test', authenticate, requireAdmin, asyncHandler(async (req, 
         : 'Proxy host and port are required'
     );
   }
-  const { host, port, username, password } = parsedBody.data;
+  const { host, port, username } = parsedBody.data;
 
   const proxyPort = parseInt(port.toString(), 10);
+  const password = parsedBody.data.password === MASKED_PROXY_PASSWORD
+    ? await resolveMaskedProxyPassword(host, proxyPort, username)
+    : parsedBody.data.password;
   // Step 1: Test .onion connectivity (definitive proof Tor works)
   const onionTarget = {
     host: 'explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion',
@@ -93,7 +97,7 @@ router.post('/proxy/test', authenticate, requireAdmin, asyncHandler(async (req, 
     };
 
     const proxyUrl = username && password
-      ? `socks5://${username}:${password}@${host}:${proxyPort}`
+      ? `socks5://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${proxyPort}`
       : `socks5://${host}:${proxyPort}`;
 
     const agent = new SocksProxyAgent(proxyUrl);

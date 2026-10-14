@@ -9,6 +9,7 @@ const nodeConfigRouteMocks = vi.hoisted(() => ({
   mockTestNodeConfig: vi.fn(),
   mockResetNodeClient: vi.fn(),
   mockEncrypt: vi.fn((value: string) => `enc:${value}`),
+  mockDecrypt: vi.fn((value: string) => value.replace(/^enc:/, '')),
   mockAuditLogFromRequest: vi.fn(),
   mockSocksCreateConnection: vi.fn(),
   mockHttpsGet: vi.fn(),
@@ -21,6 +22,7 @@ const nodeConfigRouteMocks = vi.hoisted(() => ({
 export const mockTestNodeConfig = nodeConfigRouteMocks.mockTestNodeConfig;
 export const mockResetNodeClient = nodeConfigRouteMocks.mockResetNodeClient;
 export const mockEncrypt = nodeConfigRouteMocks.mockEncrypt;
+export const mockDecrypt = nodeConfigRouteMocks.mockDecrypt;
 export const mockAuditLogFromRequest = nodeConfigRouteMocks.mockAuditLogFromRequest;
 export const mockSocksCreateConnection = nodeConfigRouteMocks.mockSocksCreateConnection;
 export const mockHttpsGet = nodeConfigRouteMocks.mockHttpsGet;
@@ -61,6 +63,7 @@ vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({
 
 vi.mock('../../../../src/utils/encryption', () => ({
   encrypt: nodeConfigRouteMocks.mockEncrypt,
+  decryptIfEncrypted: nodeConfigRouteMocks.mockDecrypt,
 }));
 
 vi.mock('../../../../src/services/auditService', () => ({

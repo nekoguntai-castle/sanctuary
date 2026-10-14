@@ -9,6 +9,8 @@ interface AiFilterSummaryProps {
   aiAggregationResult: number | null;
   filteredTransactions: Transaction[];
   transactions: Transaction[];
+  /** Older pages are unloaded: filtering and aggregation covered only `transactions`. */
+  hasMoreTx: boolean;
   onAiQueryChange: (result: NaturalQueryResult | null) => void;
 }
 
@@ -17,11 +19,15 @@ export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
   aiAggregationResult,
   filteredTransactions,
   transactions,
+  hasMoreTx,
   onAiQueryChange,
 }) => {
   if (!aiQueryFilter) {
     return null;
   }
+
+  const resultLabel = hasMoreTx ? 'Partial result:' : 'Result:';
+  const countSuffix = hasMoreTx ? 'loaded transactions; more are not loaded' : 'transactions';
 
   return (
     <div className="mb-4 p-3 bg-primary-50 dark:bg-sanctuary-800 border border-primary-200 dark:border-sanctuary-600 rounded-lg">
@@ -30,11 +36,16 @@ export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
           <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
             {aiAggregationResult !== null ? (
               <>
-                Result: <span className="font-bold"><AggregationValue aiQueryFilter={aiQueryFilter} value={aiAggregationResult} /></span>
+                {resultLabel} <span className="font-bold"><AggregationValue aiQueryFilter={aiQueryFilter} value={aiAggregationResult} /></span>
                 {aiQueryFilter.aggregation && <span className="text-sanctuary-500 ml-1">({aiQueryFilter.aggregation})</span>}
+                {hasMoreTx && (
+                  <span data-testid="ai-filter-partial-notice" className="text-sanctuary-500 ml-1">
+                    {'\u2014'} over the {transactions.length} loaded transactions; older transactions are not included. Load more to extend.
+                  </span>
+                )}
               </>
             ) : (
-              <>Showing {filteredTransactions.length} of {transactions.length} transactions</>
+              <>Showing {filteredTransactions.length} of {transactions.length} {countSuffix}</>
             )}
           </span>
         </div>

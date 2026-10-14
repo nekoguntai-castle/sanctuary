@@ -57,11 +57,12 @@ const DisplayTab: React.FC = () => {
           {/* Fiat Currency */}
           <div className="flex items-center justify-between pt-4 border-t border-sanctuary-100 dark:border-sanctuary-800">
             <div className="space-y-1">
-              <label className="text-base font-medium text-sanctuary-900 dark:text-sanctuary-100">Fiat Currency</label>
+              <label htmlFor="fiat-currency" className="text-base font-medium text-sanctuary-900 dark:text-sanctuary-100">Fiat Currency</label>
               <p className="text-sm text-sanctuary-500">Select your local currency.</p>
             </div>
             <div className="relative">
               <select
+                id="fiat-currency"
                 value={fiatCurrency}
                 onChange={(e) => setFiatCurrency(e.target.value as FiatCurrency)}
                 className="appearance-none surface-muted border border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"

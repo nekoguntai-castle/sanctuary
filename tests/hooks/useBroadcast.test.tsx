@@ -307,9 +307,12 @@ describe('useBroadcast', () => {
       queryKey: walletActivityKeys.pendingTransactions.all,
     });
     expect(mocks.refetchQueries).toHaveBeenCalledWith({ queryKey: walletKeys.all });
-    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(2);
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({
       queryKey: walletActivityKeys.recentTransactions.all,
+    });
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: walletActivityKeys.balanceHistory.all,
     });
     expect(mocks.refetchQueries).not.toHaveBeenCalledWith({
       queryKey: ['wallet', 'wallet-1'],

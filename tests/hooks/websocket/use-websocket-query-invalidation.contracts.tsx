@@ -183,6 +183,9 @@ function registerTransactionEventHandlingTests(): void {
         expect(mockInvalidateQueries).toHaveBeenCalledWith({
           queryKey: walletActivityKeys.activitySummary.all,
         });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.balanceHistory.all,
+        });
       });
     });
 
@@ -213,6 +216,9 @@ function registerTransactionEventHandlingTests(): void {
         });
         expect(mockInvalidateQueries).toHaveBeenCalledWith({
           queryKey: walletActivityKeys.activitySummary.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.balanceHistory.all,
         });
       });
     });
@@ -271,6 +277,9 @@ function registerNewBlockEventHandlingTests(): void {
         });
         expect(mockInvalidateQueries).toHaveBeenCalledWith({
           queryKey: walletActivityKeys.activitySummary.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.balanceHistory.all,
         });
         expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.all });
       });

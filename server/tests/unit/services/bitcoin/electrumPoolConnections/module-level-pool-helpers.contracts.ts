@@ -18,7 +18,6 @@ import {
 } from '../../../../../src/services/bitcoin/electrumPool';
 import {
   getLoadBalancingStrategy,
-  getProxyConfig,
   mapEnabledServers,
 } from '../../../../../src/services/bitcoin/electrumPool/nodeConfigMapper';
 import prisma from '../../../../../src/models/prisma';
@@ -435,23 +434,6 @@ export function registerElectrumPoolModuleHelperTests(): void {
           lastCapabilityCheck: null,
         }),
       ]);
-    });
-
-    it('projects proxy configuration through the shared node config helper', () => {
-      expect(getProxyConfig({
-        proxyEnabled: true,
-        proxyHost: '127.0.0.1',
-        proxyPort: 9050,
-        proxyUsername: 'tor-user',
-        proxyPassword: 'tor-pass',
-      })).toEqual({
-        enabled: true,
-        host: '127.0.0.1',
-        port: 9050,
-        username: 'tor-user',
-        password: 'tor-pass',
-      });
-      expect(getProxyConfig({ proxyEnabled: false })).toBeNull();
     });
 
     it('keeps base pool settings for regtest (no per-network override branch)', async () => {

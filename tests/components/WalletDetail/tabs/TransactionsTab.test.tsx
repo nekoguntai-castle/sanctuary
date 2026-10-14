@@ -108,6 +108,7 @@ describe('TransactionsTab', () => {
         {...baseProps}
         aiEnabled={true}
         aiQueryFilter={{ type: 'transactions', aggregation: 'count' }}
+        hasMoreTx={false}
         aiAggregationResult={4}
         onAiQueryChange={onAiQueryChange}
       />
@@ -144,6 +145,7 @@ describe('TransactionsTab', () => {
         {...baseProps}
         aiEnabled={true}
         aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+        hasMoreTx={false}
         aiAggregationResult={12345}
         transactionStats={null}
       />
@@ -162,6 +164,7 @@ describe('TransactionsTab', () => {
           {...baseProps}
           aiEnabled={true}
           aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+          hasMoreTx={false}
           aiAggregationResult={12345}
         />
       );
@@ -181,6 +184,7 @@ describe('TransactionsTab', () => {
           {...baseProps}
           aiEnabled={true}
           aiQueryFilter={{ type: 'transactions', aggregation: 'count' }}
+          hasMoreTx={false}
           aiAggregationResult={3}
         />
       );
@@ -198,6 +202,7 @@ describe('TransactionsTab', () => {
         {...baseProps}
         aiEnabled={true}
         aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+        hasMoreTx={false}
         aiAggregationResult={null}
       />
     );
@@ -211,6 +216,7 @@ describe('TransactionsTab', () => {
         {...baseProps}
         aiEnabled={true}
         aiQueryFilter={{ type: 'transactions', aggregation: null }}
+        hasMoreTx={false}
         aiAggregationResult={7}
       />
     );
@@ -270,5 +276,51 @@ describe('TransactionsTab', () => {
     );
 
     expect(mockRefs.txListProps.transactionStats).toBeUndefined();
+  });
+  it('labels an AI aggregate as partial while older pages are unloaded', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        aiEnabled={true}
+        aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+        aiAggregationResult={12345}
+        hasMoreTx={true}
+      />
+    );
+
+    expect(screen.getByText('Partial result:')).toBeInTheDocument();
+    expect(screen.queryByText('Result:')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ai-filter-partial-notice')).toHaveTextContent(
+      'over the 2 loaded transactions; older transactions are not included'
+    );
+  });
+
+  it('shows no partial notice on a final aggregate', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        aiEnabled={true}
+        aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+        aiAggregationResult={12345}
+        hasMoreTx={false}
+      />
+    );
+
+    expect(screen.getByText('Result:')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-filter-partial-notice')).not.toBeInTheDocument();
+  });
+
+  it('marks a non-aggregate AI filter (sort + limit) as computed over loaded pages only', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        aiEnabled={true}
+        aiQueryFilter={{ type: 'transactions', aggregation: null }}
+        aiAggregationResult={null}
+        hasMoreTx={true}
+      />
+    );
+
+    expect(screen.getByText('Showing 1 of 2 loaded transactions; more are not loaded')).toBeInTheDocument();
   });
 });

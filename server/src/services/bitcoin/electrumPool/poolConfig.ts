@@ -2,7 +2,6 @@ import { nodeConfigRepository } from '../../../repositories';
 import { getErrorMessage } from '../../../utils/errors';
 import { createLogger } from '../../../utils/logger';
 import {
-  projectNodeProxyConfig,
   isNodePoolLoadBalancing,
   readNodeNetworkPositiveInteger,
   readNodeNetworkString,
@@ -16,6 +15,8 @@ import type {
   ProxyConfig,
   ServerConfig,
 } from './types';
+import { ProxyConfigurationError } from '../electrum/proxyCredentials';
+import { proxyConfigFromNodeConfig } from '../electrum/connectionConfigResolver';
 import {
   normalizeServerUsage,
   parseSilentPaymentVersionsValue,
@@ -138,12 +139,6 @@ function buildNetworkServers(
     .map(toServerConfig);
 }
 
-function proxyConfigFromNodeConfig(nodeConfig: PersistedPoolConfig): ProxyConfig | null {
-  return projectNodeProxyConfig(
-    nodeConfig as unknown as NodeNetworkConfigSource,
-  );
-}
-
 function optionalLoadBalancing(value: string | null | undefined): LoadBalancingStrategy | undefined {
   return isNodePoolLoadBalancing(value)
     ? value as LoadBalancingStrategy
@@ -249,10 +244,15 @@ export async function loadPoolConfigFromDatabase(
           serverUsage,
           capabilityStaleAfterMs: featureScope.capabilityStaleAfterMs,
         }),
-        proxy: proxyConfigFromNodeConfig(nodeConfig),
+        proxy: proxyConfigFromNodeConfig(nodeConfig) ?? null,
       };
     }
   } catch (error) {
+    if (error instanceof ProxyConfigurationError) {
+      // Fail closed: defaults would cache a proxy-less (or zero-server) pool.
+      // proxyCredentials already logged the decrypt failure.
+      throw error;
+    }
     log.warn('Failed to load pool config from database, using defaults', { error: getErrorMessage(error), network });
   }
 

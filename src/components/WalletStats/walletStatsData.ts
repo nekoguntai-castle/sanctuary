@@ -1,3 +1,4 @@
+import type { BalanceHistoryPoint } from '../../api/transactions';
 import type { Transaction, UTXO } from '../../types';
 
 export const MS_PER_DAY = 86_400_000;
@@ -151,4 +152,45 @@ export function getOldestTransactionDate(transactions: Transaction[]): Date | nu
   if (timestamps.length === 0) return null;
 
   return new Date(Math.min(...timestamps));
+}
+
+type DatedHistoryPoint = BalanceHistoryPoint & { timestamp: string };
+
+function hasTimestamp(point: BalanceHistoryPoint): point is DatedHistoryPoint {
+  return typeof point.timestamp === 'string';
+}
+
+/**
+ * Accumulation chart from the server's full-history balance series. The
+ * series is day-bucketed, which is all the chart's labels resolve anyway.
+ */
+export function buildAccumulationFromHistory(
+  points: BalanceHistoryPoint[],
+  now = Date.now()
+): AccumulationPoint[] {
+  const dated = points.filter(hasTimestamp);
+  if (dated.length === 0) return [];
+
+  const spanDays = Math.ceil((now - new Date(dated[0].timestamp).getTime()) / MS_PER_DAY);
+  const dateFormat = getAccumulationDateFormatter(spanDays);
+
+  const balancesByLabel = new Map<string, AccumulationPoint>();
+  for (const point of dated) {
+    const name = dateFormat(new Date(point.timestamp));
+    balancesByLabel.set(name, { name, amount: point.value });
+  }
+
+  return Array.from(balancesByLabel.values());
+}
+
+/**
+ * First activity from the full-history series: its first point is stamped at
+ * the first activity bucket. A series of only Start and Now means the wallet
+ * has no confirmed activity. Day precision is enough for the month/year card.
+ */
+export function getFirstActivityFromHistory(points: BalanceHistoryPoint[]): Date | null {
+  if (points.length <= 2) return null;
+
+  const first = points[0];
+  return hasTimestamp(first) ? new Date(first.timestamp) : null;
 }

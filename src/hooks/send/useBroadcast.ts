@@ -206,6 +206,7 @@ const refetchBroadcastCaches = async (): Promise<void> => {
   ]);
 
   queryClient.invalidateQueries({ queryKey: walletActivityKeys.recentTransactions.all });
+  queryClient.invalidateQueries({ queryKey: walletActivityKeys.balanceHistory.all });
 };
 
 const getBroadcastErrorMessage = (err: unknown): string => {

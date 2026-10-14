@@ -213,7 +213,8 @@ export const useInvalidateAllWallets = createInvalidateAll(walletKeys, [
 export function useBalanceHistory(
   walletIds: string[],
   totalBalance: number,
-  timeframe: Timeframe
+  timeframe: Timeframe,
+  enabled = true
 ) {
   // Create stable key from wallet IDs
   const walletIdsKey = walletIds.join(',');
@@ -224,7 +225,7 @@ export function useBalanceHistory(
       if (walletIds.length === 0) return [];
       return transactionsApi.getBalanceHistory(timeframe, totalBalance, walletIds);
     },
-    enabled: walletIds.length > 0,
+    enabled: enabled && walletIds.length > 0,
     staleTime: 60000, // Consider stale after 1 minute
     // Don't keep previous data when wallet IDs change - show fresh for new networks
   });

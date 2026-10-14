@@ -306,7 +306,7 @@ export const adminCorePaths = {
     post: {
       tags: ['Admin'],
       summary: 'Test SOCKS5 proxy',
-      description: 'Test SOCKS5/Tor proxy connectivity by verifying .onion reachability and attempting to resolve the Tor exit IP.',
+      description: 'Test SOCKS5/Tor proxy connectivity by verifying .onion reachability and attempting to resolve the Tor exit IP. A password of "********" means "use the stored password for the stored host, port and username"; sent for any other proxy it is rejected with 400.',
       security: bearerAuth,
       requestBody: jsonRequestBody('#/components/schemas/AdminProxyTestRequest'),
       responses: {

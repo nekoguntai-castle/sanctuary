@@ -14,13 +14,15 @@ vi.mock('../../../../src/components/WalletStats', () => ({
 }));
 
 describe('StatsTab', () => {
-  it('passes UTXOs, balance, and transactions to WalletStats', () => {
+  it('passes wallet id, UTXOs, balance, transactions and pagination state to WalletStats', () => {
     const utxos = [{ id: 'u1', txid: 'abc', amount: 1000 } as any];
     const transactions = [{ id: 't1', txid: 'def', amount: -200 } as any];
 
-    render(<StatsTab utxos={utxos} balance={50000} transactions={transactions} />);
+    render(<StatsTab walletId="w1" utxos={utxos} balance={50000} transactions={transactions} hasMoreTx />);
 
     expect(screen.getByTestId('wallet-stats')).toBeInTheDocument();
+    expect(mockRefs.walletStatsProps.walletId).toBe('w1');
+    expect(mockRefs.walletStatsProps.hasMoreTx).toBe(true);
     expect(mockRefs.walletStatsProps.utxos).toBe(utxos);
     expect(mockRefs.walletStatsProps.balance).toBe(50000);
     expect(mockRefs.walletStatsProps.transactions).toBe(transactions);

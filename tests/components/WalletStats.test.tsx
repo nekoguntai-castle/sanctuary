@@ -5,11 +5,13 @@
  * balance, UTXO stats, age distribution, and accumulation history.
  */
 
-import { render,screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render,screen,waitFor } from '@testing-library/react';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletStats } from '../../src/components/WalletStats';
 import { useCurrency } from '../../src/contexts/CurrencyContext';
+import * as transactionsApi from '../../src/api/transactions';
 import type { Transaction,UTXO } from '../../src/types';
 
 // Mock the CurrencyContext
@@ -59,7 +61,20 @@ vi.mock('recharts', () => ({
   },
 }));
 
+vi.mock('../../src/api/transactions', () => ({
+  getBalanceHistory: vi.fn(),
+}));
+
+const renderStats = (ui: React.ReactElement) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
+
 describe('WalletStats', () => {
+  beforeEach(() => {
+    vi.mocked(transactionsApi.getBalanceHistory).mockReset();
+  });
+
   const createCurrencyContext = (
     overrides: Partial<ReturnType<typeof useCurrency>> = {}
   ): ReturnType<typeof useCurrency> => ({
@@ -157,8 +172,9 @@ describe('WalletStats', () => {
 
   describe('rendering', () => {
     it('should render stats cards', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={mockTransactions}
@@ -172,8 +188,9 @@ describe('WalletStats', () => {
     });
 
     it('should render charts', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={mockTransactions}
@@ -189,8 +206,9 @@ describe('WalletStats', () => {
 
   describe('balance display', () => {
     it('should display fiat balance when showFiat is true', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -202,8 +220,9 @@ describe('WalletStats', () => {
     });
 
     it('should display BTC price info', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -216,8 +235,9 @@ describe('WalletStats', () => {
 
   describe('UTXO count', () => {
     it('should display correct UTXO count', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -229,8 +249,9 @@ describe('WalletStats', () => {
     });
 
     it('should display 0 for empty UTXO set', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={[]}
           balance={0}
           transactions={[]}
@@ -264,8 +285,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={recentUtxos}
           balance={100000000}
           transactions={[]}
@@ -278,8 +300,9 @@ describe('WalletStats', () => {
     });
 
     it('should display "No UTXOs" when empty', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={[]}
           balance={0}
           transactions={[]}
@@ -302,8 +325,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={olderUtxos}
           balance={50000000}
           transactions={[]}
@@ -327,8 +351,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={veryOldUtxos}
           balance={50000000}
           transactions={[]}
@@ -352,8 +377,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={somewhatOldUtxos}
           balance={50000000}
           transactions={[]}
@@ -385,8 +411,9 @@ describe('WalletStats', () => {
         }),
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={transactions}
@@ -403,8 +430,9 @@ describe('WalletStats', () => {
     });
 
     it('should display "No transactions" when empty', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={[]}
           balance={0}
           transactions={[]}
@@ -417,8 +445,9 @@ describe('WalletStats', () => {
 
   describe('with empty data', () => {
     it('should handle empty UTXOs and transactions gracefully', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={[]}
           balance={0}
           transactions={[]}
@@ -475,8 +504,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={diverseUtxos}
           balance={100000000}
           transactions={[]}
@@ -502,8 +532,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={utxosWithStringDates}
           balance={50000000}
           transactions={[]}
@@ -527,8 +558,9 @@ describe('WalletStats', () => {
         },
       ];
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={utxosWithMissingDates}
           balance={50000000}
           transactions={[]}
@@ -569,8 +601,9 @@ describe('WalletStats', () => {
         })
       );
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -590,8 +623,9 @@ describe('WalletStats', () => {
         })
       );
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -609,8 +643,9 @@ describe('WalletStats', () => {
         })
       );
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -627,8 +662,9 @@ describe('WalletStats', () => {
         })
       );
 
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={100000000}
           transactions={[]}
@@ -639,8 +675,9 @@ describe('WalletStats', () => {
     });
 
     it('should build accumulation labels for short history spans', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={15000000}
           transactions={createTransactions(7)}
@@ -651,8 +688,9 @@ describe('WalletStats', () => {
     });
 
     it('should build accumulation labels for medium history spans', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={15000000}
           transactions={createTransactions(400)}
@@ -663,8 +701,9 @@ describe('WalletStats', () => {
     });
 
     it('should build accumulation labels for long history spans', () => {
-      render(
+      renderStats(
         <WalletStats
+          walletId="wallet-1"
           utxos={mockUtxos}
           balance={15000000}
           transactions={createTransactions(900)}
@@ -672,6 +711,74 @@ describe('WalletStats', () => {
       );
 
       expect(screen.getByTestId('area-chart')).toBeInTheDocument();
+    });
+  });
+  describe('full history for wallets with unloaded pages', () => {
+    const point = (name: string, iso: string, value: number) => ({ name, timestamp: iso, value });
+    const pageOf50 = Array.from({ length: 50 }, (_, i) =>
+      makeTransaction({
+        txid: `page-${i}`,
+        amount: 1000,
+        confirmations: 10,
+        balanceAfter: (i + 1) * 1000,
+        timestamp: new Date(2026, 0, 10 + i).getTime(),
+      })
+    );
+    const renderPartial = (hasMoreTx: boolean) =>
+      renderStats(
+        <WalletStats
+          walletId="wallet-1"
+          utxos={mockUtxos}
+          balance={15000000}
+          transactions={pageOf50}
+          hasMoreTx={hasMoreTx}
+        />
+      );
+
+    it('shows the true first activity and requests the full series when more pages exist', async () => {
+      vi.mocked(transactionsApi.getBalanceHistory).mockResolvedValue([
+        point('Start', new Date(2021, 2, 1).toISOString(), 0),
+        point('', new Date(2024, 5, 1).toISOString(), 500),
+        point('Now', new Date().toISOString(), 15000000),
+      ]);
+
+      renderPartial(true);
+
+      expect(screen.getByText('Loading...')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(new Date(2021, 2, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }))).toBeInTheDocument();
+      });
+      expect(transactionsApi.getBalanceHistory).toHaveBeenCalledWith('ALL', 15000000, ['wallet-1']);
+      expect(screen.queryByTestId('wallet-stats-partial-note')).not.toBeInTheDocument();
+    });
+
+    it('makes no request when all history is loaded', () => {
+      renderPartial(false);
+
+      expect(transactionsApi.getBalanceHistory).not.toHaveBeenCalled();
+      expect(screen.getByText(new Date(2026, 0, 10).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }))).toBeInTheDocument();
+    });
+
+    it('falls back to the loaded page and labels it partial on error', async () => {
+      vi.mocked(transactionsApi.getBalanceHistory).mockRejectedValue(new Error('boom'));
+
+      renderPartial(true);
+
+      expect(await screen.findByTestId('wallet-stats-partial-note')).toHaveTextContent(
+        'Based on the 50 most recent transactions'
+      );
+      expect(screen.getByText(new Date(2026, 0, 10).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }))).toBeInTheDocument();
+    });
+
+    it('reports no transactions for a two-point (no activity) series', async () => {
+      vi.mocked(transactionsApi.getBalanceHistory).mockResolvedValue([
+        point('Start', new Date().toISOString(), 0),
+        point('Now', new Date().toISOString(), 0),
+      ]);
+
+      renderPartial(true);
+
+      expect(await screen.findByText('No transactions')).toBeInTheDocument();
     });
   });
 });

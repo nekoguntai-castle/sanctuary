@@ -309,12 +309,11 @@ test.describe('Settings persistence', () => {
     await expect(page.getByText('Fiat Currency')).toBeVisible();
 
     // Currency selector should be present
-    const currencySelect = page.getByRole('combobox').first();
-    if (await currencySelect.isVisible({ timeout: 2000 }).catch(() => false)) {
-      // Select should have options
-      const options = await currencySelect.locator('option').count();
-      expect(options).toBeGreaterThan(1);
-    }
+    const currencySelect = page.getByLabel('Fiat Currency');
+    await expect(currencySelect).toBeVisible();
+    // Select should have options
+    await expect(currencySelect.locator('option')).not.toHaveCount(0);
+    expect(await currencySelect.locator('option').count()).toBeGreaterThan(1);
 
     expect(unhandledRequests).toEqual([]);
   });

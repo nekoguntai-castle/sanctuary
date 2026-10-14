@@ -52,8 +52,14 @@ describe('DisplaySection branch coverage', () => {
     fireEvent.click(toggle);
     expect(mockToggleShowFiat).toHaveBeenCalled();
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'EUR' } });
+    fireEvent.change(screen.getByLabelText('Fiat Currency'), { target: { value: 'EUR' } });
     expect(mockSetFiatCurrency).toHaveBeenCalledWith('EUR');
+  });
+
+  it('associates the Fiat Currency label with its select', () => {
+    render(<DisplayTab />);
+
+    expect(screen.getByLabelText('Fiat Currency')).toBe(screen.getByRole('combobox'));
   });
 
   it('renders alternate class branches when unit is btc and fiat display is off', () => {

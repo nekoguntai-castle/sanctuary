@@ -7,6 +7,7 @@ const captured = vi.hoisted(() => ({
   transactionsTabProps: null as null | { ownershipKey: string; walletId: string },
   settingsTabProps: null as null | { onRemediationApplied: () => void },
   logTabProps: null as null | { syncNow: number },
+  statsTabProps: null as null | { walletId: string; hasMoreTx: boolean },
   onSend: null as null | (() => void),
 }));
 
@@ -27,10 +28,12 @@ vi.mock('../../../src/components/WalletDetail/WalletDetailTabContent', () => ({
     transactionsTabProps: { ownershipKey: string; walletId: string };
     settingsTabProps: { onRemediationApplied: () => void };
     logTabProps: { syncNow: number };
+    statsTabProps: { walletId: string; hasMoreTx: boolean };
   }) => {
     captured.transactionsTabProps = props.transactionsTabProps;
     captured.settingsTabProps = props.settingsTabProps;
     captured.logTabProps = props.logTabProps;
+    captured.statsTabProps = props.statsTabProps;
     return null;
   },
 }));
@@ -55,6 +58,7 @@ const controller = new Proxy({
   pendingFreezeIds: new Set(),
   txFilters: {},
   syncNow: 123_456,
+  hasMoreTx: true,
 }, {
   get: (target, property) => property in target
     ? target[property as keyof typeof target]
@@ -81,6 +85,7 @@ describe('WalletDetailLoadedView AI ownership', () => {
       ownershipKey: 'wallet-route:user-7:signet',
     });
     expect(captured.logTabProps).toMatchObject({ syncNow: 123_456 });
+    expect(captured.statsTabProps).toMatchObject({ walletId: 'wallet-route', hasMoreTx: true });
     captured.settingsTabProps?.onRemediationApplied();
     expect(controller.fetchData).toHaveBeenCalledWith(true);
     captured.onSend?.();

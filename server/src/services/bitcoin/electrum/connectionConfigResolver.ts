@@ -3,13 +3,13 @@ import { nodeConfigRepository } from "../../../repositories";
 import {
   getNodeNetworkDefaults,
   getNodeNetworkSingletonSsl,
-  projectNodeProxyConfig,
   readNodeNetworkBoolean,
   readNodeNetworkNonEmptyString,
   readNodeNetworkPositiveInteger,
   type NodeNetworkConfigSource,
 } from "@sanctuary/shared/constants/nodeConfig";
 import type { ElectrumConfig, ProxyConfig, BitcoinNetwork } from "./types";
+import { projectNodeProxyConfigDecrypted } from "./proxyCredentials";
 
 interface PersistedNodeConfig {
   type: string;
@@ -50,7 +50,7 @@ export interface ResolvedConnectionConfig {
 export function proxyConfigFromNodeConfig(
   nodeConfig: PersistedNodeConfig,
 ): ProxyConfig | undefined {
-  return projectNodeProxyConfig(
+  return projectNodeProxyConfigDecrypted(
     nodeConfig as unknown as NodeNetworkConfigSource,
   ) ?? undefined;
 }

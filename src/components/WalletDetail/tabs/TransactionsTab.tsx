@@ -76,6 +76,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         aiAggregationResult={aiAggregationResult}
         filteredTransactions={filteredTransactions}
         transactions={transactions}
+        hasMoreTx={hasMoreTx}
         onAiQueryChange={onAiQueryChange}
       />
 

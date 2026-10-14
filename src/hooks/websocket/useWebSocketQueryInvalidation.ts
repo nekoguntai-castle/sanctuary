@@ -62,6 +62,8 @@ export const useWebSocketQueryInvalidation = () => {
         // would appear in the list under a summary still reporting the old
         // count for as long as the dashboard stayed open.
         queryClient.invalidateQueries({ queryKey: walletActivityKeys.activitySummary.all });
+        // Wallet Stats' full-history series changes with every transaction.
+        queryClient.invalidateQueries({ queryKey: walletActivityKeys.balanceHistory.all });
       }
 
       // Invalidate wallet balance when balance changes
@@ -82,6 +84,7 @@ export const useWebSocketQueryInvalidation = () => {
       // A new block confirms transactions, which changes the confirmed-only
       // period totals.
       queryClient.invalidateQueries({ queryKey: walletActivityKeys.activitySummary.all });
+      queryClient.invalidateQueries({ queryKey: walletActivityKeys.balanceHistory.all });
       // Also refresh wallets since UTXOs may have new confirmations
       queryClient.invalidateQueries({ queryKey: walletKeys.all });
     };

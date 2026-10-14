@@ -458,10 +458,9 @@ test.describe('Error recovery', () => {
     await confirmInput.fill('3');
 
     // Click save button if present, or the auto-save triggers it
-    const saveButton = page.getByRole('button', { name: /save/i });
-    if (await saveButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await saveButton.click();
-    }
+    const saveButton = page.getByRole('button', { name: 'Save Changes' });
+    await expect(saveButton).toBeVisible();
+    await saveButton.click();
 
     // After the save attempt, the button should change state (from "Saving..." back to "Save Changes" or show error)
     // We just verify the page doesn't crash and the variables page is still functional

@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const findDefaultWithServers = vi.hoisted(() => vi.fn());
+const decryptIfEncrypted = vi.hoisted(() => vi.fn((value: string) => value.replace(/^enc:/, '')));
 
 vi.mock('../../../../../src/repositories', () => ({
   nodeConfigRepository: {
     findDefaultWithServers,
   },
 }));
+
+vi.mock('../../../../../src/utils/encryption', () => ({ decryptIfEncrypted }));
 
 vi.mock('../../../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -18,6 +21,7 @@ vi.mock('../../../../../src/utils/logger', () => ({
 }));
 
 import { loadPoolConfigFromDatabase } from '../../../../../src/services/bitcoin/electrumPool/poolConfig';
+import { ProxyConfigurationError } from '../../../../../src/services/bitcoin/electrum/proxyCredentials';
 
 const baseServer = {
   id: 's-general',
@@ -134,5 +138,58 @@ describe('loadPoolConfigFromDatabase server usage filtering', () => {
     });
 
     expect(result.servers.map((s) => s.id)).toEqual(['both-1', 'sp-only-1']);
+  });
+});
+
+describe('loadPoolConfigFromDatabase proxy credentials', () => {
+  const proxiedConfig = (proxyPassword: string | null) => ({
+    type: 'electrum',
+    poolEnabled: true,
+    poolMinConnections: 1,
+    poolMaxConnections: 5,
+    poolLoadBalancing: 'round_robin',
+    proxyEnabled: true,
+    proxyHost: '127.0.0.1',
+    proxyPort: 9050,
+    proxyUsername: 'tor-user',
+    proxyPassword,
+    servers: [{ ...baseServer, serverUsage: 'general' }],
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('hands the SOCKS client the decrypted password, not the stored ciphertext', async () => {
+    findDefaultWithServers.mockResolvedValue(proxiedConfig('enc:s3cret'));
+
+    const result = await loadPoolConfigFromDatabase('mainnet');
+
+    expect(result.proxy).toEqual({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 9050,
+      username: 'tor-user',
+      password: 's3cret',
+    });
+  });
+
+  it('rejects instead of resolving proxy-less defaults when the password cannot be decrypted', async () => {
+    decryptIfEncrypted.mockImplementationOnce(() => {
+      throw new Error('bad decrypt');
+    });
+    findDefaultWithServers.mockResolvedValue(proxiedConfig('enc:s3cret'));
+
+    await expect(loadPoolConfigFromDatabase('mainnet')).rejects.toBeInstanceOf(ProxyConfigurationError);
+  });
+
+  it('still resolves defaults for other load errors', async () => {
+    findDefaultWithServers.mockRejectedValue(new Error('db down'));
+
+    await expect(loadPoolConfigFromDatabase('mainnet')).resolves.toEqual({
+      config: {},
+      servers: [],
+      proxy: null,
+    });
   });
 });
