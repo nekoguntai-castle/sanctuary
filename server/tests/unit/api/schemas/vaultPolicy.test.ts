@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { VoteDecisionSchema } from '../../../../src/api/schemas/vaultPolicy';
+import { ApprovalRequiredConfigSchema, VoteDecisionSchema } from '../../../../src/api/schemas/vaultPolicy';
 import {
   VALID_VOTE_DECISIONS,
   VALID_ADDRESS_LIST_TYPES,
@@ -31,5 +31,29 @@ describe('vaultPolicy route enum convergence', () => {
 
   it('VALID_ADDRESS_LIST_TYPES is the canonical allow/deny contract', () => {
     expect([...VALID_ADDRESS_LIST_TYPES]).toEqual(['allow', 'deny']);
+  });
+});
+
+describe('ApprovalRequiredConfigSchema trigger', () => {
+  const base = {
+    requiredApprovals: 1,
+    quorumType: 'any_n',
+    allowSelfApproval: false,
+    expirationHours: 24,
+  };
+
+  it('rejects unknownAddressesOnly as the only condition', () => {
+    expect(ApprovalRequiredConfigSchema.safeParse({
+      ...base, trigger: { unknownAddressesOnly: true },
+    }).success).toBe(false);
+  });
+
+  it('accepts unknownAddressesOnly combined with always or amountAbove', () => {
+    expect(ApprovalRequiredConfigSchema.safeParse({
+      ...base, trigger: { always: true, unknownAddressesOnly: true },
+    }).success).toBe(true);
+    expect(ApprovalRequiredConfigSchema.safeParse({
+      ...base, trigger: { amountAbove: 1000, unknownAddressesOnly: true },
+    }).success).toBe(true);
   });
 });

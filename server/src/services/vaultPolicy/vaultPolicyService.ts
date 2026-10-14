@@ -531,6 +531,13 @@ const validateApprovalTrigger = (trigger: ApprovalRequiredConfig['trigger']): vo
   ) {
     throw new InvalidInputError('approval_required trigger must specify at least one condition');
   }
+
+  // The engine never fires on unknownAddressesOnly, so on its own it would silently require nothing.
+  if (trigger.always !== true && trigger.amountAbove === undefined) {
+    throw new InvalidInputError(
+      'unknownAddressesOnly is not enforceable on its own yet; combine it with always or amountAbove'
+    );
+  }
 };
 
 const validateTimeDelayTrigger = (trigger: TimeDelayConfig['trigger']): void => {

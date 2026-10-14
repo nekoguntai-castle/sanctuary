@@ -26,7 +26,7 @@ import {
 } from '../transactions/psbtConstruction';
 import { resolveTransactionSpendPolicy } from '../transactions/feePolicy';
 import { prepareChangeOutputs } from '../transactions/outputBuilder';
-import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
+import { estimateTransactionWeight, exactFeeRateNotAbove, feeForRate } from '../transactionWeight';
 import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
 import { InvalidInputError, NotFoundError } from '../../../errors/ApiError';
@@ -248,7 +248,7 @@ export async function createCPFPTransaction(
     signingContext,
     feePolicy: buildSigningIntentFeePolicy(
       psbt.toBase64(),
-      cpfpCalc.childFee / childTxSize,
+      exactFeeRateNotAbove(cpfpCalc.childFee, childTxSize),
       cpfpCalc.childFee,
     ),
   };

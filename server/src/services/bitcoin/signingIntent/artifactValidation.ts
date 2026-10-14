@@ -6,11 +6,13 @@ import { parseMultisigScript } from '../psbtBuilder/witnessScript';
 import { authenticateIntentPrevouts } from './prevoutValidation';
 import { loadSigningIntent } from './service';
 import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
-import type {
-  SigningIntentEnvelope,
-  SigningIntentHandle,
-  SigningIntentSnapshot,
-  SigningIntentSnapshotV2,
+import { feeForRate } from '../transactionWeight';
+import {
+  SIGNING_INTENT_MAX_FEE_RATE,
+  type SigningIntentEnvelope,
+  type SigningIntentHandle,
+  type SigningIntentSnapshot,
+  type SigningIntentSnapshotV2,
 } from './types';
 
 bitcoin.initEccLib(ecc);
@@ -233,13 +235,13 @@ const validateFinalizedFeePolicy = (
   }
 
   const policy = requireFeePolicy(snapshot);
-  const requestedFeeSatsAtFinalVsize = Math.ceil(policy.requestedFeeRateSatsPerVbyte * vsize);
-  if (!Number.isSafeInteger(requestedFeeSatsAtFinalVsize) || requestedFeeSatsAtFinalVsize < 0) {
+  const requestedRate = policy.requestedFeeRateSatsPerVbyte;
+  if (!(requestedRate > 0 && requestedRate <= SIGNING_INTENT_MAX_FEE_RATE)) {
     throw new InvalidInputError('Authorized fee policy is outside the supported range', 'feePolicy', {
       reason: 'fee_too_high',
     });
   }
-
+  const requestedFeeSatsAtFinalVsize = feeForRate(vsize, requestedRate);
   const actualFeeSats = Number(fee);
   const policyDeltaSats = policy.expectedFeeSats - requestedFeeSatsAtFinalVsize;
   if (Math.abs(policyDeltaSats) > policy.roundingToleranceSats) {

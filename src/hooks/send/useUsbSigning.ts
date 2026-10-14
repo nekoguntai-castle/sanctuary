@@ -187,9 +187,13 @@ function signingConnectionOptions(
   if (!device.model?.name) {
     throw new Error(`Hardware signing requires an exact ${hwType} model identity`);
   }
+  if (!device.fingerprint) {
+    throw new Error('Hardware signing requires the stored device fingerprint');
+  }
   return {
     ...(wallet.network ? { chainEnvironment: wallet.network } : {}),
     expectedModel: device.model.name,
+    expectedFingerprint: device.fingerprint,
   };
 }
 

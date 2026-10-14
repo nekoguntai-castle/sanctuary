@@ -608,7 +608,7 @@ describe('WalletDetail', () => {
   });
 });
 
-// WalletTelegramSettings and generateMultisigConfigText
+// WalletTelegramSettings
 // These are internal sub-components/utilities of WalletDetail
 // They could be extracted and tested separately if needed
 // For now, they are tested implicitly through WalletDetail integration

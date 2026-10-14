@@ -1,3 +1,4 @@
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import type { BlockData, QueuedBlocksSummary } from '../../../api/bitcoin';
 import type { DraftTransaction } from '../../../api/drafts';
 import type { Device, FeeEstimate, UTXO, Wallet } from '../../../types';
@@ -14,6 +15,7 @@ export interface DraftTransactionData {
   effectiveAmount: number;
   selectedUtxoIds: string[];
   inputPaths?: string[];
+  signingContext?: PsbtSigningContext;
 }
 
 export interface LoadedSendTransactionPageData {

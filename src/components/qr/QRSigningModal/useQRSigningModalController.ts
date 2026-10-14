@@ -41,14 +41,44 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
 
   const decoderRef = useRef<ReturnType<typeof createPsbtDecoder> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Refs (not state) so frames delivered before a re-render still see the guard.
+  const inFlightRef = useRef(false);
+  const lastRejectedPsbtRef = useRef<string | null>(null);
 
-  const resetScanner = useCallback(() => {
+  // A completed bc-ur decoder ignores further parts, so a rejected or undecodable
+  // submission needs a fresh decoder for the next scan to be decoded at all.
+  const resetDecoder = useCallback(() => {
     decoderRef.current = null;
     setScanProgress(0);
+  }, []);
+
+  const onSubmitStart = useCallback(() => {
+    inFlightRef.current = true;
+  }, []);
+
+  const onSubmitFailed = useCallback((rejectedPsbt: string) => {
+    inFlightRef.current = false;
+    lastRejectedPsbtRef.current = rejectedPsbt;
+    resetDecoder();
+  }, [resetDecoder]);
+
+  // Camera paths only: a camera still pointed at the rejected animated QR would
+  // otherwise rebuild and resubmit the same PSBT in a loop. The existing scanError
+  // stays visible and the decoder restarts so a corrected PSBT can still decode.
+  const isRejectedRepeat = useCallback((psbt: string) => {
+    if (psbt !== lastRejectedPsbtRef.current) return false;
+    resetDecoder();
+    return true;
+  }, [resetDecoder]);
+
+  const resetScanner = useCallback(() => {
+    resetDecoder();
+    inFlightRef.current = false;
+    lastRejectedPsbtRef.current = null;
     setScanError(null);
     setCameraError(null);
     setProcessing(false);
-  }, []);
+  }, [resetDecoder]);
 
   const handleClose = useCallback(() => {
     resetScanner();
@@ -67,6 +97,7 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
   }, [resetScanner]);
 
   const handleQrScan = useCallback((results: QrScanResult[]) => {
+    if (inFlightRef.current) return;
     const content = getFirstScanContent(results, processing);
     if (!content) return;
 
@@ -87,6 +118,9 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
         handleClose,
         setProcessing,
         setScanError,
+        onSubmitStart,
+        onSubmitFailed,
+        isRejectedRepeat,
       });
       return;
     }
@@ -99,8 +133,12 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
       setProcessing,
       setScanProgress,
       setScanError,
+      onSubmitStart,
+      onSubmitFailed,
+      isRejectedRepeat,
+      resetDecoder,
     });
-  }, [handleClose, onSignedPsbt, processing]);
+  }, [handleClose, onSignedPsbt, processing, onSubmitStart, onSubmitFailed, isRejectedRepeat, resetDecoder]);
 
   const handleCameraError = useCallback((error: unknown) => {
     log.error('Camera error', { error });
@@ -117,9 +155,11 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
       handleClose,
       setProcessing,
       setScanError,
+      onSubmitStart,
+      onSubmitFailed,
     });
     event.target.value = '';
-  }, [handleClose, onSignedPsbt]);
+  }, [handleClose, onSignedPsbt, onSubmitStart, onSubmitFailed]);
 
   return {
     step,
@@ -138,31 +178,23 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
   };
 }
 
-type RawPsbtScanHandlers = {
+type RawPsbtScanHandlers = FinishSignedPsbtOptions & {
   content: string;
-  onSignedPsbt: SignedPsbtHandler;
-  handleClose: () => void;
-  setProcessing: (processing: boolean) => void;
-  setScanError: (error: string) => void;
+  isRejectedRepeat: (psbt: string) => boolean;
 };
 
 function handleRawPsbtScan({
   content,
-  onSignedPsbt,
-  handleClose,
-  setProcessing,
-  setScanError,
+  isRejectedRepeat,
+  ...submitOptions
 }: RawPsbtScanHandlers) {
+  const { setScanError } = submitOptions;
   const result = parseRawBase64PsbtScan(content);
 
   if (result.kind === 'psbt') {
+    if (isRejectedRepeat(result.base64)) return;
     log.info('Received raw base64 PSBT');
-    void finishSignedPsbt(result.base64, {
-      onSignedPsbt,
-      handleClose,
-      setProcessing,
-      setScanError,
-    });
+    void finishSignedPsbt(result.base64, submitOptions);
     return;
   }
 
@@ -179,25 +211,23 @@ function handleRawPsbtScan({
   setScanError(invalidQrFormatMessage(content));
 }
 
-type UrPsbtScanHandlers = {
+type UrPsbtScanHandlers = FinishSignedPsbtOptions & {
   decoder: ReturnType<typeof createPsbtDecoder>;
   content: string;
-  onSignedPsbt: SignedPsbtHandler;
-  handleClose: () => void;
-  setProcessing: (processing: boolean) => void;
   setScanProgress: (progress: number) => void;
-  setScanError: (error: string) => void;
+  isRejectedRepeat: (psbt: string) => boolean;
+  resetDecoder: () => void;
 };
 
 function handleUrPsbtScan({
   decoder,
   content,
-  onSignedPsbt,
-  handleClose,
-  setProcessing,
   setScanProgress,
-  setScanError,
+  isRejectedRepeat,
+  resetDecoder,
+  ...submitOptions
 }: UrPsbtScanHandlers) {
+  const { setProcessing, setScanError } = submitOptions;
   const result = feedDecoderPart(decoder, content);
 
   if (result.error) {
@@ -210,44 +240,27 @@ function handleUrPsbtScan({
 
   try {
     const signedPsbt = getDecodedPsbt(decoder);
+    if (isRejectedRepeat(signedPsbt)) return;
     log.info('Successfully decoded signed PSBT');
-    void finishSignedPsbt(signedPsbt, {
-      onSignedPsbt,
-      handleClose,
-      setProcessing,
-      setScanError,
-    });
+    void finishSignedPsbt(signedPsbt, submitOptions);
   } catch (error) {
     log.error('Failed to decode PSBT', { error });
+    resetDecoder();
     setScanError(error instanceof Error ? error.message : 'Failed to decode PSBT');
     setProcessing(false);
   }
 }
 
-type ImportSignedPsbtFileOptions = {
+type ImportSignedPsbtFileOptions = FinishSignedPsbtOptions & {
   file: File;
-  onSignedPsbt: SignedPsbtHandler;
-  handleClose: () => void;
-  setProcessing: (processing: boolean) => void;
-  setScanError: (error: string) => void;
 };
 
-async function importSignedPsbtFile({
-  file,
-  onSignedPsbt,
-  handleClose,
-  setProcessing,
-  setScanError,
-}: ImportSignedPsbtFileOptions) {
+async function importSignedPsbtFile({ file, ...submitOptions }: ImportSignedPsbtFileOptions) {
+  const { setScanError } = submitOptions;
   try {
     const signedPsbt = await readSignedPsbtFile(file);
     logSignedPsbtImport(signedPsbt);
-    await finishSignedPsbt(signedPsbt.base64, {
-      onSignedPsbt,
-      handleClose,
-      setProcessing,
-      setScanError,
-    });
+    await finishSignedPsbt(signedPsbt.base64, submitOptions);
   } catch (error) {
     if (!isInvalidPsbtFileFormatError(error)) {
       log.error('Failed to parse PSBT file', { error });
@@ -261,18 +274,22 @@ type FinishSignedPsbtOptions = {
   handleClose: () => void;
   setProcessing: (processing: boolean) => void;
   setScanError: (error: string) => void;
+  onSubmitStart: () => void;
+  onSubmitFailed: (rejectedPsbt: string) => void;
 };
 
 async function finishSignedPsbt(
   signedPsbt: string,
-  { onSignedPsbt, handleClose, setProcessing, setScanError }: FinishSignedPsbtOptions,
+  { onSignedPsbt, handleClose, setProcessing, setScanError, onSubmitStart, onSubmitFailed }: FinishSignedPsbtOptions,
 ): Promise<void> {
   setProcessing(true);
+  onSubmitStart();
   try {
     await onSignedPsbt(signedPsbt);
     handleClose();
   } catch (error) {
     log.error('Failed to process signed PSBT', { error });
+    onSubmitFailed(signedPsbt);
     setScanError(error instanceof Error ? error.message : 'Failed to process signed PSBT');
     setProcessing(false);
   }

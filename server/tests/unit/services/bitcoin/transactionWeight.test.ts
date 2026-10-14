@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compactSizeLength,
   estimateTransactionWeight,
+  exactFeeRateNotAbove,
   feeForRate,
   type SpendPolicy,
 } from '../../../../src/services/bitcoin/transactionWeight';
@@ -586,6 +587,41 @@ describe('transactionWeight', () => {
 
     it('rejects a fee that cannot be safely represented as a number', () => {
       expect(() => feeForRate(Number.MAX_SAFE_INTEGER, 2)).toThrow('fee exceeds');
+    });
+  });
+
+  describe('exactFeeRateNotAbove', () => {
+    it('returns a decimal-exact rate that never exceeds fee / vsize', () => {
+      const rate = exactFeeRateNotAbove(117, 110);
+      expect(rate).toBe(1.06363636);
+      expect(rate).toBeLessThanOrEqual(117 / 110);
+      expect(feeForRate(110, rate)).toBe(117);
+      // The float quotient itself does not round-trip through feeForRate.
+      expect(feeForRate(110, 117 / 110)).toBe(118);
+    });
+
+    it.each([
+      [220, 110, 2],
+      [0, 110, 0],
+      [1, 1, 1],
+    ])('returns the exact quotient for %d sats over %d vB', (fee, vsize, expected) => {
+      expect(exactFeeRateNotAbove(fee, vsize)).toBe(expected);
+    });
+
+    it('round-trips every builder fee through feeForRate', () => {
+      for (let vsize = 50; vsize < 400; vsize += 7) {
+        for (let fee = 1; fee < 3_000; fee += 13) {
+          expect(feeForRate(vsize, exactFeeRateNotAbove(fee, vsize))).toBe(fee);
+        }
+      }
+    });
+
+    it.each([-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])('rejects invalid fee %s', (fee) => {
+      expect(() => exactFeeRateNotAbove(fee, 110)).toThrow('fee');
+    });
+
+    it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid vsize %s', (vsize) => {
+      expect(() => exactFeeRateNotAbove(117, vsize)).toThrow('vsize');
     });
   });
 });

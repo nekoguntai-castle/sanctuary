@@ -12,10 +12,7 @@ export const WalletDetailModals: React.FC<WalletDetailModalsProps> = ({
   walletId,
   walletName,
   walletType,
-  walletScriptType,
   walletDescriptor,
-  walletQuorum,
-  walletTotalSigners,
   devices,
   addresses,
 
@@ -54,10 +51,7 @@ export const WalletDetailModals: React.FC<WalletDetailModalsProps> = ({
         walletId={walletId}
         walletName={walletName}
         walletType={walletType}
-        walletScriptType={walletScriptType}
         walletDescriptor={walletDescriptor}
-        walletQuorum={walletQuorum}
-        walletTotalSigners={walletTotalSigners}
         devices={devices}
         onCloseExport={onCloseExport}
         onError={onError}

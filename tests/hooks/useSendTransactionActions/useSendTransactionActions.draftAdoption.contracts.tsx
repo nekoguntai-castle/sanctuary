@@ -9,9 +9,12 @@ import { baseWallet, mocks } from './useSendTransactionActionsTestHarness';
 
 const recipient: OutputEntry = { address: 'bc1qrecipient', amount: '10000', sendMax: false };
 
-const renderWithReducerState = () =>
+const renderWithReducerState = (mountDraftId: string | null = null) =>
   renderHook(() => {
-    const [state, dispatch] = useReducer(transactionReducer, undefined, () => createInitialState(1));
+    const [state, dispatch] = useReducer(transactionReducer, undefined, () => ({
+      ...createInitialState(1),
+      draftId: mountDraftId,
+    }));
     const actions = useSendTransactionActions({
       walletId: 'wallet-1',
       wallet: baseWallet,
@@ -63,6 +66,59 @@ export const registerUseSendTransactionActionsDraftAdoptionContracts = () => {
       expect(view.result.current.actions.txData).not.toBeNull();
     });
 
+    const adoptWithFailedFollowUp = async (view: View) => {
+      mocks.updateDraft.mockRejectedValueOnce(new Error('signed-state patch failed'));
+      await createSignedTransaction(view);
+      await act(async () => { await view.result.current.actions.saveDraft(); });
+      expect(view.result.current.state.draftId).toBe('draft-1');
+    };
+    const editOutput = (view: View) => act(() => {
+      view.result.current.dispatch({ type: 'SET_OUTPUTS', outputs: [{ ...recipient, amount: '20000' }] });
+    });
+
+    it('drops and releases an adopted draft id when the transaction changes after a failed follow-up', async () => {
+      const view = renderWithReducerState();
+      await adoptWithFailedFollowUp(view);
+
+      editOutput(view);
+
+      expect(view.result.current.state.draftId).toBeNull();
+      expect(mocks.deleteDraft).toHaveBeenCalledTimes(1);
+      expect(mocks.deleteDraft).toHaveBeenCalledWith('wallet-1', 'draft-1');
+    });
+
+    it('logs and ignores a failed release of the abandoned draft', async () => {
+      mocks.deleteDraft.mockRejectedValueOnce(new Error('delete failed'));
+      const view = renderWithReducerState();
+      await adoptWithFailedFollowUp(view);
+
+      editOutput(view);
+
+      await waitFor(() => expect(mocks.deleteDraft).toHaveBeenCalledTimes(1));
+      expect(view.result.current.state.draftId).toBeNull();
+    });
+
+    it('leaves a draft id present from mount untouched when the transaction changes', () => {
+      const view = renderWithReducerState('resumed-9');
+
+      editOutput(view);
+
+      expect(view.result.current.state.draftId).toBe('resumed-9');
+      expect(mocks.deleteDraft).not.toHaveBeenCalled();
+    });
+
+    it('forgets an adopted id once the draft id changes to another id', () => {
+      const view = renderWithReducerState();
+      act(() => { view.result.current.dispatch({ type: 'SET_DRAFT_ID', id: 'draft-1' }); });
+      act(() => { view.result.current.dispatch({ type: 'SET_DRAFT_ID', id: 'draft-2' }); });
+      act(() => { view.result.current.dispatch({ type: 'SET_DRAFT_ID', id: 'draft-1' }); });
+
+      editOutput(view);
+
+      expect(view.result.current.state.draftId).toBe('draft-1');
+      expect(mocks.deleteDraft).not.toHaveBeenCalled();
+    });
+
     it('still resets when an output changes after adoption', async () => {
       const view = renderWithReducerState();
       await createSignedTransaction(view);
@@ -91,8 +147,7 @@ export const registerUseSendTransactionActionsDraftAdoptionContracts = () => {
     });
 
     it('resets when an existing draft id changes to another id', async () => {
-      const view = renderWithReducerState();
-      act(() => { view.result.current.dispatch({ type: 'SET_DRAFT_ID', id: 'draft-1' }); });
+      const view = renderWithReducerState('draft-1');
       await createSignedTransaction(view);
 
       act(() => { view.result.current.dispatch({ type: 'SET_DRAFT_ID', id: 'draft-2' }); });

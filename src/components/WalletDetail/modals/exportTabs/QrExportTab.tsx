@@ -17,6 +17,8 @@ interface QrExportTabProps {
   qrFormat: QrFormat;
   qrSize: number;
   qrValue: string;
+  qrLoading: boolean;
+  qrError: string | null;
   onQrSizeChange: (size: number) => void;
   getQrFormatTabListProps: (label: string) => React.ComponentPropsWithoutRef<'div'>;
   getQrFormatTabProps: (format: QrFormat) => React.ComponentPropsWithoutRef<'button'>;
@@ -28,6 +30,8 @@ export const QrExportTab: React.FC<QrExportTabProps> = ({
   qrFormat,
   qrSize,
   qrValue,
+  qrLoading,
+  qrError,
   onQrSizeChange,
   getQrFormatTabListProps,
   getQrFormatTabProps,
@@ -78,12 +82,22 @@ export const QrExportTab: React.FC<QrExportTabProps> = ({
     </div>
 
     <div className="p-4 bg-white rounded-lg shadow-inner border border-sanctuary-100 flex flex-col items-center overflow-auto max-h-[500px]">
-      <QRCodeSVG value={qrValue} size={qrSize} level="M" />
-      <p className="text-center text-xs text-sanctuary-400 mt-2">
-        {isMultisig && qrFormat === 'passport'
-          ? 'Coldcard/Passport compatible format'
-          : 'Scan to import into another device'}
-      </p>
+      {qrLoading && (
+        <p className="text-center text-xs text-sanctuary-400">Loading Coldcard/Passport export...</p>
+      )}
+      {qrError && (
+        <p role="alert" className="text-center text-xs text-rose-500">{qrError}</p>
+      )}
+      {!qrLoading && !qrError && (
+        <>
+          <QRCodeSVG value={qrValue} size={qrSize} level="M" />
+          <p className="text-center text-xs text-sanctuary-400 mt-2">
+            {isMultisig && qrFormat === 'passport'
+              ? 'Coldcard/Passport compatible format'
+              : 'Scan to import into another device'}
+          </p>
+        </>
+      )}
     </div>
 
     {isMultisig && qrFormat === 'passport' && devices.length === 0 && (

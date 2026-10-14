@@ -53,6 +53,7 @@ function trezorDevice(id: string) {
     id,
     type: 'Trezor Safe 3',
     model: { name: 'Trezor Safe 3' },
+    fingerprint: 'aabbccdd',
   } as any;
 }
 
@@ -434,6 +435,37 @@ describe('useUsbSigning', () => {
     );
   });
 
+  it('fails closed before connecting when the stored device fingerprint is missing', async () => {
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithDevice({
+      ...trezorDevice('no-fingerprint'),
+      fingerprint: '',
+    })).resolves.toBe(false);
+
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Hardware signing requires the stored device fingerprint'
+    );
+  });
+
+  it('marks and persists nothing when the connected device is not the clicked cosigner', async () => {
+    mocks.hardwareWallet.connect.mockRejectedValueOnce(new Error('fingerprint mismatch: expected aabbccdd'));
+    const deps = createDeps({ draftId: 'draft-mismatch' });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithDevice(trezorDevice('cosigner-a'))).resolves.toBe(false);
+
+    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith(
+      'trezor',
+      expect.objectContaining({ expectedFingerprint: 'aabbccdd' }),
+    );
+    expect(deps.setError).toHaveBeenCalledWith('fingerprint mismatch: expected aabbccdd');
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+
   it('signWithDevice blocks BitBox multisig USB signing before connecting', async () => {
     const deps = createDeps({
       wallet: {
@@ -574,6 +606,7 @@ describe('useUsbSigning', () => {
 
     expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', {
       expectedModel: 'Trezor Safe 3',
+      expectedFingerprint: 'aabbccdd',
     });
     expect(deps.setError).toHaveBeenCalledWith(
       'This transaction has no server-issued hardware signing context; recreate it before signing'
@@ -596,11 +629,13 @@ describe('useUsbSigning', () => {
       id: 'jade-plus-1',
       type: 'Blockstream Jade Plus',
       model: { name: 'Blockstream Jade Plus' },
+      fingerprint: 'aabbccdd',
     } as any)).resolves.toBe(true);
 
     expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('jade', {
       chainEnvironment: 'signet',
       expectedModel: 'Blockstream Jade Plus',
+      expectedFingerprint: 'aabbccdd',
     });
   });
 
@@ -614,11 +649,13 @@ describe('useUsbSigning', () => {
       id: 'jade-1',
       type: 'Blockstream Jade',
       model: { name: 'Blockstream Jade' },
+      fingerprint: 'aabbccdd',
     } as any)).resolves.toBe(true);
 
     expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('jade', {
       chainEnvironment: 'mainnet',
       expectedModel: 'Blockstream Jade',
+      expectedFingerprint: 'aabbccdd',
     });
   });
 

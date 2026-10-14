@@ -6,6 +6,7 @@ import {
   mockFetch,
   mockRefreshAccessToken,
 } from "./clientTestHarness";
+import { NO_RETRY } from "../../../src/api/retryPolicy";
 
 function okJsonResponse(body: unknown = {}) {
   return {
@@ -180,6 +181,16 @@ export const registerApiClientTransferContracts = () => {
         }),
       ).resolves.toBe(blob);
       expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should perform a single blob GET when the caller opts out of retries", async () => {
+      mockFetch.mockResolvedValue(errorResponse(500, { message: "refused" }));
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", { retryOptions: NO_RETRY }),
+      ).rejects.toMatchObject({ status: 500 });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it("should not retry custom POST blob transport failures", async () => {

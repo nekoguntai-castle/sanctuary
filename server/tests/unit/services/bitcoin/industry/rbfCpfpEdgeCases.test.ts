@@ -328,9 +328,9 @@ describe('RBF & CPFP Industry Edge Cases', () => {
     });
 
     it('should document that RBF only works for unconfirmed transactions', () => {
-      // canReplaceTransaction checks:
-      // if (txDetails.confirmations && txDetails.confirmations > 0)
-      //   return { replaceable: false, reason: 'Transaction is already confirmed' }
+      // canReplaceTransaction checks the wallet's transaction row, then Electrum
+      // address history, and returns { replaceable: false, reason: 'Transaction is
+      // already confirmed' } when the original is mined.
       //
       // Once a transaction has 1+ confirmation, it cannot be replaced.
       // This is a consensus rule, not a policy choice.

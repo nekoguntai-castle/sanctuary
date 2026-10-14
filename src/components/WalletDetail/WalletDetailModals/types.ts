@@ -1,14 +1,11 @@
-import type { Address, Device, Quorum } from '../../../types';
+import type { Address, Device } from '../../../types';
 import type { DeviceSharePromptState } from '../types';
 
 export interface WalletDetailModalsProps {
   walletId: string | undefined;
   walletName: string;
   walletType: string;
-  walletScriptType?: string;
   walletDescriptor?: string;
-  walletQuorum?: Quorum | number | null;
-  walletTotalSigners?: number;
   devices: Device[];
   addresses: Address[];
   showExport: boolean;

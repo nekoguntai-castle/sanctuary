@@ -153,4 +153,41 @@ describe('TransactionSummary', () => {
     expect(screen.getByText('(no address)')).toBeInTheDocument();
     expect(screen.getByText('1 UTXO selected')).toBeInTheDocument();
   });
+
+  it('derives MAX Total Sending from the built transaction instead of the heuristic fee', () => {
+    const props = buildProps({
+      state: {
+        ...buildProps().state,
+        outputs: [{ address: 'bc1qmax', amount: '0', sendMax: true }],
+      },
+      txData: { totalInput: 100000, fee: 1200, changeAmount: 0, outputs: [{ address: 'bc1qmax', amount: 98800 }] },
+      selectedTotal: 100000,
+      estimatedFee: 500,
+      totalOutputAmount: 0,
+    });
+    render(<TransactionSummary {...props} />);
+
+    expect(screen.getByText('98800 sats')).toBeInTheDocument();
+    expect(screen.getByText('1200 sats')).toBeInTheDocument();
+    expect(screen.getByText('100000 sats')).toBeInTheDocument();
+    expect(screen.queryByText('99500 sats')).not.toBeInTheDocument();
+  });
+
+  it('does not show 0 for a resumed MAX draft whose outputs carry no resolved amount', () => {
+    const props = buildProps({
+      state: {
+        ...buildProps().state,
+        outputs: [{ address: 'bc1qmax', amount: '0', sendMax: true }],
+      },
+      txData: { totalInput: 50000, fee: 700, changeAmount: 0, outputs: [{ address: 'bc1qmax', amount: 0, sendMax: true }] },
+      isDraftMode: true,
+      selectedTotal: 50000,
+      estimatedFee: 300,
+      totalOutputAmount: 0,
+    });
+    render(<TransactionSummary {...props} />);
+
+    expect(screen.getByText('49300 sats')).toBeInTheDocument();
+    expect(screen.getByText('50000 sats')).toBeInTheDocument();
+  });
 });

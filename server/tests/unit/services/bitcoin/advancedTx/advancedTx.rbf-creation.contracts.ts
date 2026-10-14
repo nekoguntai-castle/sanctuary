@@ -94,6 +94,7 @@ export function registerRbfTransactionCreationContracts() {
 
     it('should reject RBF if original transaction not replaceable', async () => {
       // Mock a confirmed transaction (not replaceable)
+      mockPrismaClient.transaction.findUnique.mockResolvedValueOnce({ confirmations: 1, blockHeight: 850000 });
       const mockTx = createMockTransaction({ txid: originalTxid, confirmations: 1 });
       mockTx.hex = sampleTransactions.rbfEnabled;
       mockElectrumClient.getTransaction.mockResolvedValue(mockTx);

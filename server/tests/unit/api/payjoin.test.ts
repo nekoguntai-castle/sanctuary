@@ -171,6 +171,8 @@ import {
   unsignedPsbtSha256,
 } from '../../../src/services/bitcoin/signingIntent/canonical';
 import { bindPsbtAccount } from '../../../src/services/bitcoin/psbtAccountBinding';
+import { estimatePsbtMaximumSignedVsize } from '../../../src/services/bitcoin/signingIntent/feePolicy';
+import { feeForRate } from '../../../src/services/bitcoin/transactionWeight';
 import {
   generateBip21Uri as realGenerateBip21Uri,
   parseBip21Uri as realParseBip21Uri,
@@ -1180,6 +1182,36 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ success: true, intentId: 'intent-2' });
+    });
+
+    it('binds the integer surplus when the original rate is float-inexact at the proposal size', async () => {
+      const originalRate = 1.1;
+      const shape = bitcoin.Psbt.fromBase64(payjoinPsbt([1]));
+      const maximumVsize = estimatePsbtMaximumSignedVsize(shape);
+      const unsignedVsize = bitcoin.Transaction.fromBuffer(shape.data.globalMap.unsignedTx.toBuffer()).virtualSize();
+      const floatCeilingFee = Math.ceil(originalRate * maximumVsize);
+      expect(floatCeilingFee).not.toBe(feeForRate(maximumVsize, originalRate));
+      mockLoadSigningIntent.mockResolvedValueOnce({
+        intentId: 'intent-1',
+        unsignedPsbtSha256: 'psbt-hash',
+        snapshot: { version: 2, feePolicy: { requestedFeeRateSatsPerVbyte: originalRate } },
+      } as never);
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: true,
+        proposalPsbt: payjoinPsbt([10_000 - floatCeilingFee]),
+        isPayjoin: true,
+      });
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(200);
+      const { feePolicy } = mockCreateSigningIntent.mock.calls[0][0];
+      expect(feePolicy).toMatchObject({
+        expectedFeeSats: floatCeilingFee,
+        requestedFeeRateSatsPerVbyte: originalRate,
+      });
+      // Serialization range plus the one-sat surplus above the integer requested-rate fee.
+      expect(feePolicy.roundingToleranceSats).toBe(floatCeilingFee - feeForRate(unsignedVsize, originalRate));
     });
 
     it('rejects a Payjoin proposal when the original signing intent predates exact fee policy', async () => {

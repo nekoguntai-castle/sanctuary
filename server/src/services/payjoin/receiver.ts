@@ -2,8 +2,9 @@
  * Payjoin Receiver (BIP78)
  *
  * Process incoming Payjoin requests where we are the receiver.
- * Validates the original PSBT, selects a contribution UTXO,
- * and returns a modified proposal PSBT with our input added.
+ * Validates the original PSBT and checks that a contribution UTXO exists, then
+ * fails closed with BIP78 `unavailable`: a valid proposal needs a finalized
+ * receiver input, and receiver input signing is not implemented yet.
  */
 
 import { addressRepository, utxoRepository } from '../../repositories';
@@ -14,7 +15,6 @@ import {
   validatePsbtStructure,
   getPsbtOutputs,
   calculateFeeRate,
-  clonePsbt,
 } from '../bitcoin/psbtValidation';
 import { getNetwork } from '../bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork } from '../bitcoin/networks';
@@ -30,11 +30,9 @@ const log = createLogger('PAYJOIN:SVC_RECV');
  * Steps:
  * 1. Validate the original PSBT
  * 2. Find the output paying to our address
- * 3. Select a UTXO to contribute
- * 4. Add our input to the PSBT
- * 5. Increase our output by our contribution amount
- * 6. Sign our input (if hot wallet)
- * 7. Return the modified PSBT
+ * 3. Confirm a UTXO is available to contribute
+ * 4. Return `unavailable`: building a proposal requires signing the receiver
+ *    input, which is not implemented, so no proposal PSBT is ever returned
  */
 export async function processPayjoinRequest(
   addressId: string,
@@ -111,41 +109,11 @@ export async function processPayjoinRequest(
       };
     }
 
-    // Build proposal PSBT
-    const proposalPsbt = clonePsbt(originalPsbt);
-
-    // Add our input
-    const contributionAmount = Number(contributionUtxo.amount);
-    proposalPsbt.addInput({
-      hash: contributionUtxo.txid,
-      index: contributionUtxo.vout,
-      sequence: 0xfffffffd, // RBF enabled
-      // For P2WPKH, we need to add witnessUtxo
-      witnessUtxo: {
-        script: Buffer.from(contributionUtxo.scriptPubKey, 'hex'),
-        value: BigInt(contributionAmount),
-      },
-    });
-
-    // Increase our output by contribution amount
-    // The output value needs to be updated
-    const newOutputValue = paymentAmount + contributionAmount;
-    proposalPsbt.txOutputs[ourOutputIndex].value = BigInt(newOutputValue);
-
-    // Note: In a full implementation, we would sign our input here
-    // For now, we return the unsigned proposal
-    // The receiver would need to sign with their key
-
-    log.info('Payjoin proposal created', {
-      addressId,
-      paymentAmount,
-      contributionAmount,
-      newOutputValue,
-    });
-
+    log.info('Payjoin receiver proposal unsupported: receiver input signing not implemented', { addressId });
     return {
-      success: true,
-      proposalPsbt: proposalPsbt.toBase64(),
+      success: false,
+      error: PayjoinErrors.UNAVAILABLE,
+      errorMessage: 'Payjoin receiver proposals are unavailable until receiver input signing is implemented',
     };
   } catch (error) {
     log.error('Error processing Payjoin request', { error: getErrorMessage(error) });

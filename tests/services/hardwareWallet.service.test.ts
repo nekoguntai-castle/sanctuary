@@ -346,6 +346,40 @@ describe('HardwareWalletService', () => {
   });
 
   it.each([
+    ['a different fingerprint', { expectedFingerprint: 'aaaaaaaa' }, 'fingerprint mismatch'],
+    ['an absent fingerprint value', { expectedFingerprint: undefined }, 'valid master fingerprint'],
+  ])('disconnects when the caller expects %s', async (_name, expectation, message) => {
+    mockCapabilityRow.mockImplementation((identity, capability) => ({
+      id: `ledger.${identity.model}.${capability}`,
+      enabled: true,
+      reason: 'verified fixture',
+    }));
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    device.fingerprint = 'bbbbbbbb';
+    service.registerAdapter(adapter);
+
+    await expect(service.connect('ledger', expectation)).rejects.toThrow(message);
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(service.getDevice()).toBeNull();
+  });
+
+  it('connects when the connected fingerprint equals the expected one', async () => {
+    mockCapabilityRow.mockImplementation((identity, capability) => ({
+      id: `ledger.${identity.model}.${capability}`,
+      enabled: true,
+      reason: 'verified fixture',
+    }));
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    device.fingerprint = 'BBBBBBBB';
+    service.registerAdapter(adapter);
+
+    await service.connect('ledger', { expectedFingerprint: 'bbbbbbbb' });
+    expect(adapter.disconnect).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['model', (device: HardwareWalletDevice) => { device.model = 'ledger-stax'; }],
     ['fingerprint', (device: HardwareWalletDevice) => { device.fingerprint = 'deadbeef'; }],
   ] as const)(

@@ -8,11 +8,11 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { getNetwork } from '../utils';
-import { getNodeClient } from '../nodeClient';
+import { getNetwork, parseTransaction } from '../utils';
+import { getNodeClient, type NodeClientInterface } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
-import { walletRepository, addressRepository } from '../../../repositories';
+import { walletRepository, addressRepository, transactionRepository } from '../../../repositories';
 import { InvalidInputError } from '../../../errors/ApiError';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
@@ -46,11 +46,12 @@ export function isRBFSignaled(txHex: string): boolean {
 /**
  * Check whether RBF is allowed and report its minimum creation fee rate.
  * A replaceable result always includes current and minimum rates; a rejected
- * result distinguishes a transaction rule violation from an upstream failure.
+ * result distinguishes rule violations from upstream failures; walletId enables the DB/owned-output confirmation check.
  */
 export async function canReplaceTransaction(
   txid: string,
-  network: BitcoinNetwork = 'mainnet'
+  network: BitcoinNetwork = 'mainnet',
+  walletId?: string
 ): Promise<
   // Keep the opposite fields optional-never so callers can inspect the public
   // response shape while `replaceable` narrows the guaranteed fee fields.
@@ -77,8 +78,8 @@ export async function canReplaceTransaction(
     // Get transaction details
     const txDetails = await client.getTransaction(txid);
 
-    // Check if transaction is confirmed
-    if (txDetails.confirmations && txDetails.confirmations > 0) {
+    // Electrum's decoded tx has no confirmations; use the DB row and address history
+    if (await isOriginalConfirmed(client, txid, txDetails.hex, network, walletId)) {
       return {
         replaceable: false,
         reason: 'Transaction is already confirmed',
@@ -183,7 +184,7 @@ export async function createRBFTransaction(
   }
 
   // Check if transaction can be replaced
-  const rbfCheck = await canReplaceTransaction(originalTxid, network);
+  const rbfCheck = await canReplaceTransaction(originalTxid, network, walletId);
   if (!rbfCheck.replaceable) {
     const reason = rbfCheck.reason || 'Transaction cannot be replaced';
     if (rbfCheck.upstreamError) {
@@ -304,7 +305,7 @@ interface RbfOutput {
 
 async function collectRbfInputs(
   tx: bitcoin.Transaction,
-  client: Awaited<ReturnType<typeof getNodeClient>>,
+  client: NodeClientInterface,
   networkObj: bitcoin.Network,
   requiresRawTransaction: boolean,
 ): Promise<RbfInputCollection> {
@@ -411,4 +412,46 @@ function addRbfOutputs(psbt: bitcoin.Psbt, outputs: RbfOutput[]): void {
       value: BigInt(output.value),
     });
   }
+}
+
+function decodeOutputAddresses(txHex: string, network: BitcoinNetwork): string[] {
+  try {
+    return parseTransaction(txHex, network).outputs
+      .map(output => output.address)
+      .filter((address): address is string => address !== undefined);
+  } catch {
+    return []; // unparseable hex is reported by the caller's RBF-signal check
+  }
+}
+
+/**
+ * Whether the original is already mined. The DB row settles it when it can;
+ * otherwise Electrum address history for a wallet-owned output (falling back to
+ * any decodable output) is consulted. A lookup error propagates so the caller
+ * fails closed.
+ */
+async function isOriginalConfirmed(
+  client: NodeClientInterface,
+  txid: string,
+  txHex: string | undefined,
+  network: BitcoinNetwork,
+  walletId?: string
+): Promise<boolean> {
+  if (walletId) {
+    const row = await transactionRepository.findByTxid(txid, walletId);
+    if (row && (row.confirmations > 0 || (row.blockHeight ?? 0) > 0)) return true;
+  }
+  const addresses = txHex ? decodeOutputAddresses(txHex, network) : [];
+  if (addresses.length === 0) return false;
+  let probe = addresses[0];
+  if (walletId) {
+    for (const address of addresses) {
+      if (await addressRepository.findByWalletIdAndAddressWithWallet(walletId, address)) {
+        probe = address;
+        break;
+      }
+    }
+  }
+  const history = await client.getAddressHistory(probe);
+  return history.some(entry => entry.tx_hash === txid && entry.height > 0);
 }

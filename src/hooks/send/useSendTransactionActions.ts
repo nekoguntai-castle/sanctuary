@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as transactionsApi from '../../api/transactions';
 import * as payjoinApi from '../../api/payjoin';
+import * as draftsApi from '../../api/drafts';
 import { ApiError } from '../../api/client';
 import { createLogger } from '../../utils/logger';
 import { addressMatchesNetwork, validateAddress } from '../../utils/validateAddress';
@@ -243,6 +244,10 @@ export function useSendTransactionActions({
   const { draftId } = state;
   const owner = useSendOperationOwner(Boolean(initialTxData || initialPsbt));
   const previousIdentity = useRef({ tx: identity, draftId });
+  // Draft id adopted in-session (null -> id for the unchanged tx); an edit must not keep binding it.
+  const adoptedDraftIdRef = useRef<string | null>(null);
+  const draftScopeRef = useRef({ walletId, setDraftId });
+  draftScopeRef.current = { walletId, setDraftId };
 
   // Payjoin state
   const { payjoinStatus, payjoinAttempted, setPayjoinStatus, resetPayjoin } = usePayjoin();
@@ -376,7 +381,23 @@ export function useSendTransactionActions({
     // fired by createNewDraft's setDraftId) keeps its signed state; any other
     // id change (id -> other id, id -> null via RESET) is a different draft.
     const draftChanged = previous.draftId !== null && draftId !== previous.draftId;
-    if (previous.tx !== identity || draftChanged) reset();
+    const txChanged = previous.tx !== identity;
+    const adopted = adoptedDraftIdRef.current;
+    if (previous.draftId === null && draftId !== null && !txChanged) {
+      adoptedDraftIdRef.current = draftId;
+    } else if (txChanged && draftId !== null && draftId === adopted) {
+      // The adopted draft cannot carry the edited tx and still holds its UTXO locks:
+      // detach it and release it best-effort so the edit saves as a new draft.
+      adoptedDraftIdRef.current = null;
+      const scope = draftScopeRef.current;
+      scope.setDraftId(null);
+      draftsApi.deleteDraft(scope.walletId, draftId).catch((releaseError) => {
+        log.warn('Failed to release abandoned draft', { draftId, error: releaseError });
+      });
+    } else if (draftId !== adopted) {
+      adoptedDraftIdRef.current = null;
+    }
+    if (txChanged || draftChanged) reset();
   }, [identity, draftId, reset]);
 
   useEffect(() => () => {

@@ -5,6 +5,7 @@
  */
 
 import apiClient from './client';
+import { NO_RETRY } from './retryPolicy';
 import type { Wallet, WalletNetwork } from '../types';
 import type {
   WalletScriptType,
@@ -331,6 +332,23 @@ export async function exportWalletFormat(
     fallbackFilename,
     { params: { format: formatId } }
   );
+}
+
+/**
+ * Fetch a server-generated wallet export as text (e.g. the Coldcard multisig
+ * config used for Passport QR). Single-shot: a refused export (5xx) is final.
+ */
+export async function getWalletExportText(
+  walletId: string,
+  formatId: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const blob = await apiClient.fetchBlob(`/wallets/${walletId}/export`, {
+    params: { format: formatId },
+    retryOptions: NO_RETRY,
+    signal,
+  });
+  return blob.text();
 }
 
 /**

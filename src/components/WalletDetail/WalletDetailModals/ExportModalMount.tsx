@@ -8,10 +8,7 @@ type ExportModalMountProps = Pick<
   | 'walletId'
   | 'walletName'
   | 'walletType'
-  | 'walletScriptType'
   | 'walletDescriptor'
-  | 'walletQuorum'
-  | 'walletTotalSigners'
   | 'devices'
   | 'onCloseExport'
   | 'onError'
@@ -22,10 +19,7 @@ export const ExportModalMount: React.FC<ExportModalMountProps> = ({
   walletId,
   walletName,
   walletType,
-  walletScriptType,
   walletDescriptor,
-  walletQuorum,
-  walletTotalSigners,
   devices,
   onCloseExport,
   onError,
@@ -39,10 +33,7 @@ export const ExportModalMount: React.FC<ExportModalMountProps> = ({
       walletId={walletId}
       walletName={walletName}
       walletType={walletType}
-      scriptType={walletScriptType}
       descriptor={walletDescriptor}
-      quorum={walletQuorum}
-      totalSigners={walletTotalSigners}
       devices={devices}
       onClose={onCloseExport}
       onError={onError}

@@ -36,6 +36,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
           id: 'dev-trezor',
           type: 'Trezor Safe 3',
           model: { slug: 'trezor-safe-3', name: 'Trezor Safe 3' },
+          fingerprint: 'aabbccdd',
         } as any);
       });
       await waitFor(() => expect(mocks.hardwareWallet.signPSBT).toHaveBeenCalledTimes(1));
@@ -144,6 +145,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
           id: 'dev-trezor',
           type: 'Trezor Safe 3',
           model: { slug: 'trezor-safe-3', name: 'Trezor Safe 3' },
+          fingerprint: 'aabbccdd',
         } as any);
       });
 
@@ -151,6 +153,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', {
         chainEnvironment: 'mainnet',
         expectedModel: 'Trezor Safe 3',
+        expectedFingerprint: 'aabbccdd',
       });
       expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
       await waitFor(() => {

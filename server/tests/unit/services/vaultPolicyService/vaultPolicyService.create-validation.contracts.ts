@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { InvalidInputError } from '../../../../src/errors/ApiError';
 import type {
   CreatePolicyInput,
 } from '../../../../src/services/vaultPolicy/types';
@@ -357,6 +358,50 @@ export function registerVaultPolicyCreateValidationContracts(): void {
 
       await expect(vaultPolicyService.createPolicy(userId, input))
         .rejects.toThrow('at least one condition');
+    });
+
+    it.each(['enforce', 'monitor'] as const)(
+      'rejects approval_required with only unknownAddressesOnly in %s mode',
+      async (enforcement) => {
+        const input: CreatePolicyInput = {
+          walletId,
+          name: 'Unknown Only',
+          type: 'approval_required',
+          enforcement,
+          config: {
+            trigger: { unknownAddressesOnly: true },
+            requiredApprovals: 1,
+            quorumType: 'any_n',
+            allowSelfApproval: false,
+            expirationHours: 24,
+          },
+        };
+
+        await expect(vaultPolicyService.createPolicy(userId, input))
+          .rejects.toThrow(InvalidInputError);
+        await expect(vaultPolicyService.createPolicy(userId, input))
+          .rejects.toThrow('combine it with always or amountAbove');
+        expect(mockPolicyRepo.createPolicy).not.toHaveBeenCalled();
+      }
+    );
+
+    it('accepts unknownAddressesOnly combined with amountAbove', async () => {
+      mockPolicyRepo.createPolicy.mockResolvedValue({ id: policyId });
+
+      await vaultPolicyService.createPolicy(userId, {
+        walletId,
+        name: 'Combined',
+        type: 'approval_required',
+        config: {
+          trigger: { unknownAddressesOnly: true, amountAbove: 1000 },
+          requiredApprovals: 1,
+          quorumType: 'any_n',
+          allowSelfApproval: false,
+          expirationHours: 24,
+        },
+      });
+
+      expect(mockPolicyRepo.createPolicy).toHaveBeenCalledTimes(1);
     });
 
     it('rejects approval_required with invalid required fields', async () => {

@@ -121,6 +121,8 @@ interface TransferRequestOptions {
   body?: BodyInit | null;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** Overrides the safe-read transport retry policy (ignored for mutation methods). */
+  retryOptions?: RetryOptions;
 }
 
 interface RefreshableOperation<T> {
@@ -837,7 +839,7 @@ export class ApiClient {
       method,
       operation: performFetchBlob,
       retryContext: `blob:${requestEndpoint}`,
-      retryOptions: resolveRetryOptions(method),
+      retryOptions: resolveRetryOptions(method, options.retryOptions),
       signal: options.signal,
     });
   }

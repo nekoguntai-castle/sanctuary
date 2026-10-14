@@ -11,7 +11,7 @@ import {
   SIGNING_INTENT_MIN_FEE_RATE,
 } from '../../../../../src/services/bitcoin/signingIntent/types';
 import { GENERATED_SIGNED_PSBT_VECTORS } from '../../../../fixtures/generated-signed-psbt-vectors';
-import { estimateTransactionWeight } from '../../../../../src/services/bitcoin/transactionWeight';
+import { estimateTransactionWeight, feeForRate } from '../../../../../src/services/bitcoin/transactionWeight';
 
 const script = Buffer.from(`0014${'11'.repeat(20)}`, 'hex');
 
@@ -233,6 +233,22 @@ describe('signing intent fee policy construction', () => {
     expect(() => buildSigningIntentFeePolicy(
       psbt.toBase64(), (999 - 0.5) / maximumVsize, 1_000,
     )).toThrow(expect.objectContaining({ details: expect.objectContaining({ reason: 'fee_too_high' }) }));
+  });
+
+  it('accepts exactly the integer fee builders produce at a float-inexact rate', () => {
+    const maximumVsize = estimatePsbtMaximumSignedVsize(witnessPsbt());
+    const rate = [1.1, 1.3, 1.7, 2.3, 3.3].find(candidate =>
+      Math.ceil(candidate * maximumVsize) !== feeForRate(maximumVsize, candidate))!;
+    expect(rate).toBeDefined();
+    const fee = feeForRate(maximumVsize, rate);
+    const psbt = witnessPsbt(10_000n, BigInt(10_000 - fee));
+
+    const policy = buildSigningIntentFeePolicy(psbt.toBase64(), rate, fee);
+
+    expect(policy.expectedFeeSats).toBe(fee);
+    expect(() => buildSigningIntentFeePolicy(
+      witnessPsbt(10_000n, BigInt(10_000 - fee + 1)).toBase64(), rate, fee - 1,
+    )).toThrow(expect.objectContaining({ details: expect.objectContaining({ reason: 'fee_too_low' }) }));
   });
 
   it('allows only an explicit independently bounded dust absorption', () => {

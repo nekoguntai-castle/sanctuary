@@ -230,22 +230,14 @@ export const registerPayjoinUtxoContracts = () => {
       (parsePsbt as Mock).mockReturnValue({} as bitcoin.Psbt);
       (getPsbtOutputs as Mock).mockReturnValue([{ address: TEST_ADDRESS_TESTNET, value: paymentAmount }]);
 
-      const addInput = vi.fn();
-      (clonePsbt as Mock).mockReturnValue({
-        addInput,
-        txOutputs: [{ value: paymentAmount }],
-        toBase64: () => 'proposal-closest',
-      });
-
       const result = await processPayjoinRequest(addressId, 'cHNidP8=', 1);
 
-      expect(result.success).toBe(true);
-      expect(addInput).toHaveBeenCalledWith(
-        expect.objectContaining({
-          hash: closestCandidate.txid,
-          index: closestCandidate.vout,
-        })
+      // An eligible contribution exists, but the receiver cannot sign it yet.
+      expect(result).toMatchObject({ success: false, error: PayjoinErrors.UNAVAILABLE });
+      expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ walletId }) }),
       );
+      expect(clonePsbt).not.toHaveBeenCalled();
     });
 
     it('should fall back to the largest non-dust UTXO when no in-range candidate exists', async () => {
@@ -276,22 +268,14 @@ export const registerPayjoinUtxoContracts = () => {
       (parsePsbt as Mock).mockReturnValue({} as bitcoin.Psbt);
       (getPsbtOutputs as Mock).mockReturnValue([{ address: TEST_ADDRESS_TESTNET, value: paymentAmount }]);
 
-      const addInput = vi.fn();
-      (clonePsbt as Mock).mockReturnValue({
-        addInput,
-        txOutputs: [{ value: paymentAmount }],
-        toBase64: () => 'proposal-fallback',
-      });
-
       const result = await processPayjoinRequest(addressId, 'cHNidP8=', 1);
 
-      expect(result.success).toBe(true);
-      expect(addInput).toHaveBeenCalledWith(
-        expect.objectContaining({
-          hash: largestNonDust.txid,
-          index: largestNonDust.vout,
-        })
+      // An eligible contribution exists, but the receiver cannot sign it yet.
+      expect(result).toMatchObject({ success: false, error: PayjoinErrors.UNAVAILABLE });
+      expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ walletId }) }),
       );
+      expect(clonePsbt).not.toHaveBeenCalled();
     });
 
     it('should return NOT_ENOUGH_MONEY when only dust UTXOs are available', async () => {

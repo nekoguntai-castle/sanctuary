@@ -145,7 +145,7 @@ export const registerBitcoinTransactionRouteTests = () => {
             txid_walletId: { txid: 'abc123', walletId: 'wallet-1' },
           },
         });
-        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'testnet4');
+        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'testnet4', 'wallet-1');
       });
 
       it('should return 400 when walletId is missing', async () => {
@@ -204,7 +204,8 @@ export const registerBitcoinTransactionRouteTests = () => {
         });
         expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith(
           normalizedTxid,
-          'mainnet'
+          'mainnet',
+          'wallet-1'
         );
       });
     });

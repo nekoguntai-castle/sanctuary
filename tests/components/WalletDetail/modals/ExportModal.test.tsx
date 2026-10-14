@@ -5,7 +5,7 @@
  * QR Code, JSON, Descriptor, Labels, and Device formats.
  */
 
-import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
@@ -67,12 +67,14 @@ const mockExportWallet = vi.fn();
 const mockExportLabelsBip329 = vi.fn();
 const mockExportWalletFormat = vi.fn();
 const mockGetExportFormats = vi.fn();
+const mockGetWalletExportText = vi.fn();
 
 vi.mock('../../../../src/api/wallets', () => ({
   exportWallet: (...args: unknown[]) => mockExportWallet(...args),
   exportLabelsBip329: (...args: unknown[]) => mockExportLabelsBip329(...args),
   exportWalletFormat: (...args: unknown[]) => mockExportWalletFormat(...args),
   getExportFormats: (...args: unknown[]) => mockGetExportFormats(...args),
+  getWalletExportText: (...args: unknown[]) => mockGetWalletExportText(...args),
 }));
 
 // Mock types
@@ -95,7 +97,6 @@ vi.mock('../../../../src/utils/logger', () => ({
 // Import after mocks
 import {
 ExportModal,
-generateMultisigConfigText,
 } from '../../../../src/components/WalletDetail/modals/ExportModal';
 
 describe('ExportModal', () => {
@@ -103,10 +104,7 @@ describe('ExportModal', () => {
     walletId: 'wallet-123',
     walletName: 'My Wallet',
     walletType: 'single_sig',
-    scriptType: 'native_segwit',
     descriptor: 'wpkh([12345678/84h/0h/0h]xpub...)#checksum',
-    quorum: null,
-    totalSigners: null,
     devices: [],
     onClose: vi.fn(),
     onError: vi.fn(),
@@ -118,8 +116,6 @@ describe('ExportModal', () => {
     walletName: 'Multisig Vault',
     walletType: 'multisig_2_of_3',
     descriptor: 'wsh(sortedmulti(2,[fp1]xpub1,[fp2]xpub2,[fp3]xpub3))#check',
-    quorum: 2,
-    totalSigners: 3,
     devices: [
       { fingerprint: 'AAAA1111', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpub1...' },
       { fingerprint: 'BBBB2222', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpub2...' },
@@ -127,8 +123,12 @@ describe('ExportModal', () => {
     ],
   };
 
+  const serverMultisigText =
+    'Name: Multisig Vault\nPolicy: 2 of 3\nFormat: P2WSH\nSorted: true\n\nDerivation: m/48h/0h/0h/2h\n\nAAAA1111: xpub1\n';
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetWalletExportText.mockResolvedValue(serverMultisigText);
     mockIsCopied.mockReturnValue(false);
     mockGetExportFormats.mockResolvedValue({
       formats: [
@@ -246,11 +246,11 @@ describe('ExportModal', () => {
       expect(screen.queryByText('Raw Descriptor')).not.toBeInTheDocument();
     });
 
-    it('should use Passport format by default for multisig', () => {
+    it('should use Passport format by default for multisig', async () => {
       render(<ExportModal {...multisigProps} />);
 
       expect(
-        screen.getByText('Coldcard/Passport compatible format')
+        await screen.findByText('Coldcard/Passport compatible format')
       ).toBeInTheDocument();
     });
 
@@ -275,20 +275,94 @@ describe('ExportModal', () => {
       await user.click(screen.getByText('Passport/Coldcard'));
 
       expect(
-        screen.getByText('Coldcard/Passport compatible format')
+        await screen.findByText('Coldcard/Passport compatible format')
       ).toBeInTheDocument();
     });
 
-    it('should generate Passport config text with device info', () => {
+    it('encodes the server Coldcard export verbatim in the Passport QR', async () => {
       render(<ExportModal {...multisigProps} />);
 
-      const qrCode = screen.getByTestId('qr-code');
-      const value = qrCode.getAttribute('data-value');
+      await waitFor(() => {
+        expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', serverMultisigText);
+      });
+      expect(serverMultisigText).toContain('Sorted: true');
+      expect(mockGetWalletExportText).toHaveBeenCalledTimes(1);
+      expect(mockGetWalletExportText).toHaveBeenCalledWith(
+        'multisig-wallet-456',
+        'coldcard',
+        expect.any(AbortSignal)
+      );
+    });
 
-      // Should contain the multisig config text
-      expect(value).toContain('Name: Multisig Vault');
-      expect(value).toContain('Policy: 2 of 3');
-      expect(value).toContain('Format: P2WSH');
+    it('shows a loading note and no QR while the server export is pending', async () => {
+      let resolveText: (text: string) => void = () => {};
+      mockGetWalletExportText.mockReturnValue(new Promise<string>((resolve) => { resolveText = resolve; }));
+      render(<ExportModal {...multisigProps} />);
+
+      expect(screen.getByText('Loading Coldcard/Passport export...')).toBeInTheDocument();
+      expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
+
+      resolveText(serverMultisigText);
+      expect(await screen.findByTestId('qr-code')).toHaveAttribute('data-value', serverMultisigText);
+      expect(screen.queryByText('Loading Coldcard/Passport export...')).not.toBeInTheDocument();
+    });
+
+    it('shows an error and no QR when the server refuses the export', async () => {
+      mockGetWalletExportText.mockRejectedValue(new Error('Request failed with status 500'));
+      render(<ExportModal {...multisigProps} />);
+
+      expect(
+        await screen.findByText('This wallet cannot be exported as a Coldcard/Passport multisig config.')
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
+      expect(screen.queryByText('Request failed with status 500')).not.toBeInTheDocument();
+      expect(mockGetWalletExportText).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fetch the server export for the raw descriptor format', async () => {
+      const user = userEvent.setup();
+      render(<ExportModal {...multisigProps} />);
+      await screen.findByTestId('qr-code');
+
+      await user.click(screen.getByText('Raw Descriptor'));
+
+      expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', multisigProps.descriptor);
+      expect(mockGetWalletExportText).toHaveBeenCalledTimes(1);
+    });
+
+    it('aborts the in-flight export and ignores its result after unmount', async () => {
+      let resolveText: (text: string) => void = () => {};
+      mockGetWalletExportText.mockReturnValue(new Promise<string>((resolve) => { resolveText = resolve; }));
+      const { unmount } = render(<ExportModal {...multisigProps} />);
+      const signal = mockGetWalletExportText.mock.calls[0][2] as AbortSignal;
+      expect(signal.aborted).toBe(false);
+
+      unmount();
+      expect(signal.aborted).toBe(true);
+      await act(async () => resolveText(serverMultisigText));
+    });
+
+    it('ignores a rejection that arrives after unmount', async () => {
+      let rejectText: (error: Error) => void = () => {};
+      mockGetWalletExportText.mockReturnValue(new Promise<string>((_resolve, reject) => { rejectText = reject; }));
+      const { unmount } = render(<ExportModal {...multisigProps} />);
+
+      unmount();
+      await act(async () => rejectText(new Error('late failure')));
+    });
+
+    it('aborts the export when leaving the QR tab and refetches on return', async () => {
+      const user = userEvent.setup();
+      render(<ExportModal {...multisigProps} />);
+      await screen.findByTestId('qr-code');
+      const signal = mockGetWalletExportText.mock.calls[0][2] as AbortSignal;
+
+      await user.click(screen.getByText('JSON File'));
+      expect(signal.aborted).toBe(true);
+
+      await user.click(screen.getByText('QR Code'));
+      await screen.findByTestId('qr-code');
+      expect(mockGetWalletExportText).toHaveBeenCalledTimes(2);
     });
 
     it('shows descriptor fallback note when multisig has no devices in passport mode', () => {
@@ -305,49 +379,7 @@ describe('ExportModal', () => {
       expect(
         screen.getByText('Note: No devices found. Using raw descriptor format instead.')
       ).toBeInTheDocument();
-    });
-
-    it('falls back to default format text for unknown script type and missing device fields', () => {
-      render(
-        <ExportModal
-          {...multisigProps}
-          scriptType="unknown_script"
-          devices={[
-            { fingerprint: 'c0ffee01' },
-            { fingerprint: 'aabbccdd' },
-          ]}
-        />
-      );
-
-      const qrCode = screen.getByTestId('qr-code');
-      const value = qrCode.getAttribute('data-value') || '';
-      expect(value).toContain('Format: P2WSH');
-      expect(value).toContain('Derivation:');
-      expect(value).toContain('AABBCCDD:');
-      expect(value).toContain('C0FFEE01:');
-    });
-
-    it('uses default signer count and script type when multisig total/signing config is missing', () => {
-      render(
-        <ExportModal
-          {...multisigProps}
-          scriptType={undefined}
-          totalSigners={undefined}
-          devices={[{ fingerprint: 'deadbeef', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpubz' }]}
-        />
-      );
-
-      const qrCode = screen.getByTestId('qr-code');
-      const value = qrCode.getAttribute('data-value') || '';
-      expect(value).toContain('Policy: 2 of 3');
-      expect(value).toContain('Format: P2WSH');
-    });
-
-    it('generateMultisigConfigText omits derivation section when no devices are provided', () => {
-      const text = generateMultisigConfigText('No Device Wallet', 2, 3, 'native_segwit', []);
-      expect(text).toContain('Name: No Device Wallet');
-      expect(text).toContain('Policy: 2 of 3');
-      expect(text).not.toContain('Derivation:');
+      expect(mockGetWalletExportText).not.toHaveBeenCalled();
     });
   });
 

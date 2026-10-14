@@ -28,6 +28,8 @@ import type {
 import { vaultPolicyService } from './vaultPolicyService';
 
 const log = createLogger('VAULT_POLICY:SVC_ENGINE');
+// Legacy unknownAddressesOnly-only rows are warned about once per process, not per evaluation.
+const warnedLegacyApprovalPolicyIds = new Set<string>();
 
 type EvaluationInput = PolicyEvaluationInput & { preview?: boolean };
 type TriggeredPolicy = PolicyEvaluationResult['triggered'][number];
@@ -223,10 +225,20 @@ const applyApprovalRequiredPolicy = (
   config: Record<string, unknown>,
   state: EvaluationState
 ): void => {
-  const result = evaluateApprovalRequired(
-    config as unknown as ApprovalRequiredConfig,
-    state.amount
-  );
+  const approvalConfig = config as unknown as ApprovalRequiredConfig;
+  const result = evaluateApprovalRequired(approvalConfig, state.amount);
+
+  // Rows saved before create/update rejected this trigger still evaluate as no-ops.
+  const { trigger } = approvalConfig;
+  if (
+    trigger.unknownAddressesOnly === true && !trigger.always && trigger.amountAbove === undefined
+    && !warnedLegacyApprovalPolicyIds.has(policy.id)
+  ) {
+    warnedLegacyApprovalPolicyIds.add(policy.id);
+    log.warn('legacy approval_required policy with unknownAddressesOnly only is not enforced; edit the policy', {
+      policyId: policy.id,
+    });
+  }
 
   if (result.triggered) {
     addTriggeredPolicy(

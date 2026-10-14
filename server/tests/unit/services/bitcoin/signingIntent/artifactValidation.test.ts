@@ -29,6 +29,7 @@ import type {
   SigningIntentSnapshotV2,
 } from '../../../../../src/services/bitcoin/signingIntent';
 import { GENERATED_SIGNED_PSBT_VECTORS } from '../../../../fixtures/generated-signed-psbt-vectors';
+import { feeForRate } from '../../../../../src/services/bitcoin/transactionWeight';
 
 const inputHash = (hex: string): Uint8Array => Buffer.from(hex, 'hex').reverse();
 
@@ -342,6 +343,35 @@ describe('signed artifact authentication boundary', () => {
     })).rejects.toMatchObject({ details: { reason } });
   });
 
+  it('recomputes the requested-rate fee with the builders\' integer arithmetic', async () => {
+    const baseVsize = finalizedVsize(signPsbt(original));
+    const candidates = [1.1, 1.3, 1.7, 2.3, 3.3, 4.1, 5.3].map(rate => {
+      const fee = feeForRate(baseVsize, rate);
+      const signed = signPsbt(buildPsbt(10_000 - fee));
+      return { rate, fee, signed, vsize: finalizedVsize(signed) };
+    });
+    const chosen = candidates.find(({ rate, fee, vsize }) =>
+      vsize === baseVsize && Math.ceil(rate * vsize) !== fee)!;
+    expect(chosen).toBeDefined();
+    envelope = envelopeFor(buildPsbt(10_000 - chosen.fee));
+    envelope.snapshot.feePolicy = {
+      version: 1,
+      expectedFeeSats: chosen.fee,
+      requestedFeeRateSatsPerVbyte: chosen.rate,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 0,
+    };
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: chosen.signed.toBase64(),
+    })).resolves.toMatchObject({ actualFeeSats: chosen.fee, vsize: chosen.vsize });
+  });
+
   it('applies the authenticated rounding tolerance inclusively', async () => {
     const signed = signPsbt(original);
     const vsize = finalizedVsize(signed);
@@ -379,11 +409,25 @@ describe('signed artifact authentication boundary', () => {
     })).rejects.toMatchObject({ details: { reason } });
   });
 
-  it('rejects a requested fee calculation outside the safe integer range', async () => {
+  it('admits the maximum authorized fee rate inclusively', async () => {
     const signed = signPsbt(original);
     envelope.snapshot.feePolicy = {
       ...permissiveFeePolicy,
-      requestedFeeRateSatsPerVbyte: Number.MAX_VALUE,
+      requestedFeeRateSatsPerVbyte: 1_000,
+      roundingToleranceSats: 1_000_000,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).resolves.toMatchObject({ actualFeeSats: 1_000 });
+  });
+
+  it.each([Number.MAX_VALUE, 1_000.5, 0, -1, Number.NaN])('rejects an authorized fee rate outside the admitted range: %s', async (requestedFeeRateSatsPerVbyte) => {
+    const signed = signPsbt(original);
+    envelope.snapshot.feePolicy = {
+      ...permissiveFeePolicy,
+      requestedFeeRateSatsPerVbyte,
     };
 
     await expect(validateSignedArtifact({
@@ -1040,6 +1084,44 @@ describe('signed artifact authentication boundary', () => {
     });
 
     expect(bitcoin.Transaction.fromHex(artifact.rawTx).hasWitnesses()).toBe(true);
+  });
+
+  it('finalizes a 2-of-3 multisig input signed by all three cosigners', async () => {
+    const cosignerKeys = ['02', '03'].map(byte => Buffer.from(byte.repeat(32), 'hex'));
+    const signers = [privateKey, ...cosignerKeys]
+      .map(key => ({ key, pubkey: Buffer.from(ecc.pointFromScalar(key, true)!) }))
+      .sort((a, b) => Buffer.compare(a.pubkey, b.pubkey));
+    const p2ms = bitcoin.payments.p2ms({ m: 2, pubkeys: signers.map(signer => signer.pubkey) });
+    const multisig = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    multisig.setVersion(2);
+    multisig.addInput({
+      hash: 'cc'.repeat(32),
+      index: 0,
+      sequence: 0xfffffffd,
+      witnessUtxo: { script: bitcoin.payments.p2wsh({ redeem: p2ms }).output!, value: 10_000n },
+      witnessScript: p2ms.output!,
+      bip32Derivation: signers.map(({ pubkey }) => ({
+        masterFingerprint: Buffer.from('f00dbabe', 'hex'),
+        path: "m/48'/1'/0'/2'/0/0",
+        pubkey,
+      })),
+    });
+    multisig.addOutput({ script: destinationScript, value: 9_000n });
+    envelope = envelopeFor(multisig);
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+    for (const { key, pubkey } of signers) {
+      multisig.signInput(0, { publicKey: pubkey, sign: hash => ecc.sign(hash, key) });
+    }
+
+    const artifact = await validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: multisig.toBase64(),
+    });
+
+    expect(bitcoin.Transaction.fromHex(artifact.rawTx).ins[0].witness).toHaveLength(4);
   });
 
   it('validates present partial signatures before accepting a draft update', async () => {

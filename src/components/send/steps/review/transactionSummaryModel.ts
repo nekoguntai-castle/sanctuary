@@ -28,9 +28,13 @@ export function getTotalSendingSats(
   outputs: SummaryOutput[],
   selectedTotal: number,
   estimatedFee: number,
-  totalOutputAmount: number
+  totalOutputAmount: number,
+  txData?: TransactionData | null
 ): number {
-  return hasSendMaxOutput(outputs) ? selectedTotal - estimatedFee : totalOutputAmount;
+  if (!hasSendMaxOutput(outputs)) return totalOutputAmount;
+  // Once built, the real fee and change are known; the pre-build estimate assumes 68-vB inputs.
+  if (txData) return txData.totalInput - txData.fee - (txData.changeAmount ?? 0);
+  return selectedTotal - estimatedFee;
 }
 
 export function getNetworkFeeSats(txData: TransactionData | null | undefined, estimatedFee: number): number {
@@ -41,9 +45,12 @@ export function getTotalIncludingFeeSats(
   outputs: SummaryOutput[],
   selectedTotal: number,
   totalOutputAmount: number,
-  networkFee: number
+  networkFee: number,
+  txData?: TransactionData | null
 ): number {
-  return hasSendMaxOutput(outputs) ? selectedTotal : totalOutputAmount + networkFee;
+  if (!hasSendMaxOutput(outputs)) return totalOutputAmount + networkFee;
+  if (txData) return getTotalSendingSats(outputs, selectedTotal, 0, totalOutputAmount, txData) + networkFee;
+  return selectedTotal;
 }
 
 export function getCoinControlLabel(count: number): string {

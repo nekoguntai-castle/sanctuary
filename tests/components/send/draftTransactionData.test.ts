@@ -77,6 +77,15 @@ describe('createDraftInitialTxData', () => {
     });
   });
 
+  it('keeps the server-issued signing context when resuming a draft', () => {
+    const ctx = { walletType: 'multi_sig' } as any;
+    const draft = { ...draftTxData, signingIntentId: 'intent-1', signingIntentDigest: 'a'.repeat(64) };
+    const resumed = buildDraftTxData({ ...draft, signingContext: ctx } as any);
+    expect(resumed.signingContext).toBe(ctx);
+    expect(createDraftInitialTxData({ state, draftTxData: resumed, utxos })?.signingContext).toBe(ctx);
+    expect(buildDraftTxData({ ...draft, signingContext: null } as any).signingContext).toBeUndefined();
+  });
+
   it.each([
     {
       name: 'structured',

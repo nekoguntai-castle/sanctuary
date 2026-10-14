@@ -662,6 +662,9 @@ export function registerOpenApiWalletPolicyTests() {
       required: ['always'],
       properties: { always: { type: 'boolean', enum: [true] } },
     });
+    expect(openApiSpec.components.schemas.ApprovalRequiredPolicyConfig.properties.trigger.anyOf).toHaveLength(2);
+    expect(openApiSpec.components.schemas.ApprovalRequiredPolicyConfig.properties.trigger.anyOf)
+      .not.toContainEqual(expect.objectContaining({ required: ['unknownAddressesOnly'] }));
     expect(openApiSpec.components.schemas.ApprovalRequiredPolicyConfig.anyOf).toContainEqual({
       required: ['specificApprovers'],
       properties: {

@@ -549,7 +549,7 @@ export function registerPolicyEvaluateSpendingApprovalTests(context: PolicyEvalu
       it('does not trigger when neither always nor amountAbove triggers', async () => {
         mockVaultPolicyService.getActivePoliciesForWallet.mockResolvedValue([
           makePolicy({
-            id: 'p1',
+            id: 'legacy-unknown-only',
             name: 'Unknown Only',
             type: 'approval_required',
             enforcement: 'enforce',
@@ -563,12 +563,19 @@ export function registerPolicyEvaluateSpendingApprovalTests(context: PolicyEvalu
           }),
         ]);
 
-        const result = await getPolicyEvaluationEngine().evaluatePolicies({
+        const evaluate = () => getPolicyEvaluationEngine().evaluatePolicies({
           walletId, userId, recipient,
           amount: BigInt(100),
         });
+        const result = await evaluate();
+        await evaluate();
 
         expect(result.triggered).toHaveLength(0);
+        // Warned once per policy id, not on every evaluation.
+        const legacyWarnings = mockLog.warn.mock.calls.filter(([message, meta]) =>
+          message === 'legacy approval_required policy with unknownAddressesOnly only is not enforced; edit the policy'
+          && (meta as { policyId?: string } | undefined)?.policyId === 'legacy-unknown-only');
+        expect(legacyWarnings).toHaveLength(1);
       });
 
       it('sets action to monitored in monitor mode', async () => {

@@ -34,7 +34,7 @@ export const FEATURE_DEFINITIONS: Record<
     category: "general",
     hasSideEffects: true,
     sideEffectDescription:
-      "Enables a public unauthenticated BIP78 endpoint. Requires PAYJOIN_PUBLIC_URL for external reachability; receiver proposals remain unsigned until receiver-side input signing is completed.",
+      "Enables a public unauthenticated BIP78 endpoint. Requires PAYJOIN_PUBLIC_URL for external reachability; the receiver answers BIP78 `unavailable` until receiver-side input signing is implemented.",
   },
   batchTransactions: {
     description: "Enable batch transaction creation",

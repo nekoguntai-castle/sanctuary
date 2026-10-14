@@ -30,10 +30,7 @@ const baseProps = {
   walletId: 'wallet-1',
   walletName: 'Test Wallet',
   walletType: 'single_sig',
-  walletScriptType: 'native_segwit',
   walletDescriptor: 'wpkh(...)',
-  walletQuorum: null,
-  walletTotalSigners: 1,
   devices: [],
   addresses: [],
 

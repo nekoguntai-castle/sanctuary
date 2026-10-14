@@ -377,6 +377,32 @@ describe('SendTransactionWizard', () => {
       });
     });
 
+    it('hands the persisted signing context to the actions of a resumed draft', () => {
+      const signingContext = { walletType: 'multi_sig' };
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContextValue,
+        currentStep: 'review',
+        state: {
+          ...defaultContextValue.state,
+          isDraftMode: true,
+          unsignedPsbt: 'draft-psbt',
+          outputs: [{ address: 'bc1qone', amount: '1', sendMax: false }],
+        },
+        isReadyToSign: true,
+      } as any);
+
+      renderWizard({
+        draftTxData: {
+          intentId: 'intent-1', intentDigest: 'a'.repeat(64), fee: 1, totalInput: 2, totalOutput: 1,
+          changeAmount: 0, effectiveAmount: 1, selectedUtxoIds: [], signingContext,
+        },
+      });
+
+      expect(useSendTransactionActionsHook.useSendTransactionActions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ initialTxData: expect.objectContaining({ signingContext }) }),
+      );
+    });
+
     it('does not create transaction in draft mode', async () => {
       const createTransaction = vi.fn();
       vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({

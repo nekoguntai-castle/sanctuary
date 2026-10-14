@@ -63,13 +63,15 @@ export function TransactionSummary({
     state.outputs,
     selectedTotal,
     estimatedFee,
-    totalOutputAmount
+    totalOutputAmount,
+    txData
   );
   const totalIncludingFeeSats = getTotalIncludingFeeSats(
     state.outputs,
     selectedTotal,
     totalOutputAmount,
-    networkFee
+    networkFee,
+    txData
   );
 
   return (

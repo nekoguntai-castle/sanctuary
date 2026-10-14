@@ -12,12 +12,12 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '../../ui/Button';
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { useCopyToClipboard } from '../../../hooks/useCopyToClipboard';
 import * as walletsApi from '../../../api/wallets';
-import { isMultisigType, getQuorumM, getQuorumN, type Quorum } from '../../../types';
+import { isMultisigType } from '../../../types';
 import { useTabsA11y } from '../../ui/useTabsA11y';
 import { createLogger } from '../../../utils/logger';
+import { usePassportMultisigExportText } from './usePassportMultisigExportText';
 import { ExportTabBar } from './exportTabs/ExportTabBar';
 import { QrExportTab } from './exportTabs/QrExportTab';
 import { JsonExportTab } from './exportTabs/JsonExportTab';
@@ -36,63 +36,17 @@ interface ExportModalProps {
   walletId: string;
   walletName: string;
   walletType: string;
-  scriptType?: string;
   descriptor?: string;
-  quorum?: Quorum | number | null;
-  totalSigners?: number | null;
   devices: ExportDevice[];
   onClose: () => void;
   onError: (error: unknown, title: string) => void;
-}
-
-/**
- * Generate Coldcard/Passport compatible multisig config text.
- */
-export function generateMultisigConfigText(
-  name: string,
-  quorum: number,
-  totalSigners: number,
-  scriptType: string,
-  devices: ExportDevice[]
-): string {
-  const lines: string[] = [];
-
-  lines.push(`Name: ${name}`);
-  lines.push(`Policy: ${quorum} of ${totalSigners}`);
-
-  const formatMap: Record<string, string> = {
-    native_segwit: 'P2WSH',
-    nested_segwit: 'P2SH-P2WSH',
-    legacy: 'P2SH',
-  };
-  lines.push(`Format: ${formatMap[scriptType] || 'P2WSH'}`);
-  lines.push('');
-
-  if (devices.length > 0) {
-    const normalizedPath = (devices[0].derivationPath || '').replace(/'/g, 'h');
-    lines.push(`Derivation: ${normalizedPath}`);
-    lines.push('');
-  }
-
-  const sortedDevices = [...devices].sort((a, b) =>
-    a.fingerprint.toLowerCase().localeCompare(b.fingerprint.toLowerCase())
-  );
-
-  for (const device of sortedDevices) {
-    lines.push(`${device.fingerprint.toUpperCase()}: ${device.xpub || ''}`);
-  }
-
-  return lines.join('\n').trim();
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
   walletId,
   walletName,
   walletType,
-  scriptType,
   descriptor,
-  quorum,
-  totalSigners,
   devices,
   onClose,
   onError,
@@ -165,18 +119,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  const getQrValue = () => {
-    if (isMultisig && qrFormat === 'passport' && devices.length > 0) {
-      return generateMultisigConfigText(
-        walletName,
-        getQuorumM(quorum),
-        getQuorumN(quorum, totalSigners ?? undefined),
-        scriptType || WalletScriptType.NATIVE_SEGWIT,
-        devices
-      );
-    }
-    return descriptor || '';
-  };
+  // Passport/Coldcard multisig QR encodes the server's Coldcard export (never client-built text).
+  const usesServerPassportExport =
+    isMultisig && exportTab === 'qr' && qrFormat === 'passport' && devices.length > 0;
+  const passportExport = usePassportMultisigExportText(walletId, usesServerPassportExport);
+  const qrValue = usesServerPassportExport ? (passportExport.text ?? '') : (descriptor || '');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -206,7 +153,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               devices={devices}
               qrFormat={qrFormat}
               qrSize={qrSize}
-              qrValue={getQrValue()}
+              qrValue={qrValue}
+              qrLoading={passportExport.loading}
+              qrError={passportExport.error}
               onQrSizeChange={setQrSize}
               getQrFormatTabListProps={getQrFormatTabListProps}
               getQrFormatTabProps={getQrFormatTabProps}

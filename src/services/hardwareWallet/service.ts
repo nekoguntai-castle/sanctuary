@@ -40,6 +40,7 @@ import {
 import {
   HardwareWalletIdentityError,
   normalizeMasterFingerprint,
+  requireMatchingMasterFingerprint,
   validateXpubResult,
 } from './identity';
 import {
@@ -398,6 +399,15 @@ export class HardwareWalletService {
         device.fingerprint,
         `Connected ${adapter.displayName}`
       );
+      // A device with a different seed must not sign as the registered cosigner;
+      // an empty expected fingerprint fails closed.
+      if (options && 'expectedFingerprint' in options) {
+        requireMatchingMasterFingerprint(
+          fingerprint,
+          options.expectedFingerprint ?? '',
+          `Connected ${adapter.displayName}`
+        );
+      }
       connectedRow = assertHardwareActionEnabled(
         { type: device.type, model: device.model },
         'import',

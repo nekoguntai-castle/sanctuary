@@ -2,8 +2,8 @@
  * Payjoin API Routes (BIP78)
  *
  * Implements the Payjoin receiver endpoint for enhanced transaction privacy.
- * The endpoint accepts an original PSBT from the sender and returns an
- * unsigned receiver proposal PSBT with the receiver's input added.
+ * The endpoint validates an original PSBT from the sender, then answers with
+ * the BIP78 `unavailable` error until receiver input signing is implemented.
  */
 
 import express, { Router, type RequestHandler } from 'express';
@@ -47,6 +47,7 @@ import {
   calculatePsbtFee,
   estimatePsbtMaximumSignedVsize,
 } from '../services/bitcoin/signingIntent/feePolicy';
+import { feeForRate } from '../services/bitcoin/transactionWeight';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -333,7 +334,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   );
   const proposalFeeSurplus = Math.max(
     0,
-    proposalFee - Math.ceil(requestedFeeRate * proposalMaximumVsize),
+    proposalFee - feeForRate(proposalMaximumVsize, requestedFeeRate),
   );
   const replacementIntent = await createSigningIntent({
     walletId,
@@ -367,9 +368,9 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
  * BIP78 Payjoin endpoint (receiver)
  *
  * This endpoint is called by Payjoin-capable senders.
- * It processes the original PSBT and returns an unsigned receiver proposal with
- * the receiver's input added. Receiver-side input signing is still a feature
- * boundary documented on the payjoinSupport flag and service layer.
+ * It validates the original PSBT and returns precise BIP78 rejections for bad
+ * originals. Valid originals get `unavailable`: a proposal needs a finalized
+ * receiver input, and receiver-side input signing is not implemented yet.
  *
  * IMPORTANT: This route MUST be defined after all specific POST routes (/parse-uri, /attempt)
  * to avoid the parameterized :addressId from capturing those paths.
@@ -380,7 +381,8 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
  *   maxadditionalfeecontribution (optional) - Max additional fee receiver will pay
  *
  * Body: Original PSBT (text/plain, base64, 100 KiB max)
- * Returns: Unsigned proposal PSBT (text/plain, base64)
+ * Returns: BIP78 error (text/plain); `unavailable` for a valid original until
+ *          receiver signing lands, after which a signed proposal PSBT
  */
 router.post('/:addressId', async (req, res, next) => {
   const enabled = await isFeatureEnabledAsync('payjoinSupport');

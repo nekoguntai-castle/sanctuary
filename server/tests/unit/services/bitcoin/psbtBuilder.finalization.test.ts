@@ -16,6 +16,38 @@ const derLikeSignature = (): Buffer =>
     Buffer.from([0x01]),
   ]);
 
+
+const buildTwoOfThreeSignedByAll = (nested: boolean) => {
+  const keys = Array.from({ length: 3 }, () => ECPair.makeRandom({ network }))
+    .sort((a, b) => Buffer.compare(Buffer.from(a.publicKey), Buffer.from(b.publicKey)));
+  const pubkeys = keys.map((k) => Buffer.from(k.publicKey));
+  const p2ms = bitcoin.payments.p2ms({ m: 2, pubkeys, network });
+  const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
+  const p2sh = bitcoin.payments.p2sh({ redeem: p2wsh, network });
+  const destination = bitcoin.payments.p2wpkh({
+    pubkey: Buffer.from(ECPair.makeRandom({ network }).publicKey),
+    network,
+  });
+  const psbt = new bitcoin.Psbt({ network });
+  psbt.addInput({
+    hash: Buffer.alloc(32, 0x5a),
+    index: 0,
+    witnessUtxo: { script: (nested ? p2sh.output : p2wsh.output)!, value: BigInt(100000) },
+    witnessScript: p2ms.output!,
+    ...(nested ? { redeemScript: p2wsh.output! } : {}),
+    bip32Derivation: pubkeys.map((pubkey, index) => ({
+      masterFingerprint: Buffer.alloc(4, index + 1),
+      path: `m/48'/1'/0'/2'/0/${index}`,
+      pubkey,
+    })),
+  });
+  psbt.addOutput({ address: destination.address!, value: BigInt(90000) });
+  keys.forEach((key) => psbt.signInput(0, key));
+  const sigFor = (pubkey: Buffer) =>
+    Buffer.from(psbt.data.inputs[0].partialSig!.find((ps) => Buffer.from(ps.pubkey).equals(pubkey))!.signature);
+  return { psbt, pubkeys, sigFor };
+};
+
 describe("PSBT Builder multisig finalization", () => {
   it("should throw when witnessScript is missing", () => {
     const psbt = new bitcoin.Psbt({ network });
@@ -112,7 +144,7 @@ describe("PSBT Builder multisig finalization", () => {
     ];
 
     expect(() => finalizeMultisigInput(psbt, 0)).toThrow(
-      "has 1 signatures but needs exactly 2",
+      "has 1 signatures but needs at least 2",
     );
   });
 
@@ -279,5 +311,36 @@ describe("PSBT Builder multisig finalization", () => {
     expect(() => finalizeMultisigInput(psbt, 0)).not.toThrow();
     expect(psbt.data.inputs[0].finalScriptWitness).toBeInstanceOf(Buffer);
     expect(psbt.extractTransaction(true).ins[0].witness).toHaveLength(4);
+  });
+
+  it.each([
+    ["P2WSH", false],
+    ["P2SH-P2WSH", true],
+  ])("finalizes a 2-of-3 %s input signed by all three cosigners with the first two script-ordered sigs", (_label, nested) => {
+    const { psbt, pubkeys, sigFor } = buildTwoOfThreeSignedByAll(nested);
+    expect(psbt.data.inputs[0].partialSig).toHaveLength(3);
+
+    expect(() => finalizeMultisigInput(psbt, 0)).not.toThrow();
+
+    const witness = psbt.extractTransaction(true).ins[0].witness;
+    expect(witness).toHaveLength(4);
+    expect(Buffer.from(witness[1])).toEqual(sigFor(pubkeys[0]));
+    expect(Buffer.from(witness[2])).toEqual(sigFor(pubkeys[1]));
+    if (nested) {
+      expect(psbt.data.inputs[0].finalScriptSig?.length).toBeGreaterThan(0);
+    } else {
+      expect(psbt.data.inputs[0].finalScriptSig).toBeUndefined();
+    }
+  });
+
+  it("still verifies surplus signatures beyond the quorum", () => {
+    const { psbt, pubkeys } = buildTwoOfThreeSignedByAll(false);
+    const surplus = psbt.data.inputs[0].partialSig!.find((ps) => Buffer.from(ps.pubkey).equals(pubkeys[2]))!;
+    const corrupted = Buffer.from(surplus.signature);
+    corrupted[10] ^= 0x01;
+    surplus.signature = corrupted;
+
+    expect(() => finalizeMultisigInput(psbt, 0)).toThrow("signature verification failed");
+    expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
   });
 });

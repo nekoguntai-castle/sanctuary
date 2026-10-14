@@ -41,8 +41,8 @@ const ApprovalTriggerSchema = z.object({
   amountAbove: PositivePolicyLimitSchema.optional(),
   unknownAddressesOnly: z.boolean().optional(),
 }).strict().refine(
-  (trigger) => trigger.always === true || trigger.amountAbove !== undefined || trigger.unknownAddressesOnly === true,
-  { message: 'approval_required trigger must specify at least one condition' }
+  (trigger) => trigger.always === true || trigger.amountAbove !== undefined,
+  { message: 'approval_required trigger must specify always or amountAbove (unknownAddressesOnly is not enforceable on its own)' }
 );
 
 export const ApprovalRequiredConfigSchema = z.object({

@@ -13,7 +13,7 @@ export default {
     'src/services/bitcoin/advancedTx/batch.ts:120-178',
     'src/services/bitcoin/advancedTx/batch.ts:259-279',
     'src/services/bitcoin/advancedTx/cpfp.ts:38-70',
-    'src/services/bitcoin/advancedTx/rbf.ts:231-241',
+    'src/services/bitcoin/advancedTx/rbf.ts:232-242',
   ],
   testFiles: [
     'tests/unit/services/bitcoin/signingIntent/feePolicy.test.ts',

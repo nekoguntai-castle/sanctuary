@@ -194,7 +194,7 @@ Privacy-preserving send and receive flows using BIP78 Payjoin.
 - `POST /api/v1/payjoin/attempt` - Attempt Payjoin send (fallback to regular send on failure)
 - `POST /api/v1/payjoin/:addressId` - Payjoin receiver endpoint (v1, `text/plain` PSBT body, `text/plain` proposal/error response)
 
-Receiver mode is still feature-gated. The current receiver proposal adds the receiver input but does not perform receiver-side input signing yet, so production operators should treat the public BIP78 endpoint as incomplete until that signing boundary is closed.
+Receiver mode is still feature-gated. Receiver-side input signing is not implemented, and BIP78 requires the receiver's input in a proposal to be finalized. The receiver endpoint therefore validates the original PSBT (returning precise BIP78 rejections for bad originals) and then answers `unavailable` instead of returning a proposal, until that signing boundary is closed.
 
 #### Frontend Components
 - **Files**:

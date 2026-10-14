@@ -152,7 +152,7 @@ router.post('/transaction/:txid/rbf-check', authenticate, validate(
   }
   await requireWalletTransaction(txid, walletId);
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
-  const result = await advancedTx.canReplaceTransaction(txid, network);
+  const result = await advancedTx.canReplaceTransaction(txid, network, walletId);
 
   res.json(result);
 }));

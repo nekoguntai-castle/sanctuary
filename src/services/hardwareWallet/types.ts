@@ -85,6 +85,8 @@ export interface XpubResult {
 export interface HardwareWalletConnectionOptions {
   chainEnvironment?: NetworkType;
   expectedModel?: string;
+  /** Presence-based: a key with an empty/undefined value fails closed. */
+  expectedFingerprint?: string;
 }
 
 /**

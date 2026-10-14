@@ -15,6 +15,7 @@ const { mockBindPsbtAccount, mockElectrumClient, mockFromBase58 } = vi.hoisted((
   mockBindPsbtAccount: vi.fn(),
   mockElectrumClient: {
     getTransaction: vi.fn(),
+    getAddressHistory: vi.fn().mockResolvedValue([]),
   },
   mockFromBase58: vi.fn(),
 }));

@@ -85,7 +85,6 @@ export const walletPolicySchemas = {
         anyOf: [
           { required: ['always'], properties: { always: { type: 'boolean', enum: [true] } } },
           { required: ['amountAbove'] },
-          { required: ['unknownAddressesOnly'], properties: { unknownAddressesOnly: { type: 'boolean', enum: [true] } } },
         ],
       },
       requiredApprovals: { type: 'integer', minimum: 1 },

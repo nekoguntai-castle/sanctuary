@@ -226,15 +226,15 @@ const assertSignatureCount = (
     throw new Error(`Input #${inputIndex} no matching signatures found for witnessScript pubkeys`);
   }
 
-  if (orderedSigs.length !== requiredSignatures) {
-    log.error('Signature count mismatch', {
+  if (orderedSigs.length < requiredSignatures) {
+    log.error('Signature count below quorum', {
       found: orderedSigs.length,
       required: requiredSignatures,
       partialSigPubkeys,
       scriptPubkeyHexes,
     });
     throw new Error(
-      `Input #${inputIndex} has ${orderedSigs.length} signatures but needs exactly ` +
+      `Input #${inputIndex} has ${orderedSigs.length} signatures but needs at least ` +
       `${requiredSignatures} for ${requiredSignatures}-of-${totalPubkeys} multisig`
     );
   }
@@ -269,7 +269,8 @@ const applyFinalWitness = (
  * For multisig, we need to:
  * 1. Get all partial signatures from the PSBT input
  * 2. Sort them according to the pubkey order in the witnessScript
- * 3. Build the witness: [OP_0] [sig1] [sig2] ... [witnessScript]
+ * 3. Build the witness from the first m sorted signatures (surplus signatures are
+ *    verified but dropped): [OP_0] [sig1] ... [sigM] [witnessScript]
  */
 export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): void {
   const state = readMultisigInputState(psbt, inputIndex);
@@ -293,11 +294,14 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
     orderedSigCount: orderedSigs.length,
   });
 
-  applyFinalWitness(psbt, inputIndex, state.witnessScript, state.input.redeemScript, orderedSigs);
+  // Surplus signatures were verified above; any m of them in script order
+  // satisfy OP_CHECKMULTISIG, so the first m are used deterministically.
+  const quorumSigs = orderedSigs.slice(0, state.m);
+  applyFinalWitness(psbt, inputIndex, state.witnessScript, state.input.redeemScript, quorumSigs);
 
   log.info('Multisig input finalized', {
     inputIndex,
-    signatureCount: orderedSigs.length,
+    signatureCount: quorumSigs.length,
     multisigType: `${state.m}-of-${state.n}`,
   });
 }

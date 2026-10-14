@@ -150,6 +150,8 @@ export function registerAdvancedTxTestSetup() {
     resetPrismaMocks();
     resetElectrumMocks();
     mockElectrumClient.getTransaction.mockReset();
+    mockElectrumClient.getAddressHistory.mockReset();
+    mockElectrumClient.getAddressHistory.mockResolvedValue([]);
 
     // Default system settings
     mockPrismaClient.systemSetting.findUnique.mockResolvedValue({

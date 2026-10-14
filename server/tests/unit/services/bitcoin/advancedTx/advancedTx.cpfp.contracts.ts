@@ -401,6 +401,30 @@ export function registerCpfpContracts() {
       expect(result.psbt.data.inputs[0].nonWitnessUtxo).toBeUndefined();
     });
 
+    it('authorizes a child fee whose float rate over-rounds at the child size', async () => {
+      mockPrismaClient.uTXO.findUnique.mockResolvedValue({
+        txid: parentTxid,
+        vout: parentVout,
+        amount: BigInt(50000),
+        scriptPubKey: segwitScript,
+        walletId,
+        spent: false,
+      });
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      // 82 vB parent paying 100 sats plus a 110 vB child at 1.13 sat/vB
+      // leaves a 117-sat child fee; Math.ceil((117 / 110) * 110) is 118.
+      const result = await createCPFPTransaction(parentTxid, parentVout, 1.13, recipientAddress, walletId, 'testnet3');
+
+      expect(result.childFee).toBe(117);
+      expect(Math.ceil((117 / 110) * 110)).toBe(118);
+      expect(result.feePolicy.expectedFeeSats).toBe(117);
+      expect(result.feePolicy.requestedFeeRateSatsPerVbyte).toBeLessThanOrEqual(117 / 110);
+    });
+
     it('authenticates a legacy CPFP input with the complete parent transaction', async () => {
       const legacyScript = Buffer.from(bitcoin.address.toOutputScript(
         testnetAddresses.legacy[0],

@@ -409,7 +409,7 @@ interface ApprovalRequiredConfig {
     amountAbove?: bigint;
 
     // Only for transactions to non-allowlisted addresses
-    unknownAddressesOnly?: boolean;
+    unknownAddressesOnly?: boolean; // Not enforced on its own: create/update require always or amountAbove alongside it.
   };
 
   // How many approvals needed?

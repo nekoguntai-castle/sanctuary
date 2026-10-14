@@ -164,7 +164,7 @@ export const payjoinPaths = {
     post: {
       tags: ['Payjoin'],
       summary: 'BIP78 Payjoin receiver endpoint',
-      description: 'Unauthenticated BIP78 receiver endpoint that accepts a text/plain original PSBT and returns a text/plain unsigned receiver proposal PSBT. Receiver-side input signing is not yet completed, so this endpoint remains behind the payjoinSupport feature flag.',
+      description: 'Unauthenticated BIP78 receiver endpoint that accepts a text/plain original PSBT. Receiver-side input signing is not implemented, so after validating the original PSBT it answers with the BIP78 `unavailable` error instead of a proposal; senders fall back to the original transaction. Behind the payjoinSupport feature flag.',
       parameters: [
         addressIdParameter,
         {
@@ -200,7 +200,7 @@ export const payjoinPaths = {
       },
       responses: {
         200: {
-          description: 'Unsigned receiver proposal PSBT in base64 format',
+          description: 'Receiver proposal PSBT in base64 format (not returned while receiver input signing is unimplemented)',
           content: {
             'text/plain': {
               schema: { type: 'string', minLength: 1 },

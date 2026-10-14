@@ -535,6 +535,7 @@ n_src_api_walletXpub_ts-->n_src_api_client_ts
 n_src_api_wallets_ts-->n_shared_constants_webhooks_ts
 n_src_api_wallets_ts-->n_shared_schemas_walletResponses_ts
 n_src_api_wallets_ts-->n_src_api_client_ts
+n_src_api_wallets_ts-->n_src_api_retryPolicy_ts
 n_src_api_wallets_ts-->n_src_api_walletRemediation_ts
 n_src_api_wallets_ts-->n_src_api_walletXpub_ts
 n_src_app_AppRoutes__collapsed-->n_src_api_auth_ts

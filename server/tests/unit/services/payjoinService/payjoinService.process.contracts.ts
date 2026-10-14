@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
@@ -6,6 +6,7 @@ import { mockPrismaClient } from '../../../mocks/prisma';
 import {
   mockAssertWalletHardwareCapabilityById,
   calculateFeeRate,
+  clonePsbt,
   getNetwork,
   getPsbtOutputs,
   parsePsbt,
@@ -231,6 +232,26 @@ export const registerPayjoinProcessContracts = () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe(PayjoinErrors.ORIGINAL_PSBT_REJECTED);
       expect(result.errorMessage).toContain('below minimum');
+    });
+
+    it('fails closed with BIP78 unavailable instead of returning an uncredited, unsigned proposal', async () => {
+      mockPrismaClient.address.findUnique.mockResolvedValue(mockAddress);
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([mockUtxos[0]]);
+      const mockPsbt = createMockPsbt();
+      (parsePsbt as Mock).mockReturnValue(mockPsbt);
+      const addInput = vi.fn();
+      (clonePsbt as Mock).mockImplementation((psbt: bitcoin.Psbt) => Object.assign(psbt.clone(), { addInput }));
+
+      const result = await processPayjoinRequest(addressId, mockPsbt.toBase64(), 1);
+
+      expect(result).toEqual({
+        success: false,
+        error: PayjoinErrors.UNAVAILABLE,
+        errorMessage: 'Payjoin receiver proposals are unavailable until receiver input signing is implemented',
+      });
+      expect(result.proposalPsbt).toBeUndefined();
+      expect(clonePsbt).not.toHaveBeenCalled();
+      expect(addInput).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { faker } from '@faker-js/faker';
 
+import { InvalidInputError } from '../../../../src/errors/ApiError';
 import {
   mockPolicyRepo,
   policyId,
@@ -51,6 +52,28 @@ export function registerVaultPolicyUpdateDeleteContracts(): void {
           enforcement: 'invalid' as any,
         })
       ).rejects.toThrow('Invalid enforcement mode');
+    });
+
+    it('rejects updating an approval_required trigger to unknownAddressesOnly alone', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'approval_required',
+        sourceType: 'wallet',
+        walletId,
+      });
+
+      await expect(
+        vaultPolicyService.updatePolicy(policyId, userId, {
+          config: {
+            trigger: { unknownAddressesOnly: true },
+            requiredApprovals: 1,
+            quorumType: 'any_n',
+            allowSelfApproval: false,
+            expirationHours: 24,
+          },
+        })
+      ).rejects.toThrow(InvalidInputError);
+      expect(mockPolicyRepo.updatePolicy).not.toHaveBeenCalled();
     });
 
     it('rejects updating system policies', async () => {

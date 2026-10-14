@@ -1,6 +1,6 @@
-import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { QRSigningModal } from '../../../src/components/qr/QRSigningModal';
 
 vi.mock('lucide-react', () => ({
@@ -519,5 +519,136 @@ describe('QRSigningModal', () => {
     } finally {
       global.FileReader = OriginalFileReader;
     }
+  });
+
+  describe('rejected submissions', () => {
+    const decoderPsbts = new Map<unknown, string>();
+
+    // Each decoder decodes the PSBT chosen when it was created, mirroring bc-ur
+    // where a completed decoder can never be fed again.
+    function useDecoderSequence(psbts: string[]) {
+      let created = 0;
+      decoderPsbts.clear();
+      mockCreateDecoder.mockImplementation(() => {
+        const decoder = { id: created };
+        decoderPsbts.set(decoder, psbts[Math.min(created, psbts.length - 1)]);
+        created += 1;
+        return decoder as never;
+      });
+      mockGetDecodedPsbt.mockImplementation((decoder?: unknown) => decoderPsbts.get(decoder) ?? 'unknown');
+    }
+
+    afterEach(() => {
+      mockCreateDecoder.mockImplementation(() => ({ isComplete: () => true, isSuccess: () => true }));
+    });
+
+    it('starts a fresh decoder after a rejected submission so a corrected PSBT is decoded', async () => {
+      const user = userEvent.setup();
+      useDecoderSequence(['psbt-A', 'psbt-B']);
+      const onSignedPsbt = vi.fn().mockRejectedValueOnce(new Error('rejected A')).mockResolvedValue(undefined);
+      renderModal(vi.fn(), onSignedPsbt);
+
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(await screen.findByText('rejected A')).toBeInTheDocument();
+      expect(mockCreateDecoder).toHaveBeenCalledTimes(1);
+
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+      expect(mockCreateDecoder).toHaveBeenCalledTimes(2);
+      const secondDecoder = mockCreateDecoder.mock.results[1].value;
+      expect(mockFeedDecoderPart).toHaveBeenLastCalledWith(secondDecoder, 'ur:crypto-psbt/part');
+      expect(mockGetDecodedPsbt).toHaveBeenLastCalledWith(secondDecoder);
+      await waitFor(() => expect(onSignedPsbt.mock.calls).toEqual([['psbt-A'], ['psbt-B']]));
+    });
+
+    it('submits a completing frame delivered twice before re-render only once', async () => {
+      const user = userEvent.setup();
+      let resolveSubmit: () => void = () => {};
+      const onSignedPsbt = vi.fn(() => new Promise<void>((resolve) => { resolveSubmit = resolve; }));
+      renderModal(vi.fn(), onSignedPsbt);
+
+      await user.click(screen.getByText("I've Signed It"));
+      const emit = screen.getByRole('button', { name: /emit scan/i });
+      act(() => {
+        fireEvent.click(emit);
+        fireEvent.click(emit);
+      });
+
+      expect(onSignedPsbt).toHaveBeenCalledTimes(1);
+      await act(async () => resolveSubmit());
+    });
+
+    it('ignores a camera re-decode of the rejected PSBT, then decodes a corrected one', async () => {
+      const user = userEvent.setup();
+      useDecoderSequence(['psbt-A', 'psbt-A', 'psbt-B']);
+      const onSignedPsbt = vi.fn().mockRejectedValueOnce(new Error('rejected A')).mockResolvedValue(undefined);
+      renderModal(vi.fn(), onSignedPsbt);
+
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(await screen.findByText('rejected A')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(onSignedPsbt).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('rejected A')).toBeInTheDocument();
+      expect(mockCreateDecoder).toHaveBeenCalledTimes(2);
+
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(mockCreateDecoder).toHaveBeenCalledTimes(3);
+      await waitFor(() => expect(onSignedPsbt.mock.calls).toEqual([['psbt-A'], ['psbt-B']]));
+    });
+
+    it('ignores a raw base64 camera scan of the rejected PSBT and allows it after reopening', async () => {
+      const user = userEvent.setup();
+      const onSignedPsbt = vi.fn().mockRejectedValue(new Error('rejected raw'));
+      const { onClose } = renderModal(vi.fn(), onSignedPsbt);
+      mockIsUrFormat.mockReturnValue(false);
+      scannerScanPayload = [{ rawValue: 'cHNidA==' }];
+
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(await screen.findByText('rejected raw')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(onSignedPsbt).toHaveBeenCalledTimes(1);
+
+      await user.click(screen.getByRole('button', { name: /back to qr code/i }));
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(onSignedPsbt).toHaveBeenCalledTimes(2);
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('starts a fresh decoder after a decode failure', async () => {
+      const user = userEvent.setup();
+      renderModal();
+      mockGetDecodedPsbt.mockImplementationOnce(() => {
+        throw new Error('decode failed');
+      });
+
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(await screen.findByText('decode failed')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+      expect(mockCreateDecoder).toHaveBeenCalledTimes(2);
+    });
+
+    it('still accepts a file upload of the PSBT the camera path rejected', async () => {
+      const user = userEvent.setup();
+      const onSignedPsbt = vi.fn().mockRejectedValueOnce(new Error('rejected raw')).mockResolvedValue(undefined);
+      renderModal(vi.fn(), onSignedPsbt);
+      mockIsUrFormat.mockReturnValue(false);
+      scannerScanPayload = [{ rawValue: 'cHNidA==' }];
+
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(await screen.findByText('rejected raw')).toBeInTheDocument();
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await user.upload(input, new File(['cHNidA=='], 'signed.txt', { type: 'text/plain' }));
+
+      await waitFor(() => expect(onSignedPsbt).toHaveBeenCalledTimes(2));
+    });
   });
 });

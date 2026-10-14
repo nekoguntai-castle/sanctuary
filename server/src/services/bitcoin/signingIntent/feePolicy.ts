@@ -6,7 +6,7 @@ import {
   type SigningIntentFeePolicyV1,
 } from './types';
 import { parseMultisigScript } from '../psbtBuilder';
-import { estimateTransactionWeight, type TransactionWeightInput } from '../transactionWeight';
+import { estimateTransactionWeight, feeForRate, type TransactionWeightInput } from '../transactionWeight';
 
 // Maximum configured dust remainder (9,999 sats) plus the largest supported
 // omitted standard output (43 vbytes), plus the largest CompactSize count
@@ -132,7 +132,7 @@ export const buildSigningIntentFeePolicy = (
   const unsigned = bitcoin.Transaction.fromBuffer(
     Buffer.from(psbt.data.globalMap.unsignedTx.toBuffer()),
   );
-  const unsignedFloorFee = Math.ceil(requestedFeeRateSatsPerVbyte * unsigned.virtualSize());
+  const unsignedFloorFee = feeForRate(unsigned.virtualSize(), requestedFeeRateSatsPerVbyte);
   if (
     !Number.isSafeInteger(maximumDustAbsorptionSats) ||
     maximumDustAbsorptionSats < 0 ||
@@ -142,8 +142,8 @@ export const buildSigningIntentFeePolicy = (
       reason: 'fee_too_high',
     });
   }
-  const maximumSignedFee = Math.ceil(
-    requestedFeeRateSatsPerVbyte * estimatePsbtMaximumSignedVsize(psbt),
+  const maximumSignedFee = feeForRate(
+    estimatePsbtMaximumSignedVsize(psbt), requestedFeeRateSatsPerVbyte,
   );
   const maximumAuthorizedSurplus = maximumDustAbsorptionSats;
   const dustAbsorption = authenticatedFee - maximumSignedFee;

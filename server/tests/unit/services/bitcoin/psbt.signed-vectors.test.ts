@@ -231,7 +231,7 @@ describe('Generated Signed PSBT Vectors', () => {
       const psbt = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64, { network: NETWORK });
       psbt.data.inputs[0].partialSig = psbt.data.inputs[0].partialSig?.slice(0, 1);
 
-      expect(() => finalizeMultisigInput(psbt, 0)).toThrow('has 1 signatures but needs exactly 2');
+      expect(() => finalizeMultisigInput(psbt, 0)).toThrow('has 1 signatures but needs at least 2');
       expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
     });
   });

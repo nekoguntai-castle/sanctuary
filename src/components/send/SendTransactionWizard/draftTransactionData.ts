@@ -68,5 +68,6 @@ export function createDraftInitialTxData({
     utxos: draftTxData.selectedUtxoIds.map(id => findDraftUtxo(id, utxos)),
     outputs,
     inputPaths: draftTxData.inputPaths,
+    signingContext: draftTxData.signingContext,
   };
 }

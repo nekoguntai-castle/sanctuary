@@ -408,3 +408,14 @@ export const feeForRate = (vsize: number, satoshisPerVbyte: number): number => {
   }
   return Number(fee);
 };
+
+/**
+ * Return the largest 8-decimal fee rate that does not exceed `fee / vsize`.
+ * Unlike the binary float quotient, the result round-trips through
+ * `feeForRate(vsize, rate)` back to `fee` for every admitted rate.
+ */
+export const exactFeeRateNotAbove = (fee: number, vsize: number): number => {
+  requireSafeInteger(fee, 'fee');
+  requireSafeInteger(vsize, 'vsize', 1);
+  return Number((BigInt(fee) * 100_000_000n) / BigInt(vsize)) / 100_000_000;
+};

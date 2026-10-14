@@ -762,8 +762,8 @@
         {
           "id": "taproot-artifact-key-path-metadata",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 336,
-          "lineEnd": 360,
+          "lineStart": 338,
+          "lineEnd": 362,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
@@ -786,8 +786,8 @@
             {
               "id": "taproot-script-path-and-mixed-metadata-are-rejected",
               "location": {
-                "start": { "line": 336, "column": 7 },
-                "end": { "line": 337, "column": 88 }
+                "start": { "line": 338, "column": 7 },
+                "end": { "line": 339, "column": 88 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -799,8 +799,8 @@
             {
               "id": "taproot-internal-key-and-single-derivation-are-required",
               "location": {
-                "start": { "line": 343, "column": 7 },
-                "end": { "line": 343, "column": 57 }
+                "start": { "line": 345, "column": 7 },
+                "end": { "line": 345, "column": 57 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -812,8 +812,8 @@
             {
               "id": "taproot-artifact-leaf-hashes-stay-empty",
               "location": {
-                "start": { "line": 355, "column": 7 },
-                "end": { "line": 355, "column": 45 }
+                "start": { "line": 357, "column": 7 },
+                "end": { "line": 357, "column": 45 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -827,8 +827,8 @@
         {
           "id": "non-taproot-artifacts-reject-taproot-fields",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 321,
-          "lineEnd": 382,
+          "lineStart": 323,
+          "lineEnd": 384,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary rejects non-Taproot signed artifacts carrying tapBip32Derivation"
@@ -836,8 +836,8 @@
           "canaries": [{
             "id": "non-taproot-inputs-fail-closed-on-taproot-fields",
             "location": {
-              "start": { "line": 377, "column": 7 },
-              "end": { "line": 377, "column": 35 }
+              "start": { "line": 379, "column": 7 },
+              "end": { "line": 379, "column": 35 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -850,8 +850,8 @@
         {
           "id": "taproot-signature-family-and-schnorr-validation",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 367,
-          "lineEnd": 438,
+          "lineStart": 369,
+          "lineEnd": 440,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary accepts Core-backed signed vector: 'p2tr'"
@@ -860,8 +860,8 @@
             {
               "id": "p2tr-inputs-use-the-taproot-signature-family",
               "location": {
-                "start": { "line": 368, "column": 7 },
-                "end": { "line": 368, "column": 14 }
+                "start": { "line": 370, "column": 7 },
+                "end": { "line": 370, "column": 14 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -873,8 +873,8 @@
             {
               "id": "x-only-keys-select-schnorr-validation",
               "location": {
-                "start": { "line": 418, "column": 9 },
-                "end": { "line": 418, "column": 29 }
+                "start": { "line": 420, "column": 9 },
+                "end": { "line": 420, "column": 29 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -886,8 +886,8 @@
             {
               "id": "present-signatures-are-cryptographically-validated",
               "location": {
-                "start": { "line": 438, "column": 9 },
-                "end": { "line": 438, "column": 76 }
+                "start": { "line": 440, "column": 9 },
+                "end": { "line": 440, "column": 76 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -901,8 +901,8 @@
         {
           "id": "taproot-artifact-deterministic-finalization",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 446,
-          "lineEnd": 457,
+          "lineStart": 448,
+          "lineEnd": 459,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary validates, finalizes, and extracts an exactly preserved signed PSBT"
@@ -910,8 +910,8 @@
           "canaries": [{
             "id": "non-multisig-inputs-use-library-finalization",
             "location": {
-              "start": { "line": 453, "column": 14 },
-              "end": { "line": 455, "column": 8 }
+              "start": { "line": 455, "column": 14 },
+              "end": { "line": 457, "column": 8 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1299,8 +1299,8 @@
         {
           "id": "rbf-input-policy-drives-exact-weight",
           "productionFile": "src/services/bitcoin/advancedTx/rbf.ts",
-          "lineStart": 231,
-          "lineEnd": 241,
+          "lineStart": 232,
+          "lineEnd": 242,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
             "name": "Advanced Transaction Features RBF Transaction Creation should create an RBF replacement PSBT when a wallet change output exists"
@@ -1308,8 +1308,8 @@
           "canaries": [{
             "id": "rbf-weight-request-cannot-be-emptied",
             "location": {
-              "start": { "line": 231, "column": 54 },
-              "end": { "line": 241, "column": 4 }
+              "start": { "line": 232, "column": 54 },
+              "end": { "line": 242, "column": 4 }
             },
             "mutatorName": "ObjectLiteral",
             "replacement": "{}",
