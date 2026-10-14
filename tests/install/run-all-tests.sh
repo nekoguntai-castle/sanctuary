@@ -184,6 +184,9 @@ run_unit_suites() {
     if ! run_test_suite "Install Unit Suite Runner Isolation Tests" "$SCRIPT_DIR/unit/install-unit-suite-runner.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Host Shell Portability Unit Tests" "$SCRIPT_DIR/unit/host-shell-portability.test.sh"; then
+        suite_failed=true
+    fi
     if ! run_test_suite "Upgrade TOTP Step Guard Unit Tests" "$SCRIPT_DIR/unit/upgrade-totp-step-guard.test.sh"; then
         suite_failed=true
     fi

@@ -75,6 +75,28 @@ run_classifier() {
   )
 }
 
+# Drift guard: every root scripts/ci helper that test.yml or a composite action
+# executes must be classified, either as a full-scan trigger or by the dedicated
+# predicate of one of the narrower lanes. Adding a helper to test.yml without
+# classifying it fails here.
+assert_every_test_workflow_script_is_classified() {
+  local path
+  # shellcheck source=scripts/ci/classify-files-lib.sh
+  . "$ROOT_DIR/scripts/ci/classify-files-lib.sh"
+  while IFS= read -r path; do
+    [ -f "$ROOT_DIR/$path" ] || continue
+    if is_full_scan_trigger_file "$path" || is_frontend_file "$path" || is_test_suite_file "$path"; then
+      continue
+    fi
+    fail "test.yml executes $path but no classifier predicate covers it"
+  done < <(
+    {
+      grep -ho 'scripts/ci/[A-Za-z0-9_.-]*' "$ROOT_DIR/.github/workflows/test.yml"
+      find "$ROOT_DIR/.github/actions" -name action.yml -exec grep -ho 'scripts/ci/[A-Za-z0-9_.-]*' {} +
+    } | sort -u
+  )
+}
+
 main() {
   local temp_dir repo_dir output_file base_sha head_sha
 
@@ -687,6 +709,22 @@ EOF_DOC
   assert_exact_output "$output_file" "shared_changed" "true"
   assert_exact_output "$output_file" "backend_files" "server/src/services/sharedMixed.ts"
   assert_exact_output "$output_file" "gateway_files" "gateway/src/sharedMixed.ts"
+
+  # Lane-infrastructure helpers that test.yml executes wrap every lane, so a
+  # diff that touches only one of them must force a full scan.
+  local infra_script
+  for infra_script in backend-coverage-shard.sh prepare-integration-db.sh with-runner-lock.sh; do
+    base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    printf '#!/usr/bin/env bash\necho %s\n' "$infra_script" > "$repo_dir/scripts/ci/$infra_script"
+    git -C "$repo_dir" add "scripts/ci/$infra_script"
+    git -C "$repo_dir" commit -qm "lane infrastructure $infra_script"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+    assert_exact_output "$output_file" "full_scan" "true"
+  done
+
+  assert_every_test_workflow_script_is_classified
 
   echo "classify-test-changes regression checks passed"
 }

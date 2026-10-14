@@ -344,6 +344,21 @@ main() {
   # Files arrays under full_scan are empty (lane runs full suite)
   assert_eq "full_scan -> empty files" "[]" "$(json_query "$plan" lanes.backend_unit.files)"
 
+  # ---- A test.yml lane-infrastructure helper forces a full scan --------------
+  local infra_script
+  for infra_script in backend-coverage-shard.sh prepare-integration-db.sh with-runner-lock.sh; do
+    base="$head"
+    mkdir -p "$repo/scripts/ci"
+    printf '#!/usr/bin/env bash\necho %s\n' "$infra_script" > "$repo/scripts/ci/$infra_script"
+    git -C "$repo" add -A
+    git -C "$repo" commit -qm "lane infra $infra_script"
+    head="$(git -C "$repo" rev-parse HEAD)"
+
+    plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+    assert_eq "$infra_script -> full_scan" "true" "$(json_query "$plan" full_scan)"
+    assert_eq "$infra_script -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+  done
+
   # ---- A non-test workflow file does NOT force a full scan -----------------
   base="$head"
   printf 'name: Install Tests\non: push\njobs: {}\n' > "$repo/.github/workflows/install-test.yml"

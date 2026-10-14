@@ -118,6 +118,8 @@ curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/in
 
 This installs the **latest release** to `~/sanctuary` by default. Set `SANCTUARY_DIR` to customize the location.
 
+Sanctuary's host scripts need **bash 4.4 or newer**. On macOS, install it with `brew install bash` and pipe to it instead: `curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | "$(brew --prefix)/bin/bash"`.
+
 **Option 2: Clone first** (if you want to choose the directory)
 ```bash
 git clone https://github.com/nekoguntai-castle/sanctuary.git
@@ -505,6 +507,8 @@ For users who prefer not to use Docker Desktop:
 
 ### macOS Installation
 
+Sanctuary's host scripts need bash 4.4 or newer, and macOS ships bash 3.2. Install a current bash first with `brew install bash` and make sure it comes first on your `PATH`; the scripts exit with a clear message when bash is too old.
+
 #### Option 1: Docker Desktop
 
 1. **Download Docker Desktop**
@@ -602,7 +606,7 @@ For systems where you can't or don't want to run Docker:
 
 ### Environment Variables
 
-Create a `.env` file in the project root (or run `./scripts/setup.sh` to generate one automatically):
+Create a `.env` file in the project root (or run `./scripts/setup.sh` to generate one automatically). When setup runs again on an upgrade, it regenerates the keys it owns and keeps any other key you added in an `# OPERATOR SETTINGS` section (the last definition of a repeated key wins; multi-line quoted values are not preserved):
 
 ```bash
 # HTTPS port (default: 8443) - main application

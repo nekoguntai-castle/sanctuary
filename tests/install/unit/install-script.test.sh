@@ -234,17 +234,6 @@ INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 
-# Generate random secret
-generate_secret() {
-    if command -v openssl &> /dev/null; then
-        openssl rand -base64 32 | tr -d '=/+' | head -c 48
-    elif [ -f /dev/urandom ]; then
-        cat /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 48
-    else
-        echo "$(date +%s%N)$$" | sha256sum | head -c 48
-    fi
-}
-
 # Check docker
 check_docker() {
     if ! command -v docker &> /dev/null; then
@@ -295,6 +284,8 @@ get_latest_release() {
 }
 EOF
     source "$TEST_TMP_DIR/install_functions.sh"
+    # generate_secret is the real scripts/setup.sh function, not a copy.
+    eval "$(awk '/^generate_secret\(\) *\{/ { printing=1 } printing { print } printing && /^}$/ { exit }' "$SETUP_SCRIPT")"
 }
 
 # ============================================
@@ -485,7 +476,7 @@ test_install_script_is_executable() {
 
 test_install_script_has_shebang() {
     local first_line=$(head -1 "$INSTALL_SCRIPT")
-    assert_equals "#!/bin/bash" "$first_line" "install.sh should start with bash shebang"
+    assert_equals "#!/usr/bin/env bash" "$first_line" "install.sh should start with env bash shebang"
 }
 
 test_install_script_has_set_e() {
@@ -574,7 +565,7 @@ test_install_script_uses_docker_compose() {
 
 test_install_script_creates_env_file() {
     # Runtime env file creation is now in setup.sh (install.sh delegates to setup.sh)
-    if grep -q 'cat > "\$ENV_FILE"' "$SETUP_SCRIPT"; then
+    if grep -q 'cat > "\$tmp"' "$SETUP_SCRIPT" && grep -q 'cat "\$tmp" > "\$ENV_FILE"' "$SETUP_SCRIPT"; then
         return 0
     else
         echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should create the resolved runtime env file"

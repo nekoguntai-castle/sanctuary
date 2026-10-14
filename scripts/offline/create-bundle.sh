@@ -231,6 +231,29 @@ bundle_images() {
   fi
 }
 
+# Every Sanctuary Dockerfile stamps org.opencontainers.image.revision from the
+# build's source commit. --skip-build reuses whatever images are local, so a
+# stale image would otherwise ship inside a bundle signed for $TAG. Dev bundles
+# are not release artifacts and only warn.
+verify_sanctuary_image_revisions() {
+  local commit="$1" image rev message
+  while IFS= read -r image; do
+    case "$image" in
+      sanctuary-*) ;;
+      *) continue ;;
+    esac
+    rev="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" \
+      || offline_fail "image not available locally: $image"
+    [ "$rev" != "$commit" ] || continue
+    message="image $image was built from ${rev:-<unlabelled>}, not $TAG ($commit); rebuild or drop --skip-build"
+    if [ "$UNSIGNED_FOR_DEV" = "true" ]; then
+      echo "Warning: $message" >&2
+    else
+      offline_fail "$message"
+    fi
+  done < <(bundle_images)
+}
+
 pull_external_images() {
   local image
 
@@ -679,6 +702,7 @@ main() {
   trap cleanup_create_tmp EXIT
 
   build_sanctuary_images "$commit"
+  verify_sanctuary_image_revisions "$commit"
   pull_external_images
   save_images "$stage_dir"
   write_image_inventory "$stage_dir"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ============================================
 # Sanctuary Bitcoin Wallet - Install Script
 # ============================================
@@ -16,6 +16,10 @@
 # Offline bundle installation remains available without GitHub connectivity.
 #
 # ============================================
+
+# Requires bash 4.4+; macOS ships 3.2, so fail fast. Keep this the first
+# command at top level so it stays parse-safe on bash 3.2.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then echo "Sanctuary requires bash 4.4+ (found ${BASH_VERSION:-unknown}). On macOS: brew install bash, then re-run." >&2; exit 1; fi
 
 set -e
 
@@ -928,7 +932,8 @@ main() {
     fi
 
     # Run setup.sh
-    "$INSTALL_DIR/scripts/setup.sh" $SETUP_FLAGS
+    # Run through the interpreter running install.sh so a Homebrew bash carries over.
+    "${BASH:-bash}" "$INSTALL_DIR/scripts/setup.sh" $SETUP_FLAGS
 }
 
 # Run main function

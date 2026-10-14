@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ============================================
 # Sanctuary Bitcoin Wallet - Uninstall Script
 # ============================================

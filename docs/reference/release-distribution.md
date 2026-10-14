@@ -142,6 +142,12 @@ matching tag or Release object when reconciliation is needed.
    rm -rf "$STAGING"
    ```
 
+   `create-bundle.sh --skip-build` reuses the local `sanctuary-*` images, and a
+   signed bundle fails closed unless each image's
+   `org.opencontainers.image.revision` label equals the tag commit (a
+   `--unsigned-for-dev` bundle only warns). Rebuild any image that reports a
+   different or missing revision before assembling the bundle.
+
 9. Publish the stable Release objects:
 
    ```bash

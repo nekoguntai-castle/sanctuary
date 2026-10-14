@@ -29,8 +29,10 @@ for dir in "${DIRS[@]}"; do
     if [ ! -f "$pkg_dir/package-lock.json" ]; then
         continue
     fi
-    out=$(cd "$pkg_dir" && npm install --package-lock-only --no-audit --no-fund --dry-run 2>&1 || true)
+    status=0
+    out=$(cd "$pkg_dir" && npm install --package-lock-only --no-audit --no-fund --dry-run 2>&1) || status=$?
     matches=$(echo "$out" | grep -iE "$PATTERNS" || true)
+    recognised="$matches"
     if [ -n "$matches" ] && [ -f "$ALLOW_FILE" ]; then
         # filter allowlisted lines
         matches=$(echo "$matches" | grep -vEf <(grep -vE '^\s*(#|$)' "$ALLOW_FILE") || true)
@@ -40,12 +42,19 @@ for dir in "${DIRS[@]}"; do
         echo "$matches" | sed 's/^/  /' >&2
         echo "" >&2
         failures=$((failures + 1))
+    elif [ "$status" -ne 0 ] && [ -z "$recognised" ]; then
+        # npm exits non-zero on the peer warnings the allowlist accepts, so only a
+        # failure with no recognised peer output (registry 5xx, timeout, crash)
+        # means the resolver never produced a verdict. Fail closed.
+        echo "::error::npm resolver failed for $dir/package-lock.json (exit $status); peer resolution NOT verified" >&2
+        echo "$out" | tail -n 20 | sed 's/^/  /' >&2
+        failures=$((failures + 1))
     else
         echo "$dir/package-lock.json: peer resolution clean"
     fi
 done
 
 if [ "$failures" -gt 0 ]; then
-    echo "::error::$failures lockfile(s) have peer-resolution drift. Regenerate with 'rm package-lock.json && npm install' to restore the resolutions, or allowlist the warning in scripts/quality/lockfile-peer-resolution-allowlist.txt with a justification." >&2
+    echo "::error::$failures lockfile(s) have peer-resolution drift or could not be verified. Regenerate with 'rm package-lock.json && npm install' to restore the resolutions, or allowlist the warning in scripts/quality/lockfile-peer-resolution-allowlist.txt with a justification." >&2
     exit 1
 fi

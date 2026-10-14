@@ -7,8 +7,37 @@ const SYNC_POLL_MS = 3_000;
 
 const byName = (items, name) => items.find((item) => item.name === name);
 
+/**
+ * Demo-owned markers. A same-named entity that lacks them belongs to a real
+ * operator, so seed refuses it and reset leaves it alone. Users carry the
+ * manifest's `@demo.invalid` email; groups carry `purpose: 'demo'` (the
+ * description is free text an operator may edit, so it is not part of the marker).
+ */
+const isDemoUser = (user, spec) => user.username === spec.username && user.email === spec.email;
+const isDemoGroup = (group, spec) => group.name === spec.name && group.purpose === 'demo';
+
+/** Throws when a same-named entity exists without the demo marker. */
+function assertNoMarkerConflicts(items, specs, { key, isDemo, kind }) {
+  for (const spec of specs) {
+    const match = items.find((item) => item[key] === spec[key]);
+    if (match && !isDemo(match, spec)) {
+      throw new Error(`demo seed refused: existing ${kind} "${spec[key]}" is not a demo ${kind}; rename it or use a fresh instance`);
+    }
+  }
+}
+
+const USER_MARKER = { key: 'username', isDemo: isDemoUser, kind: 'user' };
+const GROUP_MARKER = { key: 'name', isDemo: isDemoGroup, kind: 'group' };
+
+/** Reads users and groups once and refuses any marker conflict before a write happens. */
+async function assertDemoMarkers(api, manifest) {
+  assertNoMarkerConflicts(await api.get('/admin/users'), manifest.users, USER_MARKER);
+  assertNoMarkerConflicts(await api.get('/admin/groups'), manifest.groups, GROUP_MARKER);
+}
+
 async function ensureUsers(api, manifest, log) {
   const existing = await api.get('/admin/users');
+  assertNoMarkerConflicts(existing, manifest.users, USER_MARKER);
   const ids = new Map(existing.map((u) => [u.username, u.id]));
   for (const user of manifest.users) {
     if (ids.has(user.username)) continue;
@@ -21,6 +50,7 @@ async function ensureUsers(api, manifest, log) {
 
 async function ensureGroups(api, manifest, userIds, log) {
   const existing = await api.get('/admin/groups');
+  assertNoMarkerConflicts(existing, manifest.groups, GROUP_MARKER);
   for (const group of manifest.groups) {
     if (byName(existing, group.name)) continue;
     await api.post('/admin/groups', {
@@ -159,6 +189,7 @@ async function ensureAgents(api, manifest, userId, walletIds, log) {
 }
 
 export async function seed(api, manifest, log) {
+  await assertDemoMarkers(api, manifest); // before the first write, so a refusal leaves nothing half-seeded
   await api.patch('/auth/me/preferences', manifest.demoUser.preferences);
   const userIds = await ensureUsers(api, manifest, log);
   await ensureGroups(api, manifest, userIds, log);
@@ -181,6 +212,18 @@ export async function status(api, log) {
   log(`${devices.length} device(s), ${wallets.length} wallet(s)`);
 }
 
+/** Manifest-named items that carry the demo marker; same-named unmarked items are logged and kept. */
+function demoOwned(items, specs, { key, isDemo, kind }, log) {
+  const owned = [];
+  for (const item of items) {
+    const spec = specs.find((candidate) => candidate[key] === item[key]);
+    if (!spec) continue;
+    if (isDemo(item, spec)) owned.push(item);
+    else log(`kept ${kind} ${item[key]}: not created by the demo (marker mismatch)`);
+  }
+  return owned;
+}
+
 async function deleteEach(items, remove, describe, log) {
   for (const item of items) {
     await remove(item);
@@ -191,8 +234,10 @@ async function deleteEach(items, remove, describe, log) {
 /**
  * Removes only what the manifest seeds: its agents, its feature flags (back to
  * their defaults), its wallets (by name, owned by the demo login), their devices
- * (by fingerprint), and its users and groups. Never the
- * stack, volumes, or anything else the account can see.
+ * (by fingerprint), and its users and groups. Users and groups are deleted only
+ * when they carry the demo marker (see isDemoUser/isDemoGroup); a same-named real
+ * entity is kept and logged. Never the stack, volumes, or anything else the
+ * account can see.
  */
 export async function reset(api, manifest, log, { keepDevices = false } = {}) {
   const agentNames = new Set((manifest.agents ?? []).map((a) => a.name));
@@ -216,11 +261,9 @@ export async function reset(api, manifest, log, { keepDevices = false } = {}) {
     await deleteEach(devices, (d) => api.delete(`/devices/${d.id}`), (d) => `device ${d.label}`, log);
   }
 
-  const groupNames = new Set(manifest.groups.map((g) => g.name));
-  const groups = (await api.get('/admin/groups')).filter((g) => groupNames.has(g.name));
+  const groups = demoOwned(await api.get('/admin/groups'), manifest.groups, GROUP_MARKER, log);
   await deleteEach(groups, (g) => api.delete(`/admin/groups/${g.id}`), (g) => `group ${g.name}`, log);
 
-  const usernames = new Set(manifest.users.map((u) => u.username));
-  const users = (await api.get('/admin/users')).filter((u) => usernames.has(u.username));
+  const users = demoOwned(await api.get('/admin/users'), manifest.users, USER_MARKER, log);
   await deleteEach(users, (u) => api.delete(`/admin/users/${u.id}`), (u) => `user ${u.username}`, log);
 }

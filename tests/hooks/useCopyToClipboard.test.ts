@@ -4,6 +4,7 @@
  * Tests for the clipboard hook that provides copy functionality with visual feedback.
  */
 
+import { StrictMode } from 'react';
 import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { useCopyToClipboard } from '../../src/hooks/useCopyToClipboard';
@@ -232,6 +233,69 @@ describe('useCopyToClipboard', () => {
 
       expect(result.current.isCopied('first text')).toBe(false);
       expect(result.current.isCopied('second text')).toBe(true);
+    });
+  });
+
+  describe('reset timer lifecycle', () => {
+    it('clears the pending reset timer on unmount', async () => {
+      mockCopyToClipboard.mockResolvedValue(true);
+      const { result, unmount } = renderHook(() => useCopyToClipboard());
+
+      await act(async () => {
+        await result.current.copy('text');
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('still shows copy feedback under StrictMode effect re-runs', async () => {
+      mockCopyToClipboard.mockResolvedValue(true);
+      const { result } = renderHook(() => useCopyToClipboard(), { wrapper: StrictMode });
+
+      await act(async () => {
+        await result.current.copy('strict');
+      });
+
+      expect(result.current.copiedText).toBe('strict');
+    });
+
+    it('does not arm a reset timer when the copy settles after unmount', async () => {
+      let settle: (value: boolean) => void = () => undefined;
+      mockCopyToClipboard.mockReturnValue(new Promise<boolean>((resolve) => { settle = resolve; }));
+      const { result, unmount } = renderHook(() => useCopyToClipboard());
+
+      let pending: Promise<boolean> = Promise.resolve(false);
+      act(() => {
+        pending = result.current.copy('late');
+      });
+      unmount();
+      settle(true);
+      await expect(pending).resolves.toBe(true);
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('restarts the reset delay when a newer copy replaces the old one', async () => {
+      mockCopyToClipboard.mockResolvedValue(true);
+      const { result } = renderHook(() => useCopyToClipboard(2000));
+
+      await act(async () => {
+        await result.current.copy('first');
+      });
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      await act(async () => {
+        await result.current.copy('second');
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(result.current.copiedText).toBe('second');
+      expect(vi.getTimerCount()).toBe(1);
     });
   });
 });

@@ -78,7 +78,18 @@ run_create_bundle() {
   local runtime="$TEST_TMP_DIR/registered-runtime"
   mkdir -p "$runtime"
   chmod 700 "$runtime"
+  # Fake Sanctuary images carry the tag commit as their revision label unless a
+  # test sets SANCTUARY_FAKE_IMAGE_REVISION itself (stale-revision cases).
+  local arg tag="" previous="" revision="${SANCTUARY_FAKE_IMAGE_REVISION-}"
+  for arg in "$@"; do
+    [ "$previous" != "--tag" ] || tag="$arg"
+    previous="$arg"
+  done
+  if [ -z "${SANCTUARY_FAKE_IMAGE_REVISION+x}" ] && [ -n "$tag" ]; then
+    revision="$(git -C "$(dirname "$script")/../.." rev-parse --verify "$tag^{commit}")"
+  fi
   SANCTUARY_CLEANUP_COORDINATED=1 \
+    SANCTUARY_FAKE_IMAGE_REVISION="$revision" \
     SANCTUARY_RUNTIME_DIR="$runtime" \
     SANCTUARY_OWNERSHIP_ROOT="$runtime/ownership" \
     "$script" "$@"
@@ -244,6 +255,7 @@ case "$1" in
         *) repo_digests='["example.invalid/test@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' ;;
       esac
       case "$*" in
+        *'image.revision'*) printf '%s\n' "${SANCTUARY_FAKE_IMAGE_REVISION:-}" ;;
         *'{{.Id}} {{.Os}} {{.Architecture}}'*) printf '%s %s %s\n' "$image_id" "$image_os" "$image_arch" ;;
         *'{{.Id}}'*) printf '%s\n' "$image_id" ;;
         *'{{.Os}}/{{.Architecture}}'*) printf '%s/%s\n' "$image_os" "$image_arch" ;;
@@ -908,6 +920,69 @@ test_create_bundle_signs_outer_archive() {
   return "$failures"
 }
 
+test_create_bundle_skip_build_rejects_stale_revision() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag release_repo private_key public_key output tag_commit status failures=0
+  tag="v9.9.9"
+  release_repo="$TEST_TMP_DIR/release-repo"
+  mkdir -p "$release_repo/scripts/offline" "$release_repo/scripts/ci"
+  cp "$PROJECT_ROOT/package.json" "$release_repo/package.json"
+  cp "$PROJECT_ROOT/scripts/create-upgrade-backup.sh" "$release_repo/scripts/create-upgrade-backup.sh"
+  cp "$PROJECT_ROOT/scripts/offline/create-bundle.sh" \
+    "$PROJECT_ROOT/scripts/offline/apply-bundle.sh" \
+    "$PROJECT_ROOT/scripts/offline/bundle-common.sh" \
+    "$release_repo/scripts/offline/"
+  cp "$PROJECT_ROOT/scripts/ci/create-registered-staging.sh" \
+    "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
+    "$PROJECT_ROOT/scripts/ci/provider-context.sh" \
+    "$PROJECT_ROOT/scripts/ci/provider-context.mjs" \
+    "$release_repo/scripts/ci/"
+  cp -R "$PROJECT_ROOT/scripts/ownership" "$release_repo/scripts/ownership"
+  cp -R "$PROJECT_ROOT/scripts/lib" "$release_repo/scripts/lib"
+  git -C "$release_repo" init -q
+  git -C "$release_repo" config user.name "Sanctuary Tests"
+  git -C "$release_repo" config user.email "tests@sanctuary.local"
+  git -C "$release_repo" add .
+  git -C "$release_repo" commit -qm "test release checkout"
+  git -C "$release_repo" tag "$tag"
+  tag_commit="$(git -C "$release_repo" rev-parse "$tag^{commit}")"
+
+  private_key="$TEST_TMP_DIR/private.pem"
+  public_key="$TEST_TMP_DIR/public.pem"
+  openssl genrsa -out "$private_key" 2048 >/dev/null 2>&1 || failures=1
+  openssl rsa -in "$private_key" -pubout -out "$public_key" >/dev/null 2>&1 || failures=1
+
+  if [ "$failures" -eq 0 ]; then
+    # A stale image (built from another commit) must stop a signed bundle.
+    output="$TEST_TMP_DIR/stale.tar.gz"
+    status=0
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_IMAGE_REVISION="0000000000000000000000000000000000000000" \
+      run_create_bundle "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" --skip-build \
+        --signing-key "$private_key" --public-key "$public_key" >"$TEST_TMP_DIR/stale.out" 2>&1 \
+      || status=$?
+    [ "$status" -ne 0 ] || failures=1
+    grep -Fq "not $tag" "$TEST_TMP_DIR/stale.out" || failures=1
+    [ ! -e "${output}.sig" ] || failures=1
+
+    # Images labelled with the tag commit are accepted.
+    output="$TEST_TMP_DIR/fresh.tar.gz"
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_IMAGE_REVISION="$tag_commit" \
+      run_create_bundle "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" --skip-build \
+        --signing-key "$private_key" --public-key "$public_key" >/dev/null \
+      || failures=1
+    [ -s "${output}.sig" ] || failures=1
+  fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
 test_fresh_bootstrap_ignores_unrelated_database_volume() {
   TEST_TMP_DIR="$(mktemp -d)"
   setup_fake_docker
@@ -1094,6 +1169,7 @@ main() {
   run_test "create preserves tag failure over ambiguous alias verification" test_create_tag_failure_precedes_ambiguous_alias_verification
   run_test "full bundle builds and saves local Grafana migration image" test_create_full_bundle_builds_and_saves_migration_without_pull
   run_test "create bundle signs outer archive" test_create_bundle_signs_outer_archive
+  run_test "create bundle --skip-build rejects a stale image revision" test_create_bundle_skip_build_rejects_stale_revision
   run_test "fresh bootstrap ignores unrelated database volume" test_fresh_bootstrap_ignores_unrelated_database_volume
   run_test "upgrade bootstrap resolves current and legacy project names" test_upgrade_bootstrap_resolves_current_and_legacy_project_names
   run_test "tar links are rejected" test_tar_links_are_rejected

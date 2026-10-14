@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Sanctuary Setup Script
 #
@@ -40,6 +40,10 @@
 #     HTTPS_PORT, HTTP_PORT, GATEWAY_PORT (default: 8443, 8080, 4000)
 #     ENABLE_MONITORING, ENABLE_TOR, ENABLE_MCP (yes/no)
 #
+
+# Requires bash 4.4+; macOS ships 3.2, so fail fast. Keep this the first
+# command at top level so it stays parse-safe on bash 3.2.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then echo "Sanctuary requires bash 4.4+ (found ${BASH_VERSION:-unknown}). On macOS: brew install bash, then re-run." >&2; exit 1; fi
 
 set -e
 
@@ -352,24 +356,55 @@ run_prerequisite_checks() {
 # ============================================
 # Secret Generation Functions
 # ============================================
+# Both generators print the value without a trailing newline and return 1 when
+# no usable CSPRNG is available. They never derive a secret from the clock.
+# The script has no pipefail, so every random source is captured on its own
+# and length-checked instead of trusting a pipeline's status.
 generate_secret() {
+    local out=""
     if command -v openssl &> /dev/null; then
-        openssl rand -base64 32 | tr -d '=/+' | head -c 48
-    elif [ -f /dev/urandom ]; then
-        cat /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 48
-    else
-        echo "$(date +%s%N)$$" | sha256sum | head -c 48
+        out=$(openssl rand -base64 32 2>/dev/null) || out=""
+        out=$(printf '%s' "$out" | tr -d '=/+\n' | head -c 48)
+        if [ "${#out}" -ge 32 ]; then
+            printf '%s' "$out"
+            return 0
+        fi
     fi
+    if [ -c /dev/urandom ] && [ -r /dev/urandom ]; then
+        out=$(od -An -N24 -tx1 /dev/urandom) || return 1
+        out=${out//[[:space:]]/}
+        if [ "${#out}" -eq 48 ]; then
+            printf '%s' "$out"
+            return 0
+        fi
+        return 1
+    fi
+    echo "ERROR: no CSPRNG available (install openssl or provide /dev/urandom)" >&2
+    return 1
 }
 
 generate_password() {
+    local out=""
     if command -v openssl &> /dev/null; then
-        openssl rand -base64 16 | tr -d '=/+' | head -c 24
-    elif [ -f /dev/urandom ]; then
-        cat /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 24
-    else
-        echo "$(date +%s%N)$$" | sha256sum | head -c 24
+        out=$(openssl rand -base64 16 2>/dev/null) || out=""
+        # base64 of 16 bytes is 22 characters; stripping '=/+' leaves about 21.
+        out=$(printf '%s' "$out" | tr -d '=/+\n' | head -c 24)
+        if [ "${#out}" -ge 16 ]; then
+            printf '%s' "$out"
+            return 0
+        fi
     fi
+    if [ -c /dev/urandom ] && [ -r /dev/urandom ]; then
+        out=$(od -An -N16 -tx1 /dev/urandom) || return 1
+        out=${out//[[:space:]]/}
+        if [ "${#out}" -eq 32 ]; then
+            printf '%s' "$out"
+            return 0
+        fi
+        return 1
+    fi
+    echo "ERROR: no CSPRNG available (install openssl or provide /dev/urandom)" >&2
+    return 1
 }
 
 get_compose_project_name() {
@@ -711,7 +746,7 @@ load_or_generate_secrets() {
     if [ -n "$JWT_SECRET" ]; then
         echo "  - JWT_SECRET: using existing"
     else
-        JWT_SECRET=$(generate_secret)
+        JWT_SECRET=$(generate_secret) || exit 1
         echo "  - JWT_SECRET: generated"
     fi
 
@@ -719,7 +754,7 @@ load_or_generate_secrets() {
         had_existing_encryption_key=true
         echo "  - ENCRYPTION_KEY: using existing"
     else
-        ENCRYPTION_KEY=$(generate_secret)
+        ENCRYPTION_KEY=$(generate_secret) || exit 1
         echo "  - ENCRYPTION_KEY: generated"
     fi
 
@@ -745,7 +780,7 @@ load_or_generate_secrets() {
     if [ -n "$GATEWAY_SECRET" ]; then
         echo "  - GATEWAY_SECRET: using existing"
     else
-        GATEWAY_SECRET=$(generate_secret)
+        GATEWAY_SECRET=$(generate_secret) || exit 1
         echo "  - GATEWAY_SECRET: generated"
     fi
 
@@ -759,14 +794,14 @@ load_or_generate_secrets() {
     if [ -n "$POSTGRES_PASSWORD" ]; then
         echo "  - POSTGRES_PASSWORD: using existing"
     else
-        POSTGRES_PASSWORD=$(generate_password)
+        POSTGRES_PASSWORD=$(generate_password) || exit 1
         echo "  - POSTGRES_PASSWORD: generated"
     fi
 
     if [ -n "$GRAFANA_PASSWORD" ]; then
         echo "  - GRAFANA_PASSWORD: using existing"
     else
-        GRAFANA_PASSWORD=$(generate_password)
+        GRAFANA_PASSWORD=$(generate_password) || exit 1
         echo "  - GRAFANA_PASSWORD: generated"
     fi
 
@@ -780,7 +815,7 @@ load_or_generate_secrets() {
     if [ -n "$REDIS_PASSWORD" ]; then
         echo "  - REDIS_PASSWORD: using existing"
     else
-        REDIS_PASSWORD=$(generate_password)
+        REDIS_PASSWORD=$(generate_password) || exit 1
         echo "  - REDIS_PASSWORD: generated"
     fi
 
@@ -802,7 +837,12 @@ write_env_file() {
         chmod 700 "$env_dir" 2>/dev/null || true
     fi
 
-    cat > "$ENV_FILE" << EOF
+    # Build the new file next to the target (mode 600 from the first byte, so
+    # secrets are never briefly world-readable), then copy it into place. No EXIT
+    # trap here: setup.sh already owns one for the deployment lock, and a second
+    # trap would replace it, so failures clean up inline instead.
+    local tmp="$ENV_FILE.tmp.$$"
+    ( umask 077; cat > "$tmp" << EOF
 # Sanctuary Bitcoin Wallet - Environment Configuration
 # Generated by setup.sh on $(date)
 #
@@ -831,7 +871,7 @@ HTTP_PORT=$http_port
 GATEWAY_PORT=$gateway_port
 
 # Gateway TLS - enabled by default for secure mobile connections
-GATEWAY_TLS_ENABLED=true
+GATEWAY_TLS_ENABLED=${GATEWAY_TLS_ENABLED:-true}
 
 # ============================================
 # OPTIONAL FEATURES
@@ -875,7 +915,66 @@ BITCOIN_NETWORK=${BITCOIN_NETWORK:-mainnet}
 # Options: debug, info, warn, error
 LOG_LEVEL=${LOG_LEVEL:-info}
 EOF
+    ) || { rm -f "$tmp"; return 1; }
 
+    # Keep operator-added keys the template does not own (PAYJOIN_PUBLIC_URL,
+    # RATE_LIMIT_*, MCP_*, ...). Template keys stay authoritative. A key defined
+    # more than once keeps its last definition, `export ` prefixes are ignored
+    # when comparing keys, and a multi-line quoted value is unsupported: its
+    # first line is skipped with a warning.
+    if [ -f "$ENV_FILE" ]; then
+        local operator_lines
+        operator_lines=$(awk '
+            FNR == NR {
+                if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+                    k = $0; sub(/=.*/, "", k); owned[k] = 1
+                }
+                next
+            }
+            /^(export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/ {
+                k = $0; sub(/^export[ \t]+/, "", k); sub(/=.*/, "", k)
+                if (k in owned) next
+                v = $0; sub(/^[^=]*=/, "", v)
+                q = substr(v, 1, 1)
+                if (q == "\"" || q == "\047") {
+                    rest = substr(v, 2)
+                    if (q == "\"") gsub(/\\./, "", rest)
+                    if (index(rest, q) == 0) {
+                        print "WARNING: not preserving " k ": multi-line values are unsupported" > "/dev/stderr"
+                        next
+                    }
+                }
+                last[k] = FNR; text[FNR] = $0; key[FNR] = k
+            }
+            END {
+                for (i = 1; i <= FNR; i++) {
+                    if (i in text && last[key[i]] == i) {
+                        if (!started) { print "# OPERATOR SETTINGS (preserved by setup.sh across upgrades)"; started = 1 }
+                        print text[i]
+                    }
+                }
+            }
+        ' "$tmp" "$ENV_FILE") || { rm -f "$tmp"; return 1; }
+        if [ -n "$operator_lines" ]; then
+            printf '\n%s\n' "$operator_lines" >> "$tmp" || { rm -f "$tmp"; return 1; }
+        fi
+    fi
+
+    # Copy into place instead of renaming: the deployment definition records the
+    # env file's device:inode, and a rename would invalidate a prepared revision
+    # that a re-run of setup resumes. The copy truncates the target first, so keep
+    # a mode-preserving backup and restore it if the copy fails half-way.
+    local bak=""
+    if [ -f "$ENV_FILE" ]; then
+        bak="$ENV_FILE.bak.$$"
+        ( umask 077; cp -p "$ENV_FILE" "$bak" ) || { rm -f "$tmp" "$bak"; return 1; }
+    fi
+    if ! ( umask 077; cat "$tmp" > "$ENV_FILE" ); then
+        if [ -n "$bak" ]; then ( umask 077; cat "$bak" > "$ENV_FILE" ) || true; fi
+        rm -f "$tmp" "$bak"
+        return 1
+    fi
+    rm -f "$tmp" "$bak"
     chmod 600 "$ENV_FILE" 2>/dev/null || true
 
     echo -e "${GREEN}✓${NC} Configuration saved to $ENV_FILE"

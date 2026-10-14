@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ============================================
 # Sanctuary Bitcoin Wallet - Start Script
 # ============================================
@@ -14,6 +14,10 @@
 #   ./start.sh --stop           # Stop all services
 #   ./start.sh --logs           # View logs
 # ============================================
+
+# Requires bash 4.4+; macOS ships 3.2, so fail fast. Keep this the first
+# command at top level so it stays parse-safe on bash 3.2.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then echo "Sanctuary requires bash 4.4+ (found ${BASH_VERSION:-unknown}). On macOS: brew install bash, then re-run." >&2; exit 1; fi
 
 set -e
 
@@ -81,7 +85,21 @@ persist_runtime_env_value() {
     chmod 600 "$ENV_FILE" 2>/dev/null || true
 
     if grep -q "^${key}=" "$ENV_FILE"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+        # Key and value travel through the environment (awk -v would interpret
+        # backslashes), and no GNU-only `sed -i` is needed.
+        local tmp="$ENV_FILE.tmp.$$"
+        (umask 077; K="$key" V="$value" awk 'BEGIN { FS = OFS = "=" } $1 == ENVIRON["K"] { print ENVIRON["K"] "=" ENVIRON["V"]; next } { print }' "$ENV_FILE" > "$tmp") \
+            || { rm -f "$tmp"; return 1; }
+        # Copied in place, not renamed (see write_env_file in scripts/setup.sh);
+        # the backup restores the file if the truncating copy fails half-way.
+        local bak="$ENV_FILE.bak.$$"
+        (umask 077; cp -p "$ENV_FILE" "$bak") || { rm -f "$tmp" "$bak"; return 1; }
+        if ! (umask 077; cat "$tmp" > "$ENV_FILE"); then
+            (umask 077; cat "$bak" > "$ENV_FILE") || true
+            rm -f "$tmp" "$bak"
+            return 1
+        fi
+        rm -f "$tmp" "$bak"
     else
         printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
     fi

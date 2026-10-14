@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Shared producer-side ownership labels and signed external registration hooks.
 
+# Requires bash 4.4+; macOS ships 3.2, so fail fast. Keep this the first
+# command at top level so it stays parse-safe on bash 3.2. It matters when this file is sourced directly.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then echo "Sanctuary requires bash 4.4+ (found ${BASH_VERSION:-unknown}). On macOS: brew install bash, then re-run." >&2; exit 1; fi
+
 ownership_source_dir="${BASH_SOURCE[0]%/*}"
 [ "$ownership_source_dir" != "${BASH_SOURCE[0]}" ] || ownership_source_dir=.
 SANCTUARY_OWNERSHIP_TOOL_DIR="${SANCTUARY_OWNERSHIP_TOOL_DIR:-$(cd "$ownership_source_dir" && pwd)}"

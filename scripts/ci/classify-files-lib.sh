@@ -205,6 +205,67 @@ is_docs_only_file() {
   return 1
 }
 
+# Root scripts/ci helpers that test.yml (or a composite action) executes, plus
+# the scripts those helpers call or source. They wrap every lane, so the
+# narrowest safe answer to "this file changed" is a full scan; a per-lane map
+# would drift. Helpers with a dedicated, narrower predicate stay out of this
+# list and keep that classification (checked first, below):
+# backend-integration-groups.sh and browser-e2e-groups.sh (is_test_suite_file),
+# frontend-coverage-*, setup-verifier-test-dependencies.sh and
+# verify-jade-junit.mjs (is_frontend_file), and classify-quality-scope.sh
+# (quality lane only).
+is_test_lane_infrastructure_file() {
+  case "$1" in
+    scripts/ci/backend-integration-groups.sh|scripts/ci/browser-e2e-groups.sh|scripts/ci/frontend-coverage-*|scripts/ci/setup-verifier-test-dependencies.sh|scripts/ci/verify-jade-junit.mjs|scripts/ci/classify-quality-scope.sh)
+      return 1
+      ;;
+    scripts/ci/aggregate-runner-locks.sh|\
+    scripts/ci/backend-coverage-merge.sh|\
+    scripts/ci/backend-coverage-shard.sh|\
+    scripts/ci/bootstrap-node.sh|\
+    scripts/ci/check-actions-cache-service.sh|\
+    scripts/ci/check-critical-mutation-config.mjs|\
+    scripts/ci/check-github-action-runtimes.mjs|\
+    scripts/ci/check-integration-db.mjs|\
+    scripts/ci/check-provider-leaks.sh|\
+    scripts/ci/check-redis-service.mjs|\
+    scripts/ci/classify-files-lib.sh|\
+    scripts/ci/classify-integration-failure.sh|\
+    scripts/ci/classify-test-changes.sh|\
+    scripts/ci/cleanup-ci-callsite.sh|\
+    scripts/ci/create-registered-staging.sh|\
+    scripts/ci/ensure-go.sh|\
+    scripts/ci/ensure-node.sh|\
+    scripts/ci/ensure-python.sh|\
+    scripts/ci/forward-live-annotations.mjs|\
+    scripts/ci/install-playwright-chromium.sh|\
+    scripts/ci/integration-db-guard.mjs|\
+    scripts/ci/prepare-integration-db.sh|\
+    scripts/ci/provider-context.mjs|\
+    scripts/ci/provider-context.sh|\
+    scripts/ci/redactor.sh|\
+    scripts/ci/registered-collector-process.sh|\
+    scripts/ci/registered-start-gate.mjs|\
+    scripts/ci/related-test-args.sh|\
+    scripts/ci/resolve-postgres-service.sh|\
+    scripts/ci/resolve-redis-service.sh|\
+    scripts/ci/retry-command.sh|\
+    scripts/ci/retry-playwright-infrastructure-failure.sh|\
+    scripts/ci/retry-vitest-infrastructure-failure.sh|\
+    scripts/ci/run-browser-e2e-subject.sh|\
+    scripts/ci/run-in-isolated-workspace.sh|\
+    scripts/ci/run-with-log.sh|\
+    scripts/ci/setup-server-dependencies.sh|\
+    scripts/ci/time-command.sh|\
+    scripts/ci/with-runner-lock.sh|\
+    scripts/ci/write-diagnostic-summary.sh|\
+    scripts/ci/write-empty-diagnostic-breadcrumb.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 # Anything that touches dependency manifests, root configs, or the workflow
 # definitions that shape the test lane forces a full scan, because the change
 # blast-radius can't be inferred from directory placement alone.
@@ -233,5 +294,5 @@ is_full_scan_trigger_file() {
       return 0
       ;;
   esac
-  return 1
+  is_test_lane_infrastructure_file "$1"
 }

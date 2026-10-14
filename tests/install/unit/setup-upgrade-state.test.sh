@@ -138,9 +138,122 @@ backup_reminder_contract() (
     [[ "$output" == *ENCRYPTION_KEY* && "$output" == *ENCRYPTION_SALT* ]] \
         || fail 'backup reminder no longer names the keys to back up'
 )
+# Secret generation must come from a CSPRNG, never the clock, and must fail
+# hard (not print a short or empty secret) when its source breaks. The sandbox
+# PATH holds only od/tr/head/cat plus a constant-time `date`, so openssl is
+# absent and any timestamp-derived fallback would repeat.
+secret_sandbox() {
+    local tools="$1" tool
+    SANDBOX_BIN="$(mktemp -d "$ROOT/.tmp/setup-secret.XXXXXX")"
+    for tool in $tools; do
+        ln -s "$(command -v "$tool")" "$SANDBOX_BIN/$tool"
+    done
+    printf '#!/bin/sh\necho 1700000000000000000\n' > "$SANDBOX_BIN/date"
+    chmod +x "$SANDBOX_BIN/date"
+}
+secret_fallback_contract() (
+    secret_sandbox 'od tr head cat'
+    eval "$(extract generate_secret)"
+    eval "$(extract generate_password)"
+    local first second pw
+    first="$(PATH="$SANDBOX_BIN" generate_secret)" || fail 'generate_secret failed without openssl'
+    second="$(PATH="$SANDBOX_BIN" generate_secret)" || fail 'generate_secret failed without openssl'
+    [[ "$first" != "$second" ]] || fail 'fallback secrets repeat (timestamp-derived)'
+    [[ "$first" =~ ^[A-Za-z0-9]{32,}$ ]] || fail "fallback secret is not >=32 alphanumerics: $first"
+    pw="$(PATH="$SANDBOX_BIN" generate_password)" || fail 'generate_password failed without openssl'
+    [[ "$pw" =~ ^[A-Za-z0-9]{16,}$ ]] || fail "fallback password is not >=16 alphanumerics: $pw"
+)
+secret_hard_fail_contract() (
+    secret_sandbox 'tr head cat'
+    printf '#!/bin/sh\nexit 1\n' > "$SANDBOX_BIN/od"
+    chmod +x "$SANDBOX_BIN/od"
+    eval "$(extract generate_secret)"
+    local out status=0
+    out="$(PATH="$SANDBOX_BIN" generate_secret 2>/dev/null)" || status=$?
+    [[ "$status" != 0 ]] || fail 'generate_secret succeeded with a failing CSPRNG read'
+    [[ -z "$out" ]] || fail 'generate_secret printed a value despite failing'
+)
+secret_openssl_contract() (
+    secret_sandbox 'od tr head cat'
+    printf '#!/bin/sh\necho "Ab1=/+Cd2Ef3Gh4Ij5Kl6M=="\n' > "$SANDBOX_BIN/openssl"
+    chmod +x "$SANDBOX_BIN/openssl"
+    eval "$(extract generate_password)"
+    local pw
+    pw="$(PATH="$SANDBOX_BIN" generate_password)" || fail 'generate_password rejected openssl output'
+    [[ "$pw" == Ab1Cd2Ef3Gh4Ij5Kl6M ]] || fail "unexpected openssl-derived password: $pw"
+    # A broken openssl falls through to /dev/urandom instead of printing nothing.
+    printf '#!/bin/sh\nexit 1\n' > "$SANDBOX_BIN/openssl"
+    pw="$(PATH="$SANDBOX_BIN" generate_password)" || fail 'generate_password did not fall through from broken openssl'
+    [[ "$pw" =~ ^[A-Za-z0-9]{16,}$ ]] || fail "fall-through password invalid: $pw"
+)
+# An upgrade rewrites the env file from the template; keys the template does
+# not own (PAYJOIN_PUBLIC_URL, RATE_LIMIT_*, ...) must survive exactly once.
+env_file_preservation_contract() (
+    local fixture count
+    fixture="$(mktemp -d "$ROOT/.tmp/setup-envfile.XXXXXX")"
+    ENV_FILE="$fixture/sanctuary.env"
+    PROJECT_DIR="$fixture"
+    LEGACY_LOCAL_ENV_FILE="$fixture/absent"
+    OPT_OFFLINE=false
+    JWT_SECRET=j ENCRYPTION_KEY=e ENCRYPTION_SALT=s GATEWAY_SECRET=g
+    WORKER_DIAGNOSTICS_SECRET=w POSTGRES_PASSWORD=p GRAFANA_PASSWORD=gr
+    LLM_EGRESS_PROXY_SECRET=l REDIS_PASSWORD=r
+    SANCTUARY_PROJECT=proj SANCTUARY_DEPLOYMENT_ID=dep SANCTUARY_OWNER_ID=own
+    SANCTUARY_RELEASE=rel SANCTUARY_COMMIT=com SANCTUARY_SOURCE_COMMIT=src
+    SANCTUARY_IMAGE_LOCK_SHA256=lock SANCTUARY_VERSION=v1 SANCTUARY_BUILD_ID=b
+    GATEWAY_TLS_ENABLED=false
+    cat > "$ENV_FILE" <<ENV
+JWT_SECRET=stale-template-value
+PAYJOIN_PUBLIC_URL=http://x.onion
+export RATE_LIMIT_MAX=500
+GATEWAY_TLS_ENABLED=false
+MCP_PORT=1
+MCP_PORT=2
+export JWT_SECRET=stale-exported
+APNS_KEY="line1
+line2"
+ENV
+    eval "$(extract write_env_file)"
+    local exit_trap_before exit_trap_after
+    exit_trap_before="$(trap -p EXIT)"
+    write_env_file >/dev/null 2>&1 || fail 'write_env_file failed'
+    write_env_file >/dev/null 2>&1 || fail 'second write_env_file failed'
+    exit_trap_after="$(trap -p EXIT)"
+    [[ "$exit_trap_before" == "$exit_trap_after" ]] || fail 'write_env_file replaced the EXIT trap'
+    count() { grep -c -- "$1" "$ENV_FILE" || true; }
+    [[ "$(count '^PAYJOIN_PUBLIC_URL=http://x.onion$')" == 1 ]] || fail 'PAYJOIN_PUBLIC_URL not preserved exactly once'
+    [[ "$(count '^export RATE_LIMIT_MAX=500$')" == 1 ]] || fail 'export RATE_LIMIT_MAX not preserved exactly once'
+    [[ "$(count '^MCP_PORT=2$')" == 1 && "$(count '^MCP_PORT=1$')" == 0 ]] || fail 'last duplicate must win'
+    [[ "$(count '^APNS_KEY=')" == 0 ]] || fail 'multi-line value must not be preserved'
+    [[ "$(count '^GATEWAY_TLS_ENABLED=false$')" == 1 ]] || fail 'operator GATEWAY_TLS_ENABLED=false lost'
+    [[ "$(count '^JWT_SECRET=j$')" == 1 && "$(count 'JWT_SECRET=')" == 1 ]] || fail 'template key must stay authoritative once'
+    [[ "$(count 'OPERATOR SETTINGS')" == 1 ]] || fail 'operator section header duplicated'
+    [[ "$(stat -c %a "$ENV_FILE")" == 600 ]] || fail 'env file mode is not 600'
+    [[ -z "$(ls "$fixture" | grep -F .tmp. || true)" ]] || fail 'temp file left behind'
+
+    # A copy that dies half-way must not leave a truncated secrets file behind.
+    local before status=0
+    before="$(cat "$ENV_FILE")"
+    cat() {
+        local arg
+        for arg in "$@"; do
+            case "$arg" in
+                *.tmp.*) command cat "$arg" | head -n 2; return 1 ;;
+            esac
+        done
+        command cat "$@"
+    }
+    write_env_file >/dev/null 2>&1 || status=$?
+    unset -f cat
+    [[ "$status" != 0 ]] || fail 'write_env_file ignored a failed copy'
+    [[ "$(cat "$ENV_FILE")" == "$before" ]] || fail 'failed copy left a truncated env file'
+    [[ "$(stat -c %a "$ENV_FILE")" == 600 ]] || fail 'env file mode is not 600 after failed copy'
+    [[ -z "$(ls -A "$fixture" | grep -E '\.(tmp|bak)\.' || true)" ]] || fail 'temp/backup file left after failed copy'
+    [[ -z "$(ls -A "$fixture" | grep -E '\.bak\.' || true)" ]] || fail 'backup left behind'
+)
 mkdir -p "$ROOT/.tmp"
 failures=0
-for contract in 'mode_contract false offline online ""' 'mode_contract false online online ""' 'mode_contract true online offline v0.8.74-rc2' 'mode_contract true offline offline v0.8.74-rc2' 'startup_contract true 42' 'startup_contract false 42' 'startup_contract true 0' 'startup_contract true 42 true' 'startup_contract false 42 true' 'health_contract true' 'health_contract false' 'health_contract missing' 'health_contract unhealthy' 'health_contract alternating' 'backup_reminder_contract'; do
+for contract in 'mode_contract false offline online ""' 'mode_contract false online online ""' 'mode_contract true online offline v0.8.74-rc2' 'mode_contract true offline offline v0.8.74-rc2' 'startup_contract true 42' 'startup_contract false 42' 'startup_contract true 0' 'startup_contract true 42 true' 'startup_contract false 42 true' 'health_contract true' 'health_contract false' 'health_contract missing' 'health_contract unhealthy' 'health_contract alternating' 'backup_reminder_contract' 'secret_fallback_contract' 'secret_hard_fail_contract' 'secret_openssl_contract' 'env_file_preservation_contract'; do
     if ( eval "$contract" ); then echo "PASS: $contract"; else failures=$((failures + 1)); fi
 done
 [[ "$failures" == 0 ]]

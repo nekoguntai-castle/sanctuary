@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Reconcile a running Sanctuary Postgres role password with the runtime env.
 # This validates the app-relevant TCP path through the Compose service name,

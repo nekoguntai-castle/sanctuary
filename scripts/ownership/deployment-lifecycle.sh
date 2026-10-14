@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Shell controller bridge for immutable deployment generations.
 
+# Requires bash 4.4+; macOS ships 3.2, so fail fast. Keep this the first
+# command at top level so it stays parse-safe on bash 3.2. It matters when this file is sourced directly.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then echo "Sanctuary requires bash 4.4+ (found ${BASH_VERSION:-unknown}). On macOS: brew install bash, then re-run." >&2; exit 1; fi
+
 DEPLOYMENT_LIFECYCLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 deployment_lifecycle_initialize() {
