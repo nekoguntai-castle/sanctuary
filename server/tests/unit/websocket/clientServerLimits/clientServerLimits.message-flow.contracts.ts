@@ -70,7 +70,7 @@ export const registerClientServerLimitMessageFlowContracts = () => {
     const disconnectSpy = vi.spyOn(server as any, 'handleDisconnect').mockImplementation(() => {});
     const payload = Buffer.from(JSON.stringify({ type: 'pong' }));
 
-    (server as any).completeClientRegistration(client);
+    (server as any).handleConnection(client, createRequest());
     client.emit('message', payload);
     client.emit('close');
 
@@ -85,7 +85,7 @@ export const registerClientServerLimitMessageFlowContracts = () => {
     const client = createClient();
     const disconnectSpy = vi.spyOn(server as any, 'handleDisconnect');
 
-    (server as any).completeClientRegistration(client);
+    (server as any).handleConnection(client, createRequest());
     client.isAlive = false;
     client.emit('pong');
     expect(client.isAlive).toBe(true);

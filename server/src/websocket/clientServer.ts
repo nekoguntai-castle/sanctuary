@@ -109,6 +109,18 @@ export class SanctauryWebSocketServer {
     client.isQueueStopped = false;
     client.droppedMessages = 0;
 
+    // Attach error/close handlers before any branch can return: ws emits 'error' on
+    // malformed frames (even while closing), and an unlistened 'error' crashes the process.
+    client.on('error', (error) => {
+      log.warn('WebSocket error', { error: getErrorMessage(error), registered: this.clients.has(client) });
+      client.closeReason = 'error';
+      this.handleDisconnect(client);
+      client.terminate();
+    });
+    client.on('close', () => {
+      this.handleDisconnect(client);
+    });
+
     // Check total connection limit
     if (this.clients.size >= MAX_WEBSOCKET_CONNECTIONS) {
       log.warn(`Connection rejected: total limit of ${MAX_WEBSOCKET_CONNECTIONS} reached`);
@@ -174,18 +186,6 @@ export class SanctauryWebSocketServer {
     // Setup pong handler for heartbeat
     client.on('pong', () => {
       client.isAlive = true;
-    });
-
-    // Setup close handler
-    client.on('close', () => {
-      this.handleDisconnect(client);
-    });
-
-    // Setup error handler
-    client.on('error', (error) => {
-      log.error('WebSocket error', { error: getErrorMessage(error) });
-      client.closeReason = 'error';
-      this.handleDisconnect(client);
     });
 
     // Send welcome message

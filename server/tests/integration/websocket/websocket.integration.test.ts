@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWebSocketTestServer } from '../setup/websocketHarness';
 import { verifyToken } from '../../../src/utils/jwt';
 import { checkWalletAccessUncached } from '../../../src/services/accessControl';
+import { MAX_WEBSOCKET_CONNECTIONS } from '../../../src/websocket/types';
 
 vi.mock('../../../src/utils/jwt', () => ({
   TokenAudience: {
@@ -83,6 +84,20 @@ const waitForClose = (socket: WebSocket) =>
   new Promise<void>((resolve) => {
     socket.once('close', () => resolve());
   });
+
+// A reserved opcode (0x3), masked, zero length: the ws receiver rejects it and emits 'error'.
+const RESERVED_OPCODE_FRAME = Buffer.from([0x83, 0x80, 0, 0, 0, 0]);
+
+const sendReservedOpcodeFrame = (socket: WebSocket) => {
+  (socket as unknown as { _socket: { write: (b: Buffer) => void } })._socket.write(
+    RESERVED_OPCODE_FRAME
+  );
+};
+
+const expectNoUncaughtException = async (spy: ReturnType<typeof vi.fn>) => {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(spy).not.toHaveBeenCalled();
+};
 
 describe('websocket integration', () => {
   afterEach(() => {
@@ -205,5 +220,61 @@ describe('websocket integration', () => {
     client.close();
     await waitForClose(client);
     await harness.close();
+  });
+
+  it('survives a malformed frame on a socket still in async auth', async () => {
+    const uncaught = vi.fn();
+    process.on('uncaughtException', uncaught);
+    const harness = await createWebSocketTestServer();
+    try {
+      (verifyToken as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise(() => {}));
+      const junk = await harness.connectClient('junk');
+      sendReservedOpcodeFrame(junk);
+      await expectNoUncaughtException(uncaught);
+
+      const second = await harness.connectClient('good-token');
+      const connected = await waitForJsonMessage(second, (msg) => msg.type === 'connected');
+      expect(connected.type).toBe('connected');
+      second.close();
+      await waitForClose(second);
+      junk.terminate();
+    } finally {
+      process.off('uncaughtException', uncaught);
+      await harness.close();
+    }
+  });
+
+  it('survives a malformed frame on a socket rejected at the connection limit', async () => {
+    const uncaught = vi.fn();
+    process.on('uncaughtException', uncaught);
+    const harness = await createWebSocketTestServer();
+    const server = harness.wsServer as unknown as { clients: Set<unknown> };
+    const originalClients = server.clients;
+    try {
+      class FullSet extends Set<unknown> {
+        override get size() {
+          return MAX_WEBSOCKET_CONNECTIONS;
+        }
+      }
+      server.clients = new FullSet();
+      // Write the bad frame at upgrade time, before the client reacts to the server's close frame.
+      const rejected = new WebSocket(harness.url);
+      rejected.on('error', () => {});
+      rejected.on('upgrade', (res) => res.socket.write(RESERVED_OPCODE_FRAME));
+      await waitForClose(rejected);
+      await expectNoUncaughtException(uncaught);
+      rejected.terminate();
+
+      server.clients = originalClients;
+      const second = await harness.connectClient();
+      const connected = await waitForJsonMessage(second, (msg) => msg.type === 'connected');
+      expect(connected.type).toBe('connected');
+      second.close();
+      await waitForClose(second);
+    } finally {
+      server.clients = originalClients;
+      process.off('uncaughtException', uncaught);
+      await harness.close();
+    }
   });
 });

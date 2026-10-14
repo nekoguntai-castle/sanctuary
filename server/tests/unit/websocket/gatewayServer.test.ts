@@ -88,6 +88,7 @@ type TestGatewayClient = {
   send: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   emit: (event: string, ...args: unknown[]) => void;
+  hasHandler: (event: string) => boolean;
 };
 
 function createClient(): TestGatewayClient {
@@ -104,6 +105,7 @@ function createClient(): TestGatewayClient {
     emit: (event, ...args) => {
       handlers[event]?.(...args);
     },
+    hasHandler: (event) => event in handlers,
   };
 }
 
@@ -125,6 +127,17 @@ describe('GatewayWebSocketServer', () => {
     (server as any).handleConnection(client, {} as any);
 
     expect(client.close).toHaveBeenCalledWith(4003, 'Gateway authentication not configured');
+  });
+
+  it('registers an error listener before rejecting an unconfigured-secret connection', () => {
+    mocks.config.gatewaySecret = '';
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+
+    (server as any).handleConnection(client, {} as any);
+
+    expect(client.hasHandler('error')).toBe(true);
+    expect(() => client.emit('error', new Error('invalid opcode'))).not.toThrow();
   });
 
   it('forwards upgrade requests into websocket connection events', () => {

@@ -204,6 +204,72 @@ export const registerClientServerLimitAuthUpgradeContracts = () => {
     expect(client.close).toHaveBeenCalledWith(1008, 'Server connection limit reached');
   });
 
+  it('registers an error handler while async auth is pending and survives a socket error', async () => {
+    mockVerifyToken.mockImplementationOnce(() => new Promise(() => {}));
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient();
+
+    (server as any).handleConnection(
+      client,
+      createRequest({ headers: { host: 'localhost', authorization: 'Bearer junk' } })
+    );
+
+    expect(client.on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(() => client.emit('error', new Error('invalid opcode'))).not.toThrow();
+    expect(client.terminate).toHaveBeenCalled();
+    expect((server as any).clients.has(client)).toBe(false);
+  });
+
+  it('does not register a client whose token verifies after the socket errored', async () => {
+    let resolveToken: (value: never) => void = () => undefined;
+    mockVerifyToken.mockImplementationOnce(() => new Promise((resolve) => { resolveToken = resolve as (value: never) => void; }));
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient();
+
+    (server as any).handleConnection(
+      client,
+      createRequest({ headers: { host: 'localhost', authorization: 'Bearer late' } })
+    );
+    client.emit('error', new Error('invalid opcode'));
+    resolveToken({ userId: 'user-late', username: 'late', isAdmin: false, sessionVersion: 0, jti: 'late', exp: 0 } as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect((server as any).clients.has(client)).toBe(false);
+    expect((server as any).connectionsPerUser.has('user-late')).toBe(false);
+  });
+
+  it('registers an error handler on a connection-limit rejection and survives a socket error', async () => {
+    process.env.MAX_WEBSOCKET_CONNECTIONS = '0';
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient();
+
+    (server as any).handleConnection(client, createRequest());
+
+    expect(client.on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(() => client.emit('error', new Error('invalid opcode'))).not.toThrow();
+    expect(client.terminate).toHaveBeenCalled();
+    expect((server as any).clients.has(client)).toBe(false);
+  });
+
+  it('registers error and close handlers exactly once after a successful registration', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient();
+
+    (server as any).handleConnection(client, createRequest());
+
+    const count = (event: string) => client.on.mock.calls.filter(([e]: [string]) => e === event).length;
+    expect(count('error')).toBe(1);
+    expect(count('close')).toBe(1);
+  });
+
   it('times out unauthenticated connections', async () => {
     vi.useFakeTimers();
     const Server = await loadServer();

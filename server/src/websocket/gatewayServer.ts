@@ -74,6 +74,11 @@ export class GatewayWebSocketServer {
     const client = ws as GatewayWebSocket;
     client.isAuthenticated = false;
 
+    // Attach before any early return (see clientServer.handleConnection)
+    client.on('error', (error) => {
+      log.error('Gateway WebSocket error', { error: getErrorMessage(error) });
+    });
+
     // If gateway secret is not configured, reject all connections
     if (!config.gatewaySecret) {
       log.error('Gateway connection rejected: GATEWAY_SECRET not configured');
@@ -119,11 +124,6 @@ export class GatewayWebSocketServer {
         }
         log.warn('Gateway disconnected');
       }
-    });
-
-    // Handle errors
-    client.on('error', (error) => {
-      log.error('Gateway WebSocket error', { error: getErrorMessage(error) });
     });
   }
 
