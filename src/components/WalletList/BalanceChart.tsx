@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Amount } from '../Amount';
 import { useCurrency } from '../../contexts/CurrencyContext';
@@ -44,7 +44,23 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
   const { format } = useCurrency();
 
   // Fetch real balance history from transactions
-  const { data: history } = useBalanceHistory(walletIds, totalBalance, timeframe);
+  const { data: fetchedHistory, isLoading, isUnavailable } = useBalanceHistory(walletIds, totalBalance, timeframe);
+
+  // The query key includes totalBalance, so every balance change reloads with
+  // the flat placeholder. Keep the last settled series for that case only; a
+  // wallet-set, network or period change must not borrow another scope's line.
+  const scope = useMemo(
+    () => JSON.stringify([walletIds, selectedNetwork, timeframe]),
+    [walletIds, selectedNetwork, timeframe],
+  );
+  const settledRef = useRef<{ scope: string; history: typeof fetchedHistory } | null>(null);
+  const history = isLoading && settledRef.current?.scope === scope
+    ? settledRef.current.history
+    : fetchedHistory;
+  useEffect(() => {
+    if (!isLoading && !isUnavailable) settledRef.current = { scope, history: fetchedHistory };
+  }, [fetchedHistory, isLoading, isUnavailable, scope]);
+
   const chartData = useMemo(() => buildBalanceSeries(history, timeframe), [history, timeframe]);
   const timeAxis = useMemo(() => buildBalanceTimeAxis(chartData, timeframe), [chartData, timeframe]);
 
@@ -81,7 +97,20 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
             </div>
           </div>
           <div className="h-36 w-full min-w-[200px]">
-            {chartReady && (
+            {isUnavailable ? (
+              // The fallback series is flat at the current balance; drawn for a
+              // failed request it claims the balance held steady all period.
+              <div
+                className="flex h-full items-center justify-center text-center"
+                data-testid="balance-history-unavailable"
+                role="status"
+              >
+                <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400 max-w-xs">
+                  Balance history unavailable. The total is current; the
+                  chart cannot show how it changed.
+                </p>
+              </div>
+            ) : chartReady && (
               <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
                 <AreaChart data={chartData}>
                   <defs>

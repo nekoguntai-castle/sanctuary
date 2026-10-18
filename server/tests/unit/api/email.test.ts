@@ -697,6 +697,59 @@ describe('Email Verification API', () => {
       );
     });
 
+    it('should leave a verified user verified when the same address is re-saved', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.findById.mockResolvedValue({
+        id: testUserId,
+        username: testUsername,
+        email: testEmail,
+        emailVerified: true,
+        password: 'hashed-password',
+      });
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: testEmail.toUpperCase(), password: currentPassword });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        message: 'Email address unchanged.',
+        email: testEmail,
+        emailVerified: true,
+        verificationSent: false,
+      });
+      expect(mockEmailVerificationService.updateEmailWithVerification).not.toHaveBeenCalled();
+      expect(mockUserRepository.emailExists).not.toHaveBeenCalled();
+    });
+
+    it('should issue a fresh token when an unverified user re-saves the same address', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.findById.mockResolvedValue({
+        id: testUserId,
+        username: testUsername,
+        email: testEmail,
+        emailVerified: false,
+        password: 'hashed-password',
+      });
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: { id: testUserId, email: testEmail, emailVerified: false },
+        verification: { success: true },
+      });
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: testEmail, password: currentPassword });
+
+      expect(response.status).toBe(200);
+      expect(response.body.verificationSent).toBe(true);
+      expect(mockEmailVerificationService.updateEmailWithVerification).toHaveBeenCalledWith(
+        testUserId,
+        testEmail,
+        testUsername
+      );
+    });
+
     it('should return 500 when updating email throws unexpectedly', async () => {
       (verifyPassword as any).mockResolvedValue(true);
       mockUserRepository.emailExists.mockResolvedValue(false);

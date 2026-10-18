@@ -1,5 +1,6 @@
 import { fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '../../src/api/client';
 import { describe,expect,it } from 'vitest';
 
 import {
@@ -65,6 +66,29 @@ describe('DeviceDetail page', () => {
     await waitFor(() => {
       expect(screen.getByText('Device not found.')).toBeInTheDocument();
     });
+  });
+
+  it('shows a retryable error rather than not-found when the load fails', async () => {
+    const user = userEvent.setup();
+    mockGetDevice.mockRejectedValueOnce(new ApiError('Server exploded', 500));
+    render(<DeviceDetail />);
+
+    expect(await screen.findByText('Failed to Load Device')).toBeInTheDocument();
+    expect(screen.getByText('Server exploded')).toBeInTheDocument();
+    expect(screen.queryByText('Device not found.')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Passport One')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to Load Device')).not.toBeInTheDocument();
+  });
+
+  it.each([403, 404])('shows not-found for a %i', async (status) => {
+    mockGetDevice.mockRejectedValueOnce(new ApiError('nope', status));
+    render(<DeviceDetail />);
+
+    expect(await screen.findByText('Device not found.')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to Load Device')).not.toBeInTheDocument();
   });
 
   it('allows entering edit mode and canceling', async () => {

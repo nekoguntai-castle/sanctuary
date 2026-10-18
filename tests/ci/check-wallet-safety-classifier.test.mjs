@@ -105,6 +105,40 @@ test('bash wallet-safety matcher agrees with matchesClassifierPath', () => {
   assert.equal(posix, output, 'POSIX sh and bash must classify every probe identically');
 });
 
+test('bash hardware proof-source matcher classifies every documentation proof source', () => {
+  const docsOnly = (path) => /\.mdx?$/.test(path) || path.startsWith('docs/') || path.startsWith('tasks/');
+  const proofDocs = ['trezor', 'ledger', 'jade'].flatMap((vendor) =>
+    execFileSync(
+      'node',
+      ['scripts/ci/hardware-emulator-source-inventory.mjs', 'list', '--vendor', vendor, '--format', 'lines'],
+      { cwd: REPO_ROOT, encoding: 'utf8' }
+    )
+      .split('\n')
+      .filter((path) => path && docsOnly(path))
+  );
+  assert.ok(proofDocs.includes('docs/reference/release-gates.md'));
+  assert.ok(proofDocs.includes('shared/utils/README.md'));
+  const script = [
+    '. scripts/ci/classify-files-lib.sh',
+    'for f in "$@"; do',
+    '  if is_hardware_proof_source_file "$f"; then echo "$f=1"; else echo "$f=0"; fi',
+    'done',
+  ].join('\n');
+  const probes = [...new Set(proofDocs), 'docs/reference/unrelated.md', 'README.md', 'tasks/plan.md'];
+  const run = (shell, prefix = '') =>
+    execFileSync(shell, ['-c', `${prefix}${script}`, 'parity', ...probes], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+  const bash = run('bash');
+  for (const path of proofDocs) {
+    assert.match(bash, new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}=1$`, 'm'), `${path} must be a proof source`);
+  }
+  assert.match(bash, /^docs\/reference\/unrelated\.md=0$/m);
+  assert.match(bash, /^README\.md=0$/m);
+  assert.equal(run('sh', 'REPO_ROOT=. '), bash, 'POSIX sh and bash must classify every probe identically');
+});
+
 const BROAD_WORKFLOW = `  pull_request:
   merge_group:
   push:

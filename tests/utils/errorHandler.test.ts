@@ -10,6 +10,7 @@ import {
 extractErrorMessage,
 isAuthError,
 isNotFoundError,
+isNotFoundOrForbiddenError,
 logError,
 } from '../../src/utils/errorHandler';
 import { Logger } from '../../src/utils/logger';
@@ -133,6 +134,20 @@ describe('errorHandler', () => {
       });
 
       expect(result).toBe('Error message');
+    });
+  });
+
+  describe('isNotFoundOrForbiddenError', () => {
+    it('returns true for 403 and 404 ApiErrors', () => {
+      expect(isNotFoundOrForbiddenError(new ApiError('Error', 403))).toBe(true);
+      expect(isNotFoundOrForbiddenError(new ApiError('Error', 404))).toBe(true);
+    });
+
+    it('returns false for other statuses and non-ApiErrors', () => {
+      expect(isNotFoundOrForbiddenError(new ApiError('Error', 401))).toBe(false);
+      expect(isNotFoundOrForbiddenError(new ApiError('Error', 500))).toBe(false);
+      expect(isNotFoundOrForbiddenError(new Error('Not found'))).toBe(false);
+      expect(isNotFoundOrForbiddenError(null)).toBe(false);
     });
   });
 

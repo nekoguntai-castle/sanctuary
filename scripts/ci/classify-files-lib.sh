@@ -239,6 +239,43 @@ is_wallet_safety_critical_file() {
   printf '%s\n' "$1" | grep -Eq "^(${SANCTUARY_CI_WALLET_SAFETY_REGEX})\$"
 }
 
+# Hardware emulator proof sources: config/hardware-emulator-source-inventory.json
+# lists every file (and `shared/**`-style pattern) hashed into the emulator proof
+# sources, including documentation. A docs-only change to one breaks the next
+# proof, so the docs allowlists treat them like wallet-safety critical paths.
+# Unlike the wallet-safety manifest, arrays are sometimes inline, so this takes
+# every quoted string on each line and drops the object keys (strings followed
+# by `:`). Same location rule, escape chain and fail-closed behaviour as above.
+if [ -n "${BASH_SOURCE:-}" ]; then
+  SANCTUARY_CI_HARDWARE_PROOF_INVENTORY="$(cd "$(dirname "$BASH_SOURCE")/../.." && pwd)/config/hardware-emulator-source-inventory.json"
+else
+  SANCTUARY_CI_HARDWARE_PROOF_INVENTORY="${REPO_ROOT:-.}/config/hardware-emulator-source-inventory.json"
+fi
+SANCTUARY_CI_HARDWARE_PROOF_REGEX=
+SANCTUARY_CI_HARDWARE_PROOF_REGEX_LOADED=0
+
+load_hardware_proof_regex() {
+  [ "$SANCTUARY_CI_HARDWARE_PROOF_REGEX_LOADED" = "0" ] || return 0
+  SANCTUARY_CI_HARDWARE_PROOF_REGEX_LOADED=1
+  [ -r "$SANCTUARY_CI_HARDWARE_PROOF_INVENTORY" ] || return 0
+  SANCTUARY_CI_HARDWARE_PROOF_REGEX=$(
+    awk -F'"' '{
+      for (i = 2; i < NF; i += 2) {
+        if ($(i + 1) !~ /^[ \t]*:/) print $i
+      }
+    }' "$SANCTUARY_CI_HARDWARE_PROOF_INVENTORY" \
+      | sed -e 's/[].+^${}()|[\\]/\\&/g' -e 's/\*\*/@@ANY@@/g' -e 's/\*/[^\/]*/g' -e 's/@@ANY@@/.*/g' \
+      | paste -sd '|' -
+  )
+}
+
+# Fail closed: a missing, unreadable or empty inventory makes every path a proof source.
+is_hardware_proof_source_file() {
+  load_hardware_proof_regex
+  [ -n "$SANCTUARY_CI_HARDWARE_PROOF_REGEX" ] || return 0
+  printf '%s\n' "$1" | grep -Eq "^(${SANCTUARY_CI_HARDWARE_PROOF_REGEX})\$"
+}
+
 is_docs_only_file() {
   case "$1" in
     *.md|*.mdx)

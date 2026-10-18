@@ -414,6 +414,18 @@ main() {
   assert_eq "critical doc -> frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
   assert_eq "critical doc -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
 
+  # ---- A hardware proof-source doc is not a no-op ------------------------
+  base="$head"
+  mkdir -p "$repo/docs/reference"
+  printf '# release gates\n' > "$repo/docs/reference/release-gates.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'hardware proof-source doc only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "proof-source doc -> full_scan" "true" "$(json_query "$plan" full_scan)"
+  assert_eq "proof-source doc -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+
   # ---- workflow_dispatch --full forces full tier --------------------------
   plan="$(EVENT_NAME=workflow_dispatch run_planner "$repo" "$base" "$head" --full)"
   assert_eq "dispatch --full tier=full" "full" "$(json_query "$plan" tier)"

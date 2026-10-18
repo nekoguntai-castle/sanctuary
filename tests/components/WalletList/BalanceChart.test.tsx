@@ -4,7 +4,13 @@ import type { Timeframe } from '../../../src/api/transactions/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BalanceChart } from '../../../src/components/WalletList/BalanceChart';
 
-const history = vi.hoisted(() => ({ calls: [] as string[], data: [] as unknown[] }));
+const history = vi.hoisted(() => ({
+  calls: [] as string[],
+  plotted: [] as unknown[],
+  data: [] as unknown[],
+  isLoading: false,
+  isUnavailable: false,
+}));
 const currency = vi.hoisted(() => ({ unit: 'btc' as 'btc' | 'sats' }));
 
 // The hovered point's balance. Recharts renders a bare `value` when the
@@ -28,9 +34,22 @@ vi.mock('../../../src/contexts/CurrencyContext', async () => {
 vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useBalanceHistory: (_ids: string[], _balance: number, timeframe: string) => {
     history.calls.push(timeframe);
-    return { data: history.data };
+    return { data: history.data, isLoading: history.isLoading, isUnavailable: history.isUnavailable };
   },
 }));
+
+// Records the history each render plots; the chart resamples it, so point
+// counts of the rendered chart cannot identify which series was used.
+vi.mock('../../../src/utils/balanceHistorySeries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/utils/balanceHistorySeries')>();
+  return {
+    ...actual,
+    buildBalanceSeries: (data: Parameters<typeof actual.buildBalanceSeries>[0], tf: Timeframe) => {
+      history.plotted.push(data);
+      return actual.buildBalanceSeries(data, tf);
+    },
+  };
+});
 
 vi.mock('../../../src/hooks/useDelayedRender', () => ({ useDelayedRender: () => true }));
 
@@ -77,6 +96,9 @@ describe('BalanceChart', () => {
   beforeEach(() => {
     currency.unit = 'btc';
     history.calls = [];
+    history.plotted = [];
+    history.isLoading = false;
+    history.isUnavailable = false;
     history.data = [
       { name: 'Start', value: 1000, timestamp: new Date(now - 30 * 86_400_000).toISOString() },
       { name: 'Now', value: 2000, timestamp: new Date(now).toISOString() },
@@ -180,5 +202,90 @@ describe('BalanceChart', () => {
     const value = screen.getByTestId('tooltip-value');
     expect(value).toHaveTextContent(`${HOVERED_SATS.toLocaleString()} sats`);
     expect(value.textContent).not.toContain('BTC');
+  });
+
+  describe('history states', () => {
+    const series = (value: number) => [
+      { name: 'Start', value, timestamp: new Date(now - 30 * 86_400_000).toISOString() },
+      { name: 'Now', value, timestamp: new Date(now).toISOString() },
+    ];
+    const Chart = ({ balance, ids = ['a'], network = 'mainnet', timeframe = '1M' }: {
+      balance: number;
+      ids?: string[];
+      network?: string;
+      timeframe?: Timeframe;
+    }) => (
+      <BalanceChart
+        totalBalance={balance}
+        walletCount={ids.length}
+        walletIds={ids}
+        selectedNetwork={network}
+        timeframe={timeframe}
+        onTimeframeChange={() => undefined}
+      />
+    );
+    const plotted = () => history.plotted[history.plotted.length - 1];
+
+    it('shows an unavailable state instead of a flat line when history failed', () => {
+      history.isUnavailable = true;
+      render(<Chart balance={2000} />);
+
+      expect(screen.getByTestId('balance-history-unavailable')).toHaveTextContent('Balance history unavailable');
+      expect(screen.queryByTestId('area-chart')).not.toBeInTheDocument();
+    });
+
+    it('keeps the previous series while a balance change reloads', () => {
+      const settled = series(1);
+      history.data = settled;
+      const view = render(<Chart balance={2000} />);
+
+      history.isLoading = true;
+      history.data = series(2500);
+      view.rerender(<Chart balance={2500} />);
+
+      expect(plotted()).toBe(settled);
+    });
+
+    it.each([
+      ['wallet set', { ids: ['b'] }],
+      ['network', { network: 'testnet' }],
+      ['timeframe', { timeframe: '1W' as Timeframe }],
+    ])('drops the previous series when the %s changes', (_label, change) => {
+      history.data = series(1);
+      const view = render(<Chart balance={2000} />);
+
+      history.isLoading = true;
+      const placeholder = series(2500);
+      history.data = placeholder;
+      view.rerender(<Chart balance={2500} {...change} />);
+
+      expect(plotted()).toBe(placeholder);
+    });
+
+    it('does not keep a series that was never settled', () => {
+      history.isLoading = true;
+      const placeholder = series(2500);
+      history.data = placeholder;
+      render(<Chart balance={2500} />);
+
+      expect(plotted()).toBe(placeholder);
+    });
+
+    it('does not keep a series from a failed settle', () => {
+      const settled = series(1);
+      history.data = settled;
+      const view = render(<Chart balance={2000} />);
+      history.isUnavailable = true;
+      history.data = series(2500);
+      view.rerender(<Chart balance={2500} />);
+      history.isUnavailable = false;
+      history.isLoading = true;
+      const placeholder = series(2600);
+      history.data = placeholder;
+      view.rerender(<Chart balance={2600} />);
+
+      // The failed attempt never replaced the last good series.
+      expect(plotted()).toBe(settled);
+    });
   });
 });

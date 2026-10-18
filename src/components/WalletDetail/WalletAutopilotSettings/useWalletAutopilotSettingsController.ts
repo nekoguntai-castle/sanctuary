@@ -3,6 +3,7 @@ import type { WalletAutopilotSettings as AutopilotSettingsType, AutopilotStatus 
 import { useUser } from '../../../contexts/UserContext';
 import * as walletsApi from '../../../api/wallets';
 import { ApiError } from '../../../api/client';
+import { isNotFoundOrForbiddenError } from '../../../utils/errorHandler';
 import { createLogger } from '../../../utils/logger';
 
 const SETTINGS_LOAD_FAILED_MESSAGE = 'Failed to load autopilot settings. Refresh the page before making changes.';
@@ -63,7 +64,7 @@ export function useWalletAutopilotSettingsController(walletId: string) {
         settingsLoadedRef.current = true;
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+        if (isNotFoundOrForbiddenError(err)) {
           setFeatureUnavailable(true);
           settingsLoadedRef.current = true;
         } else {

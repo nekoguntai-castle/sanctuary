@@ -153,6 +153,16 @@ export function isNotFoundError(error: unknown): boolean {
 }
 
 /**
+ * Check if an error means the resource is unreachable for this user (403/404)
+ *
+ * @param error - The error to check
+ * @returns true if the error is a 403 or 404
+ */
+export function isNotFoundOrForbiddenError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 403 || error.status === 404);
+}
+
+/**
  * Check if an error is an authentication error (401/403)
  *
  * @param error - The error to check

@@ -277,6 +277,18 @@ export function createEmailRouter(
       const normalizedEmail = normalizeEmail(email);
       const currentEmail = user.email ? normalizeEmail(user.email) : null;
 
+      // Re-saving the current address of a verified user changes nothing; writing
+      // would reset emailVerified and lock the user out where verification is required.
+      if (normalizedEmail === currentEmail && user.emailVerified) {
+        return res.json({
+          success: true,
+          message: 'Email address unchanged.',
+          email: user.email,
+          emailVerified: true,
+          verificationSent: false,
+        });
+      }
+
       // Check if email is already in use
       if (normalizedEmail !== currentEmail) {
         const emailExists = await userRepository.emailExists(normalizedEmail);

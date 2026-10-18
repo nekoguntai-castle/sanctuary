@@ -262,6 +262,18 @@ EOF_DOC
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "full_scan" "true"
 
+  # A documentation path hashed into the hardware emulator proof sources is
+  # proof input too: full scan.
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/docs/reference"
+  printf '# Release gates\n' > "$repo_dir/docs/reference/release-gates.md"
+  git -C "$repo_dir" add docs/reference/release-gates.md
+  git -C "$repo_dir" commit -qm "hardware proof-source doc only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "full_scan" "true"
+
   base_sha="$head_sha"
   mkdir -p "$repo_dir/gateway"
   printf '# Gateway Notes\n' > "$repo_dir/gateway/README.md"

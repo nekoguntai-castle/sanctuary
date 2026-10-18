@@ -42,10 +42,12 @@ local remaining = math.max(0, limit - current)
 -- Check if allowed
 local allowed = 0
 if current + cost <= limit then
-  -- Add new entry with current timestamp as score
-  -- Use a unique member to allow multiple requests in same ms
-  local member = now .. ':' .. redis.call('INCR', key .. ':seq')
-  redis.call('ZADD', key, now, member)
+  -- Add one entry per unit of cost, scored with the current timestamp
+  -- Use a unique member per entry to allow multiple requests in same ms
+  for _ = 1, cost do
+    local member = now .. ':' .. redis.call('INCR', key .. ':seq')
+    redis.call('ZADD', key, now, member)
+  end
   redis.call('EXPIRE', key, math.ceil(window_ms / 1000) + 1)
   redis.call('EXPIRE', key .. ':seq', math.ceil(window_ms / 1000) + 1)
   allowed = 1

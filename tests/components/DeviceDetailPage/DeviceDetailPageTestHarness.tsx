@@ -142,6 +142,7 @@ vi.mock('lucide-react', () => ({
   AlertCircle: () => <span data-testid="alert-icon" />,
   Check: () => <span data-testid="check-icon" />,
   AlertTriangle: () => <span data-testid="alert-triangle-icon" />,
+  RefreshCw: () => <span data-testid="refresh-icon" />,
 }));
 
 vi.mock('../../../src/contexts/UserContext', () => ({

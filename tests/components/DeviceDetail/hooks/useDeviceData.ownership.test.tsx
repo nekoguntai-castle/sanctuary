@@ -5,6 +5,7 @@ import * as adminApi from '../../../../src/api/admin';
 import * as authApi from '../../../../src/api/auth';
 import * as devicesApi from '../../../../src/api/devices';
 import type { ShareDeviceResponse } from '../../../../src/api/devices';
+import { ApiError } from '../../../../src/api/client';
 import type { Device, DeviceShareInfo } from '../../../../src/types';
 
 const context = vi.hoisted(() => ({
@@ -709,5 +710,143 @@ describe('useDeviceData route ownership', () => {
       shareInfo: newestShareInfo,
     });
     expect(result.current.deviceShareInfo).toEqual(newestShareInfo);
+  });
+
+  describe('load failures', () => {
+    const settle = async (id = 'A') => {
+      const hook = renderHook(({ id: routeId }) => useDeviceData(routeId), { initialProps: { id } });
+      await waitFor(() => expect(hook.result.current.loading).toBe(false));
+      return hook;
+    };
+
+    it.each([
+      ['a 500', new ApiError('Server exploded', 500)],
+      ['a network failure', new Error('Failed to fetch')],
+    ])('reports %s from getDevice as a load error, not a missing device', async (_label, failure) => {
+      vi.mocked(devicesApi.getDevice).mockRejectedValue(failure);
+
+      const { result } = await settle();
+
+      expect(result.current.device).toBeNull();
+      expect(result.current.loadError).toBe(failure.message);
+    });
+
+    it.each([403, 404])('treats a %i from getDevice as not found', async (status) => {
+      vi.mocked(devicesApi.getDevice).mockRejectedValue(new ApiError('nope', status));
+
+      const { result } = await settle();
+
+      expect(result.current.device).toBeNull();
+      expect(result.current.loadError).toBeNull();
+    });
+
+    it('treats a resolved empty device as not found', async () => {
+      vi.mocked(devicesApi.getDevice).mockResolvedValue(null as unknown as Device);
+
+      const { result } = await settle();
+
+      expect(result.current.device).toBeNull();
+      expect(result.current.loadError).toBeNull();
+    });
+
+    it('reports a getDeviceModels failure as a load error even for a 404', async () => {
+      vi.mocked(devicesApi.getDevice).mockResolvedValue(device('A'));
+      vi.mocked(devicesApi.getDeviceModels).mockRejectedValue(new ApiError('models gone', 404));
+
+      const { result } = await settle();
+
+      expect(result.current.device).toBeNull();
+      expect(result.current.loadError).toBe('models gone');
+    });
+
+    it('reloads on retry and clears the error', async () => {
+      vi.mocked(devicesApi.getDevice)
+        .mockRejectedValueOnce(new ApiError('Server exploded', 500))
+        .mockResolvedValue(device('A'));
+
+      const { result } = await settle();
+      expect(result.current.loadError).toBe('Server exploded');
+
+      act(() => result.current.retryLoad());
+      expect(result.current.loading).toBe(true);
+      expect(result.current.loadError).toBeNull();
+      await waitFor(() => expect(result.current.device?.id).toBe('A'));
+      expect(result.current.loadError).toBeNull();
+      expect(devicesApi.getDevice).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears a load error when a same-route refetch for a new user object succeeds', async () => {
+      vi.mocked(devicesApi.getDevice)
+        .mockRejectedValueOnce(new ApiError('Server exploded', 500))
+        .mockResolvedValue(device('A'));
+      const { result, rerender } = await settle();
+      expect(result.current.loadError).toBe('Server exploded');
+
+      context.user = { id: 'user-1', isAdmin: false };
+      rerender({ id: 'A' });
+
+      await waitFor(() => expect(result.current.device?.id).toBe('A'));
+      expect(result.current.loadError).toBeNull();
+    });
+
+    it('clears a load error when a same-route refetch resolves not found', async () => {
+      vi.mocked(devicesApi.getDevice)
+        .mockRejectedValueOnce(new ApiError('Server exploded', 500))
+        .mockResolvedValue(null as unknown as Device);
+      const { result, rerender } = await settle();
+      expect(result.current.loadError).toBe('Server exploded');
+
+      context.user = { id: 'user-1', isAdmin: false };
+      rerender({ id: 'A' });
+
+      await waitFor(() => expect(devicesApi.getDevice).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(result.current.loadError).toBeNull());
+      expect(result.current.device).toBeNull();
+    });
+
+    it('does not retry after the route is gone', async () => {
+      vi.mocked(devicesApi.getDevice).mockRejectedValue(new ApiError('Server exploded', 500));
+
+      const { result, unmount } = await settle();
+      const { retryLoad } = result.current;
+      unmount();
+      retryLoad();
+
+      expect(devicesApi.getDevice).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a retry captured on route A once route B owns the hook', async () => {
+      vi.mocked(devicesApi.getDevice).mockImplementation((id) => (
+        id === 'A' ? Promise.reject(new ApiError('Server exploded', 500)) : Promise.resolve(device(id))
+      ));
+
+      const { result, rerender } = await settle('A');
+      const staleRetry = result.current.retryLoad;
+      rerender({ id: 'B' });
+      await waitFor(() => expect(result.current.device?.id).toBe('B'));
+
+      act(() => staleRetry());
+
+      expect(devicesApi.getDevice).toHaveBeenCalledTimes(2);
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('does not show route A load error on route B', async () => {
+      const routeB = createDeferred<Device>();
+      vi.mocked(devicesApi.getDevice).mockImplementation((id) => (
+        id === 'A' ? Promise.reject(new ApiError('Server exploded', 500)) : routeB.promise
+      ));
+
+      const { result, rerender } = await settle('A');
+      expect(result.current.loadError).toBe('Server exploded');
+
+      rerender({ id: 'B' });
+
+      expect(result.current.loadError).toBeNull();
+      expect(result.current.loading).toBe(true);
+      await act(async () => routeB.resolve(device('B')));
+      await waitFor(() => expect(result.current.device?.id).toBe('B'));
+      expect(result.current.loadError).toBeNull();
+    });
   });
 });

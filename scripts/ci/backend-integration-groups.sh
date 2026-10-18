@@ -110,6 +110,7 @@ list_group_specs() {
         tests/integration/worker/jobProcessorLockLoss.integration.test.ts \
         tests/integration/worker/notificationDispatcherRetention.integration.test.ts \
         tests/integration/worker/recurringSchedules.integration.test.ts \
+        tests/integration/worker/redisRateLimiterCost.integration.test.ts \
         tests/integration/worker/workerHeartbeatRegistryRetirement.integration.test.ts \
         tests/integration/worker/webhookRetryRecovery.integration.test.ts \
         tests/integration/worker/worker.integration.test.ts \

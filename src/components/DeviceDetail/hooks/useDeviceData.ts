@@ -17,7 +17,7 @@ import { useUser } from '../../../contexts/UserContext';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { toTabNetwork } from '../../../app/networks';
 import { createRequestOwnership, type RouteToken } from '../../../hooks/requestOwnership';
-import { isAbortError } from '../../../utils/errorHandler';
+import { extractErrorMessage, isAbortError, isNotFoundOrForbiddenError } from '../../../utils/errorHandler';
 import { createLogger } from '../../../utils/logger';
 import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
 
@@ -43,6 +43,17 @@ function createOwnershipKey(
   return JSON.stringify([id ?? null, userId ?? null, network]);
 }
 
+function toWalletInfos(device: Device, network: string): WalletInfo[] {
+  return device.wallets
+    ?.filter(wallet => toTabNetwork(wallet.wallet.network) === network)
+    .map(wallet => ({
+      id: wallet.wallet.id,
+      name: wallet.wallet.name,
+      type: parseWalletType(wallet.wallet.type) ?? WalletType.SINGLE_SIG,
+      network: wallet.wallet.network,
+    })) ?? [];
+}
+
 export function useDeviceData(id: string | undefined) {
   const { user } = useUser();
   const { selectedNetwork } = useActiveNetwork();
@@ -56,6 +67,9 @@ export function useDeviceData(id: string | undefined) {
   const [loadedOwnershipKey, setLoadedOwnershipKey] = useState<string | null>(null);
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErrorState, setLoadErrorState] = useState<string | null>(null);
+  const [reloadCount, setReloadCount] = useState(0);
+  const appliedReloadRef = useRef(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState('');
   const [editModelSlug, setEditModelSlug] = useState<string>('');
@@ -74,6 +88,8 @@ export function useDeviceData(id: string | undefined) {
   const device = loadedOwnershipKey === ownershipKey ? deviceState : null;
   const loadedDeviceOwnershipKey = deviceState?.id === id ? loadedOwnershipKey : null;
   const routeLoading = loadedOwnershipKey === ownershipKey ? loading : true;
+  // Only a failed load carries a message; not-found stays a null device.
+  const loadError = loadedOwnershipKey === ownershipKey ? loadErrorState : null;
   const isOwner = device?.isOwner ?? true;
   const userRole = device?.userRole ?? 'owner';
 
@@ -92,6 +108,7 @@ export function useDeviceData(id: string | undefined) {
     setLoadedOwnershipKey(null);
     setWallets([]);
     setLoading(true);
+    setLoadErrorState(null);
     setIsEditing(false);
     setEditLabel('');
     setEditModelSlug('');
@@ -116,15 +133,31 @@ export function useDeviceData(id: string | undefined) {
     const controller = new AbortController();
     const request = ownership.beginFetch(ownershipKey);
     const ownsRequest = () => ownership.isFetchOwner(request);
+    // A retry (not a user-identity refetch) shows the loading state again.
+    if (reloadCount !== appliedReloadRef.current) {
+      appliedReloadRef.current = reloadCount;
+      setLoadErrorState(null);
+      setLoadedOwnershipKey(null);
+      setLoading(true);
+    }
 
+    // 403 (unshared, via requireDeviceAccess) and 404 on the device mean it is
+    // not reachable for this user; any other failure is a retryable load error.
     const fetchData = async () => {
       try {
         const [deviceData, models] = await Promise.all([
-          getDevice(id, controller.signal),
+          getDevice(id, controller.signal).catch(error => (
+            isNotFoundOrForbiddenError(error) ? null : Promise.reject(error)
+          )),
           getDeviceModels(undefined, controller.signal),
         ]);
         if (!ownsRequest()) return;
-
+        setLoadErrorState(null);
+        if (!deviceData) {
+          setDeviceState(null);
+          setLoadedOwnershipKey(ownershipKey);
+          return;
+        }
         setDeviceState(deviceData);
         setDeviceModels(models);
         setLoadedOwnershipKey(ownershipKey);
@@ -135,20 +168,14 @@ export function useDeviceData(id: string | undefined) {
             hasUserRole: deviceData.userRole !== undefined,
           });
         }
-        setWallets(deviceData.wallets
-          ?.filter(wallet => toTabNetwork(wallet.wallet.network) === selectedNetwork)
-          .map(wallet => ({
-            id: wallet.wallet.id,
-            name: wallet.wallet.name,
-            type: parseWalletType(wallet.wallet.type) ?? WalletType.SINGLE_SIG,
-            network: wallet.wallet.network,
-          })) ?? []);
+        setWallets(toWalletInfos(deviceData, selectedNetwork));
         setEditLabel(deviceData.label);
         setEditModelSlug(deviceData.model?.slug ?? '');
       } catch (error) {
         if (!ownsRequest() || isAbortError(error)) return;
         log.error('Failed to fetch device', { error });
         setDeviceState(null);
+        setLoadErrorState(extractErrorMessage(error, 'Failed to load device'));
         setLoadedOwnershipKey(ownershipKey);
       } finally {
         if (ownsRequest()) setLoading(false);
@@ -157,7 +184,12 @@ export function useDeviceData(id: string | undefined) {
 
     void fetchData();
     return () => controller.abort();
-  }, [id, ownership, ownershipKey, selectedNetwork, user]);
+  }, [id, ownership, ownershipKey, reloadCount, selectedNetwork, user]);
+
+  const retryLoad = useCallback(() => {
+    if (!ownsCurrentRoute()) return;
+    setReloadCount(count => count + 1);
+  }, [ownsCurrentRoute]);
 
   const setDevice = useCallback((nextDevice: Device) => {
     if (!id || nextDevice.id !== id || !ownsCurrentRoute()) return;
@@ -365,6 +397,8 @@ export function useDeviceData(id: string | undefined) {
     setDevice,
     wallets,
     loading: routeLoading,
+    loadError,
+    retryLoad,
     user,
     isEditing,
     setIsEditing,

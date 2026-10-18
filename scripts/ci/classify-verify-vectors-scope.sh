@@ -119,10 +119,11 @@ fi
 #   scripts/ci/classify-verify-vectors-scope.sh (this script)
 
 # Documentation listed in the wallet-safety manifest (for example an ADR hashed
-# into the Jade proof sources) is proof input, not documentation. A missing
-# manifest makes every path critical, so the result is "run".
+# into the Jade proof sources) or in the hardware emulator source inventory is
+# proof input, not documentation. A missing manifest or inventory makes every
+# path critical, so the result is "run".
 is_documentation_only_file() {
-  if is_wallet_safety_critical_file "$1"; then
+  if is_wallet_safety_critical_file "$1" || is_hardware_proof_source_file "$1"; then
     return 1
   fi
   case "$1" in
