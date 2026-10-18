@@ -20,6 +20,8 @@ import {
   type CreateSigningIntentInput,
   type SigningIntentEnvelope,
   type SigningIntentHandle,
+  type IssuedSigningIntent,
+  type PreparedSigningIntent,
   type IssuedSigningIntentHandle,
   type SigningIntentSource,
 } from './types';
@@ -43,9 +45,15 @@ const parseSource = (value: string): SigningIntentSource => {
   });
 };
 
-export const createSigningIntent = async (
+/**
+ * Validates an intent request and builds its canonical snapshot and digest
+ * without writing anything (prevout authentication only reads). A caller that
+ * must check the exact snapshot before it supersedes another intent prepares
+ * first and calls persistSigningIntent only once those checks pass.
+ */
+export const prepareSigningIntent = async (
   input: CreateSigningIntentInput,
-): Promise<IssuedSigningIntentHandle> => {
+): Promise<PreparedSigningIntent> => {
   const psbt = parsePsbt(input.unsignedPsbtBase64, 'psbtBase64');
   const signingContext = PsbtSigningContextSchema.parse(input.signingContext);
   const feePolicy = SigningIntentFeePolicySchema.parse(input.feePolicy);
@@ -70,8 +78,24 @@ export const createSigningIntent = async (
     feePolicy,
     input.replacementTxid,
   );
-  const snapshotDigest = calculateSigningIntentDigest(snapshot, signingContext);
-  const psbtHash = unsignedPsbtSha256(input.unsignedPsbtBase64);
+  return {
+    input,
+    signingContext,
+    snapshot,
+    snapshotDigest: calculateSigningIntentDigest(snapshot, signingContext),
+    unsignedPsbtSha256: unsignedPsbtSha256(input.unsignedPsbtBase64),
+  };
+};
+
+/**
+ * Writes a prepared intent (superseding `input.supersedesIntentId`, if any) and issues its handle.
+ * `prepared` must come unmodified from prepareSigningIntent: its digests are written as given, not
+ * recomputed (loadSigningIntent re-authenticates them, so a mismatch fails closed on every read).
+ */
+export const persistSigningIntent = async (
+  prepared: PreparedSigningIntent,
+): Promise<IssuedSigningIntent> => {
+  const { input, signingContext, snapshot } = prepared;
   const record = await transactionSigningIntentRepository.create({
     walletId: input.walletId,
     createdByUserId: input.createdByUserId,
@@ -80,14 +104,24 @@ export const createSigningIntent = async (
     snapshotVersion: SIGNING_INTENT_SNAPSHOT_VERSION,
     snapshot: toPrismaInputJson(snapshot),
     signingContext: toPrismaInputJson(signingContext),
-    snapshotDigest,
+    snapshotDigest: prepared.snapshotDigest,
     unsignedPsbtBase64: input.unsignedPsbtBase64,
-    unsignedPsbtSha256: psbtHash,
+    unsignedPsbtSha256: prepared.unsignedPsbtSha256,
     expiresAt: input.expiresAt ?? new Date(Date.now() + DEFAULT_INTENT_LIFETIME_MS),
     supersedesIntentId: input.supersedesIntentId,
   });
-  return { intentId: record.id, intentDigest: record.snapshotDigest, signingContext };
+  return {
+    handle: { intentId: record.id, intentDigest: record.snapshotDigest, signingContext },
+    snapshot,
+  };
 };
+
+/** Prepares and persists an intent, returning only its handle (safe to spread into a response). */
+export const createSigningIntent = async (
+  input: CreateSigningIntentInput,
+): Promise<IssuedSigningIntentHandle> => (
+  await persistSigningIntent(await prepareSigningIntent(input))
+).handle;
 
 const invalidIntent = (message: string, reason = 'missing_intent'): InvalidInputError =>
   new InvalidInputError(message, 'intentId', { reason });

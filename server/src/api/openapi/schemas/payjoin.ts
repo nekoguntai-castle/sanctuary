@@ -85,8 +85,13 @@ export const payjoinSchemas = {
           signingContext: { $ref: '#/components/schemas/PsbtSigningContext' },
           intentId: { type: 'string', minLength: 1 },
           intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+          amount: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Sender net spend (sats) derived from the proposal signing intent: external outputs minus receiver inputs',
+          },
         },
-        required: ['success', 'isPayjoin', 'proposalPsbt', 'signingContext', 'intentId', 'intentDigest'],
+        required: ['success', 'isPayjoin', 'proposalPsbt', 'signingContext', 'intentId', 'intentDigest', 'amount'],
       },
       {
         type: 'object',

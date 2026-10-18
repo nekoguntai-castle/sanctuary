@@ -25,6 +25,8 @@ vi.mock('../../../../../src/services/bitcoin/signingIntent/prevoutValidation', (
 
 import {
   createSigningIntent as createSigningIntentWithContext,
+  persistSigningIntent,
+  prepareSigningIntent,
   loadSigningIntent,
   findDraftBySigningIntent,
 } from '../../../../../src/services/bitcoin/signingIntent/service';
@@ -140,6 +142,73 @@ describe('transaction signing intent lifecycle', () => {
       source: 'standard',
       snapshot: expect.objectContaining({ feePolicy }),
     }));
+  });
+
+  it('issues the handle together with the exact snapshot it persisted', async () => {
+    mocks.create.mockImplementation(async data => ({ id: 'intent-1', ...data }));
+    const issued = await persistSigningIntent(await prepareSigningIntent({
+      walletId: 'wallet-1',
+      createdByUserId: 'user-1',
+      network: 'testnet3',
+      source: 'payjoin',
+      unsignedPsbtBase64: psbtBase64(),
+      signingContext,
+      feePolicy,
+    }));
+    expect(issued.handle).toEqual({
+      intentId: 'intent-1',
+      intentDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      signingContext,
+    });
+    expect(issued.snapshot).toEqual(mocks.create.mock.calls[0][0].snapshot);
+    expect(issued.snapshot.transaction.outputs).toEqual([
+      { amountSats: '9000', scriptPubKeyHex: '0014' + '33'.repeat(20) },
+    ]);
+  });
+
+  it('prepares the snapshot and digest without writing, and persists exactly what was prepared', async () => {
+    mocks.create.mockImplementation(async data => ({ id: 'intent-1', ...data }));
+    const input = {
+      walletId: 'wallet-1',
+      createdByUserId: 'user-1',
+      network: 'testnet3' as const,
+      source: 'payjoin' as const,
+      unsignedPsbtBase64: psbtBase64(),
+      signingContext,
+      feePolicy,
+      supersedesIntentId: 'intent-0',
+    };
+    const prepared = await prepareSigningIntent(input);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(prepared.snapshot.transaction.outputs).toEqual([
+      { amountSats: '9000', scriptPubKeyHex: '0014' + '33'.repeat(20) },
+    ]);
+    expect(prepared.snapshotDigest).toMatch(/^[0-9a-f]{64}$/);
+
+    const persisted = await persistSigningIntent(prepared);
+    expect(mocks.create).toHaveBeenCalledOnce();
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotDigest: prepared.snapshotDigest,
+      supersedesIntentId: 'intent-0',
+      source: 'payjoin',
+    }));
+    expect(persisted).toEqual({
+      handle: { intentId: 'intent-1', intentDigest: prepared.snapshotDigest, signingContext },
+      snapshot: prepared.snapshot,
+    });
+
+    mocks.create.mockClear();
+    await expect(createSigningIntentWithContext(input)).resolves.toEqual(persisted.handle);
+    expect(mocks.create.mock.calls[0][0].snapshotDigest).toBe(prepared.snapshotDigest);
+  });
+
+  it('refuses a context outside the intent scope before preparing anything', async () => {
+    await expect(prepareSigningIntent({
+      walletId: 'wallet-2', createdByUserId: 'user-1', network: 'testnet3', source: 'payjoin',
+      unsignedPsbtBase64: psbtBase64(), signingContext, feePolicy,
+    })).rejects.toThrow('Signing context does not match signing intent scope');
+    expect(mocks.authenticateIntentPrevouts).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it.each([

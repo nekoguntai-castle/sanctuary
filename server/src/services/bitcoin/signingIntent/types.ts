@@ -87,6 +87,25 @@ export type IssuedSigningIntentHandle = SigningIntentHandle & {
   signingContext: PsbtSigningContext;
 };
 
+/** An issued handle with the exact snapshot persisted for it (kept apart so responses spreading the handle never carry it). */
+export interface IssuedSigningIntent {
+  handle: IssuedSigningIntentHandle;
+  snapshot: SigningIntentSnapshot;
+}
+
+/**
+ * A validated, not yet persisted signing intent: what persistSigningIntent writes. `snapshotDigest`
+ * and `unsignedPsbtSha256` are derived from `snapshot`, `signingContext` and `input`; never edit one
+ * without the others.
+ */
+export interface PreparedSigningIntent {
+  input: CreateSigningIntentInput;
+  signingContext: PsbtSigningContext;
+  snapshot: SigningIntentSnapshot;
+  snapshotDigest: string;
+  unsignedPsbtSha256: string;
+}
+
 export interface SigningIntentEnvelope extends SigningIntentHandle {
   signingContext?: PsbtSigningContext;
   snapshot: SigningIntentSnapshot;

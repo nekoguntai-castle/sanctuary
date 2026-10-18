@@ -141,12 +141,14 @@ interface CanonicalRouteMetadata {
   inputs: TransactionInputMetadata[];
   outputs: TransactionOutputMetadata[];
   externalOutputs: Array<{ address: string; amount: number }>;
+  /** The RBF replacement txid from the authenticated snapshot, when it has one. */
+  replacementTxid?: string;
 }
 
 const buildCanonicalMetadata = async (
   artifact: ValidatedBroadcastArtifact,
 ): Promise<CanonicalRouteMetadata> => {
-  const { inputs, outputs, externalOutputs, amount } = await deriveIntentSpend(
+  const { inputs, outputs, externalOutputs, amount, replacementTxid } = await deriveIntentSpend(
     artifact.walletId,
     artifact.network,
     artifact.snapshot,
@@ -167,7 +169,28 @@ const buildCanonicalMetadata = async (
     inputs,
     outputs,
     externalOutputs,
+    ...(replacementTxid && { replacementTxid }),
   };
+};
+
+/**
+ * The txid this broadcast replaces. The authenticated snapshot is the
+ * authority: a resumed approval-required bump (Drafts → Resume) sends no
+ * `replacesTxid`, and a request value that disagrees with the snapshot is
+ * refused rather than trusted. The request field is used only for legacy
+ * intents whose snapshot carries none.
+ */
+const resolveReplacesTxid = (
+  metadata: CanonicalRouteMetadata,
+  requested: string | undefined,
+): string | undefined => {
+  if (!metadata.replacementTxid) return requested;
+  if (requested !== undefined && requested !== metadata.replacementTxid) {
+    throw new InvalidInputError('Broadcast metadata does not match signing intent', 'replacesTxid', {
+      reason: 'metadata_mismatch',
+    });
+  }
+  return metadata.replacementTxid;
 };
 
 const assertExactOutpoints = (
@@ -466,17 +489,17 @@ const handleTransactionBroadcast = async (
     authoritativeDraft,
     metadata,
   );
+  // replacesTxid is not a persisted draft column (see
+  // CreateDraftRequest.replacesTxid in src/api/drafts.ts); a resumed RBF draft
+  // links through the signing intent's snapshot instead.
+  const replacesTxid = resolveReplacesTxid(metadata, body.replacesTxid);
   const usage = artifact.broadcastReplay
     ? NO_POLICY_USAGE
-    : await reservePolicyUsage(req, artifact, metadata, body.replacesTxid, authoritativeDraft);
-  // Unlike label/memo, replacesTxid has no draft fallback: it is not a
-  // persisted draft column (see CreateDraftRequest.replacesTxid in
-  // src/api/drafts.ts), so an RBF broadcast must send it directly in this
-  // request body to link — the memo prefix it replaces is never consulted.
+    : await reservePolicyUsage(req, artifact, metadata, replacesTxid, authoritativeDraft);
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
-    replacesTxid: body.replacesTxid,
+    replacesTxid,
   }, usage);
 };
 
@@ -495,13 +518,14 @@ const handlePsbtBroadcast = async (
   if (authoritativeDraft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(authoritativeDraft);
   const metadata = await buildCanonicalMetadata(artifact);
   assertOptionalMetadata({}, authoritativeDraft, metadata);
+  const replacesTxid = resolveReplacesTxid(metadata, body.replacesTxid);
   const usage = artifact.broadcastReplay
     ? NO_POLICY_USAGE
-    : await reservePolicyUsage(req, artifact, metadata, body.replacesTxid, authoritativeDraft);
+    : await reservePolicyUsage(req, artifact, metadata, replacesTxid, authoritativeDraft);
   return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
     label: body.label ?? authoritativeDraft?.label,
     memo: body.memo ?? authoritativeDraft?.memo,
-    replacesTxid: body.replacesTxid,
+    replacesTxid,
   }, usage);
 };
 

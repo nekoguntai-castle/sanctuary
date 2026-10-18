@@ -313,6 +313,40 @@ describe('useDraftManagement', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
 
+  it('saves a payjoin proposal draft with every proposal outpoint, its fee and the canonical amount', async () => {
+    // After a payjoin, txData carries the proposal's inputs (the receiver's
+    // included), its fee and the server's canonical amount: the receiver added
+    // C = 5000 and raised the fee by r = 100, so the amount is P - r = 9900.
+    // Broadcast checks the draft's selectedUtxoIds, fee and effectiveAmount.
+    const peerTxid = 'b'.repeat(64);
+    const deps = createDeps({
+      txData: {
+        ...baseTxData,
+        fee: 211,
+        totalInput: 15111,
+        totalOutput: 14900,
+        effectiveAmount: 9900,
+        utxos: [...baseTxData.utxos, { txid: peerTxid, vout: 2, amount: 5000 }],
+      },
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => { await result.current.saveDraft(); });
+
+    expect(mocks.createDraft).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      amount: 9900,
+      effectiveAmount: 9900,
+      fee: 211,
+      totalInput: 15111,
+      totalOutput: 14900,
+      selectedUtxoIds: [`${'a'.repeat(64)}:1`, `${peerTxid}:2`],
+      inputs: [
+        { txid: 'a'.repeat(64), vout: 1, address: 'bc1qutxo', amount: 10111 },
+        { txid: peerTxid, vout: 2, address: '', amount: 5000 },
+      ],
+    }), expect.anything());
+  });
+
   it('preserves structured transaction sendMax metadata in a saved draft', async () => {
     const deps = createDeps({
       state: createState({

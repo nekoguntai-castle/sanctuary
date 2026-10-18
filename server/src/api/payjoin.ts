@@ -16,7 +16,10 @@ import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
 import { ErrorCodes, ForbiddenError, InvalidInputError, NotFoundError } from '../errors/ApiError';
 import { findByIdWithAccess } from '../repositories/walletRepository';
-import { findByIdWithAccess as findAddressByIdWithAccess } from '../repositories/addressRepository';
+import {
+  findAddressStrings,
+  findByIdWithAccess as findAddressByIdWithAccess,
+} from '../repositories/addressRepository';
 import { countEligibility } from '../repositories/utxoRepository';
 import { requireWalletEditAccess } from '../services/accessControl';
 import { createLogger } from '../utils/logger';
@@ -34,13 +37,15 @@ import { getNetwork } from '../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
 import { assertFreshReceiveAddressSafeForDisplay } from '../services/addressDisplaySafety';
 import {
-  createSigningIntent,
   loadSigningIntent,
+  persistSigningIntent,
+  prepareSigningIntent,
 } from '../services/bitcoin/signingIntent/service';
 import {
   derivePayjoinInputRoles,
   unsignedPsbtSha256,
 } from '../services/bitcoin/signingIntent/canonical';
+import { deriveIntentSpend } from '../services/bitcoin/signingIntent/intentSpend';
 import { bindPsbtAccount } from '../services/bitcoin/psbtAccountBinding';
 import {
   buildSigningIntentFeePolicy,
@@ -362,7 +367,12 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
     0,
     proposalFee - feeForRate(proposalMaximumVsize, requestedFeeRate),
   );
-  const replacementIntent = await createSigningIntent({
+  // Everything fallible runs before the replacement intent supersedes the
+  // original: after that write, a failure would strand the client on a
+  // superseded intent. So the replacement is prepared, its spend derived and
+  // checked, and only then persisted.
+  const walletAddresses = new Set(await findAddressStrings(walletId));
+  const prepared = await prepareSigningIntent({
     walletId,
     createdByUserId: userId,
     network: networkStr,
@@ -378,10 +388,20 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
     supersedesIntentId: originalIntent.intentId,
     signingContext,
   });
+  // The client reports this amount back on broadcast and in a saved draft, so
+  // it is the canonical net spend of the replacement snapshot — P - r when the
+  // receiver raised the fee out of its contribution, not P. A proposal with no
+  // net spend could be neither broadcast nor saved by the client.
+  const { amount } = await deriveIntentSpend(walletId, prepared.snapshot.network, prepared.snapshot, walletAddresses);
+  if (amount <= 0) {
+    throw new InvalidInputError('Payjoin proposal leaves no net spend for the sender', 'psbt');
+  }
+  const { handle: replacementIntent } = await persistSigningIntent(prepared);
   res.json({
     ...result,
     proposalPsbt: boundProposalPsbt,
     ...replacementIntent,
+    amount,
   });
 }));
 

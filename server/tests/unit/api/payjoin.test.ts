@@ -43,7 +43,7 @@ vi.mock('../../../src/models/prisma', () => {
   const mockWallet = { findFirst: vi.fn(), findUnique: vi.fn() };
   const mockWalletUser = { findFirst: vi.fn() };
   const mockUTXO = { count: vi.fn() };
-  const mockAddress = { findFirst: vi.fn() };
+  const mockAddress = { findFirst: vi.fn(), findMany: vi.fn() };
 
   return {
     __esModule: true,
@@ -94,10 +94,8 @@ vi.mock('../../../src/services/bitcoin/signingIntent/service', () => ({
       feePolicy: { requestedFeeRateSatsPerVbyte: 4 },
     },
   }),
-  createSigningIntent: vi.fn().mockResolvedValue({
-    intentId: 'intent-2',
-    intentDigest: 'b'.repeat(64),
-  }),
+  prepareSigningIntent: vi.fn(),
+  persistSigningIntent: vi.fn(),
 }));
 vi.mock('../../../src/services/bitcoin/signingIntent/canonical', () => ({
   unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
@@ -175,7 +173,11 @@ import {
   attemptPayjoinSend,
 } from '../../../src/services/payjoinService';
 import { assertFreshReceiveAddressSafeForDisplay } from '../../../src/services/addressDisplaySafety';
-import { createSigningIntent, loadSigningIntent } from '../../../src/services/bitcoin/signingIntent/service';
+import {
+  loadSigningIntent,
+  persistSigningIntent,
+  prepareSigningIntent,
+} from '../../../src/services/bitcoin/signingIntent/service';
 import {
   derivePayjoinInputRoles,
   unsignedPsbtSha256,
@@ -200,7 +202,7 @@ const mockPrisma = prisma as unknown as {
   };
   walletUser: { findFirst: ReturnType<typeof vi.fn> };
   uTXO: { count: ReturnType<typeof vi.fn> };
-  address: { findFirst: ReturnType<typeof vi.fn> };
+  address: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
 };
 const mockProcessPayjoinRequest = processPayjoinRequest as ReturnType<typeof vi.fn>;
 const mockParseBip21Uri = parseBip21Uri as ReturnType<typeof vi.fn>;
@@ -210,7 +212,9 @@ const mockAssertFreshReceiveAddressSafeForDisplay = vi.mocked(
 );
 const mockAttemptPayjoinSend = attemptPayjoinSend as ReturnType<typeof vi.fn>;
 const mockLoadSigningIntent = vi.mocked(loadSigningIntent);
-const mockCreateSigningIntent = vi.mocked(createSigningIntent);
+/** The route builds the replacement intent (prepare) and only then writes it (persist). */
+const mockCreateSigningIntent = vi.mocked(prepareSigningIntent);
+const mockPersistSigningIntent = vi.mocked(persistSigningIntent);
 const mockWalletUser = mockPrisma.walletUser;
 const mockUnsignedPsbtSha256 = vi.mocked(unsignedPsbtSha256);
 const mockDerivePayjoinInputRoles = vi.mocked(derivePayjoinInputRoles);
@@ -256,6 +260,39 @@ const payjoinProposalWithPeerInput = (): string => {
   return payjoinPsbt([5_760, 5_400], true);
 };
 const feePreservingPayjoinProposal = (): string => payjoinPsbt([9_400, 2_000], true);
+/** The snapshot prepareSigningIntent would build for a PSBT (no fee policy is read here). */
+const snapshotFromPsbt = (psbtBase64: string, roles: Array<'wallet' | 'payjoin_peer'>) => {
+  const psbt = bitcoin.Psbt.fromBase64(psbtBase64);
+  return {
+    version: 2,
+    walletId: TEST_WALLET_ID,
+    network: 'mainnet',
+    feePolicy: { requestedFeeRateSatsPerVbyte: 4 },
+    transaction: {
+      version: 2,
+      locktime: 0,
+      inputs: psbt.txInputs.map((input, index) => ({
+        txid: Buffer.from(input.hash).reverse().toString('hex'),
+        vout: input.index,
+        sequence: input.sequence,
+        prevout: {
+          amountSats: String(psbt.data.inputs[index].witnessUtxo!.value),
+          scriptPubKeyHex: Buffer.from(psbt.data.inputs[index].witnessUtxo!.script).toString('hex'),
+          role: roles[index] ?? 'wallet',
+        },
+      })),
+      outputs: psbt.txOutputs.map(output => ({
+        amountSats: String(output.value),
+        scriptPubKeyHex: Buffer.from(output.script).toString('hex'),
+      })),
+    },
+  };
+};
+const ORIGINAL_INTENT = {
+  intentId: 'intent-1',
+  unsignedPsbtSha256: 'psbt-hash',
+  snapshot: { version: 2, feePolicy: { requestedFeeRateSatsPerVbyte: 4 } },
+};
 const ATTEMPT_AUTH = {
   walletId: TEST_WALLET_ID,
   intentId: 'intent-1',
@@ -288,6 +325,20 @@ describe('Payjoin API Routes', () => {
     mockAssertFreshReceiveAddressSafeForDisplay.mockResolvedValue(undefined);
     mockBuildIntentPolicyInput.mockResolvedValue(null);
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
+    mockPrisma.address.findMany.mockResolvedValue([]);
+    mockLoadSigningIntent.mockResolvedValue(ORIGINAL_INTENT as never);
+    // The issued replacement carries the snapshot it persisted.
+    mockCreateSigningIntent.mockImplementation(async (input) => ({
+      input,
+      signingContext: input.signingContext,
+      snapshot: snapshotFromPsbt(input.unsignedPsbtBase64, input.inputRoles ?? []) as never,
+      snapshotDigest: 'b'.repeat(64),
+      unsignedPsbtSha256: 'proposal-hash',
+    }));
+    mockPersistSigningIntent.mockImplementation(async (prepared) => ({
+      handle: { intentId: 'intent-2', intentDigest: prepared.snapshotDigest, signingContext: prepared.signingContext },
+      snapshot: prepared.snapshot,
+    }));
   });
 
   describe('POST /:addressId (BIP78 Receiver Endpoint)', () => {
@@ -1198,6 +1249,80 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ success: true, intentId: 'intent-2' });
+    });
+
+    it('returns the canonical net amount of the persisted proposal intent when the receiver raises the fee', async () => {
+      // Original: P = 6000 to the receiver, 3400 change, fee 600. The receiver
+      // adds C = 2000 and pays r = 200 more fee from it: its output is
+      // P + C - r = 7800 and the sender's net spend is P - r = 5800.
+      const walletScript = Buffer.from(`0014${'22'.repeat(20)}`, 'hex');
+      const receiverScript = Buffer.from(`0014${'77'.repeat(20)}`, 'hex');
+      const proposal = new bitcoin.Psbt();
+      proposal.addInput({ hash: '11'.repeat(32), index: 0, witnessUtxo: { script: walletScript, value: 10_000n } });
+      proposal.addInput({
+        hash: '55'.repeat(32), index: 1,
+        witnessUtxo: { script: Buffer.from(`0014${'66'.repeat(20)}`, 'hex'), value: 2_000n },
+      });
+      proposal.addOutput({ script: receiverScript, value: 7_800n });
+      proposal.addOutput({ script: walletScript, value: 3_400n });
+      mockAttemptPayjoinSend.mockResolvedValue({ success: true, proposalPsbt: proposal.toBase64(), isPayjoin: true });
+      mockDerivePayjoinInputRoles.mockReturnValueOnce(['wallet', 'payjoin_peer']);
+      mockPrisma.address.findMany.mockResolvedValue([
+        { address: bitcoin.address.fromOutputScript(walletScript, bitcoin.networks.bitcoin) },
+      ]);
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, intentId: 'intent-2', amount: 5_800 });
+      expect(res.body).not.toHaveProperty('snapshot');
+      // Computed in memory from the issued snapshot: nothing fallible after the write.
+      expect(mockLoadSigningIntent).toHaveBeenCalledOnce();
+      expect(mockPrisma.address.findMany.mock.invocationCallOrder[0])
+        .toBeLessThan(mockCreateSigningIntent.mock.invocationCallOrder[0]);
+      expect(mockPersistSigningIntent).toHaveBeenCalledOnce();
+    });
+
+    it('refuses a proposal with no net sender spend before the replacement supersedes the original', async () => {
+      // Every paid output belongs to the wallet: nothing external, net amount 0.
+      const walletScript = Buffer.from(`0014${'22'.repeat(20)}`, 'hex');
+      mockAttemptPayjoinSend.mockResolvedValue({ success: true, proposalPsbt: PROPOSAL_PSBT_BASE64, isPayjoin: true });
+      mockPrisma.address.findMany.mockResolvedValue([
+        { address: bitcoin.address.fromOutputScript(walletScript, bitcoin.networks.bitcoin) },
+      ]);
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(400);
+      expect(mockCreateSigningIntent).toHaveBeenCalledOnce();
+      expect(mockPersistSigningIntent).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a spend derivation failure before the replacement supersedes the original', async () => {
+      const proposal = new bitcoin.Psbt();
+      proposal.addInput({
+        hash: '11'.repeat(32), index: 0,
+        witnessUtxo: { script: Buffer.from(`0014${'22'.repeat(20)}`, 'hex'), value: 10_000n },
+      });
+      proposal.addOutput({ script: Buffer.from('6a0101', 'hex'), value: 9_000n });
+      mockAttemptPayjoinSend.mockResolvedValue({ success: true, proposalPsbt: proposal.toBase64(), isPayjoin: true });
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ details: { reason: 'unsupported_script' } });
+      expect(mockPersistSigningIntent).not.toHaveBeenCalled();
+    });
+
+    it('fails before superseding the original intent when the wallet address lookup fails', async () => {
+      mockAttemptPayjoinSend.mockResolvedValue({ success: true, proposalPsbt: PROPOSAL_PSBT_BASE64, isPayjoin: true });
+      mockPrisma.address.findMany.mockRejectedValue(new Error('database unavailable'));
+
+      const res = await submitPayjoinAttempt(app);
+
+      expect(res.status).toBe(500);
+      expect(mockCreateSigningIntent).not.toHaveBeenCalled();
+      expect(mockPersistSigningIntent).not.toHaveBeenCalled();
     });
 
     it('binds the integer surplus when the original rate is float-inexact at the proposal size', async () => {

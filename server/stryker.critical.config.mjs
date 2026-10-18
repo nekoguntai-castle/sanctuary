@@ -79,6 +79,8 @@ function buildCriticalTestCommand() {
     'tests/unit/services/bitcoin/transactionService.broadcast.test.ts',
     'tests/unit/repositories/transactionSigningIntentRepository.test.ts',
     'tests/unit/api/transactionsSigningIntentBroadcast.test.ts',
+    'tests/unit/api/transactionsSigningIntentBroadcast.replacement.test.ts',
+    'tests/unit/api/transactionsSigningIntentBroadcast.retry.test.ts',
     'tests/unit/api/transactions-http-routes.test.ts',
     'tests/unit/middleware/auth.test.ts',
     'tests/unit/services/accessControl.test.ts',

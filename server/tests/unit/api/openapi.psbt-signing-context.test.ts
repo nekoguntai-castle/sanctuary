@@ -53,7 +53,9 @@ describe('OpenAPI PSBT signing evidence contracts', () => {
       'signingContext',
       'intentId',
       'intentDigest',
+      'amount',
     ]));
+    expect(success.properties.amount).toEqual({ type: 'integer', minimum: 0, description: expect.any(String) });
     expect(fallback.properties.success.enum).toEqual([false]);
     expect(fallback.required).toEqual(['success', 'isPayjoin']);
   });

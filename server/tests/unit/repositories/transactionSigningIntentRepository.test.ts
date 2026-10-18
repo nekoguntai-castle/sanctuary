@@ -201,6 +201,11 @@ describe('transactionSigningIntentRepository', () => {
     it.each([
       ['legacy metadata without reservations', { amount: 1 }, { equals: { amount: 1 } }],
       ['no metadata', null, { equals: Prisma.AnyNull }],
+      [
+        'a no-external-output attempt that holds no reservations',
+        { amount: 0, policyReservations: [] },
+        { equals: { amount: 0, policyReservations: [] } },
+      ],
     ])('resumes %s only while that metadata is unchanged', async (_label, broadcastMetadata, metadataGuard) => {
       mocks.updateMany.mockResolvedValueOnce({ count: 0 });
       mocks.findUnique.mockResolvedValueOnce({ broadcastMetadata });

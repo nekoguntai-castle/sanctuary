@@ -125,9 +125,14 @@ const claimStateConditions = (
   return steps;
 };
 
+/**
+ * A no-external-output attempt (consolidation, CPFP child) persists
+ * `policyReservations: []`: nothing is held, so nothing can be overwritten and
+ * the attempt may be resumed like a legacy one.
+ */
 const holdsPolicyReservations = (metadata: Prisma.JsonValue | null | undefined): boolean =>
   typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)
-  && Array.isArray(metadata.policyReservations);
+  && Array.isArray(metadata.policyReservations) && metadata.policyReservations.length > 0;
 
 /**
  * Claim steps for a `keepHeldReservations` claim: an attempt holding

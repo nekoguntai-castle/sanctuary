@@ -39,6 +39,7 @@ const snapshot = (
 
 describe('deriveIntentSpend', () => {
   beforeEach(() => {
+    mocks.findAddressStrings.mockClear();
     mocks.findAddressStrings.mockResolvedValue([walletInput.address, change.address]);
   });
 
@@ -77,10 +78,70 @@ describe('deriveIntentSpend', () => {
     expect(spend.amount).toBe(0);
   });
 
+  it('uses a preloaded wallet address set instead of querying it', async () => {
+    const spend = await deriveIntentSpend('wallet-1', 'testnet3', snapshot([
+      { amountSats: '40000', scriptPubKeyHex: recipient.script },
+      { amountSats: '59000', scriptPubKeyHex: change.script },
+    ]), new Set([walletInput.address, recipient.address]));
+
+    expect(mocks.findAddressStrings).not.toHaveBeenCalled();
+    // The preloaded set is authoritative: here the recipient is treated as ours.
+    expect(spend.externalOutputs).toEqual([{ address: change.address, amount: 59000 }]);
+    expect(spend.amount).toBe(59000);
+  });
+
   it('fails closed on a paid output with no decodable address', async () => {
     await expect(deriveIntentSpend('wallet-1', 'testnet3', snapshot([
       { amountSats: '1', scriptPubKeyHex: '6a0101' },
     ]))).rejects.toMatchObject({ details: expect.objectContaining({ reason: 'unsupported_script' }) });
+  });
+
+  const withPeerInputs = (
+    peerAmounts: string[],
+    outputs: Array<{ amountSats: string; scriptPubKeyHex: string }>,
+  ): SigningIntentSnapshotV1 => {
+    const base = snapshot(outputs);
+    return {
+      ...base,
+      transaction: {
+        ...base.transaction,
+        inputs: [
+          ...base.transaction.inputs,
+          ...peerAmounts.map((amountSats, index) => ({
+            txid: 'c'.repeat(64), vout: index, sequence: 0xfffffffd,
+            prevout: { amountSats, scriptPubKeyHex: otherRecipient.script, role: 'payjoin_peer' as const },
+          })),
+        ],
+      },
+    };
+  };
+
+  it('nets a payjoin receiver contribution out of the sender spend', async () => {
+    // BIP78: the receiver adds input C and raises its output from P to P + C.
+    const spend = await deriveIntentSpend('wallet-1', 'testnet3', withPeerInputs(['15000'], [
+      { amountSats: '55000', scriptPubKeyHex: recipient.script },
+      { amountSats: '59000', scriptPubKeyHex: change.script },
+    ]));
+    expect(spend.amount).toBe(40000);
+    expect(spend.externalOutputs).toEqual([{ address: recipient.address, amount: 55000 }]);
+    expect(spend.inputs).toHaveLength(2);
+  });
+
+  it('nets every payjoin peer input out of the sender spend', async () => {
+    const spend = await deriveIntentSpend('wallet-1', 'testnet3', withPeerInputs(['10000', '5000'], [
+      { amountSats: '55000', scriptPubKeyHex: recipient.script },
+      { amountSats: '59000', scriptPubKeyHex: change.script },
+    ]));
+    expect(spend.amount).toBe(40000);
+  });
+
+  it('floors the net sender spend at zero', async () => {
+    const spend = await deriveIntentSpend('wallet-1', 'testnet3', withPeerInputs(['70000'], [
+      { amountSats: '55000', scriptPubKeyHex: recipient.script },
+      { amountSats: '114000', scriptPubKeyHex: change.script },
+    ]));
+    expect(spend.amount).toBe(0);
+    expect(spend.externalOutputs).toEqual([{ address: recipient.address, amount: 55000 }]);
   });
 
   it.each(['-1', '1.5', String(Number.MAX_SAFE_INTEGER + 2)])('rejects the unsafe amount %s', async (value) => {

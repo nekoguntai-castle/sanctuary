@@ -220,6 +220,7 @@ describe('hardware and Payjoin signing response schemas', () => {
       success: true as const,
       isPayjoin: true as const,
       proposalPsbt: 'cHNidP8BAHECAAAAAf',
+      amount: 5800,
       ...signingEvidence,
     };
     expect(PayjoinAttemptResponseSchema.parse(replacement)).toEqual(replacement);
@@ -235,13 +236,18 @@ describe('hardware and Payjoin signing response schemas', () => {
       success: true,
       isPayjoin: true,
       proposalPsbt: 'cHNidP8BAHECAAAAAf',
+      amount: 5800,
       ...signingEvidence,
     };
-    for (const field of ['proposalPsbt', 'signingContext', 'intentId', 'intentDigest']) {
+    expect(PayjoinAttemptResponseSchema.safeParse(replacement).success).toBe(true);
+    for (const field of ['proposalPsbt', 'signingContext', 'intentId', 'intentDigest', 'amount']) {
       expect(PayjoinAttemptResponseSchema.safeParse({
         ...replacement,
         [field]: undefined,
       }).success).toBe(false);
+    }
+    for (const amount of [-1, 1.5, Number.MAX_SAFE_INTEGER + 2]) {
+      expect(PayjoinAttemptResponseSchema.safeParse({ ...replacement, amount }).success).toBe(false);
     }
     expect(PayjoinAttemptResponseSchema.safeParse({
       ...replacement,

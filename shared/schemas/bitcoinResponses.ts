@@ -71,6 +71,8 @@ export const PayjoinAttemptResponseSchema = z.discriminatedUnion('success', [
     success: z.literal(true),
     isPayjoin: z.literal(true),
     proposalPsbt: z.string().min(1),
+    /** The sender's net spend the server derives for the proposal intent; broadcast checks it. */
+    amount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     ...signingEvidence,
   }),
   z.looseObject({

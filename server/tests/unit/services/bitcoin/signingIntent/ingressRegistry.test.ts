@@ -17,7 +17,8 @@ describe('signing intent ingress registry', () => {
     ['agent funding', 'src/services/agentApiService.ts'],
     ['Payjoin supersession', 'src/api/payjoin.ts'],
   ])('%s transaction creation issues a server intent', (_name, path) => {
-    expect(source(path)).toContain('createSigningIntent');
+    // persistSigningIntent is the prepare-then-persist form of createSigningIntent.
+    expect(source(path)).toMatch(/\b(?:createSigningIntent|persistSigningIntent)\(/);
   });
 
   it('draft creation binds and authenticates the issued handle', () => {

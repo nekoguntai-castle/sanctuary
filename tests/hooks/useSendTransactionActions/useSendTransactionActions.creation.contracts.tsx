@@ -1,5 +1,6 @@
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
 
 import { ApiError } from '../../../src/api/client';
 import {
@@ -10,6 +11,55 @@ import {
   renderRerenderableSendTransactionActions,
   renderSendTransactionActions,
 } from './useSendTransactionActionsTestHarness';
+
+const P2WPKH_SCRIPT = Uint8Array.from([0x00, 0x14, ...new Array(20).fill(0x11)]);
+const PEER_TXID = 'b'.repeat(62) + '01';
+
+/**
+ * A realistic BIP78 proposal for baseTxData: the wallet input (a…a:0) keeps
+ * its 10123 sats; the receiver adds C = 5000 and pays r = 100 more fee out of
+ * it, so its output goes from P = 10000 to P + C - r = 14900. Proposal fee =
+ * 15123 - 14900 = 223, and the server's canonical amount is P - r = 9900.
+ */
+const buildPayjoinProposal = (options: {
+  peerPrevout?: 'witness' | 'nonWitness' | 'none';
+  outputValue?: bigint;
+} = {}): string => {
+  const psbt = new bitcoin.Psbt();
+  psbt.addInput({ hash: 'a'.repeat(64), index: 0, witnessUtxo: { script: P2WPKH_SCRIPT, value: 10123n } });
+  const peerPrevout = options.peerPrevout ?? 'witness';
+  if (peerPrevout === 'nonWitness') {
+    const previous = new bitcoin.Transaction();
+    previous.addInput(new Uint8Array(32), 0);
+    previous.addOutput(P2WPKH_SCRIPT, 1n);
+    previous.addOutput(P2WPKH_SCRIPT, 5000n);
+    psbt.addInput({ hash: previous.getId(), index: 1, nonWitnessUtxo: previous.toBuffer() });
+  } else {
+    psbt.addInput({
+      hash: PEER_TXID,
+      index: 2,
+      ...(peerPrevout === 'witness' && { witnessUtxo: { script: P2WPKH_SCRIPT, value: 5000n } }),
+    });
+  }
+  psbt.addOutput({ script: P2WPKH_SCRIPT, value: options.outputValue ?? 14900n });
+  return psbt.toBase64();
+};
+
+const CANONICAL_AMOUNT = 9900;
+
+const payjoinSuccess = (proposalPsbt: string) => ({
+  success: true,
+  proposalPsbt,
+  amount: CANONICAL_AMOUNT,
+  intentId: 'intent-2',
+  intentDigest: 'b'.repeat(64),
+  signingContext: { ...baseTxData.signingContext, unsignedTransactionDigest: 'c'.repeat(64) },
+});
+
+const payjoinState = () => createState({
+  outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+  payjoinUrl: 'https://merchant.example/payjoin',
+});
 
 export const registerUseSendTransactionActionsCreationContracts = () => {
   describe('transaction creation', () => {
@@ -286,9 +336,11 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
         ...baseTxData.signingContext,
         unsignedTransactionDigest: 'c'.repeat(64),
       };
+      const proposalPsbt = buildPayjoinProposal();
       mocks.attemptPayjoin.mockResolvedValue({
         success: true,
-        proposalPsbt: 'payjoin-proposal-psbt',
+        proposalPsbt,
+        amount: CANONICAL_AMOUNT,
         intentId: 'intent-2',
         intentDigest: 'b'.repeat(64),
         signingContext: replacementContext,
@@ -307,8 +359,94 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
 
       expect(mocks.attemptPayjoin).toHaveBeenCalled();
       expect(result.current.payjoinStatus).toBe('success');
-      expect(result.current.unsignedPsbt).toBe('payjoin-proposal-psbt');
+      expect(result.current.unsignedPsbt).toBe(proposalPsbt);
       expect(result.current.txData?.signingContext).toEqual(replacementContext);
+      expect(result.current.txData).toMatchObject({
+        fee: 223,
+        totalInput: 15123,
+        totalOutput: 14900,
+        effectiveAmount: CANONICAL_AMOUNT,
+        utxos: [{ txid: 'a'.repeat(64), vout: 0 }, { txid: PEER_TXID, vout: 2, amount: 5000 }],
+      });
+    });
+
+    it('broadcasts a payjoin with the proposal outpoints, fee and canonical amount P - r', async () => {
+      mocks.attemptPayjoin.mockResolvedValue(payjoinSuccess(buildPayjoinProposal()) as any);
+      const { result } = renderSendTransactionActions({ state: payjoinState() });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+      await act(async () => {
+        await result.current.broadcastTransaction('signed-psbt');
+      });
+
+      expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+        intentId: 'intent-2',
+        amount: CANONICAL_AMOUNT,
+        fee: 223,
+        utxos: [{ txid: 'a'.repeat(64), vout: 0 }, { txid: PEER_TXID, vout: 2, amount: 5000 }],
+      }));
+    });
+
+    it('saves a payjoin draft with the proposal outpoints, fee and canonical amount P - r', async () => {
+      mocks.attemptPayjoin.mockResolvedValue(payjoinSuccess(buildPayjoinProposal()) as any);
+      const { result } = renderSendTransactionActions({ state: payjoinState() });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+      await act(async () => {
+        await result.current.saveDraft();
+      });
+
+      expect(mocks.createDraft).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+        intentId: 'intent-2',
+        amount: CANONICAL_AMOUNT,
+        effectiveAmount: CANONICAL_AMOUNT,
+        fee: 223,
+        totalInput: 15123,
+        totalOutput: 14900,
+        selectedUtxoIds: [`${'a'.repeat(64)}:0`, `${PEER_TXID}:2`],
+      }), expect.anything());
+    });
+
+    it('reads a payjoin peer input value from its full previous transaction', async () => {
+      mocks.attemptPayjoin.mockResolvedValue(
+        payjoinSuccess(buildPayjoinProposal({ peerPrevout: 'nonWitness' })) as any,
+      );
+      const { result } = renderSendTransactionActions({ state: payjoinState() });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+
+      expect(result.current.payjoinStatus).toBe('success');
+      expect(result.current.txData?.fee).toBe(223);
+      expect(result.current.txData?.utxos[1]).toMatchObject({ vout: 1, amount: 5000 });
+    });
+
+    it.each([
+      ['an input with no previous output', payjoinSuccess(buildPayjoinProposal({ peerPrevout: 'none' }))],
+      ['outputs exceeding its inputs', payjoinSuccess(buildPayjoinProposal({ outputValue: 20000n }))],
+      ['no canonical amount', { ...payjoinSuccess(buildPayjoinProposal()), amount: undefined }],
+      // The server floors the net amount at 0, which can be neither broadcast nor saved.
+      ['a zero canonical amount', { ...payjoinSuccess(buildPayjoinProposal()), amount: 0 }],
+    ])('falls back to the original transaction for a proposal with %s', async (_label, response) => {
+      mocks.attemptPayjoin.mockResolvedValue(response as any);
+      const { result } = renderSendTransactionActions({ state: payjoinState() });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+
+      expect(result.current.payjoinStatus).toBe('failed');
+      expect(result.current.unsignedPsbt).toBe(baseTxData.psbtBase64);
+      expect(result.current.txData).toMatchObject({
+        fee: baseTxData.fee,
+        utxos: baseTxData.utxos,
+        effectiveAmount: baseTxData.effectiveAmount,
+      });
     });
 
     it('skips payjoin when the create response requires approval', async () => {
@@ -377,6 +515,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       mocks.attemptPayjoin.mockResolvedValue({
         success: true,
         proposalPsbt: 'unbound-payjoin-psbt',
+        amount: CANONICAL_AMOUNT,
         intentId: 'intent-2',
         intentDigest: 'b'.repeat(64),
       } as any);

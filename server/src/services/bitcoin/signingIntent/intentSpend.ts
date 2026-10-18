@@ -19,7 +19,13 @@ export interface IntentSpend {
   outputs: TransactionOutputMetadata[];
   /** Paid outputs to addresses outside the wallet. */
   externalOutputs: Array<{ address: string; amount: number }>;
-  /** Sum of the external outputs. */
+  /**
+   * The sender's net spend: the external outputs minus any payjoin receiver
+   * (`payjoin_peer`) inputs, floored at 0. In BIP78 the receiver adds input C
+   * and raises its output from P to P + C, so the sender pays P; when the
+   * receiver also raises the fee by r out of C, its output is P + C - r and
+   * the net spend is P - r (amount + fee is still the sender's real outflow).
+   */
   amount: number;
   /** The txid this intent replaces (RBF), from the authenticated snapshot. */
   replacementTxid?: string;
@@ -47,8 +53,11 @@ export const deriveIntentSpend = async (
   walletId: string,
   network: BitcoinNetwork,
   snapshot: SigningIntentSnapshot,
+  /** The wallet's addresses, when the caller already loaded them; otherwise they are queried. */
+  preloadedWalletAddresses?: ReadonlySet<string>,
 ): Promise<IntentSpend> => {
-  const walletAddresses = new Set(await addressRepository.findAddressStrings(walletId));
+  const walletAddresses = preloadedWalletAddresses
+    ?? new Set(await addressRepository.findAddressStrings(walletId));
   const inputs = snapshot.transaction.inputs.map((input, index) => ({
     txid: input.txid,
     vout: input.vout,
@@ -79,11 +88,16 @@ export const deriveIntentSpend = async (
   const externalOutputs = outputs
     .filter(output => !output.isOurs && output.address && output.amount > 0)
     .map(output => ({ address: output.address, amount: output.amount }));
+  const externalTotal = externalOutputs.reduce((sum, output) => sum + output.amount, 0);
+  const peerContribution = snapshot.transaction.inputs.reduce(
+    (sum, input, index) => (input.prevout.role === 'payjoin_peer' ? sum + inputs[index].amount : sum),
+    0,
+  );
   return {
     inputs,
     outputs,
     externalOutputs,
-    amount: externalOutputs.reduce((sum, output) => sum + output.amount, 0),
+    amount: Math.max(0, externalTotal - peerContribution),
     ...(snapshot.transaction.replacementTxid && { replacementTxid: snapshot.transaction.replacementTxid }),
   };
 };

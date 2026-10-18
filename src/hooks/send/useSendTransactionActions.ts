@@ -9,11 +9,13 @@
  */
 
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import * as bitcoin from 'bitcoinjs-lib';
 import * as transactionsApi from '../../api/transactions';
 import * as payjoinApi from '../../api/payjoin';
 import * as draftsApi from '../../api/drafts';
 import { ApiError } from '../../api/client';
 import { createLogger } from '../../utils/logger';
+import { toHex } from '../../utils/bufferUtils';
 import { addressMatchesNetwork, validateAddress } from '../../utils/validateAddress';
 import { useUsbSigning } from './useUsbSigning';
 import { useQrSigning } from './useQrSigning';
@@ -145,6 +147,47 @@ function shouldAttemptPayjoin(
 
 type WalletNetwork = Wallet['network'];
 
+// The throws below are defensive: the server validates the proposal and its prevouts first.
+function getProposalInputValue(psbt: bitcoin.Psbt, index: number): bigint {
+  const input = psbt.data.inputs[index];
+  if (input.witnessUtxo) return input.witnessUtxo.value;
+  if (input.nonWitnessUtxo) {
+    return bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo).outs[psbt.txInputs[index].index].value;
+  }
+  throw new Error(`Payjoin proposal input ${index} has no previous output`);
+}
+
+/**
+ * Broadcast and draft metadata must describe the proposal the server minted
+ * the new intent from: every input (the receiver's included), the proposal's
+ * fee, and the canonical amount the server derived for that intent (P - r
+ * when the receiver raised the fee out of its contribution). The amount is
+ * never recomputed here: broadcast compares it to the server's own.
+ */
+function applyPayjoinProposal(result: TransactionData, proposalPsbt: string, amount: number): Pick<
+  TransactionData, 'utxos' | 'fee' | 'totalInput' | 'totalOutput' | 'effectiveAmount'
+> {
+  const psbt = bitcoin.Psbt.fromBase64(proposalPsbt);
+  const known = new Map(result.utxos.map(utxo => [`${utxo.txid}:${utxo.vout}`, utxo]));
+  let totalInput = 0n;
+  const utxos = psbt.txInputs.map((input, index) => {
+    const txid = toHex(Uint8Array.from(input.hash).reverse());
+    const inputValue = getProposalInputValue(psbt, index);
+    totalInput += inputValue;
+    return known.get(`${txid}:${input.index}`) ?? { txid, vout: input.index, amount: Number(inputValue) };
+  });
+  const totalOutput = psbt.txOutputs.reduce((sum, output) => sum + output.value, 0n);
+  // Unreachable for a server-validated proposal; kept as a fallback to the original transaction.
+  if (totalInput < totalOutput) throw new Error('Payjoin proposal spends more than its inputs');
+  return {
+    utxos,
+    fee: Number(totalInput - totalOutput),
+    totalInput: Number(totalInput),
+    totalOutput: Number(totalOutput),
+    effectiveAmount: amount,
+  };
+}
+
 async function applyPayjoinIfNeeded(
   walletId: string,
   result: TransactionData,
@@ -186,11 +229,15 @@ async function applyPayjoinIfNeeded(
 
     if (payjoinResult.success && payjoinResult.proposalPsbt
       && payjoinResult.intentId && payjoinResult.intentDigest
-      && payjoinResult.signingContext) {
+      && payjoinResult.signingContext
+      // The server floors the net amount at 0, which can be neither broadcast nor saved.
+      && payjoinResult.amount > 0) {
+      const proposal = applyPayjoinProposal(result, payjoinResult.proposalPsbt, payjoinResult.amount);
       setPayjoinStatus('success');
       log.info('Payjoin successful');
       return {
         ...result,
+        ...proposal,
         psbtBase64: payjoinResult.proposalPsbt,
         intentId: payjoinResult.intentId,
         intentDigest: payjoinResult.intentDigest,
