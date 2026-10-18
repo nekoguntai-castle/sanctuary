@@ -1202,6 +1202,11 @@ describe('Payjoin API Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.proposalPsbt).toBe(PROPOSAL_PSBT_BASE64);
       expect(res.body.isPayjoin).toBe(true);
+      expect(mockLoadSigningIntent).toHaveBeenCalledWith(
+        { intentId: 'intent-1', intentDigest: 'a'.repeat(64) },
+        TEST_WALLET_ID,
+        { allowLiveDraftExtension: true },
+      );
     });
 
     it('binds only Payjoin peer inputs as foreign before issuing the replacement intent', async () => {

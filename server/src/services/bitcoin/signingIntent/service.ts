@@ -176,10 +176,32 @@ const assertStoredPsbtAuthentic = (record: StoredSigningIntent): void => {
   }
 };
 
+/**
+ * An intent past its stored expiry (which never changes) stays live while an
+ * actionable draft in the wallet references it and that draft has not expired,
+ * but only for callers that opt in: signing, broadcast and payjoin. Draft
+ * creation does not, so a live draft cannot seed a new draft with a fresh lifetime.
+ */
+const assertIntentLive = async (
+  record: StoredSigningIntent,
+  walletId: string,
+  allowLiveDraftExtension: boolean,
+): Promise<void> => {
+  const now = new Date(Date.now());
+  if (record.expiresAt.getTime() > now.getTime()) return;
+  if (
+    allowLiveDraftExtension
+    && await draftSigningIntentRepository.hasLiveDraftForSigningIntent(walletId, record.id, now)
+  ) {
+    return;
+  }
+  throw invalidIntent('Signing intent has expired', 'stale_intent');
+};
+
 export const loadSigningIntent = async (
   handle: SigningIntentHandle,
   walletId: string,
-  options: { allowConsumedBroadcastReplay?: boolean } = {},
+  options: { allowConsumedBroadcastReplay?: boolean; allowLiveDraftExtension?: boolean } = {},
 ): Promise<SigningIntentEnvelope> => {
   const record = await transactionSigningIntentRepository.findById(handle.intentId);
   if (!record) throw invalidIntent('Signing intent was not found');
@@ -188,8 +210,8 @@ export const loadSigningIntent = async (
     record,
     options.allowConsumedBroadcastReplay === true,
   );
-  if (!broadcastReplay && record.expiresAt.getTime() <= Date.now()) {
-    throw invalidIntent('Signing intent has expired', 'stale_intent');
+  if (!broadcastReplay) {
+    await assertIntentLive(record, walletId, options.allowLiveDraftExtension === true);
   }
   const snapshot = authenticateStoredSnapshot(record, walletId);
   const signingContext = PsbtSigningContextSchema.safeParse(record.signingContext);

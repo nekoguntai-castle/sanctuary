@@ -243,6 +243,23 @@ describe('signed artifact authentication boundary', () => {
     expect(mocks.loadSigningIntent).not.toHaveBeenCalled();
   });
 
+  it('lets a live draft keep the intent loadable for signing and broadcast', async () => {
+    await expect(validatePartialSignedPsbt({
+      ...signingInput,
+      signedPsbtBase64: original.toBase64(),
+    })).resolves.toBeUndefined();
+    expect(mocks.loadSigningIntent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ intentId: signingInput.intentId }), 'wallet-1', { allowLiveDraftExtension: true },
+    );
+
+    await expect(validateSignedArtifact({ ...signingInput, signedPsbtBase64: original.toBase64() }))
+      .rejects.toThrow('verifiable signature evidence');
+    expect(mocks.loadSigningIntent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ intentId: signingInput.intentId }), 'wallet-1',
+      { allowConsumedBroadcastReplay: true, allowLiveDraftExtension: true },
+    );
+  });
+
   it('keeps the test artifact constructor unavailable outside the test runtime', () => {
     vi.stubEnv('NODE_ENV', 'production');
     expect(() => createValidatedBroadcastArtifactForTest({

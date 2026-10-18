@@ -319,7 +319,11 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   const wallet = await findByIdWithAccess(walletId, userId);
   if (!wallet) throw new NotFoundError('Wallet not found or access denied');
   await requireWalletEditAccess(walletId, userId);
-  const originalIntent = await loadSigningIntent({ intentId, intentDigest }, walletId);
+  const originalIntent = await loadSigningIntent(
+    { intentId, intentDigest },
+    walletId,
+    { allowLiveDraftExtension: true },
+  );
   if (unsignedPsbtSha256(psbt) !== originalIntent.unsignedPsbtSha256) {
     throw new InvalidInputError('Payjoin PSBT does not match its signing intent', 'psbt');
   }

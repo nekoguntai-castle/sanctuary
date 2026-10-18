@@ -1,15 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   findById: vi.fn(),
   findDraftByWalletAndSigningIntent: vi.fn(),
+  hasLiveDraftForSigningIntent: vi.fn(),
   authenticateIntentPrevouts: vi.fn(),
 }));
 vi.mock('../../../../../src/repositories/draftSigningIntentRepository', () => ({
   draftSigningIntentRepository: {
     findDraftByWalletAndSigningIntent: mocks.findDraftByWalletAndSigningIntent,
+    hasLiveDraftForSigningIntent: mocks.hasLiveDraftForSigningIntent,
   },
 }));
 
@@ -526,5 +528,88 @@ describe('transaction signing intent lifecycle', () => {
       { intentId: 'intent-1', intentDigest: created.snapshotDigest },
       'wallet-1',
     )).rejects.toThrow('Signing intent account binding is malformed');
+  });
+});
+
+describe('draft-derived signing intent liveness', () => {
+  const NOW = new Date('2030-01-02T00:00:00.000Z');
+  let created: any;
+  const handle = () => ({ intentId: 'intent-1', intentDigest: created.snapshotDigest });
+  const storeIntent = (overrides: Record<string, unknown> = {}) => mocks.findById.mockResolvedValue({
+    id: 'intent-1', ...created, supersededById: null, consumedAt: null, ...overrides,
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    mocks.authenticateIntentPrevouts.mockResolvedValue([{
+      amountSats: '10000', scriptPubKeyHex: '0014' + '22'.repeat(20), role: 'wallet',
+    }]);
+    mocks.create.mockImplementationOnce(async data => ({ id: 'intent-1', ...data }));
+    await createSigningIntent({
+      walletId: 'wallet-1', createdByUserId: 'user-1', network: 'testnet3',
+      source: 'standard', unsignedPsbtBase64: psbtBase64(), expiresAt: new Date(NOW.getTime() - 1),
+    });
+    created = mocks.create.mock.calls[0][0];
+    storeIntent();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('loads an expired intent while a live draft in the request wallet references it', async () => {
+    mocks.hasLiveDraftForSigningIntent.mockResolvedValueOnce(true);
+
+    await expect(loadSigningIntent(handle(), 'wallet-1', { allowLiveDraftExtension: true }))
+      .resolves.toMatchObject({ intentId: 'intent-1', expiresAt: created.expiresAt });
+    expect(mocks.hasLiveDraftForSigningIntent).toHaveBeenCalledWith('wallet-1', 'intent-1', NOW);
+  });
+
+  it('keeps an expired intent stale when no live draft references it', async () => {
+    // The repository answers false for no draft, an expired, broadcasted, rejected,
+    // vetoed or approval-expired draft, and a draft in another wallet.
+    mocks.hasLiveDraftForSigningIntent.mockResolvedValueOnce(false);
+
+    await expect(loadSigningIntent(handle(), 'wallet-1', { allowLiveDraftExtension: true }))
+      .rejects.toMatchObject({ details: { reason: 'stale_intent' } });
+  });
+
+  it('does not consult drafts without the option', async () => {
+    mocks.hasLiveDraftForSigningIntent.mockResolvedValue(true);
+
+    await expect(loadSigningIntent(handle(), 'wallet-1'))
+      .rejects.toMatchObject({ details: { reason: 'stale_intent' } });
+    await expect(loadSigningIntent(handle(), 'wallet-1', { allowLiveDraftExtension: false }))
+      .rejects.toThrow('Signing intent has expired');
+    expect(mocks.hasLiveDraftForSigningIntent).not.toHaveBeenCalled();
+  });
+
+  it('does not consult drafts for an unexpired intent', async () => {
+    storeIntent({ expiresAt: new Date(NOW.getTime() + 1) });
+
+    await expect(loadSigningIntent(handle(), 'wallet-1', { allowLiveDraftExtension: true }))
+      .resolves.toMatchObject({ intentId: 'intent-1' });
+    expect(mocks.hasLiveDraftForSigningIntent).not.toHaveBeenCalled();
+  });
+
+  it('checks the stored scope before consulting drafts', async () => {
+    storeIntent({ walletId: 'wallet-2' });
+
+    await expect(loadSigningIntent(handle(), 'wallet-1', { allowLiveDraftExtension: true }))
+      .rejects.toThrow('Signing intent was not found');
+    expect(mocks.hasLiveDraftForSigningIntent).not.toHaveBeenCalled();
+  });
+
+  it('leaves an authenticated broadcast replay unchanged', async () => {
+    storeIntent({
+      consumedAt: new Date(0), broadcastState: 'complete',
+      broadcastTxid: 'c'.repeat(64), broadcastRawTx: '00',
+    });
+
+    await expect(loadSigningIntent(handle(), 'wallet-1', {
+      allowConsumedBroadcastReplay: true, allowLiveDraftExtension: true,
+    })).resolves.toMatchObject({ broadcastReplay: { state: 'complete' } });
+    expect(mocks.hasLiveDraftForSigningIntent).not.toHaveBeenCalled();
   });
 });

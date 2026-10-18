@@ -232,6 +232,11 @@ describe('createDraft approval atomicity', () => {
     expect(txTracker.clients).toHaveLength(1);
     const tx = txTracker.clients[0];
 
+    // A new draft needs an unexpired intent: no live-draft extension (A4).
+    expect(loadSigningIntent).toHaveBeenCalledWith(
+      { intentId: 'intent-1', intentDigest: 'a'.repeat(64) },
+      walletId,
+    );
     expect(draftRepository.create).toHaveBeenCalledTimes(1);
     expect(draftRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ approvalStatus: 'pending' }),

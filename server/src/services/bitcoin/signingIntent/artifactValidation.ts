@@ -524,6 +524,7 @@ export const validateSignedArtifact = async (
   await assertWalletHardwareCapabilityById(input.walletId, 'finalize');
   const envelope = await loadSigningIntent(input, input.walletId, {
     allowConsumedBroadcastReplay: true,
+    allowLiveDraftExtension: true,
   });
   const originalPsbt = parsePsbt(envelope.unsignedPsbtBase64, 'intentId');
   const unsignedOriginal = bitcoin.Transaction.fromBuffer(
@@ -574,7 +575,7 @@ export const validatePartialSignedPsbt = async (
 ): Promise<void> => {
   // Reject before ingesting any partial signature into the intent workflow.
   await assertWalletHardwareCapabilityById(input.walletId, 'sign');
-  const envelope = await loadSigningIntent(input, input.walletId);
+  const envelope = await loadSigningIntent(input, input.walletId, { allowLiveDraftExtension: true });
   requireFeePolicy(envelope.snapshot);
   const originalPsbt = parsePsbt(envelope.unsignedPsbtBase64, 'intentId');
   const candidate = parsePsbt(input.signedPsbtBase64, 'signedPsbtBase64');
