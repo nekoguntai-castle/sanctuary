@@ -44,7 +44,8 @@ const RETENTION_HOURS = 7 * 24;
 const RETENTION_SECONDS = 8 * 24 * 60 * 60;
 const READ_TIMEOUT_MS = 1_000;
 const WRITE_TIMEOUT_MS = 100;
-const MAX_RECORDS = 128;
+// 64 records plus the snapshot envelope stay within the 16 KiB support collector cap.
+const MAX_RECORDS = 64;
 const MAX_COUNT = 1_000_000;
 
 const RECORD_SCRIPT = `
@@ -350,8 +351,10 @@ function ageBucket(hours: number): typeof LAST_SEEN_AGE_BUCKETS[number] {
   return 'three_to_seven_days';
 }
 
+// Busiest first, so truncation to MAX_RECORDS keeps the highest-volume failures.
 function compareRecords(left: AggregateRecord, right: AggregateRecord): number {
-  return aggregateField(left).localeCompare(aggregateField(right));
+  return right.count - left.count
+    || aggregateField(left).localeCompare(aggregateField(right));
 }
 
 function retentionContract() {

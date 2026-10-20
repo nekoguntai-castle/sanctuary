@@ -12,7 +12,11 @@ vi.mock('ioredis', () => ({
 vi.mock('../../../../src/config', () => ({
   getConfig: () => ({ redis: { url: 'redis://telemetry-reader-test' } }),
 }));
-import { NotificationTelemetryReader } from '../../../../src/services/notifications/telemetryReader';
+import {
+  NotificationTelemetryReader,
+  notificationTelemetrySnapshotSchema,
+} from '../../../../src/services/notifications/telemetryReader';
+import { MAX_COLLECTOR_BYTES } from '../../../../src/services/supportPackage/privacy';
 
 function mockClient(options: {
   time?: string;
@@ -262,7 +266,7 @@ describe('notification telemetry reader', () => {
     });
   });
 
-  it('bounds record cardinality and buckets dropped dimensions', async () => {
+  it('bounds record cardinality, keeps the busiest records and fits the collector byte cap', async () => {
     const stages = ['enqueue_resolved', 'enqueue_failed', 'handler_started', 'transport_attempted',
       'inline_fallback_attempted', 'inline_terminal_outcome', 'attempt_failed', 'transport_accepted',
       'terminal_completed', 'terminal_failure'];
@@ -276,15 +280,76 @@ describe('notification telemetry reader', () => {
         }
       }
     }
+    const busiest = 'transaction|terminal_failure|worker|inline|telegram|ambiguous|provider_rejected';
+    firstHash[busiest] = '999999';
     const { client } = mockClient({ firstHash });
 
     const result = await new NotificationTelemetryReader(() => client).read();
 
-    expect(result.windows.fiveMinutes.records).toHaveLength(256);
+    expect(result.windows.fiveMinutes.records).toHaveLength(20);
+    expect(result.windows.fiveMinutes.records[0]).toMatchObject({
+      stage: 'terminal_failure', source: 'worker', count: 999_999,
+    });
     expect(result.windows.fiveMinutes).toMatchObject({
       truncated: true,
       droppedDimensionBucket: 'over_twenty',
     });
+    expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(MAX_COLLECTOR_BYTES);
+  });
+
+  it('orders equal counts by their serialized record', async () => {
+    const { client } = mockClient({
+      firstHash: {
+        'transaction|terminal_completed|api|queued|none|none|none': '3',
+        'transaction|enqueue_resolved|api|queued|none|none|none': '3',
+        'transaction|handler_started|api|queued|none|none|none': '7',
+      },
+    });
+
+    const result = await new NotificationTelemetryReader(() => client).read();
+
+    expect(result.windows.fiveMinutes.records.map(record => record.stage)).toEqual([
+      'handler_started', 'enqueue_resolved', 'terminal_completed',
+    ]);
+  });
+
+  it('keeps the maximum schema-valid snapshot within the collector byte cap', () => {
+    const record = {
+      family: 'transaction' as const,
+      stage: 'inline_fallback_attempted' as const,
+      source: 'worker' as const,
+      path: 'inline' as const,
+      channel: 'telegram' as const,
+      outcome: 'not_registered' as const,
+      failureClass: 'provider_unavailable' as const,
+      count: 1_000_000,
+      saturated: true,
+    };
+    const attendance = {
+      observation: 'observed' as const,
+      attendance: 'partial' as const,
+      observedBuckets: 'six_to_twenty' as const,
+      attestedEmitterCount: 'six_to_twenty' as const,
+      oldestObservationAge: 'within_twenty_four_hours' as const,
+      newestObservationAge: 'within_five_minutes' as const,
+    };
+    const window = (count: number) => ({
+      observation: 'observed' as const,
+      coverage: 'degraded' as const,
+      records: Array.from({ length: count }, () => record),
+      truncated: true,
+      droppedDimensionBucket: 'over_twenty' as const,
+      sources: { api: attendance, worker: attendance },
+    });
+    const snapshot = (count: number) => ({
+      version: 1 as const,
+      localWriter: { observation: 'observed' as const, circuit: 'closed' as const, droppedEvents: 'over_twenty' as const },
+      windows: { fiveMinutes: window(count), oneHour: window(count), twentyFourHours: window(count) },
+    });
+
+    const parsed = notificationTelemetrySnapshotSchema.parse(snapshot(20));
+    expect(Buffer.byteLength(JSON.stringify(parsed), 'utf8')).toBeLessThanOrEqual(MAX_COLLECTOR_BYTES);
+    expect(notificationTelemetrySnapshotSchema.safeParse(snapshot(21)).success).toBe(false);
   });
 
   it('uses an isolated default client and installs a contained error listener', async () => {

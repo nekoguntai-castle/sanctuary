@@ -60,7 +60,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
           summary: 'Consider consolidating dust',
         };
         (mockCreateInsight as Mock).mockResolvedValue(insight);
-        (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+        (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
         let phaseStarted!: () => void;
         let finishPhase!: () => void;
@@ -329,7 +329,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
         summary: 'Consider consolidating dust',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 
@@ -388,7 +388,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
         summary: 'Consolidate',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 

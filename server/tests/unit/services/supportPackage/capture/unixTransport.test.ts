@@ -3,7 +3,7 @@ import { chmod, mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import type { Server } from 'node:net';
+import type { Server, Socket } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertLocalCaptureTransport,
@@ -459,6 +459,43 @@ describe('controlled-capture Unix transport', () => {
       status: 'invalid', failure: 'request_invalid',
     });
     client.destroy();
+  });
+
+  it('keeps an error listener on accepted sockets after the request frame was read', async () => {
+    temporaryDirectory = await mkdtemp(join(tmpdir(), 'sanctuary-capture-socket-error-'));
+    let serverSocket: Socket | undefined;
+    let thrown: unknown;
+    class EmittingObservationStore extends ControlledCaptureObservationStore {
+      override snapshot(session: Parameters<ControlledCaptureObservationStore['snapshot']>[0]) {
+        try {
+          serverSocket?.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+        } catch (error) {
+          thrown = error;
+        }
+        return super.snapshot(session);
+      }
+    }
+    server = await startCaptureParticipantServer({
+      socketDirectory: temporaryDirectory,
+      participantId: 'api',
+      membershipProvider: () => createMembershipBarrier(1, ['api']),
+      observations: new EmittingObservationStore(),
+    });
+    server.on('connection', accepted => { serverSocket = accepted; });
+    const config = createLocalCaptureTransportConfig(
+      captureParticipantSocketPath(temporaryDirectory, 'api'),
+    );
+
+    await requestCaptureParticipant(config, {
+      protocol: 'sanctuary-controlled-capture-v1',
+      operation: 'status',
+      session: { sessionId: 'session-a', generation: 1 },
+    }).catch(error => {
+      expect(String(error)).toContain('capture_socket_closed');
+    });
+
+    expect(thrown).toBeUndefined();
+    expect(serverSocket?.destroyed).toBe(true);
   });
 
   it('rejects a file used as the socket directory and a duplicate generic listener', async () => {

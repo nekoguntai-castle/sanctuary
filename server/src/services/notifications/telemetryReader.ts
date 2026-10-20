@@ -19,7 +19,9 @@ import {
 
 const KEY_PREFIX = 'sanctuary:diagnostics:notification:v1';
 const READ_TIMEOUT_MS = 1_000;
-const MAX_RECORDS = 256;
+// Three windows must serialize within the 16 KiB support collector cap
+// (worst-case record ~213 B, window shell ~590 B).
+const MAX_RECORDS_PER_WINDOW = 20;
 const MAX_COUNT = 1_000_000;
 
 const countBucketSchema = z.enum([
@@ -70,7 +72,7 @@ export const notificationTelemetryRecordSchema = z.object({
 export const notificationTelemetryWindowSchema = z.object({
   observation: z.enum(['observed', 'unavailable', 'timeout']),
   coverage: z.enum(['degraded', 'unavailable']),
-  records: z.array(notificationTelemetryRecordSchema).max(MAX_RECORDS),
+  records: z.array(notificationTelemetryRecordSchema).max(MAX_RECORDS_PER_WINDOW),
   truncated: z.boolean(),
   droppedDimensionBucket: countBucketSchema,
   sources: z.object({
@@ -210,8 +212,12 @@ function buildWindow(
   const valid = [...totals.entries()]
     .map(([field, count]) => parseField(field, count))
     .filter((record): record is TelemetryRecord => record !== null)
-    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
-  const records = valid.slice(0, MAX_RECORDS);
+    // Busiest first, so truncation to the collector budget keeps the most
+    // diagnostic records; the serialized tiebreak keeps output deterministic.
+    .sort((left, right) => (
+      right.count - left.count || JSON.stringify(left).localeCompare(JSON.stringify(right))
+    ));
+  const records = valid.slice(0, MAX_RECORDS_PER_WINDOW);
   return {
     observation: 'observed' as const,
     // Replica membership is introduced by the worker-heartbeat collector. Until

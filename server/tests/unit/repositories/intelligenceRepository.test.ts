@@ -8,6 +8,10 @@
 import { vi, Mock } from 'vitest';
 
 // Mock Prisma before importing repository
+vi.mock('../../../src/repositories/utxoRepository', () => ({
+  utxoRepository: { aggregateUnspentByConfirmationTime: vi.fn() },
+}));
+
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
@@ -42,6 +46,7 @@ vi.mock('../../../src/models/prisma', () => ({
   },
 }));
 
+import { utxoRepository } from '../../../src/repositories/utxoRepository';
 import prisma from '../../../src/models/prisma';
 import { intelligenceRepository } from '../../../src/repositories/intelligenceRepository';
 
@@ -636,10 +641,12 @@ describe('Intelligence Repository', () => {
   });
 
   describe('getUtxoAgeDistribution', () => {
+    const agg = utxoRepository.aggregateUnspentByConfirmationTime as Mock;
+
     it('should return short-term and long-term UTXO distribution', async () => {
-      (prisma.uTXO.aggregate as Mock)
-        .mockResolvedValueOnce({ _count: { id: 10 }, _sum: { amount: BigInt(300000) } })
-        .mockResolvedValueOnce({ _count: { id: 5 }, _sum: { amount: BigInt(700000) } });
+      agg
+        .mockResolvedValueOnce({ count: 10, sumSats: BigInt(300000) })
+        .mockResolvedValueOnce({ count: 5, sumSats: BigInt(700000) });
 
       const result = await intelligenceRepository.getUtxoAgeDistribution('wallet-1');
 
@@ -647,32 +654,31 @@ describe('Intelligence Repository', () => {
         shortTerm: { label: '< 365 days', count: 10, totalSats: BigInt(300000) },
         longTerm: { label: '>= 365 days', count: 5, totalSats: BigInt(700000) },
       });
-      expect(prisma.uTXO.aggregate).toHaveBeenCalledTimes(2);
+      expect(agg).toHaveBeenCalledTimes(2);
+    });
+
+    it('should classify by block time with unconfirmed coins short-term', async () => {
+      agg.mockResolvedValue({ count: 0, sumSats: BigInt(0) });
+
+      await intelligenceRepository.getUtxoAgeDistribution('wallet-1', 180);
+
+      const cutoff = agg.mock.calls[0][1].confirmedAfter as Date;
+      const expected = Date.now() - 180 * 24 * 60 * 60 * 1000;
+      expect(Math.abs(cutoff.getTime() - expected)).toBeLessThan(2 * 60 * 60 * 1000 + 5000);
+      expect(agg).toHaveBeenCalledWith('wallet-1', { confirmedAfter: cutoff, includeUnconfirmed: true });
+      expect(agg).toHaveBeenCalledWith('wallet-1', { confirmedBefore: cutoff, includeUnconfirmed: false });
     });
 
     it('should use custom threshold days', async () => {
-      (prisma.uTXO.aggregate as Mock)
-        .mockResolvedValueOnce({ _count: { id: 3 }, _sum: { amount: BigInt(100000) } })
-        .mockResolvedValueOnce({ _count: { id: 8 }, _sum: { amount: BigInt(900000) } });
+      agg
+        .mockResolvedValueOnce({ count: 3, sumSats: BigInt(100000) })
+        .mockResolvedValueOnce({ count: 8, sumSats: BigInt(900000) });
 
       const result = await intelligenceRepository.getUtxoAgeDistribution('wallet-1', 180);
 
       expect(result).toEqual({
         shortTerm: { label: '< 180 days', count: 3, totalSats: BigInt(100000) },
         longTerm: { label: '>= 180 days', count: 8, totalSats: BigInt(900000) },
-      });
-    });
-
-    it('should return zero totalSats when _sum.amount is null', async () => {
-      (prisma.uTXO.aggregate as Mock)
-        .mockResolvedValueOnce({ _count: { id: 0 }, _sum: { amount: null } })
-        .mockResolvedValueOnce({ _count: { id: 0 }, _sum: { amount: null } });
-
-      const result = await intelligenceRepository.getUtxoAgeDistribution('wallet-1');
-
-      expect(result).toEqual({
-        shortTerm: { label: '< 365 days', count: 0, totalSats: BigInt(0) },
-        longTerm: { label: '>= 365 days', count: 0, totalSats: BigInt(0) },
       });
     });
   });

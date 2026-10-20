@@ -165,11 +165,31 @@ describe("notificationDispatcher", () => {
         creatorLabel: "Autopilot",
       }),
       {
-        jobId: toBullMqJobId(
-          "draftnotify:w1:agent:agent-7:w1:op-9:bc1q...:1500",
-        ),
+        jobId: toBullMqJobId("draftnotify:w1:draft-1"),
+        deduplication: {
+          id: toBullMqJobId(
+            "draftnotify-dedupe:w1:agent:agent-7:w1:op-9:bc1q...:1500",
+          ),
+          ttl: 600000,
+        },
       },
     );
+  });
+
+  it("gives repeat drafts sharing a dedupeKey distinct job ids but one dedupe window", async () => {
+    const dedupeKey = "agent:agent-7:w1:op-9:bc1q...:1500";
+    await queueDraftNotification({ walletId: "w1", draftId: "draft-1", creatorUserId: "u1", dedupeKey });
+    await queueDraftNotification({ walletId: "w1", draftId: "draft-2", creatorUserId: "u1", dedupeKey });
+
+    const [first, second] = mockQueueAdd.mock.calls.map((call) => call[2]);
+    expect(first.jobId).toBe(toBullMqJobId("draftnotify:w1:draft-1"));
+    expect(second.jobId).toBe(toBullMqJobId("draftnotify:w1:draft-2"));
+    expect(first.jobId).not.toBe(second.jobId);
+    expect(first.deduplication).toEqual({
+      id: toBullMqJobId(`draftnotify-dedupe:w1:${dedupeKey}`),
+      ttl: 600000,
+    });
+    expect(second.deduplication).toEqual(first.deduplication);
   });
 
   it("queues a webhook delivery notification with retry delay", async () => {
@@ -316,7 +336,7 @@ describe("notificationDispatcher", () => {
     expect(result).toBe(false);
   });
 
-  it("falls back to a draft+creator job id when no dedupeKey is provided", async () => {
+  it("uses a per-draft job id without deduplication when no dedupeKey is provided", async () => {
     const result = await queueDraftNotification({
       walletId: "w1",
       draftId: "draft-2",
@@ -327,11 +347,11 @@ describe("notificationDispatcher", () => {
     expect(mockQueueAdd).toHaveBeenCalledWith(
       "draft-notify",
       expect.objectContaining({ draftId: "draft-2" }),
-      { jobId: toBullMqJobId("draftnotify:w1:draft-2:user-1") },
+      { jobId: toBullMqJobId("draftnotify:w1:draft-2") },
     );
   });
 
-  it('uses "system" suffix when both dedupeKey and creatorUserId are absent', async () => {
+  it("does not depend on the creator for the job id", async () => {
     const result = await queueDraftNotification({
       walletId: "w1",
       draftId: "draft-3",
@@ -342,7 +362,7 @@ describe("notificationDispatcher", () => {
     expect(mockQueueAdd).toHaveBeenCalledWith(
       "draft-notify",
       expect.anything(),
-      { jobId: toBullMqJobId("draftnotify:w1:draft-3:system") },
+      { jobId: toBullMqJobId("draftnotify:w1:draft-3") },
     );
   });
 

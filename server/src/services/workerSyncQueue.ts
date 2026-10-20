@@ -23,6 +23,7 @@ import {
   SYNC_WALLET_JOB_NAME,
   SYNC_WALLET_JOB_READER_VERSION,
   SYNC_WALLET_JOB_OPTIONS,
+  SYNC_FINISHED_JOB_RETENTION,
   getSyncLockTtlMs,
   readSyncWalletJobData,
 } from "../jobs/syncJobContract";
@@ -172,6 +173,7 @@ export async function enqueueDeadLetterJob(
       : `dead-letter-retry:${retryEntryId}`;
     await queue.add(envelope.name, replayData, {
       ...SYNC_WALLET_JOB_OPTIONS,
+      ...SYNC_FINISHED_JOB_RETENTION,
       attempts: attempts ?? SYNC_WALLET_JOB_OPTIONS.attempts,
       backoff: backoff ?? SYNC_WALLET_JOB_OPTIONS.backoff,
       ...(priority !== undefined ? { priority } : {}),
@@ -217,6 +219,7 @@ export async function enqueueWalletSync(
       },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         priority: toBullPriority(priority),
         delay: options.delayMs,
         jobId: options.jobId ? toBullMqJobId(options.jobId) : undefined,
@@ -272,6 +275,7 @@ export async function enqueueIncrementalSyncWakeup(
       data,
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         jobId: wakeup.jobId,
       },
     );
@@ -336,6 +340,7 @@ export async function enqueueReservedFullResyncWakeup(
   try {
     const job = await queue.add(SYNC_WALLET_JOB_NAME, data, {
       ...SYNC_WALLET_JOB_OPTIONS,
+      ...SYNC_FINISHED_JOB_RETENTION,
       priority: toBullPriority("high"),
       jobId: candidateJobId,
       deduplication: { id: deduplicationId, ttl: getSyncLockTtlMs() },
@@ -449,7 +454,12 @@ async function prepareReservedFullResyncCandidate(
 ): Promise<"live" | "ready" | "unavailable"> {
   try {
     const existing = await queue.getJob(candidateJobId);
-    if (!existing) return "ready";
+    if (!existing) {
+      // Bounded retention may have trimmed a completed, processed generation.
+      return await isFullResyncGenerationProcessed(walletId, generation)
+        ? "live"
+        : "ready";
+    }
     const data = readSyncWalletJobData(existing.data);
     if (
       data?.walletId !== walletId
@@ -637,6 +647,7 @@ async function enqueueFullResyncWallet(
       },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         priority: toBullPriority("high"),
         delay: delayMs,
         jobId: candidateJobId,
@@ -753,6 +764,7 @@ export async function enqueueWalletSyncBatch(
         },
         opts: {
           ...SYNC_WALLET_JOB_OPTIONS,
+          ...SYNC_FINISHED_JOB_RETENTION,
           priority: toBullPriority(priority),
           delay: index * staggerDelayMs,
           jobId: toBullMqJobId(`${batchId}:${walletId}`),

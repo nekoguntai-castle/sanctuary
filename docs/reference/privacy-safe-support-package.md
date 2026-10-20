@@ -185,8 +185,8 @@ discover all API producer versions. Therefore absence remains inconclusive and
 This Redis-backed schema-v1 aggregate records best-effort exhausted-notification
 callbacks without exporting the operational dead-letter entries. Records are
 grouped only by allowlisted job family, safe failure class, attempts bucket, and
-coarse last-seen age. Each count saturates at `1,000,000`; at most 128 dimension
-records are returned with a bucketed indication of rejected or omitted
+coarse last-seen age. Each count saturates at `1,000,000`; at most 64 dimension
+records are returned (highest count first) with a bucketed indication of rejected or omitted
 dimensions.
 
 The derived window covers seven days of hourly buckets; backing keys expire
@@ -258,7 +258,7 @@ Telemetry schema version `1` contains derived `fiveMinutes`, `oneHour`, and
 - categorical outcome and safe failure class; and
 - bounded `count` with a `saturated` marker.
 
-Each window contains at most 256 dimension records. `truncated` and
+Each window contains at most 20 dimension records, kept highest count first (ties by serialized record). `truncated` and
 `droppedDimensionBucket` describe valid dimensions omitted by that response
 bound. They are not recipient or event counts. Telemetry writes are best effort;
 the current reader therefore reports `degraded` coverage for readable windows

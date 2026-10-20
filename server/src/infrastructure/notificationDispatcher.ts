@@ -17,6 +17,7 @@ import { getRedisClient, isRedisConnected } from "./redis";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { toBullMqJobId } from "../jobs/bullMqJobIds";
+import { DRAFT_NOTIFICATION_DEDUPE_TTL_MS } from "../constants/notifications";
 import type { NotificationFailureClass } from "../services/notifications/outcomes";
 import { recordNotificationTelemetry } from "../services/notifications/telemetry";
 import { controlledCaptureObservations } from "../services/supportPackage/capture";
@@ -222,11 +223,18 @@ export async function queueDraftNotification(
   if (!queue) return false;
 
   try {
-    const jobIdSuffix =
-      payload.dedupeKey ??
-      `${payload.draftId}:${payload.creatorUserId ?? "system"}`;
+    // The job id is per draft so a repeat draft is never dropped as a
+    // duplicate of a retained job; dedupeKey only opens a short TTL window.
     await queue.add("draft-notify", payload, {
-      jobId: toBullMqJobId(`draftnotify:${payload.walletId}:${jobIdSuffix}`),
+      jobId: toBullMqJobId(`draftnotify:${payload.walletId}:${payload.draftId}`),
+      ...(payload.dedupeKey && {
+        deduplication: {
+          id: toBullMqJobId(
+            `draftnotify-dedupe:${payload.walletId}:${payload.dedupeKey}`,
+          ),
+          ttl: DRAFT_NOTIFICATION_DEDUPE_TTL_MS,
+        },
+      }),
     });
     log.debug("Draft notification queued", {
       walletId: payload.walletId,

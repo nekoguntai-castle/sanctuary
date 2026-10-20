@@ -2,6 +2,7 @@ import { describe } from 'vitest';
 import { registerRunAnalysisConfigUtxoContracts } from './runAnalysis.config-utxo.contracts';
 import { registerRunAnalysisErrorDedupContracts } from './runAnalysis.error-dedup.contracts';
 import { registerRunAnalysisFeeAnomalyContracts } from './runAnalysis.fee-anomaly.contracts';
+import { registerRunAnalysisNotifiedContracts } from './runAnalysis.notified.contracts';
 import { registerRunAnalysisTaxConsolidationContracts } from './runAnalysis.tax-consolidation.contracts';
 
 export function registerRunAnalysisPipelinesContracts(): void {
@@ -14,5 +15,6 @@ export function registerRunAnalysisPipelinesContracts(): void {
     registerRunAnalysisFeeAnomalyContracts();
     registerRunAnalysisTaxConsolidationContracts();
     registerRunAnalysisErrorDedupContracts();
+    registerRunAnalysisNotifiedContracts();
   });
 }

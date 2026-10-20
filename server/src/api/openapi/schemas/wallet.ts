@@ -712,7 +712,7 @@ export const walletSchemas = {
       walletId: { type: 'string' },
       name: { type: 'string' },
       enabled: { type: 'boolean' },
-      url: { type: 'string', format: 'uri' },
+      url: { type: 'string', format: 'uri', description: 'Non-owner roles receive scheme and host only.' },
       eventTypes: { type: 'array', items: { type: 'string' } },
       filters: { type: 'object', nullable: true, additionalProperties: true },
       payloadProfile: { type: 'string' },

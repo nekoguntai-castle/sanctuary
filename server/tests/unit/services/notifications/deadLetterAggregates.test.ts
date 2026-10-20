@@ -11,6 +11,7 @@ import {
   shutdownNotificationDeadLetterAggregateWriter,
   writeNotificationDeadLetterAggregate,
 } from '../../../../src/services/notifications/deadLetterAggregates';
+import { MAX_COLLECTOR_BYTES } from '../../../../src/services/supportPackage/privacy';
 
 function fakeReaderClient(options: {
   hashes?: Array<Record<string, string>>;
@@ -298,6 +299,43 @@ describe('notification dead-letter aggregates', () => {
 
     expect(() => shutdownNotificationDeadLetterAggregateWriter()).not.toThrow();
     expect(() => shutdownNotificationDeadLetterAggregateWriter()).not.toThrow();
+  });
+
+  it('caps records at 64 and keeps the serialized snapshot within the collector byte cap', async () => {
+    const families = ['transaction', 'draft', 'confirmation', 'consolidation', 'other'];
+    const failures = ['none', 'invalid_configuration', 'authentication', 'permission', 'rate_limited',
+      'provider_rejected', 'provider_unavailable', 'timeout', 'circuit_open', 'network',
+      'redis_unavailable', 'queue_add_failed', 'internal', 'unknown', 'other'];
+    const attempts = ['unknown', 'one', 'two_to_three', 'four_to_five', 'six_plus'];
+    const hash: Record<string, string> = {};
+    for (const family of families) {
+      for (const failure of failures) {
+        for (const attempt of attempts) hash[`${family}|${failure}|${attempt}`] = '1000000';
+      }
+    }
+    const reader = new NotificationDeadLetterAggregateReader(
+      () => fakeReaderClient({ hashes: [hash] }) as never,
+    );
+
+    const snapshot = await reader.read();
+
+    expect(snapshot.records).toHaveLength(64);
+    expect(snapshot).toMatchObject({ truncated: true, droppedDimensionBucket: 'over_twenty' });
+    expect(Buffer.byteLength(JSON.stringify(snapshot), 'utf8')).toBeLessThanOrEqual(MAX_COLLECTOR_BYTES);
+  });
+
+  it('orders records by count first and by aggregate field for equal counts', async () => {
+    const reader = new NotificationDeadLetterAggregateReader(() => fakeReaderClient({
+      hashes: [{
+        'transaction|timeout|one': '2',
+        'draft|timeout|one': '2',
+        'other|timeout|one': '9',
+      }],
+    }) as never);
+
+    const snapshot = await reader.read();
+
+    expect(snapshot.records.map(record => record.jobFamily)).toEqual(['other', 'draft', 'transaction']);
   });
 
   it('reads only fixed hourly aggregate keys and drops poison dimensions', async () => {

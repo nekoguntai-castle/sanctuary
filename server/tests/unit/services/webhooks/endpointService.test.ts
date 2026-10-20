@@ -351,6 +351,31 @@ describe('webhook endpoint service', () => {
     },
   );
 
+  describe('endpoint url masking', () => {
+    const credentialUrl = 'https://user:pw@hooks.example.com:8443/services/T0/B0/SECRET?token=abc';
+
+    it.each(['approver', 'signer', 'viewer'] as const)(
+      'returns only scheme and host to %s',
+      role => {
+        const response = toWebhookEndpointResponse(makeEndpoint({ url: credentialUrl }), role);
+
+        expect(response.url).toBe('https://hooks.example.com:8443');
+        const serialized = JSON.stringify(response);
+        expect(serialized).not.toContain('SECRET');
+        expect(serialized).not.toContain('token=abc');
+        expect(serialized).not.toContain('user:pw@');
+      },
+    );
+
+    it('returns the full url to owner', () => {
+      expect(toWebhookEndpointResponse(makeEndpoint({ url: credentialUrl }), 'owner').url).toBe(credentialUrl);
+    });
+
+    it('returns an empty url to non-owners when the stored url cannot be parsed', () => {
+      expect(toWebhookEndpointResponse(makeEndpoint({ url: 'not a url' }), 'viewer').url).toBe('');
+    });
+  });
+
   it('fails closed when endpoint or delivery projection has no valid wallet role', async () => {
     await expect(listWalletWebhooks('wallet-1', null)).rejects.toMatchObject({
       statusCode: 403,

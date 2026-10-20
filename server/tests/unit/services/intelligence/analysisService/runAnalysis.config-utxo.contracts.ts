@@ -163,7 +163,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
     // Notification
     (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(
-      undefined,
+      [],
     );
 
     await runAnalysisPipelines();

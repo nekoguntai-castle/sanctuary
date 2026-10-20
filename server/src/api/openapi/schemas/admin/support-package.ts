@@ -595,7 +595,7 @@ export const adminSupportPackageSchemas = {
       },
       records: {
         type: 'array',
-        maxItems: 128,
+        maxItems: 64,
         items: {
           type: 'object',
           properties: {

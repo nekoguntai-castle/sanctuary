@@ -244,20 +244,7 @@ class PushService {
       wallet = await walletRepository.findNameById(walletId);
       if (!wallet) return { success: true, usersNotified: 0 };
 
-      // Get all users with access to this wallet, including push device counts
-      // This avoids N+1 queries by fetching device counts in a single query
-      const accessUsers = await userRepository.findByWalletAccess(walletId, {
-        includePushDeviceCount: true,
-      });
-
-      // Payloads carry amounts and txids, so honour each user's mobile
-      // viewTransactions cap. A lookup failure lands in the catch below.
-      const permitted = new Set(await mobilePermissionService.filterUserIdsByMobileAction(
-        walletId,
-        accessUsers.map((user) => user.id),
-        'viewTransactions',
-      ));
-      users = accessUsers.filter((user) => permitted.has(user.id));
+      users = await this.findPermittedWalletUsers(walletId);
     } catch (err) {
       const errorMsg = getErrorMessage(err);
       log.error(`Error sending push notifications: ${errorMsg}`);
@@ -290,6 +277,63 @@ class PushService {
       // single catch-and-log around this whole path.
       const errorMsg = getErrorMessage(err);
       log.error(`Error sending push notifications: ${errorMsg}`);
+      return { success: false, usersNotified, error: errorMsg, recorded: false };
+    }
+
+    return { success: true, usersNotified };
+  }
+
+  /**
+   * Users with access to the wallet (including push device counts, in a
+   * single query) who hold the mobile viewTransactions cap. Push payloads can
+   * reveal wallet activity, so every wallet push honours this cap.
+   */
+  private async findPermittedWalletUsers(
+    walletId: string,
+  ): Promise<WalletNotificationUser[]> {
+    const accessUsers = await userRepository.findByWalletAccess(walletId, {
+      includePushDeviceCount: true,
+    });
+    const permitted = new Set(await mobilePermissionService.filterUserIdsByMobileAction(
+      walletId,
+      accessUsers.map((user) => user.id),
+      'viewTransactions',
+    ));
+    return accessUsers.filter((user) => permitted.has(user.id));
+  }
+
+  /**
+   * Send one prebuilt push message to every eligible wallet user that has a
+   * registered device. Used for wallet-level notifications that are not
+   * per-transaction (AI insights, consolidation suggestions); callers keep
+   * the payload minimal (no amounts or AI-generated text).
+   */
+  async notifyWalletUsers(
+    walletId: string,
+    message: PushMessage,
+    isUserEligible: (user: WalletNotificationUser) => boolean = () => true,
+  ): Promise<NotifyTransactionsResult> {
+    if (!(await this.isConfigured())) return { success: true, usersNotified: 0 };
+
+    let users: WalletNotificationUser[];
+    try {
+      users = await this.findPermittedWalletUsers(walletId);
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      log.error(`Error sending wallet push notifications: ${errorMsg}`);
+      return { success: false, usersNotified: 0, error: errorMsg, recorded: false };
+    }
+
+    let usersNotified = 0;
+    try {
+      for (const user of users) {
+        if (user._count.pushDevices === 0 || !isUserEligible(user)) continue;
+        await this.sendToUser(user.id, message);
+        usersNotified++;
+      }
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      log.error(`Error sending wallet push notifications: ${errorMsg}`);
       return { success: false, usersNotified, error: errorMsg, recorded: false };
     }
 
@@ -410,6 +454,14 @@ export async function notifyNewTransactions(
   transactions: TransactionData[],
 ): Promise<NotifyTransactionsResult> {
   return getPushService().notifyNewTransactions(walletId, transactions);
+}
+
+export async function notifyWalletUsers(
+  walletId: string,
+  message: PushMessage,
+  isUserEligible?: (user: WalletNotificationUser) => boolean,
+): Promise<NotifyTransactionsResult> {
+  return getPushService().notifyWalletUsers(walletId, message, isUserEligible);
 }
 
 export default PushService;

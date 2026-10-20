@@ -58,7 +58,17 @@ export async function getWalletAutopilotSettings(
 
   if (!user) return null;
 
-  const prefs = user.preferences as Record<string, unknown> | null;
+  return walletAutopilotSettingsFromPreferences(user.preferences, walletId);
+}
+
+/**
+ * Read one wallet's autopilot settings out of a user's stored preferences.
+ */
+export function walletAutopilotSettingsFromPreferences(
+  preferences: unknown,
+  walletId: string
+): WalletAutopilotSettings | null {
+  const prefs = preferences as Record<string, unknown> | null;
   const autopilot = prefs?.autopilot as AutopilotConfig | undefined;
 
   return getOwnWalletSettings(autopilot?.wallets, walletId);

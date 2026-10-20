@@ -270,7 +270,7 @@ export function toWebhookEndpointResponse(
     walletId: endpoint.walletId,
     name: endpoint.name,
     enabled: endpoint.enabled,
-    url: endpoint.url,
+    url: walletRole === 'owner' ? endpoint.url : maskWebhookUrl(endpoint.url),
     eventTypes: endpoint.eventTypes,
     filters: endpoint.filters,
     payloadProfile: endpoint.payloadProfile,
@@ -316,6 +316,16 @@ export function toWebhookDeliveryResponse(
     createdAt: delivery.createdAt.toISOString(),
     updatedAt: delivery.updatedAt.toISOString(),
   };
+}
+
+// Webhook URLs commonly embed credentials (userinfo, path tokens, query keys);
+// non-owners only see scheme and host.
+function maskWebhookUrl(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
+  }
 }
 
 function requireProjectionRole(walletRole: unknown): asserts walletRole is WalletRoleValue {

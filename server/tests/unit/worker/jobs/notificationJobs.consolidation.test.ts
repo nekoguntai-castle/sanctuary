@@ -98,6 +98,26 @@ describe('consolidationSuggestionNotifyJob', () => {
     });
   });
 
+  it('passes the push channel id to the registry when push is enabled and capable', async () => {
+    mockNotificationChannelRegistry.getConsolidationSuggestionCapable.mockReturnValueOnce([
+      { id: 'telegram' },
+      { id: 'push' },
+    ]);
+    mockNotificationChannelRegistry.notifyConsolidationSuggestion.mockResolvedValueOnce([
+      { success: true, channelId: 'push', usersNotified: 1 },
+    ]);
+
+    await consolidationSuggestionNotifyJob.handler(
+      createMockJob(createSuggestionJobData({ notifyTelegram: false, notifyPush: true }))
+    );
+
+    expect(mockNotificationChannelRegistry.notifyConsolidationSuggestion).toHaveBeenCalledWith(
+      'wallet-consolidate',
+      expect.anything(),
+      ['push']
+    );
+  });
+
   it('fails visibly when no consolidation suggestion channels are registered', async () => {
     mockNotificationChannelRegistry.getConsolidationSuggestionCapable.mockReturnValueOnce([]);
 

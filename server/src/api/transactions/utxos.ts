@@ -59,7 +59,8 @@ router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler
       blockHeight: utxo.blockHeight ? Number(utxo.blockHeight) : null,
       // Spendable if not frozen, not locked by draft, and has enough confirmations
       spendable: !utxo.frozen && !isLockedByDraft && utxo.confirmations >= confirmationThreshold,
-      // Use blockTime from transaction if available, otherwise fall back to createdAt
+      // Display-only: blockTime ?? createdAt. Tax/age (utxoRepository.aggregateUnspentByConfirmationTime)
+      // instead treats a missing block time as age 0 (short-term).
       createdAt: blockTime ? blockTime.toISOString() : utxo.createdAt.toISOString(),
       // Draft lock info (if locked)
       lockedByDraftId: utxo.draftLock?.draftId,

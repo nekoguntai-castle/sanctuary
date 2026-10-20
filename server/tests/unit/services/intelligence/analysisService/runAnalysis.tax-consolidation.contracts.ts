@@ -58,7 +58,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
         summary: 'Consider holding for long-term gains',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 
@@ -159,7 +159,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
         summary: 'Low fees make consolidation favorable',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 
@@ -256,7 +256,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
         summary: 'Consider consolidating',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 

@@ -32,6 +32,7 @@ const {
     address: { count: vi.fn() },
     label: { findMany: vi.fn() },
     uTXO: { count: vi.fn(), aggregate: vi.fn() },
+    $queryRaw: vi.fn(),
     walletUser: { findMany: vi.fn() },
   },
   mockGetUtxoHealthProfile: vi.fn(),
@@ -109,7 +110,7 @@ import aiInternalRoutes from '../../../src/api/llm-egress-internal';
 const mockWalletFindFirst = vi.mocked(prisma.wallet.findFirst);
 const mockTxAggregate = vi.mocked(prisma.transaction.aggregate);
 const mockUtxoCount = vi.mocked(prisma.uTXO.count);
-const mockUtxoAggregate = vi.mocked(prisma.uTXO.aggregate);
+const mockUtxoWindowQuery = vi.mocked(prisma.$queryRaw);
 
 /**
  * Extract a route handler from Express Router by method and path pattern.
@@ -459,11 +460,11 @@ describe('AI Internal Intelligence Endpoints', () => {
       });
 
       // Mock the 3 milestone window aggregate calls (15d, 30d, 60d ahead)
-      // Each aggregate returns both _count and _sum
-      mockUtxoAggregate
-        .mockResolvedValueOnce({ _count: { _all: 2 }, _sum: { amount: BigInt(500000) } } as any)  // 15 days
-        .mockResolvedValueOnce({ _count: { _all: 3 }, _sum: { amount: BigInt(750000) } } as any)  // 30 days
-        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any);           // 60 days
+      // Each block-time window query returns one { count, sum } row
+      mockUtxoWindowQuery
+        .mockResolvedValueOnce([{ count: 2, sum: '500000' }] as any)  // 15 days
+        .mockResolvedValueOnce([{ count: 3, sum: '750000' }] as any)  // 30 days
+        .mockResolvedValueOnce([{ count: 0, sum: null }] as any);     // 60 days
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
@@ -515,10 +516,10 @@ describe('AI Internal Intelligence Endpoints', () => {
       });
 
       // All milestone window aggregate calls return 0
-      mockUtxoAggregate
-        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any)
-        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any)
-        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any);
+      mockUtxoWindowQuery
+        .mockResolvedValueOnce([{ count: 0, sum: null }] as any)
+        .mockResolvedValueOnce([{ count: 0, sum: null }] as any)
+        .mockResolvedValueOnce([{ count: 0, sum: null }] as any);
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },

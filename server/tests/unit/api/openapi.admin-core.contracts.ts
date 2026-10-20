@@ -375,7 +375,10 @@ export function registerOpenApiAdminCoreTests() {
     ).toEqual(['degraded', 'unavailable']);
     expect(
       openApiSpec.components.schemas.SupportNotificationDeadLetters.properties.records.maxItems,
-    ).toBe(128);
+    ).toBe(64);
+    expect(
+      openApiSpec.components.schemas.SupportNotificationTelemetry.properties.windows.properties.fiveMinutes.properties.records.maxItems,
+    ).toBe(20);
 
     const eligibility = openApiSpec.components.schemas.SupportNotificationEligibility.oneOf[0];
     expect(eligibility).toMatchObject({

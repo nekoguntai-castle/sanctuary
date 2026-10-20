@@ -331,7 +331,7 @@ const telemetryWindow = {
       enum: ['observed', 'unavailable', 'timeout'],
     },
     coverage: { type: 'string', enum: ['degraded', 'unavailable'] },
-    records: { type: 'array', maxItems: 256, items: telemetryRecord },
+    records: { type: 'array', maxItems: 20, items: telemetryRecord },
     truncated: { type: 'boolean' },
     droppedDimensionBucket: countBucket,
     sources: {

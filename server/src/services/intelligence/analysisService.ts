@@ -150,7 +150,7 @@ async function runPipeline(
 
   // Dispatch notification
   try {
-    await notificationChannelRegistry.notifyInsight(walletId, {
+    const results = await notificationChannelRegistry.notifyInsight(walletId, {
       id: insight.id,
       type,
       severity: result.severity,
@@ -158,9 +158,24 @@ async function runPipeline(
       summary: result.summary,
       walletName,
     });
+    if (Array.isArray(results) && results.some((r) => r.success && r.usersNotified > 0)) {
+      await markInsightNotified(insight.id);
+    }
   } catch (error) {
     log.error("Failed to dispatch insight notification", {
       insightId: insight.id,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+/** Record delivery on the insight; a bookkeeping failure must never fail the analysis. */
+async function markInsightNotified(insightId: string): Promise<void> {
+  try {
+    await intelligenceRepository.markInsightNotified(insightId);
+  } catch (error) {
+    log.warn("Failed to mark insight as notified", {
+      insightId,
       error: getErrorMessage(error),
     });
   }

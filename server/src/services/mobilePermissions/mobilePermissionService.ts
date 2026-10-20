@@ -298,6 +298,7 @@ class MobilePermissionService {
 
   /**
    * Set maximum permissions for a user (owner only)
+   * Only the named caps change; omitted caps keep their current value.
    * This restricts what actions a user can perform even if they try to enable them
    */
   async setMaxPermissions(
@@ -323,9 +324,24 @@ class MobilePermissionService {
       throw new ForbiddenError('Cannot set permission restrictions on wallet owners');
     }
 
+    // Merge into the stored caps so a partial body only changes the named caps
+    // (DELETE .../caps is the full clear). Read-then-write can race between two
+    // concurrent owner PATCHes; acceptable for a low-frequency owner-only action.
+    const existing = await mobilePermissionRepository.findByWalletAndUser(walletId, targetUserId);
+    const stored = existing?.ownerMaxPermissions;
+    const merged: Record<string, boolean> =
+      stored && typeof stored === 'object' && !Array.isArray(stored)
+        ? { ...(stored as Record<string, boolean>) }
+        : {};
+    for (const [action, value] of Object.entries(maxPermissions)) {
+      if (value !== undefined) {
+        merged[action] = value;
+      }
+    }
+
     // Upsert permission record with owner max
     await mobilePermissionRepository.upsert(walletId, targetUserId, {
-      ownerMaxPermissions: maxPermissions as Record<string, boolean>,
+      ownerMaxPermissions: merged,
       lastModifiedBy: ownerUserId,
     });
 

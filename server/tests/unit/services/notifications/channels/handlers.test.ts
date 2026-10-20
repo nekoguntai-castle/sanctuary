@@ -11,6 +11,7 @@ const { mockTelegramService, mockPushService } = vi.hoisted(() => ({
   mockPushService: {
     isPushConfigured: vi.fn(),
     notifyNewTransactions: vi.fn(),
+    notifyWalletUsers: vi.fn(),
   },
 }));
 
@@ -402,6 +403,143 @@ describe('notification channel handlers', () => {
   });
 
   describe('pushChannelHandler', () => {
+    it('advertises insight and consolidation support', () => {
+      expect(pushChannelHandler.capabilities.supportsAIInsights).toBe(true);
+      expect(pushChannelHandler.capabilities.supportsConsolidationSuggestions).toBe(true);
+    });
+
+    it('sends a minimal consolidation push without UTXO or savings details', async () => {
+      mockPushService.notifyWalletUsers.mockResolvedValueOnce({ success: true, usersNotified: 2 });
+
+      const result = await pushChannelHandler.notifyConsolidationSuggestion!(
+        'wallet-1',
+        makeConsolidationSuggestion({ estimatedSavings: 'about 12,345 sats', reason: 'secret reason' })
+      );
+
+      expect(mockPushService.notifyWalletUsers).toHaveBeenCalledWith('wallet-1', {
+        title: 'Consolidation opportunity',
+        body: 'Treasury: fees are low (5 sat/vB)',
+        data: { walletId: 'wallet-1', kind: 'consolidation_suggestion' },
+      }, expect.any(Function));
+      expect(result).toEqual({
+        success: true,
+        channelId: 'push',
+        usersNotified: 2,
+        outcome: 'ambiguous',
+        failureClass: 'unknown',
+      });
+    });
+
+    it('only pushes consolidation suggestions to users with Autopilot push enabled for the wallet', async () => {
+      mockPushService.notifyWalletUsers.mockResolvedValueOnce({ success: true, usersNotified: 0 });
+      await pushChannelHandler.notifyConsolidationSuggestion!('wallet-1', makeConsolidationSuggestion());
+      const isEligible = mockPushService.notifyWalletUsers.mock.calls[0][2];
+      const autopilot = (settings: Record<string, unknown>) => ({
+        preferences: { autopilot: { wallets: { 'wallet-1': settings } } },
+      });
+
+      expect(isEligible(autopilot({ enabled: true, notifyPush: true }))).toBe(true);
+      expect(isEligible(autopilot({ enabled: true, notifyPush: false }))).toBe(false);
+      expect(isEligible(autopilot({ enabled: false, notifyPush: true }))).toBe(false);
+      expect(isEligible({ preferences: { autopilot: { wallets: { 'wallet-2': { enabled: true, notifyPush: true } } } } })).toBe(false);
+      expect(isEligible({ preferences: null })).toBe(false);
+    });
+
+    it('maps push failures and throws for consolidation suggestions', async () => {
+      mockPushService.notifyWalletUsers.mockResolvedValueOnce({
+        success: false,
+        usersNotified: 0,
+        error: 'lookup failed',
+        recorded: false,
+      });
+      await expect(
+        pushChannelHandler.notifyConsolidationSuggestion!('wallet-1', makeConsolidationSuggestion())
+      ).resolves.toMatchObject({ success: false, errors: ['lookup failed'], recorded: false });
+
+      mockPushService.notifyWalletUsers.mockResolvedValueOnce({ success: false, usersNotified: 0 });
+      await expect(
+        pushChannelHandler.notifyConsolidationSuggestion!('wallet-1', makeConsolidationSuggestion())
+      ).resolves.toMatchObject({ success: false, errors: undefined, recorded: false });
+
+      mockPushService.notifyWalletUsers.mockRejectedValueOnce(new Error('boom'));
+      await expect(
+        pushChannelHandler.notifyConsolidationSuggestion!('wallet-1', makeConsolidationSuggestion())
+      ).resolves.toMatchObject({ success: false, errors: ['boom'], recorded: false });
+    });
+
+    describe('notifyAIInsight', () => {
+      const insight = {
+        id: 'insight-1',
+        type: 'utxo_health',
+        severity: 'warning',
+        title: 'Dust piling up',
+        summary: 'You hold 5,000 sats of dust',
+        walletName: 'Treasury',
+      };
+      const enabled = (extra: Record<string, unknown> = {}) => ({
+        preferences: { intelligence: { wallets: { 'wallet-1': { enabled: true, ...extra } } } },
+      });
+
+      it('sends a minimal push that omits the AI summary text', async () => {
+        mockPushService.notifyWalletUsers.mockResolvedValueOnce({ success: true, usersNotified: 1 });
+
+        const result = await pushChannelHandler.notifyAIInsight!('wallet-1', insight);
+
+        const [walletId, message] = mockPushService.notifyWalletUsers.mock.calls[0];
+        expect(walletId).toBe('wallet-1');
+        expect(message).toEqual({
+          title: 'Treasury Intelligence',
+          body: 'Treasury: warning UTXO Health insight',
+          data: { walletId: 'wallet-1', insightId: 'insight-1', kind: 'ai_insight' },
+        });
+        expect(JSON.stringify(message)).not.toContain('dust');
+        expect(result).toMatchObject({ success: true, channelId: 'push', usersNotified: 1 });
+      });
+
+      it('falls back to the raw type when it has no label', async () => {
+        mockPushService.notifyWalletUsers.mockResolvedValueOnce({ success: true, usersNotified: 0 });
+
+        await pushChannelHandler.notifyAIInsight!('wallet-1', { ...insight, type: 'custom' });
+
+        expect(mockPushService.notifyWalletUsers.mock.calls[0][1].body).toBe(
+          'Treasury: warning custom insight'
+        );
+      });
+
+      it('only targets users with intelligence enabled and push not disabled', async () => {
+        mockPushService.notifyWalletUsers.mockResolvedValueOnce({ success: true, usersNotified: 0 });
+        await pushChannelHandler.notifyAIInsight!('wallet-1', insight);
+        const isEligible = mockPushService.notifyWalletUsers.mock.calls[0][2];
+
+        expect(isEligible(enabled())).toBe(true);
+        expect(isEligible(enabled({ notifyPush: true }))).toBe(true);
+        expect(isEligible(enabled({ notifyPush: false }))).toBe(false);
+        expect(isEligible(enabled({ severityFilter: 'critical' }))).toBe(false);
+        expect(isEligible({ preferences: null })).toBe(false);
+      });
+
+      it('maps push failures and throws', async () => {
+        mockPushService.notifyWalletUsers.mockResolvedValueOnce({
+          success: false,
+          usersNotified: 1,
+          error: 'send loop failed',
+        });
+        await expect(pushChannelHandler.notifyAIInsight!('wallet-1', insight)).resolves.toMatchObject({
+          success: false,
+          usersNotified: 1,
+          errors: ['send loop failed'],
+          recorded: false,
+        });
+
+        mockPushService.notifyWalletUsers.mockRejectedValueOnce(new Error('boom'));
+        await expect(pushChannelHandler.notifyAIInsight!('wallet-1', insight)).resolves.toMatchObject({
+          success: false,
+          errors: ['boom'],
+          recorded: false,
+        });
+      });
+    });
+
     it('uses push service configuration status in isEnabled', async () => {
       mockPushService.isPushConfigured.mockReturnValueOnce(true);
       await expect(pushChannelHandler.isEnabled()).resolves.toBe(true);

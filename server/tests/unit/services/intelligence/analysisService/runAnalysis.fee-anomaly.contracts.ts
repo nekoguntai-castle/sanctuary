@@ -63,7 +63,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
         summary: 'Fees are low',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 
@@ -171,7 +171,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
         summary: 'Unusual spending pattern',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 
@@ -254,7 +254,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
         summary: 'Low activity',
       });
 
-      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+      (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue([]);
 
       await runAnalysisPipelines();
 

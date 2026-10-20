@@ -7,6 +7,7 @@
 
 import prisma from '../models/prisma';
 import { LIVE_TRANSACTION_WHERE } from './transactions/visibility';
+import { utxoRepository } from './utxoRepository';
 import type { AIInsight, AIConversation, AIMessage, Prisma } from '../generated/prisma/client';
 import type { InsightType, InsightSeverity, InsightStatus } from '../services/intelligence/types';
 
@@ -285,37 +286,29 @@ async function getUtxoAgeDistribution(
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - longTermThresholdDays);
 
+  // Age comes from the confirming block time (createdAt is DB insert time);
+  // unconfirmed coins have age 0 and are short-term.
   const [shortTerm, longTerm] = await Promise.all([
-    prisma.uTXO.aggregate({
-      where: {
-        walletId,
-        spent: false,
-        createdAt: { gt: cutoff },
-      },
-      _count: { id: true },
-      _sum: { amount: true },
+    utxoRepository.aggregateUnspentByConfirmationTime(walletId, {
+      confirmedAfter: cutoff,
+      includeUnconfirmed: true,
     }),
-    prisma.uTXO.aggregate({
-      where: {
-        walletId,
-        spent: false,
-        createdAt: { lte: cutoff },
-      },
-      _count: { id: true },
-      _sum: { amount: true },
+    utxoRepository.aggregateUnspentByConfirmationTime(walletId, {
+      confirmedBefore: cutoff,
+      includeUnconfirmed: false,
     }),
   ]);
 
   return {
     shortTerm: {
       label: `< ${longTermThresholdDays} days`,
-      count: shortTerm._count.id,
-      totalSats: shortTerm._sum.amount ?? BigInt(0),
+      count: shortTerm.count,
+      totalSats: shortTerm.sumSats,
     },
     longTerm: {
       label: `>= ${longTermThresholdDays} days`,
-      count: longTerm._count.id,
-      totalSats: longTerm._sum.amount ?? BigInt(0),
+      count: longTerm.count,
+      totalSats: longTerm.sumSats,
     },
   };
 }

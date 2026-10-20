@@ -65,6 +65,7 @@ import {
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
   SYNC_WALLET_JOB_OPTIONS,
+  SYNC_FINISHED_JOB_RETENTION,
   getSyncLockTtlMs,
 } from "../../../src/jobs/syncJobContract";
 import type { DeadLetterJobEnvelope } from "../../../src/services/deadLetterQueueTypes";
@@ -128,6 +129,7 @@ describe("workerSyncQueue", () => {
       },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         priority: SYNC_PRIORITY_BULLMQ_PRIORITY.high,
         delay: 250,
         jobId: toBullMqJobId("manual-sync:wallet-1"),
@@ -153,6 +155,7 @@ describe("workerSyncQueue", () => {
       },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         jobId: "b64_c3luYzppbnRlbnQ6d2FsbGV0LTE6MjE0NzQ4MzY0Nw",
       },
     );
@@ -504,6 +507,7 @@ describe("workerSyncQueue", () => {
         },
         opts: {
           ...SYNC_WALLET_JOB_OPTIONS,
+          ...SYNC_FINISHED_JOB_RETENTION,
           priority: SYNC_PRIORITY_BULLMQ_PRIORITY.low,
           delay: 0,
           jobId: toBullMqJobId(
@@ -521,6 +525,7 @@ describe("workerSyncQueue", () => {
         },
         opts: {
           ...SYNC_WALLET_JOB_OPTIONS,
+          ...SYNC_FINISHED_JOB_RETENTION,
           priority: SYNC_PRIORITY_BULLMQ_PRIORITY.low,
           delay: 100,
           jobId: toBullMqJobId(
@@ -578,6 +583,7 @@ describe("workerSyncQueue", () => {
       },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         priority: SYNC_PRIORITY_BULLMQ_PRIORITY.normal,
         delay: undefined,
         jobId: undefined,
@@ -609,8 +615,28 @@ describe("workerSyncQueue", () => {
         backoff: { type: "fixed", delay: 250 },
         priority: 2,
         removeOnComplete: 20,
+        removeOnFail: SYNC_FINISHED_JOB_RETENTION.removeOnFail,
         jobId: toBullMqJobId("dead-letter-retry:dlq-entry-1"),
       },
+    );
+  });
+
+  it("passes object-form dead-letter retention through unchanged", async () => {
+    await enqueueDeadLetterJob(
+      {
+        ...syncDeadLetterEnvelope(),
+        options: { removeOnComplete: { count: 7 }, removeOnFail: { count: 9 } },
+      },
+      "dlq-entry-objects",
+    );
+
+    expect(mocks.mockQueueAdd).toHaveBeenLastCalledWith(
+      "sync-wallet",
+      { walletId: "wallet-1", reason: "retry" },
+      expect.objectContaining({
+        removeOnComplete: { count: 7 },
+        removeOnFail: { count: 9 },
+      }),
     );
   });
 
@@ -623,6 +649,7 @@ describe("workerSyncQueue", () => {
       { walletId: "wallet-1", reason: "retry" },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
+        ...SYNC_FINISHED_JOB_RETENTION,
         jobId: toBullMqJobId("dead-letter-retry:entry-defaults"),
       },
     );

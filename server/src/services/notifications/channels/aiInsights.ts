@@ -10,6 +10,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import { userRepository } from '../../../repositories';
 import * as telegramApi from '../../telegram/api';
 import { escapeHtml } from '../../telegram/formatting';
+import { eligibleInsightWalletSettings, INSIGHT_TYPE_LABELS } from './insightEligibility';
 import type {
   NotificationChannelHandler,
   TransactionNotification,
@@ -23,14 +24,6 @@ const SEVERITY_ICONS: Record<string, string> = {
   info: '\u2139\uFE0F',      // info icon
   warning: '\u26A0\uFE0F',   // warning icon
   critical: '\uD83D\uDED1',  // stop sign
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  utxo_health: 'UTXO Health',
-  fee_timing: 'Fee Timing',
-  anomaly: 'Anomaly Detection',
-  tax: 'Tax Intelligence',
-  consolidation: 'Consolidation Strategy',
 };
 
 export const aiInsightsChannelHandler: NotificationChannelHandler = {
@@ -132,19 +125,10 @@ function eligibleInsightTelegramConfig(
   walletId: string,
   insight: AIInsightNotification
 ): InsightTelegramConfig | null {
+  const walletSettings = eligibleInsightWalletSettings(user.preferences, walletId, insight);
+  if (!walletSettings || walletSettings.notifyTelegram === false) return null;
+
   const prefs = user.preferences as Record<string, any> | null;
-  const intelligence = prefs?.intelligence;
-  const walletSettings = intelligence?.wallets?.[walletId];
-  if (!walletSettings?.enabled) return null;
-
-  const severityOrder = ['info', 'warning', 'critical'];
-  const filterLevel = severityOrder.indexOf(walletSettings.severityFilter || 'info');
-  const insightLevel = severityOrder.indexOf(insight.severity);
-  if (insightLevel < filterLevel) return null;
-
-  if (walletSettings.typeFilter && !walletSettings.typeFilter.includes(insight.type)) return null;
-  if (walletSettings.notifyTelegram === false) return null;
-
   const telegram = prefs?.telegram;
   if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) return null;
 
@@ -183,7 +167,7 @@ async function sendInsightToTelegram(
  */
 function formatInsightMessage(insight: AIInsightNotification): string {
   const severityIcon = SEVERITY_ICONS[insight.severity] || '\u2139\uFE0F';
-  const typeLabel = TYPE_LABELS[insight.type] || insight.type;
+  const typeLabel = INSIGHT_TYPE_LABELS[insight.type] || insight.type;
 
   return [
     `\uD83E\uDDE0 <b>Treasury Intelligence</b> \u2014 ${escapeHtml(insight.walletName)}`,

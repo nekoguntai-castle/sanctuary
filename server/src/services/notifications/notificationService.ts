@@ -15,10 +15,10 @@ import {
   type NotificationResult,
   type TransactionNotification,
 } from './channels';
+import { DRAFT_NOTIFICATION_DEDUPE_TTL_MS } from '../../constants/notifications';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('NOTIFY:SVC');
-const DRAFT_NOTIFICATION_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const DRAFT_NOTIFICATION_DEDUPE_MAX_KEYS = 1_000;
 const recentDraftNotificationKeys = new Map<string, number>();
 

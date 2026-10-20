@@ -405,6 +405,57 @@ describe('MobilePermissionService', () => {
       expect(result.hasOwnerRestrictions).toBe(true);
     });
 
+    describe('merging into existing caps', () => {
+      const setExistingCaps = (ownerMaxPermissions: unknown) => {
+        (walletRepository.findGroupRoleByMembership as Mock).mockImplementation(
+          (_wallet: string, user: string) => user === ownerId ? 'owner' : 'signer'
+        );
+        (mobilePermissionRepository.findByWalletAndUser as Mock).mockResolvedValue(
+          ownerMaxPermissions === undefined ? null : { ...mockPermission, ownerMaxPermissions }
+        );
+      };
+
+      it('keeps caps the body does not name', async () => {
+        setExistingCaps({ createTransaction: false });
+
+        await mobilePermissionService.setMaxPermissions(walletId, targetUserId, ownerId, { broadcast: false });
+
+        expect(mobilePermissionRepository.upsert).toHaveBeenCalledWith(walletId, targetUserId, {
+          ownerMaxPermissions: { createTransaction: false, broadcast: false },
+          lastModifiedBy: ownerId,
+        });
+      });
+
+      it('lets named keys overwrite and ignores undefined values', async () => {
+        setExistingCaps({ broadcast: false, signPsbt: false, createTransaction: false });
+
+        await mobilePermissionService.setMaxPermissions(
+          walletId, targetUserId, ownerId, { broadcast: true, createTransaction: undefined }
+        );
+
+        expect(mobilePermissionRepository.upsert).toHaveBeenCalledWith(walletId, targetUserId, {
+          ownerMaxPermissions: { broadcast: true, signPsbt: false, createTransaction: false },
+          lastModifiedBy: ownerId,
+        });
+      });
+
+      it.each([
+        ['no stored record', undefined],
+        ['null stored caps', null],
+        ['array stored caps', ['broadcast']],
+        ['string stored caps', 'corrupt'],
+      ])('stores just the body for %s', async (_label, stored) => {
+        setExistingCaps(stored);
+
+        await mobilePermissionService.setMaxPermissions(walletId, targetUserId, ownerId, { broadcast: false });
+
+        expect(mobilePermissionRepository.upsert).toHaveBeenCalledWith(walletId, targetUserId, {
+          ownerMaxPermissions: { broadcast: false },
+          lastModifiedBy: ownerId,
+        });
+      });
+    });
+
     it('should throw ForbiddenError when caller is not owner', async () => {
       (walletSharingRepository.findWalletUserByCompositeKey as Mock).mockResolvedValue({ role: 'signer' });
 

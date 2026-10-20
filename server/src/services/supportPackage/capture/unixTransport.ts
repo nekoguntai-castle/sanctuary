@@ -426,6 +426,9 @@ export async function startCaptureParticipantServer(
   await prepareSocketDirectory(options.socketDirectory);
   await removeStaleSocket(config);
   const server = await listenOnCaptureSocket(config, socket => {
+    // readCaptureFrame drops its own listener once the request is read; a peer reset
+    // during the response write would otherwise be an unhandled 'error' event.
+    socket.on('error', () => socket.destroy());
     void readCaptureFrame(socket).then(
       request => handleParticipantRequest(request, { ...options, participantId }),
       (): CaptureParticipantResponse => ({ status: 'invalid', failure: 'request_invalid' }),

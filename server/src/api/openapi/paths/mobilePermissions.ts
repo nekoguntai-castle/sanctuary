@@ -125,7 +125,7 @@ export const mobilePermissionPaths = {
     patch: {
       tags: ['Mobile Permissions'],
       summary: 'Set wallet user mobile permission caps',
-      description: 'Owner-only route to set maximum mobile permissions for another wallet user.',
+      description: 'Owner-only route to set maximum mobile permissions for another wallet user. Only the named caps change; omitted caps keep their current value; use DELETE .../caps to clear all.',
       security: bearerAuth,
       parameters: [walletIdParameter, userIdParameter],
       requestBody: permissionUpdateRequestBody,

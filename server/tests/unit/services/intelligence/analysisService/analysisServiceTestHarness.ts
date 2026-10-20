@@ -17,6 +17,7 @@ const analysisServiceMocks = vi.hoisted(() => {
       notifyInsight: vi.fn(),
     },
     mockCreateInsight: vi.fn(),
+    mockMarkInsightNotified: vi.fn(),
     mockGetTransactionVelocity: vi.fn(),
     mockGetUtxoAgeDistribution: vi.fn(),
     mockGetUtxoHealthProfile: vi.fn(),
@@ -63,6 +64,7 @@ vi.mock('../../../../../src/services/ai/config', () => ({
 vi.mock('../../../../../src/repositories/intelligenceRepository', () => ({
   intelligenceRepository: {
     createInsight: analysisServiceMocks.mockCreateInsight,
+    markInsightNotified: analysisServiceMocks.mockMarkInsightNotified,
     getTransactionVelocity: analysisServiceMocks.mockGetTransactionVelocity,
     getUtxoAgeDistribution: analysisServiceMocks.mockGetUtxoAgeDistribution,
   },
@@ -101,6 +103,7 @@ export const mockGetLlmEgressProxyUrl = analysisServiceMocks.mockGetLlmEgressPro
 export const mockGetEnabledIntelligenceWallets = analysisServiceMocks.mockGetEnabledIntelligenceWallets;
 export const mockNotificationChannelRegistry = analysisServiceMocks.mockNotificationChannelRegistry;
 export const mockCreateInsight = analysisServiceMocks.mockCreateInsight;
+export const mockMarkInsightNotified = analysisServiceMocks.mockMarkInsightNotified;
 export const mockGetTransactionVelocity = analysisServiceMocks.mockGetTransactionVelocity;
 export const mockGetUtxoAgeDistribution = analysisServiceMocks.mockGetUtxoAgeDistribution;
 export const mockGetUtxoHealthProfile = analysisServiceMocks.mockGetUtxoHealthProfile;

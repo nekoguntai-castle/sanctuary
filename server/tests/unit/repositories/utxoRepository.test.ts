@@ -24,11 +24,20 @@ vi.mock('../../../src/models/prisma', () => ({
       count: vi.fn(),
     },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
   },
 }));
 
 import prisma from '../../../src/models/prisma';
+import { Prisma } from '../../../src/generated/prisma/client';
 import { utxoRepository } from '../../../src/repositories/utxoRepository';
+
+/** $queryRaw is a tagged template: rebuild the flattened Sql from (strings, ...values). */
+function flattenRaw(callIndex: number): { text: string; values: unknown[] } {
+  const [strings, ...vals] = (prisma.$queryRaw as Mock).mock.calls[callIndex];
+  const sql = Prisma.sql(strings, ...vals);
+  return { text: sql.text, values: sql.values };
+}
 
 describe('UTXO Repository', () => {
   const mockUtxo = {
@@ -558,6 +567,80 @@ describe('UTXO Repository', () => {
       const result = await utxoRepository.getConfirmedUnconfirmedBalance('empty-wallet');
 
       expect(result).toEqual({ confirmed: 0, unconfirmed: 0 });
+    });
+  });
+
+  describe('aggregateUnspentByConfirmationTime', () => {
+    const t1 = new Date('2026-01-01T00:00:00Z');
+    const t2 = new Date('2026-02-01T00:00:00Z');
+    const lastCall = () => flattenRaw(0);
+
+    beforeEach(() => {
+      (prisma.$queryRaw as Mock).mockReset();
+    });
+
+    it('returns zero when the aggregate row is missing', async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([]);
+      const r = await utxoRepository.aggregateUnspentByConfirmationTime('w1', { includeUnconfirmed: true });
+      expect(r).toEqual({ count: 0, sumSats: BigInt(0) });
+    });
+
+    it('treats a null sum as zero and parses text sums to bigint', async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValueOnce([{ count: 0, sum: null }]);
+      expect(await utxoRepository.aggregateUnspentByConfirmationTime('w1', { includeUnconfirmed: false }))
+        .toEqual({ count: 0, sumSats: BigInt(0) });
+      (prisma.$queryRaw as Mock).mockResolvedValueOnce([{ count: 2, sum: '9007199254740993' }]);
+      expect(await utxoRepository.aggregateUnspentByConfirmationTime('w1', { includeUnconfirmed: false }))
+        .toEqual({ count: 2, sumSats: BigInt('9007199254740993') });
+    });
+
+    it('puts the live-ledger rule in the join and binds the wallet id', async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ count: 1, sum: '5' }]);
+      await utxoRepository.aggregateUnspentByConfirmationTime('w1', { includeUnconfirmed: false });
+      const { text, values } = lastCall();
+      expect(text).toMatch(/LEFT JOIN "transactions" t[\s\S]*t\."rbfStatus" <> 'replaced'[\s\S]*WHERE/);
+      expect(text).toContain('t."blockTime" IS NOT NULL');
+      expect(values).toEqual(['w1']);
+    });
+
+    it.each([
+      ['confirmedBefore', { confirmedBefore: t1 }, 't."blockTime" <= $2', [t1]],
+      ['confirmedAfter', { confirmedAfter: t1 }, 't."blockTime" > $2', [t1]],
+      ['from', { from: t1 }, 't."blockTime" >= $2', [t1]],
+      ['to', { to: t2 }, 't."blockTime" < $2', [t2]],
+      ['from+to', { from: t1, to: t2 }, 't."blockTime" >= $2 AND t."blockTime" < $3', [t1, t2]],
+    ])('binds %s bounds', async (_name, bounds, fragment, params) => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ count: 0, sum: '0' }]);
+      await utxoRepository.aggregateUnspentByConfirmationTime('w1', { ...bounds, includeUnconfirmed: false });
+      const { text, values } = lastCall();
+      expect(text).toContain(fragment);
+      expect(text).not.toContain('IS NULL');
+      expect(values).toEqual(['w1', ...params]);
+    });
+
+    it('includes unconfirmed coins only when requested', async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ count: 0, sum: '0' }]);
+      await utxoRepository.aggregateUnspentByConfirmationTime('w1', { confirmedAfter: t1, includeUnconfirmed: true });
+      const { text, values } = lastCall();
+      expect(text).toContain('(t."blockTime" IS NULL OR (t."blockTime" > $2))');
+      expect(values).toEqual(['w1', t1]);
+    });
+  });
+
+  describe('aggregateByDateWindow', () => {
+    it('windows on block time and keeps the Prisma aggregate shape', async () => {
+      const start = new Date('2026-01-01T00:00:00Z');
+      const end = new Date('2026-01-02T00:00:00Z');
+      (prisma.$queryRaw as Mock).mockReset();
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ count: 3, sum: '300' }]);
+
+      const r = await utxoRepository.aggregateByDateWindow('w1', start, end);
+
+      expect(r).toEqual({ _count: { _all: 3 }, _sum: { amount: BigInt(300) } });
+      const sql = flattenRaw(0);
+      expect(sql.text).toContain('t."blockTime" >= $2 AND t."blockTime" < $3');
+      expect(sql.text).not.toContain('IS NULL');
+      expect(sql.values).toEqual(['w1', start, end]);
     });
   });
 });

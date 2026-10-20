@@ -5,7 +5,8 @@
  */
 
 import prisma, { type PrismaTxClient } from '../models/prisma';
-import type { UTXO, Prisma } from '../generated/prisma/client';
+import { Prisma, type UTXO } from '../generated/prisma/client';
+import { liveTransactionSql } from './transactions/visibility';
 
 /**
  * Get total unspent balance for a wallet
@@ -318,19 +319,72 @@ export async function findByTxidsUnspent(
   });
 }
 
+export interface UnspentConfirmationAggregateOptions {
+  /** Inclusive upper bound on confirming block time. */
+  confirmedBefore?: Date;
+  /** Exclusive lower bound on confirming block time. */
+  confirmedAfter?: Date;
+  /** Inclusive lower bound of a block-time window. */
+  from?: Date;
+  /** Exclusive upper bound of a block-time window. */
+  to?: Date;
+  /** Count UTXOs with no confirming block time (age 0) in addition to bounded ones. */
+  includeUnconfirmed: boolean;
+}
+
 /**
- * Aggregate UTXOs by date window (for age profile milestones)
+ * Aggregate unspent UTXOs by the confirming transaction's block time.
+ *
+ * UTXO.createdAt is the DB insert time (a fresh sync stamps every coin "now"),
+ * so age is derived from the live transaction row's blockTime. A UTXO with no
+ * live transaction row or no blockTime has age 0: it is only matched when
+ * includeUnconfirmed is set and never by a bounded predicate.
+ */
+export async function aggregateUnspentByConfirmationTime(
+  walletId: string,
+  options: UnspentConfirmationAggregateOptions
+): Promise<{ count: number; sumSats: bigint }> {
+  const bounds: Prisma.Sql[] = [];
+  if (options.confirmedBefore) bounds.push(Prisma.sql`t."blockTime" <= ${options.confirmedBefore}`);
+  if (options.confirmedAfter) bounds.push(Prisma.sql`t."blockTime" > ${options.confirmedAfter}`);
+  if (options.from) bounds.push(Prisma.sql`t."blockTime" >= ${options.from}`);
+  if (options.to) bounds.push(Prisma.sql`t."blockTime" < ${options.to}`);
+  const bounded = bounds.length > 0
+    ? Prisma.join(bounds, ' AND ')
+    : Prisma.sql`t."blockTime" IS NOT NULL`;
+  const timeFilter = options.includeUnconfirmed
+    ? Prisma.sql`(t."blockTime" IS NULL OR (${bounded}))`
+    : bounded;
+
+  const rows = await prisma.$queryRaw<Array<{ count: number; sum: string | null }>>`
+    SELECT COUNT(*)::int AS count, COALESCE(SUM(u."amount"), 0)::text AS sum
+    FROM "utxos" u
+    LEFT JOIN "transactions" t
+      ON t."txid" = u."txid"
+      AND t."walletId" = u."walletId"
+      AND ${liveTransactionSql(Prisma.raw('t."rbfStatus"'))}
+    WHERE u."walletId" = ${walletId}
+      AND u."spent" = false
+      AND ${timeFilter}
+  `;
+  const row = rows[0];
+  return { count: row?.count ?? 0, sumSats: BigInt(row?.sum ?? 0) };
+}
+
+/**
+ * Aggregate UTXOs by confirming block-time window (for age profile milestones)
  */
 export async function aggregateByDateWindow(
   walletId: string,
   windowStart: Date,
   windowEnd: Date
 ) {
-  return prisma.uTXO.aggregate({
-    where: { walletId, spent: false, createdAt: { gte: windowStart, lt: windowEnd } },
-    _count: { _all: true },
-    _sum: { amount: true },
+  const { count, sumSats } = await aggregateUnspentByConfirmationTime(walletId, {
+    from: windowStart,
+    to: windowEnd,
+    includeUnconfirmed: false,
   });
+  return { _count: { _all: count }, _sum: { amount: sumSats } };
 }
 
 /**
@@ -793,6 +847,7 @@ export const utxoRepository = {
   aggregateUnspent,
   findUnspentWithDraftLocks,
   findByTxidsUnspent,
+  aggregateUnspentByConfirmationTime,
   aggregateByDateWindow,
   countByIdsInWallet,
   findAvailableForSpending,

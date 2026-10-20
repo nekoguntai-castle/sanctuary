@@ -28,6 +28,7 @@ import {
   SYNC_QUEUE_NAME,
   SYNC_WALLET_JOB_NAME,
   SYNC_WALLET_JOB_OPTIONS,
+  SYNC_FINISHED_JOB_RETENTION,
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   UPDATE_CONFIRMATIONS_JOB_NAME,
   readSyncWalletJobData,
@@ -48,6 +49,10 @@ describe('sync job contract', () => {
     expect(SYNC_WALLET_JOB_OPTIONS).toEqual({
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 },
+    });
+    expect(SYNC_FINISHED_JOB_RETENTION).toEqual({
+      removeOnComplete: { count: 500 },
+      removeOnFail: { count: 250 },
     });
   });
 

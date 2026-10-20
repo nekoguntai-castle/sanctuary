@@ -174,6 +174,18 @@ export const SYNC_WALLET_JOB_OPTIONS: JobsOptions = {
   backoff: { type: 'exponential', delay: 5000 },
 };
 
+/**
+ * Count-based finished-job retention for every API-side sync add (BullMQ keeps
+ * all finished jobs otherwise). Matches the worker queue defaults in
+ * workerJobQueue. Count-based, not `true`: BullMQ evicts the oldest finished
+ * jobs first, so a just-completed job stays visible to wake-up admission.
+ * Jobs finished before this applied drain as new jobs complete.
+ */
+export const SYNC_FINISHED_JOB_RETENTION = {
+  removeOnComplete: { count: 500 },
+  removeOnFail: { count: 250 },
+} satisfies JobsOptions;
+
 export const FULL_RESYNC_LOCK_RETRY_DELAY_MS = 5_000;
 export const ORDINARY_SYNC_LOCK_RETRY_DELAY_MS = 15_000;
 export const ORDINARY_SYNC_LOCK_RETRY_WINDOW_MS = 4 * 60_000;

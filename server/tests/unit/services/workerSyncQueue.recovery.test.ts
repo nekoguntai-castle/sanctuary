@@ -233,4 +233,45 @@ describe('workerSyncQueue recovery wake-ups', () => {
       expect(mocks.queueAdd).not.toHaveBeenCalled();
     },
   );
+
+  describe('trimmed full-resync candidates', () => {
+    const wakeup = { walletId: 'wallet-1', generation: 7, incrementalGeneration: 4 };
+
+    it('does not re-queue a processed generation whose completed job was trimmed', async () => {
+      mocks.queueGetJob.mockResolvedValue(null);
+      mocks.isGenerationProcessed.mockResolvedValue(true);
+      await expect(enqueueReservedFullResyncWakeup(wakeup)).resolves.toBe(true);
+      expect(mocks.isGenerationProcessed).toHaveBeenCalledWith('wallet-1', 7);
+      expect(mocks.queueAdd).not.toHaveBeenCalled();
+    });
+
+    it('re-adds a missing candidate when the generation is not processed', async () => {
+      mocks.queueGetJob.mockResolvedValue(null);
+      mocks.isGenerationProcessed.mockResolvedValue(false);
+      await expect(enqueueReservedFullResyncWakeup(wakeup)).resolves.toBe(true);
+      expect(mocks.queueAdd).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails closed when the processed lookup throws for a missing candidate', async () => {
+      mocks.queueGetJob.mockResolvedValue(null);
+      mocks.isGenerationProcessed.mockRejectedValue(new Error('db down'));
+      await expect(enqueueReservedFullResyncWakeup(wakeup)).resolves.toBe(false);
+      expect(mocks.queueAdd).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('incremental wake-up acceptance under bounded retention', () => {
+    const wakeup = { walletId: 'wallet-1', generation: 7, jobId: 'stable-job-id' };
+
+    it.each([
+      ['completed', true],
+      ['unknown', false],
+    ])('a just-added job reported %s resolves %s', async (state, accepted) => {
+      mocks.queueAdd.mockResolvedValueOnce({
+        id: 'stable-job-id',
+        getState: vi.fn().mockResolvedValue(state),
+      });
+      await expect(enqueueIncrementalSyncWakeup(wakeup)).resolves.toBe(accepted);
+    });
+  });
 });
