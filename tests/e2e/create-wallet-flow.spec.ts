@@ -336,6 +336,7 @@ const STATIC_CREATE_WALLET_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
+  'POST /payjoin/release-original': mockResponse({ restored: false }),
   'GET /transactions/balance-history': mockResponse(emptyBalanceHistory()),
   'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
@@ -806,7 +807,7 @@ test.describe('Create wallet flow', () => {
     await main.getByRole('button', { name: 'Construct Wallet' }).click();
 
     // Should show error notification
-    await expect(page.getByText(/failed|error|already exists/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Failed to Create Wallet')).toBeVisible({ timeout: 10000 });
   });
 
   // --- Step Progress Indicators ---

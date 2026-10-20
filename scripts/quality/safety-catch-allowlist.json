@@ -587,15 +587,6 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "src/hooks/send/useSendTransactionActions.ts",
-      "functionName": "applyPayjoinIfNeeded",
-      "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
       "file": "src/hooks/send/useUsbSigning.ts",
       "functionName": "persistDeviceSignatureToDraft",
       "issue": "non-terminal-catch",

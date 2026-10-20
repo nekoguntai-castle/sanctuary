@@ -738,4 +738,88 @@ describe('useBroadcast', () => {
       expect(deps.setApprovalAction).toHaveBeenCalledWith(null);
     });
   });
+
+  describe('payjoin overrides', () => {
+    it('broadcasts the override transaction instead of the rendered one', async () => {
+      const deps = createDeps();
+      const { result } = renderHook(() => useBroadcast(deps));
+      const original = { ...baseTxData, intentId: 'intent-original', intentDigest: 'd'.repeat(64), fee: 77 };
+
+      await act(async () => {
+        await result.current.broadcastTransaction('original-psbt', undefined, { transaction: original });
+      });
+
+      expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+        signedPsbtBase64: 'original-psbt',
+        intentId: 'intent-original',
+        intentDigest: 'd'.repeat(64),
+        fee: 77,
+      }));
+    });
+
+    it('broadcasts an override transaction when nothing is rendered yet', async () => {
+      const deps = createDeps({ txData: null });
+      const { result } = renderHook(() => useBroadcast(deps));
+
+      await act(async () => {
+        expect(await result.current.broadcastTransaction('original-psbt', undefined, { transaction: baseTxData }))
+          .toBe(true);
+      });
+    });
+
+    it.each([
+      ['a 400 ApiError', new ApiError('Signing intent is stale', 400, { details: { reason: 'stale_intent' } }),
+        { status: 400, reason: 'stale_intent' }],
+      ['a 403 ApiError', new ApiError('Forbidden', 403, { details: { reason: 'approval_required' } }),
+        { status: 403, reason: 'approval_required' }],
+      ['an ApiError without details', new ApiError('Unavailable', 503), { status: 503, reason: undefined }],
+      ['an ApiError with a non-string reason', new ApiError('Odd', 400, { details: { reason: 7 } }),
+        { status: 400, reason: undefined }],
+      ['a non-ApiError', new Error('network down'), { status: undefined, reason: undefined }],
+    ])('reports %s to onFailure', async (_label, error, expected) => {
+      mocks.broadcastTransaction.mockRejectedValueOnce(error);
+      const onFailure = vi.fn();
+      const deps = createDeps();
+      const { result } = renderHook(() => useBroadcast(deps));
+
+      await act(async () => {
+        expect(await result.current.broadcastTransaction(undefined, undefined, { onFailure })).toBe(false);
+      });
+
+      expect(onFailure).toHaveBeenCalledTimes(1);
+      expect(onFailure).toHaveBeenCalledWith(expected);
+    });
+
+    it('does not report a rejection after ownership is lost', async () => {
+      let current = true;
+      mocks.broadcastTransaction.mockImplementationOnce(async () => {
+        current = false;
+        throw new ApiError('stale', 400, { details: { reason: 'stale_intent' } });
+      });
+      const controller = new AbortController();
+      const onFailure = vi.fn();
+      const deps = createDeps({
+        beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => current }),
+      });
+      const { result } = renderHook(() => useBroadcast(deps));
+
+      await expect(result.current.broadcastTransaction(undefined, undefined, { onFailure })).resolves.toBe(false);
+      expect(onFailure).not.toHaveBeenCalled();
+    });
+
+    it('does not report a success whose lease went stale', async () => {
+      let current = true;
+      mocks.refetchQueries.mockImplementation(async () => { current = false; });
+      const controller = new AbortController();
+      const onFailure = vi.fn();
+      const deps = createDeps({
+        beginBroadcast: () => ({ signal: controller.signal, isCurrent: () => current }),
+      });
+      const { result } = renderHook(() => useBroadcast(deps));
+
+      await expect(result.current.broadcastTransaction(undefined, undefined, { onFailure })).resolves.toBe(false);
+      expect(mocks.broadcastTransaction).toHaveBeenCalledTimes(1);
+      expect(onFailure).not.toHaveBeenCalled();
+    });
+  });
 });

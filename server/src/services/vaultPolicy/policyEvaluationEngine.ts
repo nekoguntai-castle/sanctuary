@@ -27,6 +27,7 @@ import type {
 } from './types';
 import { vaultPolicyService } from './vaultPolicyService';
 import { buildPolicyAddressComparison } from './policyAddressCanonical';
+import { getActivePoliciesForUsage, usageWindowChecks, walletHasEnforcedUsageWindows } from './usageWindows';
 
 const log = createLogger('VAULT_POLICY:SVC_ENGINE');
 // Legacy unknownAddressesOnly-only rows are warned about once per process, not per evaluation.
@@ -437,14 +438,6 @@ export async function recordUsage(
   }
 }
 
-const getActivePoliciesForUsage = async (
-  walletId: string
-): Promise<VaultPolicy[]> => {
-  const wallet = await walletRepository.findById(walletId);
-  const groupId = wallet?.groupId ?? null;
-  return vaultPolicyService.getActivePoliciesForWallet(walletId, groupId);
-};
-
 /**
  * Reserve spending-limit/velocity usage windows atomically, BEFORE a
  * transaction is broadcast. This closes the TOCTOU window that a read-then-
@@ -552,12 +545,7 @@ const reserveSpendingLimitWindows = async (
   const reserveAmount = input.isReplacementBump
     ? reservedAmountAfterReplacement(input.amount, input.replacedAmount ?? BigInt(0))
     : input.amount;
-  const checks: Array<{ type: WindowType; limit: number }> = [];
-  if (config.daily && config.daily > 0) checks.push({ type: 'daily', limit: config.daily });
-  if (config.weekly && config.weekly > 0) checks.push({ type: 'weekly', limit: config.weekly });
-  if (config.monthly && config.monthly > 0) checks.push({ type: 'monthly', limit: config.monthly });
-
-  for (const check of checks) {
+  for (const check of usageWindowChecks(policy)) {
     const windowId = await reserveWindow(policy, input.walletId, scopedUserId, check.type, {
       amount: reserveAmount,
       spendLimit: BigInt(check.limit),
@@ -575,12 +563,7 @@ const reserveVelocityWindows = async (
   reservations: UsageReservation[]
 ): Promise<boolean> => {
   const scopedUserId = getScopedUsageUserId(config.scope, input.userId);
-  const checks: Array<{ type: WindowType; limit: number }> = [];
-  if (config.maxPerHour && config.maxPerHour > 0) checks.push({ type: 'hourly', limit: config.maxPerHour });
-  if (config.maxPerDay && config.maxPerDay > 0) checks.push({ type: 'daily', limit: config.maxPerDay });
-  if (config.maxPerWeek && config.maxPerWeek > 0) checks.push({ type: 'weekly', limit: config.maxPerWeek });
-
-  for (const check of checks) {
+  for (const check of usageWindowChecks(policy)) {
     const windowId = await reserveWindow(policy, input.walletId, scopedUserId, check.type, {
       amount: BigInt(0),
       txLimit: check.limit,
@@ -966,6 +949,7 @@ export const policyEvaluationEngine = {
   recordUsage,
   reserveEnforcedUsage,
   releasePolicyUsage,
+  walletHasEnforcedUsageWindows,
 };
 
 export default policyEvaluationEngine;

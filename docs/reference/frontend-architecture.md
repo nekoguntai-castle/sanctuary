@@ -161,6 +161,14 @@ The base HTTP client wraps `fetch` with:
 | `twoFactor.ts` | `/auth/2fa/*` |
 | `admin/` | `/admin/*` |
 
+**Payjoin (BIP78) is two rounds.** The send flow negotiates a payjoin at broadcast time, never at
+transaction creation. Round one posts the original signed by PSBT file or QR code (`attemptPayjoin`
+with `signedPsbt`, 75 s client budget). A valid proposal becomes the transaction under review and
+needs its own file/QR signature; it is never signed on a USB device. Every failure calls
+`releasePayjoinOriginal` (`POST /payjoin/release-original`) and broadcasts the signed original only
+when the server confirms it is broadcastable, so the client never broadcasts both. The state
+machine lives in `src/hooks/send/usePayjoin.ts`.
+
 ---
 
 ## Auth Flow

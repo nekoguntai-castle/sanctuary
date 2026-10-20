@@ -76,4 +76,30 @@ describe('UsbSigning branch coverage', () => {
     fireEvent.click(screen.getByRole('button', { name: /upload signed/i }));
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('hides the USB buttons during payjoin round two but keeps QR and file signing', () => {
+    render(
+      <UsbSigning
+        devices={[
+          { id: 'dev-1', type: 'ledger', label: 'Ledger' } as any,
+          { id: 'dev-2', type: 'coldcard', label: 'Coldcard' } as any,
+        ]}
+        signedDevices={new Set()}
+        unsignedPsbt="cHNidP8BAFICAAAA"
+        signingDeviceId={null}
+        signing={false}
+        usbLocked
+        onSignWithDevice={vi.fn()}
+        onDownloadPsbt={vi.fn()}
+        onFileUpload={vi.fn()}
+        setSigningDeviceId={vi.fn()}
+        setQrSigningDevice={vi.fn()}
+        fileInputRef={{ current: null }}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /USB \(Ledger\)/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upload signed/i })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('USB signing is not available');
+  });
 });

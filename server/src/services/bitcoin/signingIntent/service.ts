@@ -244,3 +244,15 @@ export const findDraftBySigningIntent = (
   walletId: string,
   signingIntentId: string,
 ) => draftSigningIntentRepository.findDraftByWalletAndSigningIntent(walletId, signingIntentId);
+
+/**
+ * True when a payjoin proposal was minted from this intent and is now parked
+ * behind it (after release-original restored the intent). Such an original
+ * cannot be saved as a draft (C-D9).
+ */
+export const hasPayjoinReplacement = async (
+  walletId: string,
+  intentId: string,
+): Promise<boolean> => (
+  await transactionSigningIntentRepository.findPayjoinReplacementFor(walletId, intentId)
+) !== null;

@@ -15,7 +15,7 @@ describe('signing intent ingress registry', () => {
     ['standard, batch, and hardware', 'src/api/transactions/drafting.ts'],
     ['RBF, CPFP, and advanced batch', 'src/api/bitcoin/transactions.ts'],
     ['agent funding', 'src/services/agentApiService.ts'],
-    ['Payjoin supersession', 'src/api/payjoin.ts'],
+    ['Payjoin supersession', 'src/services/payjoin/attempt.ts'],
   ])('%s transaction creation issues a server intent', (_name, path) => {
     // persistSigningIntent is the prepare-then-persist form of createSigningIntent.
     expect(source(path)).toMatch(/\b(?:createSigningIntent|persistSigningIntent)\(/);

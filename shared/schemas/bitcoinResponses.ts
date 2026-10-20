@@ -82,8 +82,18 @@ export const PayjoinAttemptResponseSchema = z.discriminatedUnion('success', [
   }),
 ]);
 
+/**
+ * Answer to POST /payjoin/release-original: whether the server restored the
+ * signed original from a superseding payjoin proposal (`false` when it was
+ * never superseded). A refusal arrives as an HTTP error, never as this body.
+ */
+export const PayjoinReleaseOriginalResponseSchema = z.looseObject({
+  restored: z.boolean(),
+});
+
 export type HardwarePsbtCreateResponse = z.infer<typeof HardwarePsbtCreateResponseSchema>;
 export type PayjoinAttemptResponse = z.infer<typeof PayjoinAttemptResponseSchema>;
+export type PayjoinReleaseOriginalResponse = z.infer<typeof PayjoinReleaseOriginalResponseSchema>;
 
 /**
  * Fee-bump replacement, built from an existing transaction.

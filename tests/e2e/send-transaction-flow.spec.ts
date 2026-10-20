@@ -484,6 +484,7 @@ const getAdminResponse: SendApiResponder = ({ requestKey }) => {
   if (requestKey === "GET /admin/agents") return mockResponse([]);
   if (requestKey === "POST /hardware/jade/pin") return mockResponse({});
   if (requestKey === "GET /transactions/recent") return mockResponse([]);
+  if (requestKey === "POST /payjoin/release-original") return mockResponse({ restored: false });
   if (requestKey === "GET /transactions/balance-history")
     return mockResponse(emptyBalanceHistory());
   if (requestKey === "GET /transactions/activity-summary")

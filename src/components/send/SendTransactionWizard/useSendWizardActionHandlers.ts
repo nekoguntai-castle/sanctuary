@@ -23,7 +23,8 @@ async function broadcastWithConnectedHardwareWallet({
   actions,
   hardwareWallet,
 }: SendWizardActionHandlerProps, txData: TransactionData): Promise<boolean> {
-  if (!hardwareWallet.isConnected || !hardwareWallet.device) {
+  // A payjoin proposal (or the original restored after one) is never signed on a connected device.
+  if (actions.payjoinUsbBlocked || !hardwareWallet.isConnected || !hardwareWallet.device) {
     return false;
   }
 

@@ -42,7 +42,7 @@ vi.mock('../../../src/components/send/steps', () => ({
   TypeSelection: () => <div data-testid="type-selection">Type Selection</div>,
   OutputsStep: () => <div data-testid="outputs-step">Outputs Step</div>,
   ReviewStep: (props: any) => (
-    <div data-testid="review-step">
+    <div data-testid="review-step" data-broadcasting={String(Boolean(props.broadcasting))}>
       Review Step
       {props.error && <span data-testid="review-error">{props.error}</span>}
       {props.onBroadcast && <button data-testid="broadcast-btn" onClick={props.onBroadcast}>Broadcast</button>}
@@ -663,6 +663,68 @@ describe('SendTransactionWizard', () => {
       renderWizard();
 
       expect(screen.getByTestId('review-step')).toBeInTheDocument();
+    });
+  });
+
+  describe('payjoin round', () => {
+    const reviewContext = () => vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+      ...defaultContextValue,
+      currentStep: 'review',
+      isReadyToSign: true,
+    } as any);
+
+    it('locks Broadcast and wizard navigation while a payjoin round is busy', () => {
+      vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
+        ...defaultActionsValue,
+        isPayjoinBusy: true,
+      } as any);
+      reviewContext();
+
+      renderWizard();
+
+      expect(screen.getByTestId('review-step')).toHaveAttribute('data-broadcasting', 'true');
+      expect(screen.getByText('Cancel').closest('button')).toBeDisabled();
+    });
+
+    it('leaves Broadcast and navigation free when no payjoin round is busy', () => {
+      vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
+        ...defaultActionsValue,
+        isPayjoinBusy: false,
+      } as any);
+      reviewContext();
+
+      renderWizard();
+
+      expect(screen.getByTestId('review-step')).toHaveAttribute('data-broadcasting', 'false');
+      expect(screen.getByText('Cancel').closest('button')).toBeEnabled();
+    });
+
+    it('never signs the payjoin proposal (or its restored original) on a connected USB device', async () => {
+      const user = userEvent.setup();
+      const signWithHardwareWalletResult = vi.fn();
+      const broadcastTransaction = vi.fn();
+      vi.mocked(useHardwareWalletHook.useHardwareWallet).mockReturnValue({
+        ...defaultHardwareWallet,
+        isConnected: true,
+        device: { id: 'hw-1', type: 'ledger' },
+      } as any);
+      vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
+        ...defaultActionsValue,
+        txData: { psbtBase64: 'signed-original' },
+        unsignedPsbt: 'signed-original',
+        signedDevices: new Set(['device-1']),
+        payjoinStatus: 'failed',
+        payjoinUsbBlocked: true,
+        signWithHardwareWalletResult,
+        broadcastTransaction,
+      } as any);
+      reviewContext();
+
+      renderWizard();
+      await user.click(screen.getByTestId('broadcast-btn'));
+
+      await waitFor(() => expect(broadcastTransaction).toHaveBeenCalledWith('signed-original'));
+      expect(signWithHardwareWalletResult).not.toHaveBeenCalled();
     });
   });
 });

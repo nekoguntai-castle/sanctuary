@@ -17,6 +17,8 @@ import { SigningFlow } from './review/SigningFlow';
 import { UsbSigning } from './review/UsbSigning';
 import { QrSigning } from './review/QrSigning';
 import { DraftActions } from './review/DraftActions';
+import { PayjoinProposalPanel, PayjoinRoundOneNotice } from './review/PayjoinProposalPanel';
+import { isPayjoinCandidate, isPayjoinStatusIn } from '../../../hooks/send/usePayjoin';
 import { useReviewAddressLookup } from './review/useReviewAddressLookup';
 import { useReviewStepUploads } from './review/useReviewStepUploads';
 import type { PayjoinAttemptStatus } from '../../../contexts/send/types';
@@ -51,6 +53,10 @@ export interface ReviewStepProps {
   unsignedPsbt?: string | null;
   signedDevices?: Set<string>;
   payjoinStatus?: PayjoinAttemptStatus;
+  // Payjoin round two: no USB signing, plus the original the proposal replaces
+  payjoinUsbBlocked?: boolean;
+  payjoinOriginalTxData?: TransactionData | null;
+  onSendWithoutPayjoin?: () => Promise<boolean>;
   onDownloadPsbt?: () => void;
   onUploadSignedPsbt?: (file: File, deviceId?: string, deviceFingerprint?: string) => Promise<void>;
   onSignWithDevice?: (device: Device) => Promise<boolean>;
@@ -74,6 +80,9 @@ export function ReviewStep({
   unsignedPsbt,
   signedDevices = new Set(),
   payjoinStatus = 'idle',
+  payjoinUsbBlocked = false,
+  payjoinOriginalTxData = null,
+  onSendWithoutPayjoin,
   onDownloadPsbt,
   onUploadSignedPsbt,
   onSignWithDevice,
@@ -183,6 +192,7 @@ export function ReviewStep({
   // valid user action while the server call is outstanding.
   const signingControlsBusy = signing || broadcasting;
   const approvalMode = getReviewApprovalMode(approvalAction, txData, state.draftId, isDraftMode);
+  const showPayjoinNotice = payjoinStatus === 'idle' && isPayjoinCandidate({ state, wallet, txData: txData ?? null });
 
   return (
     <div className="space-y-6">
@@ -200,6 +210,18 @@ export function ReviewStep({
         format={format}
         goToStep={goToStep}
         interactionLocked={signing || broadcasting || savingDraft}
+      />
+
+      <PayjoinRoundOneNotice visible={showPayjoinNotice} />
+
+      <PayjoinProposalPanel
+        status={payjoinStatus}
+        originalTxData={payjoinOriginalTxData}
+        proposalTxData={txData ?? null}
+        busy={signingControlsBusy}
+        format={format}
+        onSignPayjoin={onDownloadPsbt}
+        onSendWithoutPayjoin={onSendWithoutPayjoin}
       />
 
       {/* Multi-sig Signing Panel */}
@@ -230,6 +252,7 @@ export function ReviewStep({
           unsignedPsbt={unsignedPsbt}
           signingDeviceId={signingDeviceId}
           signing={signingControlsBusy}
+          usbLocked={payjoinUsbBlocked}
           onSignWithDevice={onSignWithDevice}
           onDownloadPsbt={onDownloadPsbt}
           onFileUpload={handleFileUpload}
@@ -248,6 +271,7 @@ export function ReviewStep({
         signing={signing}
         broadcasting={broadcasting}
         savingDraft={savingDraft}
+        saveDraftLocked={isPayjoinStatusIn('draftLocked', payjoinStatus)}
         onSign={onSign}
         onBroadcast={onBroadcast}
         onSaveDraft={onSaveDraft}

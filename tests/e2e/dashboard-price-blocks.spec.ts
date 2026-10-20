@@ -206,6 +206,7 @@ const STATIC_DASHBOARD_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
+  'POST /payjoin/release-original': mockResponse({ restored: false }),
   'GET /transactions/balance-history': mockResponse(flatBalanceHistory(100000000)),
   [`GET /wallets/${MAINNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
   'GET /admin/features': mockResponse([]),

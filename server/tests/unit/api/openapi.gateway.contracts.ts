@@ -691,6 +691,7 @@ export function registerOpenApiGatewayTests() {
       ['/payjoin/address/{addressId}/uri', 'get'],
       ['/payjoin/parse-uri', 'post'],
       ['/payjoin/attempt', 'post'],
+      ['/payjoin/release-original', 'post'],
       ['/payjoin/{addressId}', 'post'],
     ];
 
@@ -716,7 +717,7 @@ export function registerOpenApiGatewayTests() {
     ]);
     expect(openApiSpec.components.schemas.PayjoinAttemptRequest.required).toEqual([
       'walletId',
-      'psbt',
+      'signedPsbt',
       'intentId',
       'intentDigest',
       'payjoinUrl',
@@ -725,6 +726,16 @@ export function registerOpenApiGatewayTests() {
       'additionalProperties',
       false,
     );
+    expect(openApiSpec.components.schemas.PayjoinReleaseOriginalRequest.required).toEqual([
+      'walletId',
+      'intentId',
+      'intentDigest',
+    ]);
+    expect(openApiSpec.components.schemas.PayjoinReleaseOriginalRequest).toHaveProperty(
+      'additionalProperties',
+      false,
+    );
+    expect(openApiSpec.components.schemas.PayjoinReleaseOriginalResponse.required).toEqual(['restored']);
     expect(openApiSpec.components.schemas.PayjoinReceiverError.enum).toEqual([
       'version-unsupported',
       'unavailable',

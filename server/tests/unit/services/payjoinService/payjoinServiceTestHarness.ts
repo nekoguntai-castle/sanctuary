@@ -37,7 +37,9 @@ vi.mock('../../../../src/utils/logger', () => ({
 vi.mock('../../../../src/services/bitcoin/psbtValidation', () => ({
   parsePsbt: vi.fn(),
   validatePsbtStructure: vi.fn().mockReturnValue({ valid: true, errors: [], warnings: [] }),
-  validatePayjoinProposal: vi.fn().mockReturnValue({ valid: true, errors: [], warnings: [] }),
+  validatePayjoinProposal: vi.fn().mockReturnValue({
+    valid: true, errors: [], warnings: [], proposalPsbt: 'restored-proposal',
+  }),
   getPsbtOutputs: vi.fn().mockReturnValue([]),
   getPsbtInputs: vi.fn().mockReturnValue([]),
   calculateFeeRate: vi.fn().mockReturnValue(10),

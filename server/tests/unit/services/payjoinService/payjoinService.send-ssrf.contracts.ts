@@ -16,6 +16,7 @@ export const registerPayjoinSendAndSsrfContracts = () => {
   describe('attemptPayjoinSend', () => {
     const originalPsbt = 'cHNidP8BAFICAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8BrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GgAAAAAAAA==';
     const proposalPsbt = 'cHNidP8BAHECAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8CrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GhAnAAAAAAAAFgAUdpn98MqGxRdMa7mGg0HhZKSL0BMAAAAAAAAA';
+    const restoredProposal = 'restored-proposal-with-sender-prevouts';
 
     it('should send PSBT to Payjoin endpoint', async () => {
       (global.fetch as Mock).mockResolvedValue({
@@ -27,6 +28,7 @@ export const registerPayjoinSendAndSsrfContracts = () => {
         valid: true,
         errors: [],
         warnings: [],
+        proposalPsbt: restoredProposal,
       });
 
       const result = await attemptPayjoinSend(
@@ -45,7 +47,24 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       );
       expect(result.success).toBe(true);
       expect(result.isPayjoin).toBe(true);
-      expect(result.proposalPsbt).toBe(proposalPsbt);
+      // The validator's sender-prevout-restored proposal, not the raw body.
+      expect(result.proposalPsbt).toBe(restoredProposal);
+    });
+
+    it('fails closed when a valid validation result carries no restored proposal', async () => {
+      (global.fetch as Mock).mockResolvedValue({
+        ok: true,
+        text: async () => proposalPsbt,
+      });
+      (validatePayjoinProposal as Mock).mockReturnValue({ valid: true, errors: [], warnings: [] });
+
+      const result = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(result).toEqual({
+        success: false,
+        isPayjoin: false,
+        error: 'Invalid proposal: validated proposal is missing',
+      });
     });
 
     it('should add v=1 query parameter', async () => {
@@ -83,7 +102,7 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       await attemptPayjoinSend(originalPsbt, `${TEST_PAYJOIN_URL}?pj=1`, [0]);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${TEST_PAYJOIN_URL}?pj=1&v=1`,
+        `${TEST_PAYJOIN_URL}?pj=1&v=1&disableoutputsubstitution=true`,
         expect.anything()
       );
     });
@@ -182,6 +201,7 @@ export const registerPayjoinSendAndSsrfContracts = () => {
         valid: true,
         errors: [],
         warnings: [],
+        proposalPsbt: exactBody,
       });
 
       const result = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
@@ -304,6 +324,7 @@ export const registerPayjoinSendAndSsrfContracts = () => {
         valid: true,
         errors: [],
         warnings: ['Fee increased by 25%'],
+        proposalPsbt: restoredProposal,
       });
 
       const result = await attemptPayjoinSend(
@@ -333,7 +354,9 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       expect(validatePayjoinProposal).toHaveBeenCalledWith(
         originalPsbt,
         proposalPsbt,
-        bitcoin.networks.bitcoin
+        bitcoin.networks.bitcoin,
+        bitcoin.networks.bitcoin,
+        { minFeeRate: undefined }
       );
     });
 
@@ -358,7 +381,28 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       expect(validatePayjoinProposal).toHaveBeenCalledWith(
         originalPsbt,
         proposalPsbt,
-        bitcoin.networks.testnet
+        bitcoin.networks.testnet,
+        bitcoin.networks.testnet,
+        { minFeeRate: undefined }
+      );
+    });
+
+    it.each([
+      [2.34567, '2.345', 2.345],
+      [600 / 110, '5.454', 5.454],
+      [Number.NaN, null, undefined],
+    ])('sends minfeerate %s as %s and holds the proposal to that exact value', async (rate, sent, checked) => {
+      (validatePayjoinProposal as Mock).mockReturnValue({ valid: true, errors: [], warnings: [], proposalPsbt });
+      requestPinnedAddressMock.mockResolvedValueOnce({ body: Buffer.from(proposalPsbt), ok: true, status: 200 });
+
+      await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, bitcoin.networks.testnet, bitcoin.networks.testnet, {
+        minFeeRate: rate,
+      });
+
+      const url = requestPinnedAddressMock.mock.calls[0][0].url as URL;
+      expect(url.searchParams.get('minfeerate')).toBe(sent);
+      expect(validatePayjoinProposal).toHaveBeenCalledWith(
+        originalPsbt, proposalPsbt, bitcoin.networks.testnet, bitcoin.networks.testnet, { minFeeRate: checked },
       );
     });
 
@@ -384,7 +428,9 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       expect(validatePayjoinProposal).toHaveBeenCalledWith(
         originalPsbt,
         proposalPsbt,
-        bitcoin.networks.testnet
+        bitcoin.networks.testnet,
+        bitcoin.networks.testnet,
+        { minFeeRate: undefined }
       );
     });
 
@@ -410,7 +456,9 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       expect(validatePayjoinProposal).toHaveBeenCalledWith(
         originalPsbt,
         proposalPsbt,
-        bitcoin.networks.bitcoin
+        bitcoin.networks.bitcoin,
+        bitcoin.networks.bitcoin,
+        { minFeeRate: undefined }
       );
     });
   });

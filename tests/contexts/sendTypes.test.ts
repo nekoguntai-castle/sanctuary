@@ -300,4 +300,14 @@ describe('send/types', () => {
       expect(canJumpToStep('outputs', currentStep, completedSteps)).toBe(false);
     });
   });
+
+  describe('two-round payjoin statuses', () => {
+    it.each([
+      'idle', 'negotiating', 'awaiting-signature', 'broadcasting', 'success', 'failed', 'skipped',
+    ] as const)('roundtrips the %s status', (payjoinStatus) => {
+      const state = createMockState({ payjoinStatus });
+
+      expect(deserializeState(serializeState(state)).payjoinStatus).toBe(payjoinStatus);
+    });
+  });
 });

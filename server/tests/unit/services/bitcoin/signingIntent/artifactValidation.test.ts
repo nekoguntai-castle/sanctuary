@@ -1183,3 +1183,297 @@ describe('signed artifact authentication boundary', () => {
     })).rejects.toThrow('does not match the authorized intent');
   });
 });
+
+describe('signed artifact boundary with a receiver-finalized payjoin peer input', () => {
+  const peerPrivateKey = Buffer.from('03'.repeat(32), 'hex');
+  const peerPublicKey = Buffer.from(ecc.pointFromScalar(peerPrivateKey, true)!);
+  const peerSigner = { publicKey: peerPublicKey, sign: (hash: Uint8Array) => ecc.sign(hash, peerPrivateKey) };
+  const walletSigner = { publicKey, sign: (hash: Uint8Array) => ecc.sign(hash, privateKey) };
+  type Psbt = bitcoin.Psbt;
+
+  /** Receiver-finalized proposal: [wallet (unsigned), peer (finalized by the receiver)]. */
+  const buildProposal = (peerPrevout: 'witness' | 'legacy' = 'witness'): Psbt => {
+    const psbt = buildPsbt(15_000);
+    if (peerPrevout === 'witness') {
+      psbt.addInput({
+        hash: 'bb'.repeat(32),
+        index: 1,
+        sequence: 0xfffffffd,
+        witnessUtxo: { script: bitcoin.payments.p2wpkh({ pubkey: peerPublicKey }).output!, value: 7_000n },
+      });
+    } else {
+      const previous = new bitcoin.Transaction();
+      previous.addInput(Buffer.alloc(32, 0xcc), 0);
+      previous.addOutput(bitcoin.payments.p2pkh({ pubkey: peerPublicKey }).output!, 7_000n);
+      psbt.addInput({ hash: previous.getHash(), index: 0, sequence: 0xfffffffd, nonWitnessUtxo: previous.toBuffer() });
+    }
+    psbt.signInput(1, peerSigner);
+    psbt.finalizeInput(1);
+    return psbt;
+  };
+
+  const withPeerRole = (psbt: Psbt): void => {
+    const envelope = envelopeFor(psbt);
+    envelope.snapshot.transaction.inputs[1].prevout.role = 'payjoin_peer';
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+  };
+
+  /** Round-two artifact: the device signs the wallet input of the peer-stripped proposal. */
+  const roundTwo = (stored: Psbt, edit: (peer: Psbt['data']['inputs'][number]) => void = () => {}): Psbt => {
+    const candidate = bitcoin.Psbt.fromBase64(stored.toBase64());
+    delete candidate.data.inputs[1].finalScriptWitness;
+    delete candidate.data.inputs[1].finalScriptSig;
+    candidate.signInput(0, walletSigner);
+    edit(candidate.data.inputs[1]);
+    return candidate;
+  };
+
+  const expectedRawTx = (stored: Psbt): string => {
+    const signed = bitcoin.Psbt.fromBase64(stored.toBase64());
+    signed.signInput(0, walletSigner);
+    signed.finalizeInput(0);
+    return signed.extractTransaction().toHex();
+  };
+
+  const alteredWitness = (stored: Psbt): Buffer => {
+    const witness = Buffer.from(stored.data.inputs[1].finalScriptWitness!);
+    witness[witness.length - 1] ^= 0x01;
+    return witness;
+  };
+
+  const broadcast = (candidate: Psbt) => validateSignedArtifact({
+    ...signingInput,
+    signedPsbtBase64: candidate.toBase64(),
+  });
+  const partial = (candidate: Psbt) => validatePartialSignedPsbt({
+    ...signingInput,
+    signedPsbtBase64: candidate.toBase64(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
+  });
+
+  it('re-attaches the stored peer witness to a stripped round-two artifact', async () => {
+    const stored = buildProposal();
+    withPeerRole(stored);
+
+    const artifact = await broadcast(roundTwo(stored));
+
+    expect(artifact.rawTx).toBe(expectedRawTx(stored));
+    expect(bitcoin.Transaction.fromHex(artifact.rawTx).ins[1].witness).toHaveLength(2);
+  });
+
+  it('accepts a round-two artifact that keeps byte-equal peer final fields', async () => {
+    const stored = buildProposal();
+    withPeerRole(stored);
+    const candidate = roundTwo(stored, peer => {
+      peer.finalScriptWitness = Buffer.from(stored.data.inputs[1].finalScriptWitness!);
+    });
+
+    await expect(broadcast(candidate)).resolves.toMatchObject({ rawTx: expectedRawTx(stored) });
+  });
+
+  it('accepts an empty peer finalScriptSig on the stored or the candidate input', async () => {
+    const stored = buildProposal();
+    stored.data.inputs[1].finalScriptSig = Buffer.alloc(0);
+    withPeerRole(stored);
+    const storedRoundTrip = bitcoin.Psbt.fromBase64(stored.toBase64());
+    expect(storedRoundTrip.data.inputs[1].finalScriptSig).toHaveLength(0);
+
+    const artifact = await broadcast(roundTwo(stored));
+    expect(artifact.rawTx).toBe(expectedRawTx(buildProposal()));
+    expect(bitcoin.Transaction.fromHex(artifact.rawTx).ins[1].script).toHaveLength(0);
+
+    const plainStored = buildProposal();
+    withPeerRole(plainStored);
+    await expect(broadcast(roundTwo(plainStored, peer => {
+      peer.finalScriptSig = Buffer.alloc(0);
+    }))).resolves.toMatchObject({ rawTx: expectedRawTx(plainStored) });
+  });
+
+  it.each([
+    ['a differing peer witness', { reason: 'metadata_mismatch', field: 'psbt.inputs.1.finalScriptWitness' }, (peer: Psbt['data']['inputs'][number], stored: Psbt) => {
+      peer.finalScriptWitness = alteredWitness(stored);
+    }],
+    ['a non-empty candidate peer finalScriptSig', { reason: 'metadata_mismatch', field: 'psbt.inputs.1.finalScriptSig' }, (peer: Psbt['data']['inputs'][number]) => {
+      peer.finalScriptSig = Buffer.from('51', 'hex');
+    }],
+    ['a peer partialSig', { reason: 'foreign_input_signature', field: 'inputs.1' }, (peer: Psbt['data']['inputs'][number]) => {
+      peer.partialSig = [{ pubkey: peerPublicKey, signature: Buffer.from(`3006020101020101${'01'}`, 'hex') }];
+    }],
+    ['a peer tapKeySig', { reason: 'foreign_input_signature', field: 'inputs.1' }, (peer: Psbt['data']['inputs'][number]) => {
+      peer.tapKeySig = Buffer.alloc(64, 1);
+    }],
+  ] as const)('rejects %s on both signed-artifact paths', async (_name, details, edit) => {
+    const stored = buildProposal();
+    withPeerRole(stored);
+    const candidate = roundTwo(stored, peer => edit(peer, stored));
+    const message = details.reason === 'foreign_input_signature'
+      ? 'Payjoin peer inputs must not carry our signatures'
+      : 'Signed transaction does not match the authorized intent';
+
+    await expect(broadcast(candidate)).rejects.toMatchObject({ message, details });
+    await expect(partial(candidate)).rejects.toMatchObject({ message, details });
+  });
+
+  it('rejects a peer tapScriptSig through PSBT map preservation', async () => {
+    const stored = buildProposal();
+    withPeerRole(stored);
+    const candidate = roundTwo(stored, peer => {
+      peer.tapScriptSig = [{
+        pubkey: Buffer.alloc(32, 2),
+        leafHash: Buffer.alloc(32, 3),
+        signature: Buffer.alloc(64, 4),
+      }];
+    });
+
+    await expect(broadcast(candidate)).rejects.toMatchObject({ details: { reason: 'metadata_mismatch' } });
+  });
+
+  it('rejects a stored legacy peer input carrying a non-empty finalScriptSig', async () => {
+    const stored = buildProposal('legacy');
+    expect(stored.data.inputs[1].finalScriptSig?.length).toBeGreaterThan(0);
+    withPeerRole(stored);
+
+    await expect(broadcast(roundTwo(stored))).rejects.toMatchObject({ details: { reason: 'metadata_mismatch' } });
+  });
+
+  it('rejects a stored peer input that the receiver did not finalize', async () => {
+    const stored = buildPsbt(15_000);
+    stored.addInput({
+      hash: 'bb'.repeat(32),
+      index: 1,
+      sequence: 0xfffffffd,
+      witnessUtxo: { script: bitcoin.payments.p2wpkh({ pubkey: peerPublicKey }).output!, value: 7_000n },
+    });
+    withPeerRole(stored);
+
+    await expect(broadcast(roundTwo(stored))).rejects.toMatchObject({
+      message: 'Payjoin peer input is not finalized by the receiver',
+      details: { field: 'inputs.1', reason: 'missing_witness_data' },
+    });
+  });
+
+  it('keeps rejecting a pre-finalized wallet input next to a peer input', async () => {
+    const stored = buildProposal();
+    withPeerRole(stored);
+    const candidate = roundTwo(stored);
+    candidate.finalizeInput(0);
+
+    await expect(broadcast(candidate)).rejects.toMatchObject({ details: { reason: 'unverifiable_witness' } });
+  });
+
+  it('accepts a partial signature next to a finalized or stripped peer input', async () => {
+    const stored = buildProposal();
+    withPeerRole(stored);
+
+    await expect(partial(roundTwo(stored))).resolves.toBeUndefined();
+    await expect(partial(roundTwo(stored, peer => {
+      peer.finalScriptWitness = Buffer.from(stored.data.inputs[1].finalScriptWitness!);
+    }))).resolves.toBeUndefined();
+    await expect(partial(roundTwo(stored, peer => {
+      peer.finalScriptSig = Buffer.alloc(0);
+    }))).resolves.toBeUndefined();
+  });
+});
+
+describe('signed artifact sighash boundary', () => {
+  const { SIGHASH_ALL, SIGHASH_NONE, SIGHASH_SINGLE, SIGHASH_ANYONECANPAY } = bitcoin.Transaction;
+  const internalPrivateKey = Buffer.from('03'.repeat(32), 'hex');
+  const internalXOnly = Buffer.from(ecc.pointFromScalar(internalPrivateKey, true)!).subarray(1, 33);
+
+  const useEnvelope = (authorized: bitcoin.Psbt, network: SigningIntentSnapshotV2['network']) => {
+    const envelope = envelopeFor(authorized, network);
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(envelope.snapshot.transaction.inputs.map(input => input.prevout));
+  };
+
+  /** A wallet input whose stored map asks for `sighashType`, signed under it. */
+  const signedEcdsa = (sighashType: number): bitcoin.Psbt => {
+    const authorized = buildPsbt();
+    authorized.updateInput(0, { sighashType });
+    useEnvelope(authorized, 'testnet3');
+    const signed = bitcoin.Psbt.fromBase64(authorized.toBase64());
+    signed.signInput(0, { publicKey, sign: hash => ecc.sign(hash, privateKey) }, [sighashType]);
+    return signed;
+  };
+
+  const signedSchnorr = (sighashType: number): bitcoin.Psbt => {
+    bitcoin.initEccLib(ecc);
+    const internalPublicKey = Buffer.from(ecc.pointFromScalar(internalPrivateKey, true)!);
+    const normalized = internalPublicKey[0] === 3 ? Buffer.from(ecc.privateNegate(internalPrivateKey)) : internalPrivateKey;
+    const tweaked = Buffer.from(ecc.privateAdd(normalized, bitcoin.crypto.taggedHash('TapTweak', internalXOnly))!);
+    const authorized = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
+    authorized.addInput({
+      hash: 'dd'.repeat(32),
+      index: 0,
+      sequence: 0xfffffffd,
+      witnessUtxo: {
+        script: bitcoin.payments.p2tr({ internalPubkey: internalXOnly, network: bitcoin.networks.regtest }).output!,
+        value: 10_000n,
+      },
+      tapInternalKey: internalXOnly,
+      tapBip32Derivation: [{ masterFingerprint: Buffer.alloc(4, 1), path: "m/86'/1'/0'/0/0", pubkey: internalXOnly, leafHashes: [] }],
+      sighashType,
+    });
+    authorized.addOutput({ script: destinationScript, value: 9_000n });
+    useEnvelope(authorized, 'regtest');
+    const signed = bitcoin.Psbt.fromBase64(authorized.toBase64());
+    signed.signInput(0, {
+      publicKey: Buffer.from(ecc.pointFromScalar(tweaked, true)!),
+      sign: hash => ecc.sign(hash, tweaked),
+      signSchnorr: hash => ecc.signSchnorr(hash, tweaked),
+    }, [sighashType]);
+    return signed;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
+  });
+
+  it.each([
+    ['ECDSA NONE', () => signedEcdsa(SIGHASH_NONE)],
+    ['ECDSA SINGLE|ANYONECANPAY', () => signedEcdsa(SIGHASH_SINGLE | SIGHASH_ANYONECANPAY)],
+    ['ECDSA ALL|ANYONECANPAY', () => signedEcdsa(SIGHASH_ALL | SIGHASH_ANYONECANPAY)],
+    ['Schnorr NONE', () => signedSchnorr(SIGHASH_NONE)],
+    ['Schnorr SINGLE|ANYONECANPAY', () => signedSchnorr(SIGHASH_SINGLE | SIGHASH_ANYONECANPAY)],
+  ] as const)('rejects a valid %s signature at partial ingestion and broadcast', async (_name, sign) => {
+    const signed = sign();
+    const expected = {
+      message: 'Signatures must commit to the whole transaction (SIGHASH_ALL)',
+      details: { field: 'inputs.0', reason: 'unsupported_sighash_type' },
+    };
+
+    await expect(validatePartialSignedPsbt({ ...signingInput, signedPsbtBase64: signed.toBase64() }))
+      .rejects.toMatchObject(expected);
+    await expect(validateSignedArtifact({ ...signingInput, signedPsbtBase64: signed.toBase64() }))
+      .rejects.toMatchObject(expected);
+  });
+
+  it('rejects an input where only one of several ECDSA signatures is weak', async () => {
+    const signed = signedEcdsa(SIGHASH_ALL);
+    const [valid] = signed.data.inputs[0].partialSig!;
+    signed.data.inputs[0].partialSig!.push({
+      pubkey: Buffer.from(ecc.pointFromScalar(Buffer.alloc(32, 9), true)!),
+      signature: Buffer.concat([valid.signature.subarray(0, -1), Buffer.from([SIGHASH_NONE])]),
+    });
+
+    await expect(validatePartialSignedPsbt({ ...signingInput, signedPsbtBase64: signed.toBase64() }))
+      .rejects.toMatchObject({ details: { field: 'inputs.0', reason: 'unsupported_sighash_type' } });
+  });
+
+  it.each([
+    ['ECDSA ALL', () => signedEcdsa(SIGHASH_ALL)],
+    ['Schnorr ALL', () => signedSchnorr(SIGHASH_ALL)],
+  ] as const)('accepts an explicit %s signature', async (_name, sign) => {
+    const artifact = await validateSignedArtifact({ ...signingInput, signedPsbtBase64: sign().toBase64() });
+
+    expect(artifact.txid).toMatch(/^[0-9a-f]{64}$/);
+  });
+});

@@ -18,6 +18,8 @@ interface UsbSigningProps {
   unsignedPsbt?: string | null;
   signingDeviceId: string | null;
   signing: boolean;
+  /** Payjoin round two: the proposal is never signed on a USB device, so its buttons are hidden. */
+  usbLocked?: boolean;
   onSignWithDevice?: (device: Device) => Promise<boolean>;
   onDownloadPsbt?: () => void;
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -32,6 +34,7 @@ export function UsbSigning({
   unsignedPsbt,
   signingDeviceId,
   signing,
+  usbLocked = false,
   onSignWithDevice,
   onDownloadPsbt,
   onFileUpload,
@@ -46,6 +49,7 @@ export function UsbSigning({
   const hasAirgapDevice = signers.some(({ capabilities }) => capabilities.methods.includes('airgap'));
   const hasQrDevice = signers.some(({ capabilities }) => capabilities.methods.includes('qr'));
   const blockedSigners = signers.filter(({ capabilities }) => capabilities.methods.length === 0);
+  const usbSigners = usbLocked ? [] : signers.filter(({ capabilities }) => capabilities.methods.includes('usb'));
 
   return (
     <div className="surface-secondary rounded-lg p-4 space-y-3">
@@ -68,9 +72,14 @@ export function UsbSigning({
           {device.label}: {capabilities.blockedReason}
         </p>
       ))}
+      {usbLocked && (
+        <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400" role="status">
+          Sign the payjoin proposal by QR code or PSBT file; USB signing is not available for it.
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {/* USB signing for single-sig - show button for each USB-capable device */}
-        {signers.filter(({ capabilities }) => capabilities.methods.includes('usb')).map(({ device }) => (
+        {usbSigners.map(({ device }) => (
           <Button
             key={device.id}
             variant="primary"

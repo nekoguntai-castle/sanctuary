@@ -12,8 +12,11 @@ import { getErrorMessage } from '../../utils/errors';
 import {
   resolveLegacySenderInputIndices,
   resolvePayjoinNetwork,
+  restoreSenderInputPrevouts,
   validateFeePolicy,
   validateLegacySenderInputIndices,
+  validateMinFeeRatePolicy,
+  validateProposalInputMaps,
   validateSenderInputs,
   validateSenderOutputs,
   validateTransactionFields,
@@ -23,6 +26,8 @@ export interface ValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
+  /** Payjoin only: the proposal with sender prevouts restored, present only when valid. */
+  proposalPsbt?: string;
 }
 
 export interface PsbtOutput {
@@ -38,6 +43,11 @@ export interface PsbtInput {
 }
 
 type ValidationMessages = Pick<ValidationResult, 'errors' | 'warnings'>;
+
+export interface PayjoinProposalValidationOptions {
+  /** BIP78 minfeerate in sat/vB that the proposal must meet. */
+  minFeeRate?: number;
+}
 
 /**
  * Parse PSBT from base64 string
@@ -131,15 +141,26 @@ export function validatePsbtStructure(psbtBase64: string): ValidationResult {
  * The third parameter accepts a bitcoin.Network. Passing sender input indices is
  * a deprecated compatibility form; indices are used only for legacy diagnostics
  * and cannot weaken the sender-input invariant derived from the original PSBT.
+ *
+ * BIP78 receivers strip the sender inputs' UTXO data, so it is restored from
+ * the original before the per-input checklist and the fee check run. The fee
+ * check is skipped once the checklist reports an error (a receiver input
+ * without UTXO data has no computable fee). A valid result carries the
+ * restored proposal as `proposalPsbt`. With `minFeeRate` (the BIP78
+ * minfeerate the sender sent), a proposal paying a lower rate is rejected and
+ * the bounded fee increase applies to the rate instead of the absolute fee;
+ * the original must then be finalized, as BIP78 requires.
  */
 export function validatePayjoinProposal(
   originalBase64: string,
   proposalBase64: string,
   networkOrSenderInputIndices: bitcoin.Network | number[] = bitcoin.networks.bitcoin,
-  legacyNetwork: bitcoin.Network = bitcoin.networks.bitcoin
+  legacyNetwork: bitcoin.Network = bitcoin.networks.bitcoin,
+  { minFeeRate }: PayjoinProposalValidationOptions = {}
 ): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  let proposalPsbt: string | undefined;
 
   try {
     const network = resolvePayjoinNetwork(networkOrSenderInputIndices, legacyNetwork);
@@ -156,10 +177,19 @@ export function validatePayjoinProposal(
     validateSenderOutputs(originalOutputs, proposalOutputs, { errors, warnings });
     validateLegacySenderInputIndices(legacySenderInputIndices, originalInputs, errors);
     validateSenderInputs(originalInputs, proposalInputs, { errors, warnings });
-    validateFeePolicy(calculatePsbtFee(original), calculatePsbtFee(proposal), { errors, warnings });
+    const errorsBeforeInputMaps = errors.length;
+    restoreSenderInputPrevouts(original, proposal, errors);
+    validateProposalInputMaps(original, proposal, errors);
+    if (errors.length === errorsBeforeInputMaps) {
+      const fees = { originalFee: calculatePsbtFee(original), proposalFee: calculatePsbtFee(proposal) };
+      if (minFeeRate === undefined) {
+        validateFeePolicy(fees.originalFee, fees.proposalFee, { errors, warnings });
+      } else {
+        validateMinFeeRatePolicy(original, proposal, { ...fees, minFeeRate }, { errors, warnings });
+      }
+    }
     validateProposalInputCount(originalInputs, proposalInputs, { errors, warnings });
-    validateReceiverContribution(originalInputs, proposalInputs, { errors, warnings });
-
+    if (errors.length === 0) proposalPsbt = proposal.toBase64();
   } catch (error) {
     errors.push(`Validation failed: ${getErrorMessage(error)}`);
   }
@@ -168,6 +198,7 @@ export function validatePayjoinProposal(
     valid: errors.length === 0,
     errors,
     warnings,
+    ...(proposalPsbt !== undefined && { proposalPsbt }),
   };
 }
 
@@ -181,24 +212,6 @@ const validateProposalInputCount = (
   errors.push(
     `Proposal has fewer inputs than original: ${proposalInputs.length} < ${originalInputs.length}`
   );
-};
-
-const validateReceiverContribution = (
-  originalInputs: PsbtInput[],
-  proposalInputs: PsbtInput[],
-  { warnings }: ValidationMessages
-): void => {
-  const newInputs = proposalInputs.filter(
-    propInput => !originalInputs.some(origInput => isSameInput(origInput, propInput))
-  );
-
-  if (newInputs.length === 0) {
-    warnings.push('Receiver did not add any inputs - this is not a proper Payjoin');
-  }
-};
-
-const isSameInput = (a: PsbtInput, b: PsbtInput): boolean => {
-  return a.txid === b.txid && a.vout === b.vout;
 };
 
 /**
@@ -238,6 +251,9 @@ export function calculatePsbtFee(psbt: bitcoin.Psbt): number {
     } else if (input.nonWitnessUtxo) {
       const tx = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
       inputTotal += Number(tx.outs[psbt.txInputs[i].index].value);
+    } else {
+      // Skipping the input would understate the fee; callers catch this.
+      throw new Error(`Input ${i} is missing UTXO data`);
     }
   }
 

@@ -50,11 +50,14 @@ export const registerPayjoinUtxoContracts = () => {
         address: TEST_ADDRESS_TESTNET,
         value: BigInt(paymentAmount),
       });
+      // A BIP78 original is finalized; the receiver rejects one that is not.
+      psbt.data.inputs[0].finalScriptWitness = Buffer.from('0201aa0102', 'hex');
       return psbt;
     };
 
     beforeEach(() => {
       mockPrismaClient.address.findUnique.mockResolvedValue(mockAddress);
+      (parsePsbt as Mock).mockReturnValue(createMockPsbt(100000));
       (validatePsbtStructure as Mock).mockReturnValue({ valid: true, errors: [], warnings: [] });
       (calculateFeeRate as Mock).mockReturnValue(10);
     });
@@ -227,7 +230,7 @@ export const registerPayjoinUtxoContracts = () => {
       };
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue([fartherCandidate, closestCandidate]);
-      (parsePsbt as Mock).mockReturnValue({} as bitcoin.Psbt);
+      (parsePsbt as Mock).mockReturnValue(createMockPsbt(paymentAmount));
       (getPsbtOutputs as Mock).mockReturnValue([{ address: TEST_ADDRESS_TESTNET, value: paymentAmount }]);
 
       const result = await processPayjoinRequest(addressId, 'cHNidP8=', 1);
@@ -265,7 +268,7 @@ export const registerPayjoinUtxoContracts = () => {
       };
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue([smallNonDust, largestNonDust, dust]);
-      (parsePsbt as Mock).mockReturnValue({} as bitcoin.Psbt);
+      (parsePsbt as Mock).mockReturnValue(createMockPsbt(paymentAmount));
       (getPsbtOutputs as Mock).mockReturnValue([{ address: TEST_ADDRESS_TESTNET, value: paymentAmount }]);
 
       const result = await processPayjoinRequest(addressId, 'cHNidP8=', 1);
@@ -298,7 +301,7 @@ export const registerPayjoinUtxoContracts = () => {
       ];
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue(dustOnly);
-      (parsePsbt as Mock).mockReturnValue({} as bitcoin.Psbt);
+      (parsePsbt as Mock).mockReturnValue(createMockPsbt(paymentAmount));
       (getPsbtOutputs as Mock).mockReturnValue([{ address: TEST_ADDRESS_TESTNET, value: paymentAmount }]);
 
       const result = await processPayjoinRequest(addressId, 'cHNidP8=', 1);

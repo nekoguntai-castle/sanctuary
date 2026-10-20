@@ -485,3 +485,20 @@
 **Acceptance:** the full two-round flow through the web broadcast path, the fallback (including the late-persist race with a typed 409), the C-D8 refusal followed by a single reservation on the fallback broadcast, and the never-both guarantee are proven against real persistence and a receiver that enforces BIP78's signed-and-finalized original requirement.
 
 ---
+
+## Phase C7 — Findings exposed during implementation review (added 2026-10-20)
+
+The adversarial implementation review of C1–C6 exposed one new blocking finding inside this delivery boundary, plus three P3 hardening items in the same files. Per the loop contract they are folded into this PR instead of deferred.
+
+- **`payjoin-proposal--receiver-controlled-sighash` (P2):** a BIP78 receiver can set `PSBT_IN_SIGHASH_TYPE` (for example NONE, or SINGLE|ANYONECANPAY) on a sender input. No layer rejects it, and `validatePresentSignatures` accepts a signature over whatever hash type it carries. Fix: the proposal checklist rejects any input whose `sighashType` is set to anything other than ALL (DEFAULT for P2TR). As defence in depth, `validatePresentSignatures` rejects non-ALL/DEFAULT partial signatures for every intent, after confirming no legitimate flow produces one. Each change gets a fail-first test.
+- **P3 items, fixed alongside:**
+  - `payjoin-attempt--draft-binding-toctou`: re-check the draft binding inside the supersede transaction.
+    - Residual (follow-up): the draft side never locked the intent row, so the re-check could not serialize against it (a draft inserted between `assertIntentDraftable` and its insert could bind a just-superseded original). Draft creation now inserts the draft in one transaction that first row-locks the intent with a no-op conditional write (`lockDraftableIntent`: `id`, `walletId`, `supersededById: null`, `source != 'payjoin'`); a count of 0 is the typed 409 `payjoin_intent_not_draftable`. Whichever writer locks the row first wins: a supersession that commits first leaves nothing to lock, and one that runs second waits for the draft's commit and its re-check sees the draft. No migration. Fail-first: `payjoinTwoRound.fallback-drafts.contracts.ts` holds a draft insert after its intent check and runs round one against it; on the old code it ended with a draft bound to a superseded original.
+  - `payjoin-attempt--replacement-accepted-as-original`: refuse `source === 'payjoin'` originals with a typed 409.
+  - `payjoin-sender--no-minfeerate`: send `minfeerate` and reject proposals that fall below it.
+- **Review hardening:**
+  - Round two refuses a candidate whose unsigned txid differs from the proposal's.
+  - The proposal broadcast sets busy synchronously.
+  - One C6 scenario runs real prevout authentication, with only the node client stubbed.
+
+**Acceptance:** every item has a fail-first test. The critical mutation shards and the six wallet-safety profiles are re-proven after any re-pin of `artifactValidation.ts`.

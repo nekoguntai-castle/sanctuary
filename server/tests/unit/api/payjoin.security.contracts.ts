@@ -65,7 +65,7 @@ export function registerPayjoinSecurityContracts({
 
     it('should require authentication for Payjoin attempt', async () => {
       const res = await request(getApp()).post('/api/v1/payjoin/attempt').send({
-        psbt: validPsbtBase64,
+        signedPsbt: validPsbtBase64,
         payjoinUrl: 'https://example.com/pj',
       });
 

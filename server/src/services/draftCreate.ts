@@ -1,9 +1,10 @@
 import type { DraftTransaction, Prisma } from '../generated/prisma/client';
 import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequests';
 import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
-import { draftRepository, systemSettingRepository } from '../repositories';
+import { draftRepository, systemSettingRepository, transactionSigningIntentRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
 import type { DraftLockDbClient } from '../repositories/draftLockRepository';
+import type { SigningIntentDraftLockDbClient } from '../repositories/transactionSigningIntentRepository';
 import { ConflictError, ForbiddenError, InvalidInputError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -16,6 +17,7 @@ import { validateInitialSigningState } from './draftSigning';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
 import {
   deriveIntentSpend,
+  hasPayjoinReplacement,
   loadSigningIntent,
   unsignedPsbtSha256,
   type IntentSpend,
@@ -26,7 +28,7 @@ import { buildIntentPolicyInput, requiresEnforcedApproval } from './vaultPolicy/
 
 const log = createLogger('DRAFT:SVC_CREATE');
 
-type CreateDraftDbClient = DraftDbClient & DraftLockDbClient & ApprovalDbClient;
+type CreateDraftDbClient = DraftDbClient & DraftLockDbClient & ApprovalDbClient & SigningIntentDraftLockDbClient;
 type DraftRequestJsonField = CreateDraftInput['outputs'];
 
 export interface CreateDraftOptions {
@@ -150,7 +152,7 @@ const createDraftRecord = async (
   data: CreateDraftInput,
   initialSigningState: InitialSigningState,
   signingContext: Prisma.InputJsonValue,
-  client?: Pick<CreateDraftDbClient, 'draftTransaction'>
+  client: Pick<CreateDraftDbClient, 'draftTransaction'>
 ): Promise<DraftTransaction> => {
   const draftData = {
     walletId,
@@ -174,22 +176,20 @@ const createDraftRecord = async (
     expiresAt: await calculateExpirationDate(),
   };
 
-  return client ? draftRepository.create(draftData, client) : draftRepository.create(draftData);
+  return draftRepository.create(draftData, client);
 };
 
 const lockSelectedUtxos = async (
   walletId: string,
   draft: DraftTransaction,
   data: CreateDraftInput,
-  client?: Pick<CreateDraftDbClient, 'draftUtxoLock' | 'uTXO'>
+  client: Pick<CreateDraftDbClient, 'draftUtxoLock' | 'uTXO'>
 ): Promise<void> => {
   if (!data.selectedUtxoIds || data.selectedUtxoIds.length === 0 || data.isRBF) {
     return;
   }
 
-  const { found: utxoIds, notFound } = client
-    ? await resolveUtxoIds(walletId, data.selectedUtxoIds, client)
-    : await resolveUtxoIds(walletId, data.selectedUtxoIds);
+  const { found: utxoIds, notFound } = await resolveUtxoIds(walletId, data.selectedUtxoIds, client);
   if (notFound.length > 0) {
     log.warn('Some UTXOs not found for locking', { notFound, draftId: draft.id });
   }
@@ -198,14 +198,9 @@ const lockSelectedUtxos = async (
     return;
   }
 
-  const lockResult = await lockUtxosForDraft(draft.id, utxoIds, {
-    isRBF: false,
-    ...(client && { client }),
-  });
+  const lockResult = await lockUtxosForDraft(draft.id, utxoIds, { isRBF: false, client });
   if (!lockResult.success) {
-    if (!client) {
-      await draftRepository.remove(draft.id);
-    }
+    // Thrown inside the draft's transaction, so the draft insert rolls back.
     throw new ConflictError('One or more UTXOs are already locked by another draft transaction');
   }
 
@@ -291,14 +286,29 @@ export const dispatchDraftCreatedPostCommitNotifications = (
   dispatchCreatedDraftNotification(walletId, userId, draft, data);
 };
 
+/** A payjoin replacement, or an original one was minted from, cannot back a draft (C-D9). */
+const payjoinIntentNotDraftable = (): ConflictError =>
+  new ConflictError('Payjoin intents cannot be saved as drafts', undefined, {
+    reason: 'payjoin_intent_not_draftable',
+  });
+
 const persistDraftWithLocks = async (
   walletId: string,
   userId: string,
   data: CreateDraftInput,
   initialSigningState: InitialSigningState,
   signingContext: Prisma.InputJsonValue,
-  client?: CreateDraftDbClient
+  client: CreateDraftDbClient
 ): Promise<DraftTransaction> => {
+  // Holds the intent row until this transaction commits, so a concurrent
+  // payjoin supersession either finished first (nothing to lock) or waits and
+  // then sees this draft (C-D9).
+  if (!await transactionSigningIntentRepository.lockDraftableIntent(data.intentId, walletId, client)) {
+    // The lock waited out the superseding transaction, so its successor is
+    // committed and visible; only a payjoin replacement is a C-D9 refusal.
+    if (await hasPayjoinReplacement(walletId, data.intentId)) throw payjoinIntentNotDraftable();
+    throw new InvalidInputError('Signing intent has been superseded', 'intentId', { reason: 'stale_intent' });
+  }
   const draft = await createDraftRecord(
     walletId,
     userId,
@@ -434,6 +444,22 @@ const withServerPolicyEvaluation = async (
 };
 
 /**
+ * A payjoin replacement intent, or an original a payjoin proposal was minted
+ * from, is never saved as a draft (C-D9): the proposal is signed and broadcast
+ * in one flow, and its original is only the fallback for that flow. This is
+ * the early refusal; the intent row lock taken with the draft insert
+ * (persistDraftWithLocks) closes the race with a concurrent supersession.
+ */
+const assertIntentDraftable = async (
+  walletId: string,
+  intent: Pick<SigningIntentEnvelope, 'intentId' | 'source'>,
+): Promise<void> => {
+  if (intent.source === 'payjoin' || await hasPayjoinReplacement(walletId, intent.intentId)) {
+    throw payjoinIntentNotDraftable();
+  }
+};
+
+/**
  * Create a new draft transaction.
  */
 export async function createDraft(
@@ -452,6 +478,7 @@ export async function createDraft(
     { intentId: data.intentId, intentDigest: data.intentDigest },
     walletId,
   );
+  await assertIntentDraftable(walletId, intent);
   if (unsignedPsbtSha256(data.psbtBase64) !== intent.unsignedPsbtSha256) {
     throw new InvalidInputError('Draft PSBT does not match the server-issued signing intent');
   }
@@ -469,52 +496,27 @@ export async function createDraft(
 
   const initialSigningState = await validateInitialSigningState(walletId, data);
   const signingContext = intent.signingContext as Prisma.InputJsonValue;
-  const approvalRequired = requiresApproval(data);
 
-  let draft: DraftTransaction;
-  if (approvalRequired && options.client === undefined) {
-    // Approval-required drafts are born pending: one transaction creates the
-    // draft, locks UTXOs, and sets up approval requests exactly once. Any
-    // error propagates so the whole unit rolls back.
-    draft = await draftRepository.withTransaction(async (tx) => {
-      const created = await persistDraftWithLocks(
-        walletId,
-        userId,
-        data,
-        initialSigningState,
-        signingContext,
-        tx
-      );
-      await createApprovalRequestsIfNeeded(created, walletId, userId, data, tx);
-      return created;
-    });
-  } else {
-    draft = await persistDraftWithLocks(
-      walletId,
-      userId,
-      data,
-      initialSigningState,
-      signingContext,
-      options.client
-    );
-    if (approvalRequired) {
-      // External-client branch: the caller owns the transaction, so approval
-      // requests are created here within it. No notifications are dispatched
-      // from this branch.
-      await createApprovalRequestsIfNeeded(draft, walletId, userId, data, options.client);
-    }
-  }
+  // One transaction locks the intent row, creates the draft, locks UTXOs and,
+  // for an approval-required draft (born pending), sets up approval requests
+  // exactly once. Any error propagates so the whole unit rolls back. An
+  // external client is the caller's own transaction: the same steps run in it.
+  const persist = async (client: CreateDraftDbClient): Promise<DraftTransaction> => {
+    const created = await persistDraftWithLocks(walletId, userId, data, initialSigningState, signingContext, client);
+    await createApprovalRequestsIfNeeded(created, walletId, userId, data, client);
+    return created;
+  };
+  const draft = options.client === undefined
+    ? await draftRepository.withTransaction(persist)
+    : await persist(options.client);
 
   log.info('Created draft', { draftId: draft.id, walletId, userId, isRBF: data.isRBF ?? false });
 
+  // External-client creation always defers side effects (checked above).
+  // Approval setup already ran inside the transaction; the draft-created
+  // notification carries the approval-required mark.
   if (options.runSideEffects !== false) {
-    if (approvalRequired && options.client === undefined) {
-      // Approval setup already ran inside the transaction; the draft-created
-      // notification carries the approval-required mark.
-      dispatchCreatedDraftNotification(walletId, userId, draft, data);
-    } else {
-      await runDraftCreatedSideEffects(walletId, userId, draft, data, options.client);
-    }
+    dispatchCreatedDraftNotification(walletId, userId, draft, data);
   }
 
   return draft;

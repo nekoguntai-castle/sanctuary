@@ -15,6 +15,7 @@ export const BASELINE_API_KEYS = {
   recentTransactions: 'GET /transactions/recent',
   activitySummary: 'GET /transactions/activity-summary',
   balanceHistory: 'GET /transactions/balance-history',
+  payjoinReleaseOriginal: 'POST /payjoin/release-original',
   aiStatus: 'GET /ai/status',
   intelligenceStatus: 'GET /intelligence/status',
 } as const;
@@ -94,6 +95,7 @@ const DEFAULT_BASELINE_RESPONSES: Readonly<Record<BaselineApiKey, MockApiRespons
     count: 0, receivedSats: 0, sentSats: 0, latestAt: null,
   }),
   [BASELINE_API_KEYS.balanceHistory]: response(emptyBalanceHistory()),
+  [BASELINE_API_KEYS.payjoinReleaseOriginal]: response({ restored: false }),
   [BASELINE_API_KEYS.aiStatus]: response({
     enabled: false, available: false, proxyAvailable: false,
   }),

@@ -70,8 +70,21 @@ export interface UseBroadcastDeps {
   beginBroadcast: () => SendOperationLease | null;
 }
 
+/** Why a broadcast the server answered failed; the payjoin round asks the server what to do next. */
+export interface BroadcastFailureInfo {
+  status?: number;
+  reason?: string;
+}
+
+export interface BroadcastOverrides {
+  /** Broadcast this transaction's metadata instead of the rendered one (payjoin fallback). */
+  transaction?: TransactionData;
+  /** Called once when the broadcast request itself failed while this broadcast still owned the send. */
+  onFailure?: (failure: BroadcastFailureInfo) => void;
+}
+
 export interface UseBroadcastResult {
-  broadcastTransaction: (signedPsbt?: string, rawTxHex?: string) => Promise<boolean>;
+  broadcastTransaction: (signedPsbt?: string, rawTxHex?: string, overrides?: BroadcastOverrides) => Promise<boolean>;
 }
 
 const selectBroadcastPayload = (
@@ -224,10 +237,19 @@ const APPROVAL_RECREATE_MESSAGE =
 const APPROVAL_PENDING_MESSAGE =
   'This transaction is awaiting approval. It can be broadcast once it is approved.';
 
-const readForbiddenDetails = (err: unknown): Record<string, unknown> | null => {
-  if (!(err instanceof ApiError) || err.status !== 403) return null;
+/** The structured details of an API error response, or null when it has none. */
+const readApiErrorDetails = (err: ApiError): Record<string, unknown> | null => {
   const details = err.response?.details;
   return typeof details === 'object' && details !== null ? details as Record<string, unknown> : null;
+};
+
+const readForbiddenDetails = (err: unknown): Record<string, unknown> | null =>
+  err instanceof ApiError && err.status === 403 ? readApiErrorDetails(err) : null;
+
+const readApiErrorFailure = (err: unknown): BroadcastFailureInfo => {
+  if (!(err instanceof ApiError)) return { status: undefined, reason: undefined };
+  const reason = readApiErrorDetails(err)?.reason;
+  return { status: err.status, reason: typeof reason === 'string' ? reason : undefined };
 };
 
 const getPendingApprovalFailure = (details: Record<string, unknown>): BroadcastFailure => {
@@ -310,9 +332,11 @@ export function useBroadcast({
   // Broadcast signed transaction
   const broadcastTransaction = useCallback(async (
     signedPsbt?: string,
-    rawTxHex?: string
+    rawTxHex?: string,
+    overrides?: BroadcastOverrides,
   ): Promise<boolean> => {
-    if (!txData) {
+    const transaction = overrides?.transaction ?? txData;
+    if (!transaction) {
       setError('No transaction to broadcast');
       return false;
     }
@@ -338,17 +362,17 @@ export function useBroadcast({
     setApprovalAction(null);
 
     try {
-      const effectiveAmount = getEffectiveAmount(txData);
+      const effectiveAmount = getEffectiveAmount(transaction);
 
       const broadcastResult = await transactionsApi.broadcastTransaction(walletId, buildBroadcastRequest(payload, {
         draftId: state.draftId ?? undefined,
         replacesTxid: state.replacesTxid ?? undefined,
-        intentId: txData.intentId,
-        intentDigest: txData.intentDigest,
+        intentId: transaction.intentId,
+        intentDigest: transaction.intentDigest,
         recipient: canonicalSegwitAddressCase(state.outputs[0].address),
         amount: effectiveAmount,
-        fee: txData.fee,
-        utxos: txData.utxos,
+        fee: transaction.fee,
+        utxos: transaction.utxos,
       }));
 
       // The broadcast succeeded against the server regardless of whether this lease is still
@@ -357,7 +381,7 @@ export function useBroadcast({
       if (broadcastResult.persistenceStatus === 'pending_reconciliation') {
         showBroadcastReconciliationWarning(showWarning, broadcastResult.txid);
       } else {
-        showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
+        showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, transaction.fee);
         playEventSound('send');
       }
       await refetchBroadcastCaches();
@@ -370,6 +394,7 @@ export function useBroadcast({
       const failure = getBroadcastFailure(err, state.draftId);
       setError(failure.message);
       setApprovalAction(failure.approvalAction);
+      overrides?.onFailure?.(readApiErrorFailure(err));
       return false;
     } finally {
       // Unlike the success/navigation branches above, this reset must run even when the

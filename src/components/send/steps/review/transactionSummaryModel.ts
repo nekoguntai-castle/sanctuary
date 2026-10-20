@@ -38,10 +38,19 @@ export function getRecipientDisplayAmount(
   return parseInt(output.amount, 10) || 0;
 }
 
+const PAYJOIN_SUMMARY_LABELS: Record<string, string> = {
+  negotiating: 'Payjoin (contacting receiver)',
+  'awaiting-signature': 'Payjoin (sign proposal)',
+  broadcasting: 'Payjoin (broadcasting)',
+  success: 'Payjoin active',
+  failed: 'Payjoin (fallback)',
+  skipped: 'Payjoin (not used)',
+};
+
 export function getPayjoinSummaryLabel(payjoinStatus: string): string {
-  if (payjoinStatus === 'success') return 'Payjoin active';
-  if (payjoinStatus === 'failed') return 'Payjoin (fallback)';
-  return 'Payjoin enabled';
+  return Object.hasOwn(PAYJOIN_SUMMARY_LABELS, payjoinStatus)
+    ? PAYJOIN_SUMMARY_LABELS[payjoinStatus]
+    : 'Payjoin enabled';
 }
 
 export function getTotalSendingSats(

@@ -414,20 +414,27 @@ const assertPsbtMapsPreserved = (original: bitcoin.Psbt, candidate: bitcoin.Psbt
   }
 };
 
-const validatePresentSignatures = (psbt: bitcoin.Psbt, requireEveryInput = true): void => {
+const NO_PEER_INPUTS: ReadonlySet<number> = new Set();
+
+const validatePresentSignatures = (
+  psbt: bitcoin.Psbt,
+  requireEveryInput: boolean,
+  peerInputs: ReadonlySet<number> = NO_PEER_INPUTS,
+): void => {
   const validator = (pubkey: Uint8Array, hash: Uint8Array, signature: Uint8Array): boolean => {
     /* v8 ignore next -- Schnorr validation activates with the gated Core-accepted P2TR vector */
     if (pubkey.length === 32) return ecc.verifySchnorr(hash, pubkey, signature);
     return ecc.verify(hash, pubkey, signature);
   };
   for (let index = 0; index < psbt.inputCount; index += 1) {
+    if (peerInputs.has(index)) continue;
     const input = psbt.data.inputs[index];
     if (isFinalized(input)) {
       throw new InvalidInputError('Pre-finalized PSBT inputs are not accepted', `inputs.${index}`, {
         reason: 'unverifiable_witness',
       });
     }
-    const hasSignature = assertSignatureFamily(input, index);
+    const hasSignature = assertSignatureFamily(input, index) && assertSighashAll(input, index);
     if (!hasSignature && requireEveryInput) {
       throw new InvalidInputError('Every PSBT input requires verifiable signature evidence', `inputs.${index}`, {
         reason: 'missing_witness_data',
@@ -445,10 +452,14 @@ const validatePresentSignatures = (psbt: bitcoin.Psbt, requireEveryInput = true)
   }
 };
 
-const finalizePsbt = (candidate: bitcoin.Psbt): bitcoin.Transaction => {
-  validatePresentSignatures(candidate);
+const finalizePsbt = (
+  candidate: bitcoin.Psbt,
+  peerInputs: ReadonlySet<number> = NO_PEER_INPUTS,
+): bitcoin.Transaction => {
+  validatePresentSignatures(candidate, true, peerInputs);
   try {
     candidate.data.inputs.forEach((input, index) => {
+      if (peerInputs.has(index)) return;
       const parsed = input.witnessScript ? parseMultisigScript(input.witnessScript) : null;
       if (parsed?.isMultisig && input.partialSig?.length) {
         finalizeMultisigInput(candidate, index);
@@ -462,6 +473,56 @@ const finalizePsbt = (candidate: bitcoin.Psbt): bitcoin.Transaction => {
       reason: 'not_finalizable',
     });
   }
+};
+
+/**
+ * BIP78 receiver inputs (`payjoin_peer`, from the digest-authenticated
+ * snapshot) arrive finalized by the receiver. Their witness is not ours to
+ * verify; it was stored with the proposal intent and the node rejects an
+ * invalid one. The round-two artifact may strip it, or keep it byte-equal.
+ */
+const payjoinPeerInputs = (snapshot: SigningIntentSnapshot): ReadonlySet<number> => new Set(
+  snapshot.transaction.inputs.flatMap((input, index) => (input.prevout.role === 'payjoin_peer' ? [index] : [])),
+);
+
+const assertPeerInputFields = (
+  original: bitcoin.Psbt,
+  candidate: bitcoin.Psbt,
+  peerInputs: ReadonlySet<number>,
+): void => {
+  peerInputs.forEach((index) => {
+    const stored = original.data.inputs[index];
+    const input = candidate.data.inputs[index];
+    if (input.partialSig?.length || input.tapKeySig) {
+      throw new InvalidInputError('Payjoin peer inputs must not carry our signatures', `inputs.${index}`, {
+        reason: 'foreign_input_signature',
+      });
+    }
+    // Peers are segwit only; an empty finalScriptSig is equivalent to none.
+    if (stored.finalScriptSig?.length || input.finalScriptSig?.length) {
+      mismatch(`psbt.inputs.${index}.finalScriptSig`, stored.finalScriptSig, input.finalScriptSig);
+    }
+    if (!stored.finalScriptWitness) {
+      throw new InvalidInputError('Payjoin peer input is not finalized by the receiver', `inputs.${index}`, {
+        reason: 'missing_witness_data',
+      });
+    }
+    if (input.finalScriptWitness
+      && !Buffer.from(input.finalScriptWitness).equals(Buffer.from(stored.finalScriptWitness))) {
+      mismatch(`psbt.inputs.${index}.finalScriptWitness`, stored.finalScriptWitness, input.finalScriptWitness);
+    }
+  });
+};
+
+const attachPeerInputWitnesses = (
+  original: bitcoin.Psbt,
+  candidate: bitcoin.Psbt,
+  peerInputs: ReadonlySet<number>,
+): void => {
+  assertPeerInputFields(original, candidate, peerInputs);
+  peerInputs.forEach((index) => {
+    candidate.data.inputs[index].finalScriptWitness = Buffer.from(original.data.inputs[index].finalScriptWitness!);
+  });
 };
 
 const assertPrevoutsStillMatch = async (
@@ -513,7 +574,9 @@ const resolveFinalTransaction = (
   );
   assertTransactionMatchesSnapshot(unsignedCandidate, envelope.snapshot);
   assertPsbtMapsPreserved(originalPsbt, candidate);
-  return finalizePsbt(candidate);
+  const peerInputs = payjoinPeerInputs(envelope.snapshot);
+  attachPeerInputWitnesses(originalPsbt, candidate, peerInputs);
+  return finalizePsbt(candidate, peerInputs);
 };
 
 export const validateSignedArtifact = async (
@@ -584,6 +647,26 @@ export const validatePartialSignedPsbt = async (
   );
   assertTransactionMatchesSnapshot(unsignedCandidate, envelope.snapshot);
   assertPsbtMapsPreserved(originalPsbt, candidate);
-  validatePresentSignatures(candidate, false);
+  const peerInputs = payjoinPeerInputs(envelope.snapshot);
+  assertPeerInputFields(originalPsbt, candidate, peerInputs);
+  validatePresentSignatures(candidate, false, peerInputs);
   await assertPrevoutsStillMatch(envelope, originalPsbt, input.draftId);
 };
+
+/**
+ * Every signature we accept commits to the whole transaction: ECDSA must end
+ * in SIGHASH_ALL, Schnorr must be SIGHASH_DEFAULT (64 bytes) or SIGHASH_ALL.
+ * A PSBT map (e.g. a payjoin receiver's) cannot ask for a weaker hash type.
+ * Called from validatePresentSignatures; true once the input carries a signature.
+ */
+function assertSighashAll(input: bitcoin.Psbt['data']['inputs'][number], index: number): true {
+  const { SIGHASH_ALL } = bitcoin.Transaction;
+  const weakEcdsa = input.partialSig?.some(({ signature }) => signature[signature.length - 1] !== SIGHASH_ALL);
+  const weakSchnorr = input.tapKeySig && input.tapKeySig.length !== 64 && input.tapKeySig[64] !== SIGHASH_ALL;
+  if (weakEcdsa || weakSchnorr) {
+    throw new InvalidInputError('Signatures must commit to the whole transaction (SIGHASH_ALL)', `inputs.${index}`, {
+      reason: 'unsupported_sighash_type',
+    });
+  }
+  return true;
+}

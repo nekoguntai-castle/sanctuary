@@ -298,6 +298,15 @@ function ValidationError({
   return <p className="text-xs text-rose-500">{message ?? "Invalid Bitcoin address"}</p>;
 }
 
+const PAYJOIN_STATUS_SUFFIX: Partial<Record<PayjoinAttemptStatus, string>> = {
+  negotiating: " (contacting receiver...)",
+  "awaiting-signature": " (sign the payjoin proposal)",
+  broadcasting: " (broadcasting payjoin...)",
+  success: " ✓",
+  failed: " (fell back to regular send)",
+  skipped: " (not used for this send)",
+};
+
 function PayjoinIndicator({
   hasPayjoin,
   payjoinStatus,
@@ -314,9 +323,7 @@ function PayjoinIndicator({
       <Shield className="w-3 h-3 text-zen-indigo" />
       <p className="text-xs text-zen-indigo">
         Payjoin enabled - enhanced privacy for this transaction
-        {payjoinStatus === "attempting" && " (attempting...)"}
-        {payjoinStatus === "success" && " ✓"}
-        {payjoinStatus === "failed" && " (fell back to regular send)"}
+        {PAYJOIN_STATUS_SUFFIX[payjoinStatus]}
       </p>
     </div>
   );

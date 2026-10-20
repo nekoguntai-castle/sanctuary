@@ -71,6 +71,12 @@ export interface UseSendTransactionActionsResult {
   signedRawTx: string | null;  // Raw tx hex from Trezor signing
   signedDevices: Set<string>;
   payjoinStatus: PayjoinAttemptStatus;
+  /** True while /attempt runs or a release-then-fallback is in flight: Broadcast and navigation are locked. */
+  isPayjoinBusy: boolean;
+  /** Round two (and a fallback after a proposal) never signs on a connected USB device. */
+  payjoinUsbBlocked: boolean;
+  /** The signed original a payjoin round falls back to, while one is in progress. */
+  payjoinOriginalTxData: TransactionData | null;
   approvalAction: ApprovalAction;
 
   // Actions
@@ -83,6 +89,8 @@ export interface UseSendTransactionActionsResult {
   } | null>;
   signWithDevice: (device: Device) => Promise<boolean>;
   broadcastTransaction: (signedPsbt?: string, rawTxHex?: string) => Promise<boolean>;
+  /** Abort the payjoin attempt, or drop a proposal, and broadcast the signed original instead. */
+  sendWithoutPayjoin: () => Promise<boolean>;
   saveDraft: (label?: string) => Promise<string | null>;
   downloadPsbt: () => void;
   uploadSignedPsbt: (file: File, deviceId?: string, deviceFingerprint?: string) => Promise<void>;

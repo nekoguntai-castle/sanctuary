@@ -9,6 +9,7 @@ import {
   markBroadcastStalled,
   markBroadcastUnknown,
   markStalledBroadcastAccepted,
+  restorePayjoinOriginal,
 } from '../../../src/repositories/transactionSigningIntentRepository';
 
 const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
@@ -165,5 +166,124 @@ describeWithDatabase('transaction signing intent repository integration', () => 
       expect(accepted?.broadcastAcceptedAt).toEqual(now);
       await expect(markStalledBroadcastAccepted('integration-intent-old', txid, now)).resolves.toBe(false);
     });
+  });
+});
+
+const RESTORE_WALLET = 'integration-wallet-restore';
+
+/** A ready original superseded by a ready payjoin replacement, as /payjoin/attempt leaves them. */
+async function seedPayjoinPair(): Promise<{ originalId: string; replacementId: string }> {
+  const original = await create({ ...baseIntent('ignored'), walletId: RESTORE_WALLET, source: 'standard' });
+  const replacement = await create({
+    ...baseIntent('ignored'),
+    walletId: RESTORE_WALLET,
+    snapshotDigest: 'd'.repeat(64),
+    supersedesIntentId: original.id,
+  });
+  return { originalId: original.id, replacementId: replacement.id };
+}
+
+function claimReplacement(replacementId: string) {
+  const now = new Date();
+  return claimBroadcast({
+    id: replacementId, digest: 'd'.repeat(64), txid, rawTx: '00', metadata: { amount: 1 },
+    leaseToken: 'restore-lease', now, leaseExpiresAt: new Date(now.getTime() + 60_000),
+  });
+}
+
+/**
+ * Wait until two backends are blocked behind the lock holder. The contenders run in
+ * the repository's own interactive transactions (Prisma's 5 s default), so the
+ * deadline stays well under it.
+ */
+async function waitForTwoLockWaiters(holderPid: number): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    // The second waiter queues behind the first one's tuple lock, so it counts
+    // when it is blocked by the holder or by a backend the holder blocks.
+    const rows = await prisma.$queryRaw<Array<{ waiting: bigint }>>`
+      WITH direct AS (
+        SELECT pid FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND ${holderPid}::int = ANY(pg_blocking_pids(pid))
+      )
+      SELECT count(*) AS waiting FROM pg_stat_activity
+      WHERE wait_event_type = 'Lock'
+        AND (${holderPid}::int = ANY(pg_blocking_pids(pid))
+          OR pg_blocking_pids(pid) && ARRAY(SELECT pid FROM direct))
+    `;
+    if (Number(rows[0].waiting) >= 2) return;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error('Claim and restore did not both block on the replacement row lock within 3 seconds');
+}
+
+/** Hold the replacement's row lock until `release` resolves; reports the holder pid. */
+function holdReplacementLock(replacementId: string, release: Promise<void>, onLocked: (pid: number) => void) {
+  return prisma.$transaction(async tx => {
+    const [{ pid }] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    await tx.$queryRaw`SELECT id FROM transaction_signing_intents WHERE id = ${replacementId} FOR UPDATE`;
+    onLocked(pid);
+    await release;
+  }, { maxWait: 5_000, timeout: 15_000 });
+}
+
+describeWithDatabase('payjoin original restoration integration', () => {
+  afterEach(async () => {
+    await prisma.transactionSigningIntent.deleteMany({ where: { walletId: RESTORE_WALLET } });
+  });
+
+  it('restores the original so it can be claimed while the proposal claim conflicts', async () => {
+    const { originalId, replacementId } = await seedPayjoinPair();
+
+    await expect(restorePayjoinOriginal(originalId, RESTORE_WALLET, digest)).resolves.toBe('restored');
+    await expect(restorePayjoinOriginal(originalId, RESTORE_WALLET, digest)).resolves.toBe('not_superseded');
+
+    const rows = await prisma.transactionSigningIntent.findMany({
+      where: { walletId: RESTORE_WALLET },
+      select: { id: true, supersededById: true, broadcastState: true, broadcastMetadata: true },
+    });
+    expect(rows).toEqual(expect.arrayContaining([
+      { id: originalId, supersededById: null, broadcastState: 'ready', broadcastMetadata: null },
+      { id: replacementId, supersededById: originalId, broadcastState: 'ready', broadcastMetadata: null },
+    ]));
+    await expect(claimReplacement(replacementId)).resolves.toEqual({ status: 'conflict' });
+    const now = new Date();
+    await expect(claimBroadcast({
+      id: originalId, digest, txid, rawTx: '00', metadata: { amount: 1 }, leaseToken: 'original-lease',
+      now, leaseExpiresAt: new Date(now.getTime() + 60_000),
+    })).resolves.toMatchObject({ status: 'claimed', priorState: 'ready' });
+  });
+
+  it('lets exactly one of a proposal claim and an original restore win a forced race', async () => {
+    const { originalId, replacementId } = await seedPayjoinPair();
+    let releaseLock!: () => void;
+    const release = new Promise<void>(resolve => { releaseLock = resolve; });
+    let holderPid = 0;
+    let locked!: () => void;
+    const lockTaken = new Promise<void>(resolve => { locked = resolve; });
+    const holder = holdReplacementLock(replacementId, release, (pid) => { holderPid = pid; locked(); });
+    await lockTaken;
+
+    const claim = claimReplacement(replacementId);
+    const restore = restorePayjoinOriginal(originalId, RESTORE_WALLET, digest);
+    try {
+      await waitForTwoLockWaiters(holderPid);
+    } finally {
+      releaseLock();
+    }
+    const [claimResult, restoreResult] = await Promise.all([claim, restore, holder]);
+
+    const replacement = await prisma.transactionSigningIntent.findUniqueOrThrow({ where: { id: replacementId } });
+    const original = await prisma.transactionSigningIntent.findUniqueOrThrow({ where: { id: originalId } });
+    if (claimResult.status === 'claimed') {
+      expect(restoreResult).toBe('in_flight');
+      expect(original.supersededById).toBe(replacementId);
+      expect(replacement.broadcastState).toBe('claimed');
+    } else {
+      expect(claimResult).toEqual({ status: 'conflict' });
+      expect(restoreResult).toBe('restored');
+      expect(replacement.supersededById).toBe(originalId);
+      expect(original.supersededById).toBeNull();
+    }
   });
 });

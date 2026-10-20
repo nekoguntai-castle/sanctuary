@@ -16,6 +16,7 @@ import { registerPolicyRecordUsageTests } from './policyEvaluationEngine/recordU
 import { registerReserveEnforcedUsageTests } from './policyEvaluationEngine/reserveEnforcedUsage.contracts';
 import { setupPolicyEvaluationEngineTestHooks } from './policyEvaluationEngine/policyEvaluationEngineTestHarness';
 import { registerPolicyWindowBoundsTests } from './policyEvaluationEngine/windowBounds.contracts';
+import { registerWalletHasEnforcedUsageWindowsTests } from './policyEvaluationEngine/walletHasEnforcedUsageWindows.contracts';
 
 describe('PolicyEvaluationEngine', () => {
   const context = setupPolicyEvaluationEngineTestHooks();
@@ -29,4 +30,5 @@ describe('PolicyEvaluationEngine', () => {
   registerPolicyRecordUsageTests(context);
   registerReserveEnforcedUsageTests(context);
   registerPolicyWindowBoundsTests(context);
+  registerWalletHasEnforcedUsageWindowsTests(context);
 });

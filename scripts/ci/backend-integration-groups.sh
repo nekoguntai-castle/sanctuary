@@ -42,6 +42,7 @@ list_group_specs() {
         tests/integration/flows/labels.integration.test.ts \
         tests/integration/flows/payjoin.integration.test.ts \
         tests/integration/flows/payjoinBroadcastPersistence.integration.test.ts \
+        tests/integration/flows/payjoinTwoRound.integration.test.ts \
         tests/integration/flows/security.integration.test.ts \
         tests/integration/flows/signingIntentDraftLifetime.integration.test.ts \
         tests/integration/flows/totpReplayConcurrency.integration.test.ts \

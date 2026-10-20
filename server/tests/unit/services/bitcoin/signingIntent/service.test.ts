@@ -4,6 +4,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   findById: vi.fn(),
+  findPayjoinReplacementFor: vi.fn(),
   findDraftByWalletAndSigningIntent: vi.fn(),
   hasLiveDraftForSigningIntent: vi.fn(),
   authenticateIntentPrevouts: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', ()
   transactionSigningIntentRepository: {
     create: mocks.create,
     findById: mocks.findById,
+    findPayjoinReplacementFor: mocks.findPayjoinReplacementFor,
   },
 }));
 vi.mock('../../../../../src/services/bitcoin/signingIntent/prevoutValidation', () => ({
@@ -31,6 +33,7 @@ import {
   prepareSigningIntent,
   loadSigningIntent,
   findDraftBySigningIntent,
+  hasPayjoinReplacement,
 } from '../../../../../src/services/bitcoin/signingIntent/service';
 
 const signingContext = {
@@ -611,5 +614,24 @@ describe('draft-derived signing intent liveness', () => {
       allowConsumedBroadcastReplay: true, allowLiveDraftExtension: true,
     })).resolves.toMatchObject({ broadcastReplay: { state: 'complete' } });
     expect(mocks.hasLiveDraftForSigningIntent).not.toHaveBeenCalled();
+  });
+});
+
+describe('hasPayjoinReplacement', () => {
+  beforeEach(() => {
+    mocks.findPayjoinReplacementFor.mockReset();
+  });
+
+  it('is true when a payjoin replacement points back at the intent', async () => {
+    mocks.findPayjoinReplacementFor.mockResolvedValueOnce({ id: 'replacement-1' });
+
+    await expect(hasPayjoinReplacement('wallet-1', 'intent-1')).resolves.toBe(true);
+    expect(mocks.findPayjoinReplacementFor).toHaveBeenCalledWith('wallet-1', 'intent-1');
+  });
+
+  it('is false when no payjoin replacement exists', async () => {
+    mocks.findPayjoinReplacementFor.mockResolvedValueOnce(null);
+
+    await expect(hasPayjoinReplacement('wallet-1', 'intent-1')).resolves.toBe(false);
   });
 });

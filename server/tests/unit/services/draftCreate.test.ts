@@ -35,6 +35,9 @@ vi.mock('../../../src/repositories', () => ({
   systemSettingRepository: {
     getParsed: vi.fn(),
   },
+  transactionSigningIntentRepository: {
+    lockDraftableIntent: vi.fn().mockResolvedValue(true),
+  },
   walletRepository: {
     findByIdWithSigningDevices: vi.fn(),
   },
@@ -71,6 +74,7 @@ vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   }),
   unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
   deriveIntentSpend: vi.fn(),
+  hasPayjoinReplacement: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../../../src/services/vaultPolicy/policyEvaluationEngine', () => ({
@@ -89,11 +93,16 @@ vi.mock('../../../src/constants', () => ({
   DEFAULT_DRAFT_EXPIRATION_DAYS: 7,
 }));
 
-import { draftRepository, systemSettingRepository } from '../../../src/repositories';
+import { draftRepository, systemSettingRepository, transactionSigningIntentRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
 import { approvalService } from '../../../src/services/vaultPolicy/approvalService';
-import { deriveIntentSpend, loadSigningIntent } from '../../../src/services/bitcoin/signingIntent';
+import {
+  deriveIntentSpend,
+  hasPayjoinReplacement,
+  loadSigningIntent,
+  unsignedPsbtSha256,
+} from '../../../src/services/bitcoin/signingIntent';
 import { policyEvaluationEngine } from '../../../src/services/vaultPolicy/policyEvaluationEngine';
 import { findVerifiedReplacement } from '../../../src/services/bitcoin/transactions/replacementLink';
 import { ForbiddenError } from '../../../src/errors';
@@ -225,7 +234,7 @@ describe('createDraft approval atomicity', () => {
       await createDraft(walletId, userId, approvalInput);
 
       expect(policyEvaluationEngine.evaluatePolicies).not.toHaveBeenCalled();
-      expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({ approvalStatus: undefined }));
+      expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({ approvalStatus: undefined }), expect.anything());
     });
 
     it('does not re-evaluate when the caller already supplies an evaluation', async () => {
@@ -375,6 +384,9 @@ describe('createDraft approval atomicity', () => {
 
     expect(txTracker.clients).toHaveLength(0);
     expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, approvalInput.selectedUtxoIds, client);
+    expect(transactionSigningIntentRepository.lockDraftableIntent).toHaveBeenCalledWith(
+      approvalInput.intentId, walletId, client,
+    );
     expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({ approvalStatus: 'pending' }), client);
     expect(lockUtxosForDraft).toHaveBeenCalledWith(mockDraft.id, ['utxo-id-1'], { isRBF: false, client });
     expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledTimes(1);
@@ -491,18 +503,23 @@ describe('createDraft approval atomicity', () => {
   });
 
   it('keeps the default not_required flow for non-required, null, and empty evaluations', async () => {
-    // No policyEvaluation at all.
+    // No policyEvaluation at all. The draft is still inserted in its own
+    // transaction, behind the signing-intent row lock.
     await createDraft(walletId, userId, approvalInput);
 
-    expect(txTracker.clients).toHaveLength(0);
-    expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({ approvalStatus: undefined }));
+    expect(txTracker.clients).toHaveLength(1);
+    const [tx] = txTracker.clients;
+    expect(transactionSigningIntentRepository.lockDraftableIntent).toHaveBeenCalledWith(
+      approvalInput.intentId, walletId, tx,
+    );
+    expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({ approvalStatus: undefined }), tx);
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
     expect(dispatchDraftNotification).toHaveBeenCalledTimes(1);
 
     // Empty triggered array.
     await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: { allowed: true, triggered: [] } });
 
-    expect(txTracker.clients).toHaveLength(0);
+    expect(txTracker.clients).toHaveLength(2);
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
 
     // Non-approval triggers only.
@@ -516,7 +533,7 @@ describe('createDraft approval atomicity', () => {
       },
     });
 
-    expect(txTracker.clients).toHaveLength(0);
+    expect(txTracker.clients).toHaveLength(3);
     expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
   });
 
@@ -628,10 +645,10 @@ describe('createDraft binds draft metadata to the signing intent', () => {
   it('accepts an upper-case txid and locks the normalised outpoint', async () => {
     await expectAccepted({ selectedUtxoIds: ['A'.repeat(64) + ':1'] });
 
-    expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, ['a'.repeat(64) + ':1']);
+    expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, ['a'.repeat(64) + ':1'], expect.anything());
     expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({
       selectedUtxoIds: ['a'.repeat(64) + ':1'],
-    }));
+    }), expect.anything());
   });
 
   it('accepts isRBF when the intent carries its replacement target', async () => {
@@ -660,5 +677,90 @@ describe('createDraft binds draft metadata to the signing intent', () => {
 
     await expectAccepted({});
     expect(deriveIntentSpend).toHaveBeenCalledOnce();
+  });
+});
+
+describe('createDraft refuses payjoin intents (C-D9)', () => {
+  const walletId = 'wallet-456';
+  const userId = 'user-123';
+  const storedIntent = {
+    intentId: 'intent-1',
+    unsignedPsbtSha256: 'psbt-hash',
+    signingContext: { version: 1 },
+    snapshot: intentSnapshot,
+    source: 'standard',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (draftRepository.create as Mock).mockResolvedValue({ id: 'draft-789', amount: BigInt(100000), recipient: 'tb1qexternal' });
+    (resolveUtxoIds as Mock).mockResolvedValue({ found: ['utxo-id-1'], notFound: [] });
+    (lockUtxosForDraft as Mock).mockResolvedValue({ success: true, lockedCount: 1 });
+    (systemSettingRepository.getParsed as Mock).mockResolvedValue(7);
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend());
+    (policyEvaluationEngine.evaluatePolicies as Mock).mockResolvedValue({ allowed: true, triggered: [] });
+    (hasPayjoinReplacement as Mock).mockResolvedValue(false);
+    (unsignedPsbtSha256 as Mock).mockReset().mockReturnValue('psbt-hash');
+  });
+
+  it('refuses a payjoin replacement intent before the PSBT hash check', async () => {
+    (loadSigningIntent as Mock).mockResolvedValueOnce({ ...storedIntent, source: 'payjoin' });
+    // A mismatching PSBT would be a 400 if the hash check ran first.
+    (unsignedPsbtSha256 as Mock).mockReturnValueOnce('stripped-proposal-hash');
+
+    await expect(createDraft(walletId, userId, boundDraftInput)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Payjoin intents cannot be saved as drafts',
+      details: { reason: 'payjoin_intent_not_draftable' },
+    });
+    expect(unsignedPsbtSha256).not.toHaveBeenCalled();
+    expect(draftRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses an original that a payjoin proposal was minted from', async () => {
+    (loadSigningIntent as Mock).mockResolvedValueOnce(storedIntent);
+    (hasPayjoinReplacement as Mock).mockResolvedValueOnce(true);
+
+    await expect(createDraft(walletId, userId, boundDraftInput)).rejects.toMatchObject({
+      statusCode: 409,
+      details: { reason: 'payjoin_intent_not_draftable' },
+    });
+    expect(hasPayjoinReplacement).toHaveBeenCalledWith(walletId, 'intent-1');
+    expect(unsignedPsbtSha256).not.toHaveBeenCalled();
+    expect(draftRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a draft for a standard intent with no payjoin replacement', async () => {
+    (loadSigningIntent as Mock).mockResolvedValueOnce(storedIntent);
+
+    await createDraft(walletId, userId, boundDraftInput);
+
+    expect(hasPayjoinReplacement).toHaveBeenCalledWith(walletId, 'intent-1');
+    expect(draftRepository.create).toHaveBeenCalledOnce();
+  });
+
+  it('refuses as payjoin-not-draftable when a payjoin replacement superseded the intent after the pre-check', async () => {
+    (loadSigningIntent as Mock).mockResolvedValueOnce(storedIntent);
+    (transactionSigningIntentRepository.lockDraftableIntent as Mock).mockResolvedValueOnce(false);
+    (hasPayjoinReplacement as Mock).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await expect(createDraft(walletId, userId, boundDraftInput)).rejects.toMatchObject({
+      statusCode: 409,
+      details: { reason: 'payjoin_intent_not_draftable' },
+    });
+    expect(draftRepository.create).not.toHaveBeenCalled();
+    expect(lockUtxosForDraft).not.toHaveBeenCalled();
+  });
+
+  it('reports a stale intent when a non-payjoin successor superseded it after the pre-check', async () => {
+    (loadSigningIntent as Mock).mockResolvedValueOnce(storedIntent);
+    (transactionSigningIntentRepository.lockDraftableIntent as Mock).mockResolvedValueOnce(false);
+    (hasPayjoinReplacement as Mock).mockResolvedValue(false);
+
+    await expect(createDraft(walletId, userId, boundDraftInput)).rejects.toMatchObject({
+      statusCode: 400,
+      details: { reason: 'stale_intent' },
+    });
+    expect(draftRepository.create).not.toHaveBeenCalled();
   });
 });

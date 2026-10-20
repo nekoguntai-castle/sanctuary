@@ -36,6 +36,9 @@ vi.mock('../../../src/repositories', () => ({
   systemSettingRepository: {
     getParsed: vi.fn(),
   },
+  transactionSigningIntentRepository: {
+    lockDraftableIntent: vi.fn().mockResolvedValue(true),
+  },
   walletRepository: {
     findByIdWithSigningDevices: vi.fn(),
   },
@@ -75,6 +78,7 @@ vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   // Server-side policy evaluation is covered in draftCreate.test.ts; these
   // drafts pay nothing outside the wallet, so none is evaluated here.
   deriveIntentSpend: vi.fn().mockResolvedValue({ inputs: [], outputs: [], externalOutputs: [], amount: 0 }),
+  hasPayjoinReplacement: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -227,7 +231,7 @@ describe('DraftService', () => {
         outputs: [{ address: 'tb1qoutput', amount: 25000 }],
         inputs: [{ txid: 'a'.repeat(64), vout: 0, address: 'tb1qinput', amount: 100000 }],
         decoyOutputs: [{ address: 'tb1qdecoy', amount: 5000 }],
-      }));
+      }), expect.anything());
 
       await expect(createDraft(walletId, userId, {
         ...validInput,
@@ -252,7 +256,7 @@ describe('DraftService', () => {
         outputs: [{ address: 'tb1qoutput', amount: 25000 }],
         inputs: [{ txid: 'b'.repeat(64), vout: 0, address: 'tb1qinput', amount: 100000 }],
         decoyOutputs: null,
-      }));
+      }), expect.anything());
     });
 
     it('creates a partial draft when initial signed PSBT and signer device are provided', async () => {
@@ -276,7 +280,8 @@ describe('DraftService', () => {
           signedPsbtBase64: 'agent-signed-psbt',
           signedDeviceIds: ['device-agent'],
           status: 'partial',
-        })
+        }),
+        expect.anything()
       );
     });
 
@@ -320,7 +325,7 @@ describe('DraftService', () => {
     it('should lock UTXOs when selectedUtxoIds provided', async () => {
       await createDraft(walletId, userId, validInput);
 
-      expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, validInput.selectedUtxoIds);
+      expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, validInput.selectedUtxoIds, expect.anything());
       expect(lockUtxosForDraft).toHaveBeenCalled();
     });
 
@@ -359,7 +364,8 @@ describe('DraftService', () => {
       expect(draftRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           selectedUtxoIds: [],
-        })
+        }),
+        expect.anything()
       );
       expect(resolveUtxoIds).not.toHaveBeenCalled();
       expect(lockUtxosForDraft).not.toHaveBeenCalled();
@@ -390,7 +396,8 @@ describe('DraftService', () => {
       (lockUtxosForDraft as Mock).mockResolvedValue({ success: false });
 
       await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(ConflictError);
-      expect(draftRepository.remove).toHaveBeenCalledWith(mockDraft.id);
+      // The draft's own transaction rolls the insert back; nothing is deleted.
+      expect(draftRepository.remove).not.toHaveBeenCalled();
     });
 
     it('leaves transaction-scoped drafts for rollback when UTXO locking fails', async () => {
@@ -422,7 +429,7 @@ describe('DraftService', () => {
       });
 
       await expect(createDraft(walletId, userId, validInput)).resolves.toEqual(mockDraft);
-      expect(lockUtxosForDraft).toHaveBeenCalledWith(mockDraft.id, ['utxo-id-1'], { isRBF: false });
+      expect(lockUtxosForDraft).toHaveBeenCalledWith(mockDraft.id, ['utxo-id-1'], { isRBF: false, client: expect.anything() });
     });
 
     it('skips lock call when selected UTXOs resolve to an empty set', async () => {
@@ -495,7 +502,8 @@ describe('DraftService', () => {
       expect(draftRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           expiresAt: expect.any(Date),
-        })
+        }),
+        expect.anything()
       );
     });
 

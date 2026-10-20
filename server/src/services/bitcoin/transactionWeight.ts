@@ -112,7 +112,7 @@ function isP2sh(script: Uint8Array): boolean {
   return script.length === 23 && script[0] === 0xa9 && script[1] === 0x14 && script[22] === 0x87;
 }
 
-function isWitnessProgram(script: Uint8Array, version: number, programLength: number): boolean {
+export function isWitnessProgram(script: Uint8Array, version: number, programLength: number): boolean {
   return script.length === programLength + 2 && script[0] === version && script[1] === programLength;
 }
 

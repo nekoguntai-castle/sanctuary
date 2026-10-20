@@ -8,18 +8,14 @@
 
 import express, { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
-import * as bitcoin from 'bitcoinjs-lib';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
-import { ErrorCodes, ForbiddenError, InvalidInputError, NotFoundError } from '../errors/ApiError';
+import { ErrorCodes, InvalidInputError, NotFoundError } from '../errors/ApiError';
 import { findByIdWithAccess } from '../repositories/walletRepository';
-import {
-  findAddressStrings,
-  findByIdWithAccess as findAddressByIdWithAccess,
-} from '../repositories/addressRepository';
+import { findByIdWithAccess as findAddressByIdWithAccess } from '../repositories/addressRepository';
 import { countEligibility } from '../repositories/utxoRepository';
 import { requireWalletEditAccess } from '../services/accessControl';
 import { createLogger } from '../utils/logger';
@@ -30,31 +26,12 @@ import {
   PayjoinErrors,
   parseBip21Uri,
   generateBip21Uri,
-  attemptPayjoinSend,
 } from '../services/payjoinService';
 import { parsePayjoinMinFeeRate } from '../services/payjoin/validation';
-import { getNetwork } from '../services/bitcoin/utils';
-import { normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
+import { attemptPayjoinWithSignedOriginal } from '../services/payjoin/attempt';
+import { restorePayjoinOriginalIntent } from '../services/payjoin/originalIntent';
 import { assertFreshReceiveAddressSafeForDisplay } from '../services/addressDisplaySafety';
-import {
-  loadSigningIntent,
-  persistSigningIntent,
-  prepareSigningIntent,
-} from '../services/bitcoin/signingIntent/service';
-import {
-  derivePayjoinInputRoles,
-  unsignedPsbtSha256,
-} from '../services/bitcoin/signingIntent/canonical';
-import { deriveIntentSpend } from '../services/bitcoin/signingIntent/intentSpend';
-import { bindPsbtAccount } from '../services/bitcoin/psbtAccountBinding';
-import {
-  buildSigningIntentFeePolicy,
-  calculatePsbtFee,
-  estimatePsbtMaximumSignedVsize,
-} from '../services/bitcoin/signingIntent/feePolicy';
-import { feeForRate } from '../services/bitcoin/transactionWeight';
-import { policyEvaluationEngine } from '../services/vaultPolicy';
-import { buildIntentPolicyInput, requiresEnforcedApproval } from '../services/vaultPolicy/intentPolicyInput';
+import { loadSigningIntent } from '../services/bitcoin/signingIntent/service';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -80,7 +57,7 @@ const PayjoinUriQuerySchema = z.object({
 
 const AttemptPayjoinBodySchema = z.object({
   walletId: z.string().min(1, 'walletId is required'),
-  psbt: z.string().min(1, 'psbt is required'),
+  signedPsbt: z.string().min(1, 'signedPsbt is required'),
   intentId: z.string().min(1, 'intentId is required'),
   intentDigest: z.string().regex(/^[0-9a-f]{64}$/, 'intentDigest is invalid'),
   payjoinUrl: z.string().min(1, 'payjoinUrl is required').url('payjoinUrl must be a valid URL'),
@@ -89,7 +66,7 @@ const AttemptPayjoinBodySchema = z.object({
 
 type AttemptPayjoinBody = z.infer<typeof AttemptPayjoinBodySchema>;
 
-const attemptPayjoinRequiredFields = ['walletId', 'psbt', 'intentId', 'intentDigest', 'payjoinUrl'];
+const attemptPayjoinRequiredFields = ['walletId', 'signedPsbt', 'intentId', 'intentDigest', 'payjoinUrl'];
 
 const isMissingAttemptPayjoinField = (issue: { path: string; message: string }) => (
   attemptPayjoinRequiredFields.includes(issue.path)
@@ -105,13 +82,21 @@ const attemptPayjoinValidationMessage = (issues: Array<{ path: string; message: 
     return 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest';
   }
   if (issues.some(isMissingAttemptPayjoinField)) {
-    return 'walletId, psbt, signing intent, and payjoinUrl are required';
+    return 'walletId, signedPsbt, signing intent, and payjoinUrl are required';
   }
   if (issues.some(issue => issue.path === 'payjoinUrl')) {
     return 'payjoinUrl must be a valid URL';
   }
   return 'Invalid Payjoin attempt request';
 };
+
+const ReleaseOriginalBodySchema = z.object({
+  walletId: z.string().min(1, 'walletId is required'),
+  intentId: z.string().min(1, 'intentId is required'),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/, 'intentDigest is invalid'),
+}).strict();
+
+type ReleaseOriginalBody = z.infer<typeof ReleaseOriginalBodySchema>;
 
 // Rate limiter for unauthenticated BIP78 endpoint
 // Prevents DoS attacks by limiting requests per addressId
@@ -284,129 +269,64 @@ router.post('/parse-uri', authenticate, requireFeature('payjoinSupport'), valida
 }));
 
 /**
- * A payjoin proposal supersedes the original intent, and a BIP78 receiver can
- * act on the original PSBT it is sent, so a blocked or approval-required spend
- * must be refused before either happens (an approval-required spend goes
- * through a pending draft instead).
- * Evaluated as a preview — the broadcast still evaluates for real.
- */
-const assertPayjoinNeedsNoApproval = async (
-  walletId: string,
-  userId: string,
-  originalIntent: Awaited<ReturnType<typeof loadSigningIntent>>,
-): Promise<void> => {
-  const input = await buildIntentPolicyInput(walletId, userId, originalIntent);
-  if (!input) return;
-  const evaluation = await policyEvaluationEngine.evaluatePolicies({ ...input, preview: true });
-  if (!evaluation.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
-  if (requiresEnforcedApproval(evaluation)) {
-    throw new ForbiddenError('Vault policy requires approval; payjoin is not available for this spend', undefined, {
-      reason: 'approval_required',
-    });
-  }
-};
-
-/**
  * POST /api/v1/payjoin/attempt
- * Attempt to perform a Payjoin send
+ * BIP78 round one: the client sends the signed (not finalized) original for an
+ * authenticated intent. The server verifies it exactly as broadcast would,
+ * refuses ineligible wallets and policies before it leaves (C-D3/C-D8), posts
+ * a finalized BIP78 original with `disableoutputsubstitution=true`, and
+ * validates the proposal against the BIP78 senders' checklist: sender inputs
+ * unfinalized (their stripped prevouts are restored from the original),
+ * receiver inputs finalized P2WPKH/P2TR of the sender's script type, no key
+ * paths or signatures, no sighash type other than ALL, one sequence, at least
+ * one receiver input, and at least the original's fee rate (sent as BIP78
+ * `minfeerate`). A payjoin proposal intent cannot be an original (409).
+ * A valid proposal becomes a replacement intent; the response proposal has the
+ * receiver's final fields stripped for round two and cannot be saved as a
+ * draft. Every fallback answers `{ success: false, isPayjoin: false, error }`.
  */
 router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate(
   { body: AttemptPayjoinBodySchema },
   { message: attemptPayjoinValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const { walletId, psbt, intentId, intentDigest, payjoinUrl, network } = req.body as AttemptPayjoinBody;
+  const body = req.body as AttemptPayjoinBody;
+  const { walletId, intentId, intentDigest } = body;
   const userId = requireAuthenticatedUser(req).userId;
   const wallet = await findByIdWithAccess(walletId, userId);
   if (!wallet) throw new NotFoundError('Wallet not found or access denied');
   await requireWalletEditAccess(walletId, userId);
-  const originalIntent = await loadSigningIntent(
+  // A consumed intent loads (as a replay) so the service can answer 409 already_broadcast.
+  const original = await loadSigningIntent(
     { intentId, intentDigest },
     walletId,
-    { allowLiveDraftExtension: true },
+    { allowConsumedBroadcastReplay: true, allowLiveDraftExtension: true },
   );
-  if (unsignedPsbtSha256(psbt) !== originalIntent.unsignedPsbtSha256) {
-    throw new InvalidInputError('Payjoin PSBT does not match its signing intent', 'psbt');
-  }
-
-  const networkStr = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
-  if (network && normalizeLegacyBitcoinNetwork(network, 'mainnet') !== networkStr) {
-    throw new InvalidInputError('Payjoin network does not match wallet', 'network');
-  }
-  const networkObj = getNetwork(networkStr);
-  await assertPayjoinNeedsNoApproval(walletId, userId, originalIntent);
-
-  const result = await attemptPayjoinSend(
-    psbt,
-    payjoinUrl,
-    networkObj
-  );
-
-  if (!result.success || !result.proposalPsbt) {
-    res.json(result);
-    return;
-  }
-  const inputRoles = derivePayjoinInputRoles(psbt, result.proposalPsbt);
-  const proposal = bitcoin.Psbt.fromBase64(result.proposalPsbt, { network: networkObj });
-  const signingContext = await bindPsbtAccount(walletId, proposal, {
-    foreignInputIndexes: inputRoles.flatMap((role, index) => role === 'payjoin_peer' ? [index] : []),
-  });
-  const boundProposalPsbt = proposal.toBase64();
-  const originalRequestedFeeRate = originalIntent.snapshot.version === 2
-    ? originalIntent.snapshot.feePolicy.requestedFeeRateSatsPerVbyte
-    : (() => { throw new InvalidInputError('Payjoin requires a current signing intent', 'intentId', { reason: 'stale_intent' }); })();
-  // The Payjoin sender validator has already enforced the BIP78 sender-output
-  // and bounded-fee-increase invariants. Bind the proposal's exact total fee,
-  // including any receiver-funded contribution, without weakening final
-  // artifact equality checks.
-  const proposalFee = calculatePsbtFee(proposal);
-  const proposalMaximumVsize = estimatePsbtMaximumSignedVsize(proposal);
-  // Pick an interior point in the proposal fee's integer ceiling bucket. For an
-  // integer fee F and maximum vsize V, ceil(((F - 0.5) / V) * V) remains F,
-  // while avoiding a binary floating-point result infinitesimally above F.
-  const requestedFeeRate = Math.min(
-    originalRequestedFeeRate,
-    (proposalFee - 0.5) / proposalMaximumVsize,
-  );
-  const proposalFeeSurplus = Math.max(
-    0,
-    proposalFee - feeForRate(proposalMaximumVsize, requestedFeeRate),
-  );
-  // Everything fallible runs before the replacement intent supersedes the
-  // original: after that write, a failure would strand the client on a
-  // superseded intent. So the replacement is prepared, its spend derived and
-  // checked, and only then persisted.
-  const walletAddresses = new Set(await findAddressStrings(walletId));
-  const prepared = await prepareSigningIntent({
+  res.json(await attemptPayjoinWithSignedOriginal({
     walletId,
-    createdByUserId: userId,
-    network: networkStr,
-    source: 'payjoin',
-    unsignedPsbtBase64: boundProposalPsbt,
-    feePolicy: buildSigningIntentFeePolicy(
-      boundProposalPsbt,
-      requestedFeeRate,
-      undefined,
-      proposalFeeSurplus,
-    ),
-    inputRoles,
-    supersedesIntentId: originalIntent.intentId,
-    signingContext,
-  });
-  // The client reports this amount back on broadcast and in a saved draft, so
-  // it is the canonical net spend of the replacement snapshot — P - r when the
-  // receiver raised the fee out of its contribution, not P. A proposal with no
-  // net spend could be neither broadcast nor saved by the client.
-  const { amount } = await deriveIntentSpend(walletId, prepared.snapshot.network, prepared.snapshot, walletAddresses);
-  if (amount <= 0) {
-    throw new InvalidInputError('Payjoin proposal leaves no net spend for the sender', 'psbt');
-  }
-  const { handle: replacementIntent } = await persistSigningIntent(prepared);
-  res.json({
-    ...result,
-    proposalPsbt: boundProposalPsbt,
-    ...replacementIntent,
-    amount,
-  });
+    userId,
+    walletNetwork: wallet.network,
+    original,
+    body,
+  }));
+}));
+
+/**
+ * POST /api/v1/payjoin/release-original
+ * Make the signed original broadcastable again after an abandoned or failed
+ * payjoin round. Answers `{ restored }`; 409 while the proposal's broadcast is
+ * claimed or its outcome unknown, so both can never be broadcast.
+ * Deliberately not behind requireFeature('payjoinSupport'): turning the flag
+ * off while a proposal is pending must not strand the original.
+ */
+router.post('/release-original', authenticate, validate(
+  { body: ReleaseOriginalBodySchema },
+  { message: 'walletId and signing intent are required', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
+  const { walletId, intentId, intentDigest } = req.body as ReleaseOriginalBody;
+  const userId = requireAuthenticatedUser(req).userId;
+  const wallet = await findByIdWithAccess(walletId, userId);
+  if (!wallet) throw new NotFoundError('Wallet not found or access denied');
+  await requireWalletEditAccess(walletId, userId);
+  res.json(await restorePayjoinOriginalIntent({ walletId, intentId, intentDigest }));
 }));
 
 // ========================================
@@ -418,11 +338,12 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
  * BIP78 Payjoin endpoint (receiver)
  *
  * This endpoint is called by Payjoin-capable senders.
- * It validates the original PSBT and returns precise BIP78 rejections for bad
- * originals. Valid originals get `unavailable`: a proposal needs a finalized
- * receiver input, and receiver-side input signing is not implemented yet.
+ * It validates the original PSBT (every input finalized with UTXO data, as
+ * BIP78 requires) and returns precise BIP78 rejections for bad originals.
+ * Valid originals get `unavailable`: a proposal needs a finalized receiver
+ * input, and receiver-side input signing is not implemented yet.
  *
- * IMPORTANT: This route MUST be defined after all specific POST routes (/parse-uri, /attempt)
+ * IMPORTANT: This route MUST be defined after all specific POST routes (/parse-uri, /attempt, /release-original)
  * to avoid the parameterized :addressId from capturing those paths.
  *
  * Query params:

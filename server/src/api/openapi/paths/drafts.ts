@@ -89,6 +89,12 @@ export const draftPaths = {
         },
         401: apiErrorResponse,
         403: apiErrorResponse,
+        409: {
+          ...apiErrorResponse,
+          description:
+            'details.reason payjoin_intent_not_draftable: a payjoin replacement intent, or an original a payjoin '
+            + 'proposal was minted from, cannot be saved as a draft',
+        },
       },
     },
   },

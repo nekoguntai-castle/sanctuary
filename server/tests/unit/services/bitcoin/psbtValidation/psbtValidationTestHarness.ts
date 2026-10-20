@@ -190,3 +190,41 @@ export function createOpReturnPsbt(seed: number = 1): bitcoin.Psbt {
 
   return psbt;
 }
+
+/** Placeholder witness: proposal validation never verifies receiver witnesses. */
+const RECEIVER_FINAL_SCRIPT_WITNESS = Buffer.from("0201aa0102", "hex");
+
+/**
+ * Finalizes the given (receiver) inputs the way a BIP78 receiver does: a
+ * `finalScriptWitness`, UTXO data kept, no key paths.
+ */
+export function finalizeReceiverInputs(
+  psbt: bitcoin.Psbt,
+  receiverIndexes: number[],
+): bitcoin.Psbt {
+  receiverIndexes.forEach((index) => {
+    psbt.data.inputs[index].finalScriptWitness = RECEIVER_FINAL_SCRIPT_WITNESS;
+  });
+  return psbt;
+}
+
+/** Appends a finalized P2WPKH receiver input worth `value` sats. */
+export function addFinalizedReceiverInput(
+  psbt: bitcoin.Psbt,
+  seed: number,
+  value: number,
+): bitcoin.Psbt {
+  psbt.addInput({
+    hash: Buffer.alloc(32, seed),
+    index: 0,
+    sequence: 0xfffffffd,
+    witnessUtxo: {
+      script: bitcoin.payments.p2wpkh({
+        hash: Buffer.alloc(20, seed),
+        network: TESTNET,
+      }).output!,
+      value: BigInt(value),
+    },
+  });
+  return finalizeReceiverInputs(psbt, [psbt.inputCount - 1]);
+}

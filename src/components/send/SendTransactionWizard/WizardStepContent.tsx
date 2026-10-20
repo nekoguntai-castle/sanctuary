@@ -34,12 +34,15 @@ function renderReviewStep({
       onSaveDraft={isDraftMode ? undefined : onSaveDraft}
       approvalAction={actions.approvalAction}
       signing={actions.isSigning}
-      broadcasting={actions.isBroadcasting || actions.isCreating}
+      broadcasting={actions.isBroadcasting || actions.isCreating || actions.isPayjoinBusy}
       savingDraft={actions.isSavingDraft}
       txData={effectiveTxData}
       unsignedPsbt={unsignedPsbt}
       signedDevices={actions.signedDevices}
       payjoinStatus={actions.payjoinStatus}
+      payjoinUsbBlocked={actions.payjoinUsbBlocked}
+      payjoinOriginalTxData={actions.payjoinOriginalTxData}
+      onSendWithoutPayjoin={actions.sendWithoutPayjoin}
       onDownloadPsbt={actions.downloadPsbt}
       onUploadSignedPsbt={actions.uploadSignedPsbt}
       onSignWithDevice={actions.signWithDevice}

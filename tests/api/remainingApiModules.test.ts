@@ -19,6 +19,7 @@ import {
 import * as draftsApi from "../../src/api/drafts";
 import * as labelsApi from "../../src/api/labels";
 import * as payjoinApi from "../../src/api/payjoin";
+import { PayjoinReleaseOriginalResponseSchema } from "@sanctuary/shared/schemas/bitcoinResponses";
 import * as priceApi from "../../src/api/price";
 import * as syncApi from "../../src/api/sync";
 import * as transfersApi from "../../src/api/transfers";
@@ -202,7 +203,7 @@ describe("Remaining API Modules", () => {
         "/payjoin/attempt",
         {
           walletId: "w1",
-          psbt: "psbt1",
+          signedPsbt: "psbt1",
           intentId: "intent-1",
           intentDigest: "a".repeat(64),
           payjoinUrl: "https://pj.example",
@@ -214,11 +215,12 @@ describe("Remaining API Modules", () => {
 
       const controller = new AbortController();
       await payjoinApi.attemptPayjoin(
-        "w1", "psbt2", "intent-2", "b".repeat(64), "https://pj.example", "testnet3", controller.signal,
+        "w1", "psbt2", "intent-2", "b".repeat(64), "https://pj.example", "testnet3",
+        { signal: controller.signal, timeoutMs: 75_000 },
       );
       expect(mockPost).toHaveBeenCalledWith("/payjoin/attempt", {
         walletId: "w1",
-        psbt: "psbt2",
+        signedPsbt: "psbt2",
         intentId: "intent-2",
         intentDigest: "b".repeat(64),
         payjoinUrl: "https://pj.example",
@@ -226,7 +228,22 @@ describe("Remaining API Modules", () => {
       }, expect.objectContaining({
         schema: expect.anything(),
         signal: controller.signal,
+        timeoutMs: 75_000,
       }));
+    });
+
+    it("releases a payjoin original with the shared response schema", async () => {
+      mockPost.mockResolvedValue({ restored: true });
+
+      await expect(payjoinApi.releasePayjoinOriginal("w1", "intent-1", "a".repeat(64)))
+        .resolves.toEqual({ restored: true });
+      expect(mockPost).toHaveBeenLastCalledWith(
+        "/payjoin/release-original",
+        { walletId: "w1", intentId: "intent-1", intentDigest: "a".repeat(64) },
+        { schema: PayjoinReleaseOriginalResponseSchema },
+      );
+      expect(PayjoinReleaseOriginalResponseSchema.safeParse({ restored: false }).success).toBe(true);
+      expect(PayjoinReleaseOriginalResponseSchema.safeParse({}).success).toBe(false);
     });
   });
 

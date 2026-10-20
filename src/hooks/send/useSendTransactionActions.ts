@@ -9,36 +9,42 @@
  */
 
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import * as bitcoin from 'bitcoinjs-lib';
 import * as transactionsApi from '../../api/transactions';
-import * as payjoinApi from '../../api/payjoin';
 import * as draftsApi from '../../api/drafts';
 import { ApiError } from '../../api/client';
 import { createLogger } from '../../utils/logger';
-import { toHex } from '../../utils/bufferUtils';
 import { addressMatchesNetwork, validateAddress } from '../../utils/validateAddress';
 import { useUsbSigning } from './useUsbSigning';
 import { useQrSigning } from './useQrSigning';
 import { useDraftManagement } from './useDraftManagement';
-import { usePayjoin } from './usePayjoin';
+import {
+  abandonPayjoinProposal,
+  broadcastPayjoinProposal,
+  fallbackToPayjoinOriginal,
+  isPayjoinStatusIn,
+  negotiatePayjoin,
+  PAYJOIN_DRAFT_LOCKED_MESSAGE,
+  resolvePayjoinRoundOne,
+  usePayjoin,
+  type PayjoinArtifact,
+  type PayjoinOriginal,
+  type PayjoinRoundContext,
+} from './usePayjoin';
 import { useBroadcast } from './useBroadcast';
-import { requiresApproval } from './types';
 import type { ApprovalAction, TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult } from './types';
-import type { OutputEntry, PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
+import type { OutputEntry, TransactionState } from '../../contexts/send/types';
 import type { Wallet } from '../../types';
 import {
   parsePositiveSatoshiAmount,
   requirePositiveSatoshiAmount,
   requirePositiveSatoshiNumber,
 } from '../../utils/sendAmount';
-import { useSendOperationOwner, type SendOperationLease } from './useSendOperationOwner';
+import { useSendOperationOwner } from './useSendOperationOwner';
 
 export type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult };
 
 const log = createLogger('SendTxActions');
 
-type PayjoinAttemptRef = { current: boolean };
-type SetPayjoinStatus = (status: PayjoinAttemptStatus) => void;
 type WalletValidationNetwork = Parameters<typeof addressMatchesNetwork>[1];
 
 function getOutputValidationError(outputs: OutputEntry[], walletNetwork: Wallet['network']): string | null {
@@ -134,126 +140,30 @@ async function createApiTransactionData(
     : createSingleTransactionData(walletId, state, signal);
 }
 
-// An approval-required spend must not leave the server: a payjoin attempt supersedes the
-// original signing intent and hands its PSBT to the receiver before the spend can be held.
-function shouldAttemptPayjoin(
-  state: TransactionState,
-  payjoinAttempted: PayjoinAttemptRef,
-  result: TransactionData,
-): boolean {
-  return Boolean(state.payjoinUrl && state.outputs.length === 1 && !payjoinAttempted.current)
-    && !requiresApproval(result.policyEvaluation);
-}
-
-type WalletNetwork = Wallet['network'];
-
-// The throws below are defensive: the server validates the proposal and its prevouts first.
-function getProposalInputValue(psbt: bitcoin.Psbt, index: number): bigint {
-  const input = psbt.data.inputs[index];
-  if (input.witnessUtxo) return input.witnessUtxo.value;
-  if (input.nonWitnessUtxo) {
-    return bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo).outs[psbt.txInputs[index].index].value;
-  }
-  throw new Error(`Payjoin proposal input ${index} has no previous output`);
-}
-
 /**
- * Broadcast and draft metadata must describe the proposal the server minted
- * the new intent from: every input (the receiver's included), the proposal's
- * fee, and the canonical amount the server derived for that intent (P - r
- * when the receiver raised the fee out of its contribution). The amount is
- * never recomputed here: broadcast compares it to the server's own.
+ * A round already holds a signed original: route by status, never re-negotiating.
+ * `artifact` is what the broadcast would send; round two takes only the proposal's
+ * own transaction (the upload/QR guard refuses the rest first; this is defence in depth).
  */
-function applyPayjoinProposal(result: TransactionData, proposalPsbt: string, amount: number): Pick<
-  TransactionData, 'utxos' | 'fee' | 'totalInput' | 'totalOutput' | 'effectiveAmount'
-> {
-  const psbt = bitcoin.Psbt.fromBase64(proposalPsbt);
-  const known = new Map(result.utxos.map(utxo => [`${utxo.txid}:${utxo.vout}`, utxo]));
-  let totalInput = 0n;
-  const utxos = psbt.txInputs.map((input, index) => {
-    const txid = toHex(Uint8Array.from(input.hash).reverse());
-    const inputValue = getProposalInputValue(psbt, index);
-    totalInput += inputValue;
-    return known.get(`${txid}:${input.index}`) ?? { txid, vout: input.index, amount: Number(inputValue) };
-  });
-  const totalOutput = psbt.txOutputs.reduce((sum, output) => sum + output.value, 0n);
-  // Unreachable for a server-validated proposal; kept as a fallback to the original transaction.
-  if (totalInput < totalOutput) throw new Error('Payjoin proposal spends more than its inputs');
-  return {
-    utxos,
-    fee: Number(totalInput - totalOutput),
-    totalInput: Number(totalInput),
-    totalOutput: Number(totalOutput),
-    effectiveAmount: amount,
-  };
-}
-
-async function applyPayjoinIfNeeded(
-  walletId: string,
-  result: TransactionData,
-  state: TransactionState,
-  walletNetwork: WalletNetwork,
-  payjoinAttempted: PayjoinAttemptRef,
-  setPayjoinStatus: SetPayjoinStatus,
-  lease: SendOperationLease,
-): Promise<TransactionData> {
-  // BIP 78 Payjoin is opportunistic: failure falls back to the original transaction.
-  if (!shouldAttemptPayjoin(state, payjoinAttempted, result)) {
-    return result;
-  }
-
-  /* c8 ignore next -- no asynchronous boundary exists between the caller's ownership check and this guard */
-  if (!lease.isCurrent()) return result;
-  setPayjoinStatus('attempting');
-  payjoinAttempted.current = true;
-  log.info('Attempting Payjoin', { payjoinUrl: state.payjoinUrl, network: walletNetwork });
-
-  try {
-    const network = (walletNetwork || 'mainnet') as Parameters<typeof payjoinApi.attemptPayjoin>[5];
-    // `shouldAttemptPayjoin` above already enforces `state.payjoinUrl` is truthy,
-    // but TypeScript doesn't narrow that guarantee across the helper boundary.
-    // The `?? ''` fallback is defensive and unreachable at runtime.
-    /* c8 ignore next */
-    const payjoinUrl = state.payjoinUrl ?? '';
-    const payjoinResult = await payjoinApi.attemptPayjoin(
-      walletId,
-      result.psbtBase64,
-      result.intentId,
-      result.intentDigest,
-      payjoinUrl,
-      network,
-      lease.signal,
-    );
-
-    if (!lease.isCurrent()) return result;
-
-    if (payjoinResult.success && payjoinResult.proposalPsbt
-      && payjoinResult.intentId && payjoinResult.intentDigest
-      && payjoinResult.signingContext
-      // The server floors the net amount at 0, which can be neither broadcast nor saved.
-      && payjoinResult.amount > 0) {
-      const proposal = applyPayjoinProposal(result, payjoinResult.proposalPsbt, payjoinResult.amount);
-      setPayjoinStatus('success');
-      log.info('Payjoin successful');
-      return {
-        ...result,
-        ...proposal,
-        psbtBase64: payjoinResult.proposalPsbt,
-        intentId: payjoinResult.intentId,
-        intentDigest: payjoinResult.intentDigest,
-        signingContext: payjoinResult.signingContext,
-      };
+async function continuePayjoinRound(
+  ctx: PayjoinRoundContext,
+  original: PayjoinOriginal,
+  artifact: PayjoinArtifact,
+  signedPsbt?: string,
+  rawTxHex?: string,
+): Promise<boolean> {
+  const status = ctx.payjoin.statusRef.current;
+  if (isPayjoinStatusIn('roundTwo', status)) {
+    const refusal = ctx.payjoin.checkRoundTwoArtifact(artifact);
+    if (refusal) {
+      ctx.setError(refusal);
+      return false;
     }
-
-    setPayjoinStatus('failed');
-    log.warn('Payjoin failed, using regular transaction', { error: payjoinResult.error });
-  } catch (pjError) {
-    if (!lease.isCurrent()) return result;
-    setPayjoinStatus('failed');
-    log.warn('Payjoin error', { error: pjError });
+    return broadcastPayjoinProposal(ctx, original, signedPsbt, rawTxHex);
   }
-
-  return result;
+  // In `failed` only the signed original is ever broadcast, whatever the caller passed (C-D1, C-D11).
+  if (status === 'failed') return fallbackToPayjoinOriginal(ctx, original);
+  return ctx.broadcast(signedPsbt, rawTxHex);
 }
 
 const getSendIdentity = (walletId: string, wallet: Wallet, state: TransactionState): string => JSON.stringify({
@@ -305,8 +215,9 @@ export function useSendTransactionActions({
   const draftScopeRef = useRef({ walletId, setDraftId });
   draftScopeRef.current = { walletId, setDraftId };
 
-  // Payjoin state
-  const { payjoinStatus, payjoinAttempted, setPayjoinStatus, resetPayjoin } = usePayjoin();
+  // Payjoin round state (two-round BIP78; see usePayjoin)
+  const payjoin = usePayjoin();
+  const { payjoinStatus, isPayjoinBusy, proposalMinted, resetPayjoin, clearArtifactOrigin } = payjoin;
 
   // Create transaction PSBT
   const createTransaction = useCallback(async (): Promise<TransactionData | null> => {
@@ -326,20 +237,13 @@ export function useSendTransactionActions({
         return null;
       }
 
-      const createdTransaction = await createApiTransactionData(walletId, stateSnapshot, lease.signal);
-      const result = await applyPayjoinIfNeeded(
-        walletId,
-        createdTransaction,
-        stateSnapshot,
-        wallet.network,
-        payjoinAttempted,
-        setPayjoinStatus,
-        lease,
-      );
+      // Payjoin is negotiated at broadcast, after the original is signed (never here).
+      const result = await createApiTransactionData(walletId, stateSnapshot, lease.signal);
 
       if (!owner.acceptTransaction(lease)) return null;
       setTxData(result);
       setUnsignedPsbt(result.psbtBase64);
+      clearArtifactOrigin();
       return result;
     } catch (err) {
       if (!lease.isCurrent() || isAbortError(err)) return null;
@@ -349,7 +253,7 @@ export function useSendTransactionActions({
     } finally {
       if (lease.isCurrent()) setIsCreating(false);
     }
-  }, [walletId, state, wallet.network, payjoinAttempted, setPayjoinStatus, owner]);
+  }, [walletId, state, wallet.network, clearArtifactOrigin, owner]);
 
   // USB signing (signWithHardwareWallet, signWithDevice)
   const { signWithHardwareWallet, signWithHardwareWalletResult, signWithDevice } = useUsbSigning({
@@ -364,7 +268,15 @@ export function useSendTransactionActions({
     setSignedRawTx,
     setSignedDevices,
     beginSigning: owner.beginSigning,
+    isRoundTwoLocked: () => isPayjoinStatusIn('roundTwo', payjoin.statusRef.current),
+    onUsbSigned: clearArtifactOrigin,
   });
+
+  const { checkRoundTwoArtifact } = payjoin;
+  const checkSignedPsbt = useCallback(
+    (psbt: string) => checkRoundTwoArtifact({ psbt }),
+    [checkRoundTwoArtifact],
+  );
 
   // QR/airgap signing (downloadPsbt, uploadSignedPsbt, processQrSignedPsbt)
   const { downloadPsbt, uploadSignedPsbt, processQrSignedPsbt } = useQrSigning({
@@ -378,10 +290,12 @@ export function useSendTransactionActions({
     setSignedDevices,
     beginSigning: owner.beginSigning,
     setIsSigning,
+    checkSignedArtifact: checkSignedPsbt,
+    onSignedArtifactAccepted: payjoin.recordArtifactOrigin,
   });
 
   // Draft management (saveDraft)
-  const { saveDraft } = useDraftManagement({
+  const { saveDraft: saveDraftNow } = useDraftManagement({
     walletId,
     state,
     txData,
@@ -394,8 +308,17 @@ export function useSendTransactionActions({
     setDraftId,
   });
 
-  // Broadcasting (broadcastTransaction)
-  const { broadcastTransaction } = useBroadcast({
+  // A payjoin intent can never become a draft (C-D9); the server refuses it too.
+  const saveDraft = useCallback(async (label?: string): Promise<string | null> => {
+    if (isPayjoinStatusIn('draftLocked', payjoin.statusRef.current)) {
+      setError(PAYJOIN_DRAFT_LOCKED_MESSAGE);
+      return null;
+    }
+    return saveDraftNow(label);
+  }, [payjoin.statusRef, saveDraftNow]);
+
+  // Broadcasting (the single-artifact broadcast; runPayjoinRound below decides what to broadcast)
+  const { broadcastTransaction: broadcastPsbt } = useBroadcast({
     walletId,
     wallet,
     state,
@@ -407,6 +330,65 @@ export function useSendTransactionActions({
     setApprovalAction,
     beginBroadcast: owner.beginBroadcast,
   });
+
+  const restoreOriginal = useCallback((original: PayjoinOriginal) => {
+    setTxData(original.txData);
+    setUnsignedPsbt(original.signedPsbt);
+    setSignedDevices(new Set(original.signedDevices));
+    setSignedRawTx(null);
+  }, []);
+
+  const adoptProposal = useCallback((proposal: TransactionData) => {
+    setTxData(proposal);
+    setUnsignedPsbt(proposal.psbtBase64);
+    setSignedDevices(new Set());
+    setSignedRawTx(null);
+  }, []);
+
+  const roundContext = useCallback((token: number): PayjoinRoundContext => ({
+    payjoin,
+    token,
+    broadcast: broadcastPsbt,
+    setError,
+    restoreOriginal,
+    adoptProposal,
+  }), [payjoin, broadcastPsbt, restoreOriginal, adoptProposal]);
+
+  // Broadcast entry point: an eligible send negotiates a payjoin first; a round in
+  // progress only ever broadcasts its proposal or its signed original, never both.
+  const runPayjoinRound = useCallback(async (signedPsbt?: string, rawTxHex?: string): Promise<boolean> => {
+    if (payjoin.busyRef.current) return false;
+    const original = payjoin.originalRef.current;
+    if (original) {
+      // Mirrors useBroadcast's payload choice for a single-sig send: a raw transaction wins.
+      const rawTx = rawTxHex || signedRawTx;
+      const artifact = rawTx ? { rawTxHex: rawTx } : { psbt: signedPsbt || unsignedPsbt };
+      return continuePayjoinRound(roundContext(payjoin.currentRoundToken()), original, artifact, signedPsbt, rawTxHex);
+    }
+    const roundOne = resolvePayjoinRoundOne({
+      walletId,
+      wallet,
+      network: wallet.network,
+      state,
+      txData,
+      signedPsbt: signedPsbt || unsignedPsbt,
+      rawTxHex,
+      signedRawTx,
+      signedDevices,
+      origin: payjoin.originRef.current,
+    });
+    if (roundOne) {
+      return negotiatePayjoin(roundContext(payjoin.beginPayjoinRound(roundOne.original)), roundOne);
+    }
+    if (state.payjoinUrl) payjoin.setPayjoinStatus('skipped');
+    return broadcastPsbt(signedPsbt, rawTxHex);
+  }, [payjoin, roundContext, walletId, wallet, state, txData, unsignedPsbt, signedRawTx, signedDevices, broadcastPsbt]);
+
+  const sendWithoutPayjoin = useCallback(async (): Promise<boolean> => {
+    const original = payjoin.originalRef.current;
+    if (!original) return false;
+    return abandonPayjoinProposal(roundContext(payjoin.currentRoundToken()), original);
+  }, [payjoin, roundContext]);
 
   // Mark device as signed
   const markDeviceSigned = useCallback((deviceId: string) => {
@@ -480,12 +462,18 @@ export function useSendTransactionActions({
     signedRawTx,
     signedDevices,
     payjoinStatus,
+    isPayjoinBusy,
+    payjoinUsbBlocked: isPayjoinBusy
+      || isPayjoinStatusIn('roundTwo', payjoinStatus)
+      || (payjoinStatus === 'failed' && proposalMinted),
+    payjoinOriginalTxData: payjoin.originalTxData,
     approvalAction,
     createTransaction,
     signWithHardwareWallet,
     signWithHardwareWalletResult,
     signWithDevice,
-    broadcastTransaction,
+    broadcastTransaction: runPayjoinRound,
+    sendWithoutPayjoin,
     saveDraft,
     downloadPsbt,
     uploadSignedPsbt,

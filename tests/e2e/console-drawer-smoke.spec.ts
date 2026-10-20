@@ -142,6 +142,7 @@ const STATIC_RESPONSES: Record<string, MockApiResponse> = {
   [`GET /wallets/${WALLET_ID}/drafts`]: mockResponse([]),
   [`GET /wallets/${WALLET_ID}/transactions/pending`]: mockResponse([]),
   "GET /transactions/activity-summary": mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
+  "POST /payjoin/release-original": mockResponse({ restored: false }),
   "GET /transactions/balance-history": mockResponse(flatBalanceHistory(WALLET.balance)),
   "POST /hardware/jade/pin": mockResponse({}),
   "GET /console/sessions": mockResponse({ sessions: [] }),

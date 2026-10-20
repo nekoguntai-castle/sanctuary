@@ -28,7 +28,7 @@ const log = createLogger('PAYJOIN:SVC_RECV');
  * Process an incoming Payjoin request (we're the receiver)
  *
  * Steps:
- * 1. Validate the original PSBT
+ * 1. Validate the original PSBT: structure, finalized inputs with UTXO data
  * 2. Find the output paying to our address
  * 3. Confirm a UTXO is available to contribute
  * 4. Return `unavailable`: building a proposal requires signing the receiver
@@ -68,6 +68,19 @@ export async function processPayjoinRequest(
     }
 
     const originalPsbt = parsePsbt(originalPsbtBase64, network);
+    // BIP78: the original must be finalized (broadcastable) with every prevout
+    // filled in. Checked inline: tests mock the psbtValidation module wholesale.
+    const unbroadcastableInput = originalPsbt.data.inputs.findIndex(input => (
+      !(input.finalScriptSig || input.finalScriptWitness) || !(input.witnessUtxo || input.nonWitnessUtxo)
+    ));
+    if (unbroadcastableInput !== -1) {
+      log.warn('Original PSBT is not finalized with UTXO data', { input: unbroadcastableInput });
+      return {
+        success: false,
+        error: PayjoinErrors.ORIGINAL_PSBT_REJECTED,
+        errorMessage: `Original PSBT input ${unbroadcastableInput} must be finalized and carry UTXO data`,
+      };
+    }
     const originalOutputs = getPsbtOutputs(originalPsbt, network);
 
     // Find the output paying to our address

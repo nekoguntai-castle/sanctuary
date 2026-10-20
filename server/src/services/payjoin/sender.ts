@@ -30,16 +30,20 @@ const KNOWN_BIP78_ERRORS = new Set<string>(Object.values(PayjoinErrors));
  * senderInputIndices; those indices no longer control validation.
  *
  * Steps:
- * 1. Build original PSBT
- * 2. POST to receiver's Payjoin endpoint
- * 3. Validate the proposal
- * 4. Return proposal for signing
+ * 1. POST the original PSBT to the receiver's Payjoin endpoint, with
+ *    `disableoutputsubstitution=true` (the validator forbids substitution)
+ *    and, when given, `minfeerate` (rounded down to 0.001 sat/vB)
+ * 2. Validate the proposal against the BIP78 sender checklist, including
+ *    that it pays at least the minfeerate sent
+ * 3. Return the validated proposal, with the sender inputs' prevouts restored
+ *    from the original, for signing
  */
 export async function attemptPayjoinSend(
   originalPsbtBase64: string,
   payjoinUrl: string,
   networkOrSenderInputIndices: bitcoin.Network | number[] = bitcoin.networks.bitcoin,
-  legacyNetwork: bitcoin.Network = bitcoin.networks.bitcoin
+  legacyNetwork: bitcoin.Network = bitcoin.networks.bitcoin,
+  options: { minFeeRate?: number } = {}
 ): Promise<{
   success: boolean;
   proposalPsbt?: string;
@@ -64,6 +68,9 @@ export async function attemptPayjoinSend(
 
     const requestUrl = new URL(urlValidation.url.toString());
     requestUrl.searchParams.set('v', '1');
+    requestUrl.searchParams.set('disableoutputsubstitution', 'true');
+    const minFeeRate = bip78MinFeeRate(options.minFeeRate);
+    if (minFeeRate !== undefined) requestUrl.searchParams.set('minfeerate', String(minFeeRate));
 
     const resolvedAddress = urlValidation.resolvedAddresses[0];
     const response = await requestPinnedAddress({
@@ -95,7 +102,9 @@ export async function attemptPayjoinSend(
     const validation = validatePayjoinProposal(
       originalPsbtBase64,
       proposalBase64,
-      network
+      network,
+      network,
+      { minFeeRate }
     );
 
     if (!validation.valid) {
@@ -107,6 +116,12 @@ export async function attemptPayjoinSend(
       };
     }
 
+    // Fail closed: only the validator's restored proposal is safe to sign.
+    if (!validation.proposalPsbt) {
+      log.warn('Payjoin proposal validation returned no restored proposal');
+      return payjoinFailure('Invalid proposal: validated proposal is missing');
+    }
+
     if (validation.warnings.length > 0) {
       log.info('Payjoin proposal warnings', { warnings: validation.warnings });
     }
@@ -115,7 +130,7 @@ export async function attemptPayjoinSend(
 
     return {
       success: true,
-      proposalPsbt: proposalBase64,
+      proposalPsbt: validation.proposalPsbt,
       isPayjoin: true,
     };
   } catch (error) {
@@ -126,6 +141,11 @@ export async function attemptPayjoinSend(
     });
     return payjoinFailure(safeError);
   }
+}
+
+/** The minfeerate as sent, rounded down to 0.001 sat/vB; the proposal check uses this exact value. */
+function bip78MinFeeRate(rate: number | undefined): number | undefined {
+  return rate !== undefined && Number.isFinite(rate) && rate >= 0 ? Math.floor(rate * 1000) / 1000 : undefined;
 }
 
 function getKnownBip78Error(body: Buffer): string | null {

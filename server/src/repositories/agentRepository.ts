@@ -133,6 +133,7 @@ export type AgentFundingTransactionClient = Pick<
   | 'approvalRequest'
   | 'draftTransaction'
   | 'draftUtxoLock'
+  | 'transactionSigningIntent'
   | 'uTXO'
   | 'user'
   | 'vaultPolicy'

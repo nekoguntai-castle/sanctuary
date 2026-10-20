@@ -8,7 +8,9 @@ import {
   validateLegacySenderInputIndices,
   validateSenderInputs,
 } from '../../../../../src/services/bitcoin/payjoinProposalValidation';
-import { createNonWitnessPsbt, createOpReturnPsbt, createTestPsbt, TESTNET } from './psbtValidationTestHarness';
+import {
+  addFinalizedReceiverInput, createNonWitnessPsbt, createOpReturnPsbt, createTestPsbt, finalizeReceiverInputs, TESTNET,
+} from './psbtValidationTestHarness';
 
 type PayjoinInputSpec = {
   txidSeed: number;
@@ -90,12 +92,12 @@ export const registerPsbtPayjoinContracts = () => {
         });
 
         // Proposal adds receiver input but keeps sender outputs
-        const proposal = createTestPsbt({
+        const proposal = finalizeReceiverInputs(createTestPsbt({
           inputCount: 2,
           outputCount: 2,
           inputValues: [100000, 30000], // sender + receiver input
           outputValues: [50000, 70000], // payment unchanged, change increased
-        });
+        }), [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -221,6 +223,7 @@ export const registerPsbtPayjoinContracts = () => {
           }).output!,
           value: BigInt(58000), // Increased from 40000 to absorb receiver contribution
         });
+        finalizeReceiverInputs(proposal, [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -235,7 +238,7 @@ export const registerPsbtPayjoinContracts = () => {
 
       it('should skip unknown outputs when comparing sender outputs', () => {
         const original = createOpReturnPsbt(7);
-        const proposal = createOpReturnPsbt(7);
+        const proposal = addFinalizedReceiverInput(createOpReturnPsbt(7), 8, 10000);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -259,12 +262,12 @@ export const registerPsbtPayjoinContracts = () => {
           outputValues: [50000, 40000],
         });
 
-        const proposal = createTestPsbt({
+        const proposal = finalizeReceiverInputs(createTestPsbt({
           inputCount: 2,
           outputCount: 2,
           inputValues: [100000, 30000],
           outputValues: [50000, 70000],
-        });
+        }), [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -417,6 +420,7 @@ export const registerPsbtPayjoinContracts = () => {
             { script: changeScript, value: 130000 },
           ],
         });
+        finalizeReceiverInputs(proposal, [1]);
 
         const result = validateIntegrityProposal(original, proposal);
 
@@ -535,12 +539,12 @@ export const registerPsbtPayjoinContracts = () => {
         });
 
         // Proposal: 130000 input, 117000 output = 13000 fee (30% increase)
-        const proposal = createTestPsbt({
+        const proposal = finalizeReceiverInputs(createTestPsbt({
           inputCount: 2,
           outputCount: 1,
           inputValues: [100000, 30000],
           outputValues: [117000],
-        });
+        }), [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -562,12 +566,12 @@ export const registerPsbtPayjoinContracts = () => {
         });
 
         // Proposal: 130000 input, 104000 output = 26000 fee (160% increase!)
-        const proposal = createTestPsbt({
+        const proposal = finalizeReceiverInputs(createTestPsbt({
           inputCount: 2,
           outputCount: 1,
           inputValues: [100000, 30000],
           outputValues: [104000],
-        });
+        }), [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -592,12 +596,12 @@ export const registerPsbtPayjoinContracts = () => {
         // Proposal: 130000 input, 112000 output = 18000 fee (80% increase, but less than 50% of original is 15000)
         // Wait, 80% > 50%, so this should fail. Let's use 45%: 14500 fee
         // Actually 10000 * 1.45 = 14500, so output = 130000 - 14500 = 115500
-        const proposal = createTestPsbt({
+        const proposal = finalizeReceiverInputs(createTestPsbt({
           inputCount: 2,
           outputCount: 1,
           inputValues: [100000, 30000],
           outputValues: [117000], // Fee = 13000 = 30% increase
-        });
+        }), [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -610,17 +614,17 @@ export const registerPsbtPayjoinContracts = () => {
         expect(result.warnings.some(w => w.includes('significantly'))).toBe(true);
       });
 
-      it('should evaluate fees from nonWitnessUtxo data', () => {
+      it('rejects a P2PKH nonWitnessUtxo sender under the mixed-input-type rule', () => {
         const original = createNonWitnessPsbt({
           inputValue: 120000,
           outputValue: 100000,
           seed: 4,
         });
-        const proposal = createNonWitnessPsbt({
+        const proposal = addFinalizedReceiverInput(createNonWitnessPsbt({
           inputValue: 120000,
           outputValue: 100000,
           seed: 4,
-        });
+        }), 9, 10000);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -629,7 +633,8 @@ export const registerPsbtPayjoinContracts = () => {
           TESTNET
         );
 
-        expect(result.valid).toBe(true);
+        expect(result.valid).toBe(false);
+        expect(result.errors).toEqual(['Receiver input 1 script type p2wpkh does not match sender input type unsupported']);
       });
 
       it('should handle fee calculation when inputs have no UTXO metadata', () => {
@@ -654,7 +659,7 @@ export const registerPsbtPayjoinContracts = () => {
         );
 
         expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.includes('Invalid negative Payjoin fee'))).toBe(true);
+        expect(result.errors).toEqual(['Receiver did not add any inputs - this is not a proper Payjoin']);
       });
 
       it('rejects proposal absolute fees below the original transaction fee', () => {
@@ -677,6 +682,7 @@ export const registerPsbtPayjoinContracts = () => {
             { script: changeScript, value: 85000 },
           ],
         });
+        finalizeReceiverInputs(proposal, [1]);
 
         const result = validateIntegrityProposal(original, proposal);
 
@@ -822,6 +828,7 @@ export const registerPsbtPayjoinContracts = () => {
           }).output!,
           value: BigInt(100000), // Receiver gets their contribution
         });
+        finalizeReceiverInputs(proposal, [1, 2]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -918,6 +925,7 @@ export const registerPsbtPayjoinContracts = () => {
           }).output!,
           value: BigInt(70000), // Increased by receiver contribution
         });
+        finalizeReceiverInputs(proposal, [1]);
 
         const result = validatePayjoinProposal(
           original.toBase64(),
@@ -930,7 +938,7 @@ export const registerPsbtPayjoinContracts = () => {
         expect(result.warnings.some(w => w.includes('did not add any inputs'))).toBe(false);
       });
 
-      it('should warn when receiver adds no inputs', () => {
+      it('should reject a proposal when the receiver adds no inputs', () => {
         const original = createTestPsbt({
           inputCount: 1,
           outputCount: 2,
@@ -949,8 +957,8 @@ export const registerPsbtPayjoinContracts = () => {
           TESTNET
         );
 
-        expect(result.valid).toBe(true); // Valid but not a proper Payjoin
-        expect(result.warnings.some(w => w.includes('did not add any inputs'))).toBe(true);
+        expect(result.valid).toBe(false); // Not a proper Payjoin (C-D5)
+        expect(result.errors).toContain('Receiver did not add any inputs - this is not a proper Payjoin');
       });
     });
 

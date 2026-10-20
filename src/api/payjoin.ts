@@ -8,7 +8,9 @@ import apiClient from './client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import {
   PayjoinAttemptResponseSchema,
+  PayjoinReleaseOriginalResponseSchema,
   type PayjoinAttemptResponse,
+  type PayjoinReleaseOriginalResponse,
 } from '@sanctuary/shared/schemas/bitcoinResponses';
 
 export interface PayjoinUriResponse {
@@ -82,22 +84,30 @@ export async function parsePayjoinUri(uri: string): Promise<ParsedUri> {
   return apiClient.post<ParsedUri>('/payjoin/parse-uri', { uri });
 }
 
+export interface PayjoinAttemptOptions {
+  signal?: AbortSignal;
+  /** The receiver budget is 30s server-side; callers pass a longer client budget. */
+  timeoutMs?: number;
+}
+
 /**
- * Attempt to perform a Payjoin send
- * Returns the Payjoin proposal PSBT if successful
+ * Round one of a BIP78 send: hand the server the signed (not finalized)
+ * original PSBT for the authenticated intent. The server verifies it, posts a
+ * finalized original to the receiver, and returns the validated proposal plus
+ * its replacement intent, which still needs the sender's second signature.
  */
 export async function attemptPayjoin(
   walletId: string,
-  psbt: string,
+  signedPsbt: string,
   intentId: string,
   intentDigest: string,
   payjoinUrl: string,
   network: NetworkType,
-  signal?: AbortSignal,
+  options: PayjoinAttemptOptions = {},
 ): Promise<PayjoinAttemptResult> {
   const request = {
     walletId,
-    psbt,
+    signedPsbt,
     intentId,
     intentDigest,
     payjoinUrl,
@@ -105,8 +115,26 @@ export async function attemptPayjoin(
   };
   return apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', request, {
     schema: PayjoinAttemptResponseSchema,
-    ...(signal ? { signal } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
   });
+}
+
+/**
+ * Make the signed original broadcastable again after an abandoned or failed
+ * payjoin round. The server decides: `{ restored }` on success, 409 while the
+ * proposal's broadcast outcome is unknown, 400 when the original is gone.
+ */
+export async function releasePayjoinOriginal(
+  walletId: string,
+  intentId: string,
+  intentDigest: string,
+): Promise<PayjoinReleaseOriginalResponse> {
+  return apiClient.post<PayjoinReleaseOriginalResponse>(
+    '/payjoin/release-original',
+    { walletId, intentId, intentDigest },
+    { schema: PayjoinReleaseOriginalResponseSchema },
+  );
 }
 
 /**

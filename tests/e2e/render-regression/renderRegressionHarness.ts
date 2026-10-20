@@ -566,6 +566,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
     queuedBlocksSummary: null,
   }),
   'GET /transactions/recent': mockResponse([]),
+  'POST /payjoin/release-original': mockResponse({ restored: false }),
   'GET /transactions/balance-history': mockResponse(flatBalanceHistory(125000000)),
   'GET /transactions/activity-summary': mockResponse({
     count: 3,

@@ -19,6 +19,8 @@ interface DraftActionsProps {
   signing: boolean;
   broadcasting: boolean;
   savingDraft: boolean;
+  /** A payjoin round in progress: its intents can never be saved as drafts (C-D9). */
+  saveDraftLocked?: boolean;
   onSign?: () => void;
   onBroadcast?: () => void;
   onSaveDraft?: () => void;
@@ -149,6 +151,7 @@ export function DraftActions({
   signing,
   broadcasting,
   savingDraft,
+  saveDraftLocked = false,
   onSign,
   onBroadcast,
   onSaveDraft,
@@ -216,7 +219,7 @@ export function DraftActions({
           <Button
             variant="secondary"
             onClick={onSaveDraft}
-            disabled={signing || broadcasting}
+            disabled={signing || broadcasting || saveDraftLocked}
             isLoading={savingDraft}
             className="w-full"
           >

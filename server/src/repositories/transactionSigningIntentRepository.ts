@@ -61,6 +61,11 @@ export type BroadcastClaimResult =
   | { status: 'claimed'; record: TransactionSigningIntent; priorState: BroadcastPriorState }
   | { status: 'accepted' | 'complete' | 'busy' | 'conflict' };
 
+/** Error messages `create` and `restorePayjoinOriginal` throw to roll their transaction back. */
+export const SIGNING_INTENT_SUPERSESSION_CONFLICT = 'SIGNING_INTENT_SUPERSESSION_CONFLICT';
+export const SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND = 'SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND';
+export const PAYJOIN_ORIGINAL_RESTORE_CONFLICT = 'PAYJOIN_ORIGINAL_RESTORE_CONFLICT';
+
 export const create = async (
   data: CreateTransactionSigningIntentRecord,
 ): Promise<TransactionSigningIntent> => prisma.$transaction(async tx => {
@@ -92,14 +97,114 @@ export const create = async (
       data: { supersededById: created.id },
     });
     if (update.count !== 1) {
-      throw new Error('SIGNING_INTENT_SUPERSESSION_CONFLICT');
+      throw new Error(SIGNING_INTENT_SUPERSESSION_CONFLICT);
     }
+    // C-D9: a draft-bound intent is never superseded. Callers check first. Draft
+    // creation row-locks the same intent (lockDraftableIntent) in the
+    // transaction that inserts the draft, so the update above waits for a
+    // draft transaction that locked first, and this re-read (a fresh READ
+    // COMMITTED snapshot) then sees its committed draft and rolls back. A
+    // draft transaction that locks second finds supersededById set and aborts.
+    const boundDraft = await tx.draftTransaction.findFirst({
+      where: { walletId: data.walletId, signingIntentId: data.supersedesIntentId },
+      select: { id: true },
+    });
+    if (boundDraft) throw new Error(SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND);
   }
   return created;
 });
 
 export const findById = (id: string): Promise<TransactionSigningIntent | null> =>
   prisma.transactionSigningIntent.findUnique({ where: { id } });
+
+/** The payjoin replacement whose supersession link points at an intent, if any. */
+export const findPayjoinReplacementFor = (walletId: string, intentId: string) =>
+  prisma.transactionSigningIntent.findFirst({
+    where: { walletId, supersededById: intentId, source: 'payjoin' },
+    select: { id: true },
+  });
+
+/** The transaction client lockDraftableIntent locks through (the draft insert's own). */
+export type SigningIntentDraftLockDbClient = Pick<typeof prisma, 'transactionSigningIntent'>;
+
+/**
+ * Row-lock an intent a draft is about to bind, inside the transaction that
+ * inserts the draft. Matches only a current (not superseded), non-payjoin
+ * intent of the wallet; the self-assignment of supersededById is a no-op write
+ * that takes the row lock `create` takes when it supersedes the intent, so the
+ * two writers serialize (C-D9). Returns false when nothing matched.
+ */
+export const lockDraftableIntent = async (
+  intentId: string,
+  walletId: string,
+  client: SigningIntentDraftLockDbClient,
+): Promise<boolean> => {
+  const locked = await client.transactionSigningIntent.updateMany({
+    where: { id: intentId, walletId, supersededById: null, source: { not: 'payjoin' } },
+    data: { supersededById: null },
+  });
+  return locked.count === 1;
+};
+
+export type PayjoinOriginalRestoreResult =
+  | 'restored'
+  | 'not_superseded'
+  | 'in_flight'
+  | 'not_found'
+  | 'not_payjoin';
+
+/**
+ * Make a signed original broadcastable again by parking its payjoin
+ * replacement behind it (the replacement's supersededById points back at the
+ * original). The replacement must still be an untouched `ready` row: a claimed,
+ * unknown, accepted or consumed proposal is `in_flight`. claimBroadcast and the
+ * park both condition on the replacement's `supersededById: null` and `ready`
+ * state, so at most one of {proposal broadcast, original restoration} wins.
+ */
+export const restorePayjoinOriginal = async (
+  originalId: string,
+  walletId: string,
+  digest: string,
+): Promise<PayjoinOriginalRestoreResult> => prisma.$transaction(async tx => {
+  const original = await tx.transactionSigningIntent.findFirst({
+    where: { id: originalId, walletId, snapshotDigest: digest, consumedAt: null },
+    select: { supersededById: true },
+  });
+  if (!original) return 'not_found';
+  const replacementId = original.supersededById;
+  if (!replacementId) return 'not_superseded';
+  const replacement = await tx.transactionSigningIntent.findUnique({
+    where: { id: replacementId },
+    select: { source: true, walletId: true },
+  });
+  if (!replacement || replacement.source !== 'payjoin' || replacement.walletId !== walletId) return 'not_payjoin';
+  const parked = await tx.transactionSigningIntent.updateMany({
+    where: {
+      id: replacementId,
+      walletId,
+      source: 'payjoin',
+      supersededById: null,
+      consumedAt: null,
+      broadcastState: 'ready',
+      broadcastTxid: null,
+    },
+    data: { supersededById: originalId },
+  });
+  if (parked.count !== 1) {
+    // A concurrent release that already parked the replacement is not a conflict.
+    const current = await tx.transactionSigningIntent.findUnique({
+      where: { id: replacementId },
+      select: { supersededById: true },
+    });
+    return current?.supersededById === originalId ? 'not_superseded' : 'in_flight';
+  }
+  const restored = await tx.transactionSigningIntent.updateMany({
+    where: { id: originalId, supersededById: replacementId, consumedAt: null },
+    data: { supersededById: null },
+  });
+  if (restored.count !== 1) throw new Error(PAYJOIN_ORIGINAL_RESTORE_CONFLICT);
+  return 'restored';
+});
 
 const claimStateConditions = (
   input: BroadcastClaimInput,
@@ -359,6 +464,9 @@ export const deferAcceptedReconciliation = (id: string, now: Date) =>
 export const transactionSigningIntentRepository = {
   create,
   findById,
+  findPayjoinReplacementFor,
+  lockDraftableIntent,
+  restorePayjoinOriginal,
   claimBroadcast,
   markBroadcastUnknown,
   markBroadcastStalled,

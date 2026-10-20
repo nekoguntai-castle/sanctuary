@@ -148,14 +148,58 @@ export const payjoinPaths = {
     post: {
       tags: ['Payjoin'],
       summary: 'Attempt Payjoin send',
-      description: 'Submit an original PSBT to a Payjoin receiver and return the proposal result.',
+      description: 'BIP78 round one. Verify the signed original PSBT against its signing intent, post it '
+        + 'finalized to the Payjoin receiver, and return the validated proposal with its replacement intent '
+        + '(receiver final fields stripped for the second signature). Every fallback is '
+        + '`{ success: false, isPayjoin: false, error }`. Payjoin is unavailable for multisig wallets, '
+        + 'non-P2WPKH/P2TR wallets, draft-bound intents, approval-required spends and wallets with an '
+        + 'enforced spending-limit or velocity policy.',
       security: bearerAuth,
       requestBody: jsonRequestBody('#/components/schemas/PayjoinAttemptRequest'),
       responses: {
         200: jsonResponse('Payjoin attempt result', '#/components/schemas/PayjoinAttemptResponse'),
-        400: apiErrorResponse,
+        400: {
+          ...apiErrorResponse,
+          description: 'Invalid request or signed original (e.g. details.reason missing_witness_data, '
+            + 'metadata_mismatch), or details.reason payjoin_multisig_unsupported / payjoin_script_type_unsupported',
+        },
+        401: apiErrorResponse,
+        403: {
+          ...apiErrorResponse,
+          description: 'Blocked by vault policy, or details.reason approval_required / payjoin_policy_usage_unsupported',
+        },
+        409: {
+          ...apiErrorResponse,
+          description: 'details.reason draft_bound_intent, already_broadcast, payjoin_broadcast_in_progress, '
+            + 'or payjoin_replacement_not_original (the intent is itself a payjoin proposal)',
+        },
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/payjoin/release-original': {
+    post: {
+      tags: ['Payjoin'],
+      summary: 'Restore the signed Payjoin original',
+      description: 'Make the signed original broadcastable again after an abandoned or failed Payjoin round '
+        + 'by parking its superseding proposal behind it. Not behind the payjoinSupport feature flag, so a '
+        + 'pending proposal never strands the original.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/PayjoinReleaseOriginalRequest'),
+      responses: {
+        200: jsonResponse('Release result', '#/components/schemas/PayjoinReleaseOriginalResponse'),
+        400: {
+          ...apiErrorResponse,
+          description: 'Invalid request, or details.reason missing_intent',
+        },
         401: apiErrorResponse,
         403: apiErrorResponse,
+        404: apiErrorResponse,
+        409: {
+          ...apiErrorResponse,
+          description: 'details.reason payjoin_broadcast_in_progress (the proposal broadcast is claimed or its '
+            + 'outcome unknown) or draft_bound_intent',
+        },
         500: apiErrorResponse,
       },
     },

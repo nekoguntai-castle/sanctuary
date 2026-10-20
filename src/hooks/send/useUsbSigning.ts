@@ -35,7 +35,17 @@ export interface UseUsbSigningDeps {
   setSignedRawTx: (v: string | null) => void;
   setSignedDevices: (fn: (prev: Set<string>) => Set<string>) => void;
   beginSigning: () => SendOperationLease | null;
+  /** True while a payjoin proposal awaits its round-two signature, which never goes to a USB device. */
+  isRoundTwoLocked?: () => boolean;
+  /** Called after a USB signature is applied: the send is no longer signed by an uploaded artifact. */
+  onUsbSigned?: () => void;
 }
+
+const neverRoundTwoLocked = (): boolean => false;
+const ignoreUsbSigned = (): void => undefined;
+
+const ROUND_TWO_USB_MESSAGE =
+  'Sign the payjoin proposal with a PSBT file or QR code; USB signing is not available for it';
 
 export interface UseUsbSigningResult {
   signWithHardwareWallet: () => Promise<string | null>;
@@ -140,6 +150,28 @@ function getMultisigUsbProductBlock(
     return null;
   }
   return getUnsupportedMultisigHardwareSigningMessage(deviceName);
+}
+
+type DeviceSigningPreflight =
+  | { error: string }
+  | { psbtToSign: string; hwType: HardwareWalletType };
+
+/** Every refusal signWithDevice makes before it opens a transport. */
+function getDeviceSigningPreflight(
+  device: Device,
+  wallet: Wallet,
+  psbtToSign: string | null,
+  roundTwoLocked: boolean,
+): DeviceSigningPreflight {
+  if (roundTwoLocked) return { error: ROUND_TWO_USB_MESSAGE };
+  if (!psbtToSign) return { error: 'No PSBT available to sign' };
+  const hwType = getHardwareWalletType(device.type);
+  if (!hwType) {
+    return { error: `Unsupported device type: ${device.type}. Use PSBT file signing instead.` };
+  }
+  const blocked = getUsbSigningDeviceError(device, hwType)
+    ?? getMultisigUsbProductBlock(wallet, hwType, getDeviceDisplayName(device));
+  return blocked ? { error: blocked } : { psbtToSign, hwType };
 }
 
 function failDeviceSigning(setError: (v: string | null) => void, message: string): false {
@@ -302,12 +334,18 @@ export function useUsbSigning({
   setSignedRawTx,
   setSignedDevices,
   beginSigning,
+  isRoundTwoLocked = neverRoundTwoLocked,
+  onUsbSigned = ignoreUsbSigned,
 }: UseUsbSigningDeps): UseUsbSigningResult {
   const hardwareWallet = useHardwareWallet();
 
   // Sign with connected hardware wallet
   const signWithHardwareWalletResult = useCallback(
     async (transaction = txData ?? undefined): Promise<UsbSignResult | null> => {
+    if (isRoundTwoLocked()) {
+      setError(ROUND_TWO_USB_MESSAGE);
+      return null;
+    }
     if (!transaction || !hardwareWallet.isConnected || !hardwareWallet.device) {
       setError('Hardware wallet not connected or no transaction to sign');
       return null;
@@ -351,6 +389,7 @@ export function useUsbSigning({
           );
           return null;
         }
+        onUsbSigned();
         return signResult;
     } catch (err) {
       if (!lease.isCurrent()) return null;
@@ -361,7 +400,7 @@ export function useUsbSigning({
       if (lease.isCurrent()) setIsSigning(false);
     }
     },
-    [txData, hardwareWallet, wallet, walletId, setIsSigning, setError, beginSigning]
+    [txData, hardwareWallet, wallet, walletId, setIsSigning, setError, beginSigning, isRoundTwoLocked, onUsbSigned]
   );
 
   const signWithHardwareWallet = useCallback(async (): Promise<string | null> => {
@@ -372,28 +411,16 @@ export function useUsbSigning({
   // Sign with a specific device (for multi-sig USB signing)
   const signWithDevice = useCallback(
     async (device: Device): Promise<boolean> => {
-    const psbtToSign = getPsbtToSign(unsignedPsbt, txData);
-    if (!psbtToSign) {
-      return failDeviceSigning(setError, 'No PSBT available to sign');
+    const preflight = getDeviceSigningPreflight(
+      device,
+      wallet,
+      getPsbtToSign(unsignedPsbt, txData),
+      isRoundTwoLocked(),
+    );
+    if ('error' in preflight) {
+      return failDeviceSigning(setError, preflight.error);
     }
-
-    const hwType = getHardwareWalletType(device.type);
-    if (!hwType) {
-      return failDeviceSigning(
-        setError,
-        `Unsupported device type: ${device.type}. Use PSBT file signing instead.`
-      );
-    }
-
-    const deviceError = getUsbSigningDeviceError(device, hwType);
-    if (deviceError) {
-      return failDeviceSigning(setError, deviceError);
-    }
-
-    const productBlock = getMultisigUsbProductBlock(wallet, hwType, getDeviceDisplayName(device));
-    if (productBlock) {
-      return failDeviceSigning(setError, productBlock);
-    }
+    const { psbtToSign, hwType } = preflight;
 
     const lease = beginSigning();
     if (!lease) {
@@ -438,7 +465,9 @@ export function useUsbSigning({
         setSignedDevices,
         lease,
       });
-      return lease.isCurrent();
+      if (!lease.isCurrent()) return false;
+      onUsbSigned();
+      return true;
     } catch (err) {
       if (!lease.isCurrent()) return false;
       log.error('Device signing failed', { deviceId: device.id, error: err });
@@ -471,6 +500,8 @@ export function useUsbSigning({
       setSignedRawTx,
       setSignedDevices,
       beginSigning,
+      isRoundTwoLocked,
+      onUsbSigned,
     ]
   );
 

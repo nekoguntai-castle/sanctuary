@@ -61,7 +61,11 @@ export const payjoinSchemas = {
     type: 'object',
     properties: {
       walletId: { type: 'string', minLength: 1 },
-      psbt: { type: 'string', minLength: 1, description: 'Original PSBT in base64 format' },
+      signedPsbt: {
+        type: 'string',
+        minLength: 1,
+        description: 'Signed (not finalized) original PSBT for the authenticated intent',
+      },
       intentId: { type: 'string', minLength: 1 },
       intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       payjoinUrl: { type: 'string', format: 'uri' },
@@ -71,7 +75,7 @@ export const payjoinSchemas = {
         default: 'mainnet',
       },
     },
-    required: ['walletId', 'psbt', 'intentId', 'intentDigest', 'payjoinUrl'],
+    required: ['walletId', 'signedPsbt', 'intentId', 'intentDigest', 'payjoinUrl'],
     additionalProperties: false,
   },
   PayjoinAttemptResponse: {
@@ -103,6 +107,26 @@ export const payjoinSchemas = {
         required: ['success', 'isPayjoin'],
       },
     ],
+  },
+  PayjoinReleaseOriginalRequest: {
+    type: 'object',
+    properties: {
+      walletId: { type: 'string', minLength: 1 },
+      intentId: { type: 'string', minLength: 1, description: 'The signed original intent to restore' },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    },
+    required: ['walletId', 'intentId', 'intentDigest'],
+    additionalProperties: false,
+  },
+  PayjoinReleaseOriginalResponse: {
+    type: 'object',
+    properties: {
+      restored: {
+        type: 'boolean',
+        description: 'True when a superseding payjoin proposal was parked and the original restored; false when it was not superseded',
+      },
+    },
+    required: ['restored'],
   },
   PayjoinReceiverError: {
     type: 'string',

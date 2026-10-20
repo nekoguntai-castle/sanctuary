@@ -191,8 +191,11 @@ Privacy-preserving send and receive flows using BIP78 Payjoin.
 - `GET /api/v1/payjoin/eligibility/:walletId` - Check wallet readiness
 - `GET /api/v1/payjoin/address/:addressId/uri` - Generate BIP21 with `pj=` param
 - `POST /api/v1/payjoin/parse-uri` - Parse BIP21 with Payjoin
-- `POST /api/v1/payjoin/attempt` - Attempt Payjoin send (fallback to regular send on failure)
+- `POST /api/v1/payjoin/attempt` - BIP78 round one: takes the **signed** original as `signedPsbt` (base64; the legacy `psbt` field is rejected), verifies it against its signing intent, posts it finalized to the receiver and returns the proposal plus its replacement intent for a second signature. Every failure answers `{ success: false, isPayjoin: false, error }` and the client falls back to the original
+- `POST /api/v1/payjoin/release-original` - Restore the signed original after an abandoned or failed round (`{ restored }`; 409 while the proposal's broadcast is in progress, so both can never be broadcast). Not behind the `payjoinSupport` flag
 - `POST /api/v1/payjoin/:addressId` - Payjoin receiver endpoint (v1, `text/plain` PSBT body, `text/plain` proposal/error response)
+
+Payjoin sends are available only for single-sig native segwit or taproot wallets, never for a draft-bound intent or an approval-required spend, and **not on wallets with an enforced spending-limit or velocity policy** (403 `payjoin_policy_usage_unsupported`): a receiver may broadcast the signed original itself, outside Sanctuary's policy reservation. Payjoin intents cannot be saved as drafts.
 
 Receiver mode is still feature-gated. Receiver-side input signing is not implemented, and BIP78 requires the receiver's input in a proposal to be finalized. The receiver endpoint therefore validates the original PSBT (returning precise BIP78 rejections for bad originals) and then answers `unavailable` instead of returning a proposal, until that signing boundary is closed.
 

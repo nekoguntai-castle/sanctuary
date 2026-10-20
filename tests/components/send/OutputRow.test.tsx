@@ -603,14 +603,29 @@ describe('OutputRow', () => {
       expect(screen.queryByText(/Payjoin enabled/)).not.toBeInTheDocument();
     });
 
-    it('should show payjoin status', () => {
+    it.each([
+      ['negotiating', /contacting receiver\.\.\./],
+      ['awaiting-signature', /sign the payjoin proposal/],
+      ['broadcasting', /broadcasting payjoin\.\.\./],
+      ['skipped', /not used for this send/],
+    ] as const)('should show the %s payjoin status', (payjoinStatus, label) => {
       renderRow({
         payjoinUrl: 'https://example.com/payjoin',
-        payjoinStatus: 'attempting',
+        payjoinStatus,
         index: 0,
       });
 
-      expect(screen.getByText(/attempting.../)).toBeInTheDocument();
+      expect(screen.getByText(label)).toBeInTheDocument();
+    });
+
+    it('should show no status suffix while payjoin is idle', () => {
+      renderRow({
+        payjoinUrl: 'https://example.com/payjoin',
+        payjoinStatus: 'idle',
+        index: 0,
+      });
+
+      expect(screen.getByText('Payjoin enabled - enhanced privacy for this transaction')).toBeInTheDocument();
     });
 
     it('should show success checkmark when payjoin succeeds', () => {

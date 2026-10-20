@@ -7,7 +7,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { SendTransactionProvider, useSendTransaction } from '../../contexts/send';
-import { useSendTransactionActions } from '../../hooks/send/useSendTransactionActions';
+import { useSendTransactionActions, type UseSendTransactionActionsResult } from '../../hooks/send/useSendTransactionActions';
 import { useHardwareWallet } from '../../hooks/useHardwareWallet';
 import { createLogger } from '../../utils/logger';
 import { isMultisigType } from '../../types';
@@ -29,6 +29,11 @@ interface WizardContentProps {
   walletId: string;
   draftTxData?: DraftTransactionData;
   onCancel: () => void;
+}
+
+// A payjoin round in flight (attempt, release, fallback broadcast) holds the wizard like a broadcast does.
+function isWizardNavigationLocked(actions: UseSendTransactionActionsResult): boolean {
+  return actions.isSigning || actions.isBroadcasting || actions.isSavingDraft || actions.isPayjoinBusy;
 }
 
 function WizardContent({
@@ -88,7 +93,7 @@ function WizardContent({
       onCancel={onCancel}
       onClearError={actions.clearError}
       walletName={wallet.name}
-      navigationLocked={actions.isSigning || actions.isBroadcasting || actions.isSavingDraft}
+      navigationLocked={isWizardNavigationLocked(actions)}
     >
       <WizardStepContent
         actions={actions}

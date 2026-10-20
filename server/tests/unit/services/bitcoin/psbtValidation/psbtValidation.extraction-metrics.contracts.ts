@@ -206,12 +206,11 @@ export const registerPsbtExtractionMetricsContracts = () => {
       expect(feeRate).toBeLessThan(200);
     });
 
-    it('should return 0 for PSBT without input values', () => {
+    it('should throw for PSBT without input values', () => {
       const psbt = createTestPsbt({ addWitnessUtxo: false });
-      const feeRate = calculateFeeRate(psbt);
 
-      // Without UTXO data, cannot calculate fee
-      expect(feeRate).toBeLessThanOrEqual(0);
+      // Without UTXO data the fee is unknown; skipping the input would understate it
+      expect(() => calculateFeeRate(psbt)).toThrow('Input 0 is missing UTXO data');
     });
 
     it('should handle multiple inputs and outputs', () => {

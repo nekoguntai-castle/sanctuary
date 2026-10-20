@@ -109,6 +109,17 @@ export function createRealisticPsbt(options: {
   return psbt;
 }
 
+/**
+ * Finalizes the given (receiver) inputs the way a BIP78 receiver does. Proposal
+ * validation never verifies receiver witnesses, so a placeholder suffices.
+ */
+export function finalizeReceiverInputs(psbt: bitcoin.Psbt, receiverIndexes: number[]): bitcoin.Psbt {
+  receiverIndexes.forEach((index) => {
+    psbt.data.inputs[index].finalScriptWitness = Buffer.from('0201aa0102', 'hex');
+  });
+  return psbt;
+}
+
 export const setupPayjoinIntegrationHarness = () => {
   beforeEach(() => {
     resetPrismaMocks();

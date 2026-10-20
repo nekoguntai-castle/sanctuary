@@ -3,10 +3,12 @@
  *
  * These helpers enforce the BIP78 sender safety boundary before a receiver's
  * proposal is returned for signing: original transaction fields, sender inputs,
- * sender outputs, and fee policy must remain within the sender's intent.
+ * sender outputs, and fee policy must remain within the sender's intent, and
+ * the per-input/per-output PSBT maps must follow the BIP78 senders' checklist.
  */
 import * as bitcoin from 'bitcoinjs-lib';
 import type { PsbtInput, PsbtOutput, ValidationResult } from './psbtValidation';
+import { isWitnessProgram } from './transactionWeight';
 
 type ValidationMessages = Pick<ValidationResult, 'errors' | 'warnings'>;
 
@@ -221,43 +223,59 @@ const isSameInput = (a: PsbtInput, b: PsbtInput): boolean => {
 
 const formatInput = (input: PsbtInput): string => `${input.txid}:${input.vout}`;
 
-export const validateFeePolicy = (
-  originalFee: number,
-  proposalFee: number,
-  { errors, warnings }: ValidationMessages
-): void => {
-  // Keep the existing bounded-increase contract until the sender exposes
-  // explicit BIP78 additionalfeeoutputindex/maxadditionalfeecontribution
-  // controls. A zero-fee original cannot safely infer an acceptable increase.
+/**
+ * Shared fee preconditions. False when the comparison cannot continue: a
+ * non-finite, negative or decreased fee, or a zero-fee original (which cannot
+ * safely infer an acceptable increase).
+ */
+const validateFeeAmounts = (originalFee: number, proposalFee: number, errors: string[]): boolean => {
   if (!Number.isFinite(originalFee) || !Number.isFinite(proposalFee)) {
     errors.push(`Non-finite Payjoin fee calculation: ${originalFee} -> ${proposalFee}`);
-    return;
+    return false;
   }
 
   if (originalFee < 0 || proposalFee < 0) {
     errors.push(`Invalid negative Payjoin fee calculation: ${originalFee} -> ${proposalFee}`);
-    return;
+    return false;
   }
 
   if (proposalFee < originalFee) {
     errors.push(`Fee decreased from ${originalFee} to ${proposalFee}`);
-    return;
+    return false;
   }
 
   if (originalFee === 0) {
     validateZeroOriginalFeeProposal(proposalFee, errors);
-    return;
+    return false;
   }
+  return true;
+};
 
-  if (proposalFee > originalFee * 1.5) {
-    errors.push(
-      `Fee increased by more than 50%: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
-    );
-  } else if (proposalFee > originalFee * 1.2) {
-    warnings.push(
-      `Fee increased significantly: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
-    );
+/** Error above +50%, warning above +20%. */
+const validateBoundedIncrease = (
+  label: string,
+  before: number,
+  after: number,
+  { errors, warnings }: ValidationMessages
+): void => {
+  const increase = `${before} -> ${after} (${((after / before - 1) * 100).toFixed(1)}%)`;
+  if (after > before * 1.5) {
+    errors.push(`${label} increased by more than 50%: ${increase}`);
+  } else if (after > before * 1.2) {
+    warnings.push(`${label} increased significantly: ${increase}`);
   }
+};
+
+export const validateFeePolicy = (
+  originalFee: number,
+  proposalFee: number,
+  messages: ValidationMessages
+): void => {
+  // Keep the existing bounded-increase contract until the sender exposes
+  // explicit BIP78 additionalfeeoutputindex/maxadditionalfeecontribution
+  // controls.
+  if (!validateFeeAmounts(originalFee, proposalFee, messages.errors)) return;
+  validateBoundedIncrease('Fee', originalFee, proposalFee, messages);
 };
 
 const validateZeroOriginalFeeProposal = (
@@ -267,4 +285,239 @@ const validateZeroOriginalFeeProposal = (
   if (proposalFee <= 0) return;
 
   errors.push(`Fee increased from zero original fee to ${proposalFee}`);
+};
+
+type PsbtInputMap = bitcoin.Psbt['data']['inputs'][number];
+export type PayjoinScriptType = 'p2wpkh' | 'p2tr' | 'unsupported';
+
+const outpointOf = (input: { hash: Uint8Array; index: number }): string => (
+  `${Buffer.from(input.hash).toString('hex')}:${input.index}`
+);
+
+const inputsByOutpoint = (psbt: bitcoin.Psbt): Map<string, PsbtInputMap> => new Map(
+  psbt.txInputs.map((input, index) => [outpointOf(input), psbt.data.inputs[index]])
+);
+
+const sameBytes = (left: Uint8Array | undefined, right: Uint8Array | undefined): boolean => (
+  left && right ? Buffer.from(left).equals(Buffer.from(right)) : left === right
+);
+
+const sameUtxoData = (left: PsbtInputMap, right: PsbtInputMap): boolean => (
+  sameBytes(left.witnessUtxo?.script, right.witnessUtxo?.script)
+  && left.witnessUtxo?.value === right.witnessUtxo?.value
+  && sameBytes(left.nonWitnessUtxo, right.nonWitnessUtxo)
+);
+
+/**
+ * BIP78 receivers strip the sender inputs' UTXO data. Copy it back from the
+ * original so fees and signing see the prevouts the sender authorized.
+ * Deviation (C-D10): sender UTXO data the receiver left in place is accepted
+ * only when byte-equal to the original's.
+ */
+export const restoreSenderInputPrevouts = (
+  original: bitcoin.Psbt,
+  proposal: bitcoin.Psbt,
+  errors: string[]
+): void => {
+  const originalInputs = inputsByOutpoint(original);
+  proposal.txInputs.forEach((txInput, index) => {
+    const source = originalInputs.get(outpointOf(txInput));
+    if (!source) return;
+    const target = proposal.data.inputs[index];
+    if (target.witnessUtxo || target.nonWitnessUtxo) {
+      if (!sameUtxoData(target, source)) {
+        errors.push(`Sender input ${index} UTXO data differs from the original`);
+      }
+      return;
+    }
+    if (source.witnessUtxo) {
+      target.witnessUtxo = { script: Buffer.from(source.witnessUtxo.script), value: source.witnessUtxo.value };
+    }
+    if (source.nonWitnessUtxo) target.nonWitnessUtxo = Buffer.from(source.nonWitnessUtxo);
+  });
+};
+
+/** The output an input spends: its witnessUtxo, or the spent output of its nonWitnessUtxo. */
+export const inputPrevout = (
+  psbt: bitcoin.Psbt,
+  index: number,
+): { script: Uint8Array; value: bigint } | undefined => {
+  const input = psbt.data.inputs[index];
+  if (input.witnessUtxo) return input.witnessUtxo;
+  if (!input.nonWitnessUtxo) return undefined;
+  return bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo).outs[psbt.txInputs[index].index];
+};
+
+/** C-D4: the only prevout script types a payjoin input may spend. */
+export const payjoinScriptType = (script: Uint8Array | undefined): PayjoinScriptType => {
+  if (!script) return 'unsupported';
+  if (isWitnessProgram(script, 0x00, 20)) return 'p2wpkh';
+  if (isWitnessProgram(script, 0x51, 32)) return 'p2tr';
+  return 'unsupported';
+};
+
+const prevoutScriptType = (psbt: bitcoin.Psbt, index: number): PayjoinScriptType => (
+  payjoinScriptType(inputPrevout(psbt, index)?.script)
+);
+
+const hasUtxoData = (input: PsbtInputMap): boolean => Boolean(input.witnessUtxo || input.nonWitnessUtxo);
+
+const validateNoKeyPaths = (proposal: bitcoin.Psbt, errors: string[]): void => {
+  const carriesKeyPaths = (map: { bip32Derivation?: unknown[]; tapBip32Derivation?: unknown[] }) => (
+    Boolean(map.bip32Derivation?.length || map.tapBip32Derivation?.length)
+  );
+  proposal.data.inputs.forEach((input, index) => {
+    if (carriesKeyPaths(input)) errors.push(`Proposal input ${index} must not carry BIP32 key paths`);
+  });
+  proposal.data.outputs.forEach((output, index) => {
+    if (carriesKeyPaths(output)) errors.push(`Proposal output ${index} must not carry BIP32 key paths`);
+  });
+};
+
+const validateNoInputSignatures = (proposal: bitcoin.Psbt, errors: string[]): void => {
+  proposal.data.inputs.forEach((input, index) => {
+    if (input.partialSig?.length || input.tapKeySig || input.tapScriptSig?.length) {
+      errors.push(`Proposal input ${index} must not carry signatures`);
+    }
+  });
+};
+
+const validateSenderInputsNotFinalized = (
+  proposal: bitcoin.Psbt,
+  senderIndexes: number[],
+  errors: string[]
+): void => {
+  senderIndexes.forEach(index => {
+    const input = proposal.data.inputs[index];
+    if (input.finalScriptSig || input.finalScriptWitness) {
+      errors.push(`Sender input ${index} must not be finalized in the proposal`);
+    }
+  });
+};
+
+const validateReceiverInputsFinalized = (
+  proposal: bitcoin.Psbt,
+  receiverIndexes: number[],
+  errors: string[]
+): void => {
+  receiverIndexes.forEach(index => {
+    const input = proposal.data.inputs[index];
+    if (input.finalScriptSig?.length) {
+      errors.push(`Receiver input ${index} must not carry a non-empty finalScriptSig`);
+    } else if (!input.finalScriptWitness) {
+      errors.push(`Receiver input ${index} must be finalized with a witness`);
+    }
+    if (!hasUtxoData(input)) errors.push(`Receiver input ${index} is missing UTXO data`);
+  });
+};
+
+/** C-D4 peer script types and the C-D10 mixed-input-type rule. */
+const validateReceiverInputScriptTypes = (
+  proposal: bitcoin.Psbt,
+  senderIndexes: number[],
+  receiverIndexes: number[],
+  errors: string[]
+): void => {
+  const senderTypes = [...new Set(senderIndexes.map(index => prevoutScriptType(proposal, index)))];
+  receiverIndexes.forEach(index => {
+    if (!hasUtxoData(proposal.data.inputs[index])) return;
+    const type = prevoutScriptType(proposal, index);
+    if (type === 'unsupported') {
+      errors.push(`Receiver input ${index} script type ${type} is not P2WPKH or P2TR`);
+    } else if (senderTypes.length !== 1 || senderTypes[0] !== type) {
+      errors.push(`Receiver input ${index} script type ${type} does not match sender input type ${senderTypes.join(',')}`);
+    }
+  });
+};
+
+/**
+ * A receiver must not weaken what the sender's signatures commit to: every
+ * input either leaves PSBT_IN_SIGHASH_TYPE unset or asks for SIGHASH_ALL
+ * (SIGHASH_DEFAULT on a P2TR input is the same commitment).
+ */
+const validateSighashTypes = (proposal: bitcoin.Psbt, errors: string[]): void => {
+  const { SIGHASH_ALL, SIGHASH_DEFAULT } = bitcoin.Transaction;
+  proposal.data.inputs.forEach(({ sighashType }, index) => {
+    if (sighashType === undefined || sighashType === SIGHASH_ALL) return;
+    if (sighashType === SIGHASH_DEFAULT && prevoutScriptType(proposal, index) === 'p2tr') return;
+    errors.push(`Proposal input ${index} must not request sighash type 0x${sighashType.toString(16).padStart(2, '0')}`);
+  });
+};
+
+const validateUniformSequence = (proposal: bitcoin.Psbt, errors: string[]): void => {
+  if (new Set(proposal.txInputs.map(input => input.sequence)).size > 1) {
+    errors.push('Proposal inputs use mixed sequences');
+  }
+};
+
+const validateReceiverInputPresent = (receiverIndexes: number[], errors: string[]): void => {
+  if (receiverIndexes.length === 0) {
+    errors.push('Receiver did not add any inputs - this is not a proper Payjoin');
+  }
+};
+
+/**
+ * BIP78 senders' payjoin proposal checklist for the per-input and per-output
+ * PSBT maps. Run after restoreSenderInputPrevouts so sender script types come
+ * from the original's prevouts.
+ */
+export const validateProposalInputMaps = (
+  original: bitcoin.Psbt,
+  proposal: bitcoin.Psbt,
+  errors: string[]
+): void => {
+  const originalOutpoints = new Set(original.txInputs.map(outpointOf));
+  const senderIndexes: number[] = [];
+  const receiverIndexes: number[] = [];
+  proposal.txInputs.forEach((input, index) => {
+    (originalOutpoints.has(outpointOf(input)) ? senderIndexes : receiverIndexes).push(index);
+  });
+
+  validateNoKeyPaths(proposal, errors);
+  validateNoInputSignatures(proposal, errors);
+  validateSighashTypes(proposal, errors);
+  validateSenderInputsNotFinalized(proposal, senderIndexes, errors);
+  validateReceiverInputsFinalized(proposal, receiverIndexes, errors);
+  validateReceiverInputScriptTypes(proposal, senderIndexes, receiverIndexes, errors);
+  validateUniformSequence(proposal, errors);
+  validateReceiverInputPresent(receiverIndexes, errors);
+};
+
+/**
+ * Size of the proposal with the sender inputs finalized exactly as in the
+ * finalized original, so its fee rate is comparable with the original's own.
+ */
+const measuredProposalVsize = (original: bitcoin.Psbt, proposal: bitcoin.Psbt): number => {
+  const originalInputs = inputsByOutpoint(original);
+  const measured = proposal.clone();
+  measured.txInputs.forEach((txInput, index) => {
+    const source = originalInputs.get(outpointOf(txInput));
+    if (!source) return;
+    const target = measured.data.inputs[index];
+    if (source.finalScriptWitness) target.finalScriptWitness = source.finalScriptWitness;
+    if (source.finalScriptSig) target.finalScriptSig = source.finalScriptSig;
+  });
+  return measured.extractTransaction(true).virtualSize();
+};
+
+/**
+ * Fee policy when the sender sent BIP78 `minfeerate` (the original's rate):
+ * the proposal must pay at least that rate, and the bounded-increase contract
+ * applies to the rate. Every fee increase is receiver-funded (sender inputs are
+ * fixed and sender outputs cannot decrease), and keeping the rate after adding
+ * an input needs more than +50% absolute fee on a one-input original.
+ */
+export const validateMinFeeRatePolicy = (
+  original: bitcoin.Psbt,
+  proposal: bitcoin.Psbt,
+  { originalFee, proposalFee, minFeeRate }: { originalFee: number; proposalFee: number; minFeeRate: number },
+  messages: ValidationMessages
+): void => {
+  if (!validateFeeAmounts(originalFee, proposalFee, messages.errors)) return;
+  const feeRate = proposalFee / measuredProposalVsize(original, proposal);
+  if (feeRate < minFeeRate) {
+    messages.errors.push(`Proposal fee rate ${feeRate.toFixed(3)} sat/vB is below the minfeerate ${minFeeRate} sat/vB`);
+    return;
+  }
+  if (minFeeRate > 0) validateBoundedIncrease('Fee rate', minFeeRate, Number(feeRate.toFixed(3)), messages);
 };

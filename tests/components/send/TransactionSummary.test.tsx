@@ -232,4 +232,17 @@ describe('TransactionSummary', () => {
 
     expect(screen.getByText('MAX')).toBeInTheDocument();
   });
+
+  it.each([
+    ['negotiating', 'Payjoin (contacting receiver)'],
+    ['awaiting-signature', 'Payjoin (sign proposal)'],
+    ['broadcasting', 'Payjoin (broadcasting)'],
+    ['success', 'Payjoin active'],
+    ['skipped', 'Payjoin (not used)'],
+    ['idle', 'Payjoin enabled'],
+  ])('labels the %s payjoin status', (payjoinStatus, label) => {
+    render(<TransactionSummary {...buildProps({ payjoinStatus })} />);
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
 });

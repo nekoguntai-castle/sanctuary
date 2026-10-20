@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   findUniqueOrThrow: vi.fn(),
   findMany: vi.fn(),
+  findFirst: vi.fn(),
+  findDraft: vi.fn(),
 }));
 
 import { Prisma } from '../../../src/generated/prisma/client';
@@ -17,6 +19,7 @@ vi.mock('../../../src/models/prisma', () => ({
     transactionSigningIntent: {
       findUnique: mocks.findUnique,
       findMany: mocks.findMany,
+      findFirst: mocks.findFirst,
       updateMany: mocks.updateMany,
     },
   },
@@ -37,6 +40,12 @@ import {
   claimStalledBroadcastLookup,
   markStalledBroadcastAccepted,
   deferAcceptedReconciliation,
+  findPayjoinReplacementFor,
+  lockDraftableIntent,
+  restorePayjoinOriginal,
+  PAYJOIN_ORIGINAL_RESTORE_CONFLICT,
+  SIGNING_INTENT_SUPERSESSION_CONFLICT,
+  SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND,
 } from '../../../src/repositories/transactionSigningIntentRepository';
 
 const record = {
@@ -62,8 +71,11 @@ describe('transactionSigningIntentRepository', () => {
         updateMany: mocks.updateMany,
         findUnique: mocks.findUnique,
         findUniqueOrThrow: mocks.findUniqueOrThrow,
+        findFirst: mocks.findFirst,
       },
+      draftTransaction: { findFirst: mocks.findDraft },
     }));
+    mocks.findDraft.mockResolvedValue(null);
     mocks.create.mockResolvedValue(record);
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUniqueOrThrow.mockResolvedValue(record);
@@ -99,7 +111,22 @@ describe('transactionSigningIntentRepository', () => {
     mocks.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(create({ ...record, supersedesIntentId: 'intent-old' }))
-      .rejects.toThrow('SIGNING_INTENT_SUPERSESSION_CONFLICT');
+      .rejects.toThrow(SIGNING_INTENT_SUPERSESSION_CONFLICT);
+    expect(SIGNING_INTENT_SUPERSESSION_CONFLICT).toBe('SIGNING_INTENT_SUPERSESSION_CONFLICT');
+  });
+
+  it('rolls back when a draft was bound to the predecessor after the caller checked (C-D9)', async () => {
+    mocks.findDraft.mockResolvedValueOnce({ id: 'draft-1' });
+
+    await expect(create({ ...record, supersedesIntentId: 'intent-old' }))
+      .rejects.toThrow(SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND);
+    expect(SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND).toBe('SIGNING_INTENT_SUPERSESSION_DRAFT_BOUND');
+    // Re-read after the predecessor row is locked by the supersession update.
+    expect(mocks.findDraft).toHaveBeenCalledWith({
+      where: { walletId: 'wallet-1', signingIntentId: 'intent-old' },
+      select: { id: true },
+    });
+    expect(mocks.updateMany.mock.invocationCallOrder[0]).toBeLessThan(mocks.findDraft.mock.invocationCallOrder[0]);
   });
 
   it('loads an intent by its unique identifier', async () => {
@@ -411,5 +438,145 @@ describe('transactionSigningIntentRepository', () => {
       where: { id: 'intent-1', broadcastState: 'accepted' },
       data: { broadcastLastAttemptAt: now },
     });
+  });
+});
+
+describe('payjoin original restoration', () => {
+  const digest = 'a'.repeat(64);
+  const originalWhere = { id: 'original-1', walletId: 'wallet-1', snapshotDigest: digest, consumedAt: null };
+  const parkWhere = {
+    id: 'replacement-1',
+    walletId: 'wallet-1',
+    source: 'payjoin',
+    supersededById: null,
+    consumedAt: null,
+    broadcastState: 'ready',
+    broadcastTxid: null,
+  };
+  const replacement = { source: 'payjoin', walletId: 'wallet-1' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.transaction.mockImplementation(async callback => callback({
+      transactionSigningIntent: {
+        findFirst: mocks.findFirst,
+        findUnique: mocks.findUnique,
+        updateMany: mocks.updateMany,
+      },
+    }));
+    mocks.findFirst.mockResolvedValue({ supersededById: 'replacement-1' });
+    mocks.findUnique.mockResolvedValue(replacement);
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('row-locks a current non-payjoin intent through the draft transaction with a no-op write', async () => {
+    const tx = { transactionSigningIntent: { updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }) } };
+
+    await expect(lockDraftableIntent('original-1', 'wallet-1', tx as never)).resolves.toBe(true);
+    expect(tx.transactionSigningIntent.updateMany).toHaveBeenCalledWith({
+      where: { id: 'original-1', walletId: 'wallet-1', supersededById: null, source: { not: 'payjoin' } },
+      data: { supersededById: null },
+    });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('reports an intent that is superseded, payjoin, or missing as not lockable', async () => {
+    const tx = { transactionSigningIntent: { updateMany: vi.fn().mockResolvedValueOnce({ count: 0 }) } };
+
+    await expect(lockDraftableIntent('original-1', 'wallet-1', tx as never)).resolves.toBe(false);
+  });
+
+  it('finds the payjoin replacement that supersedes an intent', async () => {
+    mocks.findFirst.mockResolvedValueOnce({ id: 'replacement-1' });
+
+    await expect(findPayjoinReplacementFor('wallet-1', 'original-1')).resolves.toEqual({ id: 'replacement-1' });
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: { walletId: 'wallet-1', supersededById: 'original-1', source: 'payjoin' },
+      select: { id: true },
+    });
+  });
+
+  it('parks the ready replacement behind the original and restores the original', async () => {
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest)).resolves.toBe('restored');
+
+    expect(mocks.findFirst).toHaveBeenCalledWith({ where: originalWhere, select: { supersededById: true } });
+    expect(mocks.findUnique).toHaveBeenCalledWith({
+      where: { id: 'replacement-1' },
+      select: { source: true, walletId: true },
+    });
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(1, {
+      where: parkWhere,
+      data: { supersededById: 'original-1' },
+    });
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: 'original-1', supersededById: 'replacement-1', consumedAt: null },
+      data: { supersededById: null },
+    });
+  });
+
+  it('reports a missing or digest-mismatched original as not_found', async () => {
+    mocks.findFirst.mockResolvedValueOnce(null);
+
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', 'f'.repeat(64))).resolves.toBe('not_found');
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: { ...originalWhere, snapshotDigest: 'f'.repeat(64) },
+      select: { supersededById: true },
+    });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('is an idempotent no-op for an original that is not superseded', async () => {
+    mocks.findFirst.mockResolvedValueOnce({ supersededById: null });
+
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest)).resolves.toBe('not_superseded');
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a missing replacement', null],
+    ['a standard replacement', { source: 'standard', walletId: 'wallet-1' }],
+    ['a replacement in another wallet', { source: 'payjoin', walletId: 'wallet-2' }],
+  ])('refuses %s as not_payjoin', async (_name, stored) => {
+    mocks.findUnique.mockResolvedValueOnce(stored);
+
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest)).resolves.toBe('not_payjoin');
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('reports a claimed, unknown, accepted or consumed replacement as in_flight', async () => {
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.findUnique.mockResolvedValueOnce(replacement).mockResolvedValueOnce({ supersededById: null });
+
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest)).resolves.toBe('in_flight');
+    expect(mocks.findUnique).toHaveBeenLastCalledWith({
+      where: { id: 'replacement-1' },
+      select: { supersededById: true },
+    });
+    expect(mocks.updateMany).toHaveBeenCalledOnce();
+  });
+
+  it('treats a replacement a concurrent release already parked as not_superseded', async () => {
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.findUnique.mockResolvedValueOnce(replacement).mockResolvedValueOnce({ supersededById: 'original-1' });
+
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest)).resolves.toBe('not_superseded');
+    expect(mocks.updateMany).toHaveBeenCalledOnce();
+  });
+
+  it('reports a replacement that vanished during the re-read as in_flight', async () => {
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.findUnique.mockResolvedValueOnce(replacement).mockResolvedValueOnce(null);
+
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest)).resolves.toBe('in_flight');
+  });
+
+  it('rolls back when the original changed between the read and the restore', async () => {
+    mocks.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    // The code is the rolled-back error's message; callers match on it.
+    expect(PAYJOIN_ORIGINAL_RESTORE_CONFLICT).toBe('PAYJOIN_ORIGINAL_RESTORE_CONFLICT');
+    await expect(restorePayjoinOriginal('original-1', 'wallet-1', digest))
+      .rejects.toThrow(PAYJOIN_ORIGINAL_RESTORE_CONFLICT);
   });
 });

@@ -4,6 +4,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import {
   clonePsbt,
   createRealisticPsbt,
+  finalizeReceiverInputs,
   getPsbtInputs,
   isRbfEnabled,
   TESTNET,
@@ -82,6 +83,7 @@ export const registerPayjoinFlowSecurityContracts = () => {
 
       proposalPsbt.addOutput({ script: receiverOutputScript, value: BigInt(178000) });
       proposalPsbt.addOutput({ script: senderChangeScript, value: BigInt(90000) });
+      finalizeReceiverInputs(proposalPsbt, [1]);
 
       const proposalValidation = validatePayjoinProposal(
         originalPsbt.toBase64(),
@@ -180,6 +182,7 @@ export const registerPayjoinFlowSecurityContracts = () => {
           value: BigInt(50000),
         },
       });
+      finalizeReceiverInputs(badPsbt, [1]);
 
       const validation = validatePayjoinProposal(
         originalPsbt.toBase64(),
@@ -192,7 +195,7 @@ export const registerPayjoinFlowSecurityContracts = () => {
       expect(validation.errors.some(e => e.includes('50%'))).toBe(true);
     });
 
-    it('should warn when receiver adds no inputs', async () => {
+    it('should reject a proposal when the receiver adds no inputs', async () => {
       const originalPsbt = createRealisticPsbt({
         senderInputs: [
           { txid: 'a'.repeat(64), vout: 0, value: 200000 },
@@ -212,10 +215,8 @@ export const registerPayjoinFlowSecurityContracts = () => {
         TESTNET,
       );
 
-      expect(validation.valid).toBe(true);
-      expect(validation.warnings.some(w =>
-        w.includes('not add any inputs') || w.includes('not a proper Payjoin')
-      )).toBe(true);
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toEqual(['Receiver did not add any inputs - this is not a proper Payjoin']);
     });
   });
 
@@ -390,6 +391,7 @@ export const registerPayjoinFlowSecurityContracts = () => {
 
       proposalPsbt.addOutput({ script: outputScript1, value: BigInt(148000) });
       proposalPsbt.addOutput({ script: outputScript2, value: BigInt(70000) });
+      finalizeReceiverInputs(proposalPsbt, [2]);
 
       const validation = validatePayjoinProposal(
         originalPsbt.toBase64(),
@@ -464,7 +466,9 @@ export const registerPayjoinFlowSecurityContracts = () => {
         TESTNET,
       );
 
-      expect(validation.valid).toBe(true);
+      // The clone adds no receiver input, which is not a proper Payjoin (C-D5).
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toEqual(['Receiver did not add any inputs - this is not a proper Payjoin']);
     });
   });
 };

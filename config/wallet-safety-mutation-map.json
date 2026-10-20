@@ -851,7 +851,7 @@
           "id": "taproot-signature-family-and-schnorr-validation",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
           "lineStart": 369,
-          "lineEnd": 440,
+          "lineEnd": 447,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary accepts Core-backed signed vector: 'p2tr'"
@@ -873,8 +873,8 @@
             {
               "id": "x-only-keys-select-schnorr-validation",
               "location": {
-                "start": { "line": 420, "column": 9 },
-                "end": { "line": 420, "column": 29 }
+                "start": { "line": 426, "column": 9 },
+                "end": { "line": 426, "column": 29 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -886,8 +886,8 @@
             {
               "id": "present-signatures-are-cryptographically-validated",
               "location": {
-                "start": { "line": 440, "column": 9 },
-                "end": { "line": 440, "column": 76 }
+                "start": { "line": 447, "column": 9 },
+                "end": { "line": 447, "column": 76 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -901,8 +901,8 @@
         {
           "id": "taproot-artifact-deterministic-finalization",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 448,
-          "lineEnd": 459,
+          "lineStart": 455,
+          "lineEnd": 470,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary validates, finalizes, and extracts an exactly preserved signed PSBT"
@@ -910,8 +910,8 @@
           "canaries": [{
             "id": "non-multisig-inputs-use-library-finalization",
             "location": {
-              "start": { "line": 455, "column": 14 },
-              "end": { "line": 457, "column": 8 }
+              "start": { "line": 466, "column": 14 },
+              "end": { "line": 468, "column": 8 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",

@@ -51,6 +51,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
       valid: true,
       errors: [],
       warnings: [],
+      proposalPsbt,
     });
 
     (global.fetch as Mock).mockResolvedValue({

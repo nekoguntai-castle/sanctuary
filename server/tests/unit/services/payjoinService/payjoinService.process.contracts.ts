@@ -50,7 +50,7 @@ export const registerPayjoinProcessContracts = () => {
       },
     ];
 
-    // Create a minimal valid PSBT for testing
+    // Create a minimal valid BIP78 original (finalized, with UTXO data) for testing
     const createMockPsbt = () => {
       const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
       psbt.addInput({
@@ -75,6 +75,8 @@ export const registerPayjoinProcessContracts = () => {
         }).output!,
         value: BigInt(10000),
       });
+      // Placeholder witness: the receiver checks finalization, not the signature.
+      psbt.data.inputs[0].finalScriptWitness = Buffer.from('0201aa0102', 'hex');
       return psbt;
     };
 
@@ -252,6 +254,26 @@ export const registerPayjoinProcessContracts = () => {
       expect(result.proposalPsbt).toBeUndefined();
       expect(clonePsbt).not.toHaveBeenCalled();
       expect(addInput).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an unfinalized original', (psbt: bitcoin.Psbt) => { delete psbt.data.inputs[0].finalScriptWitness; }],
+      ['an original input without UTXO data', (psbt: bitcoin.Psbt) => { delete psbt.data.inputs[0].witnessUtxo; }],
+    ])('rejects %s before contribution selection', async (_name, edit) => {
+      mockPrismaClient.address.findUnique.mockResolvedValue(mockAddress);
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([mockUtxos[0]]);
+      const mockPsbt = createMockPsbt();
+      edit(mockPsbt);
+      (parsePsbt as Mock).mockReturnValue(mockPsbt);
+
+      const result = await processPayjoinRequest(addressId, mockPsbt.toBase64(), 1);
+
+      expect(result).toEqual({
+        success: false,
+        error: PayjoinErrors.ORIGINAL_PSBT_REJECTED,
+        errorMessage: 'Original PSBT input 0 must be finalized and carry UTXO data',
+      });
+      expect(mockPrismaClient.uTXO.findMany).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {

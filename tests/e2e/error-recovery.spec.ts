@@ -197,6 +197,7 @@ const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
+  'POST /payjoin/release-original': mockResponse({ restored: false }),
   'GET /transactions/balance-history': mockResponse(emptyBalanceHistory()),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
   [`GET /wallets/${WALLET_ID}`]: mockResponse(WALLET),

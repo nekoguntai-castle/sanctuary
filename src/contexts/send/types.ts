@@ -46,7 +46,20 @@ export const STEP_LABELS: Record<WizardStep, string> = {
 // ============================================================================
 
 export type TransactionType = 'standard' | 'consolidation' | 'sweep';
-export type PayjoinAttemptStatus = 'idle' | 'attempting' | 'success' | 'failed';
+/**
+ * Two-round BIP78 payjoin: `negotiating` (round one, signed original sent),
+ * `awaiting-signature` (proposal needs its own signature), `broadcasting`
+ * (proposal broadcast), `failed` (only the signed original may be broadcast),
+ * `skipped` (a payjoin URL on an ineligible send).
+ */
+export type PayjoinAttemptStatus =
+  | 'idle'
+  | 'negotiating'
+  | 'awaiting-signature'
+  | 'broadcasting'
+  | 'success'
+  | 'failed'
+  | 'skipped';
 
 // ============================================================================
 // TRANSACTION STATE
