@@ -346,6 +346,16 @@ export const listBroadcastsForReconciliation = (now: Date, limit = 50) =>
     take: limit,
   });
 
+/**
+ * Move an accepted intent whose persistence failed to the back of the
+ * reconciliation order, so rows that keep failing cannot starve the batch.
+ */
+export const deferAcceptedReconciliation = (id: string, now: Date) =>
+  prisma.transactionSigningIntent.updateMany({
+    where: { id, broadcastState: 'accepted' },
+    data: { broadcastLastAttemptAt: now },
+  });
+
 export const transactionSigningIntentRepository = {
   create,
   findById,
@@ -359,6 +369,7 @@ export const transactionSigningIntentRepository = {
   listStalledBroadcastsForLookup,
   claimStalledBroadcastLookup,
   markStalledBroadcastAccepted,
+  deferAcceptedReconciliation,
 };
 
 export default transactionSigningIntentRepository;

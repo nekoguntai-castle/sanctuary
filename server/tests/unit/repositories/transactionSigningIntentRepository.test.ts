@@ -36,6 +36,7 @@ import {
   listStalledBroadcastsForLookup,
   claimStalledBroadcastLookup,
   markStalledBroadcastAccepted,
+  deferAcceptedReconciliation,
 } from '../../../src/repositories/transactionSigningIntentRepository';
 
 const record = {
@@ -399,5 +400,16 @@ describe('transactionSigningIntentRepository', () => {
     expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
       data: expect.objectContaining({ broadcastAcceptedAt: expect.any(Date) }),
     }));
+  });
+
+  it('moves a failing accepted intent to the back of the reconciliation order', async () => {
+    const now = new Date('2030-01-01T12:00:00Z');
+    const result = { count: 1 };
+    mocks.updateMany.mockResolvedValueOnce(result);
+    await expect(deferAcceptedReconciliation('intent-1', now)).resolves.toBe(result);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'intent-1', broadcastState: 'accepted' },
+      data: { broadcastLastAttemptAt: now },
+    });
   });
 });

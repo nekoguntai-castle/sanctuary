@@ -508,6 +508,17 @@ export function registerOpenApiCoreTests() {
       openApiSpec.components.schemas.RbfResponse.properties.outputs.items
         .properties.isChange,
     ).toEqual({ type: "boolean" });
+    // rbf-draft--multi-recipient-amount-recipient-mismatch: the canonical spend
+    // the broadcast route checks, null when nothing leaves the wallet.
+    expect(openApiSpec.components.schemas.RbfResponse.required).toEqual(
+      expect.arrayContaining(["recipient", "amount"]),
+    );
+    expect(
+      openApiSpec.components.schemas.RbfResponse.properties.recipient,
+    ).toEqual({ type: "string", minLength: 1, nullable: true });
+    expect(
+      openApiSpec.components.schemas.RbfResponse.properties.amount,
+    ).toEqual({ type: "integer", minimum: 1, nullable: true });
 
     expect(openApiSpec.paths["/node/test"].post.security).toEqual(
       browserOrBearerAuthSecurity,

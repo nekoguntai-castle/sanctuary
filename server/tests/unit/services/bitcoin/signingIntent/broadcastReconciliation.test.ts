@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(), claim: vi.fn(), accepted: vi.fn(), complete: vi.fn(), unknown: vi.fn(),
   rejected: vi.fn(), broadcast: vi.fn(), persist: vi.fn(),
   lookup: vi.fn(), stalled: vi.fn(), listStalled: vi.fn(), claimLookup: vi.fn(), stalledAccepted: vi.fn(),
+  defer: vi.fn(), log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock('../../../../../src/utils/logger', () => ({ createLogger: () => mocks.log }));
 vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', () => ({
   MAX_RECONCILE_ATTEMPTS: 60, // pinned against the real constant in transactionSigningIntentRepository.test.ts
   transactionSigningIntentRepository: {
@@ -18,6 +20,7 @@ vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', ()
     listStalledBroadcastsForLookup: mocks.listStalled,
     claimStalledBroadcastLookup: mocks.claimLookup,
     markStalledBroadcastAccepted: mocks.stalledAccepted,
+    deferAcceptedReconciliation: mocks.defer,
   },
 }));
 vi.mock('../../../../../src/services/bitcoin/blockchain', async () => {
@@ -85,6 +88,7 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.broadcast.mockResolvedValue({ txid: 'b'.repeat(64), broadcasted: true });
     mocks.lookup.mockRejectedValue(new Error('not found'));
     mocks.persist.mockResolvedValue({});
+    mocks.defer.mockResolvedValue({ count: 1 });
   });
 
   it('finishes durable persistence without rebroadcasting an accepted transaction', async () => {
@@ -135,6 +139,30 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.persist.mockRejectedValue(new Error('database unavailable'));
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
     expect(mocks.complete).not.toHaveBeenCalled();
+  });
+
+  it('moves a record whose reconciliation keeps failing to the back of the next batch', async () => {
+    const now = new Date('2030-01-01T00:00:00Z');
+    mocks.list.mockResolvedValue([record('accepted')]);
+    mocks.persist.mockRejectedValue(new Error('Record to update not found.'));
+    await expect(reconcileSigningIntentBroadcasts(now)).resolves.toEqual({ examined: 1, completed: 0 });
+    expect(mocks.defer).toHaveBeenCalledWith('intent-1', now);
+  });
+
+  it('keeps reconciling the batch and the stalled pass when deferring a failed record fails', async () => {
+    const deferError = new Error('database unavailable');
+    mocks.list.mockResolvedValue([record('accepted'), { ...record('accepted'), id: 'intent-2' }]);
+    mocks.persist.mockRejectedValueOnce(new Error('Record to update not found.'));
+    mocks.defer.mockRejectedValueOnce(deferError);
+    mocks.listStalled.mockResolvedValue([{ ...record('unknown'), id: 'intent-3' }]);
+    mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+    await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 2, completed: 1 });
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      'Could not defer failed signing intent reconciliation',
+      expect.objectContaining({ intentId: 'intent-1', error: 'database unavailable' }),
+    );
+    expect(mocks.persist).toHaveBeenCalledTimes(3);
+    expect(mocks.claimLookup).toHaveBeenCalledWith('intent-3', expect.any(Date));
   });
 
   it('skips malformed durable records without touching the network', async () => {

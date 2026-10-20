@@ -11,6 +11,7 @@ import { registerBitcoinNetworkRouteTests } from './bitcoin/bitcoin.network.cont
 import { registerBitcoinNetworkOperationalRouteTests } from './bitcoin/bitcoin.network.operational.contracts';
 import { registerBitcoinSyncRouteTests } from './bitcoin/bitcoin.sync.contracts';
 import { registerBitcoinTransactionRouteTests } from './bitcoin/bitcoin.transaction.contracts';
+import { registerBitcoinRbfCanonicalSpendRouteTests } from './bitcoin/bitcoin.rbfCanonicalSpend.contracts';
 import { setupBitcoinApiApp, setupBitcoinApiMocks } from './bitcoin/bitcoinTestHarness';
 
 describe('Bitcoin API', () => {
@@ -22,5 +23,6 @@ describe('Bitcoin API', () => {
   registerBitcoinFeeRouteTests();
   registerBitcoinAddressRouteTests();
   registerBitcoinTransactionRouteTests();
+  registerBitcoinRbfCanonicalSpendRouteTests();
   registerBitcoinSyncRouteTests();
 });

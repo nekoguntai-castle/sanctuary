@@ -5,6 +5,7 @@
  */
 import {
   btcToSats,
+  canonicalSegwitAddressCase,
   detectAddressType,
   formatBTC,
   formatBTCFromSats,
@@ -128,6 +129,27 @@ describe("Shared Bitcoin Utilities", () => {
 
     it("should respect decimals parameter", () => {
       expect(formatBTCFromSats(123_456_789, 4)).toBe("1.2346");
+    });
+  });
+
+  describe("canonicalSegwitAddressCase", () => {
+    it.each([
+      "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+      "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+      "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
+    ])("lowercases the all-uppercase form of %s", (lower) => {
+      expect(canonicalSegwitAddressCase(lower.toUpperCase())).toBe(lower);
+      expect(canonicalSegwitAddressCase(lower)).toBe(lower);
+    });
+
+    it.each([
+      ["a mixed-case bech32 address", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3T4"],
+      ["an incomplete uppercase bech32 prefix", "BC1Q"],
+      ["a base58 address", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"],
+      ["an uppercased base58 address", "1A1ZP1EP5QGEFI2DMPTFTL5SLMV7DIVFNA"],
+      ["an empty string", ""],
+    ])("leaves %s unchanged", (_label, address) => {
+      expect(canonicalSegwitAddressCase(address)).toBe(address);
     });
   });
 

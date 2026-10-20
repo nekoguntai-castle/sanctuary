@@ -106,6 +106,12 @@ export function buildBaselineRecurringSchedules(
     ),
     defineSchedule(
       'maintenance',
+      'cleanup:expired-approvals',
+      {},
+      utcCron('15 * * * *'),
+    ),
+    defineSchedule(
+      'maintenance',
       'cleanup:expired-transfers',
       {},
       utcCron('30 * * * *'),

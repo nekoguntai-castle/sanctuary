@@ -13,6 +13,8 @@ const approvalMocks = vi.hoisted(() => ({
     findApprovalRequestById: vi.fn(),
     findApprovalRequestsByDraftId: vi.fn(),
     findPendingApprovalsForUser: vi.fn(),
+    findOverduePendingApprovalRequests: vi.fn(),
+    findPendingDraftIdsWithExpiredRequests: vi.fn(),
     createApprovalRequest: vi.fn(),
     resolveApprovalRequestIfPending: vi.fn(),
     createVote: vi.fn(),

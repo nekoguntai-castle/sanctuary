@@ -10,6 +10,7 @@
  * Extracted from SendTransaction.tsx for reusability.
  */
 
+import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { btcAmountToSatoshiString, requirePositiveSatoshiAmount } from './sendAmount';
 
 export interface Bip21ParseResult {
@@ -61,7 +62,7 @@ export function parseBip21Uri(uri: string): Bip21ParseResult | null {
   if (hasMalformedPercentEscape(paramsPart)) return null;
 
   const result: Bip21ParseResult = {
-    address: addressPart,
+    address: canonicalSegwitAddressCase(addressPart),
   };
 
   if (paramsPart) {

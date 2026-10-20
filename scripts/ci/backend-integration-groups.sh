@@ -32,6 +32,7 @@ list_group_specs() {
       printf '%s\n' \
         tests/integration/flows/admin.integration.test.ts \
         tests/integration/flows/adminSettingsConcurrency.integration.test.ts \
+        tests/integration/flows/approvalExpirySweep.integration.test.ts \
         tests/integration/flows/authIntentConcurrency.integration.test.ts \
         tests/integration/flows/emailVerification.integration.test.ts \
         tests/integration/flows/authCsrfRecovery.integration.test.ts \
@@ -40,6 +41,7 @@ list_group_specs() {
         tests/integration/flows/internalReceivingPersistence.integration.test.ts \
         tests/integration/flows/labels.integration.test.ts \
         tests/integration/flows/payjoin.integration.test.ts \
+        tests/integration/flows/payjoinBroadcastPersistence.integration.test.ts \
         tests/integration/flows/security.integration.test.ts \
         tests/integration/flows/signingIntentDraftLifetime.integration.test.ts \
         tests/integration/flows/totpReplayConcurrency.integration.test.ts \

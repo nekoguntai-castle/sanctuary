@@ -11,7 +11,8 @@
  * Extracted from SendTransaction.tsx for maintainability.
  */
 
-import { useState, useCallback, useEffect, memo } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { canonicalSegwitAddressCase } from "@sanctuary/shared/utils/bitcoin";
 import { Scanner, IDetectedBarcode } from "@yudiel/react-qr-scanner";
 import {
   Check,
@@ -198,13 +199,21 @@ function StandardAddressInput({
   onAddressChange: (index: number, value: string) => void;
   onScanQR: (index: number) => void;
 }) {
+  // A pasted value arrives whole, so an uppercase (QR alphanumeric) bech32 is stored
+  // canonical; typed characters pass through, since a prefix can already look valid.
+  const pastingRef = useRef(false);
   return (
     <div className="flex space-x-2">
       <div className="flex-1 relative">
         <input
           type="text"
           value={output.address}
-          onChange={(e) => onAddressChange(index, e.target.value)}
+          onPaste={() => { pastingRef.current = true; }}
+          onChange={(e) => {
+            const pasted = pastingRef.current;
+            pastingRef.current = false;
+            onAddressChange(index, pasted ? canonicalSegwitAddressCase(e.target.value) : e.target.value);
+          }}
           disabled={disabled}
           placeholder="bc1q... or bitcoin:..."
           className={`block w-full px-4 py-2.5 rounded-md border ${getAddressBorderClass(isValid, hasPayjoin)} surface-muted focus:ring-2 focus:ring-sanctuary-500 focus:outline-none transition-colors text-sm ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
@@ -597,8 +606,8 @@ function OutputRowImpl({
       if (detectedCodes.length > 0) {
         const scannedValue = detectedCodes[0].rawValue;
         if (scannedValue) {
-          // Update the address field with the scanned value
-          onAddressChange(index, scannedValue);
+          // Update the address field with the scanned value (QR alphanumeric bech32 is uppercase)
+          onAddressChange(index, canonicalSegwitAddressCase(scannedValue));
           // Close the scanner
           setCameraActive(false);
           onScanQR(index); // Toggle off the scanner

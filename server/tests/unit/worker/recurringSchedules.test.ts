@@ -203,6 +203,7 @@ describe('recurring schedule contracts', () => {
       'sync:check-stale-wallets',
       'confirmations:update-all-confirmations',
       'maintenance:cleanup:expired-drafts',
+      'maintenance:cleanup:expired-approvals',
       'maintenance:cleanup:expired-transfers',
       'maintenance:cleanup:audit-logs',
       'maintenance:cleanup:price-data',
@@ -227,6 +228,12 @@ describe('recurring schedule contracts', () => {
     ).toEqual(expect.objectContaining({
       data: { version: 1 },
       recurrence: { every: 120_000 },
+    }));
+    expect(
+      baseline.find(({ schedulerId }) => schedulerId === 'maintenance:cleanup:expired-approvals'),
+    ).toEqual(expect.objectContaining({
+      data: {},
+      recurrence: { pattern: '15 * * * *', tz: 'UTC' },
     }));
     expect(
       baseline.find(({ schedulerId }) => schedulerId === 'maintenance:backup:scheduled'),

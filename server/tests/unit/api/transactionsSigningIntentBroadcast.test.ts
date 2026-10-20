@@ -412,6 +412,45 @@ describe('transaction signing-intent broadcast route', () => {
       expect(response.status).toBe(400);
       expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
     });
+
+    it('accepts the all-uppercase (QR alphanumeric) form of the bech32 recipient', async () => {
+      const recipient = await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      const response = await post({ ...body, recipient: recipient.toUpperCase() });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({ recipient }));
+    });
+
+    it('accepts a draft saved with the uppercase bech32 recipient', async () => {
+      const recipient = await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      mocks.findDraft.mockResolvedValue(draft({ recipient: recipient.toUpperCase() }));
+      const response = await post({ draftId: 'draft-1' });
+      expect(response.status).toBe(200);
+    });
+
+    it('refuses a mixed-case bech32 recipient', async () => {
+      const recipient = await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      const mixed = recipient.replace('tb1q', 'TB1Q');
+      expect(mixed).not.toBe(recipient);
+      const response = await post({ ...body, recipient: mixed });
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ details: { reason: 'metadata_mismatch', field: 'recipient' } });
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['differs only in letter case', (address: string) => address.toUpperCase()],
+      ['is lowercased', (address: string) => address.toLowerCase()],
+    ])('refuses a base58 recipient that %s', async (_label, recase) => {
+      const p2pkh = structuredClone(artifact);
+      p2pkh.snapshot.transaction.outputs[0] = { amountSats: '9000', scriptPubKeyHex: '76a914' + '33'.repeat(20) + '88ac' };
+      mocks.validateSignedArtifact.mockResolvedValue(p2pkh);
+      const recipient = await addressOf(p2pkh.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      expect(recase(recipient)).not.toBe(recipient);
+      const response = await post({ ...body, recipient: recase(recipient) });
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ details: { reason: 'metadata_mismatch', field: 'recipient' } });
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
   });
 
   it('supports zero-value undecodable outputs and optional labels', async () => {

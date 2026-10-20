@@ -6,6 +6,8 @@ import {
   findPendingApprovalsForUser,
   createApprovalRequest,
   resolveApprovalRequestIfPending,
+  findOverduePendingApprovalRequests,
+  findPendingDraftIdsWithExpiredRequests,
   countPendingApprovalsByDraftId,
   createVote,
   findVoteByUserAndRequest,
@@ -24,6 +26,37 @@ export const registerPolicyRepositoryApprovalVoteContracts = () => {
         where: { draftTransactionId: 'draft-1' },
         include: { votes: true },
         orderBy: { createdAt: 'asc' },
+      });
+    });
+  });
+
+  describe('expiry sweep reads', () => {
+    it('finds pending requests past their expiry, oldest first and bounded', async () => {
+      const now = new Date('2030-01-01T00:00:00Z');
+      const rows = [{ id: 'ar1', draftTransactionId: 'draft-1' }];
+      (prisma.approvalRequest.findMany as Mock).mockResolvedValue(rows);
+
+      await expect(findOverduePendingApprovalRequests(now)).resolves.toEqual(rows);
+      expect(prisma.approvalRequest.findMany).toHaveBeenCalledWith({
+        where: { status: 'pending', expiresAt: { lt: now } },
+        select: { id: true, draftTransactionId: true },
+        orderBy: { expiresAt: 'asc' },
+        take: 500,
+      });
+    });
+
+    it('finds drafts still pending although one of their requests expired', async () => {
+      (prisma.approvalRequest.findMany as Mock).mockResolvedValue([
+        { draftTransactionId: 'draft-1' },
+        { draftTransactionId: 'draft-2' },
+      ]);
+
+      await expect(findPendingDraftIdsWithExpiredRequests()).resolves.toEqual(['draft-1', 'draft-2']);
+      expect(prisma.approvalRequest.findMany).toHaveBeenCalledWith({
+        where: { status: 'expired', draftTransaction: { approvalStatus: 'pending' } },
+        select: { draftTransactionId: true },
+        distinct: ['draftTransactionId'],
+        take: 500,
       });
     });
   });

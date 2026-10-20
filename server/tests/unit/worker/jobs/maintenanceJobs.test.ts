@@ -14,6 +14,7 @@ const mockJobs = vi.hoisted(() => ({
   reconcileSigningIntentBroadcastsJob: {
     name: 'reconcile:signing-intent-broadcasts', handler: vi.fn(), options: { attempts: 3 },
   },
+  expireApprovalRequestsJob: { name: 'cleanup:expired-approvals', handler: vi.fn(), options: { attempts: 2 } },
 }));
 
 vi.mock('../../../../src/jobs/definitions/maintenance', () => mockJobs);
@@ -33,6 +34,7 @@ const FORWARDED_MAINTENANCE_JOBS: Array<{
   { name: 'cleanupPriceData', definition: mockJobs.cleanupPriceDataJob },
   { name: 'cleanupFeeEstimates', definition: mockJobs.cleanupFeeEstimatesJob },
   { name: 'cleanupExpiredDrafts', definition: mockJobs.cleanupExpiredDraftsJob },
+  { name: 'cleanup:expired-approvals', definition: mockJobs.expireApprovalRequestsJob },
   { name: 'cleanupExpiredTransfers', definition: mockJobs.cleanupExpiredTransfersJob },
   { name: 'cleanupExpiredTokens', definition: mockJobs.cleanupExpiredTokensJob },
   { name: 'weeklyVacuum', definition: mockJobs.weeklyVacuumJob },
@@ -64,12 +66,13 @@ function expectForwardedMaintenanceJob(
 
 describe('worker maintenanceJobs', () => {
   it('exports all maintenance job handlers with queue and lock configuration', () => {
-    expect(maintenanceJobs).toHaveLength(11);
+    expect(maintenanceJobs).toHaveLength(12);
     expect(maintenanceJobs.map(j => j.name)).toEqual([
       'cleanupAuditLogs',
       'cleanupPriceData',
       'cleanupFeeEstimates',
       'cleanupExpiredDrafts',
+      'cleanup:expired-approvals',
       'cleanupExpiredTransfers',
       'cleanupExpiredTokens',
       'weeklyVacuum',
@@ -89,6 +92,7 @@ describe('worker maintenanceJobs', () => {
       'cleanupPriceData',
       'cleanupFeeEstimates',
       'cleanupExpiredDrafts',
+      'cleanup:expired-approvals',
       'cleanupExpiredTransfers',
       'cleanupExpiredTokens',
       'persist:price-fees',

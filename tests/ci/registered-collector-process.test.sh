@@ -181,11 +181,15 @@ SANCTUARY_CI_TEMP_DIR_OVERRIDE="$cancel_root" \
     -- tests/ci/registered-collector-subject.sh "$cancel_pid_output" await-cancellation \
     >"$cancel_root/coordinator.log" 2>&1 &
 coordinator_pid=$!
-for _ in $(seq 1 200); do
+# Generous budget: the classifier lane runs this beside other suites on a shared runner.
+for _ in $(seq 1 1000); do
   [[ -s $cancel_pid_output ]] && break
   sleep 0.01
 done
-[[ -s $cancel_pid_output ]]
+if [[ ! -s $cancel_pid_output ]]; then
+  echo 'Cancellation subject never wrote its collector pid' >&2
+  exit 1
+fi
 cancel_collector_pid=$(<"$cancel_pid_output")
 kill -TERM "$coordinator_pid"
 cancel_status=0

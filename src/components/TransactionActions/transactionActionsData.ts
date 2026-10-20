@@ -76,17 +76,28 @@ export function rbfDraftRequest({
   // output as a recipient rather than reporting change while also emitting an
   // empty `outputs` list — `CreateDraftRequest.outputs` backs the draft's
   // persisted output rows, and the server rejects a draft with none.
-  const recipientOutputs = nonChangeOutputs.length > 0 ? nonChangeOutputs : result.outputs;
+  const nonChange = nonChangeOutputs.length > 0 ? nonChangeOutputs : result.outputs;
   const changeOutput = nonChangeOutputs.length > 0
     ? result.outputs.find((output) => output.isChange)
     : undefined;
+  // The broadcast route checks the amount against the sum of every external
+  // output and the recipient against the first one; `isChange` only knows
+  // branch-1 addresses, so the server's canonical spend wins when there is one.
+  // A consolidation (null) keeps the first non-change output, since the server
+  // skips both checks when nothing leaves the wallet.
+  const canonical = result.recipient !== null && result.amount !== null
+    ? { recipient: result.recipient, amount: result.amount }
+    : null;
+  // Broadcast reports `outputs[0].address` of the resumed draft as its recipient.
+  const recipientOutputs = canonical ? canonicalRecipientFirst(nonChange, canonical.recipient) : nonChange;
   const primaryOutput = recipientOutputs[0];
+  const amount = canonical?.amount ?? primaryOutput.value;
   const totalInput = result.inputs.reduce((sum, input) => sum + input.value, 0);
   const totalOutput = result.outputs.reduce((sum, output) => sum + output.value, 0);
 
   return {
-    recipient: primaryOutput.address,
-    amount: primaryOutput.value,
+    recipient: canonical?.recipient ?? primaryOutput.address,
+    amount,
     feeRate: result.feeRate,
     selectedUtxoIds: result.inputs.map((input) => `${input.txid}:${input.vout}`),
     enableRBF: true,
@@ -105,9 +116,14 @@ export function rbfDraftRequest({
     totalOutput,
     changeAmount: changeOutput?.value ?? 0,
     changeAddress: changeOutput?.address,
-    effectiveAmount: primaryOutput.value,
+    effectiveAmount: amount,
     inputPaths: [],
   };
+}
+
+function canonicalRecipientFirst<T extends { address: string }>(outputs: T[], recipient: string): T[] {
+  const index = outputs.findIndex((output) => output.address === recipient);
+  return index <= 0 ? outputs : [outputs[index], ...outputs.slice(0, index), ...outputs.slice(index + 1)];
 }
 
 function fallbackRbfLabel(rbfStatus: RBFCheckResult, result: RBFTransactionResponse): string {

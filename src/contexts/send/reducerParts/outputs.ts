@@ -89,6 +89,8 @@ export function reduceOutputEditing(
     const newOutputs = copyOutputs(state.outputs);
     newOutputs[action.index] = {
       ...newOutputs[action.index],
+      // Stored as given: this runs per keystroke, and canonicalising a valid-looking uppercase
+      // prefix would leave caps-lock typing mixed-case. Whole values are canonicalised where they arrive.
       address: action.address,
     };
     return { ...state, outputs: newOutputs };

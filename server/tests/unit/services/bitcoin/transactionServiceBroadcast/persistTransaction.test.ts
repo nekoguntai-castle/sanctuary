@@ -308,3 +308,74 @@ describe('persistTransaction — marks the wallet\'s own output addresses used',
     expect(mockPrismaClient.address.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('persistTransaction — marks only the wallet\'s own inputs spent (payjoin)', () => {
+  const walletInput = { txid: 'e'.repeat(64), vout: 0, address: 'tb1qwalletinput', amount: 60000 };
+  const peerInput = { txid: 'f'.repeat(64), vout: 3, address: 'tb1qpayjoinpeer', amount: 70000 };
+
+  beforeEach(() => {
+    resetPrismaMocks();
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
+    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+    mockPrismaClient.uTXO.update.mockImplementation(async ({ where }: {
+      where: { walletId_txid_vout: { txid: string } };
+    }) => {
+      if (where.walletId_txid_vout.txid === peerInput.txid) {
+        throw Object.assign(new Error('Record to update not found.'), { code: 'P2025' });
+      }
+      return {};
+    });
+    mockPrismaClient.address.findMany.mockImplementation(async ({ where }: {
+      where: { address: { in: string[] } };
+    }) => where.address.in.filter(address => address === walletInput.address).map(address => ({ address })));
+  });
+
+  it('skips the payjoin peer input and persists the transaction', async () => {
+    await expect(persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      utxos: [walletInput, peerInput].map(({ txid, vout }) => ({ txid, vout })),
+      inputs: [walletInput, peerInput],
+    })).resolves.toMatchObject({ mainTransactionCreated: true });
+
+    expect(mockPrismaClient.address.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { walletId, address: { in: [walletInput.address, peerInput.address] } },
+    }));
+    expect(mockPrismaClient.uTXO.update).toHaveBeenCalledTimes(1);
+    expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith({
+      where: { walletId_txid_vout: { walletId, txid: walletInput.txid, vout: walletInput.vout } },
+      data: { spent: true },
+    });
+  });
+
+  it('still fails when a wallet-owned input has no UTXO row', async () => {
+    mockPrismaClient.address.findMany.mockResolvedValue([{ address: peerInput.address }]);
+
+    await expect(persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      utxos: [{ txid: peerInput.txid, vout: peerInput.vout }],
+      inputs: [peerInput],
+    })).rejects.toThrow('Record to update not found.');
+    expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['empty', []],
+  ])('marks every utxos entry spent when inputs are %s', async (_label, inputs) => {
+    await persistTransaction(walletId, newTxid, rawTxHex, {
+      ...baseMetadata,
+      utxos: [{ txid: walletInput.txid, vout: 0 }, { txid: 'a'.repeat(64), vout: 1 }],
+      inputs,
+    });
+
+    expect(mockPrismaClient.uTXO.update).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith({
+      where: { walletId_txid_vout: { walletId, txid: 'a'.repeat(64), vout: 1 } },
+      data: { spent: true },
+    });
+    expect(mockPrismaClient.address.findMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ address: { in: [walletInput.address] } }),
+    }));
+  });
+});

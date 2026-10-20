@@ -34,6 +34,19 @@ describe('BIP21 Parser', () => {
         );
       });
 
+      it('stores the canonical lowercase form of an all-uppercase QR URI address', () => {
+        const result = parseBip21Uri('BITCOIN:BC1QXY2KGDYGJRSQTZQ2N0YRF2493P83KKFJHX0WLH?amount=0.001');
+
+        expect(result?.address).toBe('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh');
+        expect(result?.amount).toBe(100000);
+      });
+
+      it('keeps a mixed-case bech32 address as given so validation still refuses it', () => {
+        const result = parseBip21Uri('bitcoin:bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wLH');
+
+        expect(result?.address).toBe('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wLH');
+      });
+
       it('should parse testnet address', () => {
         const result = parseBip21Uri('bitcoin:tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
 

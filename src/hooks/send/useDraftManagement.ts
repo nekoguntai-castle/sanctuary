@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import * as draftsApi from '../../api/drafts';
 import { ApiError } from '../../api/client';
 import { useErrorHandler } from '../useErrorHandler';
+import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../utils/logger';
 import type { OutputEntry, TransactionState } from '../../contexts/send/types';
 import type { CreateDraftRequest } from '../../api/drafts';
@@ -88,7 +89,7 @@ const buildDraftRequest = (
   }
 
   return {
-    recipient: state.outputs[0].address,
+    recipient: canonicalSegwitAddressCase(state.outputs[0].address),
     amount: getEffectiveDraftAmount(currentTxData, state),
     feeRate: state.feeRate,
     selectedUtxoIds: usedUtxoIds.length > 0 ? usedUtxoIds : undefined,

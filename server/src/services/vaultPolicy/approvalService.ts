@@ -6,6 +6,7 @@
  * - Recording votes (approve/reject/veto)
  * - Resolving approval requests
  * - Owner override
+ * - Expiring overdue requests
  */
 
 import type { ApprovalRequest, ApprovalVote } from '../../generated/prisma/client';
@@ -188,12 +189,32 @@ async function getPendingApprovalRequest(requestId: string): Promise<ApprovalReq
     throw new ConflictError(`Approval request is already ${request.status}`);
   }
 
-  if (request.expiresAt && new Date() > request.expiresAt) {
-    await resolveRequest(requestId, 'expired');
+  if (isPastExpiry(request)) {
+    await expireRequests([request], request.draftTransactionId);
     throw new ConflictError('Approval request has expired');
   }
 
   return request;
+}
+
+function isPastExpiry(request: Pick<ApprovalRequest, 'expiresAt'>, now = new Date()): boolean {
+  return request.expiresAt !== null && now > request.expiresAt;
+}
+
+/**
+ * Resolve requests past their expiry as 'expired' and derive the draft's
+ * status from that, so the draft is released instead of staying 'pending'.
+ * Returns how many requests this call expired.
+ */
+async function expireRequests(requests: Array<Pick<ApprovalRequest, 'id'>>, draftId: string): Promise<number> {
+  let expired = 0;
+  for (const request of requests) {
+    if (await resolveRequest(request.id, 'expired')) expired += 1;
+  }
+  if (expired > 0) {
+    await updateDraftApprovalFromRequests(draftId);
+  }
+  return expired;
 }
 
 async function ensureUserHasNotVoted(requestId: string, userId: string): Promise<void> {
@@ -350,6 +371,14 @@ export async function ownerOverride(
     throw new ConflictError('No pending approval requests to override');
   }
 
+  // Expiry is checked the way castVote checks it, before anything is approved:
+  // an expired request releases the draft and the override is refused.
+  const overdue = pending.filter(request => isPastExpiry(request));
+  if (overdue.length > 0) {
+    await expireRequests(overdue, draftId);
+    throw new ConflictError('Approval request has expired');
+  }
+
   // Only requests still pending at write time are overridden. A request another
   // resolver rejected or vetoed in the meantime is already settled, and an
   // override must not silently reverse that decision.
@@ -402,6 +431,47 @@ export async function ownerOverride(
   notifyApprovalResolved(walletId, draftId, 'overridden', ownerId).catch(err => {
     log.warn('Failed to send override notification', { error: getErrorMessage(err) });
   });
+}
+
+// ========================================
+// EXPIRY SWEEP
+// ========================================
+
+/**
+ * Maintenance sweep: resolve pending requests past their expiry as 'expired'
+ * and update their drafts, so a draft no one votes on is released too. It
+ * also repairs drafts left 'pending' with an already-expired request (a late
+ * vote used to expire the request without updating its draft).
+ */
+export async function expireOverdueApprovals(
+  now: Date = new Date()
+): Promise<{ expiredRequests: number; updatedDrafts: number }> {
+  const overdue = await policyRepository.findOverduePendingApprovalRequests(now);
+  const byDraft = new Map<string, Array<{ id: string }>>();
+  for (const request of overdue) {
+    const list = byDraft.get(request.draftTransactionId);
+    if (list) list.push(request);
+    else byDraft.set(request.draftTransactionId, [request]);
+  }
+
+  let expiredRequests = 0;
+  const updated = new Set<string>();
+  for (const [draftId, requests] of byDraft) {
+    const expired = await expireRequests(requests, draftId);
+    expiredRequests += expired;
+    if (expired > 0) updated.add(draftId);
+  }
+
+  for (const draftId of await policyRepository.findPendingDraftIdsWithExpiredRequests()) {
+    if (updated.has(draftId)) continue;
+    await updateDraftApprovalFromRequests(draftId);
+    updated.add(draftId);
+  }
+
+  if (expiredRequests > 0 || updated.size > 0) {
+    log.info('Expired overdue approval requests', { expiredRequests, updatedDrafts: updated.size });
+  }
+  return { expiredRequests, updatedDrafts: updated.size };
 }
 
 // ========================================
@@ -648,6 +718,12 @@ async function updateDraftApprovalFromRequests(
     return;
   }
 
+  // An expired request can no longer be approved, so the draft is expired.
+  if (requests.some(r => r.status === 'expired')) {
+    await updateDraftApprovalStatus(draftId, 'expired');
+    return;
+  }
+
   // If all requests are approved, the draft is approved
   if (requests.every(r => r.status === 'approved')) {
     await updateDraftApprovalStatus(draftId, 'approved');
@@ -687,6 +763,7 @@ export const approvalService = {
   createApprovalRequestsForDraft,
   castVote,
   ownerOverride,
+  expireOverdueApprovals,
   getPendingApprovalsForUser,
   getApprovalsForDraft,
 };

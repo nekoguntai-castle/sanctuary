@@ -657,6 +657,10 @@ export const bitcoinSchemas = {
         type: "array",
         items: { type: "string" },
       },
+      // Canonical spend of the minted intent (first external output, sum of
+      // external outputs); null when nothing leaves the wallet.
+      recipient: { type: "string", minLength: 1, nullable: true },
+      amount: { type: "integer", minimum: 1, nullable: true },
     },
     required: [
       "psbtBase64",
@@ -669,6 +673,8 @@ export const bitcoinSchemas = {
       "inputs",
       "outputs",
       "inputPaths",
+      "recipient",
+      "amount",
     ],
   },
   CpfpRequest: {

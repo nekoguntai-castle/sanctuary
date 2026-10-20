@@ -1038,6 +1038,7 @@ n_src_components_qr__collapsed-->n_src_utils_psbtFormat_ts
 n_src_components_qr__collapsed-->n_src_utils_urPsbt_ts
 n_src_components_send__collapsed-->n_shared_constants_hardwareWalletCapabilities_ts
 n_src_components_send__collapsed-->n_shared_schemas_mobileApiRequests_ts
+n_src_components_send__collapsed-->n_shared_utils_bitcoin_ts
 n_src_components_send__collapsed-->n_shared_utils_errors_ts
 n_src_components_send__collapsed-->n_src_api_bitcoin_ts
 n_src_components_send__collapsed-->n_src_api_devices_ts
@@ -1128,6 +1129,7 @@ n_src_hooks_queries__collapsed-->n_src_api_transactions__collapsed
 n_src_hooks_queries__collapsed-->n_src_api_wallets_ts
 n_src_hooks_queries__collapsed-->n_src_utils_balanceHistorySeries_ts
 n_src_hooks_queries__collapsed-->n_src_utils_walletSyncSnapshot_ts
+n_src_hooks_send__collapsed-->n_shared_utils_bitcoin_ts
 n_src_hooks_send__collapsed-->n_shared_utils_errors_ts
 n_src_hooks_send__collapsed-->n_src_api_client_ts
 n_src_hooks_send__collapsed-->n_src_api_drafts_ts
@@ -1242,6 +1244,7 @@ n_src_themes_registry_ts-->n_src_utils_logger_ts
 n_src_types_index_ts-->n_shared_types_api_ts
 n_src_types_index_ts-->n_shared_types_domain_ts
 n_src_types_index_ts-->n_src_types_hardware_ts
+n_src_utils_bip21Parser_ts-->n_shared_utils_bitcoin_ts
 n_src_utils_bip21Parser_ts-->n_src_utils_sendAmount_ts
 n_src_utils_clipboard_ts-->n_src_utils_logger_ts
 n_src_utils_derivationPathGroups_ts-->n_shared_constants_walletIdentity_ts

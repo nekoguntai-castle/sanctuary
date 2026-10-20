@@ -47,7 +47,7 @@ write_marker() {
 
 wait_for_final_argv() {
   local pid=$1 script=$2 attempt argument matched
-  for attempt in $(seq 1 100); do
+  for attempt in $(seq 1 500); do
     matched=0
     while IFS= read -r -d '' argument; do
       [[ $argument == "$script" ]] && matched=1

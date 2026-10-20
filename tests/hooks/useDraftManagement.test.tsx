@@ -393,6 +393,23 @@ describe('useDraftManagement', () => {
     );
   });
 
+  it('saves a typed all-uppercase bech32 recipient in canonical lowercase', async () => {
+    const deps = createDeps({
+      state: createState({ outputs: [{ address: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4', amount: '10000', sendMax: false }] }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => {
+      await result.current.saveDraft();
+    });
+
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.objectContaining({ recipient: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' }),
+      expect.any(AbortSignal),
+    );
+  });
+
   it('updates an existing draft without signature fields when no signing occurred', async () => {
     const deps = createDeps({
       state: createState({ draftId: 'draft-existing' }),

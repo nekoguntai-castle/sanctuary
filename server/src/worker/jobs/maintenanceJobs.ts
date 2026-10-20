@@ -14,6 +14,7 @@ import {
   cleanupPriceDataJob,
   cleanupFeeEstimatesJob,
   cleanupExpiredDraftsJob,
+  expireApprovalRequestsJob,
   cleanupExpiredTransfersJob,
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
@@ -77,6 +78,16 @@ export const maintenanceJobs: WorkerJobHandler<unknown, unknown>[] = [
     options: cleanupExpiredDraftsJob.options,
     lockOptions: {
       lockKey: () => `maintenance:${cleanupExpiredDraftsJob.name}`,
+      lockTtlMs: CLEANUP_LOCK_TTL_MS,
+    },
+  },
+  {
+    name: expireApprovalRequestsJob.name,
+    queue: 'maintenance',
+    handler: expireApprovalRequestsJob.handler as AnyJobHandler,
+    options: expireApprovalRequestsJob.options,
+    lockOptions: {
+      lockKey: () => `maintenance:${expireApprovalRequestsJob.name}`,
       lockTtlMs: CLEANUP_LOCK_TTL_MS,
     },
   },

@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
+import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import {
   MobilePsbtBroadcastRequestSchema,
   MobileTransactionBroadcastRequestSchema,
@@ -216,6 +217,15 @@ type OptionalBroadcastMetadata = {
   utxos?: BroadcastOutpoint[];
 };
 
+/**
+ * The reported recipient in the decoded (lowercase) form: an all-uppercase bech32 address
+ * (QR alphanumeric mode, or a draft saved before the client normalised it) names the same
+ * script. Mixed-case bech32 and base58 compare as given, so a case change there still mismatches.
+ */
+const canonicalReportedRecipient = (recipient: string | undefined): string | undefined => (
+  recipient === undefined ? undefined : canonicalSegwitAddressCase(recipient)
+);
+
 const assertOptionalMetadata = (
   optional: OptionalBroadcastMetadata,
   draft: BroadcastDraft,
@@ -224,7 +234,7 @@ const assertOptionalMetadata = (
   // With no external output nothing leaves the wallet, so the client/draft-reported
   // recipient and amount carry no spend meaning (e.g. a consolidation reports the sum of its own outputs).
   const spendChecks: Array<[string, unknown, unknown]> = metadata.externalOutputs.length === 0 ? [] : [
-    ['recipient', metadata.recipient, optional.recipient ?? draft?.recipient],
+    ['recipient', metadata.recipient, canonicalReportedRecipient(optional.recipient ?? draft?.recipient)],
     ['amount', metadata.amount, optional.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
   ];
   const checks: Array<[string, unknown, unknown]> = [

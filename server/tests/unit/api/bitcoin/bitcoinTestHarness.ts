@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import express from 'express';
+import * as bitcoin from 'bitcoinjs-lib';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import {
   createMockTransaction,
@@ -37,6 +38,7 @@ const bitcoinApiMocks = vi.hoisted(() => ({
     estimateTransactionSize: vi.fn(),
     calculateFee: vi.fn(),
     validateAddress: vi.fn(),
+    getNetwork: vi.fn(),
   },
   mockAdvancedTx: {
     getAdvancedFeeEstimates: vi.fn(),
@@ -51,6 +53,8 @@ const bitcoinApiMocks = vi.hoisted(() => ({
   },
   mockSigningIntent: {
     createSigningIntent: vi.fn(),
+    prepareSigningIntent: vi.fn(),
+    persistSigningIntent: vi.fn(),
   },
   mockAssertWalletHardwareCapabilityById: vi.fn(),
   mockSyncIntentAdmission: {
@@ -95,7 +99,13 @@ vi.mock('../../../../src/services/bitcoin/mempool', () => bitcoinApiMocks.mockMe
 vi.mock('../../../../src/services/bitcoin/utils', () => bitcoinApiMocks.mockUtils);
 vi.mock('../../../../src/services/bitcoin/advancedTx', () => bitcoinApiMocks.mockAdvancedTx);
 vi.mock('../../../../src/services/silentPayments/readiness', () => bitcoinApiMocks.mockSilentPayments);
-vi.mock('../../../../src/services/bitcoin/signingIntent', () => bitcoinApiMocks.mockSigningIntent);
+// deriveIntentSpend stays real so routes report the spend of the snapshot they minted.
+vi.mock('../../../../src/services/bitcoin/signingIntent', async () => ({
+  ...bitcoinApiMocks.mockSigningIntent,
+  deriveIntentSpend: (await vi.importActual<
+    typeof import('../../../../src/services/bitcoin/signingIntent/intentSpend')
+  >('../../../../src/services/bitcoin/signingIntent/intentSpend')).deriveIntentSpend,
+}));
 vi.mock('../../../../src/services/hardwareWalletCapabilities', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
   assertWalletHardwareCapabilityById: bitcoinApiMocks.mockAssertWalletHardwareCapabilityById,
@@ -274,6 +284,9 @@ export const setupBitcoinApiMocks = () => {
   mockNodeClient.getElectrumPool.mockReturnValue(mockElectrumPool);
   mockNodeClient.getNodeClient.mockResolvedValue(mockElectrumClient);
   mockUtils.validateAddress.mockReturnValue({ valid: true });
+  mockUtils.getNetwork.mockImplementation((network: string) => (
+    network === 'mainnet' ? bitcoin.networks.bitcoin : network === 'regtest' ? bitcoin.networks.regtest : bitcoin.networks.testnet
+  ));
   mockSilentPayments.getSilentPaymentReadiness.mockResolvedValue({
     featureEnabled: true,
     ready: true,
@@ -289,6 +302,14 @@ export const setupBitcoinApiMocks = () => {
     intentId: 'intent-bitcoin-api',
     intentDigest: 'digest-bitcoin-api',
   });
+  mockSigningIntent.prepareSigningIntent.mockImplementation(async (input: unknown) => ({
+    input,
+    snapshot: { network: 'testnet4', transaction: { inputs: [], outputs: [] } },
+  }));
+  mockSigningIntent.persistSigningIntent.mockImplementation(async (prepared: { snapshot: unknown }) => ({
+    handle: { intentId: 'intent-bitcoin-api', intentDigest: 'digest-bitcoin-api' },
+    snapshot: prepared.snapshot,
+  }));
   mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
   mockSyncIntentAdmission.request.mockResolvedValue({
     status: 'requested',

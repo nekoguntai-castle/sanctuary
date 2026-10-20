@@ -34,6 +34,7 @@ export function registerCastVoteGuardContracts() {
       ...pendingRequest,
       expiresAt: pastDate,
     });
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([{ id: requestId, status: 'expired' }]);
 
     await expect(
       approvalService.castVote(requestId, otherUserId, 'approve')

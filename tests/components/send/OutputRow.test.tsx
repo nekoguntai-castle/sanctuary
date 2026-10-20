@@ -110,6 +110,27 @@ describe('OutputRow', () => {
       expect(mockOnAddressChange).toHaveBeenCalledWith(0, 'bc1qnewaddress');
     });
 
+    it('passes typed uppercase characters through unchanged', () => {
+      renderRow();
+
+      fireEvent.change(screen.getByPlaceholderText('bc1q... or bitcoin:...'), { target: { value: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4' } });
+
+      expect(mockOnAddressChange).toHaveBeenCalledWith(0, 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4');
+    });
+
+    it('stores a pasted all-uppercase bech32 address in canonical lowercase', () => {
+      renderRow();
+      const input = screen.getByPlaceholderText('bc1q... or bitcoin:...');
+
+      fireEvent.paste(input);
+      fireEvent.change(input, { target: { value: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4' } });
+      fireEvent.change(input, { target: { value: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4X' } });
+
+      expect(mockOnAddressChange).toHaveBeenNthCalledWith(1, 0, 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+      // Only the change produced by the paste is canonicalised.
+      expect(mockOnAddressChange).toHaveBeenNthCalledWith(2, 0, 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4X');
+    });
+
     it('should disable address input when disabled prop is true', () => {
       renderRow({ disabled: true });
 
@@ -493,6 +514,17 @@ describe('OutputRow', () => {
 
       expect(mockOnAddressChange).toHaveBeenCalledWith(0, 'bc1qscannedvalue');
       expect(mockOnScanQR).toHaveBeenCalledWith(0);
+    });
+
+    it('stores a scanned all-uppercase (QR alphanumeric) bech32 address in canonical lowercase', () => {
+      renderRow({ showScanner: true, scanningOutputIndex: 0 });
+      fireEvent.click(screen.getByRole('button', { name: 'Start Camera' }));
+
+      act(() => {
+        scannerState.props.onScan([{ rawValue: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4' }]);
+      });
+
+      expect(mockOnAddressChange).toHaveBeenCalledWith(0, 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
     });
 
     it('ignores empty scanner results and blank QR payloads', () => {

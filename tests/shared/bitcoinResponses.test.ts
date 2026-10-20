@@ -94,6 +94,8 @@ const rbf = {
   feeDelta: 2500,
   inputs: [{ txid: 'a'.repeat(64), vout: 0, value: 500000 }],
   outputs: [{ address: 'bc1qexample', value: 495000, isChange: false }],
+  recipient: 'bc1qexample',
+  amount: 495000,
 };
 
 describe('RBFTransactionResponseSchema', () => {
@@ -132,6 +134,28 @@ describe('RBFTransactionResponseSchema', () => {
     // fail loudly here rather than quietly recreating the bug downstream.
     const bad = { ...rbf, outputs: [{ address: 'bc1qexample', value: 495000 }] };
     expect(RBFTransactionResponseSchema.safeParse(bad).success).toBe(false);
+  });
+
+  describe('canonical spend (rbf-draft--multi-recipient-amount-recipient-mismatch)', () => {
+    it('accepts null recipient and amount for a consolidation', () => {
+      const consolidation = { ...rbf, recipient: null, amount: null };
+      expect(RBFTransactionResponseSchema.parse(consolidation)).toEqual(consolidation);
+    });
+
+    it.each(['recipient', 'amount'])('requires %s, so a lagging server cannot silently fall back to guessing it', (field) => {
+      const { [field as 'recipient' | 'amount']: _omitted, ...rest } = rbf;
+      expect(RBFTransactionResponseSchema.safeParse(rest).success).toBe(false);
+    });
+
+    it.each([
+      [{ recipient: '' }],
+      [{ recipient: 42 }],
+      [{ amount: 0 }],
+      [{ amount: 1.5 }],
+      [{ amount: '495000' }],
+    ])('rejects an unusable canonical spend %j', (extra) => {
+      expect(RBFTransactionResponseSchema.safeParse({ ...rbf, ...extra }).success).toBe(false);
+    });
   });
 });
 

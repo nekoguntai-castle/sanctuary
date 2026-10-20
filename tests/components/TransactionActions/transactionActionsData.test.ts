@@ -30,6 +30,8 @@ const result: RBFTransactionResponse = {
   feeDelta: 1000,
   inputs: [{ txid: 'prev-input-txid', vout: 0, value: 50000 }],
   outputs: [{ address: 'bc1qrecipient', value: 47000, isChange: false }],
+  recipient: 'bc1qrecipient',
+  amount: 47000,
 };
 
 describe('rbfDraftRequest', () => {
@@ -137,6 +139,8 @@ describe('rbfDraftRequest', () => {
     const allChangeResult: RBFTransactionResponse = {
       ...result,
       outputs: [{ address: 'bc1qchange', value: 53000, isChange: true }],
+      recipient: null,
+      amount: null,
     };
 
     const request = rbfDraftRequest({
@@ -151,6 +155,102 @@ describe('rbfDraftRequest', () => {
     expect(request.outputs).toEqual([{ address: 'bc1qchange', amount: 53000 }]);
     expect(request.changeAmount).toBe(0);
     expect(request.changeAddress).toBeUndefined();
+  });
+
+  describe('canonical spend (rbf-draft--multi-recipient-amount-recipient-mismatch)', () => {
+    it('uses the summed amount of a multi-recipient replacement and keeps the canonical recipient first', () => {
+      const request = rbfDraftRequest({
+        originalLabel: undefined,
+        rbfStatus,
+        txid,
+        result: {
+          ...result,
+          outputs: [
+            { address: 'bc1qfirst', value: 40000, isChange: false },
+            { address: 'bc1qsecond', value: 30000, isChange: false },
+            { address: 'bc1qchange', value: 28000, isChange: true },
+          ],
+          recipient: 'bc1qfirst',
+          amount: 70000,
+        },
+      });
+
+      expect(request).toMatchObject({
+        recipient: 'bc1qfirst',
+        amount: 70000,
+        effectiveAmount: 70000,
+        changeAmount: 28000,
+        changeAddress: 'bc1qchange',
+      });
+      expect(request.outputs).toEqual([
+        { address: 'bc1qfirst', amount: 40000 },
+        { address: 'bc1qsecond', amount: 30000 },
+      ]);
+    });
+
+    it('puts the external recipient first when the wallet\'s own receive output comes first', () => {
+      // isChange only knows branch-1 addresses, so the wallet's own receive
+      // output is "non-change" and used to become the draft recipient.
+      const request = rbfDraftRequest({
+        originalLabel: undefined,
+        rbfStatus,
+        txid,
+        result: {
+          ...result,
+          outputs: [
+            { address: 'bc1qownreceive', value: 10000, isChange: false },
+            { address: 'bc1qexternal', value: 40000, isChange: false },
+            { address: 'bc1qchange', value: 48000, isChange: true },
+          ],
+          recipient: 'bc1qexternal',
+          amount: 40000,
+        },
+      });
+
+      expect(request).toMatchObject({ recipient: 'bc1qexternal', amount: 40000, effectiveAmount: 40000 });
+      expect(request.outputs).toEqual([
+        { address: 'bc1qexternal', amount: 40000 },
+        { address: 'bc1qownreceive', amount: 10000 },
+      ]);
+    });
+
+    it.each([
+      [{ recipient: 'bc1qrecipient', amount: null }],
+      [{ recipient: null, amount: 47000 }],
+    ])('treats a half-present canonical spend %j as none', (canonical) => {
+      const request = rbfDraftRequest({ originalLabel: undefined, rbfStatus, txid, result: { ...result, ...canonical } });
+
+      expect(request).toMatchObject({ recipient: 'bc1qrecipient', amount: 47000, effectiveAmount: 47000 });
+    });
+
+    it('keeps today\'s positive amount, recipient and output order for a consolidation', () => {
+      const request = rbfDraftRequest({
+        originalLabel: undefined,
+        rbfStatus,
+        txid,
+        result: {
+          ...result,
+          outputs: [
+            { address: 'bc1qownreceive', value: 150000, isChange: false },
+            { address: 'bc1qownother', value: 5000, isChange: false },
+            { address: 'bc1qchange', value: 40000, isChange: true },
+          ],
+          recipient: null,
+          amount: null,
+        },
+      });
+
+      expect(request).toMatchObject({
+        recipient: 'bc1qownreceive',
+        amount: 150000,
+        effectiveAmount: 150000,
+        changeAmount: 40000,
+      });
+      expect(request.outputs).toEqual([
+        { address: 'bc1qownreceive', amount: 150000 },
+        { address: 'bc1qownother', amount: 5000 },
+      ]);
+    });
   });
 });
 

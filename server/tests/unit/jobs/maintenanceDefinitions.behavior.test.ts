@@ -101,6 +101,12 @@ vi.mock('../../../src/services/bitcoin/signingIntent/broadcastReconciliation', (
   reconcileSigningIntentBroadcasts: vi.fn().mockResolvedValue({ examined: 2, completed: 1 }),
 }));
 
+vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
+  approvalService: {
+    expireOverdueApprovals: vi.fn().mockResolvedValue({ expiredRequests: 3, updatedDrafts: 2 }),
+  },
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: mockLogInfo,
@@ -122,8 +128,10 @@ import {
   persistPriceFeesJob,
   scheduledBackupJob,
   reconcileSigningIntentBroadcastsJob,
+  expireApprovalRequestsJob,
   maintenanceJobs,
 } from '../../../src/jobs/definitions/maintenance';
+import { approvalService } from '../../../src/services/vaultPolicy/approvalService';
 import { reconcileSigningIntentBroadcasts } from '../../../src/services/bitcoin/signingIntent/broadcastReconciliation';
 
 function sqlFromCall(call: any[]): string {
@@ -781,8 +789,9 @@ describe('Maintenance job definitions behavior', () => {
       monthlyCleanupJob,
       persistPriceFeesJob,
       reconcileSigningIntentBroadcastsJob,
+      expireApprovalRequestsJob,
     ]));
-    expect(maintenanceJobs).toHaveLength(11);
+    expect(maintenanceJobs).toHaveLength(12);
   });
 
   it('runs signing-intent reconciliation with abort checks around the durable pass', async () => {
@@ -793,6 +802,18 @@ describe('Maintenance job definitions behavior', () => {
     await expect(reconcileSigningIntentBroadcastsJob.handler(createMockJob({}), execution))
       .resolves.toEqual({ examined: 2, completed: 1 });
     expect(reconcileSigningIntentBroadcasts).toHaveBeenCalledOnce();
+    expect(execution.throwIfAborted).toHaveBeenCalledTimes(2);
+  });
+
+  it('expires overdue approval requests with abort checks around the sweep', async () => {
+    const execution: JobExecutionContext = {
+      signal: new AbortController().signal,
+      throwIfAborted: vi.fn(),
+    };
+    expect(expireApprovalRequestsJob.name).toBe('cleanup:expired-approvals');
+    await expect(expireApprovalRequestsJob.handler(createMockJob({}), execution))
+      .resolves.toEqual({ expiredRequests: 3, updatedDrafts: 2 });
+    expect(approvalService.expireOverdueApprovals).toHaveBeenCalledOnce();
     expect(execution.throwIfAborted).toHaveBeenCalledTimes(2);
   });
 });

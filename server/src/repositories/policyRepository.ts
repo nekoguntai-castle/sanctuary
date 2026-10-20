@@ -228,6 +228,32 @@ export async function createApprovalRequest(data: {
   });
 }
 
+/** Bound for one expiry sweep; the hourly job picks up any remainder. */
+const EXPIRY_SWEEP_LIMIT = 500;
+
+/** Pending approval requests whose expiry has passed, oldest expiry first. */
+export async function findOverduePendingApprovalRequests(
+  now: Date
+): Promise<Array<Pick<ApprovalRequest, 'id' | 'draftTransactionId'>>> {
+  return prisma.approvalRequest.findMany({
+    where: { status: 'pending', expiresAt: { lt: now } },
+    select: { id: true, draftTransactionId: true },
+    orderBy: { expiresAt: 'asc' },
+    take: EXPIRY_SWEEP_LIMIT,
+  });
+}
+
+/** Drafts still awaiting approval although one of their requests already expired. */
+export async function findPendingDraftIdsWithExpiredRequests(): Promise<string[]> {
+  const rows = await prisma.approvalRequest.findMany({
+    where: { status: 'expired', draftTransaction: { approvalStatus: 'pending' } },
+    select: { draftTransactionId: true },
+    distinct: ['draftTransactionId'],
+    take: EXPIRY_SWEEP_LIMIT,
+  });
+  return rows.map(row => row.draftTransactionId);
+}
+
 /**
  * Resolve an approval request, but only while it is still pending.
  *
@@ -632,6 +658,8 @@ export const policyRepository = {
   findPendingApprovalsForUser,
   createApprovalRequest,
   resolveApprovalRequestIfPending,
+  findOverduePendingApprovalRequests,
+  findPendingDraftIdsWithExpiredRequests,
   countPendingApprovalsByDraftId,
   // Votes
   createVote,

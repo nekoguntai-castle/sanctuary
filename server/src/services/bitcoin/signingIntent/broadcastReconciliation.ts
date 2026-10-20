@@ -200,6 +200,13 @@ export const reconcileSigningIntentBroadcasts = async (
         txid: record.broadcastTxid,
         error: getErrorMessage(error),
       });
+      // An accepted row that keeps failing goes to the back of the next batch
+      // (a no-op for any other state); a failed deferral only skips that.
+      await transactionSigningIntentRepository.deferAcceptedReconciliation(record.id, now)
+        .catch((deferError: unknown) => log.warn('Could not defer failed signing intent reconciliation', {
+          intentId: record.id,
+          error: getErrorMessage(deferError),
+        }));
     }
   }
   const stalled = await transactionSigningIntentRepository.listStalledBroadcastsForLookup(now, limit);

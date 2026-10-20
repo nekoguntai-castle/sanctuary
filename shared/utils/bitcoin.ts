@@ -88,6 +88,19 @@ function hasMixedSegwitCase(address: string): boolean {
 }
 
 /**
+ * Canonical (lowercase) form of an all-uppercase SegWit address.
+ * BIP173 allows the uppercase form so payment QRs can use alphanumeric mode,
+ * but encoders and the server's decoded recipient are lowercase. Anything else
+ * (base58, mixed case, an incomplete address) is returned unchanged.
+ */
+export function canonicalSegwitAddressCase(address: string): string {
+  const lower = address.toLowerCase();
+  return address === address.toUpperCase() && /^(bc1|tb1|bcrt1)/.test(lower) && isValidAddressFormat(lower)
+    ? lower
+    : address;
+}
+
+/**
  * Detect address type from format
  * Returns null if address format is not recognized
  */

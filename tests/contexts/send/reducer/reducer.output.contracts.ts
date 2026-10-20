@@ -167,6 +167,31 @@ export const registerOutputManagementReducerContracts = () => {
       expect(newState.outputs[0].address).toBe('bc1qnewaddress');
     });
 
+    it('keeps an uppercase bech32 address typed one character at a time (caps lock, keyboard-wedge scanner) as typed', () => {
+      const address = 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4';
+      let state = createInitialState();
+      for (let length = 1; length <= address.length; length += 1) {
+        state = transactionReducer(state, { type: 'SET_OUTPUT_ADDRESS', index: 0, address: address.slice(0, length) });
+      }
+
+      // Canonicalising per keystroke lowercased a valid-looking prefix and left a mixed-case, invalid address.
+      expect(state.outputs[0].address).toBe(address);
+    });
+
+    it.each([
+      ['a partially typed uppercase bech32 prefix', 'BC1Q'],
+      ['a mixed-case bech32 address', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3T4'],
+      ['a base58 address', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'],
+    ])('stores %s as typed', (_label, address) => {
+      const state = transactionReducer(createInitialState(), {
+        type: 'SET_OUTPUT_ADDRESS',
+        index: 0,
+        address,
+      });
+
+      expect(state.outputs[0].address).toBe(address);
+    });
+
     it('should set output amount', () => {
       const state = createInitialState();
       const action: TransactionAction = {

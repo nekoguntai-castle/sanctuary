@@ -22,7 +22,12 @@ import * as advancedTx from '../../services/bitcoin/advancedTx';
 import { validateAddress } from '../../services/bitcoin/utils';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { resolveBitcoinNetworkParam } from './networkParam';
-import { createSigningIntent } from '../../services/bitcoin/signingIntent';
+import {
+  createSigningIntent,
+  deriveIntentSpend,
+  persistSigningIntent,
+  prepareSigningIntent,
+} from '../../services/bitcoin/signingIntent';
 import {
   assertUnscopedRawTransactionBroadcastDisabled,
   assertWalletHardwareCapabilityById,
@@ -186,7 +191,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     network
   );
   const psbtBase64 = result.psbt.toBase64();
-  const signingIntent = await createSigningIntent({
+  const prepared = await prepareSigningIntent({
     walletId,
     createdByUserId: userId,
     network,
@@ -196,6 +201,14 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     replacementTxid: txid,
     signingContext: result.signingContext,
   });
+  // The broadcast route checks the client's amount against the sum of every
+  // external output and its recipient against the first one, so the draft
+  // carries the canonical spend of this snapshot rather than guessing it from
+  // isChange (which only knows branch-1 addresses). Derived before persisting,
+  // so a replacement whose spend cannot be derived mints no intent. Null when
+  // nothing leaves the wallet: the broadcast route skips both checks then.
+  const { externalOutputs, amount } = await deriveIntentSpend(walletId, network, prepared.snapshot);
+  const { handle: signingIntent } = await persistSigningIntent(prepared);
 
   res.json({
     psbtBase64,
@@ -206,6 +219,8 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     outputs: result.outputs,
     inputPaths: result.inputPaths,
     ...signingIntent,
+    recipient: externalOutputs[0]?.address ?? null,
+    amount: externalOutputs.length > 0 ? amount : null,
   });
 }));
 

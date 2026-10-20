@@ -108,6 +108,15 @@ export const RBFTransactionResponseSchema = z.looseObject({
    * change as the recipient again (rbf-draft-recipient-picks-arbitrary-output-not-change-aware).
    */
   outputs: z.array(z.looseObject({ address: z.string(), value: satoshis, isChange: z.boolean() })).min(1),
+  /**
+   * The replacement's canonical spend, derived from the persisted intent
+   * snapshot: the first external output and the sum of every external output —
+   * exactly what the broadcast route checks. Required so the draft never falls
+   * back to guessing them from `isChange`; null when nothing leaves the wallet
+   * (a consolidation), where the broadcast route skips both checks.
+   */
+  recipient: z.string().min(1).nullable(),
+  amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
 });
 
 export const CPFPTransactionResponseSchema = z.looseObject({

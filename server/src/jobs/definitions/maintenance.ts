@@ -13,6 +13,7 @@ import { auditService, AuditCategory } from '../../services/auditService';
 import { getCurrentFeeEstimates } from '../../services/bitcoin/feeService';
 import { getPriceService } from '../../services/price';
 import { expireOldTransfers } from '../../services/transferService';
+import { approvalService } from '../../services/vaultPolicy/approvalService';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import { scheduledBackupJob } from './scheduledBackup';
@@ -278,6 +279,26 @@ export const cleanupExpiredDraftsJob: JobDefinition<void, number> = {
 };
 
 /**
+ * Expire overdue approval requests and release their drafts
+ */
+export const expireApprovalRequestsJob: JobDefinition<Record<string, never>, {
+  expiredRequests: number;
+  updatedDrafts: number;
+}> = {
+  name: 'cleanup:expired-approvals',
+  handler: async (_job, execution) => {
+    execution?.throwIfAborted();
+    const result = await approvalService.expireOverdueApprovals();
+    execution?.throwIfAborted();
+    return result;
+  },
+  options: {
+    attempts: 2,
+    backoff: { type: 'fixed', delay: 3000 },
+  },
+};
+
+/**
  * Cleanup expired ownership transfers
  */
 export const cleanupExpiredTransfersJob: JobDefinition<void, number> = {
@@ -484,6 +505,7 @@ export const maintenanceJobs = [
   cleanupPriceDataJob,
   cleanupFeeEstimatesJob,
   cleanupExpiredDraftsJob,
+  expireApprovalRequestsJob,
   cleanupExpiredTransfersJob,
   cleanupExpiredTokensJob,
   weeklyVacuumJob,

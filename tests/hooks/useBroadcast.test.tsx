@@ -521,6 +521,24 @@ describe('useBroadcast', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
 
+  it('reports a typed all-uppercase bech32 recipient in canonical lowercase', async () => {
+    const deps = createDeps({
+      state: {
+        outputs: [{ address: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4', amount: '10000', sendMax: false }],
+        draftId: null,
+      } as any,
+    });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    await act(async () => {
+      await result.current.broadcastTransaction();
+    });
+
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      recipient: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+    }));
+  });
+
   it('includes replacesTxid in the broadcast payload when the RBF flow set it', async () => {
     const replacesTxid = 'a'.repeat(64);
     const deps = createDeps({

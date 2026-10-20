@@ -6,6 +6,7 @@ import { registerCastVoteResolutionContracts } from './approvalService/approvalS
 import { registerCheckAndResolveRequestContracts } from './approvalService/approvalService.check-resolve.contracts';
 import { registerConcurrentResolutionContracts } from './approvalService/approvalService.concurrent-resolution.contracts';
 import { registerCreateApprovalRequestsForDraftContracts } from './approvalService/approvalService.create.contracts';
+import { registerApprovalExpiryContracts } from './approvalService/approvalService.expiry.contracts';
 import { registerUpdateDraftApprovalFromRequestsContracts } from './approvalService/approvalService.draft-status.contracts';
 import { registerOwnerOverrideContracts } from './approvalService/approvalService.owner-override.contracts';
 import {
@@ -38,6 +39,10 @@ describe('ApprovalService', () => {
 
   describe('ownerOverride', () => {
     registerOwnerOverrideContracts();
+  });
+
+  describe('approval expiry', () => {
+    registerApprovalExpiryContracts();
   });
 
   describe('concurrent resolution', () => {

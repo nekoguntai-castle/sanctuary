@@ -362,6 +362,9 @@ export interface RBFTransactionResponse {
   feeDelta: number;
   inputs: Array<{ txid: string; vout: number; value: number }>;
   outputs: Array<{ address: string; value: number; isChange: boolean }>;
+  /** Canonical spend the broadcast route checks; null when nothing leaves the wallet. */
+  recipient: string | null;
+  amount: number | null;
 }
 
 export interface CPFPTransactionRequest {

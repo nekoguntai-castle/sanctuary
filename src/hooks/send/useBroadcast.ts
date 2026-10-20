@@ -18,6 +18,7 @@ import { walletActivityKeys, walletKeys } from '../queries/useWallets';
 import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import { toHex } from '../../utils/bufferUtils';
+import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { requirePositiveSatoshiNumber } from '../../utils/sendAmount';
 import type { Wallet } from '../../types';
 import type { TransactionState } from '../../contexts/send/types';
@@ -344,7 +345,7 @@ export function useBroadcast({
         replacesTxid: state.replacesTxid ?? undefined,
         intentId: txData.intentId,
         intentDigest: txData.intentDigest,
-        recipient: state.outputs[0].address,
+        recipient: canonicalSegwitAddressCase(state.outputs[0].address),
         amount: effectiveAmount,
         fee: txData.fee,
         utxos: txData.utxos,

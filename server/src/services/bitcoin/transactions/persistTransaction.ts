@@ -16,9 +16,38 @@ import {
   type InternalReceivingOutcome,
 } from './internalReceiving';
 import { BROADCAST_DRAFT_RETENTION_POLICY } from './broadcastContracts';
-import type { TransactionInputMetadata, TransactionOutputMetadata } from './types';
+import type { PrismaTxClient, TransactionInputMetadata, TransactionOutputMetadata } from './types';
 
 const log = createLogger('BITCOIN:SVC_TX_PERSIST');
+
+type Outpoint = { txid: string; vout: number };
+
+const outpointKey = (outpoint: Outpoint): string => `${outpoint.txid}:${outpoint.vout}`;
+
+/**
+ * The `metadata.utxos` entries this wallet owns. `utxos` is the full canonical
+ * input list, which for a payjoin includes the receiver's peer input; the
+ * durable `inputs` carry each input's address, so an input whose address is not
+ * one of this wallet's addresses is skipped. Without `inputs` (rows recorded
+ * before payjoin support) every entry is treated as the wallet's, as before.
+ */
+async function selectWalletOwnedOutpoints(
+  tx: PrismaTxClient,
+  walletId: string,
+  metadata: { utxos: Outpoint[]; inputs?: TransactionInputMetadata[] },
+): Promise<Outpoint[]> {
+  const inputs = metadata.inputs ?? [];
+  if (inputs.length === 0) return metadata.utxos;
+  const owned = await tx.address.findMany({
+    where: { walletId, address: { in: [...new Set(inputs.map(input => input.address))] } },
+    select: { address: true },
+  });
+  const ownedAddresses = new Set(owned.map(row => row.address));
+  const foreign = new Set(
+    inputs.filter(input => !ownedAddresses.has(input.address)).map(outpointKey)
+  );
+  return metadata.utxos.filter(utxo => !foreign.has(outpointKey(utxo)));
+}
 
 /**
  * Persist a broadcast transaction to the database within a Prisma transaction.
@@ -48,8 +77,8 @@ export async function persistTransaction(
   receivingTransactions: InternalReceivingOutcome[];
 }> {
   return withTransaction(async (tx) => {
-    // Mark UTXOs as spent
-    for (const utxo of metadata.utxos) {
+    // Mark the wallet's own UTXOs as spent (a payjoin peer input has no row here)
+    for (const utxo of await selectWalletOwnedOutpoints(tx, walletId, metadata)) {
       await tx.uTXO.update({
         where: {
           walletId_txid_vout: {
