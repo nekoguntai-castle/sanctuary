@@ -82,7 +82,7 @@ export function useWallets(overrides?: Partial<UseQueryOptions<WalletList>>) {
  * Hook to create a new wallet
  */
 export const useCreateWallet = createMutation(walletsApi.createWallet, {
-  invalidateKeys: [walletKeys.lists()],
+  invalidateKeys: [walletKeys.lists(), deviceKeys.lists()],
 });
 
 /**
@@ -345,6 +345,8 @@ export function useUpdateWallet() {
     onSuccess: (_data, { walletId }) => {
       queryClient.invalidateQueries({ queryKey: walletKeys.detail(walletId) });
       queryClient.invalidateQueries({ queryKey: walletKeys.lists() });
+      // Device lists embed wallet names.
+      queryClient.invalidateQueries({ queryKey: deviceKeys.lists() });
     },
   });
 }

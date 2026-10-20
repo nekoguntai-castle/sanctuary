@@ -63,14 +63,14 @@ vi.mock('../../../../src/hooks/useCopyToClipboard', () => ({
 }));
 
 // Mock wallets API
-const mockExportWallet = vi.fn();
+const mockExportWalletBackup = vi.fn();
 const mockExportLabelsBip329 = vi.fn();
 const mockExportWalletFormat = vi.fn();
 const mockGetExportFormats = vi.fn();
 const mockGetWalletExportText = vi.fn();
 
 vi.mock('../../../../src/api/wallets', () => ({
-  exportWallet: (...args: unknown[]) => mockExportWallet(...args),
+  exportWalletBackup: (...args: unknown[]) => mockExportWalletBackup(...args),
   exportLabelsBip329: (...args: unknown[]) => mockExportLabelsBip329(...args),
   exportWalletFormat: (...args: unknown[]) => mockExportWalletFormat(...args),
   getExportFormats: (...args: unknown[]) => mockGetExportFormats(...args),
@@ -407,21 +407,21 @@ describe('ExportModal', () => {
       ).toBeInTheDocument();
     });
 
-    it('should call exportWallet when download clicked', async () => {
+    it('should call exportWalletBackup when download clicked', async () => {
       const user = userEvent.setup();
-      mockExportWallet.mockResolvedValue(undefined);
+      mockExportWalletBackup.mockResolvedValue(undefined);
       render(<ExportModal {...singleSigProps} />);
 
       await user.click(screen.getByText('JSON File'));
       await user.click(screen.getByRole('button', { name: /download backup/i }));
 
-      expect(mockExportWallet).toHaveBeenCalledWith('wallet-123');
+      expect(mockExportWalletBackup).toHaveBeenCalledWith('wallet-123', 'My Wallet');
     });
 
     it('should call onError when export fails', async () => {
       const user = userEvent.setup();
       const onError = vi.fn();
-      mockExportWallet.mockRejectedValue(new Error('Export failed'));
+      mockExportWalletBackup.mockRejectedValue(new Error('Export failed'));
 
       render(<ExportModal {...singleSigProps} onError={onError} />);
 

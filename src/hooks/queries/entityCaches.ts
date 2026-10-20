@@ -1,5 +1,7 @@
 import { getQueryClient } from '../../providers/QueryProvider';
+import { deviceKeys } from './deviceKeys';
 import type { QueryKeys } from './factory';
+import { walletKeys } from './walletKeys';
 
 // A write that reached the server leaves shared caches (sidebar lists, detail
 // views) stale even when the route that issued it has since moved on, so these
@@ -17,4 +19,17 @@ export function evictEntityCache(keys: QueryKeys, id: string): void {
   const queryClient = getQueryClient();
   queryClient.removeQueries({ queryKey: keys.detail(id) });
   void queryClient.invalidateQueries({ queryKey: keys.lists() });
+}
+
+/** Refetch the lists of each given entity. */
+export function invalidateLists(...entities: QueryKeys[]): void {
+  const queryClient = getQueryClient();
+  for (const keys of entities) {
+    void queryClient.invalidateQueries({ queryKey: keys.lists() });
+  }
+}
+
+/** Refetch wallet and device lists: wallet writes change the wallet data embedded in device lists. */
+export function refreshWalletAndDeviceLists(): void {
+  invalidateLists(walletKeys, deviceKeys);
 }

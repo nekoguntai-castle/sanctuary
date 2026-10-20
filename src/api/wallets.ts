@@ -262,36 +262,6 @@ export async function getWalletShareInfo(walletId: string): Promise<WalletShareI
   return apiClient.get(`/wallets/${walletId}/share`);
 }
 
-// Export types
-export interface WalletExportKeystore {
-  label: string;
-  source: string;
-  walletModel: string;
-  keyDerivation: {
-    masterFingerprint: string;
-    derivationPath: string;
-  };
-  extendedPublicKey: string;
-}
-
-export interface WalletExport {
-  label: string;
-  name: string;
-  policyType: 'SINGLE' | 'MULTI';
-  scriptType: string;
-  defaultPolicy?: {
-    name: string;
-    miniscript: string;
-  };
-  keystores: WalletExportKeystore[];
-  network: string;
-  descriptor?: string;
-  gapLimit: number;
-  exportedAt: string;
-  exportedFrom: string;
-  version: string;
-}
-
 /**
  * Export format info
  */
@@ -311,10 +281,15 @@ export async function getExportFormats(walletId: string): Promise<{ formats: Exp
 }
 
 /**
- * Export wallet in Sparrow-compatible JSON format (legacy method)
+ * Download the wallet as a Sparrow-compatible JSON backup file
  */
-export async function exportWallet(walletId: string): Promise<WalletExport> {
-  return apiClient.get(`/wallets/${walletId}/export`);
+export async function exportWalletBackup(walletId: string, walletName: string): Promise<void> {
+  const fallbackFilename = `${walletName.replace(/[^a-zA-Z0-9-_]/g, '_')}_backup.json`;
+  await apiClient.download(
+    `/wallets/${walletId}/export`,
+    fallbackFilename,
+    { params: { format: 'sparrow' } }
+  );
 }
 
 /**

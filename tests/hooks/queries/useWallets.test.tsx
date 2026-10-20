@@ -172,6 +172,8 @@ describe('wallet query and mutation hooks', () => {
 
     expect(mockCreateWallet).toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
+    // A created wallet attaches to devices, so the device list must refresh too.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
   });
 
   it('imports wallet and invalidates wallet list query', async () => {
@@ -200,6 +202,7 @@ describe('wallet query and mutation hooks', () => {
     expect(mockUpdateWallet).toHaveBeenCalledWith('w1', { name: 'Updated' });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: walletKeys.detail('w1') });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
   });
 });
 

@@ -5,7 +5,8 @@ import * as walletsApi from '../../../api/wallets';
 import { createLogger } from '../../../utils/logger';
 import type { Wallet } from '../../../types';
 import { walletKeys } from '../../../hooks/queries/walletKeys';
-import { refreshEntityCaches } from '../../../hooks/queries/entityCaches';
+import { invalidateLists, refreshEntityCaches } from '../../../hooks/queries/entityCaches';
+import { deviceKeys } from '../../../hooks/queries/deviceKeys';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 import { beginWalletRenameWrite } from './walletRenameEpoch';
 
@@ -119,6 +120,7 @@ export function useWalletMutations({
         if (!stillOnWallet()) return;
         const saved = await walletsApi.updateWallet(id, { name: updatedData.name });
         refreshEntityCaches(walletKeys, id);
+        invalidateLists(deviceKeys); // device lists embed wallet names
         queue.confirmedName = saved?.name ?? updatedData.name;
         if (queue.confirmedName !== updatedData.name
           && request === queue.latestRequest && stillOnWallet()) {

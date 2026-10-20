@@ -4,6 +4,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { useWalletDetailModalState } from '../../../../src/components/WalletDetail/hooks/useWalletDetailModalState';
 import * as walletsApi from '../../../../src/api/wallets';
 import { walletKeys } from '../../../../src/hooks/queries/walletKeys';
+import { deviceKeys } from '../../../../src/hooks/queries/deviceKeys';
 
 const qc = vi.hoisted(() => ({ current: null as unknown as QueryClient }));
 
@@ -33,6 +34,7 @@ describe('Wallet delete cache invalidation', () => {
     qc.current = new QueryClient();
     qc.current.setQueryData(walletKeys.lists(), [{ id: 'A' }]);
     qc.current.setQueryData(walletKeys.detail('A'), { id: 'A' });
+    qc.current.setQueryData(deviceKeys.lists(), [{ id: 'D', wallets: [{ id: 'A' }] }]);
   });
 
   it('removes the deleted wallet detail, refreshes the list and navigates away', async () => {
@@ -42,6 +44,7 @@ describe('Wallet delete cache invalidation', () => {
     await act(async () => { await view.result.current.handleConfirmDelete(); });
     expect(qc.current.getQueryData(walletKeys.detail('A'))).toBeUndefined();
     expect(qc.current.getQueryState(walletKeys.lists())?.isInvalidated).toBe(true);
+    expect(qc.current.getQueryState(deviceKeys.lists())?.isInvalidated).toBe(true);
     expect(navigate).toHaveBeenCalledWith('/wallets');
   });
 
@@ -52,6 +55,7 @@ describe('Wallet delete cache invalidation', () => {
     await act(async () => { await view.result.current.handleConfirmDelete(); });
     expect(qc.current.getQueryData(walletKeys.detail('A'))).toEqual({ id: 'A' });
     expect(qc.current.getQueryState(walletKeys.lists())?.isInvalidated).toBe(false);
+    expect(qc.current.getQueryState(deviceKeys.lists())?.isInvalidated).toBe(false);
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Delete Failed');
   });
 });

@@ -4,6 +4,7 @@ import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import * as walletsApi from '../../../api/wallets';
 import type { AgentOptionWallet } from '../../../api/admin';
 import type { ImportValidationResult } from '../../../api/wallets';
+import { refreshWalletAndDeviceLists } from '../../../hooks/queries/entityCaches';
 import { extractErrorMessage } from '../../../utils/errorHandler';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
@@ -71,6 +72,8 @@ export function InlineOperationalWalletImport({
         network: validation.network,
       });
 
+      // The import can create wallets and devices; refresh even if onImported fails.
+      refreshWalletAndDeviceLists();
       await onImported(result.wallet.id);
       setLastImportedName(result.wallet.name || name);
       setWalletName('');

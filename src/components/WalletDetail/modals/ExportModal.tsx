@@ -94,7 +94,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const downloadJson = async () => {
     try {
-      await walletsApi.exportWallet(walletId);
+      await walletsApi.exportWalletBackup(walletId, walletName);
     } catch (err) {
       log.error('Failed to export wallet', { error: err });
       onError(err, 'Export Failed');

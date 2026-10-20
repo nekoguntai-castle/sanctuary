@@ -4,6 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InlineOperationalWalletImport } from '../../src/components/AgentManagement/AgentManagement/InlineOperationalWalletImport';
 import * as walletsApi from '../../src/api/wallets';
 import type { AgentOptionWallet } from '../../src/api/admin';
+import { walletKeys } from '../../src/hooks/queries/walletKeys';
+import { deviceKeys } from '../../src/hooks/queries/deviceKeys';
+
+const mockQc = vi.hoisted(() => ({ invalidateQueries: vi.fn(), removeQueries: vi.fn() }));
+vi.mock('../../src/providers/QueryProvider', () => ({ getQueryClient: () => mockQc }));
 
 vi.mock('../../src/api/wallets', () => ({
   validateImport: vi.fn(),
@@ -73,6 +78,29 @@ describe('InlineOperationalWalletImport branch coverage', () => {
       createdDeviceIds: [],
       reusedDeviceIds: [],
     });
+  });
+
+  it('refreshes the wallet and device lists after a successful import', async () => {
+    const user = userEvent.setup();
+    renderImport();
+
+    await openImportPanel(user);
+    await enterDescriptorAndImport(user);
+
+    await waitFor(() => expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.lists() }));
+    expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
+  });
+
+  it('still refreshes the lists when onImported rejects', async () => {
+    const user = userEvent.setup();
+    renderImport({ onImported: vi.fn().mockRejectedValue(new Error('refresh failed')) });
+
+    await openImportPanel(user);
+    await enterDescriptorAndImport(user);
+
+    expect(await screen.findByText('refresh failed')).toBeInTheDocument();
+    expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
+    expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
   });
 
   it('closes the import panel without importing', async () => {

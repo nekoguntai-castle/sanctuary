@@ -110,7 +110,7 @@ vi.mock('../../src/api/wallets', async (importOriginal) => {
     shareWalletWithUser: vi.fn(),
     shareWalletWithGroup: vi.fn(),
     removeUserFromWallet: vi.fn(),
-    exportWallet: vi.fn(),
+    exportWalletBackup: vi.fn(),
     exportWalletFormat: vi.fn(),
     exportLabelsBip: vi.fn(),
   };

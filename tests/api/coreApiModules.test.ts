@@ -478,7 +478,6 @@ describe('Core API Modules', () => {
       await walletsApi.removeUserFromWallet('w1', 'u1');
       await walletsApi.getWalletShareInfo('w1');
       await walletsApi.getExportFormats('w1');
-      await walletsApi.exportWallet('w1');
 
       expect(mockGet).toHaveBeenCalledWith(
         '/wallets',
@@ -532,7 +531,6 @@ describe('Core API Modules', () => {
       expect(mockDelete).toHaveBeenCalledWith('/wallets/w1/share/user/u1');
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/share');
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/export/formats');
-      expect(mockGet).toHaveBeenCalledWith('/wallets/w1/export');
     });
 
     it('rejects remediation responses for a different wallet', async () => {
@@ -554,6 +552,7 @@ describe('Core API Modules', () => {
 
       await walletsApi.exportWalletFormat('w1', 'sparrow', 'My Wallet@Name');
       await walletsApi.exportLabelsBip329('w1', 'My Wallet Name');
+      await walletsApi.exportWalletBackup('w1', 'My Wallet Name');
 
       expect(mockDownload).toHaveBeenCalledWith(
         '/wallets/w1/export',
@@ -563,6 +562,11 @@ describe('Core API Modules', () => {
       expect(mockDownload).toHaveBeenCalledWith(
         '/wallets/w1/export/labels',
         'My_Wallet_Name_labels_bip329.jsonl'
+      );
+      expect(mockDownload).toHaveBeenCalledWith(
+        '/wallets/w1/export',
+        'My_Wallet_Name_backup.json',
+        { params: { format: 'sparrow' } }
       );
     });
 

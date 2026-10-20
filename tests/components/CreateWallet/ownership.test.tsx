@@ -12,6 +12,7 @@ import { SidebarNetworkSelector } from '../../../src/components/Layout/SidebarCo
 import * as walletsApi from '../../../src/api/wallets';
 import * as devicesApi from '../../../src/api/devices';
 import { walletKeys } from '../../../src/hooks/queries/useWallets';
+import { deviceKeys } from '../../../src/hooks/queries/deviceKeys';
 
 const { handleError, logError } = vi.hoisted(() => ({ handleError: vi.fn(), logError: vi.fn() }));
 vi.mock('../../../src/api/devices', () => ({ getDevices: vi.fn() }));
@@ -157,7 +158,10 @@ it.each([false, true])('keeps current successful creation with StrictMode=%s', a
   await reachReview(user);
   await submit(user);
   await waitFor(() => expect(router.state.location.pathname).toBe('/wallets/new-wallet'));
-  expect(invalidations).toHaveBeenCalledTimes(1);
+  // One creation refreshes the wallet list and the device list exactly once each.
+  expect(invalidations).toHaveBeenCalledTimes(2);
+  expect(invalidations).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
+  expect(invalidations).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
 });
 
 it('keeps current failure retryable', async () => {

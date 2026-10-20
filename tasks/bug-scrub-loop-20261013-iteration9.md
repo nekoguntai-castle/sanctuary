@@ -256,9 +256,25 @@ the new endpoint, Playwright send-flow specs. `/simplify` and an adversarial rev
 
 ## Completion criteria
 
-- [ ] PR A merged; target-branch CI green on its merge commit.
+- [x] PR A merged; target-branch CI green on its merge commit (#1406, merge `c0debe606e`).
 - [ ] PR B merged; target-branch CI green on its merge commit.
 - [ ] PR C merged (plan `tasks/bug-scrub-loop-20261013-iteration9-payjoin.md`); target-branch CI green on its merge commit.
 - [ ] Every phase's regression test failed on `2524b862` and passes on its merge.
 - [ ] Owned branches and worktrees cleaned; run state updated.
 - [ ] P3 backlog remains outside the blocking fix set.
+
+## Progress
+
+- **PR A — #1406**, squash merge `c0debe606e59ca673409e243244f946b6315312a`. Phases A1–A8 delivered.
+  Divergences:
+  - Adversarial review: `config/container-image-lock.json` needed a reviewed re-pin of `server/Dockerfile`
+    (the change only creates `/data/backups`).
+  - Code-review cleanups: shared `RESOLVED_APPROVAL_STATUSES` (`repositories/approvalStatuses.ts`),
+    `isAutopilotChannelEnabled`, `parseAmountBounds`, `approvalVoteGuards.ts`, shared install-test helpers; a
+    V8 coverage-merge artifact in `intentPolicyInput.ts` (negative branch count) was removed by replacing
+    `?? await` with an `if`.
+  - CI: the first head's verify-vectors binding mutation step hit its 8-minute budget under runner load
+    (no proof failure); retriggered with a structured-evidence commit and passed.
+- **PR B** — follows A. `useUpdateWallet` (no callers) also refreshes the device list for consistency.
+- **PR C (payjoin)** — `tasks/bug-scrub-loop-20261013-iteration9-payjoin.md` converged after 11 review passes;
+  implemented on a fresh branch after PR B merges.

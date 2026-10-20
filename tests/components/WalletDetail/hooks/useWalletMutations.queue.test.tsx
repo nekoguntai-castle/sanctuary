@@ -4,6 +4,7 @@ import { useWalletMutations } from '../../../../src/components/WalletDetail/hook
 import { subscribeWalletRenameDrain } from '../../../../src/components/WalletDetail/hooks/walletRenameEpoch';
 import * as walletsApi from '../../../../src/api/wallets';
 import { walletKeys } from '../../../../src/hooks/queries/walletKeys';
+import { deviceKeys } from '../../../../src/hooks/queries/deviceKeys';
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -569,6 +570,8 @@ describe('Wallet rename cache invalidation', () => {
     await act(async () => { await view.result.current.handleUpdateWallet({ name: 'Renamed' }); });
     expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
     expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.detail('A') });
+    // Device lists embed wallet names, so a rename must refresh them too.
+    expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
   });
 
   it('leaves the caches alone when the rename is rejected', async () => {
