@@ -5,7 +5,7 @@
  * ApiClient, direct fetch helpers, UserContext, and auth tests.
  */
 
-import { AUTH_CSRF_SESSION_STALE_CODE } from '@sanctuary/shared/types/api';
+import { AUTH_CSRF_SESSION_STALE_CODE, STEP_UP_CREDENTIAL_INVALID_CODE } from '@sanctuary/shared/types/api';
 
 export const CSRF_COOKIE_NAME = 'sanctuary_csrf';
 export const CSRF_HEADER_NAME = 'X-CSRF-Token';
@@ -32,6 +32,7 @@ interface RefreshDecisionInput {
   endpoint: string;
   status: number;
   isRefreshRetry: boolean;
+  response?: unknown;
 }
 
 interface StaleCsrfRetryDecisionInput {
@@ -59,11 +60,22 @@ export function isRefreshOn401ExemptEndpoint(endpoint: string): boolean {
   return REFRESH_ON_401_EXEMPT_ENDPOINT_SET.has(normalizeAuthEndpoint(endpoint));
 }
 
+/** A wrong step-up password is a credential failure: refreshing and replaying would double-spend the rate-limit budget. */
+function hasStepUpCredentialInvalidCode(response: unknown): boolean {
+  return (
+    typeof response === 'object'
+    && response !== null
+    && !Array.isArray(response)
+    && (response as Record<string, unknown>).code === STEP_UP_CREDENTIAL_INVALID_CODE
+  );
+}
+
 export function shouldAttemptRefreshAfterUnauthorized(input: RefreshDecisionInput): boolean {
   return (
     input.status === 401
     && !input.isRefreshRetry
     && !isRefreshOn401ExemptEndpoint(input.endpoint)
+    && !hasStepUpCredentialInvalidCode(input.response)
   );
 }
 

@@ -7,7 +7,9 @@
 import { Router } from 'express';
 import express from 'express';
 import { authenticate, requireAuthenticatedUser, requireAdmin } from '../../middleware/auth';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../errors/errorHandler';
+import { ErrorCodes } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { backupService, SanctuaryBackup } from '../../services/backupService';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
@@ -39,7 +41,7 @@ const largeBodyParser = express.json({ limit: '200mb' });
  *   - hasEncryptionKey: boolean - Whether ENCRYPTION_KEY is set
  *   - hasEncryptionSalt: boolean - Whether ENCRYPTION_SALT is set
  */
-router.post('/encryption-keys', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/encryption-keys', authenticate, requireAdmin, rateLimitByUser('auth:step-up-password'), asyncHandler(async (req, res) => {
   // Require password re-authentication for this sensitive operation
   const { password } = parseAdminRequestBody(
     EncryptionKeysRequestSchema,
@@ -50,6 +52,7 @@ router.post('/encryption-keys', authenticate, requireAdmin, asyncHandler(async (
   if (!(await verifyAdminPassword(requireAuthenticatedUser(req).userId, password))) {
     return res.status(401).json({
       error: 'Unauthorized',
+      code: ErrorCodes.STEP_UP_CREDENTIAL_INVALID,
       message: 'Incorrect password',
     });
   }

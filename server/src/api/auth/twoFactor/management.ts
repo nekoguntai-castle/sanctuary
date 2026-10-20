@@ -11,9 +11,10 @@ import * as twoFactorService from '../../../services/twoFactorService';
 import { verifyAndConsumeTotp } from './consumeVerifiedTotp';
 import { auditService, AuditAction, AuditCategory } from '../../../services/auditService';
 import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth';
+import { rateLimitByUser } from '../../../middleware/rateLimit';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
-import { NotFoundError, InvalidInputError, UnauthorizedError } from '../../../errors/ApiError';
+import { NotFoundError, InvalidInputError, StepUpCredentialInvalidError } from '../../../errors/ApiError';
 import {
   BackupCodesRegenerateSchema,
   BackupCodesRequestSchema,
@@ -25,12 +26,14 @@ import {
  */
 export function createManagementRouter(): Router {
   const router = Router();
+  // One per-user budget for every route that re-verifies the account password.
+  const stepUpPasswordLimiter = rateLimitByUser('auth:step-up-password');
 
   /**
    * POST /api/v1/auth/2fa/disable
    * Disable 2FA (requires password and current 2FA token)
    */
-  router.post('/2fa/disable', authenticate, validate({ body: TwoFactorDisableSchema }, { message: 'Password and 2FA token are required' }), asyncHandler(async (req, res) => {
+  router.post('/2fa/disable', authenticate, stepUpPasswordLimiter, validate({ body: TwoFactorDisableSchema }, { message: 'Password and 2FA token are required' }), asyncHandler(async (req, res) => {
     const { password, token } = req.body;
 
     const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
@@ -46,7 +49,7 @@ export function createManagementRouter(): Router {
     // Verify password
     const passwordValid = await verifyPassword(password, user.password);
     if (!passwordValid) {
-      throw new UnauthorizedError('Invalid password');
+      throw new StepUpCredentialInvalidError();
     }
 
     // Verify 2FA token (allow backup code too). A code whose time step was
@@ -63,7 +66,7 @@ export function createManagementRouter(): Router {
     }
 
     if (!tokenValid) {
-      throw new UnauthorizedError('Invalid 2FA code');
+      throw new StepUpCredentialInvalidError('Invalid 2FA code');
     }
 
     // Disable 2FA
@@ -86,7 +89,7 @@ export function createManagementRouter(): Router {
    * Get remaining backup codes count (requires password verification)
    * Changed from GET to POST to prevent password exposure in URL/logs
    */
-  router.post('/2fa/backup-codes', authenticate, validate({ body: BackupCodesRequestSchema }, { message: 'Password is required' }), asyncHandler(async (req, res) => {
+  router.post('/2fa/backup-codes', authenticate, stepUpPasswordLimiter, validate({ body: BackupCodesRequestSchema }, { message: 'Password is required' }), asyncHandler(async (req, res) => {
     const { password } = req.body;
 
     const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
@@ -98,7 +101,7 @@ export function createManagementRouter(): Router {
     // Verify password
     const passwordValid = await verifyPassword(password, user.password);
     if (!passwordValid) {
-      throw new UnauthorizedError('Invalid password');
+      throw new StepUpCredentialInvalidError();
     }
 
     if (!user.twoFactorEnabled) {
@@ -114,7 +117,7 @@ export function createManagementRouter(): Router {
    * POST /api/v1/auth/2fa/backup-codes/regenerate
    * Generate new backup codes (requires password and 2FA token)
    */
-  router.post('/2fa/backup-codes/regenerate', authenticate, validate({ body: BackupCodesRegenerateSchema }, { message: 'Password and 2FA token are required' }), asyncHandler(async (req, res) => {
+  router.post('/2fa/backup-codes/regenerate', authenticate, stepUpPasswordLimiter, validate({ body: BackupCodesRegenerateSchema }, { message: 'Password and 2FA token are required' }), asyncHandler(async (req, res) => {
     const { password, token } = req.body;
 
     const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
@@ -130,7 +133,7 @@ export function createManagementRouter(): Router {
     // Verify password
     const passwordValid = await verifyPassword(password, user.password);
     if (!passwordValid) {
-      throw new UnauthorizedError('Invalid password');
+      throw new StepUpCredentialInvalidError();
     }
 
     // Verify 2FA token. A code whose time step was already consumed is
@@ -138,7 +141,7 @@ export function createManagementRouter(): Router {
     // replayed to regenerate backup codes repeatedly.
     const tokenValid = await verifyAndConsumeTotp(user.id, user.twoFactorSecret, token);
     if (!tokenValid) {
-      throw new UnauthorizedError('Invalid 2FA code');
+      throw new StepUpCredentialInvalidError('Invalid 2FA code');
     }
 
     // Generate new backup codes

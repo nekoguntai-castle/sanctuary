@@ -161,6 +161,12 @@ function isHostSourcePath(relativePath) {
   return SOURCE_EXTENSIONS.has(path.extname(relativePath));
 }
 
+// The scanner's file scope. CI classifiers import it so every change the scan
+// reads also runs the lifecycle gate (scripts/ci/classify-quality-scope.sh).
+export function isLifecycleScannedPath(relativePath) {
+  return isSourcePath(relativePath) || isHostSourcePath(relativePath);
+}
+
 function stripShellHeredocs(source) {
   const retained = [];
   let terminator = null;
@@ -1230,9 +1236,7 @@ function scanSourceFile(root, relativePath) {
 
 export function scanLifecycleCallsites({ root, files = trackedFiles(root) }) {
   const result = { findings: [], broadPrunes: [] };
-  for (const relativePath of [...files].sort().filter((entry) => (
-    isSourcePath(entry) || isHostSourcePath(entry)
-  ))) {
+  for (const relativePath of [...files].sort().filter(isLifecycleScannedPath)) {
     const scanned = scanSourceFile(root, relativePath);
     if (!scanned) continue;
     result.findings.push(...scanned.findings);

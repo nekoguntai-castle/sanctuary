@@ -612,7 +612,7 @@ export function registerAdminSettingsNodeBackupTests(): void {
 
         const routeLayer = findRouteLayer(getAdminRouter(), '/encryption-keys', 'post');
         expect(routeLayer).toBeDefined();
-        const handler = routeLayer.route.stack[2].handle;
+        const handler = routeLayer.route.stack.at(-1).handle;
         await callHandler(handler, req, res);
         const response = getResponse();
         expect(response.statusCode).toBe(200);
@@ -631,7 +631,7 @@ export function registerAdminSettingsNodeBackupTests(): void {
 
         const routeLayer = findRouteLayer(getAdminRouter(), '/encryption-keys', 'post');
         expect(routeLayer).toBeDefined();
-        const handler = routeLayer.route.stack[2].handle;
+        const handler = routeLayer.route.stack.at(-1).handle;
         await callHandler(handler, req, res);
         const response = getResponse();
         expect(response.statusCode).toBe(400);
@@ -650,11 +650,12 @@ export function registerAdminSettingsNodeBackupTests(): void {
 
         const routeLayer = findRouteLayer(getAdminRouter(), '/encryption-keys', 'post');
         expect(routeLayer).toBeDefined();
-        const handler = routeLayer.route.stack[2].handle;
+        const handler = routeLayer.route.stack.at(-1).handle;
         await callHandler(handler, req, res);
         const response = getResponse();
         expect(response.statusCode).toBe(401);
         expect(response.body.message).toBe('Incorrect password');
+        expect(response.body.code).toBe('STEP_UP_CREDENTIAL_INVALID');
       });
 
       it('should audit log the access', async () => {
@@ -670,7 +671,7 @@ export function registerAdminSettingsNodeBackupTests(): void {
 
         const routeLayer = findRouteLayer(getAdminRouter(), '/encryption-keys', 'post');
         expect(routeLayer).toBeDefined();
-        const handler = routeLayer.route.stack[2].handle;
+        const handler = routeLayer.route.stack.at(-1).handle;
         await callHandler(handler, req, res);
         expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
           req,
@@ -697,7 +698,7 @@ export function registerAdminSettingsNodeBackupTests(): void {
 
         const routeLayer = findRouteLayer(getAdminRouter(), '/encryption-keys', 'post');
         expect(routeLayer).toBeDefined();
-        const handler = routeLayer.route.stack[2].handle;
+        const handler = routeLayer.route.stack.at(-1).handle;
         await callHandler(handler, req, res);
         const response = getResponse();
         expect(response.statusCode).toBe(200);

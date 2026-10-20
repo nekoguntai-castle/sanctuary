@@ -65,6 +65,7 @@ jobs:
       run_dependency_audit: ${{ steps.classify.outputs.run_dependency_audit }}
       run_workflow_quality: ${{ steps.classify.outputs.run_workflow_quality }}
       run_ci_classifier_tests: ${{ steps.classify.outputs.run_ci_classifier_tests }}
+      run_lifecycle_callsites: ${{ steps.classify.outputs.run_lifecycle_callsites }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -994,6 +995,56 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  # The lifecycle scanner reads nearly every source file, so this gate has its
+  # own scope instead of widening the ~80-suite classifier job. The check uses
+  # only node built-ins and tracked files, so it needs no dependency install.
+  lifecycle-callsites:
+    name: Lifecycle callsite registry
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    needs: [determine-scope]
+    if: always() && needs.determine-scope.outputs.run_lifecycle_callsites == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lifecycle-callsites
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Check lifecycle callsite registry
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lifecycle-callsites.log"
+          npm run check:resource-ownership-contract
+
+      - name: Write lifecycle callsite failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-lifecycle-callsites-failure.log"
+          "Quality Lifecycle Callsites"
+
+      - name: Write lifecycle callsite diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lifecycle Callsites"
+
+      - name: Upload lifecycle callsite diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-lifecycle-callsites
+          path: .tmp/ci-diagnostics/quality-lifecycle-callsites/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-22.04
@@ -1161,7 +1212,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     if: always()
-    needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]
+    needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-action-runtime-guard, ci-classifier-tests, lifecycle-callsites, lizard, jscpd, large-file-classification]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-required-checks
     steps:
@@ -1176,6 +1227,7 @@ jobs:
           RUN_DEPENDENCY_AUDIT: ${{ needs.determine-scope.outputs.run_dependency_audit }}
           RUN_WORKFLOW_QUALITY: ${{ needs.determine-scope.outputs.run_workflow_quality }}
           RUN_CI_CLASSIFIER_TESTS: ${{ needs.determine-scope.outputs.run_ci_classifier_tests }}
+          RUN_LIFECYCLE_CALLSITES: ${{ needs.determine-scope.outputs.run_lifecycle_callsites }}
           DETERMINE_SCOPE: ${{ needs.determine-scope.result }}
           LINT: ${{ needs.lint.result }}
           LOCKFILE_PEER_RESOLUTION: ${{ needs.lockfile-peer-resolution.result }}
@@ -1184,6 +1236,7 @@ jobs:
           SEMGREP_SAST: ${{ needs.semgrep-sast.result }}
           WORKFLOW_ACTION_RUNTIME_GUARD: ${{ needs.workflow-action-runtime-guard.result }}
           CI_CLASSIFIER_TESTS: ${{ needs.ci-classifier-tests.result }}
+          LIFECYCLE_CALLSITES: ${{ needs.lifecycle-callsites.result }}
           LIZARD: ${{ needs.lizard.result }}
           JSCPD: ${{ needs.jscpd.result }}
           LARGE_FILE_CLASSIFICATION: ${{ needs.large-file-classification.result }}
@@ -1195,6 +1248,7 @@ jobs:
           echo "RUN_DEPENDENCY_AUDIT=$RUN_DEPENDENCY_AUDIT"
           echo "RUN_WORKFLOW_QUALITY=$RUN_WORKFLOW_QUALITY"
           echo "RUN_CI_CLASSIFIER_TESTS=$RUN_CI_CLASSIFIER_TESTS"
+          echo "RUN_LIFECYCLE_CALLSITES=$RUN_LIFECYCLE_CALLSITES"
           echo "=== sub-job results ==="
           echo "DETERMINE_SCOPE=$DETERMINE_SCOPE"
           echo "LINT=$LINT"
@@ -1204,6 +1258,7 @@ jobs:
           echo "SEMGREP_SAST=$SEMGREP_SAST"
           echo "WORKFLOW_ACTION_RUNTIME_GUARD=$WORKFLOW_ACTION_RUNTIME_GUARD"
           echo "CI_CLASSIFIER_TESTS=$CI_CLASSIFIER_TESTS"
+          echo "LIFECYCLE_CALLSITES=$LIFECYCLE_CALLSITES"
           echo "LIZARD=$LIZARD"
           echo "JSCPD=$JSCPD"
           echo "LARGE_FILE_CLASSIFICATION=$LARGE_FILE_CLASSIFICATION"
@@ -1275,6 +1330,12 @@ jobs:
             require_success "CI classifier tests" "$CI_CLASSIFIER_TESTS"
           else
             allow_success_or_skipped "CI classifier tests" "$CI_CLASSIFIER_TESTS"
+          fi
+
+          if [ "$RUN_LIFECYCLE_CALLSITES" = "true" ]; then
+            require_success "Lifecycle callsite registry" "$LIFECYCLE_CALLSITES"
+          else
+            allow_success_or_skipped "Lifecycle callsite registry" "$LIFECYCLE_CALLSITES"
           fi
 
           if [ "$failed" = "true" ]; then

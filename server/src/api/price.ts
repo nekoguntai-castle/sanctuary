@@ -19,6 +19,9 @@ import { validate } from "../middleware/validate";
 import { asyncHandler } from "../errors/errorHandler";
 import { ErrorCodes, InvalidInputError } from "../errors/ApiError";
 
+/** Maximum distinct currencies accepted by GET /price/multiple */
+const MAX_MULTIPLE_CURRENCIES = 20;
+
 /** Days parameter: integer between 1 and 365 */
 const HistoryDaysSchema = z.coerce.number().int().min(1).max(365);
 
@@ -62,12 +65,12 @@ const priceAdminPolicyLimiter = rateLimitByUser("admin:default");
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { currency = "USD", useCache = "true" } = req.query;
+    const { currency = "USD" } = req.query;
 
-    const price = await priceService.getPrice(
-      currency as string,
-      useCache === "true",
-    );
+    // useCache is deliberately ignored: this route is public, so reads always
+    // go through the cache (with single-flight refresh) and cannot force a
+    // provider fan-out.
+    const price = await priceService.getPrice(currency as string, true);
 
     res.json(price);
   }),
@@ -82,13 +85,41 @@ router.get(
   asyncHandler(async (req, res) => {
     const { currencies } = req.query;
 
-    if (!currencies) {
+    if (typeof currencies !== "string") {
       throw new InvalidInputError(
         "currencies parameter is required (comma-separated)",
       );
     }
 
-    const currencyList = (currencies as string).split(",").map((c) => c.trim());
+    // Case-insensitive dedupe; the response is keyed by the upper-cased code
+    const currencyList = [
+      ...new Set(
+        currencies
+          .split(",")
+          .map((c) => c.trim().toUpperCase())
+          .filter((c) => c.length > 0),
+      ),
+    ];
+
+    if (currencyList.length === 0) {
+      throw new InvalidInputError(
+        "currencies parameter is required (comma-separated)",
+      );
+    }
+    if (currencyList.length > MAX_MULTIPLE_CURRENCIES) {
+      throw new InvalidInputError(
+        `At most ${MAX_MULTIPLE_CURRENCIES} currencies may be requested at once`,
+      );
+    }
+
+    const supported = new Set(priceService.getSupportedCurrencies());
+    const unsupported = currencyList.filter((c) => !supported.has(c));
+    if (unsupported.length > 0) {
+      throw new InvalidInputError(
+        `Unsupported currencies: ${unsupported.join(", ")}`,
+      );
+    }
+
     const prices = await priceService.getPrices(currencyList);
 
     res.json(prices);

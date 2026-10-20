@@ -280,6 +280,12 @@ services:
       PROMETHEUS_PORT: ${PROMETHEUS_PORT:-9090}
       JAEGER_UI_PORT: ${JAEGER_UI_PORT:-16686}
 
+      # Webhook target allowlists (README "Wallet Webhooks"). The backend's Test
+      # route and the worker's deliveries both apply them; empty means strict.
+      WEBHOOK_ALLOW_HTTP: ${WEBHOOK_ALLOW_HTTP:-}
+      WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
+      WEBHOOK_ALLOWED_CIDRS: ${WEBHOOK_ALLOWED_CIDRS:-}
+
       # Encryption (for sensitive data like node passwords)
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (at least 32 chars)}
       ENCRYPTION_SALT: ${ENCRYPTION_SALT:?ENCRYPTION_SALT is required}
@@ -435,6 +441,12 @@ services:
       PRICE_DATA_RETENTION_DAYS: ${PRICE_DATA_RETENTION_DAYS:-30}
       FEE_ESTIMATE_RETENTION_DAYS: ${FEE_ESTIMATE_RETENTION_DAYS:-7}
       DISK_WARNING_THRESHOLD_PERCENT: ${DISK_WARNING_THRESHOLD_PERCENT:-80}
+
+      # Webhook target allowlists (README "Wallet Webhooks"). The backend's Test
+      # route and the worker's deliveries both apply them; empty means strict.
+      WEBHOOK_ALLOW_HTTP: ${WEBHOOK_ALLOW_HTTP:-}
+      WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
+      WEBHOOK_ALLOWED_CIDRS: ${WEBHOOK_ALLOWED_CIDRS:-}
 
       # Security (required for config validation)
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}

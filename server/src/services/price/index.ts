@@ -67,6 +67,7 @@ class PriceService {
   ];
   private registryReload: Promise<void> = Promise.resolve();
   private providerPriceRequests = new Map<string, Promise<PriceData>>();
+  private aggregatedPriceRequests = new Map<string, Promise<AggregatedPrice>>();
 
   constructor() {
     this.registry = createPriceProviderRegistry();
@@ -118,6 +119,7 @@ class PriceService {
     this.enabledProviderNames = [...enabledProviderNames];
     this.initialized = true;
     this.providerPriceRequests.clear();
+    this.aggregatedPriceRequests.clear();
     try {
       await this.clearCache();
     } finally {
@@ -171,6 +173,41 @@ class PriceService {
       }
     }
 
+    // Concurrent reads of one currency share a single provider fan-out
+    return this.singleFlight(this.aggregatedPriceRequests, cacheKey, () =>
+      this.fetchAggregatedPrice(currency, cacheKey),
+    );
+  }
+
+  /**
+   * Share one in-flight promise per key; the entry is removed when it settles.
+   */
+  private async singleFlight<T>(
+    pending: Map<string, Promise<T>>,
+    key: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const existing = pending.get(key);
+    if (existing) return existing;
+
+    const request = fn();
+    pending.set(key, request);
+
+    try {
+      return await request;
+    } finally {
+      // A reload may have cleared the map and a newer request taken the key.
+      if (pending.get(key) === request) pending.delete(key);
+    }
+  }
+
+  /**
+   * Fetch and aggregate a price from the providers (cache already checked)
+   */
+  private async fetchAggregatedPrice(
+    currency: string,
+    cacheKey: string,
+  ): Promise<AggregatedPrice> {
     // Get providers that support this currency
     const healthyProviders = await getProvidersForCurrency(
       this.registry,
@@ -281,21 +318,13 @@ class PriceService {
     const cached = await priceCache.get<PriceData>(cacheKey);
     if (cached) return cached;
 
-    const pendingRequest = this.providerPriceRequests.get(cacheKey);
-    if (pendingRequest) return pendingRequest;
-
-    const request = this.fetchPriceFromProvider(
-      normalizedProviderName,
-      normalizedCurrency,
-      cacheKey,
+    return this.singleFlight(this.providerPriceRequests, cacheKey, () =>
+      this.fetchPriceFromProvider(
+        normalizedProviderName,
+        normalizedCurrency,
+        cacheKey,
+      ),
     );
-    this.providerPriceRequests.set(cacheKey, request);
-
-    try {
-      return await request;
-    } finally {
-      this.providerPriceRequests.delete(cacheKey);
-    }
   }
 
   private async fetchPriceFromProvider(
@@ -670,6 +699,7 @@ class PriceService {
     await this.registry.shutdown();
     this.initialized = false;
     this.providerPriceRequests.clear();
+    this.aggregatedPriceRequests.clear();
     log.info("Price service shut down");
   }
 

@@ -578,7 +578,7 @@ describe('Email Verification API', () => {
         .send({ email: newEmail, password: 'wrongpassword' });
 
       expect(response.status).toBe(401);
-      expect(response.body.code).toBe('UNAUTHORIZED');
+      expect(response.body.code).toBe('STEP_UP_CREDENTIAL_INVALID');
       expect(response.body.message).toBe('Invalid password');
     });
 

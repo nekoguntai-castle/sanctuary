@@ -50,6 +50,7 @@ export function registerTwoFactorBackupCodeCountContracts() {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('Invalid password');
+    expect(response.body.code).toBe('STEP_UP_CREDENTIAL_INVALID');
   });
 
   it('should return 400 when 2FA is not enabled', async () => {
@@ -170,6 +171,7 @@ export function registerTwoFactorBackupCodeRegenerateContracts() {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('Invalid password');
+    expect(response.body.code).toBe('STEP_UP_CREDENTIAL_INVALID');
   });
 
   it('should return 401 when 2FA token is invalid', async () => {

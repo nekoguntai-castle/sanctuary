@@ -46,13 +46,13 @@ describe("Price API public routes", () => {
       expect(mockPriceService.getPrice).toHaveBeenCalledWith("EUR", true);
     });
 
-    it("should accept useCache=false parameter", async () => {
+    it("should ignore useCache=false so public reads cannot bypass the cache", async () => {
       mockPriceService.getPrice.mockResolvedValue(mockPriceData);
 
       const response = await request(app).get("/api/v1/price?useCache=false");
 
       expect(response.status).toBe(200);
-      expect(mockPriceService.getPrice).toHaveBeenCalledWith("USD", false);
+      expect(mockPriceService.getPrice).toHaveBeenCalledWith("USD", true);
     });
 
     it("should return 500 on error", async () => {
@@ -88,6 +88,50 @@ describe("Price API public routes", () => {
       ]);
     });
 
+    it("should deduplicate currencies case-insensitively and key by upper-case", async () => {
+      mockPriceService.getPrices.mockResolvedValue({ USD: 45000, EUR: 42000 });
+
+      const response = await request(app).get(
+        "/api/v1/price/multiple?currencies=usd,USD,Eur,eur, usd",
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockPriceService.getPrices).toHaveBeenCalledWith(["USD", "EUR"]);
+    });
+
+    it("should return 400 for unsupported currencies without querying providers", async () => {
+      const response = await request(app).get(
+        "/api/v1/price/multiple?currencies=USD,XYZ",
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain("XYZ");
+      expect(mockPriceService.getPrices).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 when more currencies than the cap are requested", async () => {
+      const many = Array.from({ length: 1000 }, (_, i) => `C${i}`).join(",");
+      mockPriceService.getSupportedCurrencies.mockReturnValue(
+        Array.from({ length: 1000 }, (_, i) => `C${i}`),
+      );
+
+      const response = await request(app).get(
+        `/api/v1/price/multiple?currencies=${many}`,
+      );
+
+      expect(response.status).toBe(400);
+      expect(mockPriceService.getPrices).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for a repeated (non-string) currencies parameter", async () => {
+      const response = await request(app).get(
+        "/api/v1/price/multiple?currencies=USD&currencies=EUR",
+      );
+
+      expect(response.status).toBe(400);
+      expect(mockPriceService.getPrices).not.toHaveBeenCalled();
+    });
+
     it("should return 400 without currencies parameter", async () => {
       const response = await request(app).get("/api/v1/price/multiple");
 
@@ -95,6 +139,18 @@ describe("Price API public routes", () => {
       expect(response.body.message).toContain(
         "currencies parameter is required",
       );
+    });
+
+    it("should return 400 when the currencies list is only separators", async () => {
+      const response = await request(app).get(
+        "/api/v1/price/multiple?currencies=%20,%20,",
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain(
+        "currencies parameter is required",
+      );
+      expect(mockPriceService.getPrices).not.toHaveBeenCalled();
     });
 
     it("should return 500 on internal error", async () => {

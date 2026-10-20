@@ -20,6 +20,9 @@ export const pricePaths = {
           name: "useCache",
           in: "query",
           required: false,
+          description:
+            "Deprecated and ignored. Public price reads are always served from the cache with single-flight refresh.",
+          deprecated: true,
           schema: { type: "boolean", default: true },
         },
       ],
@@ -34,7 +37,7 @@ export const pricePaths = {
       tags: ["Price"],
       summary: "Get multiple BTC prices",
       description:
-        "Get aggregated Bitcoin prices for a comma-separated list of fiat currencies.",
+        "Get aggregated Bitcoin prices for a comma-separated list of fiat currencies. Codes are case-insensitive, deduplicated and must be supported; at most 20 distinct currencies per request. The response is keyed by upper-case code.",
       parameters: [
         {
           name: "currencies",

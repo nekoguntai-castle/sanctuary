@@ -34,6 +34,12 @@ assert_quality_scope() {
   assert_exact_output "$output_file" "run_ci_classifier_tests" "$classifier"
 }
 
+# The lifecycle callsite gate has its own output because the scanner covers
+# nearly every source file, while the classifier suites stay narrowly gated.
+assert_lifecycle_scope() {
+  assert_exact_output "$1" "run_lifecycle_callsites" "$2"
+}
+
 create_repo() {
   local repo_dir="$1"
 
@@ -124,18 +130,23 @@ main() {
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "schedule"
   assert_quality_scope "$output_file" true true true true true
+  assert_lifecycle_scope "$output_file" true
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "workflow_dispatch"
   assert_quality_scope "$output_file" true true true true true
+  assert_lifecycle_scope "$output_file" true
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "repository_dispatch"
   assert_quality_scope "$output_file" true true true true true
+  assert_lifecycle_scope "$output_file" true
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "push" false
   assert_quality_scope "$output_file" true true true true true
+  assert_lifecycle_scope "$output_file" true
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "pull_request" false
   assert_quality_scope "$output_file" true true true true true
+  assert_lifecycle_scope "$output_file" true
 
   mkdir -p "$repo_dir/docs/images"
   printf '# Docs only\n' > "$repo_dir/README.md"
@@ -146,6 +157,8 @@ main() {
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_quality_scope "$output_file" false false false false false
+  # README.md documents public commands, so the lifecycle scanner reads it.
+  assert_lifecycle_scope "$output_file" true
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
@@ -189,6 +202,7 @@ main() {
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
     docs/reference/resource-ownership-cleanup.md '# Ownership' \
     'ownership operator contract change' false false false false true)"
+  assert_lifecycle_scope "$output_file" false
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
@@ -222,6 +236,7 @@ main() {
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
     fixtures/archive.bin binary 'binary fixture' true false false false false)"
+  assert_lifecycle_scope "$output_file" false
 
   base_sha="$head_sha"
   head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
@@ -261,6 +276,43 @@ main() {
       "$path" tool "classify $path" true "$expected_source" "$expected_dependency" false \
       "$expected_classifier")"
   done
+
+  # Host and compose sources the lifecycle scanner reads run its gate without
+  # running the classifier suites.
+  for path in \
+    uninstall.sh \
+    start.sh \
+    scripts/setup.sh \
+    docker-compose.yml \
+    docker/compose/example.yml \
+    scripts/offline/example.sh \
+    scripts/ops/example.sh \
+    tests/install/unit/x.test.sh; do
+    base_sha="$head_sha"
+    head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+      "$path" 'echo lifecycle' "classify $path" true false false false false)"
+    assert_lifecycle_scope "$output_file" true
+  done
+
+  # Parity: every path registered in the lifecycle callsite inventory is in the
+  # scanner scope the classifier asks about, so an edit to a registered callsite
+  # always runs the gate. The module path travels in the environment, as in the
+  # classifier, so the scanner's isMainModule guard does not run the full scan.
+  LIFECYCLE_SCANNER_MODULE="$ROOT_DIR/scripts/ownership/check-lifecycle-callsites.mjs" \
+  LIFECYCLE_REGISTRY="$ROOT_DIR/config/resource-lifecycle-callsites.json" \
+    node --input-type=module -e '
+      import { readFileSync } from "node:fs";
+      import { pathToFileURL } from "node:url";
+      const scanner = pathToFileURL(process.env.LIFECYCLE_SCANNER_MODULE).href;
+      const { isLifecycleScannedPath } = await import(scanner);
+      const { callsites } = JSON.parse(readFileSync(process.env.LIFECYCLE_REGISTRY, "utf8"));
+      const rejected = [...new Set(callsites.map((entry) => entry.path))]
+        .filter((path) => !isLifecycleScannedPath(path)).sort();
+      if (rejected.length > 0) {
+        process.stderr.write(`registered lifecycle paths outside the gate scope:\n${rejected.join("\n")}\n`);
+        process.exit(1);
+      }
+    ' || fail "registered lifecycle paths do not run the lifecycle gate"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" src/renamed.ts 'export const renamed = true;' 'add source before rename'

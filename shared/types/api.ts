@@ -12,6 +12,13 @@ import type { SyncExecutionOwner } from '../constants/sync';
 
 export const AUTH_CSRF_SESSION_STALE_CODE = 'AUTH_CSRF_SESSION_STALE' as const;
 
+/**
+ * 401 code for a wrong password or 2FA code on a step-up route (2FA management,
+ * encryption keys, change password, change email). It is a credential failure,
+ * not session expiry, so clients must not refresh and replay the request.
+ */
+export const STEP_UP_CREDENTIAL_INVALID_CODE = 'STEP_UP_CREDENTIAL_INVALID' as const;
+
 // =============================================================================
 // Generic API Patterns
 // =============================================================================

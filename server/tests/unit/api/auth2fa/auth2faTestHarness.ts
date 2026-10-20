@@ -84,10 +84,17 @@ vi.mock('../../../../src/services/email', () => ({
 vi.mock('../../../../src/services/rateLimiting', () => ({
   rateLimitService: {
     consume: vi.fn().mockResolvedValue({ allowed: true, remaining: 9, limit: 10, resetAt: Date.now() + 900_000 }),
+    // The real rateLimitByUser reads the policy message when the route is built.
+    getPolicy: vi.fn().mockReturnValue(undefined),
   },
 }));
 
-vi.mock('../../../../src/middleware/rateLimit', () => ({
+// rateLimitByUser stays real (it consumes the mocked rateLimitService) so the
+// step-up password budget is exercised by the route tests.
+vi.mock('../../../../src/middleware/rateLimit', async () => ({
+  rateLimitByUser: (await vi.importActual<typeof import('../../../../src/middleware/rateLimit')>(
+    '../../../../src/middleware/rateLimit'
+  )).rateLimitByUser,
   rateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitByIpAndKey: (_key?: string, extractKey?: (req: any) => string | undefined) =>
     (req: unknown, _res: unknown, next: () => void) => {
@@ -96,7 +103,6 @@ vi.mock('../../../../src/middleware/rateLimit', () => ({
       }
       next();
     },
-  rateLimitByUser: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 vi.mock('../../../../src/middleware/auth', () => ({
@@ -164,6 +170,7 @@ vi.mock('../../../../src/utils/password', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../src/utils/password')>();
   return {
     ...actual,
+    verifyPassword: vi.fn(actual.verifyPassword),
   };
 });
 

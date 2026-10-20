@@ -334,8 +334,19 @@ review before committing.
 
 ## Completion criteria
 
-- [ ] PR A merged; target-branch CI green on its merge commit.
+- [x] PR A merged; target-branch CI green on its merge commit (#1402, merge `d82d430d21`).
 - [ ] PR B merged; target-branch CI green on its merge commit.
 - [ ] Every phase's regression test failed on `e1769d9e` and passes on its merge.
 - [ ] Owned branches and worktrees cleaned; run state updated.
 - [ ] P3 backlog remains outside the blocking fix set.
+
+## Progress
+
+- **PR A — #1402**, squash merge `d82d430d211ef5e3ce0d17683f9c65ebdac3b79c`; target-branch CI green
+  (verify-vectors, quality, architecture). Phases A1–A4 delivered as planned. Divergences:
+  - The lifecycle classifier lane failed once on a 1–2 s wall-clock wait in
+    `tests/ci/registered-collector-process.test.sh` (no code in that area changed); the PR carried a stability
+    fix that widens the waits (final argv 5 s, cancellation pid 10 s) with the evidence in its commit body.
+  - Generated architecture graph updated for the new `shared/utils/bitcoin` edges from the send flow.
+- **PR B** — follows A; adds a guard so a request started before a price-provider reload cannot remove a
+  newer request's single-flight entry (found by the commit-hook review).

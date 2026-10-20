@@ -1,3 +1,4 @@
+import { STEP_UP_CREDENTIAL_INVALID_CODE } from '@sanctuary/shared/types/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -151,6 +152,21 @@ describe('browser auth policy', () => {
       expect(isRefreshOn401ExemptEndpoint('/auth/logout')).toBe(false);
       expect(isRefreshOn401ExemptEndpoint('/auth/logout-all')).toBe(false);
       expect(isRefreshOn401ExemptEndpoint('/wallets')).toBe(false);
+    });
+
+    it('skips refresh when the 401 carries the step-up credential code', () => {
+      expect(shouldAttemptRefreshAfterUnauthorized({
+        endpoint: '/auth/password',
+        status: 401,
+        isRefreshRetry: false,
+        response: { code: STEP_UP_CREDENTIAL_INVALID_CODE },
+      })).toBe(false);
+      expect(shouldAttemptRefreshAfterUnauthorized({
+        endpoint: '/auth/password',
+        status: 401,
+        isRefreshRetry: false,
+        response: { code: 'UNAUTHORIZED' },
+      })).toBe(true);
     });
 
     it('attempts refresh only for first-pass 401 responses on eligible endpoints', () => {

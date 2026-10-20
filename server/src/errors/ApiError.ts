@@ -40,6 +40,7 @@ export const ErrorCodes = {
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
   TWO_FA_REQUIRED: 'TWO_FA_REQUIRED',
   AUTH_CSRF_SESSION_STALE: 'AUTH_CSRF_SESSION_STALE',
+  STEP_UP_CREDENTIAL_INVALID: 'STEP_UP_CREDENTIAL_INVALID',
 
   // Authorization errors (403)
   FORBIDDEN: 'FORBIDDEN',
@@ -146,6 +147,13 @@ export class UnauthorizedError extends ApiError {
     details?: Record<string, unknown>
   ) {
     super(message, 401, code, details);
+  }
+}
+
+/** Wrong password or 2FA code on a step-up route; clients must not refresh/replay on it. */
+export class StepUpCredentialInvalidError extends UnauthorizedError {
+  constructor(message: string = 'Invalid password') {
+    super(message, ErrorCodes.STEP_UP_CREDENTIAL_INVALID);
   }
 }
 

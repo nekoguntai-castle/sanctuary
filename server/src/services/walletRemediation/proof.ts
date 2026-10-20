@@ -13,6 +13,7 @@ import {
   type WalletScriptType,
   type WalletType,
 } from '@sanctuary/shared/constants/walletIdentity';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { deriveCanonicalAddress } from '../bitcoin/addressDerivation';
 import { convertToStandardXpub } from '../bitcoin/addressDerivation/xpubConversion';
 import { getNetwork } from '../bitcoin/addressDerivation/utils';
@@ -384,11 +385,13 @@ const signerMatchesKey = (
     || !signer.accountPurpose || !signer.accountScriptType) return false;
   if (signer.deviceAccountId !== null && signer.deviceAccountId !== signer.accountId) return false;
   const wallet = snapshot.wallet;
+  // DeviceAccount paths are stored verbatim (h or '); the descriptor parser emits '.
+  const accountPath = normalizeDerivationPath(signer.accountDerivationPath);
   return signer.deviceFingerprint.toLowerCase() === key.fingerprint
-    && signer.accountDerivationPath === key.accountPath
+    && accountPath === key.accountPath
     && signer.accountPurpose === (wallet.type === 'multi_sig' ? 'multisig' : 'single_sig')
     && signer.accountScriptType === wallet.scriptType
-    && accountPathMatchesWalletPolicy(signer.accountDerivationPath, {
+    && accountPathMatchesWalletPolicy(accountPath, {
       walletType: wallet.type as never,
       scriptType: wallet.scriptType as never,
       chainEnvironment: wallet.network as never,

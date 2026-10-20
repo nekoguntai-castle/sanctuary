@@ -12,7 +12,7 @@ import {
   userRepository,
 } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, NotFoundError, UnauthorizedError } from '../../errors/ApiError';
+import { InvalidInputError, NotFoundError, StepUpCredentialInvalidError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
@@ -95,7 +95,7 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
     const isValid = await verifyPassword(currentPassword, user.password);
 
     if (!isValid) {
-      throw new UnauthorizedError('Current password is incorrect');
+      throw new StepUpCredentialInvalidError('Current password is incorrect');
     }
 
     // Hash new password

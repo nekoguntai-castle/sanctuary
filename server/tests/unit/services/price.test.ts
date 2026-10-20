@@ -245,6 +245,23 @@ describe('Price Service', () => {
       expect(mockedAxios.get.mock.calls.length).toBeGreaterThan(callCountAfterFirst);
     });
 
+    it('should fetch from providers once for concurrent getPrice calls of one currency', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      await priceService.getPrice('USD', true);
+      mockedAxios.get.mockClear();
+
+      const results = await Promise.all(
+        Array.from({ length: 25 }, (_, i) => priceService.getPrice(i % 2 ? 'usd' : 'USD', false)),
+      );
+
+      const callsForOne = mockedAxios.get.mock.calls.length;
+      expect(results.every((r) => r.currency === 'USD')).toBe(true);
+
+      mockedAxios.get.mockClear();
+      await priceService.getPrice('USD', false);
+      expect(callsForOne).toBe(mockedAxios.get.mock.calls.length);
+    });
+
     it('should throw error for unsupported currency', async () => {
       await expect(priceService.getPrice('XYZ', false)).rejects.toThrow(
         'Currency XYZ is not supported by any provider'
@@ -561,6 +578,64 @@ describe('Price Service', () => {
       await priceService.setProviderEnabled('binance', false, 'admin-1');
 
       expect(priceService.getProviders()).not.toContain('binance');
+    });
+  });
+
+  describe('in-flight request cleanup', () => {
+    const inFlight = () => (priceService as unknown as {
+      aggregatedPriceRequests: Map<string, Promise<unknown>>;
+    }).aggregatedPriceRequests;
+
+    async function startPendingPrice(): Promise<{ ungate: () => void; release: () => void }> {
+      await priceService.getPrice('USD', true); // initialize against default mocks
+      mockCacheStore.clear();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      let gated = true;
+      mockedAxios.get.mockImplementation(async () => {
+        if (gated) await gate;
+        return { data: { USD: 50000 } };
+      });
+      void priceService.getPrice('USD', false).catch(() => undefined);
+      await vi.waitFor(() => expect(inFlight().size).toBe(1));
+      // Later calls (provider re-initialisation) must not block on the gate.
+      return { ungate: () => { gated = false; }, release };
+    }
+
+    it('drops pending aggregated requests when providers are reloaded', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const { ungate, release } = await startPendingPrice();
+
+      ungate();
+      await priceService.setProviderEnabled('binance', true, 'admin-1');
+
+      expect(inFlight().size).toBe(0);
+      release();
+    });
+
+    it('keeps a newer request registered when a request from before a reload settles', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const { ungate, release } = await startPendingPrice();
+      const [[key, stale]] = [...inFlight().entries()];
+
+      ungate();
+      await priceService.setProviderEnabled('binance', true, 'admin-1');
+      const newer = Promise.resolve({});
+      inFlight().set(key, newer);
+      release();
+      await stale.catch(() => undefined);
+
+      expect(inFlight().get(key)).toBe(newer);
+    });
+
+    it('drops pending aggregated requests on shutdown', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const { release } = await startPendingPrice();
+
+      await priceService.shutdown();
+
+      expect(inFlight().size).toBe(0);
+      release();
     });
   });
 

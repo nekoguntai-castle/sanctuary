@@ -61,6 +61,16 @@ function buildPolicies(): Record<string, RateLimitPolicy> {
       message: 'Too many password change attempts. Please try again later.',
     },
 
+    // Password re-verification on authenticated step-up routes (2FA management,
+    // /admin/encryption-keys). Shares the password-change limits, one budget per user.
+    'auth:step-up-password': {
+      name: 'auth:step-up-password',
+      limit: rl.passwordChangeAttempts,
+      windowSeconds: rl.passwordChangeWindowSeconds,
+      keyStrategy: 'user',
+      message: 'Too many password confirmation attempts. Please try again later.',
+    },
+
     'auth:email-verify': {
       name: 'auth:email-verify',
       limit: rl.emailVerifyAttempts,

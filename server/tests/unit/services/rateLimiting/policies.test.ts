@@ -218,6 +218,18 @@ describe('Rate Limit Policies', () => {
     });
   });
 
+  describe('auth:step-up-password policy', () => {
+    it('reuses the password-change limits, keyed per user', () => {
+      const policies = getRateLimitPolicies();
+      const policy = policies['auth:step-up-password'];
+
+      expect(policy.name).toBe('auth:step-up-password');
+      expect(policy.limit).toBe(policies['auth:password-change'].limit);
+      expect(policy.windowSeconds).toBe(policies['auth:password-change'].windowSeconds);
+      expect(policy.keyStrategy).toBe('user');
+    });
+  });
+
   describe('api:default policy', () => {
     it('should have correct configuration', () => {
       const policy = getRateLimitPolicies()['api:default'];
@@ -364,6 +376,7 @@ describe('Rate Limit Policies', () => {
         'auth:2fa',
         'auth:2fa-account',
         'auth:password-change',
+        'auth:step-up-password',
         'api:default',
         'api:heavy',
         'api:public',

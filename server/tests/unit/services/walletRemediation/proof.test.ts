@@ -83,6 +83,13 @@ function legacyNullSnapshot(
       canonicalPolicyId: null,
       canonicalPolicyVersion: null,
     },
+    // The signer's stored DeviceAccount path uses the same notation as the addresses.
+    signers: base.signers.map((signer) => ({
+      ...signer,
+      accountDerivationPath: pathNotation === 'h' && signer.accountDerivationPath
+        ? signer.accountDerivationPath.replace(/'/g, 'h')
+        : signer.accountDerivationPath,
+    })),
     addresses: base.addresses.map((address) => ({
       ...address,
       derivationPath: pathNotation === 'h'

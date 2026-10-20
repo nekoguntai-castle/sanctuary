@@ -9,6 +9,7 @@ import {
   registerTwoFactorEnableContracts,
   registerTwoFactorSetupContracts,
 } from './auth2fa/auth2fa.setup-enable.contracts';
+import { registerTwoFactorStepUpRateLimitContracts } from './auth2fa/auth2fa.step-up.contracts';
 import { registerTwoFactorVerifyContracts } from './auth2fa/auth2fa.verify.contracts';
 import { registerAuth2faTestHarness } from './auth2fa/auth2faTestHarness';
 
@@ -37,5 +38,9 @@ describe('Auth API Routes — Two-Factor Authentication', () => {
 
   describe('POST /auth/2fa/backup-codes/regenerate - Regenerate Backup Codes', () => {
     registerTwoFactorBackupCodeRegenerateContracts();
+  });
+
+  describe('Step-up password rate limit', () => {
+    registerTwoFactorStepUpRateLimitContracts();
   });
 });

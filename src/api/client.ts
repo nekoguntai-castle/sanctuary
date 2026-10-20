@@ -590,6 +590,7 @@ export class ApiClient {
         shouldAttemptRefreshAfterUnauthorized({
           endpoint: input.endpoint,
           status: error.status,
+          response: error.response,
           isRefreshRetry: input.isRefreshRetry ?? false,
         })
       ) {

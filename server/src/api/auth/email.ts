@@ -25,7 +25,7 @@ import { createLogger } from '../../utils/logger';
 import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { NotFoundError, ValidationError, UnauthorizedError, ConflictError } from '../../errors/ApiError';
+import { NotFoundError, ValidationError, StepUpCredentialInvalidError, ConflictError } from '../../errors/ApiError';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
 import { getErrorMessage, isUniqueConstraintError } from '../../utils/errors';
 
@@ -271,7 +271,7 @@ export function createEmailRouter(
       // Verify password
       const passwordValid = await verifyPassword(password, user.password);
       if (!passwordValid) {
-        throw new UnauthorizedError('Invalid password');
+        throw new StepUpCredentialInvalidError('Invalid password');
       }
 
       const normalizedEmail = normalizeEmail(email);

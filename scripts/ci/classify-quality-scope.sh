@@ -13,6 +13,7 @@ run_source_quality=true
 run_dependency_audit=true
 run_workflow_quality=false
 run_ci_classifier_tests=false
+run_lifecycle_callsites=false
 
 emit_outputs() {
   ci_emit_output \
@@ -20,7 +21,8 @@ emit_outputs() {
     "run_source_quality=$run_source_quality" \
     "run_dependency_audit=$run_dependency_audit" \
     "run_workflow_quality=$run_workflow_quality" \
-    "run_ci_classifier_tests=$run_ci_classifier_tests"
+    "run_ci_classifier_tests=$run_ci_classifier_tests" \
+    "run_lifecycle_callsites=$run_lifecycle_callsites"
 }
 
 mark_full_quality() {
@@ -29,6 +31,7 @@ mark_full_quality() {
   run_dependency_audit=true
   run_workflow_quality=true
   run_ci_classifier_tests=true
+  run_lifecycle_callsites=true
 }
 
 case "$event_name" in
@@ -184,6 +187,9 @@ run_source_quality=false
 run_dependency_audit=false
 run_workflow_quality=false
 run_ci_classifier_tests=false
+run_lifecycle_callsites=false
+
+changed_files="$(git diff --no-renames --name-only "$base_sha" "$head_sha")"
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue
@@ -202,6 +208,22 @@ while IFS= read -r file; do
   if ! is_repo_quality_exempt_file "$file"; then
     run_repo_quality=true
   fi
-done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
+done <<< "$changed_files"
+
+# The lifecycle callsite gate covers whatever its scanner reads, which is far
+# wider than the classifier suites. Ask the scanner's own scope predicate once
+# for the whole changed-file list rather than mirroring it in shell patterns.
+# The module path travels in the environment, not argv: a module path in
+# argv[1] would make the scanner's isMainModule guard run the full scan.
+run_lifecycle_callsites="$(printf '%s\n' "$changed_files" \
+  | LIFECYCLE_SCANNER_MODULE="$SCRIPT_DIR/../ownership/check-lifecycle-callsites.mjs" \
+    node --input-type=module -e '
+      import { readFileSync } from "node:fs";
+      import { pathToFileURL } from "node:url";
+      const scanner = pathToFileURL(process.env.LIFECYCLE_SCANNER_MODULE).href;
+      const { isLifecycleScannedPath } = await import(scanner);
+      const files = readFileSync(0, "utf8").split("\n").filter(Boolean);
+      process.stdout.write(String(files.some(isLifecycleScannedPath)));
+    ')"
 
 emit_outputs

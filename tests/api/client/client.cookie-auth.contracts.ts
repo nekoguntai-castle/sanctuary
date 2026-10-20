@@ -157,6 +157,30 @@ export const registerApiClientCookieAuthContracts = () => {
       expect(result).toEqual({ ok: true });
     });
 
+    it('does not refresh or replay a step-up wrong-password 401 (one request, one budget unit)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        errorResponse(401, { message: 'Invalid password', code: 'STEP_UP_CREDENTIAL_INVALID' }),
+      );
+
+      await expect(apiClient.post('/auth/2fa/backup-codes', { password: 'typo' }))
+        .rejects.toMatchObject({ status: 401 });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('still refreshes and replays a plain 401 on a step-up endpoint (expired session)', async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(okResponse({ remaining: 3 }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      await apiClient.post('/auth/2fa/backup-codes', { password: 'pw' });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
     it('surfaces the second 401 without a third refresh attempt when the retry also fails', async () => {
       mockFetch
         .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))

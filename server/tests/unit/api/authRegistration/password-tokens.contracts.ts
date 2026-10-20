@@ -74,6 +74,7 @@ export function registerAuthPasswordTokenTests(): void {
 
       expect(response.status).toBe(401);
       expect(response.body.message).toContain('Current password is incorrect');
+    expect(response.body.code).toBe('STEP_UP_CREDENTIAL_INVALID');
     });
 
     // Skip these tests because they hit the rate limiter threshold from previous tests

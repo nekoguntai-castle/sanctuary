@@ -10,6 +10,7 @@ const {
   mockAuditLogFromRequest,
   mockVerifyPassword,
   mockPrismaUserFindUnique,
+  mockRateLimitConsume,
 } = vi.hoisted(() => ({
   mockCreateBackup: vi.fn(),
   mockValidateBackupForRestore: vi.fn(),
@@ -17,6 +18,7 @@ const {
   mockAuditLogFromRequest: vi.fn(),
   mockVerifyPassword: vi.fn(),
   mockPrismaUserFindUnique: vi.fn(),
+  mockRateLimitConsume: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
@@ -28,6 +30,17 @@ vi.mock('../../../src/middleware/auth', () => ({
     next();
   },
   requireAdmin: (_req: any, _res: any, next: () => void) => next(),
+}));
+
+// The global setup stubs the rate-limit middleware; use the real one here and
+// stub the service it consumes (it fails closed with 503 without Redis).
+vi.mock('../../../src/middleware/rateLimit', () => vi.importActual('../../../src/middleware/rateLimit'));
+
+vi.mock('../../../src/services/rateLimiting', () => ({
+  rateLimitService: {
+    consume: mockRateLimitConsume,
+    getPolicy: vi.fn().mockReturnValue(undefined),
+  },
 }));
 
 vi.mock('../../../src/services/backupService', () => ({
@@ -135,6 +148,7 @@ describe('Admin Backup Routes', () => {
 
     mockAuditLogFromRequest.mockResolvedValue(undefined);
     mockVerifyPassword.mockResolvedValue(true);
+    mockRateLimitConsume.mockResolvedValue({ allowed: true, remaining: 2, limit: 3, resetAt: Date.now() + 3_600_000 });
     mockPrismaUserFindUnique.mockResolvedValue({ password: 'hashed-password' });
     mockCreateBackup.mockResolvedValue(makeBackup());
     mockValidateBackupForRestore.mockResolvedValue({
@@ -180,6 +194,28 @@ describe('Admin Backup Routes', () => {
     );
   });
 
+  it('consumes the per-user auth:step-up-password budget before verifying the password', async () => {
+    await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({ password: 'admin-password' });
+
+    expect(mockRateLimitConsume).toHaveBeenCalledWith('auth:step-up-password', 'user:admin-1');
+  });
+
+  it('returns 429 without verifying the password when the step-up budget is exhausted', async () => {
+    mockRateLimitConsume.mockResolvedValue({
+      allowed: false, remaining: 0, limit: 3, resetAt: Date.now() + 3_600_000, retryAfter: 3600,
+    });
+
+    const response = await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({ password: 'admin-password' });
+
+    expect(response.status).toBe(429);
+    expect(mockVerifyPassword).not.toHaveBeenCalled();
+    expect(mockAuditLogFromRequest).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when password is not provided', async () => {
     const response = await request(app)
       .post('/api/v1/admin/encryption-keys')
@@ -198,6 +234,7 @@ describe('Admin Backup Routes', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.error).toBe('Unauthorized');
+    expect(response.body.code).toBe('STEP_UP_CREDENTIAL_INVALID');
   });
 
   it('returns empty encryption values when environment variables are missing', async () => {

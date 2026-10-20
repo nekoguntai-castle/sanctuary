@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Guard: operator settings documented in config/env/.env.example or the
-# operations runbooks, and read by server/src or gateway/src, must reach the
+# Guard: operator settings documented in config/env/.env.example, the
+# operations runbooks or README.md's ```env blocks, and read by server/src or gateway/src, must reach the
 # container that reads them. docker-compose.yml has no env_file, so a key that is
 # not listed in a service's `environment:` block is silently ignored there.
 set -euo pipefail
@@ -10,6 +10,7 @@ COMPOSE="$ROOT_DIR/docker-compose.yml"
 START_SH="$ROOT_DIR/start.sh"
 ENV_EXAMPLE="$ROOT_DIR/config/env/.env.example"
 RUNBOOK="$ROOT_DIR/docs/how-to/operations-runbooks.md"
+README="$ROOT_DIR/README.md"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -55,6 +56,14 @@ REQUIRED_FORWARDS=(
   'worker|FEE_ESTIMATE_RETENTION_DAYS|7'
   'worker|DISK_WARNING_THRESHOLD_PERCENT|80'
   'worker|SLOW_QUERY_THRESHOLD_MS|50'
+  # endpointPolicy.ts reads these in the backend (the Test route) and in the
+  # worker (deliveries), so each must reach both services.
+  'backend|WEBHOOK_ALLOW_HTTP|'
+  'backend|WEBHOOK_ALLOWED_HOSTS|'
+  'backend|WEBHOOK_ALLOWED_CIDRS|'
+  'worker|WEBHOOK_ALLOW_HTTP|'
+  'worker|WEBHOOK_ALLOWED_HOSTS|'
+  'worker|WEBHOOK_ALLOWED_CIDRS|'
   'gateway|CORS_ALLOWED_ORIGINS|'
   # mcp runs the backend image; models/prisma.ts reads this at runtime. The
   # other forwarded settings (CORS, rate limits, retention, worker health,
@@ -121,10 +130,13 @@ done
 
 # 3. Every documented key that server/src or gateway/src reads appears in some
 #    service's environment, unless it is a commented exemption. Documented keys
-#    come from the env example (commented or not) and backticked runbook names.
+#    come from the env example (commented or not), backticked runbook names and
+#    the KEY= lines of README.md's ```env blocks.
 documented_keys() {
   grep -ohE '^#? ?[A-Z][A-Z0-9_]+=' "$ENV_EXAMPLE" | tr -d '# =' || true
   grep -ohE '`[A-Z][A-Z0-9_]+`' "$RUNBOOK" | tr -d '`' || true
+  awk '/^```env[[:space:]]*$/ { inenv = 1; next } /^```/ { inenv = 0 } inenv' "$README" \
+    | grep -oE '^[A-Z][A-Z0-9_]+=' | tr -d '=' || true
 }
 
 while IFS= read -r key; do

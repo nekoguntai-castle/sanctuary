@@ -4285,6 +4285,40 @@ assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "quality-required-ch
   'allow_success_or_skipped "SAST (Semgrep)" "$SEMGREP_SAST"' \
   'fi'
 
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "quality-required-checks" \
+  "Check quality job results" \
+  "quality aggregate lifecycle branch requires the lifecycle callsite gate when scoped" \
+  'if [ "$RUN_LIFECYCLE_CALLSITES" = "true" ]; then' \
+  'require_success "Lifecycle callsite registry" "$LIFECYCLE_CALLSITES"' \
+  'else' \
+  'allow_success_or_skipped "Lifecycle callsite registry" "$LIFECYCLE_CALLSITES"' \
+  'fi'
+for aggregate_lifecycle in \
+  'RUN_LIFECYCLE_CALLSITES: ${{ needs.determine-scope.outputs.run_lifecycle_callsites }}' \
+  'LIFECYCLE_CALLSITES: ${{ needs.lifecycle-callsites.result }}'; do
+  assert_named_job_step_contains "$QUALITY_WORKFLOW" "quality-required-checks" \
+    "Check quality job results" \
+    "quality aggregate exposes $aggregate_lifecycle" \
+    "$aggregate_lifecycle"
+done
+assert_named_job_contains "$QUALITY_WORKFLOW" "quality-required-checks" \
+  "quality aggregate waits for the lifecycle callsite gate" \
+  "workflow-action-runtime-guard, ci-classifier-tests, lifecycle-callsites, lizard"
+assert_named_job_contains "$QUALITY_WORKFLOW" "determine-scope" \
+  "quality scope exposes lifecycle callsite flag" \
+  'run_lifecycle_callsites: ${{ steps.classify.outputs.run_lifecycle_callsites }}'
+assert_named_job_contains "$QUALITY_WORKFLOW" "lifecycle-callsites" \
+  "lifecycle callsite gate runs for its own scanner scope" \
+  "if: always() && needs.determine-scope.outputs.run_lifecycle_callsites == 'true'"
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "lifecycle-callsites" \
+  "Check lifecycle callsite registry" \
+  "lifecycle callsite gate runs only the ownership contract check" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lifecycle-callsites.log"' \
+  'npm run check:resource-ownership-contract'
+assert_named_job_not_contains "$QUALITY_WORKFLOW" "lifecycle-callsites" \
+  "lifecycle callsite gate needs no dependency install" \
+  "npm ci"
+
 quality_failure_diagnostic_steps=(
   "determine-scope|Upload quality scope diagnostics|Write quality scope diagnostic summary"
   "lint|Upload lint diagnostics|Write lint diagnostic summary"
@@ -4295,6 +4329,7 @@ quality_failure_diagnostic_steps=(
   "workflow-action-runtime-guard|Upload workflow lint diagnostics|Write workflow lint diagnostic summary"
   "workflow-action-runtime-guard|Upload workflow action runtime guard diagnostics|Write workflow action runtime guard diagnostic summary"
   "ci-classifier-tests|Upload CI classifier diagnostics|Write CI classifier diagnostic summary"
+  "lifecycle-callsites|Upload lifecycle callsite diagnostics|Write lifecycle callsite diagnostic summary"
   "lizard|Upload lizard diagnostics|Write lizard diagnostic summary"
   "jscpd|Upload jscpd diagnostics|Write jscpd diagnostic summary"
   "large-file-classification|Upload large-file classification diagnostics|Write large-file classification diagnostic summary"
@@ -4324,9 +4359,9 @@ for quality_diagnostic in "${quality_failure_diagnostic_steps[@]}"; do
 done
 
 assert_occurrence_count "$QUALITY_WORKFLOW" \
-  "quality has exactly thirteen verbose diagnostic artifact names" \
+  "quality has exactly fourteen verbose diagnostic artifact names" \
   "name: ci-diagnostics-quality-" \
-  13
+  14
 
 for quality_evidence in \
   "ci-performance-report|Upload CI performance report"; do
@@ -4343,7 +4378,7 @@ done
 assert_jobs_use_node24_runners \
   "$QUALITY_WORKFLOW" \
   "quality jobs select Node 24-capable runners" \
-  13
+  14
 
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \
