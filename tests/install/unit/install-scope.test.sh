@@ -317,6 +317,21 @@ main() {
   assert_upgrade_selection "$output_file" "latest-stable" ""
   assert_exact_output "$output_file" "scope" "installer,upgrade-deferred,docker-e2e-deferred,release-surface-pr-smoke"
 
+  # Installer helper scripts invoked by the entrypoints: editing one must pick
+  # the installer arm (not fall through to scope=none).
+  for installer_helper in \
+    "scripts/reconcile-postgres-password.sh" \
+    "uninstall.sh" \
+    "scripts/secrets/migrate-runtime-secrets.sh" \
+    "scripts/lib/is-main-module.mjs"; do
+    base_sha="$head_sha"
+    commit_file "$repo_dir" "$installer_helper" "#!/usr/bin/env bash" "installer helper: $installer_helper"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
+    assert_exact_output "$output_file" "scope" "installer,upgrade-deferred"
+  done
+
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/offline/apply-bundle.sh" "#!/usr/bin/env bash" "offline bundle"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
@@ -719,6 +734,11 @@ main() {
     "future-component/nested/Dockerfile" \
     "docker-compose.production.yml" \
     "scripts/setup.sh" \
+    "scripts/reconcile-postgres-password.sh" \
+    "scripts/create-upgrade-backup.sh" \
+    "uninstall.sh" \
+    "scripts/secrets/migrate-runtime-secrets.sh" \
+    "scripts/lib/is-main-module.mjs" \
     "docker/frontend/Dockerfile" \
     "docker/compose/tor.yml" \
     "docker/compose/future-overlay.yml" \

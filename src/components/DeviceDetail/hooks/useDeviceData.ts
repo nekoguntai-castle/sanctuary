@@ -17,6 +17,8 @@ import { useUser } from '../../../contexts/UserContext';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { toTabNetwork } from '../../../app/networks';
 import { createRequestOwnership, type RouteToken } from '../../../hooks/requestOwnership';
+import { deviceKeys } from '../../../hooks/queries/deviceKeys';
+import { refreshEntityCaches } from '../../../hooks/queries/entityCaches';
 import { extractErrorMessage, isAbortError, isNotFoundOrForbiddenError } from '../../../utils/errorHandler';
 import { createLogger } from '../../../utils/logger';
 import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
@@ -206,6 +208,7 @@ export function useDeviceData(id: string | undefined) {
       if (editLabel !== device.label) updateData.label = editLabel;
       if (editModelSlug !== (device.model?.slug ?? '')) updateData.modelSlug = editModelSlug;
       const updatedDevice = await updateDevice(id, updateData);
+      refreshEntityCaches(deviceKeys, id);
       if (!ownsRoute(token)) return;
       setDeviceState({ ...device, ...updatedDevice, label: editLabel });
       setIsEditing(false);

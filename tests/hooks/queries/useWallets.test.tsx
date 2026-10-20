@@ -17,6 +17,7 @@ useWallets,
 walletActivityKeys,
 walletKeys,
 } from '../../../src/hooks/queries/useWallets';
+import { deviceKeys } from '../../../src/hooks/queries/deviceKeys';
 
 vi.mock('../../../src/api/wallets', () => ({
   getWallets: vi.fn(),
@@ -182,6 +183,8 @@ describe('wallet query and mutation hooks', () => {
 
     expect(mockImportWallet).toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
+    // An import can create devices, so the sidebar device list must refresh too.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
   });
 
   it('updates wallet and invalidates detail + list queries', async () => {

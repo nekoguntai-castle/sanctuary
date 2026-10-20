@@ -186,6 +186,8 @@ vi.mock('../../../src/components/DeviceList/DeviceGroupedView', () => ({
 }));
 
 import { DeviceList } from '../../../src/components/DeviceList/DeviceList';
+import { getQueryClient } from '../../../src/providers/QueryProvider';
+import { deviceKeys } from '../../../src/hooks/queries/deviceKeys';
 
 const makeUser = (devicesPrefs: Record<string, unknown>) => ({
   id: 'user-1',
@@ -349,6 +351,78 @@ describe('DeviceList branch coverage', () => {
       expect(loggerErrorMock).toHaveBeenCalledWith('Failed to delete device', expect.any(Object));
       expect(extractErrorMessageMock).toHaveBeenCalledWith(expect.any(Error), 'Failed to delete device');
     });
+  });
+
+  it('refreshes the shared device caches after an edit or delete', async () => {
+    const user = userEvent.setup();
+    const client = getQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
+    const remove = vi.spyOn(client, 'removeQueries').mockReturnValue(undefined);
+    currentUser = makeUser({
+      layout: 'grouped',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      visibleColumns: ['label', 'type'],
+      columnOrder: ['label', 'type'],
+    });
+    mockGetDevices.mockResolvedValue([makeDevice({ id: 'd1', label: 'Alpha', type: 'ledger' })]);
+    mockGetDeviceModels.mockResolvedValue([]);
+    mockUpdateDevice.mockResolvedValue({});
+    mockDeleteDevice.mockResolvedValue(undefined);
+
+    render(<DeviceList />);
+    await screen.findByTestId('grouped-view');
+
+    await user.click(screen.getByRole('button', { name: 'Edit First' }));
+    await user.click(screen.getByRole('button', { name: 'Save First' }));
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: deviceKeys.detail('d1') });
+    });
+
+    invalidate.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Delete First' }));
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
+      expect(remove).toHaveBeenCalledWith({ queryKey: deviceKeys.detail('d1') });
+    });
+    invalidate.mockRestore();
+    remove.mockRestore();
+  });
+
+  it('leaves the shared device caches alone when an edit or delete fails', async () => {
+    const user = userEvent.setup();
+    const client = getQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
+    const remove = vi.spyOn(client, 'removeQueries').mockReturnValue(undefined);
+    currentUser = makeUser({
+      layout: 'grouped',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      visibleColumns: ['label', 'type'],
+      columnOrder: ['label', 'type'],
+    });
+    mockGetDevices.mockResolvedValue([makeDevice({ id: 'd1', label: 'Alpha', type: 'ledger' })]);
+    mockGetDeviceModels.mockResolvedValue([]);
+    mockUpdateDevice.mockRejectedValue(new Error('update failed'));
+    mockDeleteDevice.mockRejectedValue(new Error('delete failed'));
+
+    render(<DeviceList />);
+    await screen.findByTestId('grouped-view');
+
+    await user.click(screen.getByRole('button', { name: 'Edit First' }));
+    await user.click(screen.getByRole('button', { name: 'Save First' }));
+    await waitFor(() => expect(mockUpdateDevice).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Delete First' }));
+    await waitFor(() => expect(mockDeleteDevice).toHaveBeenCalled());
+
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: deviceKeys.detail('d1') });
+    expect(remove).not.toHaveBeenCalled();
+    invalidate.mockRestore();
+    remove.mockRestore();
   });
 
   it('covers ownership filters and sort switch branches', async () => {

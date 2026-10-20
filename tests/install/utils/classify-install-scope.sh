@@ -480,7 +480,7 @@ while IFS= read -r file; do
   case "$file" in
     *.md|*.mdx)
       ;;
-    scripts/ci/*|scripts/ownership/*|tests/install/*|.github/workflows/*|.github/actions/*|*/Dockerfile|Dockerfile|docker-compose*.yml|docker/compose/*|start.sh|install.sh|scripts/setup.sh)
+    scripts/ci/*|scripts/ownership/*|tests/install/*|.github/workflows/*|.github/actions/*|*/Dockerfile|Dockerfile|docker-compose*.yml|docker/compose/*|start.sh|install.sh|scripts/setup.sh|scripts/reconcile-postgres-password.sh|uninstall.sh|scripts/secrets/*|scripts/lib/*|scripts/create-upgrade-backup.sh)
       release_surface_touched=true
       ;;
   esac
@@ -512,7 +512,7 @@ while IFS= read -r file; do
       add_scope grafana-migration
       reason="Grafana migration helper changed"
       ;;
-    install.sh|scripts/setup.sh|scripts/reset-user-2fa.sh|scripts/create-upgrade-backup.sh|scripts/offline/*|scripts/offline/**/*|tests/install/e2e/install-script.test.sh)
+    install.sh|scripts/setup.sh|scripts/reset-user-2fa.sh|scripts/create-upgrade-backup.sh|scripts/reconcile-postgres-password.sh|uninstall.sh|scripts/secrets/*|scripts/lib/*|scripts/offline/*|scripts/offline/**/*|tests/install/e2e/install-script.test.sh)
       enable_unit
       enable_install_script
       enable_upgrade_baseline

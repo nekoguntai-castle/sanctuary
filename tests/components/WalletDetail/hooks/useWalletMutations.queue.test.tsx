@@ -3,11 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWalletMutations } from '../../../../src/components/WalletDetail/hooks/useWalletMutations';
 import { subscribeWalletRenameDrain } from '../../../../src/components/WalletDetail/hooks/walletRenameEpoch';
 import * as walletsApi from '../../../../src/api/wallets';
+import { walletKeys } from '../../../../src/hooks/queries/walletKeys';
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 vi.mock('../../../../src/api/wallets', () => ({ getWallet: vi.fn(), updateWallet: vi.fn() }));
+
+const mockQc = vi.hoisted(() => ({ invalidateQueries: vi.fn(), removeQueries: vi.fn() }));
+vi.mock('../../../../src/providers/QueryProvider', () => ({ getQueryClient: () => mockQc }));
 
 const handleError = vi.fn();
 
@@ -546,4 +550,31 @@ describe('Wallet rename ordering and rollback', () => {
     expect(handleError).toHaveBeenCalledOnce();
   });
 
+});
+
+describe('Wallet rename cache invalidation', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  const renderRename = () => renderHook(() => useWalletMutations({
+    walletId: 'A',
+    wallet: wallet('A', 'Original'),
+    ownershipKey: 'A:user:mainnet',
+    setWallet: vi.fn() as never,
+    handleError,
+  }));
+
+  it('refreshes the wallet list and detail queries after a saved rename', async () => {
+    vi.mocked(walletsApi.updateWallet).mockResolvedValueOnce({ name: 'Renamed' } as never);
+    const view = renderRename();
+    await act(async () => { await view.result.current.handleUpdateWallet({ name: 'Renamed' }); });
+    expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.lists() });
+    expect(mockQc.invalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.detail('A') });
+  });
+
+  it('leaves the caches alone when the rename is rejected', async () => {
+    vi.mocked(walletsApi.updateWallet).mockRejectedValueOnce(new Error('nope'));
+    const view = renderRename();
+    await act(async () => { await view.result.current.handleUpdateWallet({ name: 'Renamed' }); });
+    expect(mockQc.invalidateQueries).not.toHaveBeenCalled();
+  });
 });

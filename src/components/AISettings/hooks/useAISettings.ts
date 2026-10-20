@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as adminApi from "../../../api/admin";
 import * as aiApi from "../../../api/ai";
+import { invalidateIntelligenceStatus } from "../../../hooks/useIntelligenceStatus";
 import { createLogger } from "../../../utils/logger";
 import type {
   AIProviderCapabilities,
@@ -76,7 +77,17 @@ export function useAISettings(): AISettingsController {
     [],
   );
   const modelDiscovery = useConfiguredModelDiscovery(handleModelLoadError);
-  const updateSystemSettings = useOrderedSettingsMutation();
+  const orderedSettingsMutation = useOrderedSettingsMutation();
+  // The write reaches the server even if the UI result is superseded, so refresh
+  // capability state (sidebar/route gating) as soon as it lands.
+  const updateSystemSettings = useCallback(
+    async (...args: Parameters<typeof orderedSettingsMutation>) => {
+      const next = await orderedSettingsMutation(...args);
+      invalidateIntelligenceStatus();
+      return next;
+    },
+    [orderedSettingsMutation]
+  );
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );

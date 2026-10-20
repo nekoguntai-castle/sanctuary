@@ -288,8 +288,24 @@ committing.
 
 ## Completion criteria
 
-- [ ] PR A merged; target-branch CI green on its merge commit.
+- [x] PR A merged; target-branch CI green on its merge commit (#1404, merge `10b6f8cb60`).
 - [ ] PR B merged; target-branch CI green on its merge commit.
 - [ ] Every phase's regression test failed on `9b9218b6` and passes on its merge.
 - [ ] Owned branches and worktrees cleaned; run state updated.
 - [ ] P3 backlog remains outside the blocking fix set.
+
+## Progress
+
+- **PR A — #1404**, squash merge `10b6f8cb6038e695b9fce844fff4f29398de8912`. Phases A1–A8 delivered as planned.
+  Divergences:
+  - Adversarial review found consolidation pushes ignoring per-user Autopilot settings (the push handler sent to
+    every wallet user with a device); fixed test-first with a per-user predicate
+    (`walletAutopilotSettingsFromPreferences`).
+  - A6 `notifyWalletUsers(walletId, message, isUserEligible?)` fixes the `viewTransactions` filter internally; the
+    `markInsightNotified` tests live in a new `runAnalysis.notified.contracts.ts` (lizard NLOC headroom).
+  - A7 also updated `ai-internal.intelligence.test.ts`, which mocks Prisma directly.
+  - Push `usersNotified` counts users the push was dispatched to (no per-device delivery report, as for transaction
+    pushes).
+- **PR B** — follows A. B4 also edits the `install-test.yml` push list because
+  `tests/install/unit/install-workflow-trigger-contract.test.mjs` requires the two lists to stay equal; the
+  duplicated invalidate blocks became `src/hooks/queries/entityCaches.ts`.

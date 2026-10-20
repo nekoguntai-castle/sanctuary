@@ -120,6 +120,17 @@ assert_occurrence_count() {
   fi
 }
 
+# Print the `paths:` entries of one `on:` event in a workflow, as written.
+workflow_event_paths() {
+  awk -v event_name="$2" '
+    $0 == "  " event_name ":" { in_event = 1; next }
+    in_event && /^  [[:alnum:]_-]+:/ { exit }
+    in_event && $0 == "    paths:" { in_paths = 1; next }
+    in_paths && /^      - / { sub(/^      - /, ""); print; next }
+    in_paths { exit }
+  ' "$1"
+}
+
 assert_event_paths_equal() {
   local file="$1"
   local label="$2"
@@ -127,19 +138,8 @@ assert_event_paths_equal() {
   local second_event="$4"
   local first_paths second_paths
 
-  extract_paths() {
-    local event_name="$1"
-    awk -v event_name="$event_name" '
-      $0 == "  " event_name ":" { in_event = 1; next }
-      in_event && /^  [[:alnum:]_-]+:/ { exit }
-      in_event && $0 == "    paths:" { in_paths = 1; next }
-      in_paths && /^      - / { sub(/^      - /, ""); print; next }
-      in_paths { exit }
-    ' "$file"
-  }
-
-  first_paths="$(extract_paths "$first_event")"
-  second_paths="$(extract_paths "$second_event")"
+  first_paths="$(workflow_event_paths "$file" "$first_event")"
+  second_paths="$(workflow_event_paths "$file" "$second_event")"
   if [ -n "$first_paths" ] && [ "$first_paths" = "$second_paths" ]; then
     PASS=$((PASS + 1))
     echo "PASS: $label"
@@ -870,6 +870,60 @@ assert_contains_in_order "$RC" \
   "- 'install.sh'" \
   "- 'scripts/setup.sh'" \
   "workflow_call:"
+
+# Installer helper scripts: a PR that edits a script the installer entrypoints
+# invoke must trigger Install Tests. Discover the referenced scripts and require
+# each to match the install-test pull_request path list; the five helpers that
+# run on upgrade/uninstall paths must also match the release-candidate list.
+workflow_pr_paths() {
+  workflow_event_paths "$1" pull_request | tr -d "'"
+}
+
+path_matches_filter() {
+  local candidate="$1"
+  local filter="$2"
+  local entry glob
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in '!'*) continue ;; esac
+    glob="${entry//\*\*/*}"
+    # shellcheck disable=SC2254 # the filter entry is an intentional glob
+    case "$candidate" in $glob) return 0 ;; esac
+  done <<< "$filter"
+  return 1
+}
+
+install_test_pr_paths="$(workflow_pr_paths "$REPO_ROOT/.github/workflows/install-test.yml")"
+rc_pr_paths="$(workflow_pr_paths "$RC")"
+installer_helper_scripts="$(
+  cd "$REPO_ROOT"
+  {
+    grep -hoE '(^|[^A-Za-z0-9_.-])(scripts/[A-Za-z0-9_./-]+\.(sh|mjs)|uninstall\.sh)' \
+      install.sh start.sh scripts/setup.sh uninstall.sh | sed -E 's/^[^su]//'
+    printf '%s\n' uninstall.sh scripts/secrets/migrate-runtime-secrets.sh scripts/lib/is-main-module.mjs
+  } | sort -u | while IFS= read -r helper; do [ -f "$helper" ] && echo "$helper"; done
+)"
+for helper in $installer_helper_scripts; do
+  if path_matches_filter "$helper" "$install_test_pr_paths"; then
+    PASS=$((PASS + 1))
+    echo "PASS: install-test pull_request paths cover $helper"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("install-test pull_request paths miss installer helper script: $helper")
+    echo "FAIL: install-test pull_request paths cover $helper" >&2
+  fi
+done
+for helper in scripts/reconcile-postgres-password.sh scripts/create-upgrade-backup.sh uninstall.sh \
+  scripts/secrets/migrate-runtime-secrets.sh scripts/lib/is-main-module.mjs; do
+  if path_matches_filter "$helper" "$rc_pr_paths"; then
+    PASS=$((PASS + 1))
+    echo "PASS: release-candidate pull_request paths cover $helper"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("release-candidate pull_request paths miss installer helper script: $helper")
+    echo "FAIL: release-candidate pull_request paths cover $helper" >&2
+  fi
+done
 
 assert_contains_in_order "$RC" \
   "release-candidate pull-request smoke validates the exact PR head commit" \

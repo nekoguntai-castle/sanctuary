@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react
 import * as walletsApi from '../../../api/wallets';
 import { createLogger } from '../../../utils/logger';
 import type { Wallet } from '../../../types';
+import { walletKeys } from '../../../hooks/queries/walletKeys';
+import { refreshEntityCaches } from '../../../hooks/queries/entityCaches';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 import { beginWalletRenameWrite } from './walletRenameEpoch';
 
@@ -116,6 +118,7 @@ export function useWalletMutations({
         // A network switch keeps this wallet's queued writes; leaving the wallet drops them.
         if (!stillOnWallet()) return;
         const saved = await walletsApi.updateWallet(id, { name: updatedData.name });
+        refreshEntityCaches(walletKeys, id);
         queue.confirmedName = saved?.name ?? updatedData.name;
         if (queue.confirmedName !== updatedData.name
           && request === queue.latestRequest && stillOnWallet()) {

@@ -20,10 +20,15 @@ for argument in "$@"; do
     --confirm-data-delete) confirm_data_delete=true ;;
     down|rm) requires_active=true; volume_delete_command=true; compose_arguments+=("$argument") ;;
     stop|kill) requires_active=true; compose_arguments+=("$argument") ;;
-    -v|-[^-]*v*) short_volume_flag=true; compose_arguments+=("$argument") ;;
-    -V|-[^-]*V*|--renew-anon-volumes|--renew-anon-volumes=*)
+    --renew-anon-volumes|--renew-anon-volumes=*)
       requires_active=true
       deletes_volumes=true
+      compose_arguments+=("$argument")
+      ;;
+    -[!-]*)
+      # Single-dash bundle: test each letter independently so -vt, -Vd, -vV all count.
+      case "$argument" in *v*) short_volume_flag=true ;; esac
+      case "$argument" in *V*) requires_active=true; deletes_volumes=true ;; esac
       compose_arguments+=("$argument")
       ;;
     --volumes|--volumes=*)

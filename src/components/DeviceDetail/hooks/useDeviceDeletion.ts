@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { deleteDevice } from '../../../api/devices';
+import { deviceKeys } from '../../../hooks/queries/deviceKeys';
+import { evictEntityCache } from '../../../hooks/queries/entityCaches';
 import { extractErrorMessage } from '../../../utils/errorHandler';
 import { createLogger } from '../../../utils/logger';
 
@@ -32,6 +34,7 @@ export function useDeviceDeletion({
       setDeletePending(true);
       setDeleteError(null);
       await deleteDevice(deviceId);
+      evictEntityCache(deviceKeys, deviceId);
       if (!ownsCurrentRoute()) return;
       navigate('/devices', { replace: true });
     } catch (error) {

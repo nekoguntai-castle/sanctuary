@@ -4,6 +4,7 @@ import { useAISettings } from '../../../../src/components/AISettings/hooks/useAI
 import * as adminApi from '../../../../src/api/admin';
 import * as aiApi from '../../../../src/api/ai';
 import { ApiError } from '../../../../src/api/client';
+import { invalidateIntelligenceStatus } from '../../../../src/hooks/useIntelligenceStatus';
 
 vi.mock('../../../../src/api/admin', () => ({
   getSystemSettings: vi.fn(),
@@ -14,6 +15,10 @@ vi.mock('../../../../src/api/ai', () => ({
   listModels: vi.fn(),
   detectOllama: vi.fn(),
   detectProvider: vi.fn(),
+}));
+
+vi.mock('../../../../src/hooks/useIntelligenceStatus', () => ({
+  invalidateIntelligenceStatus: vi.fn(),
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -797,5 +802,82 @@ describe('useAISettings', () => {
     expect(
       result.current.providerProfiles.map((profile) => profile.id),
     ).toEqual(['default-ollama']);
+  });
+
+  describe('intelligence status refresh', () => {
+    async function renderLoaded() {
+      const view = renderHook(() => useAISettings());
+      await waitFor(() => expect(view.result.current.loading).toBe(false));
+      return view;
+    }
+
+    it('refreshes after saving the provider config', async () => {
+      const { result } = await renderLoaded();
+      await act(async () => { await result.current.handleSaveConfig(); });
+      expect(invalidateIntelligenceStatus).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not refresh when the save is rejected', async () => {
+      vi.mocked(adminApi.updateSystemSettings).mockRejectedValueOnce(new Error('save failed'));
+      const { result } = await renderLoaded();
+      await act(async () => { await result.current.handleSaveConfig(); });
+      expect(invalidateIntelligenceStatus).not.toHaveBeenCalled();
+    });
+
+    it('refreshes even when a newer save supersedes the first one', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      vi.mocked(adminApi.updateSystemSettings).mockImplementationOnce(async (update) => {
+        await gate;
+        return { aiEnabled: true, ...update } as never;
+      });
+      const { result } = await renderLoaded();
+      let first!: Promise<void>;
+      let second!: Promise<void>;
+      act(() => {
+        first = result.current.handleSaveConfig();
+        second = result.current.handleSaveConfig();
+      });
+      await act(async () => { release(); await Promise.all([first, second]); });
+      expect(invalidateIntelligenceStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('refreshes after an Ollama detect-and-save', async () => {
+      vi.mocked(aiApi.detectOllama).mockResolvedValueOnce({
+        found: true,
+        endpoint: 'http://detected:11434',
+        models: [{ name: 'llama3', size: 0, modifiedAt: '' }],
+      } as never);
+      const { result } = await renderLoaded();
+      act(() => { result.current.setAiEndpoint(''); });
+      await act(async () => { await result.current.handleDetectOllama(); });
+      expect(invalidateIntelligenceStatus).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes after a typed-provider detect-and-save', async () => {
+      vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
+        aiEnabled: true,
+        aiEndpoint: 'http://lmstudio.local:1234/v1',
+        aiModel: '',
+        aiProviderProfiles: [{
+          id: 'lm-studio',
+          name: 'LM Studio',
+          providerType: 'openai-compatible',
+          endpoint: 'http://lmstudio.local:1234/v1',
+          model: '',
+          capabilities: { chat: true, toolCalls: true, strictJson: true },
+        }],
+        aiActiveProviderProfileId: 'lm-studio',
+      } as never);
+      vi.mocked(aiApi.detectProvider).mockResolvedValueOnce({
+        found: true,
+        providerType: 'openai-compatible',
+        endpoint: 'http://lmstudio.local:1234/v1',
+        models: [{ name: 'm', size: 0, modifiedAt: '' }],
+      } as never);
+      const { result } = await renderLoaded();
+      await act(async () => { await result.current.handleDetectOllama(); });
+      expect(invalidateIntelligenceStatus).toHaveBeenCalledTimes(1);
+    });
   });
 });

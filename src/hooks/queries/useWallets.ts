@@ -8,7 +8,9 @@ import {
 } from '@tanstack/react-query';
 import * as walletsApi from '../../api/wallets';
 import * as transactionsApi from '../../api/transactions';
-import { createQueryKeys, createMutation, createInvalidateAll } from './factory';
+import { createMutation, createInvalidateAll } from './factory';
+import { deviceKeys } from './deviceKeys';
+import { walletKeys } from './walletKeys';
 import { mergeWalletListHttpSyncState } from '../../utils/walletSyncSnapshot';
 import { buildBalanceSeries } from '../../utils/balanceHistorySeries';
 
@@ -19,19 +21,7 @@ const EMPTY_PENDING: Awaited<ReturnType<typeof transactionsApi.getPendingTransac
 type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 type WalletSparklineInput = readonly [id: string, balance: number];
 
-// Base keys from factory, extended with wallet-specific sub-resources
-const baseKeys = createQueryKeys('wallets');
-
-// Query key factory for wallet-related queries
-// Note: Params are spread into the key array to ensure stable references
-export const walletKeys = {
-  ...baseKeys,
-  utxos: (id: string) => [...baseKeys.all, 'utxos', id] as const,
-  addresses: (id: string) => [...baseKeys.all, 'addresses', id] as const,
-  transactions: (id: string, params?: { page?: number; limit?: number; offset?: number }) =>
-    [...baseKeys.all, 'transactions', id, params?.page, params?.limit, params?.offset] as const,
-  balance: (id: string) => [...baseKeys.all, 'balance', id] as const,
-};
+export { walletKeys };
 
 const recentTransactionsPrefix = ['recentTransactions'] as const;
 const pendingTransactionsPrefix = ['pendingTransactions'] as const;
@@ -99,7 +89,7 @@ export const useCreateWallet = createMutation(walletsApi.createWallet, {
  * Hook to import a wallet
  */
 export const useImportWallet = createMutation(walletsApi.importWallet, {
-  invalidateKeys: [walletKeys.lists()],
+  invalidateKeys: [walletKeys.lists(), deviceKeys.lists()],
 });
 
 /**

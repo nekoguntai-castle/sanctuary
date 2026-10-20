@@ -7,6 +7,8 @@ import * as devicesApi from '../../../../src/api/devices';
 import type { ShareDeviceResponse } from '../../../../src/api/devices';
 import { ApiError } from '../../../../src/api/client';
 import type { Device, DeviceShareInfo } from '../../../../src/types';
+import { getQueryClient } from '../../../../src/providers/QueryProvider';
+import { deviceKeys } from '../../../../src/hooks/queries/deviceKeys';
 
 const context = vi.hoisted(() => ({
   user: { id: 'user-1', isAdmin: false },
@@ -848,5 +850,43 @@ describe('useDeviceData route ownership', () => {
       await waitFor(() => expect(result.current.device?.id).toBe('B'));
       expect(result.current.loadError).toBeNull();
     });
+  });
+
+  it('refreshes the device caches after a save, even when the route moved on', async () => {
+    const invalidate = vi.spyOn(getQueryClient(), 'invalidateQueries').mockResolvedValue(undefined);
+    vi.mocked(devicesApi.getDevice).mockImplementation(async (id) => device(id));
+    const saveA = createDeferred<Device>();
+    vi.mocked(devicesApi.updateDevice).mockReturnValue(saveA.promise);
+
+    const { result, rerender } = renderHook(({ id }) => useDeviceData(id), {
+      initialProps: { id: 'A' },
+    });
+    await waitFor(() => expect(result.current.device?.id).toBe('A'));
+    act(() => result.current.setEditLabel('updated A'));
+    let savePromise!: Promise<void>;
+    act(() => {
+      savePromise = result.current.handleSave();
+    });
+    rerender({ id: 'B' });
+    await waitFor(() => expect(result.current.device?.id).toBe('B'));
+    await act(async () => saveA.resolve(device('A', 'updated A')));
+    await act(async () => savePromise);
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: deviceKeys.detail('A') });
+    invalidate.mockRestore();
+  });
+
+  it('does not refresh the device caches when the save is rejected', async () => {
+    const invalidate = vi.spyOn(getQueryClient(), 'invalidateQueries').mockResolvedValue(undefined);
+    vi.mocked(devicesApi.getDevice).mockImplementation(async (id) => device(id));
+    vi.mocked(devicesApi.updateDevice).mockRejectedValue(new Error('save failed'));
+    const { result } = renderHook(() => useDeviceData('A'));
+    await waitFor(() => expect(result.current.device?.id).toBe('A'));
+    act(() => result.current.setEditLabel('updated A'));
+    await act(async () => result.current.handleSave());
+
+    expect(invalidate).not.toHaveBeenCalled();
+    invalidate.mockRestore();
   });
 });

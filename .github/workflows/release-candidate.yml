@@ -45,6 +45,11 @@ on:
       - 'start.sh'
       - 'install.sh'
       - 'scripts/setup.sh'
+      - 'scripts/reconcile-postgres-password.sh'
+      - 'scripts/create-upgrade-backup.sh'
+      - 'uninstall.sh'
+      - 'scripts/secrets/**'
+      - 'scripts/lib/**'
   # Issue #1020 item 4: a nightly run of the release lanes on main's head SHA,
   # so drift is found within a day instead of at release time. 03:07 UTC sits
   # in a quiet window clear of this fleet's other schedules: test.yml's Full

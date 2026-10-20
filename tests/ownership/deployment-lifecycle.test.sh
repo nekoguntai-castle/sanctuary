@@ -262,6 +262,36 @@ env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
 grep -q ' up --renew-anon-volumes service-name' "$confirmed_renew_volume_log"
 [ ! -e "$operator_lock" ]
 
+# Bundled short flags: v/V at any position in a single-dash bundle must count.
+for bundled in 'down -vt 5' 'rm -vf service-name' 'up -Vd service-name' 'up -vV service-name' \
+    'up -Vv service-name' 'up -dvV service-name'; do
+  bundled_out="$TEST_ROOT/unconfirmed-bundled-${bundled//[^A-Za-z0-9]/_}.out"
+  # shellcheck disable=SC2086 # intentional word splitting of the argument list
+  if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" $bundled >"$bundled_out" 2>&1; then
+    echo "operator Compose accepted unconfirmed bundled volume flag: $bundled" >&2
+    exit 1
+  fi
+  grep -q -- '--confirm-data-delete' "$bundled_out"
+done
+
+confirmed_bundled_log="$TEST_ROOT/confirmed-bundled.log"
+env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+  FAKE_DOCKER_LOG="$confirmed_bundled_log" FAKE_REQUIRE_LOCK="$operator_lock" \
+  "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" \
+    --confirm-data-delete down -vt 5
+grep -q ' down -vt 5' "$confirmed_bundled_log"
+[ ! -e "$operator_lock" ]
+
+for harmless in 'down -t 5' 'down --timeout 5' 'up -d service-name'; do
+  harmless_log="$TEST_ROOT/harmless-${harmless//[^A-Za-z0-9]/_}.log"
+  # shellcheck disable=SC2086 # intentional word splitting of the argument list
+  env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+    FAKE_DOCKER_LOG="$harmless_log" FAKE_REQUIRE_LOCK="$operator_lock" \
+    "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" $harmless
+  grep -q " $harmless" "$harmless_log"
+  [ ! -e "$operator_lock" ]
+done
+
 if "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" down --rmi all \
     >"$TEST_ROOT/image-delete.out" 2>&1; then
   echo 'operator Compose accepted mutable image deletion' >&2

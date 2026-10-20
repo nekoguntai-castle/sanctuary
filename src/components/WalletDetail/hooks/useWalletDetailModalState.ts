@@ -1,6 +1,8 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
 import { createLogger } from '../../../utils/logger';
 import * as walletsApi from '../../../api/wallets';
+import { walletKeys } from '../../../hooks/queries/walletKeys';
+import { evictEntityCache } from '../../../hooks/queries/entityCaches';
 import type { TabType } from '../types';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 import type { TransferCompletionCallback } from '../../PendingTransfersPanel';
@@ -47,6 +49,7 @@ export function useWalletDetailModalState({
 
     try {
       await walletsApi.deleteWallet(deletedWalletId);
+      evictEntityCache(walletKeys, deletedWalletId);
       if (ownership.isRouteOwner(token)) navigate('/wallets');
     } catch (err) {
       log.error('Failed to delete wallet', { error: err });

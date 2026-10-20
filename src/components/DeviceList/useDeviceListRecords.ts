@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Device, HardwareDeviceModel, User } from '../../types';
 import { useLoadingState } from '../../hooks/useLoadingState';
 import { getDevices, updateDevice, deleteDevice, getDeviceModels } from '../../api/devices';
+import { deviceKeys } from '../../hooks/queries/deviceKeys';
+import { evictEntityCache, refreshEntityCaches } from '../../hooks/queries/entityCaches';
 import { createLogger } from '../../utils/logger';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import type { DeviceGroupedDeleteState, DeviceGroupedEditState } from './types';
@@ -66,6 +68,7 @@ export function useDeviceListRecords(user: User | null) {
       try {
         const updateData = buildDeviceUpdate(device, editValue, editType);
         const updatedDevice = await updateDevice(device.id, updateData);
+        refreshEntityCaches(deviceKeys, device.id);
         setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updatedDevice, label: editValue } : d));
         setEditingId(null);
       } catch (error) {
@@ -76,6 +79,7 @@ export function useDeviceListRecords(user: User | null) {
       try {
         setDeleteError(null);
         await deleteDevice(device.id);
+        evictEntityCache(deviceKeys, device.id);
         setDevices(prev => prev.filter(d => d.id !== device.id));
         setDeleteConfirmId(null);
       } catch (error) {

@@ -2,6 +2,8 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDeviceDeletion } from '../../../../src/components/DeviceDetail/hooks/useDeviceDeletion';
 import * as devicesApi from '../../../../src/api/devices';
+import { getQueryClient } from '../../../../src/providers/QueryProvider';
+import { deviceKeys } from '../../../../src/hooks/queries/deviceKeys';
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
 
@@ -92,5 +94,35 @@ describe('useDeviceDeletion route ownership', () => {
 
     expect(result.current.deleteError).toBeNull();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('refreshes the device caches after a server delete (route still owned: %s)', async (stillOwned) => {
+    const client = getQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
+    const remove = vi.spyOn(client, 'removeQueries').mockReturnValue(undefined);
+    const deletion = createDeferred<void>();
+    let owned = true;
+    vi.mocked(devicesApi.deleteDevice).mockReturnValue(deletion.promise);
+    const { result } = renderHook(() => useDeviceDeletion({
+      deviceId: 'A',
+      attachedWalletCount: 0,
+      isOwner: true,
+      ownsCurrentRoute: () => owned,
+    }));
+
+    let deletePromise!: Promise<void>;
+    act(() => {
+      deletePromise = result.current.confirmDelete();
+    });
+    owned = stillOwned;
+    await act(async () => {
+      deletion.resolve();
+      await deletePromise;
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: deviceKeys.lists() });
+    expect(remove).toHaveBeenCalledWith({ queryKey: deviceKeys.detail('A') });
+    invalidate.mockRestore();
+    remove.mockRestore();
   });
 });
