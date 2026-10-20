@@ -10,11 +10,15 @@
 import { draftRepository, type MobileAgentDraftRecord } from '../repositories';
 import { draftService } from './draftService';
 import { mobilePermissionService } from './mobilePermissions';
-import { ForbiddenError, NotFoundError } from '../errors';
+import { approvalService } from './vaultPolicy/approvalService';
+import { hasUserVoted, isSelfApprovalBlocked } from './vaultPolicy/approvalVoteGuards';
+import { ConflictError, ForbiddenError, NotFoundError } from '../errors';
 import type { DraftStatus } from '../repositories/draftRepository';
 import type { MobileAction } from './mobilePermissions';
 
 type MobilePermissionMap = Record<MobileAction, boolean>;
+type DraftApprovalRequest = Awaited<ReturnType<typeof approvalService.getApprovalsForDraft>>[number];
+type VoteRefusal = 'self_approval' | 'not_eligible' | 'expired' | 'none_pending';
 
 export interface MobileAgentDraftReview {
   id: string;
@@ -166,7 +170,9 @@ function buildReview(
     },
     review: {
       canApprove: canApproveOrReject,
-      canReject: canApproveOrReject,
+      // Rejecting casts a vote in the approval workflow, which needs the
+      // approve capability; signing alone does not grant a veto.
+      canReject: permissions.approveTransaction,
       canComment: canApproveOrReject,
       approveEndpoint: buildEndpoint(draft.id, '/approve'),
       rejectEndpoint: buildEndpoint(draft.id, '/reject'),
@@ -205,6 +211,12 @@ function assertCanView(permissions: MobilePermissionMap): void {
 function assertCanReview(permissions: MobilePermissionMap): void {
   if (!canReview(permissions)) {
     throw new ForbiddenError('Mobile access denied for agent funding draft review');
+  }
+}
+
+function assertCanReject(permissions: MobilePermissionMap): void {
+  if (!permissions.approveTransaction) {
+    throw new ForbiddenError('Mobile access denied for agent funding draft rejection');
   }
 }
 
@@ -299,15 +311,101 @@ export async function commentOnAgentFundingDraft(
   };
 }
 
+/** Why the caller cannot vote on this pending request (mirrors castVote's guards), or null if they can. */
+async function getVoteRefusal(
+  request: DraftApprovalRequest,
+  draft: MobileAgentDraftRecord,
+  userId: string
+): Promise<VoteRefusal | null> {
+  if (hasUserVoted(request, userId)) {
+    return 'not_eligible';
+  }
+  if (!(await approvalService.isEligibleSpecificApprover(request, userId))) {
+    return 'not_eligible';
+  }
+  if (isSelfApprovalBlocked(request, draft.userId, userId)) {
+    return 'self_approval';
+  }
+  return null;
+}
+
+/**
+ * First pending, unexpired request the caller can vote on; otherwise the refusal
+ * ('self_approval' only when that is the reason on every live request).
+ */
+async function selectVotableRequest(
+  requests: DraftApprovalRequest[],
+  draft: MobileAgentDraftRecord,
+  userId: string,
+  now: Date
+): Promise<DraftApprovalRequest | VoteRefusal> {
+  const pending = requests.filter((request) => request.status === 'pending');
+  if (pending.length === 0) {
+    return 'none_pending';
+  }
+
+  const live = pending.filter((request) => request.expiresAt === null || now <= request.expiresAt);
+  if (live.length === 0) {
+    return 'expired';
+  }
+
+  let onlySelfApproval = true;
+  for (const request of live) {
+    const refusal = await getVoteRefusal(request, draft, userId);
+    if (refusal === null) {
+      return request;
+    }
+    onlySelfApproval &&= refusal === 'self_approval';
+  }
+  return onlySelfApproval ? 'self_approval' : 'not_eligible';
+}
+
+function voteRefusalError(refusal: VoteRefusal): Error {
+  switch (refusal) {
+    case 'self_approval':
+      return new ForbiddenError('Self-approval is not allowed for this policy');
+    case 'not_eligible':
+      return new ForbiddenError('You are not an eligible approver for this draft');
+    case 'expired':
+      return new ConflictError('Approval request has expired');
+    case 'none_pending':
+      return new ConflictError('Draft has no pending approval request to vote on');
+  }
+}
+
+/** No approval request rows: a `not_required` draft is declined directly; any other status has nothing to vote on. */
+async function rejectWithoutRequests(draft: MobileAgentDraftRecord): Promise<void> {
+  if (draft.approvalStatus !== 'not_required') {
+    throw new ConflictError('Draft has no approval request to vote on');
+  }
+  await draftRepository.updateApprovalStatus(draft.id, 'rejected');
+}
+
 export async function rejectAgentFundingDraft(
   userId: string,
   draftId: string,
   reason: string
 ): Promise<MobileAgentDraftDecisionResponse> {
-  const context = await getPendingReviewContext(userId, draftId);
-  assertCanReview(context.permissions);
+  const { draft, permissions } = await getPendingReviewContext(userId, draftId);
+  assertCanReject(permissions);
 
-  await draftRepository.updateApprovalStatus(draftId, 'rejected');
+  // The pending-review query already 404s rejected/vetoed/expired drafts.
+  if (draft.approvalStatus === 'approved') {
+    throw new ConflictError('Draft is already approved');
+  }
+
+  // The reject is a recorded vote, so a later vote or override cannot re-derive approved.
+  const requests = await approvalService.getApprovalsForDraft(draftId);
+  if (requests.length === 0) {
+    await rejectWithoutRequests(draft);
+  } else {
+    const selected = await selectVotableRequest(requests, draft, userId, new Date());
+    if (typeof selected === 'string') {
+      throw voteRefusalError(selected);
+    }
+    await approvalService.castVote(selected.id, userId, 'reject', reason);
+  }
+
   const rejected = await getReviewContext(userId, draftId);
 
   return {

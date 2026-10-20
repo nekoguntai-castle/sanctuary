@@ -8,17 +8,24 @@
  * as broadcast does: approval triggers and per-transaction limits still see
  * the full amount; only rolling-window accounting uses the delta.
  */
-import { deriveIntentSpend, type SigningIntentEnvelope } from '../bitcoin/signingIntent';
+import { deriveIntentSpend, type IntentSpend, type SigningIntentEnvelope } from '../bitcoin/signingIntent';
 import { findVerifiedReplacement } from '../bitcoin/transactions/replacementLink';
 import type { PolicyEvaluationInput, PolicyEvaluationResult } from './types';
 
-/** Null when nothing leaves the wallet (no external outputs): there is no spend to evaluate. */
+/**
+ * Null when nothing leaves the wallet (no external outputs): there is no spend to evaluate.
+ * A caller that already derived the intent's spend passes it to avoid a second derivation.
+ */
 export const buildIntentPolicyInput = async (
   walletId: string,
   userId: string,
   intent: Pick<SigningIntentEnvelope, 'snapshot'>,
+  precomputedSpend?: IntentSpend,
 ): Promise<PolicyEvaluationInput | null> => {
-  const spend = await deriveIntentSpend(walletId, intent.snapshot.network, intent.snapshot);
+  let spend = precomputedSpend;
+  if (!spend) {
+    spend = await deriveIntentSpend(walletId, intent.snapshot.network, intent.snapshot);
+  }
   if (spend.externalOutputs.length === 0) return null;
   const replacement = spend.replacementTxid
     ? await findVerifiedReplacement(walletId, spend.replacementTxid, spend.inputs, undefined)

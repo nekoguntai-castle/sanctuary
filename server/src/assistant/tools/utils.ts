@@ -72,10 +72,10 @@ export function dateRangeWhere(dateFrom?: string, dateTo?: string): Prisma.DateT
   };
 }
 
-export function amountWhere(
+function parseAmountBounds(
   minAmount?: string | number,
   maxAmount?: string | number
-): Prisma.BigIntFilter | undefined {
+): { min?: bigint; max?: bigint } | undefined {
   const min = parseSats(minAmount);
   const max = parseSats(maxAmount);
 
@@ -85,11 +85,48 @@ export function amountWhere(
   if (min !== undefined && max !== undefined && max < min) {
     throw new AssistantToolError(400, 'Maximum amount must be greater than or equal to minimum amount');
   }
+  return { min, max };
+}
+
+export function amountWhere(
+  minAmount?: string | number,
+  maxAmount?: string | number
+): Prisma.BigIntFilter | undefined {
+  const bounds = parseAmountBounds(minAmount, maxAmount);
+  if (!bounds) {
+    return undefined;
+  }
+  const { min, max } = bounds;
 
   return {
     ...(min !== undefined ? { gte: min } : {}),
     ...(max !== undefined ? { lte: max } : {}),
   };
+}
+
+/**
+ * Amount filter on the magnitude of Transaction.amount (sent/consolidation rows are stored negative).
+ * Always returns the single `{ AND: [{ OR: [...] }] }` shape so it cannot collide with other where keys.
+ */
+export function transactionMagnitudeWhere(
+  minAmount?: string | number,
+  maxAmount?: string | number
+): { AND: Prisma.TransactionWhereInput[] } | undefined {
+  const bounds = parseAmountBounds(minAmount, maxAmount);
+  if (!bounds) {
+    return undefined;
+  }
+  const { min, max } = bounds;
+  if ((min ?? 0n) < 0n || (max ?? 0n) < 0n) {
+    throw new AssistantToolError(400, 'Amount filters are absolute sats');
+  }
+  if (min === undefined) {
+    return { AND: [{ OR: [{ amount: { gte: -(max as bigint), lte: max } }] }] };
+  }
+  if (max === undefined) {
+    return { AND: [{ OR: [{ amount: { gte: min } }, { amount: { lte: -min } }] }] };
+  }
+  return { AND: [{ OR: [{ amount: { gte: min, lte: max } }, { amount: { gte: -max, lte: -min } }] }] };
 }
 
 export function truncateRows<T>(

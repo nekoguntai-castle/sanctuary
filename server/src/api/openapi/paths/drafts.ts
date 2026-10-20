@@ -78,7 +78,15 @@ export const draftPaths = {
       },
       responses: {
         201: draftResponse,
-        400: apiErrorResponse,
+        400: {
+          ...apiErrorResponse,
+          description:
+            'Invalid request, or details.reason metadata_mismatch when the draft does not match its signing intent: '
+            + 'selectedUtxoIds (omitted counts as []) must be exactly the intent inputs, fee (omitted counts as 0) '
+            + 'must be inputs minus outputs, recipient must be the first external output and effectiveAmount '
+            + '(or amount) the net external spend (no sendMax/subtractFees exemption), non-zero totalInput/'
+            + 'totalOutput must equal the intent sums, and isRBF requires an intent with a replacement target',
+        },
         401: apiErrorResponse,
         403: apiErrorResponse,
       },

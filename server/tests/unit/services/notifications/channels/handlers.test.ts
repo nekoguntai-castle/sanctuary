@@ -275,15 +275,15 @@ describe('notification channel handlers', () => {
       mockTelegramService.getWalletUsers.mockResolvedValueOnce([
         {
           username: 'alice',
-          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' } },
+          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' }, autopilot: { wallets: { 'wallet-1': { enabled: true } } } },
         },
         {
           username: 'bob',
-          preferences: { telegram: { enabled: false, botToken: 'bot-2', chatId: 'chat-2' } },
+          preferences: { telegram: { enabled: false, botToken: 'bot-2', chatId: 'chat-2' }, autopilot: { wallets: { 'wallet-1': { enabled: true } } } },
         },
         {
           username: 'carol',
-          preferences: { telegram: { enabled: true, botToken: 'bot-3' } },
+          preferences: { telegram: { enabled: true, botToken: 'bot-3' }, autopilot: { wallets: { 'wallet-1': { enabled: true } } } },
         },
       ]);
       mockTelegramService.sendTelegramMessage.mockResolvedValueOnce({ success: true });
@@ -316,15 +316,48 @@ describe('notification channel handlers', () => {
       });
     });
 
+    it('sends consolidation suggestions only to users with autopilot enabled for the wallet', async () => {
+      const telegram = (n: number) => ({ enabled: true, botToken: `bot-${n}`, chatId: `chat-${n}` });
+      mockTelegramService.getWalletUsers.mockResolvedValueOnce([
+        {
+          username: 'alice',
+          preferences: { telegram: telegram(1), autopilot: { wallets: { 'wallet-1': { enabled: true, notifyTelegram: true } } } },
+        },
+        {
+          username: 'bob',
+          preferences: { telegram: telegram(2), autopilot: { wallets: { 'wallet-1': { enabled: true, notifyTelegram: false } } } },
+        },
+        { username: 'carol', preferences: { telegram: telegram(3) } },
+        {
+          username: 'dave',
+          preferences: { telegram: telegram(4), autopilot: { wallets: { 'wallet-1': { enabled: false } } } },
+        },
+        {
+          username: 'erin',
+          preferences: { telegram: telegram(5), autopilot: { wallets: { 'wallet-2': { enabled: true } } } },
+        },
+      ]);
+      mockTelegramService.sendTelegramMessage.mockResolvedValue({ success: true });
+
+      const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
+        'wallet-1',
+        makeConsolidationSuggestion()
+      );
+
+      expect(mockTelegramService.sendTelegramMessage).toHaveBeenCalledTimes(1);
+      expect(mockTelegramService.sendTelegramMessage.mock.calls[0].slice(0, 2)).toEqual(['bot-1', 'chat-1']);
+      expect(result.usersNotified).toBe(1);
+    });
+
     it('continues when one consolidation notification fails', async () => {
       mockTelegramService.getWalletUsers.mockResolvedValueOnce([
         {
           username: 'alice',
-          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' } },
+          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' }, autopilot: { wallets: { 'wallet-1': { enabled: true } } } },
         },
         {
           username: 'bob',
-          preferences: { telegram: { enabled: true, botToken: 'bot-2', chatId: 'chat-2' } },
+          preferences: { telegram: { enabled: true, botToken: 'bot-2', chatId: 'chat-2' }, autopilot: { wallets: { 'wallet-1': { enabled: true } } } },
         },
       ]);
       mockTelegramService.sendTelegramMessage
@@ -357,7 +390,7 @@ describe('notification channel handlers', () => {
       mockTelegramService.getWalletUsers.mockResolvedValueOnce([
         {
           username: 'alice',
-          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' } },
+          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' }, autopilot: { wallets: { 'wallet-1': { enabled: true } } } },
         },
       ]);
       mockTelegramService.sendTelegramMessage.mockResolvedValueOnce({ success: false });

@@ -16,6 +16,7 @@ import {
   type DraftStatus,
 } from '@sanctuary/shared/constants/drafts';
 import { buildWalletAccessWhere } from './accessControl';
+import { RESOLVED_APPROVAL_STATUSES } from './approvalStatuses';
 
 /**
  * Draft status types. Broadcasted is a retained terminal state: default
@@ -194,7 +195,7 @@ function buildPendingAgentDraftWhereForUser(
   return {
     ...buildAgentDraftWhereForUser(userId, draftId),
     status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
-    approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+    approvalStatus: { notIn: [...RESOLVED_APPROVAL_STATUSES] },
     OR: [
       { expiresAt: null },
       { expiresAt: { gte: new Date() } },

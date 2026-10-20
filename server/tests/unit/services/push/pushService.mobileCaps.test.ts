@@ -77,6 +77,32 @@ describe('notifyNewTransactions mobile view caps', () => {
     expect(mockProvider.send).toHaveBeenCalledWith('token-u2', expect.any(Object));
   });
 
+  it('does not count a user whose preferences disable every transaction', async () => {
+    mockPrismaClient.user.findMany.mockResolvedValue([{
+      ...user('u1'),
+      preferences: { telegram: { wallets: { [walletId]: { enabled: false } } } },
+    }]);
+    mockPrismaClient.mobilePermission.findMany.mockResolvedValue([]);
+
+    const result = await send();
+
+    expect(result).toEqual({ success: true, usersNotified: 0 });
+    expect(mockProvider.send).not.toHaveBeenCalled();
+  });
+
+  it('counts only the users that were dispatched to', async () => {
+    mockPrismaClient.user.findMany.mockResolvedValue([
+      user('u1'),
+      { ...user('u2'), _count: { pushDevices: 0 } },
+    ]);
+    mockPrismaClient.mobilePermission.findMany.mockResolvedValue([]);
+
+    const result = await send();
+
+    expect(result).toEqual({ success: true, usersNotified: 1 });
+    expect(mockProvider.send).toHaveBeenCalledTimes(1);
+  });
+
   it('returns an unrecorded failure and sends nothing when the permission lookup fails', async () => {
     mockPrismaClient.mobilePermission.findMany.mockRejectedValue(new Error('db down'));
 

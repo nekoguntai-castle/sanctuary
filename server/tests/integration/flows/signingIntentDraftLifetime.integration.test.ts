@@ -124,11 +124,15 @@ describeIfDatabase('signing intent lifetime follows its draft', () => {
     return { ...handle, psbtBase64 };
   };
 
-  const createLinkedDraft = (intent: Awaited<ReturnType<typeof issueIntent>>) => createDraft(walletId, userId, {
-    recipient: 'tb1qxvenxvenxvenxvenxvenxvenxvenxvenqzqps5',
+  const createLinkedDraft = (
+    intent: Awaited<ReturnType<typeof issueIntent>>,
+    recipient = 'tb1qxvenxvenxvenxvenxvenxvenxvenxvenqzqps5',
+  ) => createDraft(walletId, userId, {
+    recipient,
     amount: 9_000,
     feeRate: 10,
     fee: 1_000,
+    selectedUtxoIds: [`${'11'.repeat(32)}:0`],
     psbtBase64: intent.psbtBase64,
     intentId: intent.intentId,
     intentDigest: intent.intentDigest,
@@ -154,6 +158,15 @@ describeIfDatabase('signing intent lifetime follows its draft', () => {
     await expect(load(linked, true)).resolves.toMatchObject({ intentId: linked.intentId });
     await expect(load(draftless, true)).rejects.toThrow('Signing intent has expired');
     await expect(load(linked)).rejects.toThrow('Signing intent has expired');
+  });
+
+  it('refuses a draft whose recipient is not the intent\'s external output', async () => {
+    const intent = await issueIntent();
+
+    await expect(createLinkedDraft(intent, 'tb1qyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zv8swna')).rejects.toMatchObject({
+      details: expect.objectContaining({ field: 'recipient', reason: 'metadata_mismatch' }),
+    });
+    await expect((await getTestPrisma()).draftTransaction.count({ where: { walletId } })).resolves.toBe(0);
   });
 
   it('does not let a live draft seed another draft from an expired intent', async () => {

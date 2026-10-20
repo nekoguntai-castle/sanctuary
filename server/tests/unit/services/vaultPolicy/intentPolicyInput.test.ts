@@ -41,6 +41,14 @@ describe('buildIntentPolicyInput', () => {
     expect(mocks.findVerifiedReplacement).not.toHaveBeenCalled();
   });
 
+  it('uses a precomputed spend without deriving it again', async () => {
+    await expect(buildIntentPolicyInput('wallet-1', 'user-1', intent, spend())).resolves.toMatchObject({
+      recipient: 'tb1qone',
+      amount: BigInt(50000),
+    });
+    expect(mocks.deriveIntentSpend).not.toHaveBeenCalled();
+  });
+
   it('returns null when nothing leaves the wallet', async () => {
     mocks.deriveIntentSpend.mockResolvedValueOnce(spend({ externalOutputs: [], amount: 0 }));
     await expect(buildIntentPolicyInput('wallet-1', 'user-1', intent)).resolves.toBeNull();

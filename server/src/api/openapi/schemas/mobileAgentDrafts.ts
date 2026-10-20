@@ -75,7 +75,10 @@ export const mobileAgentDraftSchemas = {
     type: 'object',
     properties: {
       canApprove: { type: 'boolean' },
-      canReject: { type: 'boolean' },
+      canReject: {
+        type: 'boolean',
+        description: 'True only when the user has the approve capability; a reject is an approval-workflow vote.',
+      },
       canComment: { type: 'boolean' },
       approveEndpoint: { type: 'string' },
       rejectEndpoint: { type: 'string' },

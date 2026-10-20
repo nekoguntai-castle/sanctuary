@@ -92,7 +92,7 @@ export const registerPolicyRepositoryApprovalVoteContracts = () => {
       expect(prisma.approvalRequest.findMany).not.toHaveBeenCalled();
     });
 
-    it('finds pending approvals for given walletIds', async () => {
+    it('finds pending approvals for given walletIds, excluding resolved drafts', async () => {
       const approvals = [
         {
           id: 'ar1',
@@ -110,6 +110,7 @@ export const registerPolicyRepositoryApprovalVoteContracts = () => {
           status: 'pending',
           draftTransaction: {
             walletId: { in: ['w1', 'w2'] },
+            approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
           },
         },
         include: {

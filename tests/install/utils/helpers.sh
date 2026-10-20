@@ -225,6 +225,11 @@ compose_exec() {
     fi
 }
 
+# True when the worker can create and remove a file in the scheduled backup volume.
+worker_can_write_backup_volume() {
+    compose_exec worker sh -c 'f=/data/backups/.write-probe.$$; touch "$f" && rm -f "$f"' >/dev/null 2>&1
+}
+
 # Get logs from a service (handles dynamic names)
 # Uses docker logs directly to avoid requiring env vars for docker compose
 # Usage: compose_logs "backend" 50
@@ -285,7 +290,7 @@ capture_compose_failure_diagnostics() {
     local project_dir="${1:-.}"
     local lines="${2:-${SANCTUARY_INSTALL_DIAGNOSTIC_LOG_LINES:-200}}"
     local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
-    local services=(postgres redis worker backend migrate frontend gateway llm-egress-proxy docker-proxy mcp)
+    local services=(postgres redis worker backend migrate backup-volume-init frontend gateway llm-egress-proxy docker-proxy mcp)
     local state_template
     local health_template
 

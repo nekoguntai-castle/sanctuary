@@ -8,6 +8,7 @@ import {
   parseDateInput,
   parseSats,
   parseToolLimit,
+  transactionMagnitudeWhere,
   truncateRows,
   uniqueStrings,
 } from '../../../src/assistant/tools/utils';
@@ -54,6 +55,39 @@ describe('assistant read-tool utilities', () => {
     expect(amountWhere(undefined, 20)).toEqual({ lte: 20n });
     expect(amountWhere('10', 20)).toEqual({ gte: 10n, lte: 20n });
     expect(() => amountWhere('20', 10)).toThrow(AssistantToolError);
+  });
+
+  describe('transactionMagnitudeWhere', () => {
+    type Clause = { amount: { gte?: bigint; lte?: bigint } };
+    const matches = (
+      where: ReturnType<typeof transactionMagnitudeWhere>,
+      amount: bigint
+    ): boolean =>
+      ((where?.AND as { OR: Clause[] }[])[0].OR).some(
+        ({ amount: b }) => (b.gte === undefined || amount >= b.gte) && (b.lte === undefined || amount <= b.lte)
+      );
+    const amounts = [-200000n, -500n, 0n, 500n, 200000n];
+
+    it('returns undefined without bounds and rejects invalid ranges', () => {
+      expect(transactionMagnitudeWhere()).toBeUndefined();
+      expect(() => transactionMagnitudeWhere('20', 10)).toThrow(AssistantToolError);
+      expect(() => transactionMagnitudeWhere('-5')).toThrow('Amount filters are absolute sats');
+      expect(() => transactionMagnitudeWhere(undefined, '-5')).toThrow('Amount filters are absolute sats');
+    });
+
+    it('builds one AND/OR shape for every bound combination', () => {
+      expect(transactionMagnitudeWhere('10')).toEqual({ AND: [{ OR: [{ amount: { gte: 10n } }, { amount: { lte: -10n } }] }] });
+      expect(transactionMagnitudeWhere(undefined, 20)).toEqual({ AND: [{ OR: [{ amount: { gte: -20n, lte: 20n } }] }] });
+      expect(transactionMagnitudeWhere('10', 20)).toEqual({
+        AND: [{ OR: [{ amount: { gte: 10n, lte: 20n } }, { amount: { gte: -20n, lte: -10n } }] }],
+      });
+    });
+
+    it('matches on absolute amount regardless of direction', () => {
+      expect(amounts.filter((a) => matches(transactionMagnitudeWhere(100000), a))).toEqual([-200000n, 200000n]);
+      expect(amounts.filter((a) => matches(transactionMagnitudeWhere(undefined, 1000), a))).toEqual([-500n, 0n, 500n]);
+      expect(amounts.filter((a) => matches(transactionMagnitudeWhere(0), a))).toEqual(amounts);
+    });
   });
 
   it('deduplicates wallet ids and reports row truncation metadata', () => {

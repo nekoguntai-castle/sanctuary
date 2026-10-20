@@ -112,7 +112,10 @@ export const walletPolicyPaths = {
     get: {
       tags: ['Wallets'],
       summary: 'List pending approvals',
-      description: 'List pending approval requests across wallets where the authenticated user has owner or approver access.',
+      description:
+        'List pending approval requests across wallets where the authenticated user has owner or approver access. '
+        + 'Requests on a draft already resolved as rejected, vetoed or expired are excluded: they can no longer be '
+        + 'voted on or overridden.',
       security: bearerAuth,
       responses: {
         200: jsonResponse('Pending approvals', '#/components/schemas/PendingApprovalsResponse'),
@@ -324,6 +327,7 @@ export const walletPolicyPaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        409: { ...apiErrorResponse, description: 'The request is already resolved or expired, or the draft is already rejected, vetoed or expired' },
         500: apiErrorResponse,
       },
     },
@@ -342,6 +346,7 @@ export const walletPolicyPaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        409: { ...apiErrorResponse, description: 'No pending request to override, a request has expired, or the draft is already rejected, vetoed or expired' },
         500: apiErrorResponse,
       },
     },

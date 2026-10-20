@@ -1332,6 +1332,12 @@ test_capture_pre_upgrade_state() {
         "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' ')
     log_info "User count: $user_count"
 
+    # Diagnostic only: a source release that already repairs the backup volume
+    # would legitimately report the worker uid here.
+    local backup_owner
+    backup_owner=$(docker exec -u 0 "$(get_container_name worker)" stat -c %u /data/backups 2>/dev/null || echo "unavailable")
+    log_info "Pre-upgrade /data/backups owner uid: $backup_owner"
+
     log_success "Pre-upgrade state captured"
     return 0
 }
@@ -2026,6 +2032,17 @@ test_verify_wallet_sync_state_migration() {
     verify_wallet_sync_state_migration
 }
 
+test_verify_backup_volume_writable_after_upgrade() {
+    log_info "Verifying the worker can write the backup volume after upgrade..."
+
+    if worker_can_write_backup_volume; then
+        log_success "Worker can write /data/backups after upgrade"
+        return 0
+    fi
+    log_error "Worker cannot write /data/backups after upgrade"
+    return 1
+}
+
 test_verify_wallet_sync_retirement_upgrade() {
     verify_wallet_sync_retirement_upgrade
 }
@@ -2625,6 +2642,7 @@ main() {
     run_test "Verify 2FA Rejects Drifted Encryption Material" test_verify_two_factor_rejects_drifted_material
     run_test "Reset 2FA And Re-Enroll" test_reset_two_factor_and_reenroll
     run_test "Verify Migration on Upgrade" test_verify_migration_on_upgrade
+    run_test "Verify Backup Volume Writable After Upgrade" test_verify_backup_volume_writable_after_upgrade
     run_test "Post-Upgrade User-Visible Smoke" test_post_upgrade_user_visible_smoke
     run_test "Frontend Proxy Survives Backend Recreate" test_frontend_proxy_survives_backend_recreate
     run_test "Verify Notification Delivery Diagnostics" test_verify_notification_delivery_diagnostics

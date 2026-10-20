@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { ForbiddenError, NotFoundError } from '../../../src/errors';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../../src/errors';
 
 vi.mock('../../../src/repositories', () => ({
   draftRepository: {
@@ -7,6 +7,17 @@ vi.mock('../../../src/repositories', () => ({
     findPendingAgentDraftByIdForUser: vi.fn(),
     findAgentDraftByIdForUser: vi.fn(),
     updateApprovalStatus: vi.fn(),
+  },
+  policyRepository: {
+    findPolicyById: vi.fn(),
+  },
+}));
+
+vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
+  approvalService: {
+    getApprovalsForDraft: vi.fn(),
+    castVote: vi.fn(),
+    isEligibleSpecificApprover: vi.fn(),
   },
 }));
 
@@ -25,6 +36,7 @@ vi.mock('../../../src/services/mobilePermissions', () => ({
 import { draftRepository } from '../../../src/repositories';
 import { draftService } from '../../../src/services/draftService';
 import { mobilePermissionService } from '../../../src/services/mobilePermissions';
+import { approvalService } from '../../../src/services/vaultPolicy/approvalService';
 import { mobileAgentDraftService } from '../../../src/services/mobileAgentDraftService';
 
 const basePermissions = {
@@ -42,6 +54,23 @@ const basePermissions = {
   approveTransaction: false,
   managePolicies: false,
 };
+
+const approverPermissions = { ...basePermissions, approveTransaction: true };
+
+function makeRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'request-1',
+    draftTransactionId: 'draft-1',
+    policyId: 'policy-1',
+    status: 'pending',
+    quorumType: 'any_n',
+    requiredApprovals: 1,
+    allowSelfApproval: true,
+    expiresAt: null,
+    votes: [] as Array<{ userId: string }>,
+    ...overrides,
+  };
+}
 
 function makeDraft(overrides: Record<string, unknown> = {}) {
   return {
@@ -120,7 +149,7 @@ describe('mobileAgentDraftService', () => {
       },
       review: {
         canApprove: true,
-        canReject: true,
+        canReject: false,
         canComment: true,
       },
       deepLink: {
@@ -214,21 +243,188 @@ describe('mobileAgentDraftService', () => {
     expect(result.map((draft) => draft.id)).toEqual(['draft-allowed']);
   });
 
-  it('rejects a pending draft and returns the rejected review payload', async () => {
+  it('reports canReject only for users with the approve capability', async () => {
     (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
-    (draftRepository.findAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft({ approvalStatus: 'rejected' }));
+    (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({
+      permissions: approverPermissions,
+    });
 
-    const result = await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'Not expected');
+    const result = await mobileAgentDraftService.getAgentFundingDraftForReview('user-1', 'draft-1');
 
-    expect(draftRepository.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected');
-    expect(result).toMatchObject({
-      decision: 'reject',
-      comment: 'Not expected',
-      nextAction: 'none',
-      draft: {
-        id: 'draft-1',
-        approvalStatus: 'rejected',
-      },
+    expect(result.review).toMatchObject({ canApprove: true, canReject: true, canComment: true });
+  });
+
+  it('denies reject to a signer without the approve capability and writes nothing', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+
+    await expect(mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No'))
+      .rejects.toThrow(ForbiddenError);
+
+    expect(draftRepository.updateApprovalStatus).not.toHaveBeenCalled();
+    expect(approvalService.castVote).not.toHaveBeenCalled();
+  });
+
+  describe('reject through the approval workflow', () => {
+    beforeEach(() => {
+      (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({
+        permissions: approverPermissions,
+      });
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([]);
+      (approvalService.isEligibleSpecificApprover as Mock).mockResolvedValue(true);
+      (draftRepository.findAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft({ approvalStatus: 'rejected' }));
+    });
+
+    function pendingDraft(overrides: Record<string, unknown> = {}) {
+      (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(
+        makeDraft({ approvalStatus: 'pending', ...overrides })
+      );
+    }
+
+    async function expectRejectRefused(errorType: typeof ConflictError | typeof ForbiddenError, message?: string) {
+      const attempt = mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No');
+      await expect(attempt).rejects.toThrow(errorType);
+      if (message) {
+        await expect(attempt).rejects.toThrow(message);
+      }
+      expect(approvalService.castVote).not.toHaveBeenCalled();
+      expect(draftRepository.updateApprovalStatus).not.toHaveBeenCalled();
+    }
+
+    it('declines an unpolicied draft directly and returns the rejected review payload', async () => {
+      (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+
+      const result = await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'Not expected');
+
+      expect(draftRepository.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected');
+      expect(approvalService.castVote).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        decision: 'reject',
+        comment: 'Not expected',
+        nextAction: 'none',
+        draft: {
+          id: 'draft-1',
+          approvalStatus: 'rejected',
+        },
+      });
+    });
+
+    it('casts a reject vote on the pending approval request instead of writing the draft status', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([makeRequest()]);
+
+      const result = await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'Wrong amount');
+
+      expect(approvalService.castVote).toHaveBeenCalledTimes(1);
+      expect(approvalService.castVote).toHaveBeenCalledWith('request-1', 'user-1', 'reject', 'Wrong amount');
+      expect(draftRepository.updateApprovalStatus).not.toHaveBeenCalled();
+      expect(result.draft.approvalStatus).toBe('rejected');
+    });
+
+    it('skips a request the caller already voted on', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ votes: [{ userId: 'user-1' }] }),
+        makeRequest({ id: 'request-2' }),
+      ]);
+
+      await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No');
+
+      expect(approvalService.castVote).toHaveBeenCalledWith('request-2', 'user-1', 'reject', 'No');
+    });
+
+    it('skips a specific-quorum request that does not list the caller', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ quorumType: 'specific' }),
+        makeRequest({ id: 'request-2', quorumType: 'specific', policyId: 'policy-2' }),
+      ]);
+      (approvalService.isEligibleSpecificApprover as Mock)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+
+      await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No');
+
+      expect(approvalService.isEligibleSpecificApprover).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'request-1', quorumType: 'specific' }),
+        'user-1'
+      );
+      expect(approvalService.castVote).toHaveBeenCalledWith('request-2', 'user-1', 'reject', 'No');
+    });
+
+    it('refuses when no pending request lists the caller as an eligible approver', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ quorumType: 'specific' }),
+        makeRequest({ id: 'request-2', votes: [{ userId: 'user-1' }] }),
+      ]);
+      (approvalService.isEligibleSpecificApprover as Mock).mockResolvedValue(false);
+
+      await expectRejectRefused(ForbiddenError, 'You are not an eligible approver for this draft');
+    });
+
+    it('skips a self-approval-refused request for the draft creator', async () => {
+      pendingDraft({ userId: 'user-1' });
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ allowSelfApproval: false }),
+        makeRequest({ id: 'request-2', allowSelfApproval: true }),
+      ]);
+
+      await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No');
+
+      expect(approvalService.castVote).toHaveBeenCalledWith('request-2', 'user-1', 'reject', 'No');
+    });
+
+    it('refuses the draft creator when every pending request disallows self-approval', async () => {
+      pendingDraft({ userId: 'user-1' });
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ allowSelfApproval: false }),
+        makeRequest({ id: 'request-2', allowSelfApproval: false }),
+      ]);
+
+      await expectRejectRefused(ForbiddenError, 'Self-approval is not allowed for this policy');
+    });
+
+    it('refuses a pending draft that has no approval request rows', async () => {
+      pendingDraft();
+
+      await expectRejectRefused(ConflictError, 'Draft has no approval request to vote on');
+    });
+
+    it('refuses when approval requests exist but none is pending', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ status: 'approved' }),
+      ]);
+
+      await expectRejectRefused(ConflictError, 'Draft has no pending approval request to vote on');
+    });
+
+    it('skips a pending request past its own expiry', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ expiresAt: new Date(Date.now() - 60_000) }),
+        makeRequest({ id: 'request-2', expiresAt: new Date(Date.now() + 60_000) }),
+      ]);
+
+      await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No');
+
+      expect(approvalService.castVote).toHaveBeenCalledWith('request-2', 'user-1', 'reject', 'No');
+    });
+
+    it('refuses when every pending request is past its expiry', async () => {
+      pendingDraft();
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([
+        makeRequest({ expiresAt: new Date(Date.now() - 60_000) }),
+      ]);
+
+      await expectRejectRefused(ConflictError, 'Approval request has expired');
+    });
+
+    it('refuses to veto a draft that is already approved', async () => {
+      pendingDraft({ approvalStatus: 'approved' });
+      (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([makeRequest({ status: 'approved' })]);
+
+      await expectRejectRefused(ConflictError);
     });
   });
 
@@ -344,6 +540,10 @@ describe('mobileAgentDraftService', () => {
   it('returns not found when a rejected draft cannot be loaded after status update', async () => {
     (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
     (draftRepository.findAgentDraftByIdForUser as Mock).mockResolvedValue(null);
+    (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([]);
+    (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({
+      permissions: approverPermissions,
+    });
 
     await expect(mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No'))
       .rejects.toThrow(NotFoundError);

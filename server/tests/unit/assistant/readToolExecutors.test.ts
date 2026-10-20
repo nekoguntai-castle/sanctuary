@@ -197,13 +197,26 @@ describe('assistant read-tool executors', () => {
           gte: new Date('2026-04-24T00:00:00.000Z'),
           lte: new Date('2026-04-26T00:00:00.000Z'),
         },
-        amount: { gte: 1000n, lte: 2000n },
+        AND: [
+          { OR: [{ amount: { gte: 1000n, lte: 2000n } }, { amount: { gte: -2000n, lte: -1000n } }] },
+        ],
       },
       6
     );
     expect(transactions.data.transactions).toEqual([
       expect.objectContaining({ txid: 'abc', labels: ['rent'] }),
     ]);
+
+    mocks.assistantReadRepository.queryTransactions.mockResolvedValueOnce([]);
+    await assistantReadToolRegistry.execute(
+      'query_transactions',
+      { walletId, type: 'sent', minAmount: '1000', limit: 5 },
+      context
+    );
+    expect(mocks.assistantReadRepository.queryTransactions).toHaveBeenLastCalledWith(
+      { walletId, type: 'sent', AND: [{ OR: [{ amount: { gte: 1000n } }, { amount: { lte: -1000n } }] }] },
+      6
+    );
 
     mocks.assistantReadRepository.queryUtxos
       .mockResolvedValueOnce([

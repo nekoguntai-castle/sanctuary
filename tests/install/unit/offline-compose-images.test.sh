@@ -86,7 +86,7 @@ test_online_compose_remains_digest_pinned() {
 
 test_core_offline_override_is_tag_only_and_core_only() {
   assert_service_set "$CORE_OFFLINE" \
-    redis postgres backend worker mcp migrate frontend gateway llm-egress-proxy docker-proxy \
+    redis postgres backend worker mcp migrate backup-volume-init frontend gateway llm-egress-proxy docker-proxy \
     && assert_image_line "$CORE_OFFLINE" 'redis:7-alpine' \
     && assert_image_line "$CORE_OFFLINE" 'postgres:16-alpine' \
     && assert_image_line "$CORE_OFFLINE" 'tecnativa/docker-socket-proxy:latest' \

@@ -401,6 +401,19 @@ main() {
   assert_eq "docs-only backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
   assert_eq "docs-only build" "false" "$(json_query "$plan" lanes.build.run)"
 
+  # ---- README is read by a Vitest suite, so it selects the frontend lane ---
+  base="$head"
+  printf '# readme\n' > "$repo/README.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'readme only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "readme frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "readme full_scan" "false" "$(json_query "$plan" full_scan)"
+  assert_eq "readme backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
+  base="$head"
+
   # ---- A wallet-safety critical doc is not a no-op ------------------------
   base="$head"
   mkdir -p "$repo/docs/adr"

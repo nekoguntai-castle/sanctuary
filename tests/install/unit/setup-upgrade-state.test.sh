@@ -95,7 +95,7 @@ health_contract() (
     docker() {
         [[ "$*" == 'compose -f retained-compose.yml --env-file retained.env -p retained-project ps '* ]] || return 99
         case "$healthy" in
-            true) printf 'frontend healthy running\nworker healthy running\n' ;;
+            true) printf 'frontend healthy running\nworker healthy running\nbackup-volume-init  exited\n' ;;
             false) printf 'worker  exited\n' ;;
             missing) : ;;
             unhealthy) printf 'frontend unhealthy running\nworker unhealthy running\n' ;;

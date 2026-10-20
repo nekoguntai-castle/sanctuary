@@ -7,6 +7,7 @@
 import * as telegramService from '../../telegram/telegramService';
 import { getErrorMessage } from '../../../utils/errors';
 import { createLogger } from '../../../utils/logger';
+import { isAutopilotChannelEnabled } from '../../autopilot/settings';
 import type {
   NotificationChannelHandler,
   TransactionNotification,
@@ -122,6 +123,8 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         const telegram = prefs?.telegram as { enabled?: boolean; botToken?: string; chatId?: string } | undefined;
 
         if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) continue;
+
+        if (!isAutopilotChannelEnabled(user.preferences, walletId, 'notifyTelegram')) continue;
 
         const walletName = escapeHtml(suggestion.walletName);
         const message = [

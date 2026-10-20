@@ -133,7 +133,13 @@ export const mobileAgentDraftPaths = {
     post: {
       tags: ['Mobile Agent Drafts'],
       summary: 'Reject an agent funding draft',
-      description: 'Reject a pending agent funding draft so it is no longer offered for review.',
+      description:
+        'Reject a pending agent funding draft so it is no longer offered for review. Requires the approve capability '
+        + '(signing alone is not enough). When the draft has approval requests, the reject is cast as a reject vote '
+        + 'with the reason on the first pending, unexpired request the caller may vote on, under the same rules as '
+        + 'the web vote (one vote per user, specific-quorum membership, self-approval policy); that resolves the draft '
+        + 'as rejected. A draft with no approval requests and approval status not_required is declined directly. '
+        + 'Rejected, vetoed and expired drafts return 404.',
       security: bearerAuth,
       parameters: [draftIdParameter],
       requestBody: requestBody('#/components/schemas/MobileAgentFundingDraftRejectRequest'),
@@ -141,8 +147,20 @@ export const mobileAgentDraftPaths = {
         200: decisionResponse,
         400: apiErrorResponse,
         401: apiErrorResponse,
-        403: apiErrorResponse,
+        403: {
+          ...apiErrorResponse,
+          description:
+            'Missing the approve capability, not an eligible approver for any pending request, or '
+            + '"Self-approval is not allowed for this policy" when the caller created the draft and every pending '
+            + 'request disallows self-approval',
+        },
         404: apiErrorResponse,
+        409: {
+          ...apiErrorResponse,
+          description:
+            'The draft is already approved, has no pending approval request to vote on (including a pending draft '
+            + 'with no approval request rows), or every pending approval request has expired',
+        },
       },
     },
   },

@@ -194,7 +194,8 @@ while IFS= read -r file; do
       mark_full_scan
       break
     fi
-    continue
+    # Docs read by Vitest suites (README, generated docs) are frontend inputs.
+    is_frontend_file "$file" || continue
   fi
 
   if is_full_scan_trigger_file "$file"; then

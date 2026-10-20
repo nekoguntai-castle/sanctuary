@@ -804,6 +804,34 @@ EOF_DOC
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
   assert_exact_output "$output_file" "full_scan" "true"
 
+  # README / generated docs are read by Vitest suites, so they are frontend inputs.
+  local suite_doc
+  for suite_doc in \
+    README.md \
+    scripts/templates/README.template.md \
+    docs/architecture/generated/frontend.md \
+    docs/reference/generated/hardware-wallet-compatibility.md \
+    docs/reference/generated/hardware-wallet-compatibility.json \
+    docs/architecture/generated/server.md; do
+    base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    mkdir -p "$repo_dir/$(dirname "$suite_doc")"
+    printf 'doc %s\n' "$suite_doc" > "$repo_dir/$suite_doc"
+    git -C "$repo_dir" add "$suite_doc"
+    git -C "$repo_dir" commit -qm "suite doc $suite_doc"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+    if [ "$suite_doc" = "docs/architecture/generated/server.md" ]; then
+      assert_exact_output "$output_file" "frontend_changed" "false"
+    else
+      assert_exact_output "$output_file" "frontend_changed" "true"
+      assert_contains_output "$output_file" "frontend_files" "$suite_doc"
+    fi
+    assert_exact_output "$output_file" "backend_changed" "false"
+    assert_exact_output "$output_file" "test_suite_changed" "false"
+    assert_exact_output "$output_file" "shared_changed" "false"
+  done
+
   assert_every_test_workflow_script_is_classified
 
   echo "classify-test-changes regression checks passed"

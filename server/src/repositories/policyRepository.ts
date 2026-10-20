@@ -7,6 +7,7 @@
 import prisma from '../models/prisma';
 import type { VaultPolicy, ApprovalRequest, ApprovalVote, PolicyEvent, PolicyAddress } from '../generated/prisma/client';
 import { Prisma } from '../generated/prisma/client';
+import { RESOLVED_APPROVAL_STATUSES } from './approvalStatuses';
 import type {
   PolicyType,
   PolicySourceType,
@@ -193,6 +194,9 @@ export async function findPendingApprovalsForUser(
       status: 'pending',
       draftTransaction: {
         walletId: { in: walletIds },
+        // A sibling request on a draft already settled by another request can
+        // no longer be voted on, so it is not pending for anyone.
+        approvalStatus: { notIn: [...RESOLVED_APPROVAL_STATUSES] },
       },
     },
     include: {

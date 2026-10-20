@@ -1291,7 +1291,7 @@ sample_service_health() {
     if grep -Eq '^worker[[:space:]]+healthy([[:space:]]|$)' <<< "$snapshot"; then
         WORKER_RUNNING=true
     fi
-    failed="$(awk '$NF == "exited" && $1 != "migrate" && $1 != "grafana-password-migration" { print }' <<< "$snapshot")"
+    failed="$(awk '$NF == "exited" && $1 !~ /^(migrate|grafana-password-migration|backup-volume-init)$/ { print }' <<< "$snapshot")"
     if [ -n "$failed" ]; then
         echo -e "${RED}Container failures detected:${NC}"
         echo "$failed"

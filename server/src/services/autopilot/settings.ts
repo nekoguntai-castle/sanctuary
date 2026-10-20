@@ -75,6 +75,19 @@ export function walletAutopilotSettingsFromPreferences(
 }
 
 /**
+ * Whether stored preferences have autopilot enabled for the wallet with the
+ * given channel left on (an unset channel toggle counts as on).
+ */
+export function isAutopilotChannelEnabled(
+  preferences: unknown,
+  walletId: string,
+  channel: 'notifyTelegram' | 'notifyPush'
+): boolean {
+  const settings = walletAutopilotSettingsFromPreferences(preferences, walletId);
+  return settings?.enabled === true && settings[channel] !== false;
+}
+
+/**
  * Update a user's autopilot settings for a specific wallet.
  *
  * `patch` is applied as `DEFAULT -> stored -> patch` against the wallet

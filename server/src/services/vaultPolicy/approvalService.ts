@@ -14,11 +14,13 @@ import { policyRepository } from '../../repositories/policyRepository';
 import type { PolicyDbClient } from '../../repositories/policyRepository';
 import { draftRepository } from '../../repositories/draftRepository';
 import type { DraftDbClient } from '../../repositories/draftRepository';
+import { RESOLVED_APPROVAL_STATUSES } from '../../repositories/approvalStatuses';
 import { walletSharingRepository, type EffectiveApproverDbClient } from '../../repositories/walletSharingRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { notifyApprovalResolved } from './approvalNotifications';
+import { isSelfApprovalBlocked } from './approvalVoteGuards';
 import type {
   ApprovalRequiredConfig,
   VoteDecision,
@@ -30,6 +32,7 @@ const log = createLogger('VAULT_POLICY:SVC_APPROVAL');
 
 type ApprovalRequestWithVotes = ApprovalRequest & { votes: ApprovalVote[] };
 type ApprovalDraft = Awaited<ReturnType<typeof draftRepository.findById>>;
+type SpecificEligibilityRequest = Pick<ApprovalRequest, 'quorumType' | 'policyId'>;
 export type ApprovalDbClient = DraftDbClient & PolicyDbClient & EffectiveApproverDbClient;
 
 /**
@@ -230,14 +233,36 @@ async function ensureUserHasNotVoted(requestId: string, userId: string): Promise
  * toward the request's quorum count. No-op for 'any_n' and 'all'.
  */
 async function ensureEligibleToVote(request: ApprovalRequestWithVotes, userId: string): Promise<void> {
+  if (!(await isEligibleSpecificApprover(request, userId))) {
+    throw new ForbiddenError('You are not an eligible approver for this request');
+  }
+}
+
+/**
+ * True when the user may vote on the request under its quorum rule: always
+ * for 'any_n'/'all', and for 'specific' only when the live policy lists them.
+ * Shared by castVote and callers that pick a request to vote on, so the two
+ * cannot drift.
+ */
+export async function isEligibleSpecificApprover(
+  request: SpecificEligibilityRequest,
+  userId: string
+): Promise<boolean> {
   if (request.quorumType !== 'specific') {
-    return;
+    return true;
   }
 
   const { specificApprovers } = await loadSpecificApprovers(request.policyId);
+  return specificApprovers.includes(userId);
+}
 
-  if (!specificApprovers.includes(userId)) {
-    throw new ForbiddenError('You are not an eligible approver for this request');
+/** Once a draft holds a resolved status, no later vote or override may re-derive it as approved. */
+const RESOLVED_DRAFT_APPROVAL_STATUSES: ReadonlySet<string> = new Set(RESOLVED_APPROVAL_STATUSES);
+
+function ensureDraftNotResolved(draft: { approvalStatus: string } | null | undefined): void {
+  const status = draft?.approvalStatus;
+  if (status !== undefined && RESOLVED_DRAFT_APPROVAL_STATUSES.has(status)) {
+    throw new ConflictError(`Draft is already ${status}`);
   }
 }
 
@@ -274,7 +299,8 @@ async function getDraftForAllowedVote(
   userId: string
 ): Promise<ApprovalDraft> {
   const draft = await draftRepository.findById(request.draftTransactionId);
-  if (draft && draft.userId === userId && !request.allowSelfApproval) {
+  ensureDraftNotResolved(draft);
+  if (draft && isSelfApprovalBlocked(request, draft.userId, userId)) {
     throw new ForbiddenError('Self-approval is not allowed for this policy');
   }
 
@@ -364,6 +390,10 @@ export async function ownerOverride(
   ownerId: string,
   reason: string
 ): Promise<void> {
+  // An override force-approves; it must not reverse a draft already settled
+  // as rejected/vetoed/expired by a sibling request.
+  ensureDraftNotResolved(await draftRepository.findById(draftId));
+
   const requests = await policyRepository.findApprovalRequestsByDraftId(draftId);
   const pending = requests.filter(r => r.status === 'pending');
 
@@ -766,6 +796,7 @@ export const approvalService = {
   expireOverdueApprovals,
   getPendingApprovalsForUser,
   getApprovalsForDraft,
+  isEligibleSpecificApprover,
 };
 
 export default approvalService;

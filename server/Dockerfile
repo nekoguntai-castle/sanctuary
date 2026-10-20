@@ -123,6 +123,9 @@ COPY --chown=sanctuary:nodejs --from=builder /repo/server/dist ./dist
 COPY --chown=sanctuary:nodejs --from=builder /repo/server/package.json ./
 COPY --chown=sanctuary:nodejs --from=builder /repo/server/scripts ./scripts
 RUN install -d -m 0700 -o sanctuary -g nodejs /run/sanctuary-support-capture
+# Fresh backup_data volumes inherit this ownership; existing volumes are repaired
+# by the compose backup-volume-init one-shot.
+RUN install -d -m 0750 -o sanctuary -g nodejs /data/backups
 
 # The one-shot migration image owns the CLI, schema, and legacy upgrade logic.
 FROM runtime-base AS migration

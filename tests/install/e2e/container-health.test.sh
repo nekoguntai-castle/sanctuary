@@ -429,6 +429,65 @@ test_migrate_container_completed() {
     esac
 }
 
+test_worker_can_write_backup_volume() {
+    log_info "Checking the worker can write the scheduled backup volume..."
+
+    if worker_can_write_backup_volume; then
+        log_success "Worker can write /data/backups"
+        return 0
+    fi
+    log_error "Worker cannot write /data/backups (volume not owned by the worker uid)"
+    return 1
+}
+
+test_backup_volume_init_idempotent() {
+    log_info "Checking the backup volume repair one-shot..."
+
+    local container
+    container=$(get_container_name "backup-volume-init")
+    if [ -z "$container" ]; then
+        log_error "backup-volume-init container not found"
+        return 1
+    fi
+
+    local exit_code
+    exit_code=$(docker inspect -f '{{.State.ExitCode}}' "$container" 2>/dev/null || echo "unknown")
+    if [ "$exit_code" != "0" ]; then
+        log_error "backup-volume-init exited with code: $exit_code"
+        return 1
+    fi
+
+    # Re-run the same container: the repair must be safe on every start.
+    if ! timeout 60 docker start -a "$container" >/dev/null 2>&1; then
+        log_error "backup-volume-init failed when re-run"
+        docker logs --tail 50 "$container" 2>&1 || true
+        return 1
+    fi
+    exit_code=$(docker inspect -f '{{.State.ExitCode}}' "$container" 2>/dev/null || echo "unknown")
+    if [ "$exit_code" != "0" ]; then
+        log_error "backup-volume-init re-run exited with code: $exit_code"
+        return 1
+    fi
+    log_success "backup-volume-init is idempotent"
+    return 0
+}
+
+test_backend_backup_volume_read_only() {
+    log_info "Checking the backend sees the backup volume read-only..."
+
+    if ! compose_exec backend ls /data/backups >/dev/null 2>&1; then
+        log_error "Backend cannot read /data/backups"
+        return 1
+    fi
+    if compose_exec backend touch /data/backups/.backend-write-probe >/dev/null 2>&1; then
+        compose_exec backend rm -f /data/backups/.backend-write-probe >/dev/null 2>&1 || true
+        log_error "Backend can write /data/backups; it must be mounted read-only"
+        return 1
+    fi
+    log_success "Backend reads /data/backups and cannot write it"
+    return 0
+}
+
 # ============================================
 # Network Tests
 # ============================================
@@ -636,6 +695,9 @@ main() {
 
     # Migration tests
     run_test "Migration Container Completed" test_migrate_container_completed
+    run_test "Worker Can Write Backup Volume" test_worker_can_write_backup_volume
+    run_test "Backup Volume Init Idempotent" test_backup_volume_init_idempotent
+    run_test "Backend Reads Backup Volume Read-Only" test_backend_backup_volume_read_only
 
     # Network tests
     run_test "Container Network" test_container_network

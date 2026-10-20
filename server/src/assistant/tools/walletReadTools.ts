@@ -12,7 +12,7 @@ import {
 } from '../../repositories';
 import { toAddressDto, toPolicyDto, toTransactionDto, toUtxoDto, toWalletDto } from './dto';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
-import { amountWhere, dateRangeWhere, parseToolLimit, truncateRows } from './utils';
+import { amountWhere, dateRangeWhere, parseToolLimit, transactionMagnitudeWhere, truncateRows } from './utils';
 import { assertWalletHardwareCapabilityById } from '../../services/hardwareWalletCapabilities';
 import { assertCanonicalAddressesForWallet } from '../../services/wallet/canonicalAddressValidation';
 import { CANONICAL_ADDRESS_COORDINATE_VERSION } from '@sanctuary/shared/constants/walletPolicy';
@@ -72,7 +72,7 @@ function toWalletPrivacyUtxoDto(utxo: WalletPrivacyUtxo) {
 export const queryTransactionsTool: AssistantReadToolDefinition<typeof queryTransactionsInputSchema> = {
   name: 'query_transactions',
   title: 'Query Transactions',
-  description: 'Search and filter wallet transactions',
+  description: 'Search and filter wallet transactions; amounts are absolute sats, regardless of direction',
   inputSchema: queryTransactionsInputSchema,
   outputSchema: genericOutputSchema,
   sensitivity: 'wallet',
@@ -88,8 +88,10 @@ export const queryTransactionsTool: AssistantReadToolDefinition<typeof queryTran
     if (input.type) where.type = input.type;
     const range = dateRangeWhere(input.dateFrom, input.dateTo);
     if (range) where.blockTime = range;
-    const amount = amountWhere(input.minAmount, input.maxAmount);
-    if (amount) where.amount = amount;
+    const magnitude = transactionMagnitudeWhere(input.minAmount, input.maxAmount);
+    if (magnitude) {
+      where.AND = magnitude.AND;
+    }
 
     const rowLimit = parseToolLimit(input.limit, queryTransactionsTool.budgets);
     const found = await assistantReadRepository.queryTransactions(where, rowLimit + 1);

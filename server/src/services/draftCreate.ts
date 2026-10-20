@@ -1,5 +1,6 @@
 import type { DraftTransaction, Prisma } from '../generated/prisma/client';
 import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequests';
+import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { draftRepository, systemSettingRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
 import type { DraftLockDbClient } from '../repositories/draftLockRepository';
@@ -13,7 +14,13 @@ import { dispatchDraftNotification } from './notifications/dispatch';
 import { approvalService, type ApprovalDbClient } from './vaultPolicy/approvalService';
 import { validateInitialSigningState } from './draftSigning';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
-import { loadSigningIntent, unsignedPsbtSha256, type SigningIntentEnvelope } from './bitcoin/signingIntent';
+import {
+  deriveIntentSpend,
+  loadSigningIntent,
+  unsignedPsbtSha256,
+  type IntentSpend,
+  type SigningIntentEnvelope,
+} from './bitcoin/signingIntent';
 import { policyEvaluationEngine } from './vaultPolicy/policyEvaluationEngine';
 import { buildIntentPolicyInput, requiresEnforcedApproval } from './vaultPolicy/intentPolicyInput';
 
@@ -102,6 +109,7 @@ const calculateExpirationDate = async (): Promise<Date> => {
 };
 
 const buildDraftBehaviorFields = (data: CreateDraftInput) => ({
+  /* v8 ignore next -- createDraft binds selectedUtxoIds to the intent first; defensive default only */
   selectedUtxoIds: data.selectedUtxoIds || [],
   enableRBF: data.enableRBF ?? true,
   subtractFees: data.subtractFees ?? false,
@@ -303,6 +311,105 @@ const persistDraftWithLocks = async (
   return draft;
 };
 
+// ========================================
+// DRAFT ↔ SIGNING INTENT BINDING
+// ========================================
+//
+// The stored recipient/amount/fee/selected UTXOs are what reviewers see, what
+// broadcast compares and what gets locked, so they must describe the spend the
+// intent actually signs. Omitted fields are compared as their stored defaults
+// (selectedUtxoIds [] and fee 0), never skipped. The rules mirror broadcast's
+// canonical comparisons.
+
+const intentMismatch = (field: string, expected: unknown, actual: unknown): InvalidInputError =>
+  new InvalidInputError('Draft does not match the server-issued signing intent', field, {
+    reason: 'metadata_mismatch',
+    expected,
+    actual,
+  });
+
+/** A draft integer (number or numeric string) must be a safe integer equal to the canonical one. */
+const assertIntegerMatches = (field: string, expected: number, value: unknown): void => {
+  const actual = Number(value);
+  if (!Number.isSafeInteger(actual) || !Number.isSafeInteger(expected) || actual !== expected) {
+    throw intentMismatch(field, expected, actual);
+  }
+};
+
+const sumAmounts = (items: Array<{ amount: number }>): number =>
+  items.reduce((sum, item) => sum + item.amount, 0);
+
+/** (i) The selected UTXOs are exactly the intent's inputs; returns them normalised for locking. */
+const assertSelectedOutpointsMatch = (data: CreateDraftInput, spend: IntentSpend): string[] => {
+  const selected = (data.selectedUtxoIds || []).map(id => id.toLowerCase());
+  const canonical = new Set(spend.inputs.map(input => `${input.txid.toLowerCase()}:${input.vout}`));
+  const distinct = new Set(selected);
+  const matches = distinct.size === selected.length
+    && distinct.size === canonical.size
+    && selected.every(id => canonical.has(id));
+  if (!matches) {
+    throw intentMismatch('selectedUtxoIds', [...canonical], data.selectedUtxoIds ?? []);
+  }
+  return selected;
+};
+
+/** (ii) The fee is the intent's inputs minus outputs. */
+const assertFeeMatches = (data: CreateDraftInput, totalInput: number, totalOutput: number): void => {
+  assertIntegerMatches('fee', totalInput - totalOutput, data.fee || 0);
+};
+
+/** (iii) The recipient is the first external output (deterministic in both transaction builders). */
+const assertRecipientMatches = (data: CreateDraftInput, spend: IntentSpend): void => {
+  const expected = spend.externalOutputs[0].address;
+  if (canonicalSegwitAddressCase(data.recipient) !== expected) {
+    throw intentMismatch('recipient', expected, data.recipient);
+  }
+};
+
+/** (iii) The effective amount is the intent's net spend; sendMax/subtractFees are client flags, so no exemption. */
+const assertAmountMatches = (data: CreateDraftInput, spend: IntentSpend): void => {
+  assertIntegerMatches('amount', spend.amount, data.effectiveAmount || data.amount);
+};
+
+/** (iv) Reported totals, when supplied non-zero, are the intent's sums. */
+const assertTotalsMatch = (data: CreateDraftInput, totalInput: number, totalOutput: number): void => {
+  const totals: Array<[string, unknown, number]> = [
+    ['totalInput', data.totalInput, totalInput],
+    ['totalOutput', data.totalOutput, totalOutput],
+  ];
+  for (const [field, value, expected] of totals) {
+    if (value !== undefined && Number(value) !== 0) {
+      assertIntegerMatches(field, expected, value);
+    }
+  }
+};
+
+/** (v) isRBF (which skips UTXO locks) needs the intent's authenticated replacement target. */
+const assertRbfBinding = (data: CreateDraftInput, spend: IntentSpend): void => {
+  if (data.isRBF === true && !spend.replacementTxid) {
+    throw intentMismatch('isRBF', false, true);
+  }
+};
+
+/**
+ * Refuse a draft whose display fields, totals, selected UTXOs or RBF flag
+ * disagree with the signing intent. Returns the input with its selected UTXO
+ * ids normalised, so the locks cover the PSBT's real inputs.
+ */
+const assertDraftMatchesIntent = (data: CreateDraftInput, spend: IntentSpend): CreateDraftInput => {
+  const selectedUtxoIds = assertSelectedOutpointsMatch(data, spend);
+  const totalInput = sumAmounts(spend.inputs);
+  const totalOutput = sumAmounts(spend.outputs);
+  assertFeeMatches(data, totalInput, totalOutput);
+  if (spend.externalOutputs.length > 0) {
+    assertRecipientMatches(data, spend);
+    assertAmountMatches(data, spend);
+  }
+  assertTotalsMatch(data, totalInput, totalOutput);
+  assertRbfBinding(data, spend);
+  return { ...data, selectedUtxoIds };
+};
+
 /**
  * Every draft is evaluated against vault policy: a caller that already
  * evaluated (the agent funding path) passes its result, and anything else
@@ -316,9 +423,10 @@ const withServerPolicyEvaluation = async (
   walletId: string,
   userId: string,
   intent: Pick<SigningIntentEnvelope, 'snapshot'>,
+  spend: IntentSpend,
 ): Promise<CreateDraftInput> => {
   if (data.policyEvaluation !== undefined) return data;
-  const input = await buildIntentPolicyInput(walletId, userId, intent);
+  const input = await buildIntentPolicyInput(walletId, userId, intent, spend);
   if (!input) return data;
   const policyEvaluation = await policyEvaluationEngine.evaluatePolicies(input);
   if (!policyEvaluation.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
@@ -351,9 +459,13 @@ export async function createDraft(
     throw new InvalidInputError('Draft signing intent has no authenticated account binding');
   }
   assertValidCreateDraftInput(data);
-  // Assigned back to `data`: requiresApproval(data) is recomputed by the
-  // record builder and the approval-request step below.
-  data = await withServerPolicyEvaluation(data, walletId, userId, intent);
+  // Derived once (the same derivation broadcast makes) and reused for policy.
+  const spend = await deriveIntentSpend(walletId, intent.snapshot.network, intent.snapshot);
+  // Assigned back to `data`: the binding normalises the selected UTXO ids, and
+  // requiresApproval(data) is recomputed by the record builder and the
+  // approval-request step below.
+  data = assertDraftMatchesIntent(data, spend);
+  data = await withServerPolicyEvaluation(data, walletId, userId, intent, spend);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);
   const signingContext = intent.signingContext as Prisma.InputJsonValue;

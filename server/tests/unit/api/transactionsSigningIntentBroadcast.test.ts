@@ -433,7 +433,10 @@ describe('transaction signing-intent broadcast route', () => {
       expect(mixed).not.toBe(recipient);
       const response = await post({ ...body, recipient: mixed });
       expect(response.status).toBe(400);
-      expect(response.body).toMatchObject({ details: { reason: 'metadata_mismatch', field: 'recipient' } });
+      expect(response.body).toMatchObject({
+        message: 'Broadcast metadata does not match signing intent',
+        details: { reason: 'metadata_mismatch', field: 'recipient' },
+      });
       expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
     });
 
@@ -450,6 +453,49 @@ describe('transaction signing-intent broadcast route', () => {
       expect(response.status).toBe(400);
       expect(response.body).toMatchObject({ details: { reason: 'metadata_mismatch', field: 'recipient' } });
       expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('intent-bound draft display fields', () => {
+    const canonicalBody = async () => ({
+      ...body,
+      draftId: 'draft-1',
+      recipient: await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex),
+      amount: 9000,
+      fee: 1000,
+    });
+
+    it.each([
+      ['recipient', { recipient: 'tb1qwrong' }],
+      ['amount', { effectiveAmount: 8000n }],
+      ['amount', { sendMax: true, effectiveAmount: 8000n }],
+      ['amount', { effectiveAmount: 0n, amount: 8000n }],
+      ['fee', { fee: 999n }],
+    ])('refuses a drifted draft %s even when the request supplies canonical values', async (field, drift) => {
+      mocks.findDraft.mockResolvedValue(draft(drift));
+      const response = await post(await canonicalBody());
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ details: { reason: 'metadata_mismatch', field } });
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a legacy draft with no signing intent', { signingIntentId: null, recipient: 'tb1qwrong', effectiveAmount: 8000n, fee: 999n }],
+      ['an intent-bound draft with no recipient', { recipient: undefined }],
+      ['an amount-only draft', { effectiveAmount: 0n, amount: 9000n }],
+    ])('accepts %s', async (_name, fields) => {
+      mocks.findDraft.mockResolvedValue(draft(fields));
+      const response = await post(await canonicalBody());
+      expect(response.status).toBe(200);
+    });
+
+    it('checks the draft fee of a consolidation but not its reported amount', async () => {
+      const own = await addressOf(artifact.snapshot.transaction.outputs[0].scriptPubKeyHex);
+      mocks.findAddressStrings.mockResolvedValue([own]);
+      mocks.findDraft.mockResolvedValue(draft({ recipient: own, fee: 999n }));
+      const response = await post({ ...body, draftId: 'draft-1', fee: 1000 });
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ details: { reason: 'metadata_mismatch', field: 'fee' } });
     });
   });
 

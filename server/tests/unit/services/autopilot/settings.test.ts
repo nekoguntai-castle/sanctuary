@@ -17,6 +17,7 @@ vi.mock('../../../../src/repositories', () => ({
 import {
   getEnabledAutopilotWallets,
   getWalletAutopilotSettings,
+  isAutopilotChannelEnabled,
   updateWalletAutopilotSettings,
 } from '../../../../src/services/autopilot/settings';
 
@@ -410,6 +411,22 @@ describe('autopilot settings service', () => {
           }),
         },
       ]);
+    });
+  });
+
+  describe('isAutopilotChannelEnabled', () => {
+    const prefs = (settings: Record<string, unknown>) => ({ autopilot: { wallets: { w1: settings } } });
+
+    it('requires autopilot enabled for the wallet', () => {
+      expect(isAutopilotChannelEnabled(null, 'w1', 'notifyPush')).toBe(false);
+      expect(isAutopilotChannelEnabled(prefs({ enabled: false }), 'w1', 'notifyPush')).toBe(false);
+      expect(isAutopilotChannelEnabled(prefs({ enabled: true }), 'w2', 'notifyPush')).toBe(false);
+    });
+
+    it('treats an unset channel toggle as on and an explicit false as off', () => {
+      expect(isAutopilotChannelEnabled(prefs({ enabled: true }), 'w1', 'notifyTelegram')).toBe(true);
+      expect(isAutopilotChannelEnabled(prefs({ enabled: true, notifyTelegram: false }), 'w1', 'notifyTelegram')).toBe(false);
+      expect(isAutopilotChannelEnabled(prefs({ enabled: true, notifyTelegram: false }), 'w1', 'notifyPush')).toBe(true);
     });
   });
 });

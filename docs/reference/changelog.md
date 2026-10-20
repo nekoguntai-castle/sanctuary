@@ -11,7 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Rejecting an agent funding draft on mobile now requires the approve capability (a signer-only user can no longer reject) and is recorded as a reject vote in the approval workflow, under the same rules as the web vote. Under a policy with `allowSelfApproval: false`, the owner who created the agent draft can no longer reject it on mobile: another eligible approver, expiry or deleting the draft declines it. An already approved draft returns 409.
+- `GET /approvals/pending` and the assistant's pending-approvals tool no longer list requests on drafts already rejected, vetoed or expired; voting on or overriding such a draft returns 409.
+
 ### Fixed
+
+- Draft creation now refuses (400 `metadata_mismatch`) a draft whose recipient, amount, fee, totals, selected UTXOs or RBF flag disagree with its signing intent, so the stored review fields and UTXO locks describe the transaction actually signed. Broadcast also checks an intent-bound draft's own fields even when the request supplies the canonical values.
+- Scheduled backups no longer fail with EACCES on new or existing installs: a one-shot `backup-volume-init` service repairs `backup_data` ownership for the worker on every start, the backend mounts the volume read-only so the support package reports real backups, and the job fails fast with an actionable message when the directory is not writable.
 
 ## [0.8.77] - 2026-10-12
 

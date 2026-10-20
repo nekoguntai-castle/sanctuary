@@ -60,6 +60,20 @@ describe('summarizeNotificationResults', () => {
   });
 });
 
+describe('push reaching nobody alongside a failed channel', () => {
+  it('fails the job so BullMQ retries the failed channel', () => {
+    const results: NotificationResultLike[] = [
+      { success: true, channelId: 'push', usersNotified: 0 },
+      { success: false, channelId: 'telegram', usersNotified: 0, errors: ['x'] },
+    ];
+
+    const summary = summarizeNotificationResults(results, 'no channels');
+
+    expect(summary.channelsNotified).toBe(0);
+    expect(shouldFailBullMqNotificationJob(summary)).toBe(true);
+  });
+});
+
 describe('recordChannelDeliveryFailures', () => {
   beforeEach(() => {
     vi.clearAllMocks();

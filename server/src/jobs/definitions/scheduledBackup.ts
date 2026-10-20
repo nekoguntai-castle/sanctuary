@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { JobDefinition } from '../types';
 import { auditService, AuditCategory } from '../../services/auditService';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import type { BackupService } from '../../services/backupService/backupService';
 import type { SanctuaryBackup } from '../../services/backupService/types';
 
@@ -140,6 +141,24 @@ async function enforceRetention(
 }
 
 /**
+ * Fail in milliseconds, with an operator-actionable message, when the volume is
+ * not writable by this process instead of after a full database export.
+ */
+async function assertBackupDirWritable(
+  fs: typeof import('fs/promises'),
+  backupDir: string,
+): Promise<void> {
+  try {
+    await fs.access(backupDir, fs.constants.W_OK);
+  } catch (error) {
+    throw new Error(
+      `Backup directory ${backupDir} is not writable by uid ${process.getuid?.() ?? 'unknown'}; ` +
+      `restart the stack so the backup-volume-init repair runs, or chown the volume: ${getErrorMessage(error)}`,
+    );
+  }
+}
+
+/**
  * Daily scheduled backup written to the configured backup volume.
  */
 export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
@@ -152,6 +171,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
 
     log.info('Running scheduled backup', { backupDir, retentionCount });
     await fs.mkdir(backupDir, { recursive: true });
+    await assertBackupDirWritable(fs, backupDir);
     execution?.throwIfAborted();
 
     const { BackupService } = await import('../../services/backupService/backupService.js');

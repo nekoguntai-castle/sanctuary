@@ -56,7 +56,7 @@ diagnose_failure() {
   fi
   if [ "$status" -ne 0 ]; then
     docker compose ps >&2 || true
-    docker compose logs --tail 100 postgres backend frontend gateway migrate >&2 || true
+    docker compose logs --tail 100 postgres backend frontend gateway migrate backup-volume-init >&2 || true
   fi
   if [ "$status" -eq 0 ] && [ "$registration_status" -ne 0 ]; then
     return "$registration_status"

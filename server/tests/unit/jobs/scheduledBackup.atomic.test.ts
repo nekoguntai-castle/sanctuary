@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createBackup: vi.fn(),
   validateBackupForRestore: vi.fn(),
   mkdir: vi.fn(),
+  access: vi.fn(),
   open: vi.fn(),
   rename: vi.fn(),
   readdir: vi.fn(),
@@ -29,6 +30,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('fs/promises', () => ({
   mkdir: mocks.mkdir,
+  access: mocks.access,
+  constants: { W_OK: 2 },
   open: mocks.open,
   rename: mocks.rename,
   readdir: mocks.readdir,
@@ -69,6 +72,7 @@ describe('scheduled backup atomic publication', () => {
       meta?: { complete?: boolean };
     }) => ({ valid: backup.meta?.complete !== false }));
     mocks.mkdir.mockResolvedValue(undefined);
+    mocks.access.mockResolvedValue(undefined);
     mocks.rename.mockImplementation(async () => {
       mocks.events.push('rename');
     });
@@ -125,6 +129,39 @@ describe('scheduled backup atomic publication', () => {
       expect.stringMatching(/\/sanctuary-backup-.*\.json$/),
     );
     expect(mocks.auditLog).toHaveBeenCalledOnce();
+  });
+
+  it('fails fast before creating the backup when the directory is not writable', async () => {
+    const eacces = Object.assign(new Error("EACCES: permission denied, access '/data/backups'"), { code: 'EACCES' });
+    mocks.access.mockRejectedValueOnce(eacces);
+
+    await expect(scheduledBackupJob.handler({ data: {} } as never))
+      .rejects.toThrow(/Backup directory .* is not writable by uid .*backup-volume-init.*EACCES/);
+
+    expect(mocks.access).toHaveBeenCalledWith(expect.any(String), 2);
+    expect(mocks.createBackup).not.toHaveBeenCalled();
+    expect(mocks.open).not.toHaveBeenCalled();
+  });
+
+  it('reports an unknown uid when the platform has no getuid', async () => {
+    const original = process.getuid;
+    Object.defineProperty(process, 'getuid', { value: undefined, configurable: true });
+    mocks.access.mockRejectedValueOnce(new Error('EACCES'));
+    try {
+      await expect(scheduledBackupJob.handler({ data: {} } as never))
+        .rejects.toThrow('not writable by uid unknown');
+    } finally {
+      Object.defineProperty(process, 'getuid', { value: original, configurable: true });
+    }
+    expect(mocks.createBackup).not.toHaveBeenCalled();
+  });
+
+  it('propagates a mkdir failure unchanged', async () => {
+    mocks.mkdir.mockRejectedValueOnce(new Error('mkdir exploded'));
+
+    await expect(scheduledBackupJob.handler({ data: {} } as never))
+      .rejects.toThrow('mkdir exploded');
+    expect(mocks.access).not.toHaveBeenCalled();
   });
 
   it('removes only its temporary file when publication fails', async () => {

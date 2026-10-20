@@ -352,6 +352,8 @@ services:
       retries: 3
       start_period: 30s
     volumes:
+      # Read-only: the support-package backups collector only lists the worker's output.
+      - backup_data:/data/backups:ro
       - support_capture_runtime:/run/sanctuary-support-capture
     networks:
       - sanctuary-network
@@ -370,6 +372,38 @@ services:
           cpus: "0.5"
           memory: 1G
     memswap_limit: 2560M # memory + 512M swap
+
+  # ============================================
+  # Backup volume repair (one-shot)
+  # ============================================
+  # backup_data predates the image's /data/backups directory, so existing
+  # volumes are root-owned and the worker (uid 1001) cannot write scheduled
+  # backups. Docker only copies image ownership into a brand-new volume, so
+  # this idempotent chown (directory only, never recursive) repairs both fresh
+  # and upgraded installs on every start. CAP_CHOWN is the only capability.
+  backup-volume-init:
+    labels: *sanctuary-container-ownership
+    image: sanctuary-migrate:${SANCTUARY_IMAGE_TAG:-local} # Reuse the migration image
+    pull_policy: never
+    user: "0:0"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    network_mode: none
+    read_only: true
+    restart: "no"
+    command: ["chown", "1001:1001", "/data/backups"]
+    volumes:
+      - backup_data:/data/backups
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ============================================
   # Background Worker
@@ -394,6 +428,8 @@ services:
       redis:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      backup-volume-init:
         condition: service_completed_successfully
     environment:
       # Keep process-wide V8 heap flags unset: Node derives the main heap from

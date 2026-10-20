@@ -578,11 +578,13 @@ describe('Push Service', () => {
         },
       ]);
 
-      await notifyNewTransactions(walletId, [
+      const result = await notifyNewTransactions(walletId, [
         { txid: 'tx1', type: 'received', amount: BigInt(100000) },
       ]);
 
       expect(mockPrismaClient.pushDevice.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual({ success: true, usersNotified: 0 });
+      expect(mockProvider.send).not.toHaveBeenCalled();
     });
 
     it('should notify for sent transactions', async () => {

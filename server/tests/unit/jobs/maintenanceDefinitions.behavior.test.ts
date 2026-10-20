@@ -710,6 +710,8 @@ describe('Maintenance job definitions behavior', () => {
 
     vi.doMock('fs/promises', () => ({
       mkdir: mockMkdir,
+      access: vi.fn().mockResolvedValue(undefined),
+      constants: { W_OK: 2 },
       open: mockOpen,
       rename: mockRename,
       readFile: mockReadFile,

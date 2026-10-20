@@ -103,6 +103,32 @@ import {
   dispatchDraftCreatedPostCommitNotifications,
 } from '../../../src/services/draftCreate';
 
+// A spend whose canonical fee is 1000: one 120000 input, the 100000 external
+// payment and a 19000 change output.
+const externalSpend = (overrides: Record<string, unknown> = {}) => ({
+  inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }],
+  outputs: [
+    { address: 'tb1qexternal', amount: 100000 },
+    { address: 'tb1qchange', amount: 19000 },
+  ],
+  externalOutputs: [{ address: 'tb1qexternal', amount: 100000 }],
+  amount: 100000,
+  ...overrides,
+});
+
+// Draft metadata that matches externalSpend() exactly.
+const boundDraftInput = {
+  recipient: 'tb1qexternal',
+  amount: 100000,
+  effectiveAmount: 100000,
+  fee: 1000,
+  feeRate: 5,
+  psbtBase64: 'cHNidP8...',
+  intentId: 'intent-1',
+  intentDigest: 'a'.repeat(64),
+  selectedUtxoIds: ['a'.repeat(64) + ':1'],
+};
+
 // The placeholder approval dispatch was removed; the mock key pins its absence.
 const removedApprovalDispatch = (approvalService as unknown as Record<string, Mock>).dispatchApprovalRequestedNotification;
 
@@ -122,15 +148,7 @@ describe('createDraft approval atomicity', () => {
     label: null,
   };
 
-  const approvalInput = {
-    recipient: 'tb1qtest...',
-    amount: 100000,
-    feeRate: 5,
-    psbtBase64: 'cHNidP8...',
-    intentId: 'intent-1',
-    intentDigest: 'a'.repeat(64),
-    selectedUtxoIds: ['utxo-1'],
-  };
+  const approvalInput = boundDraftInput;
 
   const approvalEvaluation = {
     allowed: true,
@@ -150,14 +168,6 @@ describe('createDraft approval atomicity', () => {
     (deriveIntentSpend as Mock).mockResolvedValue(externalSpend());
     (policyEvaluationEngine.evaluatePolicies as Mock).mockResolvedValue({ allowed: true, triggered: [] });
     (findVerifiedReplacement as Mock).mockResolvedValue(null);
-  });
-
-  const externalSpend = (overrides: Record<string, unknown> = {}) => ({
-    inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }],
-    outputs: [],
-    externalOutputs: [{ address: 'tb1qexternal', amount: 100000 }],
-    amount: 100000,
-    ...overrides,
   });
 
   const enforcedApproval = {
@@ -221,7 +231,8 @@ describe('createDraft approval atomicity', () => {
     it('does not re-evaluate when the caller already supplies an evaluation', async () => {
       await createDraft(walletId, userId, { ...approvalInput, policyEvaluation: { allowed: true, triggered: [] } });
 
-      expect(deriveIntentSpend).not.toHaveBeenCalled();
+      // The spend is still derived once, to bind the draft metadata to the intent.
+      expect(deriveIntentSpend).toHaveBeenCalledOnce();
       expect(policyEvaluationEngine.evaluatePolicies).not.toHaveBeenCalled();
     });
   });
@@ -530,5 +541,124 @@ describe('createDraft approval atomicity', () => {
       txTracker.clients[1]
     );
     expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('createDraft binds draft metadata to the signing intent', () => {
+  const walletId = 'wallet-456';
+  const userId = 'user-123';
+  const unsafe = Number.MAX_SAFE_INTEGER + 2;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (draftRepository.create as Mock).mockResolvedValue({ id: 'draft-789', amount: BigInt(100000), recipient: 'tb1qexternal' });
+    (resolveUtxoIds as Mock).mockResolvedValue({ found: ['utxo-id-1'], notFound: [] });
+    (lockUtxosForDraft as Mock).mockResolvedValue({ success: true, lockedCount: 1 });
+    (systemSettingRepository.getParsed as Mock).mockResolvedValue(7);
+    (dispatchDraftNotification as Mock).mockResolvedValue(undefined);
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend());
+    (policyEvaluationEngine.evaluatePolicies as Mock).mockResolvedValue({ allowed: true, triggered: [] });
+  });
+
+  const expectMismatch = async (overrides: Record<string, unknown>, field: string) => {
+    await expect(createDraft(walletId, userId, { ...boundDraftInput, ...overrides } as typeof boundDraftInput))
+      .rejects.toMatchObject({ details: expect.objectContaining({ field, reason: 'metadata_mismatch' }) });
+    expect(draftRepository.create).not.toHaveBeenCalled();
+    expect(lockUtxosForDraft).not.toHaveBeenCalled();
+    expect(policyEvaluationEngine.evaluatePolicies).not.toHaveBeenCalled();
+  };
+
+  const expectAccepted = async (overrides: Record<string, unknown>) => {
+    await createDraft(walletId, userId, { ...boundDraftInput, ...overrides } as typeof boundDraftInput);
+    expect(draftRepository.create).toHaveBeenCalledOnce();
+  };
+
+  it.each([
+    ['a different recipient', { recipient: 'tb1qattacker' }, 'recipient'],
+    ['a different effectiveAmount', { effectiveAmount: 99000 }, 'amount'],
+    ['a sendMax draft with a different effectiveAmount', { sendMax: true, effectiveAmount: 90000 }, 'amount'],
+    ['a subtractFees draft with a different recipient', { subtractFees: true, recipient: 'tb1qattacker' }, 'recipient'],
+    ['a fee that is not inputs minus outputs', { fee: 500 }, 'fee'],
+    ['an omitted fee (counts as 0)', { fee: undefined }, 'fee'],
+    ['an unsafe-integer fee', { fee: unsafe }, 'fee'],
+    ['an unsafe-integer effectiveAmount', { effectiveAmount: String(unsafe) }, 'amount'],
+    ['selected UTXOs missing a canonical outpoint', { selectedUtxoIds: [] }, 'selectedUtxoIds'],
+    ['an omitted selectedUtxoIds (counts as [])', { selectedUtxoIds: undefined }, 'selectedUtxoIds'],
+    ['an unrelated selected UTXO', { selectedUtxoIds: ['b'.repeat(64) + ':0'] }, 'selectedUtxoIds'],
+    ['a duplicated selected UTXO', { selectedUtxoIds: ['a'.repeat(64) + ':1', 'A'.repeat(64) + ':1'] }, 'selectedUtxoIds'],
+    ['isRBF on an intent with no replacement target', { isRBF: true }, 'isRBF'],
+    ['a totalInput that is not the input sum', { totalInput: 119000, totalOutput: 119000 }, 'totalInput'],
+    ['a totalOutput that is not the output sum', { totalInput: 120000, totalOutput: 100000 }, 'totalOutput'],
+    ['an unsafe-integer totalInput', { totalInput: String(unsafe) }, 'totalInput'],
+  ])('rejects %s', async (_name, overrides, field) => {
+    await expectMismatch(overrides, field);
+  });
+
+  it.each([
+    ['a non-numeric fee', { fee: 'abc' }],
+    ['a fractional effectiveAmount', { effectiveAmount: 1000.5 }],
+  ])('rejects %s before persisting', async (_name, overrides) => {
+    await expect(createDraft(walletId, userId, { ...boundDraftInput, ...overrides } as typeof boundDraftInput))
+      .rejects.toThrow();
+    expect(draftRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an intent whose canonical sums are not safe integers', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({
+      inputs: [
+        { txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: Number.MAX_SAFE_INTEGER },
+        { txid: 'a'.repeat(64), vout: 2, address: 'tb1qwallet', amount: 10 },
+      ],
+    }));
+
+    await expectMismatch({ selectedUtxoIds: ['a'.repeat(64) + ':1', 'a'.repeat(64) + ':2'] }, 'fee');
+  });
+
+  it.each([
+    ['numeric-string fee, effectiveAmount and totals', { fee: '1000', effectiveAmount: '100000', totalInput: '120000', totalOutput: '119000' }],
+    ['a matching non-zero total pair', { totalInput: 120000, totalOutput: 119000 }],
+    ['zero totals (skipped)', { totalInput: 0, totalOutput: '0' }],
+    ['a sendMax draft whose outputs carry 0', { sendMax: true, outputs: [{ address: 'tb1qexternal', amount: 0, sendMax: true }] }],
+    ['a subtractFees draft with unreduced outputs', { subtractFees: true, outputs: [{ address: 'tb1qexternal', amount: 101000 }] }],
+    ['an amount-only draft (effectiveAmount omitted)', { effectiveAmount: undefined }],
+  ])('accepts %s', async (_name, overrides) => {
+    await expectAccepted(overrides);
+  });
+
+  it('accepts an upper-case txid and locks the normalised outpoint', async () => {
+    await expectAccepted({ selectedUtxoIds: ['A'.repeat(64) + ':1'] });
+
+    expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, ['a'.repeat(64) + ':1']);
+    expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      selectedUtxoIds: ['a'.repeat(64) + ':1'],
+    }));
+  });
+
+  it('accepts isRBF when the intent carries its replacement target', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({ replacementTxid: 'c'.repeat(64) }));
+
+    await expectAccepted({ isRBF: true });
+    expect(lockUtxosForDraft).not.toHaveBeenCalled();
+  });
+
+  it('skips recipient and amount for a consolidation that pays nothing outside the wallet', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({ externalOutputs: [], amount: 0 }));
+
+    await expectAccepted({ recipient: 'tb1qchange', effectiveAmount: 119000 });
+  });
+
+  it('binds a multi-recipient draft to the first external output and the summed amount', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({
+      outputs: [
+        { address: 'tb1qexternal', amount: 60000 },
+        { address: 'tb1qsecond', amount: 40000 },
+        { address: 'tb1qchange', amount: 19000 },
+      ],
+      externalOutputs: [{ address: 'tb1qexternal', amount: 60000 }, { address: 'tb1qsecond', amount: 40000 }],
+      amount: 100000,
+    }));
+
+    await expectAccepted({});
+    expect(deriveIntentSpend).toHaveBeenCalledOnce();
   });
 });

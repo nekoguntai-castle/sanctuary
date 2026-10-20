@@ -256,13 +256,9 @@ class PushService {
     let usersNotified = 0;
     try {
       for (const user of users) {
-        await this.notifyUserNewTransactions(
-          user,
-          wallet,
-          walletId,
-          transactions,
-        );
-        usersNotified++;
+        if (await this.notifyUserNewTransactions(user, wallet, walletId, transactions)) {
+          usersNotified++;
+        }
       }
     } catch (err) {
       // Per-device send failures are already recorded individually inside
@@ -345,16 +341,20 @@ class PushService {
     wallet: NotificationWallet,
     walletId: string,
     transactions: TransactionData[],
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Skip if user has no push devices registered (count already fetched)
-    if (user._count.pushDevices === 0) return;
+    if (user._count.pushDevices === 0) return false;
 
-    // Send notification for each transaction that matches user's preferences
+    // Send notification for each transaction that matches user's preferences.
+    // Returns true when at least one send was issued (not that it was delivered).
+    let dispatched = false;
     for (const tx of transactions) {
       if (isWalletTransactionNotificationEnabled(user.preferences, walletId, tx.type)) {
         await this.sendToUser(user.id, buildTransactionPushMessage(wallet, tx));
+        dispatched = true;
       }
     }
+    return dispatched;
   }
 
   /**

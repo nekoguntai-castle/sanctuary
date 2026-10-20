@@ -89,7 +89,7 @@ import prisma from '../../../src/models/prisma';
 import { draftRepository, systemSettingRepository, walletRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
-import { loadSigningIntent, unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent';
+import { deriveIntentSpend, loadSigningIntent, unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent';
 import * as bitcoin from 'bitcoinjs-lib';
 import { NotFoundError, InvalidInputError, ConflictError } from '../../../src/errors';
 import {
@@ -166,10 +166,18 @@ describe('DraftService', () => {
       psbtBase64: 'cHNidP8...',
       intentId: 'intent-1',
       intentDigest: 'a'.repeat(64),
-      selectedUtxoIds: ['utxo-1'],
+      selectedUtxoIds: ['a'.repeat(64) + ':1'],
+    };
+    // The intent spend validInput describes: one input, no fee (fee omitted), nothing external.
+    const canonicalSpend = {
+      inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 1000 }],
+      outputs: [{ address: 'tb1qwallet', amount: 1000 }],
+      externalOutputs: [],
+      amount: 0,
     };
 
     beforeEach(() => {
+      (deriveIntentSpend as Mock).mockResolvedValue(canonicalSpend);
       (draftRepository.create as Mock).mockResolvedValue(mockDraft);
       (resolveUtxoIds as Mock).mockResolvedValue({ found: ['utxo-id-1'], notFound: [] });
       (lockUtxosForDraft as Mock).mockResolvedValue({ success: true, lockedCount: 1 });
@@ -338,6 +346,7 @@ describe('DraftService', () => {
     });
 
     it('uses empty selectedUtxoIds default when none are provided', async () => {
+      (deriveIntentSpend as Mock).mockResolvedValueOnce({ inputs: [], outputs: [], externalOutputs: [], amount: 0 });
       await createDraft(walletId, userId, {
         recipient: validInput.recipient,
         amount: validInput.amount,
@@ -357,9 +366,19 @@ describe('DraftService', () => {
     });
 
     it('should not lock UTXOs for RBF transactions', async () => {
+      (deriveIntentSpend as Mock).mockResolvedValueOnce({ ...canonicalSpend, replacementTxid: 'b'.repeat(64) });
       await createDraft(walletId, userId, { ...validInput, isRBF: true });
 
       expect(lockUtxosForDraft).not.toHaveBeenCalled();
+    });
+
+    it('treats omitted selectedUtxoIds as [] and refuses them against the intent inputs', async () => {
+      const { selectedUtxoIds: _omitted, ...withoutIds } = validInput;
+
+      await expect(createDraft(walletId, userId, withoutIds)).rejects.toMatchObject({
+        details: expect.objectContaining({ field: 'selectedUtxoIds', reason: 'metadata_mismatch' }),
+      });
+      expect(draftRepository.create).not.toHaveBeenCalled();
     });
 
     it('should throw InvalidInputError for missing required fields', async () => {

@@ -9,6 +9,7 @@
 
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import prisma from '../models/prisma';
+import { RESOLVED_APPROVAL_STATUSES } from './approvalStatuses';
 import type { DraftTransaction } from '../generated/prisma/client';
 
 /**
@@ -42,7 +43,7 @@ export async function hasLiveDraftForSigningIntent(
       walletId,
       signingIntentId,
       status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
-      approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+      approvalStatus: { notIn: [...RESOLVED_APPROVAL_STATUSES] },
       expiresAt: { gt: now },
     },
     select: { id: true },

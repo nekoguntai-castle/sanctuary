@@ -6,7 +6,7 @@
 
 import * as pushService from '../../push/pushService';
 import { getErrorMessage } from '../../../utils/errors';
-import { walletAutopilotSettingsFromPreferences } from '../../autopilot/settings';
+import { isAutopilotChannelEnabled } from '../../autopilot/settings';
 import { eligibleInsightWalletSettings, INSIGHT_TYPE_LABELS } from './insightEligibility';
 import type {
   AIInsightNotification,
@@ -115,10 +115,7 @@ export const pushChannelHandler: NotificationChannelHandler = {
             body: `${suggestion.walletName}: fees are low (${suggestion.feeRate} sat/vB)`,
             data: { walletId, kind: 'consolidation_suggestion' },
           },
-          (user) => {
-            const settings = walletAutopilotSettingsFromPreferences(user.preferences, walletId);
-            return settings?.enabled === true && settings.notifyPush !== false;
-          }
+          (user) => isAutopilotChannelEnabled(user.preferences, walletId, 'notifyPush')
         )
       );
     } catch (err) {

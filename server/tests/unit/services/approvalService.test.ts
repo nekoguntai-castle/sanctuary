@@ -14,6 +14,7 @@ import {
   registerGetPendingApprovalsForUserContracts,
 } from './approvalService/approvalService.read-models.contracts';
 import { registerQuorumMembershipContracts } from './approvalService/approvalService.quorum-membership.contracts';
+import { registerResolvedDraftContracts } from './approvalService/approvalService.resolved-draft.contracts';
 import { registerApprovalServiceTestHarness } from './approvalService/approvalServiceTestHarness';
 
 describe('ApprovalService', () => {
@@ -51,6 +52,10 @@ describe('ApprovalService', () => {
 
   describe('quorum membership (specific & all)', () => {
     registerQuorumMembershipContracts();
+  });
+
+  describe('resolved drafts stay resolved', () => {
+    registerResolvedDraftContracts();
   });
 
   describe('getPendingApprovalsForUser', () => {

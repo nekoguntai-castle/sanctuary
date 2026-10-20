@@ -226,21 +226,9 @@ const canonicalReportedRecipient = (recipient: string | undefined): string | und
   recipient === undefined ? undefined : canonicalSegwitAddressCase(recipient)
 );
 
-const assertOptionalMetadata = (
-  optional: OptionalBroadcastMetadata,
-  draft: BroadcastDraft,
-  metadata: CanonicalRouteMetadata,
-): void => {
-  // With no external output nothing leaves the wallet, so the client/draft-reported
-  // recipient and amount carry no spend meaning (e.g. a consolidation reports the sum of its own outputs).
-  const spendChecks: Array<[string, unknown, unknown]> = metadata.externalOutputs.length === 0 ? [] : [
-    ['recipient', metadata.recipient, canonicalReportedRecipient(optional.recipient ?? draft?.recipient)],
-    ['amount', metadata.amount, optional.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
-  ];
-  const checks: Array<[string, unknown, unknown]> = [
-    ...spendChecks,
-    ['fee', metadata.fee, optional.fee ?? (draft ? Number(draft.fee) : undefined)],
-  ];
+type MetadataCheck = [field: string, expected: unknown, actual: unknown];
+
+const assertMetadataChecks = (checks: MetadataCheck[]): void => {
   for (const [field, expected, actual] of checks) {
     if (actual !== undefined && actual !== expected) {
       throw new InvalidInputError('Broadcast metadata does not match signing intent', field, {
@@ -248,6 +236,48 @@ const assertOptionalMetadata = (
       });
     }
   }
+};
+
+/**
+ * A draft bound to a signing intent must itself describe that intent's spend,
+ * even when the request body supplies the canonical values (which the checks
+ * above prefer over the draft's). Legacy drafts with no signingIntentId keep
+ * the optional-only comparison so they are not stranded; an unset draft
+ * recipient is skipped. Recipient and amount carry no spend meaning without
+ * an external output, as above.
+ */
+const assertIntentBoundDraftMetadata = (
+  draft: BroadcastDraft,
+  metadata: CanonicalRouteMetadata,
+): void => {
+  if (!draft?.signingIntentId) return;
+  const checks: MetadataCheck[] = [['fee', metadata.fee, Number(draft.fee)]];
+  if (metadata.externalOutputs.length > 0) {
+    checks.push(
+      ['recipient', metadata.recipient, canonicalReportedRecipient(draft.recipient)],
+      ['amount', metadata.amount, Number(draft.effectiveAmount || draft.amount)],
+    );
+  }
+  assertMetadataChecks(checks);
+};
+
+const assertOptionalMetadata = (
+  optional: OptionalBroadcastMetadata,
+  draft: BroadcastDraft,
+  metadata: CanonicalRouteMetadata,
+): void => {
+  // With no external output nothing leaves the wallet, so the client/draft-reported
+  // recipient and amount carry no spend meaning (e.g. a consolidation reports the sum of its own outputs).
+  const spendChecks: MetadataCheck[] = metadata.externalOutputs.length === 0 ? [] : [
+    ['recipient', metadata.recipient, canonicalReportedRecipient(optional.recipient ?? draft?.recipient)],
+    ['amount', metadata.amount, optional.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
+  ];
+  const checks: MetadataCheck[] = [
+    ...spendChecks,
+    ['fee', metadata.fee, optional.fee ?? (draft ? Number(draft.fee) : undefined)],
+  ];
+  assertMetadataChecks(checks);
+  assertIntentBoundDraftMetadata(draft, metadata);
   assertExactOutpoints(metadata.utxos, optional.utxos, 'utxos');
   if (draft) {
     const outpoints = draft.selectedUtxoIds.map(value => {

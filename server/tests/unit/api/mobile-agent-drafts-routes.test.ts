@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { ConflictError } from '../../../src/errors';
 
 vi.mock('../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'user-1', username: 'alice', isAdmin: false },
@@ -240,6 +241,19 @@ describe('mobile agent draft routes', () => {
       })
     );
     expect(response.body.draft.approvalStatus).toBe('rejected');
+  });
+
+  it('returns 409 without auditing when the draft is already approved', async () => {
+    vi.mocked(mobileAgentDraftService.rejectAgentFundingDraft)
+      .mockRejectedValue(new ConflictError('Draft is already approved'));
+
+    const response = await request(app)
+      .post('/api/v1/mobile/agent-funding-drafts/draft-1/reject')
+      .send({ reason: 'Too late' })
+      .expect(409);
+
+    expect(response.body.message).toContain('Draft is already approved');
+    expect(auditService.logFromRequest).not.toHaveBeenCalled();
   });
 
   it('submits signed PSBTs through the service and audits device id only', async () => {
